@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --release --locked -p verdin --features embed-admin \
     && cp target/release/verdin /usr/local/bin/verdin \
-    && mkdir -p /out/data/schema/content-types /out/data/schema/components
+    && mkdir -p /out/data/schema/content-types /out/data/schema/components /out/data/uploads
 
 FROM gcr.io/distroless/cc-debian12:nonroot
 COPY --from=server /usr/local/bin/verdin /usr/local/bin/verdin

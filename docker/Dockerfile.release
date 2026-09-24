@@ -1,0 +1,15 @@
+# Release image: the static musl binaries built by the release workflow (admin embedded),
+# copied per architecture — no compilation under emulation.
+#   docker/dist/<amd64|arm64>/verdin   (prepared by .github/workflows/release.yml)
+FROM gcr.io/distroless/static-debian12:nonroot
+ARG TARGETARCH
+COPY docker/dist/${TARGETARCH}/verdin /usr/local/bin/verdin
+COPY docker/image/verdin.toml /app/verdin.toml
+# The volume holds the SQLite database, uploads and, in `dev`, the schema the builder edits.
+COPY --chown=65532:65532 docker/dist/data /data
+ENV VERDIN_CONFIG=/app/verdin.toml \
+    VERDIN_DATABASE_URL=sqlite:///data/verdin.db
+VOLUME /data
+EXPOSE 1337
+ENTRYPOINT ["/usr/local/bin/verdin"]
+CMD ["start", "--migrate"]

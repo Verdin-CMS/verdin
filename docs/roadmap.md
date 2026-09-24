@@ -5,15 +5,17 @@ everything lands in the open source edition (there is no paid tier).
 
 Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 
-## 0.2 — Media and editing
+## 0.2 — Media, GraphQL and editing
 
 | Item | Size | Notes |
 |---|---|---|
+| Runtime features ✅ | M | Settings → Features, switched live; API documentation with Scalar |
+| **GraphQL** | L | Feature switch; `async-graphql` dynamic schema generated from content types (queries, `_connection`, mutations, Strapi v5 shapes), same permissions as REST, filters/pagination/sort compatible with Strapi's GraphQL plugin, depth and complexity limits |
 | **Media library** ✅ | L | `media` attribute type (single/multiple, allowed types), `vd_files` + folders, upload API (`POST /api/upload`, Strapi-compatible response), image metadata, thumbnails and responsive formats (`image` crate, generated on upload, WebP/AVIF), focal point, alt text and captions, drag-and-drop library in the admin with grid/list views, search and folders, picker dialog in forms |
 | Upload providers ✅ | M | Local disk (default) and S3-compatible (AWS, R2, B2, RustFS) through `object_store`, size limits and MIME sniffing. Next: signed URLs for private buckets, WebP/AVIF variants, media inside components |
 | **Blocks editor** | L | Strapi `blocks` JSON format, TipTap-based editor in the admin (headings, lists, quotes, code, images from the media library, links) |
 | Markdown preview | S | Split view for `richtext` fields |
-| Relations inside components | M | Links from component JSON to documents: `_lnk` tables keyed by component path, populate and filters |
+| Relations and media inside components | M | Links from component JSON to documents and files, populate |
 | Field-level permissions | M | Per-role readable/writable fields in the admin and for API tokens |
 | TypeScript types & SDK | M | `verdin types` generates TS interfaces for every content type; small typed REST client (`@verdin/client`) |
 | Schema file watcher | S | `verdin dev` reloads when schema files change on disk |
@@ -29,11 +31,10 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 | Bulk actions | S | Publish, unpublish and delete many entries from the list |
 | List view settings | S | Choose columns, default sort and page size per type |
 
-## 0.4 — APIs and end users
+## 0.4 — End users
 
 | Item | Size | Notes |
 |---|---|---|
-| **GraphQL** | L | `async-graphql` schema generated from content types, same permissions as REST, filters/pagination compatible with Strapi's GraphQL plugin |
 | End users | L | The `users-permissions` equivalent: registration, email confirmation, password reset, JWT, roles for the content API, OAuth providers (Google, GitHub, …) |
 | Email providers | M | SMTP and API providers (Resend, SES, Postmark) for end-user and admin emails |
 | Rate limiting & caching for the content API | M | Per-token limits, ETags, optional in-memory response cache |
