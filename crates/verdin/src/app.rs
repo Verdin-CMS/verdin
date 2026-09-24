@@ -10,7 +10,7 @@ use axum::Router;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tower::ServiceExt;
-use verdin_api::features::{FeatureHost, FeatureState, FeatureStates, OPENAPI};
+use verdin_api::features::{FeatureHost, FeatureState, FeatureStates, GRAPHQL, OPENAPI};
 use verdin_api::{ApiError, BoxFuture, SchemaChange, SchemaEditor};
 use verdin_auth::AuthService;
 use verdin_db::Database;
@@ -76,6 +76,7 @@ pub fn build_app(
 ) -> Router {
     let (api, admin) = (&context.config.api, &context.config.admin);
     let registry = verdin_content::Registry::new(schema);
+    let registry_for_graphql = registry.clone();
     let limits = verdin_query::Limits {
         default_page_size: api.default_page_size,
         max_page_size: api.max_page_size,
@@ -121,10 +122,16 @@ pub fn build_app(
             upload: Some(context.upload.clone()),
         },
     );
+    let graphql = states
+        .enabled(GRAPHQL)
+        .then(|| graphql_router(context, &registry_for_graphql, limits, output, states));
     let mut app = server::router(
         AppState { db: context.db.clone() },
         &[(api.prefix.clone(), content_api), (format!("{}/api", admin.path), admin_api)],
     );
+    if let Some(graphql) = graphql {
+        app = app.merge(graphql);
+    }
     if let Some(dir) = context.upload.storage().local_dir() {
         app = app.nest_service("/uploads", uploads::service(dir.to_owned()));
     }
@@ -178,6 +185,17 @@ pub async fn serve(
     let context = Arc::new(context);
     let states = load_features(&context.db).await.context("reading feature switches")?;
     let host = AppHost::new(context.clone(), schema, states);
+    // Keeps the watcher alive while serving.
+    let _watcher = match &host.editor {
+        Some(editor) => match watch_schema(editor.clone()) {
+            Ok(watcher) => Some(watcher),
+            Err(error) => {
+                tracing::warn!(%error, "not watching the schema directory");
+                None
+            }
+        },
+        None => None,
+    };
     let app = Router::new().fallback_service(tower::service_fn(move |request| {
         let router = Router::clone(&host.current.load());
         async move { router.oneshot(request).await }
@@ -194,6 +212,39 @@ pub async fn serve(
     context.db.close().await;
     tracing::info!("verdin stopped");
     Ok(())
+}
+
+/// `/graphql`, when the `graphql` feature is on. A schema that cannot be built (it should
+/// not happen: the content schema is validated) disables the endpoint with an error log.
+fn graphql_router(
+    context: &AppContext,
+    registry: &verdin_content::Registry,
+    limits: verdin_query::Limits,
+    output: verdin_content::OutputOptions,
+    states: &FeatureStates,
+) -> Router {
+    let settings = states.settings(GRAPHQL);
+    let flag =
+        |key: &str, default: bool| settings.get(key).and_then(Value::as_bool).unwrap_or(default);
+    let number = |key: &str, default: usize| {
+        settings.get(key).and_then(Value::as_u64).map_or(default, |value| value as usize)
+    };
+    let defaults = verdin_graphql::Options::default();
+    let options = verdin_graphql::Options {
+        max_depth: number("maxDepth", defaults.max_depth),
+        max_complexity: number("maxComplexity", defaults.max_complexity),
+        introspection: flag("introspection", defaults.introspection),
+        playground: flag("playground", context.mode == Mode::Development),
+    };
+    let service =
+        verdin_content::DocumentService::new(context.db.clone(), registry.clone(), output);
+    match verdin_graphql::schema(service, limits, &options) {
+        Ok(schema) => verdin_graphql::router(schema, context.auth.clone(), options, "/graphql"),
+        Err(error) => {
+            tracing::error!(%error, "could not build the GraphQL schema; /graphql is off");
+            Router::new()
+        }
+    }
 }
 
 const FEATURES_KEY: &str = "features";
@@ -309,6 +360,34 @@ impl FeatureHost for AppHost {
             Ok(())
         })
     }
+}
+
+/// `verdin dev`: reloads when schema files change on disk (editors, `git pull`…). Safe
+/// migrations apply; anything riskier is logged and the running app stays as it was.
+fn watch_schema(editor: Arc<DevSchemaEditor>) -> Result<notify::RecommendedWatcher> {
+    use notify::{RecursiveMode, Watcher};
+    let dir = editor.context.schema_dir();
+    std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+    let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<()>();
+    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+        if let Ok(event) = event
+            && !event.kind.is_access()
+            && event.paths.iter().any(|path| path.extension().is_some_and(|ext| ext == "json"))
+        {
+            let _ = sender.send(());
+        }
+    })?;
+    watcher.watch(&dir, RecursiveMode::Recursive)?;
+    tokio::spawn(async move {
+        while receiver.recv().await.is_some() {
+            // Let bursts of writes (editors, checkouts) settle.
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            while receiver.try_recv().is_ok() {}
+            editor.reload_from_disk().await;
+        }
+    });
+    tracing::info!(dir = %dir.display(), "watching schema files");
+    Ok(watcher)
 }
 
 /// Edits schema files, migrates and hot-swaps the app (`verdin dev` only).
@@ -522,6 +601,42 @@ impl DevSchemaEditor {
             "schema updated and app reloaded"
         );
         Ok(json!({ "appliedSteps": report.applied_steps, "files": candidate.files.len() }))
+    }
+}
+
+impl DevSchemaEditor {
+    /// Applies the schema files as they are on disk, when they changed.
+    async fn reload_from_disk(&self) {
+        let _guard = self.lock.lock().await;
+        let schema = match Schema::load_dir(&self.context.schema_dir()) {
+            Ok(schema) => schema,
+            Err(errors) => {
+                tracing::warn!(%errors, "schema files are invalid; keeping the running app");
+                return;
+            }
+        };
+        let Some(host) = self.host.upgrade() else { return };
+        if *host.schema.lock().expect("schema lock") == schema {
+            return;
+        }
+        let desired = verdin_migrate::derive_model(&schema);
+        match verdin_migrate::apply(
+            &self.context.db,
+            &desired,
+            &Renames::default(),
+            ApplyOptions::default(),
+        )
+        .await
+        {
+            Ok(report) => {
+                host.set_schema(schema);
+                tracing::info!(steps = report.applied_steps, "schema files changed; app reloaded");
+            }
+            Err(error) => tracing::warn!(
+                %error,
+                "schema files changed but need a migration that is not safe; run `verdin migrate plan`"
+            ),
+        }
     }
 }
 

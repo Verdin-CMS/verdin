@@ -125,6 +125,19 @@ test('create a type, write content, publish it and read it over the API', async 
   expect(docs.headers()['content-security-policy']).toContain("script-src 'self' 'sha256-");
   expect((await request.get('/api/_openapi.json')).status()).toBe(200);
 
+  // GraphQL, switched on from the same page; the public role may read articles.
+  expect(
+    (await request.post('/graphql', { data: { query: '{ articles { title } }' } })).status(),
+  ).toBe(404);
+  await page.getByLabel('Turn GraphQL on or off').click();
+  await expect(page.getByText('Endpoint: /graphql')).toBeVisible();
+  const graphql = await request.post('/graphql', {
+    data: { query: '{ articles { title body } }' },
+  });
+  expect(await graphql.json()).toEqual({
+    data: { articles: [{ title: 'Hello from Playwright', body: 'Written by Playwright.' }] },
+  });
+
   // Media library: upload an image, then pick it for the article's cover.
   await page.getByRole('link', { name: 'Media library' }).click();
   await page

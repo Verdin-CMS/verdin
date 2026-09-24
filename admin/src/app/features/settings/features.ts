@@ -110,10 +110,44 @@ const ICONS: Record<string, string> = {
                   <hlm-switch
                     [checked]="feature.enabled"
                     [disabled]="!canManage() || busy() === feature.id"
-                    [attr.aria-label]="t('features.toggle', { name: name(feature.id) })"
+                    [aria-label]="t('features.toggle', { name: name(feature.id) })"
                     (checkedChange)="set(feature, $event, feature.settings)"
                   />
                 </header>
+
+                @if (feature.id === 'graphql' && feature.enabled) {
+                  <div class="flex flex-col gap-3 border-t pt-4">
+                    <p class="text-muted-foreground font-mono text-xs">
+                      {{ t('features.graphql.endpoint', { path: graphqlUrl }) }}
+                    </p>
+                    @for (option of graphqlOptions; track option.key) {
+                      <label class="flex items-start gap-3">
+                        <hlm-switch
+                          [checked]="setting(feature, option.key, option.default)"
+                          [disabled]="!canManage() || busy() === feature.id"
+                          (checkedChange)="setOption(feature, option.key, $event)"
+                        />
+                        <span class="flex flex-col">
+                          <span class="text-sm font-medium">{{ t(option.label) }}</span>
+                          <span class="text-muted-foreground text-xs">{{ t(option.hint) }}</span>
+                        </span>
+                      </label>
+                    }
+                    @if (setting(feature, 'playground', false)) {
+                      <a
+                        hlmBtn
+                        size="sm"
+                        variant="outline"
+                        class="self-start"
+                        [href]="graphqlUrl"
+                        target="_blank"
+                        rel="noopener"
+                      >
+                        <ng-icon name="lucideExternalLink" /> {{ t('features.graphql.open') }}
+                      </a>
+                    }
+                  </div>
+                }
 
                 @if (feature.id === 'openapi' && feature.enabled) {
                   <div class="flex flex-col gap-3 border-t pt-4">
@@ -236,6 +270,36 @@ export class FeaturesPage implements OnInit {
   protected readonly planned = computed(() =>
     (this.features() ?? []).filter((feature) => !feature.available),
   );
+
+  protected readonly graphqlUrl = '/graphql';
+  protected readonly graphqlOptions: {
+    key: string;
+    default: boolean;
+    label: MessageKey;
+    hint: MessageKey;
+  }[] = [
+    {
+      key: 'playground',
+      default: false,
+      label: 'features.graphql.playground',
+      hint: 'features.graphql.playgroundHint',
+    },
+    {
+      key: 'introspection',
+      default: true,
+      label: 'features.graphql.introspection',
+      hint: 'features.graphql.introspectionHint',
+    },
+  ];
+
+  protected setOption(feature: Feature, key: string, value: boolean): void {
+    void this.set(feature, true, { ...(feature.settings ?? {}), [key]: value });
+  }
+
+  protected setting(feature: Feature, key: string, fallback: boolean): boolean {
+    const value = feature.settings?.[key];
+    return typeof value === 'boolean' ? value : fallback;
+  }
 
   protected readonly docsUrl = `${this.config.contentApiBase}/docs`;
   protected readonly documentUrl = `${this.config.contentApiBase}/_openapi.json`;

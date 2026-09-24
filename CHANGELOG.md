@@ -19,6 +19,13 @@ All notable changes to Verdin are documented here. The format follows
 - **Settings → Features**: switch optional features on and off at runtime (the app is
   rebuilt in place, no restart), with the roadmap's upcoming features listed;
   `features.manage` permission.
+- **GraphQL** feature: `/graphql` with a schema generated from the content types (Strapi v5
+  shapes: collections, `_connection` with `pageInfo`, single types, create/update/delete
+  mutations, components, dynamic zones as unions, relations with their own filters, media
+  as `UploadFile`), the REST API's permissions and query validation, depth and complexity
+  limits, optional GraphiQL.
+- Document events: every write is announced to listeners after it commits, whatever API
+  made it (the base for webhooks).
 - **API documentation** feature: the OpenAPI document plus an embedded Scalar reference at
   `/api/docs` when made public (off by default: the document stays token-only).
 - `vd_settings` table; built-in roles of existing installations receive new permissions once.

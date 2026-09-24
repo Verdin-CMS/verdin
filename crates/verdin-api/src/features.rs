@@ -32,8 +32,8 @@ pub const CATALOG: &[FeatureSpec] = &[
     FeatureSpec { id: OPENAPI, available: true, planned: None, default_enabled: true, core: false },
     FeatureSpec {
         id: GRAPHQL,
-        available: false,
-        planned: Some("0.2"),
+        available: true,
+        planned: None,
         default_enabled: false,
         core: false,
     },

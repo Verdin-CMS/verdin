@@ -1,0 +1,31 @@
+[package]
+name = "verdin-graphql"
+description = "GraphQL API for Verdin, generated from the content schema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-graphql = { version = "7.0.17", default-features = false, features = ["dynamic-schema", "graphiql"] }
+axum = "0.8.9"
+indexmap = "2.14.2"
+serde_json = "1.0.151"
+tracing = "0.1.44"
+url = "2.5.8"
+verdin-auth = { version = "0.1.0", path = "../verdin-auth" }
+verdin-content = { version = "0.1.0", path = "../verdin-content" }
+verdin-db = { version = "0.1.0", path = "../verdin-db" }
+verdin-query = { version = "0.1.0", path = "../verdin-query" }
+verdin-schema = { version = "0.1.0", path = "../verdin-schema" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+tower = { version = "0.5.3", features = ["util"] }
+verdin-migrate = { path = "../verdin-migrate" }
+verdin-testkit = { path = "../verdin-testkit" }

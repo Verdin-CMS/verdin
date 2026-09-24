@@ -92,8 +92,6 @@ pub async fn root_put(
     let document_id = match state.service.single_document_id(&route.uid).await? {
         Some(document_id) => {
             state.service.update(&route.uid, &document_id, &data, options).await?;
-            crate::admin::engagement::changed(state.service.db(), &route.uid, &document_id, None)
-                .await?;
             document_id
         }
         None => state.service.create(&route.uid, &data, options).await?,
@@ -114,7 +112,6 @@ pub async fn root_delete(
     let document_id =
         state.service.single_document_id(&route.uid).await?.ok_or(ApiError::NotFound)?;
     state.service.delete(&route.uid, &document_id).await?;
-    crate::admin::engagement::deleted(state.service.db(), &route.uid, &document_id).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -142,7 +139,6 @@ pub async fn document_put(
         authorized_query(&state, &headers, route, ContentAction::Update, raw.as_deref()).await?;
     let data = parse_data(&body)?;
     state.service.update(&route.uid, &document_id, &data, write_options(&query)).await?;
-    crate::admin::engagement::changed(state.service.db(), &route.uid, &document_id, None).await?;
     read_back(&state, route, &document_id, &query, StatusCode::OK).await
 }
 
@@ -154,7 +150,6 @@ pub async fn document_delete(
     let route = collection(&state, &name)?;
     authorize(&state, &headers, route, ContentAction::Delete).await?;
     state.service.delete(&route.uid, &document_id).await?;
-    crate::admin::engagement::deleted(state.service.db(), &route.uid, &document_id).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -171,20 +166,14 @@ pub async fn document_action(
     match action.as_str() {
         "publish" => {
             state.service.publish(&route.uid, &document_id, None).await?;
-            crate::admin::engagement::changed(state.service.db(), &route.uid, &document_id, None)
-                .await?;
             query.status = Status::Published;
         }
         "unpublish" => {
             state.service.unpublish(&route.uid, &document_id).await?;
-            crate::admin::engagement::changed(state.service.db(), &route.uid, &document_id, None)
-                .await?;
             query.status = Status::Draft;
         }
         "discard-draft" => {
             state.service.discard_draft(&route.uid, &document_id).await?;
-            crate::admin::engagement::changed(state.service.db(), &route.uid, &document_id, None)
-                .await?;
             query.status = Status::Draft;
         }
         _ => return Err(ApiError::NotFound),

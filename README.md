@@ -137,6 +137,28 @@ curl -XPUT localhost:1337/api/articles/<documentId> -H 'content-type: applicatio
 curl -g 'localhost:1337/api/articles?filters[category][name][$eq]=News&populate[tags][fields][0]=label'
 ```
 
+### GraphQL
+
+Switch it on in **Settings → Features → GraphQL**: `POST /graphql` then serves a schema
+generated from your content types, shaped like Strapi v5's GraphQL plugin and authorized
+like the REST API (same tokens and public grants).
+
+```graphql
+query {
+  articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"], pagination: { pageSize: 10 }) {
+    documentId title
+    category { name }
+    cover { url formats }
+    blocks { __typename ... on ComponentBlocksQuote { text } }
+  }
+  articles_connection { pageInfo { total pageCount } }
+}
+mutation { createArticle(data: { title: "Hello" }, status: DRAFT) { documentId } }
+```
+
+Settings: `playground` (GraphiQL on `GET /graphql`), `introspection`, `maxDepth`,
+`maxComplexity`.
+
 Connection URLs for every engine are listed at the top of
 [docker/compose.dev.yml](docker/compose.dev.yml).
 

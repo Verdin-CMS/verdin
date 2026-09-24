@@ -11,6 +11,7 @@
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::{Map, Value as Json};
@@ -18,6 +19,8 @@ use time::OffsetDateTime;
 use verdin_db::value::truncate_millis;
 use verdin_db::{ColumnKind, Database, DbError, Flavor, SqlValue, Tx};
 use verdin_query::sql::{FilterContext, SqlBuilder, write_filter, write_order_by};
+
+use crate::events::{DocumentEvent, DocumentListener, EventKind};
 use verdin_query::{
     Field, FieldCategory, Filter, PageMode, Populate, Query, Sort, Status, SubQuery,
 };
@@ -88,11 +91,29 @@ pub struct DocumentService {
     db: Database,
     registry: Registry,
     output: OutputOptions,
+    listeners: Vec<Arc<dyn DocumentListener>>,
 }
 
 impl DocumentService {
     pub fn new(db: Database, registry: Registry, output: OutputOptions) -> Self {
-        Self { db, registry, output }
+        Self { db, registry, output, listeners: Vec::new() }
+    }
+
+    /// Announces writes to `listener` (see [`DocumentEvent`]).
+    pub fn with_listener(mut self, listener: Arc<dyn DocumentListener>) -> Self {
+        self.listeners.push(listener);
+        self
+    }
+
+    async fn emit(&self, kind: EventKind, uid: &str, document_id: &str, actor: Option<i64>) {
+        if self.listeners.is_empty() {
+            return;
+        }
+        let event =
+            DocumentEvent { kind, uid: uid.to_owned(), document_id: document_id.to_owned(), actor };
+        for listener in &self.listeners {
+            listener.notify(&event).await;
+        }
     }
 
     pub fn registry(&self) -> &Registry {
@@ -501,6 +522,10 @@ impl DocumentService {
             self.ensure_required(&mut tx, model, &document_id, PUBLISHED).await?;
         }
         tx.commit().await?;
+        self.emit(EventKind::Created, uid, &document_id, options.actor).await;
+        if draft_and_publish && options.publish {
+            self.emit(EventKind::Published, uid, &document_id, options.actor).await;
+        }
         Ok(document_id)
     }
 
@@ -539,6 +564,10 @@ impl DocumentService {
             self.ensure_required(&mut tx, model, document_id, PUBLISHED).await?;
         }
         tx.commit().await?;
+        self.emit(EventKind::Updated, uid, document_id, options.actor).await;
+        if model.draft_and_publish() && options.publish {
+            self.emit(EventKind::Published, uid, document_id, options.actor).await;
+        }
         Ok(())
     }
 
@@ -573,6 +602,7 @@ impl DocumentService {
             return Err(ContentError::NotFound);
         }
         tx.commit().await?;
+        self.emit(EventKind::Deleted, uid, document_id, None).await;
         Ok(())
     }
 
@@ -582,6 +612,7 @@ impl DocumentService {
         let mut tx = self.db.begin().await?;
         self.publish_in(&mut tx, model, document_id, now(), actor).await?;
         tx.commit().await?;
+        self.emit(EventKind::Published, uid, document_id, actor).await;
         Ok(())
     }
 
@@ -595,6 +626,7 @@ impl DocumentService {
         write_version(&mut delete, PUBLISHED, document_id);
         tx.execute(&delete.sql, &delete.params).await?;
         tx.commit().await?;
+        self.emit(EventKind::Unpublished, uid, document_id, None).await;
         Ok(())
     }
 
@@ -617,6 +649,7 @@ impl DocumentService {
         tx.execute(&update.sql, &update.params).await?;
         self.copy_links(&mut tx, model, published_id, draft_id, document_id, DRAFT).await?;
         tx.commit().await?;
+        self.emit(EventKind::DraftDiscarded, uid, document_id, None).await;
         Ok(())
     }
 

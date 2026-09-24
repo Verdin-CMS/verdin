@@ -55,6 +55,35 @@ pub(super) fn unseen_filter(uid: &str, user_id: i64) -> Filter {
     })))
 }
 
+/// Keeps "seen" marks and votes in line with document writes, from any API.
+pub struct EngagementListener {
+    db: Database,
+}
+
+impl EngagementListener {
+    pub fn new(db: Database) -> Self {
+        Self { db }
+    }
+}
+
+impl verdin_content::events::DocumentListener for EngagementListener {
+    fn notify<'a>(
+        &'a self,
+        event: &'a verdin_content::events::DocumentEvent,
+    ) -> verdin_content::events::BoxFuture<'a, ()> {
+        Box::pin(async move {
+            use verdin_content::events::EventKind;
+            let result = match event.kind {
+                EventKind::Deleted => deleted(&self.db, &event.uid, &event.document_id).await,
+                _ => changed(&self.db, &event.uid, &event.document_id, event.actor).await,
+            };
+            if let Err(error) = result {
+                tracing::warn!(?error, uid = %event.uid, "could not update seen marks");
+            }
+        })
+    }
+}
+
 /// A document changed: it becomes unseen for everyone but its editor.
 pub(crate) async fn changed(
     db: &Database,

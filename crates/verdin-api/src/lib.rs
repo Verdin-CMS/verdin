@@ -90,6 +90,11 @@ pub(crate) struct ApiState {
     upload: Option<verdin_upload::UploadService>,
 }
 
+/// The listener every Document Service serving admins' data should carry ("seen" marks).
+pub fn engagement_listener(db: Database) -> Arc<dyn verdin_content::events::DocumentListener> {
+    Arc::new(admin::engagement::EngagementListener::new(db))
+}
+
 /// Content API routes, to be nested under the API prefix (e.g. `/api`).
 pub fn router(
     db: Database,
@@ -110,7 +115,8 @@ pub fn router(
         .collect();
     let openapi = openapi::document(&registry, prefix);
     let state = ApiState {
-        service: DocumentService::new(db, registry, config.output),
+        service: DocumentService::new(db.clone(), registry, config.output)
+            .with_listener(engagement_listener(db)),
         auth,
         routes: Arc::new(routes),
         config,

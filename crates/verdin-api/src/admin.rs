@@ -132,7 +132,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
     ));
     let state = AdminState {
         flavor: db.flavor().as_str(),
-        service: DocumentService::new(db, registry, config.output),
+        service: DocumentService::new(db.clone(), registry, config.output)
+            .with_listener(Arc::new(engagement::EngagementListener::new(db))),
         auth,
         config: Arc::new(config),
         limiter,
@@ -1050,7 +1051,6 @@ async fn content_update(
     let data = parse_data(&bytes)?;
     let options = WriteOptions { publish: false, actor: Some(principal.user.id) };
     state.service.update(&uid, &document_id, &data, options).await?;
-    engagement::changed(state.service.db(), &uid, &document_id, Some(principal.user.id)).await?;
     let query = admin_query(&state, &uid, raw.as_deref(), &principal, Grant::All)?;
     read_document(&state, &uid, &document_id, &query, StatusCode::OK).await
 }
@@ -1063,7 +1063,6 @@ async fn content_delete(
     let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_DELETE).await?;
     ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
     state.service.delete(&uid, &document_id).await?;
-    engagement::deleted(state.service.db(), &uid, &document_id).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1086,7 +1085,6 @@ async fn content_action(
         "discard-draft" => state.service.discard_draft(&uid, &document_id).await?,
         _ => return Err(ApiError::NotFound),
     }
-    engagement::changed(state.service.db(), &uid, &document_id, Some(principal.user.id)).await?;
     read_document(&state, &uid, &document_id, &query, StatusCode::OK).await
 }
 
