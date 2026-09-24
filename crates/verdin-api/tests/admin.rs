@@ -675,3 +675,60 @@ async fn views_votes_and_polls() {
     );
     app.done().await;
 }
+
+#[tokio::test]
+async fn features_catalog_and_switches() {
+    let app = App::new(schema()).await;
+    let admin = register(&app).await;
+    create_user(&app, &admin, "editor@example.com", "editor").await;
+    let editor = login(&app, "editor@example.com").await;
+
+    let (status, body) =
+        app.call_as(Method::GET, "/admin/api/features", None, As::Bearer(&editor)).await;
+    assert_eq!(status, StatusCode::OK, "any admin reads the catalog");
+    let openapi = body["data"].as_array().unwrap().iter().find(|f| f["id"] == "openapi").unwrap();
+    assert_eq!(openapi["enabled"], true);
+    assert_eq!(openapi["available"], true);
+
+    let url = "/admin/api/features/openapi";
+    let on = json!({ "enabled": true, "settings": { "public": true } });
+    assert_eq!(
+        app.call_as(Method::PUT, url, Some(on.clone()), As::Bearer(&editor)).await.0,
+        StatusCode::FORBIDDEN,
+        "features.manage is required"
+    );
+    let (status, body) = app.call_as(Method::PUT, url, Some(on), As::Bearer(&admin)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let openapi = body["data"].as_array().unwrap().iter().find(|f| f["id"] == "openapi").unwrap();
+    assert_eq!(openapi["settings"], json!({ "public": true }));
+
+    let coming = app
+        .call_as(
+            Method::PUT,
+            "/admin/api/features/webhooks",
+            Some(json!({ "enabled": true })),
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(coming.0, StatusCode::BAD_REQUEST);
+    assert!(coming.1["error"]["message"].as_str().unwrap().contains("planned for"));
+    let core = app
+        .call_as(
+            Method::PUT,
+            "/admin/api/features/media",
+            Some(json!({ "enabled": false })),
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(core.0, StatusCode::BAD_REQUEST);
+    let unknown = app
+        .call_as(
+            Method::PUT,
+            "/admin/api/features/nope",
+            Some(json!({ "enabled": true })),
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(unknown.0, StatusCode::NOT_FOUND);
+    app.done().await;
+}

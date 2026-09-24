@@ -2,7 +2,9 @@
 //! (docs/architecture.md §12–§14).
 
 mod admin;
+mod docs;
 mod error;
+pub mod features;
 mod handlers;
 mod limiter;
 mod openapi;
@@ -23,11 +25,28 @@ use verdin_schema::ContentTypeKind;
 pub use admin::{AdminConfig, BoxFuture, SchemaChange, SchemaEditor};
 pub use error::ApiError;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct ApiConfig {
     pub limits: Limits,
     pub output: OutputOptions,
     pub http: HttpLimits,
+    /// Serve `/_openapi.json` (the `openapi` feature).
+    pub openapi: bool,
+    /// The document is readable without a token, and the interactive reference is served
+    /// at `/docs`. Otherwise only API tokens read the document.
+    pub openapi_public: bool,
+}
+
+impl Default for ApiConfig {
+    fn default() -> Self {
+        Self {
+            limits: Limits::default(),
+            output: OutputOptions::default(),
+            http: HttpLimits::default(),
+            openapi: true,
+            openapi_public: false,
+        }
+    }
 }
 
 /// Body size and time limits of regular API requests (uploads have their own).
@@ -100,8 +119,14 @@ pub fn router(
     };
 
     let uploads = upload::content_routes(state.upload.as_ref());
-    let regular = Router::new()
-        .route("/_openapi.json", get(handlers::openapi))
+    let mut regular = Router::new();
+    if config.openapi {
+        regular = regular.route("/_openapi.json", get(handlers::openapi));
+        if config.openapi_public {
+            regular = regular.merge(docs::routes(prefix));
+        }
+    }
+    let regular = regular
         .route(
             "/{name}",
             get(handlers::root_get)

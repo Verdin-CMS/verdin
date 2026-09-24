@@ -16,6 +16,11 @@ All notable changes to Verdin are documented here. The format follows
   search and type filters, bulk move/delete, file details with focal point, alt text and
   caption), media picker and media fields in the editor, media field type in the builder,
   media permissions in roles, and a media library row in public access and API tokens.
+- **Settings → Features**: switch optional features on and off at runtime (the app is
+  rebuilt in place, no restart), with the roadmap's upcoming features listed;
+  `features.manage` permission.
+- **API documentation** feature: the OpenAPI document plus an embedded Scalar reference at
+  `/api/docs` when made public (off by default: the document stays token-only).
 - `vd_settings` table; built-in roles of existing installations receive new permissions once.
 
 ### Changed

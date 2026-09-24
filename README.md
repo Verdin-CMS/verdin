@@ -119,7 +119,9 @@ override (e.g. `VERDIN_ADMIN__SECURE_COOKIES=false` to try `start` over plain HT
 
 ### Content API
 
-Strapi v5 compatible REST under `/api`, plus an OpenAPI document at `/api/_openapi.json`.
+Strapi v5 compatible REST under `/api`, plus an OpenAPI document at `/api/_openapi.json`
+(API tokens only by default). Make it public in **Settings → Features → API documentation**
+to also get an interactive reference (Scalar) at `/api/docs`.
 
 ```sh
 curl -XPOST localhost:1337/api/articles -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \

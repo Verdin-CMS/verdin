@@ -87,6 +87,8 @@ pub struct AdminConfig {
     /// Present in development mode: enables the content-type builder routes.
     pub schema_editor: Option<Arc<dyn SchemaEditor>>,
     pub http: crate::HttpLimits,
+    /// Runtime feature switches (Settings → Features).
+    pub features: Option<Arc<dyn crate::features::FeatureHost>>,
     /// The media library; its routes answer 404 without it.
     pub upload: Option<verdin_upload::UploadService>,
 }
@@ -102,6 +104,7 @@ impl Default for AdminConfig {
             auth_rate_limit: 20,
             schema_editor: None,
             http: crate::HttpLimits::default(),
+            features: None,
             upload: None,
         }
     }
@@ -163,6 +166,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .route("/schema/plan", post(schema_plan))
         .route("/schema/apply", post(schema_apply))
         .route("/system/info", get(system_info))
+        .route("/features", get(list_features))
+        .route("/features/{id}", axum::routing::put(update_feature))
         .merge(engagement::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
@@ -696,6 +701,42 @@ async fn put_public(
     let input: PublicBody = body(&bytes)?;
     state.auth.set_public_grants(&grants(&state, input.permissions)?).await?;
     get_public(State(state), headers).await
+}
+
+// ---------------------------------------------------------------- features
+
+fn feature_host(state: &AdminState) -> Result<&Arc<dyn crate::features::FeatureHost>, ApiError> {
+    state.config.features.as_ref().ok_or(ApiError::NotFound)
+}
+
+/// The catalog with current switches; any admin may read it (the panel adapts to it).
+async fn list_features(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
+    principal(&state, &headers).await?;
+    Ok(data(feature_host(&state)?.states().catalog_json()))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FeatureBody {
+    enabled: bool,
+    #[serde(default)]
+    settings: Value,
+}
+
+async fn update_feature(
+    State(state): State<AdminState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> ApiResult {
+    require(&state, &headers, actions::FEATURES_MANAGE).await?;
+    let input: FeatureBody = body(&bytes)?;
+    let feature =
+        crate::features::FeatureState { enabled: input.enabled, settings: input.settings };
+    crate::features::validate(&id, &feature)?;
+    let host = feature_host(&state)?;
+    host.update(id, feature).await?;
+    Ok(data(host.states().catalog_json()))
 }
 
 // ------------------------------------------------------------------ schema

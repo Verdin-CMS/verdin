@@ -45,6 +45,7 @@ const ACTION_LABELS: Record<
   'content.update': 'settings.roles.action.content.update',
   'content.delete': 'settings.roles.action.content.delete',
   'content.publish': 'settings.roles.action.content.publish',
+  'features.manage': 'settings.roles.action.features.manage',
   'media.read': 'settings.roles.action.media.read',
   'media.create': 'settings.roles.action.media.create',
   'media.update': 'settings.roles.action.media.update',

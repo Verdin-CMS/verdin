@@ -593,6 +593,7 @@ PUT  /engagement/:uid/:documentId/vote { value: 1 | -1 | 0 }
 GET  /engagement/:uid/votes?documentIds=…  |  /engagement/:uid/votes/top?limit=
 CRUD /polls, PUT /polls/:id/vote { choices }   dashboard polls (author or Super Admin manages)
 GET  /system/info                      version, dialect, mode
+GET  /features, PUT /features/:id      optional features (Settings → Features), `features.manage`
 ```
 
 Admin content routes read drafts by default and write drafts only (publishing is an explicit action). Writes record `created_by_id` / `updated_by_id`; `is-creator` conditions filter reads and guard writes. Bodies of the settings routes are plain JSON (no `data` wrapper); content routes use `{ "data": … }` like the content API.
@@ -787,3 +788,5 @@ Astro Starlight documentation site.
 | 36 | Media storage | `object_store` for local and S3 | One code path; streaming multipart uploads; RustFS in the dev stack and CI |
 | 37 | Media links | Per-field link tables like relations | Same draft/publish semantics as relations; cascades keep links consistent |
 | 38 | Built-in permission upgrades | `vd_settings` version marker, additions applied once | Existing installs gain new permissions without undoing an admin's later edits |
+| 39 | Runtime features | Catalog in `verdin-api`, switches in `vd_settings` (`features`), the app rebuilt in place (ArcSwap) in every mode | Strapi-like plugin switches without restarts; unavailable features are listed with their planned version |
+| 40 | API reference UI | Scalar (`scalar_api_reference`, bundle embedded) at `{api}/docs`, only when the document is public; CSP allows its inline bootstrap by hash | Self-hosted (no CDN, fonts, AI agent or telemetry); the document stays token-only by default |

@@ -114,6 +114,17 @@ test('create a type, write content, publish it and read it over the API', async 
   });
   expect(body.data[0].publishedAt).toBeTruthy();
 
+  // Features: publish the API documentation (applies live, no restart).
+  expect((await request.get('/api/docs')).status()).toBe(404);
+  await page.getByRole('link', { name: 'Features' }).click();
+  await expect(page.getByRole('heading', { name: 'API documentation' })).toBeVisible();
+  await page.getByText('Public documentation').click();
+  await expect(page.getByRole('link', { name: 'Open the API reference' })).toBeVisible();
+  const docs = await request.get('/api/docs');
+  expect(docs.status()).toBe(200);
+  expect(docs.headers()['content-security-policy']).toContain("script-src 'self' 'sha256-");
+  expect((await request.get('/api/_openapi.json')).status()).toBe(200);
+
   // Media library: upload an image, then pick it for the article's cover.
   await page.getByRole('link', { name: 'Media library' }).click();
   await page
@@ -193,6 +204,7 @@ test('create a type, write content, publish it and read it over the API', async 
       ['users', '/admin/settings/users'],
       ['roles', '/admin/settings/roles'],
       ['tokens', '/admin/settings/tokens'],
+      ['features', '/admin/settings/features'],
       ['public', '/admin/settings/public'],
     ];
     for (const [variant, preferences] of [

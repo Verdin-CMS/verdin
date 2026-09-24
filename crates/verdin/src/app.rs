@@ -10,6 +10,7 @@ use axum::Router;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tower::ServiceExt;
+use verdin_api::features::{FeatureHost, FeatureState, FeatureStates, OPENAPI};
 use verdin_api::{ApiError, BoxFuture, SchemaChange, SchemaEditor};
 use verdin_auth::AuthService;
 use verdin_db::Database;
@@ -70,6 +71,8 @@ pub fn build_app(
     context: &AppContext,
     schema: Schema,
     editor: Option<Arc<dyn SchemaEditor>>,
+    features: Option<Arc<dyn FeatureHost>>,
+    states: &FeatureStates,
 ) -> Router {
     let (api, admin) = (&context.config.api, &context.config.admin);
     let registry = verdin_content::Registry::new(schema);
@@ -87,7 +90,17 @@ pub fn build_app(
         context.db.clone(),
         registry.clone(),
         context.auth.clone(),
-        verdin_api::ApiConfig { limits, output, http },
+        verdin_api::ApiConfig {
+            limits,
+            output,
+            http,
+            openapi: states.enabled(OPENAPI),
+            openapi_public: states
+                .settings(OPENAPI)
+                .get("public")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+        },
         &api.prefix,
         Some(context.upload.clone()),
     );
@@ -104,6 +117,7 @@ pub fn build_app(
             auth_rate_limit: admin.auth_rate_limit,
             schema_editor: editor,
             http,
+            features,
             upload: Some(context.upload.clone()),
         },
     );
@@ -154,31 +168,20 @@ pub async fn ensure_migrated(db: &Database, schema: &Schema, migrate: bool) -> R
     }
 }
 
-/// Serves until Ctrl+C / SIGTERM. In development mode the app is rebuilt in place when
-/// the content-type builder changes the schema.
+/// Serves until Ctrl+C / SIGTERM. The app is rebuilt in place when features are switched
+/// and, in development mode, when the content-type builder changes the schema.
 pub async fn serve(
     context: AppContext,
     schema: Schema,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<()> {
     let context = Arc::new(context);
-    let app = match context.mode {
-        Mode::Production => build_app(&context, schema, None),
-        Mode::Development => {
-            let current = Arc::new(ArcSwap::from_pointee(Router::new()));
-            let editor = Arc::new_cyclic(|this| DevSchemaEditor {
-                this: this.clone(),
-                context: context.clone(),
-                current: current.clone(),
-                lock: tokio::sync::Mutex::new(()),
-            });
-            current.store(Arc::new(build_app(&context, schema, Some(editor))));
-            Router::new().fallback_service(tower::service_fn(move |request| {
-                let router = Router::clone(&current.load());
-                async move { router.oneshot(request).await }
-            }))
-        }
-    };
+    let states = load_features(&context.db).await.context("reading feature switches")?;
+    let host = AppHost::new(context.clone(), schema, states);
+    let app = Router::new().fallback_service(tower::service_fn(move |request| {
+        let router = Router::clone(&host.current.load());
+        async move { router.oneshot(request).await }
+    }));
 
     let address = format!("{}:{}", context.config.server.host, context.config.server.port);
     let listener =
@@ -193,11 +196,125 @@ pub async fn serve(
     Ok(())
 }
 
+const FEATURES_KEY: &str = "features";
+
+/// `key` is reserved in MySQL/MariaDB.
+fn key_column(db: &Database) -> &'static str {
+    if db.flavor().is_mysql_family() { "`key`" } else { "\"key\"" }
+}
+
+pub async fn load_features(db: &Database) -> Result<FeatureStates> {
+    let rows = db
+        .queries()
+        .fetch_all(
+            &format!("SELECT value FROM vd_settings WHERE {} = ?", key_column(db)),
+            &[verdin_db::SqlValue::Text(FEATURES_KEY.into())],
+            &[verdin_db::ColumnKind::Json],
+        )
+        .await?;
+    Ok(match rows.into_iter().next().and_then(|row| row.into_iter().next()) {
+        Some(verdin_db::SqlValue::Json(value)) => serde_json::from_value(value).unwrap_or_default(),
+        _ => FeatureStates::default(),
+    })
+}
+
+async fn save_features(db: &Database, states: &FeatureStates) -> Result<(), ApiError> {
+    use verdin_db::SqlValue as V;
+    let internal = |error: verdin_db::DbError| ApiError::Internal(error.to_string());
+    let key = key_column(db);
+    let mut tx = db.begin().await.map_err(internal)?;
+    tx.execute(
+        &format!("DELETE FROM vd_settings WHERE {key} = ?"),
+        &[V::Text(FEATURES_KEY.into())],
+    )
+    .await
+    .map_err(internal)?;
+    let value =
+        serde_json::to_value(states).map_err(|error| ApiError::Internal(error.to_string()))?;
+    tx.execute(
+        &format!("INSERT INTO vd_settings ({key}, value, updated_at) VALUES (?, ?, ?)"),
+        &[
+            V::Text(FEATURES_KEY.into()),
+            V::Json(value),
+            V::DateTime(verdin_db::value::truncate_millis(time::OffsetDateTime::now_utc())),
+        ],
+    )
+    .await
+    .map_err(internal)?;
+    tx.commit().await.map_err(internal)
+}
+
+/// The running app and what it is built from; rebuilds swap it without dropping requests.
+pub struct AppHost {
+    this: Weak<AppHost>,
+    context: Arc<AppContext>,
+    current: ArcSwap<Router>,
+    schema: std::sync::Mutex<Schema>,
+    features: ArcSwap<FeatureStates>,
+    /// Present in development mode.
+    editor: Option<Arc<DevSchemaEditor>>,
+    /// One feature change at a time.
+    lock: tokio::sync::Mutex<()>,
+}
+
+impl AppHost {
+    fn new(context: Arc<AppContext>, schema: Schema, states: FeatureStates) -> Arc<Self> {
+        let host = Arc::new_cyclic(|this: &Weak<AppHost>| AppHost {
+            this: this.clone(),
+            editor: (context.mode == Mode::Development).then(|| {
+                Arc::new(DevSchemaEditor {
+                    host: this.clone(),
+                    context: context.clone(),
+                    lock: tokio::sync::Mutex::new(()),
+                })
+            }),
+            context,
+            current: ArcSwap::from_pointee(Router::new()),
+            schema: std::sync::Mutex::new(schema),
+            features: ArcSwap::from_pointee(states),
+            lock: tokio::sync::Mutex::new(()),
+        });
+        host.rebuild();
+        host
+    }
+
+    fn rebuild(&self) {
+        let schema = self.schema.lock().expect("schema lock").clone();
+        let editor = self.editor.clone().map(|editor| editor as Arc<dyn SchemaEditor>);
+        let features = self.this.upgrade().map(|host| host as Arc<dyn FeatureHost>);
+        let states = self.features.load();
+        self.current.store(Arc::new(build_app(&self.context, schema, editor, features, &states)));
+    }
+
+    fn set_schema(&self, schema: Schema) {
+        *self.schema.lock().expect("schema lock") = schema;
+        self.rebuild();
+    }
+}
+
+impl FeatureHost for AppHost {
+    fn states(&self) -> FeatureStates {
+        FeatureStates::clone(&self.features.load())
+    }
+
+    fn update(&self, id: String, state: FeatureState) -> BoxFuture<'_, Result<(), ApiError>> {
+        Box::pin(async move {
+            let _guard = self.lock.lock().await;
+            let mut states = self.states();
+            states.0.insert(id.clone(), state);
+            save_features(&self.context.db, &states).await?;
+            self.features.store(Arc::new(states));
+            self.rebuild();
+            tracing::info!(feature = %id, "feature switched; app reloaded");
+            Ok(())
+        })
+    }
+}
+
 /// Edits schema files, migrates and hot-swaps the app (`verdin dev` only).
 struct DevSchemaEditor {
-    this: Weak<DevSchemaEditor>,
+    host: Weak<AppHost>,
     context: Arc<AppContext>,
-    current: Arc<ArcSwap<Router>>,
     /// One edit at a time.
     lock: tokio::sync::Mutex<()>,
 }
@@ -398,8 +515,7 @@ impl DevSchemaEditor {
                 ApiError::Internal(format!("writing {}: {error}", path.display()))
             })?;
         }
-        let editor: Arc<dyn SchemaEditor> = self.this.upgrade().expect("editor outlives its app");
-        self.current.store(Arc::new(build_app(&self.context, candidate.schema, Some(editor))));
+        self.host.upgrade().expect("the editor lives inside its host").set_schema(candidate.schema);
         tracing::info!(
             steps = report.applied_steps,
             files = candidate.files.len(),
@@ -455,5 +571,85 @@ fn write_file(path: &Path, contents: Option<&str>) -> std::io::Result<()> {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             other => other,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use serde_json::json;
+
+    use super::*;
+
+    async fn context(root: &Path) -> Arc<AppContext> {
+        let db = Database::connect("sqlite::memory:", &verdin_db::ConnectOptions::default())
+            .await
+            .unwrap();
+        let schema = Schema::default();
+        verdin_migrate::apply(
+            &db,
+            &verdin_migrate::derive_model(&schema),
+            &Renames::default(),
+            ApplyOptions::default(),
+        )
+        .await
+        .unwrap();
+        let auth = AuthService::new(
+            db.clone(),
+            verdin_auth::AuthConfig::new(
+                "test-secret-test-secret-test-secret!",
+                "test-pepper-test-pepper-test-pepper!",
+            )
+            .unwrap(),
+        );
+        auth.bootstrap().await.unwrap();
+        let config = Config::default();
+        let storage = verdin_upload::Storage::new(&config.upload.provider, root).unwrap();
+        let upload = verdin_upload::UploadService::new(db.clone(), storage, config.upload.clone());
+        Arc::new(AppContext {
+            config,
+            root: root.to_owned(),
+            db,
+            auth,
+            mode: Mode::Production,
+            upload,
+        })
+    }
+
+    async fn status(host: &AppHost, uri: &str) -> StatusCode {
+        let router = Router::clone(&host.current.load());
+        router
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status()
+    }
+
+    #[tokio::test]
+    async fn features_switch_routes_live_and_persist() {
+        let dir = tempfile::tempdir().unwrap();
+        let context = context(dir.path()).await;
+        let host = AppHost::new(context.clone(), Schema::default(), FeatureStates::default());
+
+        // Default: the document is for API tokens only, no public reference.
+        assert_eq!(status(&host, "/api/_openapi.json").await, StatusCode::FORBIDDEN);
+        assert_eq!(status(&host, "/api/docs").await, StatusCode::NOT_FOUND);
+
+        let public = FeatureState { enabled: true, settings: json!({ "public": true }) };
+        host.update(OPENAPI.into(), public).await.unwrap();
+        assert_eq!(status(&host, "/api/_openapi.json").await, StatusCode::OK);
+        assert_eq!(status(&host, "/api/docs").await, StatusCode::OK);
+        assert_eq!(status(&host, "/api/docs/scalar.js").await, StatusCode::OK);
+
+        let off = FeatureState { enabled: false, settings: serde_json::Value::Null };
+        host.update(OPENAPI.into(), off).await.unwrap();
+        assert_eq!(status(&host, "/api/_openapi.json").await, StatusCode::NOT_FOUND);
+        assert_eq!(status(&host, "/api/docs").await, StatusCode::NOT_FOUND);
+
+        // Stored for the next start.
+        let stored = load_features(&context.db).await.unwrap();
+        assert!(!stored.enabled(OPENAPI));
+        assert_eq!(stored, host.states());
     }
 }

@@ -203,6 +203,20 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                     </a>
                   </li>
                 }
+                @if (auth.can('features.manage')) {
+                  <li hlmSidebarMenuItem>
+                    <a
+                      hlmSidebarMenuButton
+                      routerLink="/settings/features"
+                      routerLinkActive
+                      #features="routerLinkActive"
+                      [isActive]="features.isActive"
+                    >
+                      <ng-icon name="lucidePuzzle" />
+                      <span>{{ t('shell.features') }}</span>
+                    </a>
+                  </li>
+                }
               </ul>
             </div>
           </div>

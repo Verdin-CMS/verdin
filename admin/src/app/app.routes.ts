@@ -60,6 +60,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/settings/tokens').then((m) => m.TokensPage),
       },
       {
+        path: 'settings/features',
+        loadComponent: () => import('./features/settings/features').then((m) => m.FeaturesPage),
+      },
+      {
         path: 'settings/public',
         loadComponent: () => import('./features/settings/public').then((m) => m.PublicPage),
       },

@@ -24,9 +24,11 @@ type ApiResult = Result<Response, ApiError>;
 
 /// Any valid API token may read the OpenAPI document.
 pub async fn openapi(State(state): State<ApiState>, headers: HeaderMap) -> ApiResult {
-    let actor = state.auth.content_actor(bearer(&headers)?).await.map_err(ApiError::from)?;
-    if !actor.is_token() {
-        return Err(ApiError::Forbidden);
+    if !state.config.openapi_public {
+        let actor = state.auth.content_actor(bearer(&headers)?).await.map_err(ApiError::from)?;
+        if !actor.is_token() {
+            return Err(ApiError::Forbidden);
+        }
     }
     Ok(Json((*state.openapi).clone()).into_response())
 }

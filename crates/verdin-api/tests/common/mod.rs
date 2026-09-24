@@ -16,6 +16,25 @@ use verdin_migrate::{ApplyOptions, Renames, Risk};
 use verdin_schema::Schema;
 use verdin_testkit::TestDb;
 
+/// Feature switches kept in memory (the real host also rebuilds the app).
+#[derive(Default)]
+pub struct MemoryFeatures(std::sync::Mutex<verdin_api::features::FeatureStates>);
+
+impl verdin_api::features::FeatureHost for MemoryFeatures {
+    fn states(&self) -> verdin_api::features::FeatureStates {
+        self.0.lock().unwrap().clone()
+    }
+
+    fn update(
+        &self,
+        id: String,
+        state: verdin_api::features::FeatureState,
+    ) -> verdin_api::BoxFuture<'_, Result<(), verdin_api::ApiError>> {
+        self.0.lock().unwrap().0.insert(id, state);
+        Box::pin(async { Ok(()) })
+    }
+}
+
 pub const SECRET: &str = "test-secret-test-secret-test-secret!";
 pub const PEPPER: &str = "test-pepper-test-pepper-test-pepper!";
 
@@ -94,6 +113,7 @@ impl App {
             secure_cookies: false,
             auth_rate_limit: 1000,
             upload: Some(upload.clone()),
+            features: Some(std::sync::Arc::new(MemoryFeatures::default())),
             ..AdminConfig::default()
         };
         let router = Router::new()

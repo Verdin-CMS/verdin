@@ -100,13 +100,13 @@ pub fn document(registry: &Registry, prefix: &str) -> Value {
         let plural = &content_type.plural_name;
         paths.insert(format!("{prefix}/{plural}"), json!({
             "get": operation(&tag, &format!("List {plural}"), &list_params, None, &list_response, &errors),
-            "post": operation(&tag, &format!("Create a {}", content_type.singular_name), &read_params, Some(&request), &json!({ "description": "Created", "content": single_response["content"] }), &errors),
+            "post": operation(&tag, &format!("Create {}", with_article(&content_type.singular_name)), &read_params, Some(&request), &json!({ "description": "Created", "content": single_response["content"] }), &errors),
         }));
         let document_params = prepend(json!([param_ref("documentId")]), &read_params);
         paths.insert(format!("{prefix}/{plural}/{{documentId}}"), json!({
-            "get": operation(&tag, &format!("Get a {}", content_type.singular_name), &document_params, None, &single_response, &errors),
-            "put": operation(&tag, &format!("Update a {}", content_type.singular_name), &document_params, Some(&request), &single_response, &errors),
-            "delete": operation(&tag, &format!("Delete a {}", content_type.singular_name), &json!([param_ref("documentId")]), None, &json!({ "description": "Deleted" }), &errors),
+            "get": operation(&tag, &format!("Get {}", with_article(&content_type.singular_name)), &document_params, None, &single_response, &errors),
+            "put": operation(&tag, &format!("Update {}", with_article(&content_type.singular_name)), &document_params, Some(&request), &single_response, &errors),
+            "delete": operation(&tag, &format!("Delete {}", with_article(&content_type.singular_name)), &json!([param_ref("documentId")]), None, &json!({ "description": "Deleted" }), &errors),
         }));
         if content_type.draft_and_publish {
             let action_params = prepend(
@@ -147,7 +147,7 @@ fn operation(
     errors: &Value,
 ) -> Value {
     let mut responses = errors.as_object().cloned().unwrap_or_default();
-    let status = if summary.starts_with("Create a") {
+    let status = if summary.starts_with("Create ") {
         "201"
     } else if summary.starts_with("Delete") {
         "204"
@@ -395,4 +395,10 @@ fn pascal_case(name: &str) -> String {
                 .unwrap_or_default()
         })
         .collect()
+}
+
+/// `article` → `an article`, `page` → `a page` (by the first letter, good enough for names).
+fn with_article(name: &str) -> String {
+    let vowel = name.chars().next().is_some_and(|c| "aeiouAEIOU".contains(c));
+    format!("{} {name}", if vowel { "an" } else { "a" })
 }

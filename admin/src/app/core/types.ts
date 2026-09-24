@@ -257,4 +257,5 @@ export const ADMIN_SETTINGS_ACTIONS = [
   'roles.manage',
   'tokens.manage',
   'schema.manage',
+  'features.manage',
 ] as const;
