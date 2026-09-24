@@ -21,13 +21,23 @@ import { Api, ApiFailure } from '../../core/api';
 import { Schema } from '../../core/schema';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/messages/en';
-import { ADMIN_CONTENT_ACTIONS, ADMIN_SETTINGS_ACTIONS, Permission, Role } from '../../core/types';
+import {
+  ADMIN_CONTENT_ACTIONS,
+  ADMIN_SETTINGS_ACTIONS,
+  MEDIA_ACTIONS,
+  Permission,
+  Role,
+} from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 
 type Level = 'none' | 'own' | 'all';
+type MediaAction = (typeof MEDIA_ACTIONS)[number];
+
+/** Media actions that can be limited to the files the user uploaded. */
+const MEDIA_SCOPED = new Set<MediaAction>(['media.update', 'media.delete']);
 
 const ACTION_LABELS: Record<
-  (typeof ADMIN_CONTENT_ACTIONS)[number] | (typeof ADMIN_SETTINGS_ACTIONS)[number],
+  (typeof ADMIN_CONTENT_ACTIONS)[number] | (typeof ADMIN_SETTINGS_ACTIONS)[number] | MediaAction,
   MessageKey
 > = {
   'content.read': 'settings.roles.action.content.read',
@@ -35,6 +45,10 @@ const ACTION_LABELS: Record<
   'content.update': 'settings.roles.action.content.update',
   'content.delete': 'settings.roles.action.content.delete',
   'content.publish': 'settings.roles.action.content.publish',
+  'media.read': 'settings.roles.action.media.read',
+  'media.create': 'settings.roles.action.media.create',
+  'media.update': 'settings.roles.action.media.update',
+  'media.delete': 'settings.roles.action.media.delete',
   'users.manage': 'settings.roles.action.users.manage',
   'roles.manage': 'settings.roles.action.roles.manage',
   'tokens.manage': 'settings.roles.action.tokens.manage',
@@ -215,6 +229,61 @@ const ACTION_LABELS: Record<
                 </div>
               </div>
               <fieldset hlmFieldSet class="bg-card rounded-xl border p-4">
+                <legend hlmFieldLegend class="sr-only">{{ t('settings.roles.media') }}</legend>
+                <div class="flex flex-col gap-0.5">
+                  <h3 class="flex items-center gap-1.5 text-sm font-medium">
+                    <ng-icon name="lucideImage" size="14" class="text-muted-foreground" />
+                    {{ t('settings.roles.media') }}
+                  </h3>
+                  <p class="text-muted-foreground text-xs">{{ t('settings.roles.mediaHint') }}</p>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  @for (action of mediaActions; track action) {
+                    @let granted = hasMedia(action);
+                    <div
+                      hlmField
+                      orientation="horizontal"
+                      class="hover:bg-muted/50 items-center rounded-lg border p-3 transition-colors"
+                    >
+                      <hlm-checkbox
+                        [inputId]="action"
+                        [checked]="granted"
+                        (checkedChange)="toggleMedia(action, $event === true)"
+                      />
+                      <label
+                        hlmFieldLabel
+                        [for]="action"
+                        class="flex min-w-0 flex-1 flex-col items-start gap-0.5"
+                      >
+                        <span>{{ t(actionLabels[action]) }}</span>
+                        <span class="text-muted-foreground font-mono text-xs font-normal">{{
+                          action
+                        }}</span>
+                      </label>
+                      @if (mediaScoped.has(action)) {
+                        <hlm-native-select
+                          size="sm"
+                          class="w-auto shrink-0"
+                          [value]="mediaOwn(action) ? 'own' : 'all'"
+                          [disabled]="!granted"
+                          (valueChange)="setMediaScope(action, $event === 'own')"
+                          [attr.aria-label]="
+                            t('settings.roles.mediaScope', { action: t(actionLabels[action]) })
+                          "
+                        >
+                          <option hlmNativeSelectOption value="all">
+                            {{ t('settings.roles.mediaScope.all') }}
+                          </option>
+                          <option hlmNativeSelectOption value="own">
+                            {{ t('settings.roles.mediaScope.own') }}
+                          </option>
+                        </hlm-native-select>
+                      }
+                    </div>
+                  }
+                </div>
+              </fieldset>
+              <fieldset hlmFieldSet class="bg-card rounded-xl border p-4">
                 <legend hlmFieldLegend class="sr-only">{{ t('settings.roles.settings') }}</legend>
                 <div class="flex flex-col gap-0.5">
                   <h3 class="text-sm font-medium">{{ t('settings.roles.settings') }}</h3>
@@ -259,6 +328,8 @@ export class RolesPage implements OnInit {
   protected readonly actionLabels = ACTION_LABELS;
   protected readonly contentActions = ADMIN_CONTENT_ACTIONS;
   protected readonly settingsActions = ADMIN_SETTINGS_ACTIONS;
+  protected readonly mediaActions = MEDIA_ACTIONS;
+  protected readonly mediaScoped = MEDIA_SCOPED;
   protected readonly roles = signal<Role[]>([]);
   protected readonly selected = signal<Role | null>(null);
   protected readonly permissions = signal<Permission[]>([]);
@@ -315,6 +386,39 @@ export class RolesPage implements OnInit {
   protected toggleSetting(action: string, checked: boolean): void {
     const rest = this.permissions().filter((item) => item.action !== action);
     this.permissions.set(checked ? [...rest, { action }] : rest);
+  }
+
+  private mediaPermission(action: MediaAction): Permission | undefined {
+    return this.permissions().find((item) => item.action === action && !item.subject);
+  }
+
+  protected hasMedia(action: MediaAction): boolean {
+    return !!this.mediaPermission(action);
+  }
+
+  protected mediaOwn(action: MediaAction): boolean {
+    return !!this.mediaPermission(action)?.conditions?.includes('is-creator');
+  }
+
+  /** Media permissions have no subject; granting keeps the current scope. */
+  protected toggleMedia(action: MediaAction, checked: boolean): void {
+    const own = this.mediaOwn(action);
+    this.writeMedia(action, checked ? own : null);
+  }
+
+  protected setMediaScope(action: MediaAction, own: boolean): void {
+    if (this.hasMedia(action)) this.writeMedia(action, own);
+  }
+
+  /** `own === null` revokes the action. */
+  private writeMedia(action: MediaAction, own: boolean | null): void {
+    const rest = this.permissions().filter((item) => !(item.action === action && !item.subject));
+    if (own === null) this.permissions.set(rest);
+    else
+      this.permissions.set([
+        ...rest,
+        own && MEDIA_SCOPED.has(action) ? { action, conditions: ['is-creator'] } : { action },
+      ]);
   }
 
   protected async save(): Promise<void> {

@@ -31,7 +31,7 @@ const PUBLISHED: i16 = 1;
 /// Base table alias in reads.
 const BASE: &str = "t0";
 /// Largest `IN (…)` list per statement.
-const IN_CHUNK: usize = 500;
+pub(crate) const IN_CHUNK: usize = 500;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WriteOptions {
@@ -254,6 +254,25 @@ impl DocumentService {
             }
             for item in populate {
                 let Some(field) = model.fields.get(&item.field) else { continue };
+                if let Some(info) = &field.media {
+                    let ids: Vec<i64> = docs.iter().map(|doc| doc.id).collect();
+                    let mut files = crate::media::files_of_sources(&self.db, info, &ids).await?;
+                    for doc in docs.iter_mut() {
+                        let items: Vec<Json> = files
+                            .remove(&doc.id)
+                            .unwrap_or_default()
+                            .iter()
+                            .map(crate::media::FileRecord::to_json)
+                            .collect();
+                        let value = if info.multiple {
+                            Json::Array(items)
+                        } else {
+                            items.into_iter().next().unwrap_or(Json::Null)
+                        };
+                        doc.json.insert(item.field.clone(), value);
+                    }
+                    continue;
+                }
                 let Some(relation) = &field.relation else { continue };
                 let target = self.registry.get(&relation.target)?;
                 let default = SubQuery::default();
@@ -472,6 +491,7 @@ impl DocumentService {
             .await
             .map_err(|error| db_error(model, error))?;
         self.write_relations(&mut tx, model, id, &document_id, state, &prepared.relations).await?;
+        crate::media::write_media(&mut tx, id, &prepared.media).await?;
 
         if draft_and_publish {
             if options.publish {
@@ -509,6 +529,7 @@ impl DocumentService {
         write_update(&mut update, model.table(), assignments, id);
         tx.execute(&update.sql, &update.params).await.map_err(|error| db_error(model, error))?;
         self.write_relations(&mut tx, model, id, document_id, state, &prepared.relations).await?;
+        crate::media::write_media(&mut tx, id, &prepared.media).await?;
 
         if model.draft_and_publish() {
             if options.publish {
@@ -683,13 +704,14 @@ impl DocumentService {
         let draft =
             load_internal(tx, model, document_id, DRAFT).await?.ok_or(ContentError::NotFound)?;
         let document = internal_json(&draft);
-        let issues =
+        let draft_id = row_id_of(&draft);
+        let mut issues =
             check_required(&self.registry.schema, &model.content_type.attributes, &document, &[]);
+        issues.extend(missing_media(tx, model, draft_id).await?);
         if !issues.is_empty() {
             return Err(ContentError::Validation(issues));
         }
 
-        let draft_id = row_id_of(&draft);
         let created_at = draft
             .iter()
             .find(|(field, _)| field.api == "createdAt")
@@ -737,8 +759,9 @@ impl DocumentService {
         let row =
             load_internal(tx, model, document_id, state).await?.ok_or(ContentError::NotFound)?;
         let document = internal_json(&row);
-        let issues =
+        let mut issues =
             check_required(&self.registry.schema, &model.content_type.attributes, &document, &[]);
+        issues.extend(missing_media(tx, model, row_id_of(&row)).await?);
         if issues.is_empty() { Ok(()) } else { Err(ContentError::Validation(issues)) }
     }
 
@@ -804,6 +827,8 @@ impl DocumentService {
         document_id: &str,
         to_state: i16,
     ) -> Result<()> {
+        let media = model.fields.iter().filter_map(|field| field.media.as_ref());
+        crate::media::copy_media(tx, media, from_row, to_row).await?;
         let owned = model
             .fields
             .iter()
@@ -909,6 +934,21 @@ fn fold_accent(c: char) -> impl Iterator<Item = char> {
     own.chars().collect::<Vec<_>>().into_iter()
 }
 
+/// `required` media fields without files on row `id`.
+async fn missing_media(tx: &mut Tx, model: &TypeModel, id: i64) -> Result<Vec<Issue>> {
+    let mut issues = Vec::new();
+    for field in model.fields.iter() {
+        let (Some(info), Some(attribute)) = (&field.media, &field.attribute) else { continue };
+        if attribute.required && crate::media::media_count(tx, &info.link_table, id).await? == 0 {
+            issues.push(Issue::new(
+                vec![Json::from(field.api.as_str())],
+                format!("{} is a required field", field.api),
+            ));
+        }
+    }
+    Ok(issues)
+}
+
 fn actor_value(actor: Option<i64>) -> SqlValue {
     actor.map_or(SqlValue::Null(ColumnKind::BigInt), SqlValue::BigInt)
 }
@@ -958,7 +998,7 @@ fn public_fields<'a>(
                     selected.is_none_or(|selected| selected.contains(&field.api))
                 }
                 FieldCategory::Nested => populate.iter().any(|item| item.field == field.api),
-                FieldCategory::Relation => false,
+                FieldCategory::Relation | FieldCategory::Media => false,
             },
         })
         .collect()
@@ -966,7 +1006,11 @@ fn public_fields<'a>(
 
 /// Every stored field, private and nested included.
 fn internal_fields(model: &TypeModel) -> Vec<&Field> {
-    model.fields.iter().filter(|field| field.category != FieldCategory::Relation).collect()
+    model
+        .fields
+        .iter()
+        .filter(|field| !matches!(field.category, FieldCategory::Relation | FieldCategory::Media))
+        .collect()
 }
 
 fn internal_json(row: &[(&Field, SqlValue)]) -> Json {

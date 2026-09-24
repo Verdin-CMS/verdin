@@ -29,7 +29,14 @@ import { Api, ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/messages/en';
 import { Schema } from '../../core/schema';
-import { Attribute, AttributeType, PlanStep, RelationKind, SchemaPlan } from '../../core/types';
+import {
+  Attribute,
+  AttributeType,
+  MediaKind,
+  PlanStep,
+  RelationKind,
+  SchemaPlan,
+} from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 
 type SchemaFile = Record<string, unknown> & { attributes: Record<string, Attribute> };
@@ -147,6 +154,12 @@ const TYPE_INFO: TypeInfo[] = [
     description: 'builder.types.json.description',
   },
   {
+    type: 'media',
+    icon: 'lucideImage',
+    label: 'builder.types.media',
+    description: 'builder.types.media.description',
+  },
+  {
     type: 'relation',
     icon: 'lucideLink',
     label: 'builder.types.relation',
@@ -166,6 +179,15 @@ const TYPE_INFO: TypeInfo[] = [
   },
 ];
 const TYPE_BY_NAME = new Map(TYPE_INFO.map((info) => [info.type, info]));
+/** Types the server rejects inside components. */
+const NOT_IN_COMPONENTS = new Set<AttributeType>(['media']);
+
+const MEDIA_KINDS: { kind: MediaKind; label: MessageKey }[] = [
+  { kind: 'images', label: 'builder.field.mediaKind.images' },
+  { kind: 'videos', label: 'builder.field.mediaKind.videos' },
+  { kind: 'audios', label: 'builder.field.mediaKind.audios' },
+  { kind: 'files', label: 'builder.field.mediaKind.files' },
+];
 
 const RELATIONS: { kind: RelationKind; label: MessageKey; bidirectional: boolean }[] = [
   { kind: 'manyToOne', label: 'builder.relations.manyToOne', bidirectional: true },
@@ -535,6 +557,11 @@ interface AttributeDraft {
                                 {{ t('builder.fields.private') }}
                               </span>
                             }
+                            @if (entry.attribute.multiple) {
+                              <span hlmBadge variant="outline">{{
+                                t('builder.fields.multiple')
+                              }}</span>
+                            }
                             @if (entry.attribute.repeatable) {
                               <span hlmBadge variant="outline">{{
                                 t('builder.fields.repeatable')
@@ -631,7 +658,7 @@ interface AttributeDraft {
                   {{ t('builder.field.chooseKind') }}
                 </h3>
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  @for (info of typeInfos; track info.type) {
+                  @for (info of availableTypes(); track info.type) {
                     <button
                       type="button"
                       class="hover:bg-muted/60 focus-visible:ring-ring/50 flex items-start gap-2.5 rounded-lg border p-2.5 text-start transition-colors outline-none focus-visible:ring-[3px]"
@@ -654,6 +681,12 @@ interface AttributeDraft {
                     </button>
                   }
                 </div>
+                @if (isComponent()) {
+                  <p class="text-muted-foreground flex items-center gap-1.5 text-xs">
+                    <ng-icon name="lucideInfo" size="14" class="shrink-0" />
+                    {{ t('builder.field.mediaInComponent') }}
+                  </p>
+                }
               </div>
             }
 
@@ -679,7 +712,7 @@ interface AttributeDraft {
                     [value]="attr.type"
                     (valueChange)="setType($any($event))"
                   >
-                    @for (info of typeInfos; track info.type) {
+                    @for (info of availableTypes(); track info.type) {
                       <option hlmNativeSelectOption [value]="info.type">
                         {{ t(info.label) }}
                       </option>
@@ -785,6 +818,42 @@ interface AttributeDraft {
                       <p class="text-muted-foreground text-sm">
                         {{ t('builder.field.noComponents') }}
                       </p>
+                    }
+                  </div>
+                </fieldset>
+              }
+              @if (attr.type === 'media') {
+                <div hlmField orientation="horizontal">
+                  <hlm-switch
+                    inputId="field-multiple"
+                    [checked]="!!attr.multiple"
+                    (checkedChange)="patchAttribute({ multiple: $event || undefined })"
+                  />
+                  <div hlmFieldContent>
+                    <label hlmFieldLabel for="field-multiple">{{
+                      t('builder.field.multiple')
+                    }}</label>
+                    <p hlmFieldDescription>{{ t('builder.field.multipleHint') }}</p>
+                  </div>
+                </div>
+                <fieldset hlmFieldSet>
+                  <legend hlmFieldLegend variant="label">
+                    {{ t('builder.field.allowedTypes') }}
+                  </legend>
+                  <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    @for (media of mediaKinds; track media.kind) {
+                      @let checked = allowsMedia(attr, media.kind);
+                      <div hlmField orientation="horizontal">
+                        <hlm-checkbox
+                          [inputId]="'media-' + media.kind"
+                          [checked]="checked"
+                          [disabled]="checked && allowedMediaCount(attr) === 1"
+                          (checkedChange)="toggleMediaKind(media.kind, $event === true)"
+                        />
+                        <label hlmFieldLabel [for]="'media-' + media.kind">{{
+                          t(media.label)
+                        }}</label>
+                      </div>
                     }
                   </div>
                 </fieldset>
@@ -1073,7 +1142,7 @@ export class Builder {
   /** A content type's singularName, `component:category.name`, `new` or `new-component`. */
   readonly name = input<string>();
 
-  protected readonly typeInfos = TYPE_INFO;
+  protected readonly mediaKinds = MEDIA_KINDS;
   protected readonly riskLabels = RISK_LABELS;
   protected readonly segments = segments;
   protected readonly relations = RELATIONS;
@@ -1097,6 +1166,10 @@ export class Builder {
     const name = this.name() ?? '';
     return name === 'new-component' || name.startsWith('component:');
   });
+  /** The attribute types offered in the picker (components cannot hold media). */
+  protected readonly availableTypes = computed(() =>
+    this.isComponent() ? TYPE_INFO.filter((info) => !NOT_IN_COMPONENTS.has(info.type)) : TYPE_INFO,
+  );
   protected readonly isNew = computed(() => ['new', 'new-component'].includes(this.name() ?? ''));
   protected readonly draftAndPublish = computed(
     () =>
@@ -1228,6 +1301,12 @@ export class Builder {
     if (attribute.component) parts.push(attribute.component);
     if (attribute.components) parts.push(attribute.components.join(', '));
     if (attribute.enum) parts.push(attribute.enum.join(' | '));
+    if (attribute.allowedTypes)
+      parts.push(
+        MEDIA_KINDS.filter((media) => attribute.allowedTypes?.includes(media.kind))
+          .map((media) => this.t(media.label))
+          .join(', '),
+      );
     if (attribute.maxLength !== undefined)
       parts.push(this.t('builder.summary.maxLength', { count: attribute.maxLength }));
     if (attribute.targetField)
@@ -1293,6 +1372,27 @@ export class Builder {
     const current = this.attributeDraft()?.attribute.components ?? [];
     this.patchAttribute({
       components: checked ? [...current, uid] : current.filter((item) => item !== uid),
+    });
+  }
+
+  /** Without `allowedTypes`, every kind of file is allowed. */
+  protected allowsMedia(attribute: Attribute, kind: MediaKind): boolean {
+    return !attribute.allowedTypes || attribute.allowedTypes.includes(kind);
+  }
+
+  protected allowedMediaCount(attribute: Attribute): number {
+    return attribute.allowedTypes?.length ?? MEDIA_KINDS.length;
+  }
+
+  /** `allowedTypes` is omitted when every kind (or none) is checked. */
+  protected toggleMediaKind(kind: MediaKind, checked: boolean): void {
+    const attribute = this.attributeDraft()?.attribute;
+    if (!attribute) return;
+    const allowed = MEDIA_KINDS.map((media) => media.kind).filter((item) =>
+      item === kind ? checked : this.allowsMedia(attribute, item),
+    );
+    this.patchAttribute({
+      allowedTypes: allowed.length && allowed.length < MEDIA_KINDS.length ? allowed : undefined,
     });
   }
 

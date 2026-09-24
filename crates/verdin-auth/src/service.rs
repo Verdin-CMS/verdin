@@ -10,7 +10,7 @@ use verdin_db::value::{format_datetime, truncate_millis};
 use verdin_db::{ColumnKind as K, Database, DbError, Flavor, SqlValue as V, Tx};
 use verdin_migrate::system::{
     ADMIN_PERMISSIONS, ADMIN_ROLES, ADMIN_USER_ROLES, ADMIN_USERS, API_TOKEN_PERMISSIONS,
-    API_TOKENS, PUBLIC_PERMISSIONS, SESSIONS,
+    API_TOKENS, PUBLIC_PERMISSIONS, SESSIONS, SETTINGS,
 };
 
 use crate::crypto::{
@@ -18,9 +18,11 @@ use crate::crypto::{
     needs_rehash, random_hex, random_token, sha256_hex, verify_password,
 };
 use crate::permissions::{
-    ContentAction, ContentActor, Grants, Permission, PermissionSet, SUPER_ADMIN, TokenKind,
-    builtin_roles,
+    BUILTIN_PERMISSIONS_VERSION, ContentAction, ContentActor, Grants, Permission, PermissionSet,
+    SUPER_ADMIN, TokenKind, builtin_additions, builtin_roles,
 };
+
+const PERMISSIONS_VERSION_KEY: &str = "builtin_permissions_version";
 
 pub const MIN_SECRET_BYTES: usize = 32;
 pub const MIN_PASSWORD: usize = 8;
@@ -228,6 +230,11 @@ fn optional_text(value: Option<String>) -> V {
 }
 
 /// `FOR UPDATE`, except on SQLite (whose write transactions already lock the database).
+/// `key` is reserved in MySQL/MariaDB.
+fn quoted_key(flavor: Flavor) -> &'static str {
+    if flavor.is_mysql_family() { "`key`" } else { "\"key\"" }
+}
+
 fn for_update(flavor: Flavor) -> &'static str {
     if flavor == Flavor::Sqlite { "" } else { " FOR UPDATE" }
 }
@@ -269,6 +276,55 @@ impl AuthService {
     /// Creates missing built-in roles. Idempotent; run at startup after migrations.
     pub async fn bootstrap(&self) -> Result<()> {
         let mut tx = self.db.begin().await?;
+        // Installations older than the current built-in permissions get what was added
+        // since, once: later edits of those roles are respected.
+        let installed = tx.has_rows(&format!("SELECT 1 FROM {ADMIN_ROLES} LIMIT 1"), &[]).await?;
+        let version = if installed {
+            let rows = tx
+                .fetch_all(
+                    &format!("SELECT value FROM {SETTINGS} WHERE {} = ?", quoted_key(tx.flavor())),
+                    &[V::from(PERMISSIONS_VERSION_KEY)],
+                    &[K::Json],
+                )
+                .await?;
+            match rows.first().map(|row| &row[0]) {
+                Some(V::Json(value)) => value.as_i64().unwrap_or(1),
+                _ => 1,
+            }
+        } else {
+            BUILTIN_PERMISSIONS_VERSION
+        };
+        for upgrade in (version + 1)..=BUILTIN_PERMISSIONS_VERSION {
+            for (code, permissions) in builtin_additions(upgrade) {
+                let rows = tx
+                    .fetch_all(
+                        &format!("SELECT id FROM {ADMIN_ROLES} WHERE code = ? AND builtin = ?"),
+                        &[V::from(code), V::Bool(true)],
+                        &[K::BigInt],
+                    )
+                    .await?;
+                if let Some(role_id) = rows.first().and_then(|row| row[0].as_i64()) {
+                    insert_permissions(&mut tx, role_id, &permissions).await?;
+                }
+            }
+        }
+        if version != BUILTIN_PERMISSIONS_VERSION || !installed {
+            let key = quoted_key(tx.flavor());
+            tx.execute(
+                &format!("DELETE FROM {SETTINGS} WHERE {key} = ?"),
+                &[V::from(PERMISSIONS_VERSION_KEY)],
+            )
+            .await?;
+            tx.execute(
+                &format!("INSERT INTO {SETTINGS} ({key}, value, updated_at) VALUES (?, ?, ?)"),
+                &[
+                    V::from(PERMISSIONS_VERSION_KEY),
+                    V::Json(serde_json::json!(BUILTIN_PERMISSIONS_VERSION)),
+                    V::DateTime(now()),
+                ],
+            )
+            .await?;
+        }
         for (code, name, description, permissions) in builtin_roles() {
             let exists = tx
                 .has_rows(&format!("SELECT 1 FROM {ADMIN_ROLES} WHERE code = ?"), &[V::from(code)])

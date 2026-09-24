@@ -66,6 +66,8 @@ pub struct RawAttribute {
     pub component: Option<String>,
     pub repeatable: Option<bool>,
     pub components: Option<Vec<String>>,
+    pub multiple: Option<bool>,
+    pub allowed_types: Option<Vec<String>>,
 }
 
 impl RawAttribute {
@@ -89,6 +91,8 @@ impl RawAttribute {
             ("component", self.component.is_some()),
             ("repeatable", self.repeatable.is_some()),
             ("components", self.components.is_some()),
+            ("multiple", self.multiple.is_some()),
+            ("allowedTypes", self.allowed_types.is_some()),
             ("default", self.default.is_some()),
         ];
         options.into_iter().filter(|(_, present)| *present).map(|(name, _)| name).collect()

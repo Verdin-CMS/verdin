@@ -311,7 +311,11 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     if !auth.has_admin().await? {
         tracing::info!(url = %format!("{}/", admin.path), "no admin yet: open the admin panel to register the first one");
     }
-    let context = AppContext { config: project.config, root: project.root, db, auth, mode };
+    let storage = verdin_upload::Storage::new(&project.config.upload.provider, &project.root)
+        .context("configuring [upload].provider")?;
+    let upload =
+        verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone());
+    let context = AppContext { config: project.config, root: project.root, db, auth, mode, upload };
     app::serve(context, schema, shutdown_signal()).await
 }
 

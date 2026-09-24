@@ -4,6 +4,29 @@ All notable changes to Verdin are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/) (0.x: minor versions may break).
 
+## [Unreleased]
+
+### Added
+
+- **Media library**: `media` attribute type (single or multiple, `allowedTypes`), uploads
+  with MIME sniffing and responsive image formats, folders, focal points, local and
+  S3-compatible storage (AWS, R2, B2, RustFS), Strapi-compatible `/api/upload` routes and
+  `plugin::upload` grants, admin media permissions.
+- Admin: media library page (folders, drag & drop uploads with progress, grid/list views,
+  search and type filters, bulk move/delete, file details with focal point, alt text and
+  caption), media picker and media fields in the editor, media field type in the builder,
+  media permissions in roles, and a media library row in public access and API tokens.
+- `vd_settings` table; built-in roles of existing installations receive new permissions once.
+
+### Changed
+
+- Body size limits and timeouts apply per API router (uploads have their own limits).
+- The admin CSP allows images and video from a remote media library's origin.
+
+### Fixed
+
+- The admin panel used `/api` as the content API base even with another `[api].prefix`.
+
 ## [0.1.0] - 2026-09-24
 
 First public release: the MVP described in [docs/architecture.md](docs/architecture.md).

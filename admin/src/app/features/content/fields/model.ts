@@ -1,4 +1,4 @@
-import { Attribute, Attributes, Component } from '../../../core/types';
+import { Attribute, Attributes, Component, MediaFile } from '../../../core/types';
 
 /** Looks up component schemas by uid. */
 export type ComponentLookup = (uid: string) => Component | undefined;
@@ -41,6 +41,8 @@ export function emptyValue(attribute: Attribute, _components?: ComponentLookup):
       return attribute.repeatable ? [] : null;
     case 'dynamiczone':
       return [];
+    case 'media':
+      return attribute.multiple ? [] : null;
     default:
       return fallback ?? '';
   }
@@ -103,6 +105,13 @@ export function toModel(
           return keyed(withId({ __component: item['__component'], ...inner }, item));
         });
         break;
+      case 'media':
+        model[name] = Array.isArray(value)
+          ? value.map((file) => mediaId(file))
+          : attribute.multiple
+            ? [mediaId(value)]
+            : mediaId(value);
+        break;
       case 'time':
         model[name] = String(value).slice(0, 8);
         break;
@@ -111,6 +120,30 @@ export function toModel(
     }
   }
   return model;
+}
+
+/** A populated file object (or an id already) → its id. */
+function mediaId(value: unknown): number {
+  return typeof value === 'object' && value !== null
+    ? Number((value as { id: unknown }).id)
+    : Number(value);
+}
+
+/** Populated files of a document's media attributes, for previews. */
+export function mediaFilesOf(
+  attributes: Attributes,
+  document: Record<string, unknown> | null,
+): Record<string, MediaFile[]> {
+  const files: Record<string, MediaFile[]> = {};
+  for (const [name, attribute] of Object.entries(attributes)) {
+    if (attribute.type !== 'media') continue;
+    const value = document?.[name];
+    const list = Array.isArray(value) ? value : value ? [value] : [];
+    files[name] = list.filter(
+      (file): file is MediaFile => typeof file === 'object' && file !== null && 'id' in file,
+    );
+  }
+  return files;
 }
 
 function withId(model: FormModel, source: Record<string, unknown>): FormModel {
@@ -151,6 +184,10 @@ export function toPayload(
             ...itemPayload(component?.attributes ?? {}, item, components),
           };
         });
+        break;
+      case 'media':
+        // File ids; the order of a multiple field is kept.
+        payload[name] = Array.isArray(value) ? [...value] : (value ?? null);
         break;
       default:
         // Empty strings are "no value" (and must not collide on unique attributes).

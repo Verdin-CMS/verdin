@@ -17,10 +17,17 @@ use axum::routing::get;
 use serde_json::json;
 
 /// Content-Security-Policy of the admin panel. Angular's critical-CSS inlining is off
-/// (it needs inline event handlers), so scripts are same-origin only.
-const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
-                   img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; \
-                   frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
+/// (it needs inline event handlers), so scripts are same-origin only. `media` lists extra
+/// origins images and video may load from (a remote media library).
+fn csp(media: &[String]) -> String {
+    let extra: String = media.iter().map(|origin| format!(" {origin}")).collect();
+    format!(
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
+         img-src 'self' data: blob:{extra}; media-src 'self' blob:{extra}; font-src 'self' data:; \
+         connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; \
+         object-src 'none'"
+    )
+}
 
 #[cfg(feature = "embed-admin")]
 #[derive(rust_embed::RustEmbed)]
@@ -67,15 +74,24 @@ struct UiState {
     assets: Assets,
     base: String,
     config: Arc<String>,
+    csp: Arc<HeaderValue>,
 }
 
 /// Routes for `{path}` and everything below it except the admin API, which is nested
 /// separately and matches first.
-pub fn router(assets: Assets, path: &str, mode: &str) -> Router {
+pub fn router(
+    assets: Assets,
+    path: &str,
+    mode: &str,
+    api_prefix: &str,
+    media_origins: &[String],
+) -> Router {
     let config =
-        json!({ "apiBase": format!("{path}/api"), "contentApiBase": "/api", "mode": mode })
+        json!({ "apiBase": format!("{path}/api"), "contentApiBase": api_prefix, "mode": mode })
             .to_string();
-    let state = UiState { assets, base: format!("{path}/"), config: Arc::new(config) };
+    let csp = HeaderValue::from_str(&csp(media_origins)).expect("origins are header-safe");
+    let state =
+        UiState { assets, base: format!("{path}/"), config: Arc::new(config), csp: Arc::new(csp) };
     let target = format!("{path}/");
     Router::new()
         .route(&format!("{path}/"), get(serve))
@@ -89,7 +105,7 @@ async fn serve(State(state): State<UiState>, uri: Uri) -> Response {
     let is_asset = relative.rsplit('/').next().is_some_and(|name| name.contains('.'));
     if !relative.is_empty() && relative != "index.html" && is_asset {
         return match state.assets.read(relative) {
-            Some(bytes) => file_response(relative, bytes),
+            Some(bytes) => file_response(relative, bytes, &state.csp),
             None => StatusCode::NOT_FOUND.into_response(),
         };
     }
@@ -110,11 +126,11 @@ async fn serve(State(state): State<UiState>, uri: Uri) -> Response {
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    security_headers(headers);
+    security_headers(headers, &state.csp);
     response
 }
 
-fn file_response(path: &str, bytes: Vec<u8>) -> Response {
+fn file_response(path: &str, bytes: Vec<u8>, csp: &HeaderValue) -> Response {
     let mut response = Response::new(Body::from(bytes));
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime(path)));
@@ -125,12 +141,12 @@ fn file_response(path: &str, bytes: Vec<u8>) -> Response {
         .is_some_and(|name| name.matches('-').count() >= 1 && name.split('.').count() >= 2);
     let cache = if fingerprinted { "public, max-age=31536000, immutable" } else { "no-cache" };
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
-    security_headers(headers);
+    security_headers(headers, csp);
     response
 }
 
-fn security_headers(headers: &mut axum::http::HeaderMap) {
-    headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
+fn security_headers(headers: &mut axum::http::HeaderMap, csp: &HeaderValue) {
+    headers.insert(header::CONTENT_SECURITY_POLICY, csp.clone());
     headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
     headers.insert(
@@ -188,19 +204,25 @@ mod tests {
         )
         .unwrap();
         std::fs::write(dir.path().join("main-ABC123.js"), "console.log(1)").unwrap();
-        let app = router(Assets::Dir(dir.path().to_path_buf()), "/admin", "development");
+        let media = vec!["https://media.example.com".to_owned()];
+        let app = router(
+            Assets::Dir(dir.path().to_path_buf()),
+            "/admin",
+            "development",
+            "/content",
+            &media,
+        );
 
         let (status, headers, body) = get(&app, "/admin/content/api::article").await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("<base href=\"/admin/\">"), "{body}");
         assert!(body.contains("name=\"verdin-config\""), "{body}");
         assert!(body.contains("&quot;apiBase&quot;:&quot;/admin/api&quot;"), "{body}");
-        assert!(
-            headers[header::CONTENT_SECURITY_POLICY]
-                .to_str()
-                .unwrap()
-                .contains("frame-ancestors 'none'")
-        );
+        assert!(body.contains("&quot;contentApiBase&quot;:&quot;/content&quot;"), "{body}");
+        let csp = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+        assert!(csp.contains("frame-ancestors 'none'"), "{csp}");
+        assert!(csp.contains("img-src 'self' data: blob: https://media.example.com;"), "{csp}");
+        assert!(csp.contains("media-src 'self' blob: https://media.example.com;"), "{csp}");
 
         let (status, headers, body) = get(&app, "/admin/main-ABC123.js").await;
         assert_eq!(status, StatusCode::OK);

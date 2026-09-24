@@ -7,12 +7,15 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-axum = "0.8.9"
+axum = { version = "0.8.9", features = ["multipart"] }
 bytes = "1.12.1"
 indexmap = "2.14.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+tempfile = "3.27.0"
 time = "0.3.55"
+tokio = { version = "1.53.1", features = ["fs", "io-util"] }
+tower-http = { version = "0.7.1", features = ["limit", "timeout"] }
 tracing = "0.1.44"
 verdin-auth = { version = "0.1.0", path = "../verdin-auth" }
 verdin-content = { version = "0.1.0", path = "../verdin-content" }
@@ -20,15 +23,19 @@ verdin-db = { version = "0.1.0", path = "../verdin-db" }
 verdin-migrate = { version = "0.1.0", path = "../verdin-migrate" }
 verdin-query = { version = "0.1.0", path = "../verdin-query" }
 verdin-schema = { version = "0.1.0", path = "../verdin-schema" }
+verdin-upload = { version = "0.1.0", path = "../verdin-upload" }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 http-body-util = "0.1.5"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+object_store = "0.14.2"
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
 tower = { version = "0.5.3", features = ["util"] }
 verdin-auth = { path = "../verdin-auth" }
 verdin-migrate = { path = "../verdin-migrate" }
 verdin-schema = { path = "../verdin-schema" }
 verdin-testkit = { path = "../verdin-testkit" }
+verdin-upload = { path = "../verdin-upload" }

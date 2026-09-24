@@ -349,6 +349,17 @@ Strapi stores each component in its own table with polymorphic link tables, whic
 
 `vd_schema_snapshots` and `vd_migrations_journal` belong to the migration engine. The platform tables — `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (refresh tokens), `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` — are part of every derived model, so the migration engine creates and evolves them like content tables (they show up as safe steps in `migrate plan`).
 
+Later additions: `vd_settings` (instance settings and one-off upgrade markers, e.g. the built-in permissions version), `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` (admin collaboration), `vd_files` and `vd_folders` (media library).
+
+### 8.7 Media library (0.2)
+
+- **Files** are rows of `vd_files` in Strapi's shape (`name`, `alternativeText`, `caption`, `width`, `height`, `formats`, `hash`, `ext`, `mime`, `size` in KB, `url`, `provider`…) plus `focal_point`, `folder_id`/`folder_path` and the uploader. Folders (`vd_folders`) keep Strapi's `path` of `path_id`s (`/1/4`).
+- **Media attributes** (`{ "type": "media", "multiple": true, "allowedTypes": ["images"] }`) are link tables `{table}_{field}_mda` (`source_id` → content row, `file_id` → `vd_files`, `position`), with the same lifecycle as relation links: drafts own their links, publishing copies them, deleting a file or a row cascades. Writes take file ids (`5`, `{ "id": 5 }`, `[5, 6]`, `null`); reads need `populate` and return file objects. `required` is checked on publish; `allowedTypes` on write (by the stored, sniffed MIME type). Media inside components is not supported yet.
+- **Storage** goes through `object_store`: a local directory (default `public/uploads`, served at `/uploads`) or any S3-compatible service (AWS, R2, B2, RustFS…; credentials from `AWS_*`). Keys are `{slug}_{random}{ext}`, immutable.
+- **Uploads** stream to temporary files (no whole-file buffering), bounded by `[upload].max_file_size`; the MIME type comes from the bytes (`infer`, SVG sniffing), never from the client. Raster images get Strapi's `thumbnail` (245×156) and `large`/`medium`/`small` breakpoints (1000/750/500) in the source format, EXIF-oriented, with a decoding budget against decompression bombs.
+- **Serving** `/uploads` adds `Content-Security-Policy: sandbox`, `nosniff`, and `Content-Disposition: attachment` for anything but images, video, audio, PDF and plain text, so an uploaded HTML or SVG cannot run on the admin's origin. S3 objects of active types are stored as attachments.
+- **APIs**: content API `POST /api/upload` (multipart `files` + `fileInfo`), `POST /api/upload?id=` (metadata), `GET|DELETE /api/upload/files[/:id]` (plain arrays/objects, like Strapi), gated by grants on `plugin::upload`. Admin API under `/admin/api/upload` with folders, search, type filters and `media.read|create|update|delete` permissions (`is-creator` for authors' update/delete).
+
 ---
 
 ## 9. Multi-dialect database layer
@@ -773,3 +784,6 @@ Astro Starlight documentation site.
 | 33 | Release profile | Thin LTO, 1 codegen unit, stripped; unwinding kept | A panicking handler must not take the server down |
 | 34 | "Unseen" documents | Per-user `vd_document_views` rows, deleted for everyone but the editor when a document changes; filtered with `NOT EXISTS` in SQL | Pagination and counts stay exact; no timestamps to compare per row |
 | 35 | Votes and polls | Admin-only collaboration tables (`vd_document_votes`, `vd_polls`, `vd_poll_votes`), any content type | Suggestion boxes and team decisions without modelling vote fields in every schema |
+| 36 | Media storage | `object_store` for local and S3 | One code path; streaming multipart uploads; RustFS in the dev stack and CI |
+| 37 | Media links | Per-field link tables like relations | Same draft/publish semantics as relations; cascades keep links consistent |
+| 38 | Built-in permission upgrades | `vd_settings` version marker, additions applied once | Existing installs gain new permissions without undoing an admin's later edits |

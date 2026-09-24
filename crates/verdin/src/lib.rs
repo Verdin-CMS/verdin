@@ -6,3 +6,4 @@ pub mod cli;
 pub mod config;
 mod new;
 pub mod server;
+mod uploads;

@@ -166,6 +166,15 @@ path = "/admin"
 secure_cookies = true   # default: true in `start`, false in `dev`
 auth_rate_limit = 20  # login/registration/refresh per IP per minute
 
+[upload]
+max_file_size = 209715200     # bytes (200 MB)
+responsive_formats = true     # thumbnail + large/medium/small for raster images
+provider = { name = "local", dir = "public/uploads" }   # served at /uploads
+# provider = { name = "s3", bucket = "media", region = "auto",
+#              endpoint = "https://<account>.r2.cloudflarestorage.com",
+#              public_url = "https://media.example.com", path_style = false }
+# S3 credentials: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+
 [log]
 format = "pretty" # or "json"
 level = "info"    # RUST_LOG takes precedence

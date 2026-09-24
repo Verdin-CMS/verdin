@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde_json::Value;
 
-use crate::model::{Attribute, AttributeKind, RelationKind};
+use crate::model::{Attribute, AttributeKind, MediaType, RelationKind};
 use crate::raw::RawAttribute;
 
 /// Every `varchar` column is `varchar(255)`: MySQL counts `varchar` bytes against its
@@ -33,6 +33,7 @@ fn allowed_options(ty: &str) -> Option<&'static [&'static str]> {
         "relation" => &["relation", "target", "inversedBy", "mappedBy"],
         "component" => &["component", "repeatable", "min", "max"],
         "dynamiczone" => &["components", "min", "max"],
+        "media" => &["multiple", "allowedTypes"],
         _ => return None,
     })
 }
@@ -221,6 +222,20 @@ pub fn convert_attribute(raw: RawAttribute) -> Result<Attribute, Issues> {
             }
             AttributeKind::DynamicZone { components, min, max }
         }
+        "media" => {
+            let mut allowed_types = Vec::new();
+            for (index, value) in raw.allowed_types.iter().flatten().enumerate() {
+                match MediaType::parse(value) {
+                    Some(ty) if !allowed_types.contains(&ty) => allowed_types.push(ty),
+                    Some(_) => issues.push((format!("allowedTypes[{index}]"), "duplicate".into())),
+                    None => issues.push((
+                        format!("allowedTypes[{index}]"),
+                        format!("`{value}` is not one of images, videos, audios, files"),
+                    )),
+                }
+            }
+            AttributeKind::Media { multiple: raw.multiple.unwrap_or(false), allowed_types }
+        }
         _ => unreachable!("type checked by allowed_options"),
     };
 
@@ -382,6 +397,7 @@ fn check_default(kind: &AttributeKind, default: &Value, issues: &mut Issues) {
         }
         AttributeKind::Json => {}
         AttributeKind::Relation { .. }
+        | AttributeKind::Media { .. }
         | AttributeKind::Component { .. }
         | AttributeKind::DynamicZone { .. } => unreachable!("default rejected by allowed_options"),
     }
@@ -444,7 +460,30 @@ mod tests {
 
     #[test]
     fn rejects_unknown_type() {
-        assert_eq!(issue_paths(json!({ "type": "media" })), ["type"]);
+        assert_eq!(issue_paths(json!({ "type": "blocks" })), ["type"]);
+    }
+
+    #[test]
+    fn converts_media() {
+        let attribute = convert(
+            json!({ "type": "media", "multiple": true, "allowedTypes": ["images", "videos"] }),
+        )
+        .unwrap();
+        assert_eq!(
+            attribute.kind,
+            AttributeKind::Media {
+                multiple: true,
+                allowed_types: vec![MediaType::Images, MediaType::Videos]
+            }
+        );
+        assert_eq!(
+            issue_paths(
+                json!({ "type": "media", "allowedTypes": ["pictures", "images", "images"] })
+            ),
+            ["allowedTypes[0]", "allowedTypes[2]"]
+        );
+        assert_eq!(issue_paths(json!({ "type": "media", "default": 1 })), ["default"]);
+        assert!(!attribute.kind.has_column());
     }
 
     #[test]

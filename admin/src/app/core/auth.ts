@@ -122,6 +122,15 @@ export class Auth {
   }
 
   /** Whether the admin holds a content action on `uid` (possibly restricted to own entries). */
+  /** Media library actions: `own` limits updates/deletes to files the user uploaded. */
+  mediaGrant(action: string): 'none' | 'own' | 'all' {
+    const set = this.permissions();
+    if (set.superAdmin) return 'all';
+    const matching = set.permissions.filter((permission) => permission.action === action);
+    if (!matching.length) return 'none';
+    return matching.some((permission) => !permission.conditions?.length) ? 'all' : 'own';
+  }
+
   canContent(action: string, uid: string): boolean {
     const set = this.permissions();
     return (

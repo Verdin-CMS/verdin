@@ -11,6 +11,7 @@ pub fn document(registry: &Registry, prefix: &str) -> Value {
     let mut schemas = Map::new();
 
     schemas.insert("Error".into(), error_schema());
+    schemas.insert("UploadFile".into(), upload_file_schema());
     for component in schema.components.values() {
         schemas.insert(
             component_name(&component.uid),
@@ -225,6 +226,20 @@ fn attributes_schema(
             continue;
         }
         let (_, category) = verdin_query::attribute_kind(&attribute.kind);
+        if let AttributeKind::Media { multiple, .. } = &attribute.kind {
+            let one = if input {
+                json!({ "type": "integer", "description": "file id" })
+            } else {
+                json!({ "$ref": "#/components/schemas/UploadFile" })
+            };
+            let property = if *multiple {
+                json!({ "type": "array", "items": one })
+            } else {
+                json!({ "oneOf": [one, { "type": "null" }] })
+            };
+            properties.insert(name.clone(), property);
+            continue;
+        }
         if category == FieldCategory::Relation {
             if let Some(property) = relation_schema(schema, &attribute.kind, input) {
                 properties.insert(name.clone(), property);
@@ -292,8 +307,40 @@ fn attribute_schema(schema: &Schema, kind: &AttributeKind) -> Value {
                 .collect();
             json!({ "type": "array", "items": { "oneOf": variants } })
         }
-        AttributeKind::Relation { .. } => json!({}),
+        AttributeKind::Relation { .. } | AttributeKind::Media { .. } => json!({}),
     }
+}
+
+/// A media library file (Strapi's upload file shape).
+pub(crate) fn upload_file_schema() -> Value {
+    let text = json!({ "type": "string" });
+    let nullable_text = json!({ "type": ["string", "null"] });
+    let nullable_int = json!({ "type": ["integer", "null"] });
+    json!({
+        "type": "object",
+        "properties": {
+            "id": { "type": "integer" },
+            "documentId": text,
+            "name": text,
+            "alternativeText": nullable_text,
+            "caption": nullable_text,
+            "width": nullable_int,
+            "height": nullable_int,
+            "focalPoint": { "type": ["object", "null"] },
+            "formats": { "type": ["object", "null"] },
+            "hash": text,
+            "ext": text,
+            "mime": text,
+            "size": { "type": "number", "description": "kilobytes" },
+            "url": text,
+            "previewUrl": nullable_text,
+            "provider": text,
+            "provider_metadata": { "type": ["object", "null"] },
+            "createdAt": { "type": "string", "format": "date-time" },
+            "updatedAt": { "type": "string", "format": "date-time" },
+            "publishedAt": { "type": "string", "format": "date-time" }
+        }
+    })
 }
 
 /// Output: the populated document(s). Input: documentIds, or `{ connect, disconnect, set }`

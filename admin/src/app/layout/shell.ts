@@ -113,6 +113,24 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
               </div>
             </div>
           }
+          @if (auth.can('media.read')) {
+            <div hlmSidebarGroup>
+              <ul hlmSidebarMenu>
+                <li hlmSidebarMenuItem>
+                  <a
+                    hlmSidebarMenuButton
+                    routerLink="/media"
+                    routerLinkActive
+                    #media="routerLinkActive"
+                    [isActive]="media.isActive"
+                  >
+                    <ng-icon name="lucideImage" />
+                    <span>{{ t('media.title') }}</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+          }
           <div hlmSidebarGroup>
             <div hlmSidebarGroupLabel>{{ t('shell.settings') }}</div>
             <div hlmSidebarGroupContent>

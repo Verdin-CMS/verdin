@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Component } from '../../../core/types';
-import { toModel, toPayload } from './model';
+import { mediaFilesOf, toModel, toPayload } from './model';
 
 const seo: Component = {
   uid: 'shared.seo',
@@ -85,5 +85,40 @@ describe('form model', () => {
       blocks: [{ __component: 'blocks.hero', title: 'Hero' }],
     });
     expect(payload).not.toHaveProperty('articles');
+  });
+
+  describe('media', () => {
+    const media = {
+      cover: { type: 'media' as const, allowedTypes: ['images' as const] },
+      gallery: { type: 'media' as const, multiple: true },
+    };
+    const file = (id: number) => ({ id, documentId: `f${id}`, name: `photo-${id}.png` });
+
+    it('is empty as null (single) or [] (multiple)', () => {
+      expect(toModel(media, null, components)).toEqual({ cover: null, gallery: [] });
+    });
+
+    it('maps populated files to ids, keeping the order', () => {
+      const model = toModel(media, { cover: file(3), gallery: [file(9), file(2)] }, components);
+      expect(model).toEqual({ cover: 3, gallery: [9, 2] });
+    });
+
+    it('keeps the populated files for previews', () => {
+      const files = mediaFilesOf(media, { cover: file(3), gallery: [file(9), file(2)] });
+      expect(files['cover'].map((item) => item.id)).toEqual([3]);
+      expect(files['gallery'].map((item) => item.id)).toEqual([9, 2]);
+      expect(mediaFilesOf(media, null)).toEqual({ cover: [], gallery: [] });
+    });
+
+    it('sends ids in the payload', () => {
+      expect(toPayload(media, { cover: 3, gallery: [9, 2] }, components)).toEqual({
+        cover: 3,
+        gallery: [9, 2],
+      });
+      expect(toPayload(media, { cover: null, gallery: [] }, components)).toEqual({
+        cover: null,
+        gallery: [],
+      });
+    });
   });
 });

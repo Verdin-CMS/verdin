@@ -2,6 +2,7 @@
 //! (docs/architecture.md §11).
 
 mod input;
+pub mod media;
 mod output;
 mod service;
 

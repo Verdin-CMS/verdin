@@ -99,6 +99,34 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
 
+  s3:
+    name: test (s3 storage, RustFS)
+    runs-on: ubuntu-latest
+    services:
+      rustfs:
+        image: rustfs/rustfs:latest
+        ports:
+          - 9000:9000
+        env:
+          RUSTFS_ACCESS_KEY: verdin
+          RUSTFS_SECRET_KEY: verdin-secret
+    env:
+      AWS_ACCESS_KEY_ID: verdin
+      AWS_SECRET_ACCESS_KEY: verdin-secret
+      AWS_DEFAULT_REGION: us-east-1
+      VERDIN_TEST_S3_ENDPOINT: http://localhost:9000
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Create the bucket
+        run: |
+          for i in $(seq 1 30); do
+            aws --endpoint-url "$VERDIN_TEST_S3_ENDPOINT" s3 mb s3://verdin && break
+            sleep 2
+          done
+      - run: cargo test -p verdin-upload --test s3
+
   admin:
     runs-on: ubuntu-latest
     defaults:

@@ -9,6 +9,7 @@ import builder from './en/builder';
 import common from './en/common';
 import content from './en/content';
 import engagement from './en/engagement';
+import media from './en/media';
 import settings from './en/settings';
 import shell from './en/shell';
 
@@ -24,6 +25,7 @@ export const en = {
   ...builder,
   ...settings,
   ...engagement,
+  ...media,
 };
 
 export type MessageKey = keyof typeof en;

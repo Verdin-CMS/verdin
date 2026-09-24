@@ -134,6 +134,11 @@ impl Parser<'_> {
         match field.category {
             FieldCategory::Scalar => {}
             FieldCategory::Relation => return self.relation_filter(field, node),
+            FieldCategory::Media => {
+                return Err(QueryError::new(format!(
+                    "filtering on media fields (`{name}`) is not supported yet"
+                )));
+            }
             FieldCategory::Nested => {
                 return match field.attribute.as_ref().map(|attribute| &attribute.kind) {
                     Some(AttributeKind::Component { component, repeatable: false, .. }) => {
@@ -189,6 +194,7 @@ impl Parser<'_> {
                         category,
                         attribute: Some(attribute.clone()),
                         relation: None,
+                        media: None,
                     };
                     self.operator_filters(&field, child_path, value)?
                 }

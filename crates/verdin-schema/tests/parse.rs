@@ -296,6 +296,18 @@ fn checks_components() {
     let mut sources = blog();
     sources.push(component("shared", "link", json!({ "displayName": "Link", "attributes": { "to": { "type": "relation", "relation": "manyToOne", "target": "article" } } })));
     assert_error(&sources, "relations inside components must be `oneWay` or `manyWay`");
+
+    let mut sources = blog();
+    sources.push(component(
+        "shared",
+        "photo",
+        json!({ "displayName": "Photo", "attributes": { "file": { "type": "media" } } }),
+    ));
+    assert_error(&sources, "media fields inside components are not supported yet");
+
+    let mut sources = blog();
+    sources.push(ct("upload", json!({ "kind": "collectionType", "singularName": "upload", "pluralName": "uploads", "displayName": "Upload", "attributes": {} })));
+    assert_error(&sources, "`upload` is reserved by the API");
 }
 
 #[test]
@@ -303,7 +315,7 @@ fn collects_all_errors() {
     let sources = replace(
         blog(),
         tag_with(
-            json!({ "Bad": { "type": "string" }, "worse": { "type": "media" }, "slug": { "type": "uid", "targetField": "nope" } }),
+            json!({ "Bad": { "type": "string" }, "worse": { "type": "blocks" }, "slug": { "type": "uid", "targetField": "nope" } }),
         ),
     );
     assert_eq!(errors(&sources).len(), 3);

@@ -16,9 +16,9 @@ use verdin_db::Database;
 use verdin_migrate::{ApplyOptions, MigrateError, Renames, Risk, Status};
 use verdin_schema::{Schema, SchemaErrors, Source};
 
-use crate::admin_ui;
 use crate::config::Config;
 use crate::server::{self, AppState};
+use crate::{admin_ui, uploads};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -42,6 +42,7 @@ pub struct AppContext {
     pub db: Database,
     pub auth: AuthService,
     pub mode: Mode,
+    pub upload: verdin_upload::UploadService,
 }
 
 impl AppContext {
@@ -78,12 +79,17 @@ pub fn build_app(
         ..Default::default()
     };
     let output = verdin_content::OutputOptions { decimal_as_string: api.decimal_as_string };
+    let http = verdin_api::HttpLimits {
+        body_limit: context.config.server.body_limit,
+        request_timeout: context.config.server.request_timeout(),
+    };
     let content_api = verdin_api::router(
         context.db.clone(),
         registry.clone(),
         context.auth.clone(),
-        verdin_api::ApiConfig { limits, output },
+        verdin_api::ApiConfig { limits, output, http },
         &api.prefix,
+        Some(context.upload.clone()),
     );
     let admin_api = verdin_api::admin_router(
         context.db.clone(),
@@ -97,16 +103,27 @@ pub fn build_app(
             mode: context.mode.as_str(),
             auth_rate_limit: admin.auth_rate_limit,
             schema_editor: editor,
+            http,
+            upload: Some(context.upload.clone()),
         },
     );
     let mut app = server::router(
         AppState { db: context.db.clone() },
-        &context.config.server,
         &[(api.prefix.clone(), content_api), (format!("{}/api", admin.path), admin_api)],
     );
+    if let Some(dir) = context.upload.storage().local_dir() {
+        app = app.nest_service("/uploads", uploads::service(dir.to_owned()));
+    }
     let assets_dir = admin.assets_dir.as_ref().map(|dir| context.root.join(dir));
     if let Some(assets) = admin_ui::Assets::resolve(assets_dir.as_deref()) {
-        app = app.merge(admin_ui::router(assets, &admin.path, context.mode.as_str()));
+        let media: Vec<String> = context.upload.storage().public_origin().into_iter().collect();
+        app = app.merge(admin_ui::router(
+            assets,
+            &admin.path,
+            context.mode.as_str(),
+            &api.prefix,
+            &media,
+        ));
     }
     app
 }

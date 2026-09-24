@@ -24,6 +24,9 @@ pub const RESERVED_CONTENT_TYPE_ATTRIBUTES: &[&str] = &[
     "updatedBy",
 ];
 
+/// Content type names that would collide with API routes (`/api/upload`…).
+pub const RESERVED_ROUTE_NAMES: &[&str] = &["upload", "uploads"];
+
 /// Attribute names reserved on components (each stored component item carries an `id`).
 pub const RESERVED_COMPONENT_ATTRIBUTES: &[&str] = &["id"];
 
@@ -166,6 +169,13 @@ fn parse_content_type(source: &Source, report: &mut Report) -> Option<ContentTyp
             "collectionName",
             format!("`{SYSTEM_TABLE_PREFIX}` is reserved for system tables"),
         );
+    }
+
+    // Routes of the content API that are not content types.
+    for (field, name) in [("singularName", &raw.singular_name), ("pluralName", &raw.plural_name)] {
+        if RESERVED_ROUTE_NAMES.contains(&name.as_str()) {
+            report.push(file, field, format!("`{name}` is reserved by the API"));
+        }
     }
 
     let attributes = convert_attributes(raw.attributes, file, report);
@@ -332,6 +342,9 @@ fn check_attributes(
                     report.push(file, at("targetField"), format!("unknown attribute `{target}`"))
                 }
             },
+            AttributeKind::Media { .. } if in_component => {
+                report.push(file, at(""), "media fields inside components are not supported yet")
+            }
             AttributeKind::Relation { relation, target, inversed_by, mapped_by } => {
                 let Some(target_type) = schema.content_type(target) else {
                     report.push(file, at("target"), format!("unknown content type `{target}`"));

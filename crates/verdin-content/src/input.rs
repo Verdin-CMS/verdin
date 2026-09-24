@@ -11,8 +11,8 @@ use regex::Regex;
 use rust_decimal::Decimal;
 use serde_json::{Map, Value as Json};
 use verdin_db::SqlValue;
-use verdin_query::RelationInfo;
 use verdin_query::temporal::{parse_date, parse_datetime, parse_time};
+use verdin_query::{MediaInfo, RelationInfo};
 use verdin_schema::{Attribute, AttributeKind, Schema};
 
 use crate::output::{OutputOptions, value_to_json};
@@ -53,11 +53,20 @@ pub enum Position {
     After(String),
 }
 
-/// Column assignments and relation writes of one request.
+/// Replaces the files of one media attribute (file ids, in order).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MediaWrite {
+    pub field: String,
+    pub info: MediaInfo,
+    pub files: Vec<i64>,
+}
+
+/// Column assignments, relation and media writes of one request.
 #[derive(Debug, Default)]
 pub struct Prepared {
     pub columns: Vec<(String, SqlValue)>,
     pub relations: Vec<RelationWrite>,
+    pub media: Vec<MediaWrite>,
 }
 
 /// Validates `data` for a create (`is_create`) or a partial update. On create, attribute
@@ -74,6 +83,7 @@ pub fn prepare(
     let mut issues = Vec::new();
     let mut columns = Vec::new();
     let mut relations = Vec::new();
+    let mut media = Vec::new();
 
     for (key, value) in object {
         match model.content_type.attributes.get(key) {
@@ -97,12 +107,20 @@ pub fn prepare(
                     Err(message) => issues.push(Issue::new(vec![key.clone().into()], message)),
                 }
             }
+            Some(Attribute { kind: AttributeKind::Media { .. }, .. }) => {
+                let field = model.fields.get(key).expect("attribute field");
+                let info = field.media.clone().expect("media info");
+                match media_ids(value, info.multiple) {
+                    Ok(files) => media.push(MediaWrite { field: key.clone(), info, files }),
+                    Err(message) => issues.push(Issue::new(vec![key.clone().into()], message)),
+                }
+            }
             Some(_) => {}
         }
     }
 
     for (name, attribute) in &model.content_type.attributes {
-        if matches!(attribute.kind, AttributeKind::Relation { .. }) {
+        if matches!(attribute.kind, AttributeKind::Relation { .. } | AttributeKind::Media { .. }) {
             continue;
         }
         let value = match object.get(name) {
@@ -132,7 +150,39 @@ pub fn prepare(
         }
     }
 
-    if issues.is_empty() { Ok(Prepared { columns, relations }) } else { Err(issues) }
+    if issues.is_empty() { Ok(Prepared { columns, relations, media }) } else { Err(issues) }
+}
+
+/// Media input (Strapi v5): a file id, `{ "id": … }`, a list of them, or `null`.
+fn media_ids(value: &Json, multiple: bool) -> Result<Vec<i64>, String> {
+    fn id(value: &Json) -> Option<i64> {
+        match value {
+            Json::Number(number) => number.as_i64(),
+            Json::String(text) => text.parse().ok(),
+            Json::Object(object) => object.get("id").and_then(id),
+            _ => None,
+        }
+        .filter(|id| *id > 0)
+    }
+    let ids: Vec<i64> = match value {
+        Json::Null => Vec::new(),
+        Json::Array(items) => items
+            .iter()
+            .map(id)
+            .collect::<Option<_>>()
+            .ok_or("media fields take file ids or `{ \"id\": … }`")?,
+        other => vec![id(other).ok_or("media fields take file ids or `{ \"id\": … }`")?],
+    };
+    let mut unique = Vec::with_capacity(ids.len());
+    for id in ids {
+        if !unique.contains(&id) {
+            unique.push(id);
+        }
+    }
+    if !multiple && unique.len() > 1 {
+        return Err("this media field holds a single file".into());
+    }
+    Ok(unique)
 }
 
 /// Parses Strapi v5 relation input: `"id"`, `{ documentId }`, `[..]`, `null`, or
@@ -447,6 +497,9 @@ fn convert(
         AttributeKind::Relation { .. } => {
             return Err(fail("writing relations is not supported yet".into()));
         }
+        AttributeKind::Media { .. } => {
+            return Err(fail("media fields are not supported here".into()));
+        }
     };
     Ok(Converted::Sql(value))
 }
@@ -613,9 +666,13 @@ pub fn check_required(
             Json::Array(items) => items.is_empty(),
             _ => false,
         };
+        // Links are checked by the document service (they are not in the row).
         if attribute.required
             && missing
-            && !matches!(attribute.kind, AttributeKind::Relation { .. })
+            && !matches!(
+                attribute.kind,
+                AttributeKind::Relation { .. } | AttributeKind::Media { .. }
+            )
         {
             issues.push(Issue::new(attribute_path.clone(), format!("{name} is a required field")));
             continue;

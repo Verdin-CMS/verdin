@@ -14,7 +14,7 @@ import { HlmTextareaImports } from '@spartan-ng/helm/textarea';
 import { Api, ApiFailure, toQuery } from '../../../core/api';
 import { I18n } from '../../../core/i18n/i18n';
 import { Schema } from '../../../core/schema';
-import { Attribute, Attributes } from '../../../core/types';
+import { Attribute, Attributes, MediaFile } from '../../../core/types';
 import {
   DateControl,
   DateTimeControl,
@@ -23,6 +23,7 @@ import {
   NumberControl,
   SwitchControl,
 } from './controls';
+import { MediaControl } from './media-control';
 import { FormModel, isToMany, keyed, newComponentItem } from './model';
 import { RelationControl } from './relation';
 
@@ -62,6 +63,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
     DateTimeControl,
     JsonControl,
     RelationControl,
+    MediaControl,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -429,6 +431,15 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                     />
                   }
                 }
+                @case ('media') {
+                  <vd-media-control
+                    [inputId]="id"
+                    [multiple]="!!attribute.multiple"
+                    [allowedTypes]="attribute.allowedTypes ?? []"
+                    [initialFiles]="mediaFiles()[name] ?? []"
+                    [formField]="child(name)"
+                  />
+                }
                 @default {
                   <input hlmInput [id]="id" [formField]="child(name)" />
                 }
@@ -461,6 +472,8 @@ export class FieldsComponent {
   readonly prefix = input('field');
   /** Labels of related documents, per relation attribute. */
   readonly relationLabels = input<Record<string, Record<string, string>>>({});
+  /** Files of media attributes in the loaded document (top-level only). */
+  readonly mediaFiles = input<Record<string, MediaFile[]>>({});
   /** Read-only `mappedBy` relations, per attribute. */
   readonly inverse = input<Record<string, { id: string; label: string }[]>>({});
 

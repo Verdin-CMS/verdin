@@ -1,0 +1,36 @@
+[package]
+name = "verdin-upload"
+description = "Media library for Verdin: storage providers, file metadata and image formats"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+bytes = "1.12.1"
+futures = "0.3.34"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif", "tiff", "bmp"] }
+infer = "0.22.0"
+mime_guess = "2.0.5"
+object_store = { version = "0.14.2", features = ["aws"] }
+rust_decimal = "1.43.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+time = "0.3.55"
+tokio = { version = "1.53.1", features = ["fs", "io-util", "rt"] }
+tracing = "0.1.44"
+ulid = "3.0.0"
+verdin-content = { version = "0.1.0", path = "../verdin-content" }
+verdin-db = { version = "0.1.0", path = "../verdin-db" }
+verdin-migrate = { version = "0.1.0", path = "../verdin-migrate" }
+verdin-query = { version = "0.1.0", path = "../verdin-query" }
+verdin-schema = { version = "0.1.0", path = "../verdin-schema" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }

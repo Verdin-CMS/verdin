@@ -6,6 +6,9 @@
 #   mysql://verdin:verdin@localhost:3384/verdin      (MySQL 8.4)
 #   mysql://verdin:verdin@localhost:3311/verdin      (MariaDB 10.11)
 #   mysql://verdin:verdin@localhost:3314/verdin      (MariaDB 11.4)
+# S3-compatible storage (RustFS) for the media library: http://localhost:9000, bucket
+# `verdin` (create it with `docker compose -f docker/compose.dev.yml run --rm rustfs-bucket`),
+# access key `verdin` / secret `verdin-secret`, console on :9001.
 # Integration tests create a database per test, so on MySQL/MariaDB they need
 # root (password `verdin`): mysql://root:verdin@localhost:3384/verdin
 name: verdin-dev
@@ -64,3 +67,23 @@ services:
     <<: *mariadb
     image: mariadb:11.4
     ports: ["3314:3306"]
+
+  # S3-compatible storage (RustFS) for the media library.
+  rustfs:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: verdin
+      RUSTFS_SECRET_KEY: verdin-secret
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports: ["9000:9000", "9001:9001"]
+
+  # Creates the `verdin` bucket (run once: `docker compose … run --rm rustfs-bucket`).
+  rustfs-bucket:
+    image: amazon/aws-cli:latest
+    depends_on: [rustfs]
+    environment:
+      AWS_ACCESS_KEY_ID: verdin
+      AWS_SECRET_ACCESS_KEY: verdin-secret
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["sh", "-c", "sleep 3; aws --endpoint-url http://rustfs:9000 s3 mb s3://verdin || aws --endpoint-url http://rustfs:9000 s3 ls s3://verdin"]
+    profiles: [tools]

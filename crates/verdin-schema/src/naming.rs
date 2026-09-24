@@ -31,6 +31,11 @@ pub fn link_table_name(table: &str, attribute: &str) -> String {
     bounded(&format!("{table}_{}_lnk", snake_case(attribute)))
 }
 
+/// Media links of an attribute: `{table}_{column}_mda`, bounded.
+pub fn media_table_name(table: &str, attribute: &str) -> String {
+    bounded(&format!("{table}_{}_mda", snake_case(attribute)))
+}
+
 /// `singularName`, `pluralName`, component categories and names: `^[a-z][a-z0-9-]*$`,
 /// without leading, trailing or doubled dashes.
 pub fn is_kebab_name(name: &str) -> bool {

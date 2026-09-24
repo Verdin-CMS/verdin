@@ -9,6 +9,20 @@ test.afterEach(() => {
   if (afterEachProblems.length) console.log(afterEachProblems.join('\n'));
 });
 
+/** A 1×1 PNG. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+/** The admin access token the page holds (it lives in memory, so ask the API). */
+async function token(page: import('@playwright/test').Page): Promise<string> {
+  const response = await page.request.post('/admin/api/auth/refresh', {
+    headers: { 'x-verdin-csrf': '1' },
+  });
+  return (await response.json()).data.accessToken;
+}
+
 test('create a type, write content, publish it and read it over the API', async ({
   page,
   request,
@@ -48,12 +62,17 @@ test('create a type, write content, publish it and read it over the API', async 
   await dialog.getByLabel('Name').fill('body');
   await dialog.getByLabel('Type').selectOption('text');
   await dialog.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await dialog.getByLabel('Name').fill('cover');
+  await dialog.getByLabel('Type').selectOption('media');
+  await dialog.getByRole('button', { name: 'Done' }).click();
 
   await page.screenshot({ path: 'test-results/screens/builder.png' });
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(dialog.getByRole('heading', { name: 'Review the migration' })).toBeVisible();
   await page.screenshot({ path: 'test-results/screens/plan.png' });
-  await expect(dialog.getByText('create table articles')).toBeVisible();
+  await expect(dialog.getByText('create table articles').first()).toBeVisible();
+  await expect(dialog.getByText('create table articles_cover_mda')).toBeVisible();
   await dialog.getByRole('button', { name: 'Apply' }).click();
   await expect(page.getByText('Schema updated')).toBeVisible();
   const file = join(project, 'schema', 'content-types', 'article.json');
@@ -94,6 +113,36 @@ test('create a type, write content, publish it and read it over the API', async 
     body: 'Written by Playwright.',
   });
   expect(body.data[0].publishedAt).toBeTruthy();
+
+  // Media library: upload an image, then pick it for the article's cover.
+  await page.getByRole('link', { name: 'Media library' }).click();
+  await page
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({ name: 'sunset.png', mimeType: 'image/png', buffer: PNG });
+  await expect(page.getByText('sunset.png').first()).toBeVisible();
+  const files = await (
+    await request.get('/admin/api/upload/files', {
+      headers: { authorization: `Bearer ${await token(page)}` },
+    })
+  ).json();
+  const uploaded = files.data[0];
+  expect(uploaded).toMatchObject({ name: 'sunset.png', mime: 'image/png', width: 1, height: 1 });
+  const served = await request.get(uploaded.url);
+  expect(served.status()).toBe(200);
+  expect(served.headers()['content-security-policy']).toContain('sandbox');
+
+  await page.getByRole('link', { name: 'Article', exact: true }).first().click();
+  await page.getByRole('cell', { name: 'Hello from Playwright' }).click();
+  await page.getByRole('button', { name: 'Cover' }).click();
+  await dialog
+    .getByRole('button', { name: /sunset\.png/ })
+    .first()
+    .click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole('button', { name: /^Save/ }).click();
+  await page.reload();
+  await expect(page.getByRole('img', { name: 'sunset.png' }).first()).toBeVisible();
 
   // Votes on the entry itself.
   await page.getByRole('link', { name: 'Article', exact: true }).first().click();
@@ -140,6 +189,7 @@ test('create a type, write content, publish it and read it over the API', async 
       ['list', '/admin/content/api::article'],
       ['edit', `/admin/content/api::article/${documentId}`],
       ['builder', '/admin/builder/article'],
+      ['media', '/admin/media'],
       ['users', '/admin/settings/users'],
       ['roles', '/admin/settings/roles'],
       ['tokens', '/admin/settings/tokens'],

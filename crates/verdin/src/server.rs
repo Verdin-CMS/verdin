@@ -3,13 +3,9 @@ use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::{Value, json};
-use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
-use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 use verdin_db::Database;
-
-use crate::config::ServerConfig;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -17,7 +13,7 @@ pub struct AppState {
 }
 
 /// Health endpoints plus the given routers nested at their paths, behind shared layers.
-pub fn router(state: AppState, config: &ServerConfig, nested: &[(String, Router)]) -> Router {
+pub fn router(state: AppState, nested: &[(String, Router)]) -> Router {
     let mut router =
         Router::new().route("/_health", get(health)).route("/_ready", get(ready)).with_state(state);
     for (path, nested_router) in nested {
@@ -25,8 +21,7 @@ pub fn router(state: AppState, config: &ServerConfig, nested: &[(String, Router)
     }
     router
         // Layers run bottom-up on requests: the request id is set before tracing sees it.
-        .layer(RequestBodyLimitLayer::new(config.body_limit))
-        .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, config.request_timeout()))
+        // Body limits and timeouts are applied by the API routers (uploads have their own).
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(TraceLayer::new_for_http().make_span_with(|request: &Request| {
             let request_id = request
@@ -68,7 +63,7 @@ mod tests {
 
     async fn app() -> (Router, Database) {
         let db = Database::connect("sqlite::memory:", &ConnectOptions::default()).await.unwrap();
-        (router(AppState { db: db.clone() }, &ServerConfig::default(), &[]), db)
+        (router(AppState { db: db.clone() }, &[]), db)
     }
 
     async fn get_json(app: Router, uri: &str) -> (StatusCode, Option<String>, Value) {

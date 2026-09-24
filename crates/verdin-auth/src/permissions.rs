@@ -15,11 +15,20 @@ pub mod actions {
     pub const ROLES_MANAGE: &str = "roles.manage";
     pub const TOKENS_MANAGE: &str = "tokens.manage";
     pub const SCHEMA_MANAGE: &str = "schema.manage";
+    pub const MEDIA_READ: &str = "media.read";
+    pub const MEDIA_CREATE: &str = "media.create";
+    pub const MEDIA_UPDATE: &str = "media.update";
+    pub const MEDIA_DELETE: &str = "media.delete";
 
     pub const CONTENT: &[&str] =
         &[CONTENT_READ, CONTENT_CREATE, CONTENT_UPDATE, CONTENT_DELETE, CONTENT_PUBLISH];
     pub const SETTINGS: &[&str] = &[USERS_MANAGE, ROLES_MANAGE, TOKENS_MANAGE, SCHEMA_MANAGE];
+    /// Media library actions: no subject; `is-creator` limits them to the user's files.
+    pub const MEDIA: &[&str] = &[MEDIA_READ, MEDIA_CREATE, MEDIA_UPDATE, MEDIA_DELETE];
 }
+
+/// Content API subject of the media library (Strapi's upload plugin).
+pub const UPLOAD_SUBJECT: &str = "plugin::upload";
 
 /// Restricts a content permission to documents the user created.
 pub const IS_CREATOR: &str = "is-creator";
@@ -43,7 +52,8 @@ impl Permission {
     pub fn validate(&self) -> Result<(), String> {
         let content = actions::CONTENT.contains(&self.action.as_str());
         let settings = actions::SETTINGS.contains(&self.action.as_str());
-        if !content && !settings {
+        let media = actions::MEDIA.contains(&self.action.as_str());
+        if !content && !settings && !media {
             return Err(format!("unknown action `{}`", self.action));
         }
         if content && self.subject.is_none() {
@@ -51,6 +61,9 @@ impl Permission {
         }
         if settings && (self.subject.is_some() || !self.conditions.is_empty()) {
             return Err(format!("`{}` takes no subject or conditions", self.action));
+        }
+        if media && self.subject.is_some() {
+            return Err(format!("`{}` takes no subject", self.action));
         }
         if let Some(condition) = self.conditions.iter().find(|condition| *condition != IS_CREATOR) {
             return Err(format!("unknown condition `{condition}`"));
@@ -98,6 +111,21 @@ impl PermissionSet {
         grant
     }
 
+    /// Media library actions (subject-less, optionally limited to the user's own files).
+    pub fn media(&self, action: &str) -> Grant {
+        if self.super_admin {
+            return Grant::All;
+        }
+        let mut grant = Grant::None;
+        for permission in self.permissions.iter().filter(|p| p.action == action) {
+            if permission.conditions.is_empty() {
+                return Grant::All;
+            }
+            grant = Grant::Own;
+        }
+        grant
+    }
+
     pub fn allows(&self, action: &str) -> bool {
         self.super_admin || self.permissions.iter().any(|permission| permission.action == action)
     }
@@ -111,13 +139,13 @@ pub fn builtin_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<Per
         subject: Some(ALL_SUBJECTS.into()),
         conditions: conditions.iter().map(|condition| (*condition).into()).collect(),
     };
-    vec![
+    let mut roles = vec![
         (SUPER_ADMIN, "Super Admin", "Everything, including users, roles and tokens.", Vec::new()),
         (
             EDITOR,
             "Editor",
             "Creates, edits, publishes and deletes all content.",
-            actions::CONTENT.iter().map(|action| content(action, &[])).collect(),
+            actions::CONTENT.iter().map(|action| content(action, &[])).collect::<Vec<_>>(),
         ),
         (
             AUTHOR,
@@ -133,7 +161,42 @@ pub fn builtin_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<Per
             .map(|action| content(action, &[IS_CREATOR]))
             .collect(),
         ),
-    ]
+    ];
+    for (code, _, _, permissions) in &mut roles {
+        permissions.extend(
+            builtin_additions(2).into_iter().filter(|(role, _)| role == code).flat_map(|(_, p)| p),
+        );
+    }
+    roles
+}
+
+/// Version of the built-in roles' permissions. Existing installations receive the
+/// permissions added since their version once (see `AuthService::bootstrap`).
+pub const BUILTIN_PERMISSIONS_VERSION: i64 = 2;
+
+/// Permissions introduced by a version, per built-in role.
+pub fn builtin_additions(version: i64) -> Vec<(&'static str, Vec<Permission>)> {
+    let media = |action: &str, conditions: &[&str]| Permission {
+        action: action.into(),
+        subject: None,
+        conditions: conditions.iter().map(|condition| (*condition).into()).collect(),
+    };
+    match version {
+        // 0.2: the media library.
+        2 => vec![
+            (EDITOR, actions::MEDIA.iter().map(|action| media(action, &[])).collect()),
+            (
+                AUTHOR,
+                vec![
+                    media(actions::MEDIA_READ, &[]),
+                    media(actions::MEDIA_CREATE, &[]),
+                    media(actions::MEDIA_UPDATE, &[IS_CREATOR]),
+                    media(actions::MEDIA_DELETE, &[IS_CREATOR]),
+                ],
+            ),
+        ],
+        _ => Vec::new(),
+    }
 }
 
 /// Content API actions (public role and API tokens).

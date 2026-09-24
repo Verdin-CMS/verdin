@@ -141,6 +141,52 @@ pub enum AttributeKind {
         min: Option<u32>,
         max: Option<u32>,
     },
+    /// Files from the media library, linked through `{table}_{field}_mda` (§8.7).
+    Media {
+        multiple: bool,
+        /// Empty means any file.
+        allowed_types: Vec<MediaType>,
+    },
+}
+
+/// Kinds of files a media attribute accepts (Strapi's `allowedTypes`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MediaType {
+    Images,
+    Videos,
+    Audios,
+    Files,
+}
+
+impl MediaType {
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "images" => Self::Images,
+            "videos" => Self::Videos,
+            "audios" => Self::Audios,
+            "files" => Self::Files,
+            _ => return None,
+        })
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Images => "images",
+            Self::Videos => "videos",
+            Self::Audios => "audios",
+            Self::Files => "files",
+        }
+    }
+
+    /// The category of a MIME type: `image/*`, `video/*`, `audio/*`, anything else.
+    pub fn of_mime(mime: &str) -> Self {
+        match mime.split('/').next() {
+            Some("image") => Self::Images,
+            Some("video") => Self::Videos,
+            Some("audio") => Self::Audios,
+            _ => Self::Files,
+        }
+    }
 }
 
 impl AttributeKind {
@@ -165,6 +211,7 @@ impl AttributeKind {
             AttributeKind::Relation { .. } => "relation",
             AttributeKind::Component { .. } => "component",
             AttributeKind::DynamicZone { .. } => "dynamiczone",
+            AttributeKind::Media { .. } => "media",
         }
     }
 
@@ -193,7 +240,7 @@ impl AttributeKind {
     /// Whether the attribute is stored as a column on the owning row.
     /// Relations live in link tables instead.
     pub fn has_column(&self) -> bool {
-        !matches!(self, AttributeKind::Relation { .. })
+        !matches!(self, AttributeKind::Relation { .. } | AttributeKind::Media { .. })
     }
 }
 

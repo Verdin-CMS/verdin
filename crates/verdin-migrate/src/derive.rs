@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use verdin_schema::naming::link_table_name;
+use verdin_schema::naming::{link_table_name, media_table_name};
 use verdin_schema::{Attribute, AttributeKind, ContentType, Schema, VARCHAR_LENGTH};
 
 use crate::model::{Column, ColumnDefault, ColumnType, DbModel, ForeignKey, Index, Table};
@@ -48,6 +48,10 @@ pub fn derive_content_model(schema: &Schema) -> DbModel {
                 let link = link_table(&table.name, name, relation.is_to_many());
                 tables.insert(link.name.clone(), link);
             }
+            if let AttributeKind::Media { multiple, .. } = &attribute.kind {
+                let link = media_table(&table.name, name, *multiple);
+                tables.insert(link.name.clone(), link);
+            }
         }
         tables.insert(table.name.clone(), table);
     }
@@ -90,6 +94,52 @@ fn link_table(source_table: &str, attribute: &str, to_many: bool) -> Table {
             table: source_table.to_owned(),
             references: vec!["id".into()],
         }],
+        name,
+    }
+}
+
+/// Files of one media attribute: source row → `vd_files` row, ordered (§8.7).
+fn media_table(source_table: &str, attribute: &str, multiple: bool) -> Table {
+    let name = media_table_name(source_table, attribute);
+    let mut indexes = vec![
+        Index {
+            name: index_name(&name, "pair", "uq"),
+            columns: vec!["source_id".into(), "file_id".into()],
+            unique: true,
+        },
+        Index {
+            name: index_name(&name, "file", "idx"),
+            columns: vec!["file_id".into()],
+            unique: false,
+        },
+    ];
+    if !multiple {
+        indexes.push(Index {
+            name: index_name(&name, "source", "uq"),
+            columns: vec!["source_id".into()],
+            unique: true,
+        });
+    }
+    Table {
+        columns: vec![
+            Column::new("id", ColumnType::Id).not_null(),
+            Column::new("source_id", ColumnType::BigInt).not_null(),
+            Column::new("file_id", ColumnType::BigInt).not_null(),
+            Column::new("position", ColumnType::Double).not_null(),
+        ],
+        indexes,
+        foreign_keys: vec![
+            ForeignKey {
+                columns: vec!["source_id".into()],
+                table: source_table.to_owned(),
+                references: vec!["id".into()],
+            },
+            ForeignKey {
+                columns: vec!["file_id".into()],
+                table: crate::system::FILES.to_owned(),
+                references: vec!["id".into()],
+            },
+        ],
         name,
     }
 }
@@ -149,7 +199,7 @@ fn column_type(attribute: &Attribute) -> Option<ColumnType> {
         AttributeKind::Json
         | AttributeKind::Component { .. }
         | AttributeKind::DynamicZone { .. } => ColumnType::Json,
-        AttributeKind::Relation { .. } => return None,
+        AttributeKind::Relation { .. } | AttributeKind::Media { .. } => return None,
     })
 }
 

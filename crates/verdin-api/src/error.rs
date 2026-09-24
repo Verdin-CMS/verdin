@@ -18,6 +18,7 @@ pub enum ApiError {
     TooManyRequests,
     BadRequest(String),
     Conflict(String),
+    PayloadTooLarge(String),
     Content(ContentError),
     Internal(String),
 }
@@ -82,6 +83,9 @@ impl IntoResponse for ApiError {
             ApiError::Conflict(message) => {
                 (StatusCode::CONFLICT, "ConflictError", message, json!({}))
             }
+            ApiError::PayloadTooLarge(message) => {
+                (StatusCode::PAYLOAD_TOO_LARGE, "PayloadTooLargeError", message, json!({}))
+            }
             ApiError::Internal(message) => {
                 tracing::error!(%message, "internal error");
                 simple(
@@ -121,5 +125,18 @@ impl IntoResponse for ApiError {
             "error": { "status": status.as_u16(), "name": name, "message": message, "details": details },
         });
         (status, Json(body)).into_response()
+    }
+}
+
+impl From<verdin_upload::UploadError> for ApiError {
+    fn from(error: verdin_upload::UploadError) -> Self {
+        use verdin_upload::UploadError as E;
+        match error {
+            E::Validation(message) => ApiError::BadRequest(message),
+            E::NotFound => ApiError::NotFound,
+            E::TooLarge(_) => ApiError::PayloadTooLarge(error.to_string()),
+            E::Storage(message) => ApiError::Internal(message),
+            E::Db(error) => ApiError::Internal(error.to_string()),
+        }
     }
 }

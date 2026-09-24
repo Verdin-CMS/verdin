@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use verdin_db::ColumnKind;
-use verdin_schema::naming::link_table_name;
-use verdin_schema::{Attribute, AttributeKind, ContentType, RelationKind, Schema};
+use verdin_schema::naming::{link_table_name, media_table_name};
+use verdin_schema::{Attribute, AttributeKind, ContentType, MediaType, RelationKind, Schema};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldCategory {
@@ -15,6 +15,8 @@ pub enum FieldCategory {
     Nested,
     /// A relation: stored in link tables (M3).
     Relation,
+    /// Media library files: stored in a media link table, returned only when populated.
+    Media,
 }
 
 #[derive(Debug, Clone)]
@@ -29,6 +31,17 @@ pub struct Field {
     pub attribute: Option<Attribute>,
     /// Set for relations.
     pub relation: Option<RelationInfo>,
+    /// Set for media fields.
+    pub media: Option<MediaInfo>,
+}
+
+/// How a media field is stored (docs/architecture.md §8.7).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaInfo {
+    pub link_table: String,
+    pub multiple: bool,
+    /// Empty accepts any file.
+    pub allowed_types: Vec<MediaType>,
 }
 
 /// How a relation field is stored and resolved (docs/architecture.md §8.4).
@@ -90,6 +103,7 @@ impl TypeFields {
             category: FieldCategory::Scalar,
             attribute: None,
             relation: None,
+            media: None,
         };
         let mut fields = IndexMap::new();
         for field in [
@@ -100,12 +114,20 @@ impl TypeFields {
         }
         for (name, attribute) in &content_type.attributes {
             let (kind, category) = attribute_kind(&attribute.kind);
-            let column = if category == FieldCategory::Relation {
+            let column = if matches!(category, FieldCategory::Relation | FieldCategory::Media) {
                 String::new()
             } else {
                 Attribute::column_name(name)
             };
             let relation = relation_info(content_type, name, &attribute.kind, schema);
+            let media = match &attribute.kind {
+                AttributeKind::Media { multiple, allowed_types } => Some(MediaInfo {
+                    link_table: media_table_name(&content_type.collection_name, name),
+                    multiple: *multiple,
+                    allowed_types: allowed_types.clone(),
+                }),
+                _ => None,
+            };
             fields.insert(
                 name.clone(),
                 Field {
@@ -115,6 +137,7 @@ impl TypeFields {
                     category,
                     attribute: Some(attribute.clone()),
                     relation,
+                    media,
                 },
             );
         }
@@ -224,5 +247,6 @@ pub fn attribute_kind(kind: &AttributeKind) -> (ColumnKind, FieldCategory) {
         A::Json => scalar(ColumnKind::Json),
         A::Component { .. } | A::DynamicZone { .. } => (ColumnKind::Json, FieldCategory::Nested),
         A::Relation { .. } => (ColumnKind::Json, FieldCategory::Relation),
+        A::Media { .. } => (ColumnKind::Json, FieldCategory::Media),
     }
 }

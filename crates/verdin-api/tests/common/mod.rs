@@ -23,6 +23,8 @@ pub struct App {
     pub router: Router,
     pub test: TestDb,
     pub auth: AuthService,
+    /// The media library, backed by an in-memory store.
+    pub upload: verdin_upload::UploadService,
     /// A full-access API token, sent by default.
     pub token: String,
 }
@@ -32,6 +34,23 @@ pub struct App {
 pub enum As<'a> {
     Anonymous,
     Bearer(&'a str),
+}
+
+/// One part of a multipart body: a file (with `file_name`) or a text field.
+pub struct Part<'a> {
+    pub name: &'a str,
+    pub file_name: Option<&'a str>,
+    pub bytes: Vec<u8>,
+}
+
+impl<'a> Part<'a> {
+    pub fn file(name: &'a str, file_name: &'a str, bytes: Vec<u8>) -> Self {
+        Self { name, file_name: Some(file_name), bytes }
+    }
+
+    pub fn text(name: &'a str, text: &str) -> Self {
+        Self { name, file_name: None, bytes: text.as_bytes().to_vec() }
+    }
 }
 
 pub struct Response {
@@ -65,8 +84,18 @@ impl App {
             .await
             .unwrap();
         let registry = Registry::new(schema);
-        let admin =
-            AdminConfig { secure_cookies: false, auth_rate_limit: 1000, ..AdminConfig::default() };
+        let store = std::sync::Arc::new(object_store::memory::InMemory::new());
+        let upload = verdin_upload::UploadService::new(
+            test.db.clone(),
+            verdin_upload::Storage::with_store(store, "local", "/uploads"),
+            verdin_upload::UploadConfig { max_file_size: 2 * 1024 * 1024, ..Default::default() },
+        );
+        let admin = AdminConfig {
+            secure_cookies: false,
+            auth_rate_limit: 1000,
+            upload: Some(upload.clone()),
+            ..AdminConfig::default()
+        };
         let router = Router::new()
             .nest(
                 "/api",
@@ -76,13 +105,14 @@ impl App {
                     auth.clone(),
                     ApiConfig::default(),
                     "/api",
+                    Some(upload.clone()),
                 ),
             )
             .nest(
                 "/admin/api",
                 verdin_api::admin_router(test.db.clone(), registry, auth.clone(), admin),
             );
-        Self { router, test, auth, token }
+        Self { router, test, auth, upload, token }
     }
 
     pub async fn request(
@@ -105,6 +135,51 @@ impl App {
             .body(body.map_or_else(Body::empty, |body| Body::from(body.to_string())))
             .unwrap();
         let response = self.router.clone().oneshot(request).await.unwrap();
+        let status = response.status();
+        let headers = response.headers().clone();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let body =
+            if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap() };
+        Response { status, body, headers }
+    }
+
+    /// A `multipart/form-data` request.
+    pub async fn multipart(
+        &self,
+        method: Method,
+        uri: &str,
+        parts: &[Part<'_>],
+        who: As<'_>,
+    ) -> Response {
+        let boundary = "verdin-test-boundary";
+        let mut body = Vec::new();
+        for part in parts {
+            body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+            match part.file_name {
+                Some(file_name) => body.extend_from_slice(
+                    format!(
+                        "Content-Disposition: form-data; name=\"{}\"; filename=\"{file_name}\"\r\nContent-Type: application/octet-stream\r\n\r\n",
+                        part.name
+                    )
+                    .as_bytes(),
+                ),
+                None => body.extend_from_slice(
+                    format!("Content-Disposition: form-data; name=\"{}\"\r\n\r\n", part.name).as_bytes(),
+                ),
+            }
+            body.extend_from_slice(&part.bytes);
+            body.extend_from_slice(b"\r\n");
+        }
+        body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+        let mut request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("content-type", format!("multipart/form-data; boundary={boundary}"));
+        if let As::Bearer(token) = who {
+            request = request.header("authorization", format!("Bearer {token}"));
+        }
+        let response =
+            self.router.clone().oneshot(request.body(Body::from(body)).unwrap()).await.unwrap();
         let status = response.status();
         let headers = response.headers().clone();
         let bytes = response.into_body().collect().await.unwrap().to_bytes();

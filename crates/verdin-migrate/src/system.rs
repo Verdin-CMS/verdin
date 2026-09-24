@@ -18,6 +18,9 @@ pub const DOCUMENT_VIEWS: &str = "vd_document_views";
 pub const DOCUMENT_VOTES: &str = "vd_document_votes";
 pub const POLLS: &str = "vd_polls";
 pub const POLL_VOTES: &str = "vd_poll_votes";
+pub const FILES: &str = "vd_files";
+pub const FOLDERS: &str = "vd_folders";
+pub const SETTINGS: &str = "vd_settings";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -187,6 +190,81 @@ pub fn system_tables() -> Vec<Table> {
                 varchar("action", 32).not_null(),
             ],
             indexes: vec![unique(PUBLIC_PERMISSIONS, "grant", &["subject", "action"])],
+            foreign_keys: Vec::new(),
+        },
+        // Instance-wide settings and markers (feature switches, data upgrades).
+        Table {
+            name: SETTINGS.into(),
+            columns: vec![
+                id(),
+                varchar("key", 100).not_null(),
+                Column::new("value", ColumnType::Json),
+                Column::new("updated_at", ColumnType::DateTime).not_null(),
+            ],
+            indexes: vec![unique(SETTINGS, "key", &["key"])],
+            foreign_keys: Vec::new(),
+        },
+        // The media library (Strapi's `files`). No foreign keys: media link tables reference
+        // it, and tables are created in two groups (without, then with foreign keys).
+        Table {
+            name: FILES.into(),
+            columns: [
+                vec![
+                    id(),
+                    Column::new("document_id", ColumnType::Char { length: 26 }).not_null(),
+                    varchar("name", 255).not_null(),
+                    Column::new("alternative_text", ColumnType::Text),
+                    Column::new("caption", ColumnType::Text),
+                    Column::new("width", ColumnType::Integer),
+                    Column::new("height", ColumnType::Integer),
+                    Column::new("focal_point", ColumnType::Json),
+                    Column::new("formats", ColumnType::Json),
+                    varchar("hash", 255).not_null(),
+                    varchar("ext", 32).not_null(),
+                    varchar("mime", 255).not_null(),
+                    Column::new("size", ColumnType::Decimal { precision: 14, scale: 2 }).not_null(),
+                    Column::new("url", ColumnType::Text).not_null(),
+                    Column::new("preview_url", ColumnType::Text),
+                    varchar("provider", 64).not_null(),
+                    Column::new("provider_metadata", ColumnType::Json),
+                    Column::new("folder_id", ColumnType::BigInt),
+                    varchar("folder_path", 255).not_null(),
+                    Column::new("created_by", ColumnType::BigInt),
+                    Column::new("updated_by", ColumnType::BigInt),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![
+                unique(FILES, "document", &["document_id"]),
+                unique(FILES, "hash", &["hash"]),
+                index(FILES, "folder", &["folder_path"]),
+                index(FILES, "created", &["created_at"]),
+            ],
+            foreign_keys: Vec::new(),
+        },
+        // `path` is the chain of `path_id`s from the root, e.g. `/1/4` (Strapi's format).
+        Table {
+            name: FOLDERS.into(),
+            columns: [
+                vec![
+                    id(),
+                    Column::new("document_id", ColumnType::Char { length: 26 }).not_null(),
+                    varchar("name", 255).not_null(),
+                    Column::new("path_id", ColumnType::Integer).not_null(),
+                    varchar("path", 255).not_null(),
+                    Column::new("parent_id", ColumnType::BigInt),
+                    Column::new("created_by", ColumnType::BigInt),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![
+                unique(FOLDERS, "document", &["document_id"]),
+                unique(FOLDERS, "path_id", &["path_id"]),
+                unique(FOLDERS, "path", &["path"]),
+                index(FOLDERS, "parent", &["parent_id"]),
+            ],
             foreign_keys: Vec::new(),
         },
         // Which admin has seen which document version (removed when someone else edits it).

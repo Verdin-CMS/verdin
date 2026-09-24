@@ -9,8 +9,8 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 
 | Item | Size | Notes |
 |---|---|---|
-| **Media library** | L | `media` attribute type (single/multiple, allowed types), `vd_files` + folders, upload API (`POST /api/upload`, Strapi-compatible response), image metadata, thumbnails and responsive formats (`image` crate, generated on upload, WebP/AVIF), focal point, alt text and captions, drag-and-drop library in the admin with grid/list views, search and folders, picker dialog in forms |
-| Upload providers | M | Local disk (default) and S3-compatible (AWS, R2, MinIO, B2) through `object_store`; signed URLs for private buckets; size limits and MIME sniffing |
+| **Media library** ✅ | L | `media` attribute type (single/multiple, allowed types), `vd_files` + folders, upload API (`POST /api/upload`, Strapi-compatible response), image metadata, thumbnails and responsive formats (`image` crate, generated on upload, WebP/AVIF), focal point, alt text and captions, drag-and-drop library in the admin with grid/list views, search and folders, picker dialog in forms |
+| Upload providers ✅ | M | Local disk (default) and S3-compatible (AWS, R2, B2, RustFS) through `object_store`, size limits and MIME sniffing. Next: signed URLs for private buckets, WebP/AVIF variants, media inside components |
 | **Blocks editor** | L | Strapi `blocks` JSON format, TipTap-based editor in the admin (headings, lists, quotes, code, images from the media library, links) |
 | Markdown preview | S | Split view for `richtext` fields |
 | Relations inside components | M | Links from component JSON to documents: `_lnk` tables keyed by component path, populate and filters |

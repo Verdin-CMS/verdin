@@ -18,7 +18,8 @@ export type AttributeType =
   | 'json'
   | 'relation'
   | 'component'
-  | 'dynamiczone';
+  | 'dynamiczone'
+  | 'media';
 
 export type RelationKind =
   'oneToOne' | 'oneToMany' | 'manyToOne' | 'manyToMany' | 'oneWay' | 'manyWay';
@@ -47,6 +48,62 @@ export interface Attribute {
   component?: string;
   repeatable?: boolean;
   components?: string[];
+  /** Media fields. */
+  multiple?: boolean;
+  allowedTypes?: MediaKind[];
+}
+
+export type MediaKind = 'images' | 'videos' | 'audios' | 'files';
+
+/** A responsive version of an image (`thumbnail`, `small`…). */
+export interface MediaFormat {
+  name: string;
+  hash: string;
+  ext: string;
+  mime: string;
+  width: number;
+  height: number;
+  size: number;
+  url: string;
+}
+
+/** A media library file (Strapi's shape plus folder and author). */
+export interface MediaFile {
+  id: number;
+  documentId: string;
+  name: string;
+  alternativeText: string | null;
+  caption: string | null;
+  width: number | null;
+  height: number | null;
+  focalPoint: { x: number; y: number } | null;
+  formats: Record<string, MediaFormat> | null;
+  hash: string;
+  ext: string;
+  mime: string;
+  /** Kilobytes. */
+  size: number;
+  url: string;
+  previewUrl: string | null;
+  provider: string;
+  createdAt: string;
+  updatedAt: string;
+  folder?: number | null;
+  folderPath?: string;
+  createdBy?: number | null;
+}
+
+export interface MediaFolder {
+  id: number;
+  documentId: string;
+  name: string;
+  pathId: number;
+  path: string;
+  parent: number | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  childrenCount: number;
+  filesCount: number;
 }
 
 export type Attributes = Record<string, Attribute>;
@@ -184,6 +241,16 @@ export const ADMIN_CONTENT_ACTIONS = [
   'content.delete',
   'content.publish',
 ] as const;
+
+export const MEDIA_ACTIONS = [
+  'media.read',
+  'media.create',
+  'media.update',
+  'media.delete',
+] as const;
+
+/** Content API subject of the media library (grants and tokens). */
+export const UPLOAD_SUBJECT = 'plugin::upload';
 
 export const ADMIN_SETTINGS_ACTIONS = [
   'users.manage',

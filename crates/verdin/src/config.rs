@@ -18,6 +18,7 @@ pub struct Config {
     pub schema: SchemaConfig,
     pub api: ApiConfig,
     pub admin: AdminConfig,
+    pub upload: verdin_upload::UploadConfig,
     pub log: LogConfig,
 }
 

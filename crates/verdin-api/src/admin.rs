@@ -34,6 +34,8 @@ use crate::limiter::RateLimiter;
 
 #[path = "engagement.rs"]
 pub(crate) mod engagement;
+#[path = "upload_admin.rs"]
+mod upload_admin;
 
 pub const REFRESH_COOKIE: &str = "verdin_refresh";
 pub const CSRF_HEADER: &str = "x-verdin-csrf";
@@ -84,6 +86,9 @@ pub struct AdminConfig {
     pub auth_rate_limit: u32,
     /// Present in development mode: enables the content-type builder routes.
     pub schema_editor: Option<Arc<dyn SchemaEditor>>,
+    pub http: crate::HttpLimits,
+    /// The media library; its routes answer 404 without it.
+    pub upload: Option<verdin_upload::UploadService>,
 }
 
 impl Default for AdminConfig {
@@ -96,6 +101,8 @@ impl Default for AdminConfig {
             mode: "production",
             auth_rate_limit: 20,
             schema_editor: None,
+            http: crate::HttpLimits::default(),
+            upload: None,
         }
     }
 }
@@ -128,7 +135,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         limiter,
         refresh_limiter,
     };
-    Router::new()
+    let regular = Router::new()
         .route("/auth/status", get(auth_status))
         .route("/auth/register-first-admin", post(register_first_admin))
         .route("/auth/login", post(login))
@@ -156,9 +163,10 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .route("/schema/plan", post(schema_plan))
         .route("/schema/apply", post(schema_apply))
         .route("/system/info", get(system_info))
-        .merge(engagement::routes())
-        .fallback(|| async { ApiError::NotFound })
-        .with_state(state)
+        .merge(engagement::routes());
+    let http = state.config.http;
+    let uploads = upload_admin::routes(state.config.upload.as_ref());
+    http.apply(regular).merge(uploads).fallback(|| async { ApiError::NotFound }).with_state(state)
 }
 
 /// The client address when the server records it (`into_make_service_with_connect_info`).
@@ -552,12 +560,21 @@ fn grants(
     grants
         .into_iter()
         .map(|grant| {
-            state.service.registry().get(&grant.subject).map_err(|_| {
-                ApiError::BadRequest(format!("unknown content type `{}`", grant.subject))
-            })?;
+            let upload = grant.subject == verdin_auth::UPLOAD_SUBJECT;
+            if !upload {
+                state.service.registry().get(&grant.subject).map_err(|_| {
+                    ApiError::BadRequest(format!("unknown content type `{}`", grant.subject))
+                })?;
+            }
             let action = ContentAction::parse(&grant.action).ok_or_else(|| {
                 ApiError::BadRequest(format!("unknown content API action `{}`", grant.action))
             })?;
+            if upload && matches!(action, ContentAction::Publish | ContentAction::ReadDrafts) {
+                return Err(ApiError::BadRequest(format!(
+                    "`{}` does not apply to the media library",
+                    grant.action
+                )));
+            }
             Ok((grant.subject, action))
         })
         .collect()
@@ -766,6 +783,13 @@ fn attribute_json(attribute: &Attribute) -> Value {
             set("components", json!(components));
             set("min", json!(min));
             set("max", json!(max));
+        }
+        A::Media { multiple, allowed_types } => {
+            set("multiple", json!(multiple));
+            if !allowed_types.is_empty() {
+                let types: Vec<&str> = allowed_types.iter().map(|ty| ty.as_str()).collect();
+                set("allowedTypes", json!(types));
+            }
         }
     }
     Value::Object(out)

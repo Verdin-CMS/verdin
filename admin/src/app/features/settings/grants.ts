@@ -7,10 +7,22 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/messages/en';
 import { Schema } from '../../core/schema';
-import { CONTENT_ACTIONS, Grant } from '../../core/types';
+import { CONTENT_ACTIONS, Grant, UPLOAD_SUBJECT } from '../../core/types';
 
 type ContentAction = (typeof CONTENT_ACTIONS)[number];
 type Coverage = 'none' | 'some' | 'all';
+
+/** A matrix row: a content type or the media library. */
+interface Row {
+  subject: string;
+  label: string;
+  icon: string | null;
+  /** The actions that apply to the subject. */
+  actions: readonly ContentAction[];
+}
+
+/** Drafts and publishing do not apply to media files. */
+const UPLOAD_ACTIONS: readonly ContentAction[] = ['find', 'findOne', 'create', 'update', 'delete'];
 
 const ACTION_LABELS: Record<ContentAction, MessageKey> = {
   find: 'settings.grants.action.find',
@@ -29,85 +41,96 @@ const ACTION_LABELS: Record<ContentAction, MessageKey> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (types().length === 0) {
-      <div hlmEmpty class="rounded-xl border border-dashed py-12">
+      <div hlmEmpty class="mb-4 rounded-xl border border-dashed py-12">
         <div hlmEmptyHeader>
           <div hlmEmptyMedia variant="icon"><ng-icon name="lucideBlocks" /></div>
           <h2 hlmEmptyTitle>{{ t('settings.grants.emptyTitle') }}</h2>
           <p hlmEmptyDescription>{{ t('settings.grants.emptyHint') }}</p>
         </div>
       </div>
-    } @else {
-      <div class="bg-card overflow-hidden rounded-xl border">
-        <div hlmTableContainer class="max-h-[65vh] overflow-y-auto">
-          <table hlmTable>
-            <thead hlmTHead>
-              <tr hlmTr class="hover:bg-transparent">
-                <th hlmTh class="bg-muted sticky top-0 z-10 ps-4">
-                  {{ t('settings.grants.contentType') }}
+    }
+    <div class="bg-card overflow-hidden rounded-xl border">
+      <div hlmTableContainer class="max-h-[65vh] overflow-y-auto">
+        <table hlmTable>
+          <thead hlmTHead>
+            <tr hlmTr class="hover:bg-transparent">
+              <th hlmTh class="bg-muted sticky top-0 z-10 ps-4">
+                {{ t('settings.grants.contentType') }}
+              </th>
+              @for (action of actions; track action) {
+                <th hlmTh class="bg-muted sticky top-0 z-10 h-auto py-2 text-center">
+                  <div class="flex flex-col items-center gap-1.5">
+                    <span class="flex flex-col items-center leading-tight">
+                      <span>{{ t(labels[action]) }}</span>
+                      <span class="text-muted-foreground font-mono text-[10px] font-normal">{{
+                        action
+                      }}</span>
+                    </span>
+                    <hlm-checkbox
+                      [aria-label]="
+                        t('settings.grants.toggleColumn', { action: t(labels[action]) })
+                      "
+                      [checked]="columnCoverage(action) === 'all'"
+                      [indeterminate]="columnCoverage(action) === 'some'"
+                      [disabled]="disabled()"
+                      (checkedChange)="toggleColumn(action, $event)"
+                    />
+                  </div>
                 </th>
+              }
+            </tr>
+          </thead>
+          <tbody hlmTBody>
+            @for (row of rows(); track row.subject) {
+              <tr hlmTr [class.bg-muted/30]="!!row.icon">
+                <td hlmTd class="ps-4">
+                  <div class="flex items-center gap-3">
+                    <hlm-checkbox
+                      [aria-label]="t('settings.grants.toggleRow', { type: row.label })"
+                      [checked]="rowCoverage(row) === 'all'"
+                      [indeterminate]="rowCoverage(row) === 'some'"
+                      [disabled]="disabled()"
+                      (checkedChange)="toggleRow(row, $event)"
+                    />
+                    @if (row.icon) {
+                      <ng-icon [name]="row.icon" size="16" class="text-muted-foreground shrink-0" />
+                    }
+                    <div class="flex min-w-0 flex-col">
+                      <span class="font-medium">{{ row.label }}</span>
+                      <span class="text-muted-foreground font-mono text-xs">{{ row.subject }}</span>
+                    </div>
+                  </div>
+                </td>
                 @for (action of actions; track action) {
-                  <th hlmTh class="bg-muted sticky top-0 z-10 h-auto py-2 text-center">
-                    <div class="flex flex-col items-center gap-1.5">
-                      <span class="flex flex-col items-center leading-tight">
-                        <span>{{ t(labels[action]) }}</span>
-                        <span class="text-muted-foreground font-mono text-[10px] font-normal">{{
-                          action
-                        }}</span>
-                      </span>
-                      <hlm-checkbox
-                        [aria-label]="
-                          t('settings.grants.toggleColumn', { action: t(labels[action]) })
-                        "
-                        [checked]="columnCoverage(action) === 'all'"
-                        [indeterminate]="columnCoverage(action) === 'some'"
-                        [disabled]="disabled()"
-                        (checkedChange)="toggleColumn(action, $event)"
-                      />
-                    </div>
-                  </th>
-                }
-              </tr>
-            </thead>
-            <tbody hlmTBody>
-              @for (type of types(); track type.uid) {
-                <tr hlmTr>
-                  <td hlmTd class="ps-4">
-                    <div class="flex items-center gap-3">
-                      <hlm-checkbox
-                        [aria-label]="t('settings.grants.toggleRow', { type: type.displayName })"
-                        [checked]="rowCoverage(type.uid) === 'all'"
-                        [indeterminate]="rowCoverage(type.uid) === 'some'"
-                        [disabled]="disabled()"
-                        (checkedChange)="toggleRow(type.uid, $event)"
-                      />
-                      <div class="flex min-w-0 flex-col">
-                        <span class="font-medium">{{ type.displayName }}</span>
-                        <span class="text-muted-foreground font-mono text-xs">{{ type.uid }}</span>
-                      </div>
-                    </div>
-                  </td>
-                  @for (action of actions; track action) {
-                    <td hlmTd class="text-center">
+                  <td hlmTd class="text-center">
+                    @if (row.actions.includes(action)) {
                       <div class="flex justify-center">
                         <hlm-checkbox
-                          [aria-label]="type.displayName + ' ' + action"
-                          [checked]="has(type.uid, action)"
+                          [aria-label]="row.label + ' ' + action"
+                          [checked]="has(row.subject, action)"
                           [disabled]="disabled()"
-                          (checkedChange)="toggle(type.uid, action, $event)"
+                          (checkedChange)="toggle(row.subject, action, $event)"
                         />
                       </div>
-                    </td>
-                  }
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-        <div class="text-muted-foreground bg-muted/30 border-t px-4 py-2 text-xs">
-          {{ t('settings.grants.selected', { count: grants().length }) }}
-        </div>
+                    } @else {
+                      <span
+                        class="text-muted-foreground/60 text-sm"
+                        [attr.title]="t('settings.grants.notApplicable')"
+                        [attr.aria-label]="t('settings.grants.notApplicable')"
+                        >—</span
+                      >
+                    }
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
       </div>
-    }
+      <div class="text-muted-foreground bg-muted/30 border-t px-4 py-2 text-xs">
+        {{ t('settings.grants.selected', { count: grants().length }) }}
+      </div>
+    </div>
   `,
 })
 export class GrantsMatrix {
@@ -121,6 +144,21 @@ export class GrantsMatrix {
   protected readonly types = computed(() =>
     [...this.schema.contentTypes()].sort((a, b) => a.displayName.localeCompare(b.displayName)),
   );
+  /** Content types, then the media library. */
+  protected readonly rows = computed<Row[]>(() => [
+    ...this.types().map((type) => ({
+      subject: type.uid,
+      label: type.displayName,
+      icon: null,
+      actions: CONTENT_ACTIONS,
+    })),
+    {
+      subject: UPLOAD_SUBJECT,
+      label: this.t('settings.grants.mediaLibrary'),
+      icon: 'lucideImage',
+      actions: UPLOAD_ACTIONS,
+    },
+  ]);
 
   protected has(subject: string, action: string): boolean {
     return this.grants().some((grant) => grant.subject === subject && grant.action === action);
@@ -133,34 +171,41 @@ export class GrantsMatrix {
     this.grants.set(checked === true ? [...rest, { subject, action }] : rest);
   }
 
-  protected rowCoverage(subject: string): Coverage {
+  protected rowCoverage(row: Row): Coverage {
     return coverage(
-      this.actions.filter((action) => this.has(subject, action)).length,
-      this.actions.length,
+      row.actions.filter((action) => this.has(row.subject, action)).length,
+      row.actions.length,
     );
   }
 
-  protected columnCoverage(action: string): Coverage {
-    const types = this.types();
-    return coverage(types.filter((type) => this.has(type.uid, action)).length, types.length);
+  /** The rows where an action applies. */
+  private rowsWith(action: ContentAction): Row[] {
+    return this.rows().filter((row) => row.actions.includes(action));
   }
 
-  /** Grants or revokes every action on one content type. */
-  protected toggleRow(subject: string, checked: boolean): void {
-    const rest = this.grants().filter((grant) => grant.subject !== subject);
+  protected columnCoverage(action: ContentAction): Coverage {
+    const rows = this.rowsWith(action);
+    return coverage(rows.filter((row) => this.has(row.subject, action)).length, rows.length);
+  }
+
+  /** Grants or revokes every applicable action on one subject. */
+  protected toggleRow(row: Row, checked: boolean): void {
+    const rest = this.grants().filter((grant) => grant.subject !== row.subject);
     this.grants.set(
-      checked ? [...rest, ...this.actions.map((action) => ({ subject, action }))] : rest,
+      checked
+        ? [...rest, ...row.actions.map((action) => ({ subject: row.subject, action }))]
+        : rest,
     );
   }
 
-  /** Grants or revokes one action on every content type. */
-  protected toggleColumn(action: string, checked: boolean): void {
-    const uids = new Set(this.types().map((type) => type.uid));
+  /** Grants or revokes one action on every subject where it applies. */
+  protected toggleColumn(action: ContentAction, checked: boolean): void {
+    const subjects = new Set(this.rowsWith(action).map((row) => row.subject));
     const rest = this.grants().filter(
-      (grant) => !(grant.action === action && uids.has(grant.subject)),
+      (grant) => !(grant.action === action && subjects.has(grant.subject)),
     );
     this.grants.set(
-      checked ? [...rest, ...[...uids].map((subject) => ({ subject, action }))] : rest,
+      checked ? [...rest, ...[...subjects].map((subject) => ({ subject, action }))] : rest,
     );
   }
 }
