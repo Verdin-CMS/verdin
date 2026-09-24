@@ -1,0 +1,64 @@
+# Local database matrix for development and conformance tests.
+#   docker compose -f docker/compose.dev.yml up -d
+# Connection URLs:
+#   postgres://verdin:verdin@localhost:5414/verdin   (PostgreSQL 14)
+#   postgres://verdin:verdin@localhost:5417/verdin   (PostgreSQL 17)
+#   mysql://verdin:verdin@localhost:3384/verdin      (MySQL 8.4)
+#   mysql://verdin:verdin@localhost:3311/verdin      (MariaDB 10.11)
+#   mysql://verdin:verdin@localhost:3314/verdin      (MariaDB 11.4)
+name: verdin-dev
+
+x-postgres: &postgres
+  environment:
+    POSTGRES_USER: verdin
+    POSTGRES_PASSWORD: verdin
+    POSTGRES_DB: verdin
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U verdin"]
+    interval: 2s
+    retries: 30
+
+x-mariadb: &mariadb
+  environment:
+    MARIADB_USER: verdin
+    MARIADB_PASSWORD: verdin
+    MARIADB_DATABASE: verdin
+    MARIADB_ROOT_PASSWORD: verdin
+  healthcheck:
+    test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+    interval: 2s
+    retries: 30
+
+services:
+  postgres14:
+    <<: *postgres
+    image: postgres:14-alpine
+    ports: ["5414:5432"]
+
+  postgres17:
+    <<: *postgres
+    image: postgres:17-alpine
+    ports: ["5417:5432"]
+
+  mysql84:
+    image: mysql:8.4
+    environment:
+      MYSQL_USER: verdin
+      MYSQL_PASSWORD: verdin
+      MYSQL_DATABASE: verdin
+      MYSQL_ROOT_PASSWORD: verdin
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pverdin"]
+      interval: 2s
+      retries: 30
+    ports: ["3384:3306"]
+
+  mariadb1011:
+    <<: *mariadb
+    image: mariadb:10.11
+    ports: ["3311:3306"]
+
+  mariadb114:
+    <<: *mariadb
+    image: mariadb:11.4
+    ports: ["3314:3306"]

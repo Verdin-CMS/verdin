@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  test:
+    name: test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: sqlite
+            image: ""
+            flavor: sqlite
+            url: "sqlite::memory:"
+          - name: postgres-14
+            image: postgres:14-alpine
+            port: "5432:5432"
+            health: pg_isready -U verdin
+            flavor: postgres
+            url: postgres://verdin:verdin@localhost:5432/verdin
+          - name: postgres-17
+            image: postgres:17-alpine
+            port: "5432:5432"
+            health: pg_isready -U verdin
+            flavor: postgres
+            url: postgres://verdin:verdin@localhost:5432/verdin
+          - name: mysql-8.4
+            image: mysql:8.4
+            port: "3306:3306"
+            health: mysqladmin ping -h 127.0.0.1 -uroot -pverdin
+            flavor: mysql
+            url: mysql://verdin:verdin@127.0.0.1:3306/verdin
+          - name: mariadb-10.11
+            image: mariadb:10.11
+            port: "3306:3306"
+            health: healthcheck.sh --connect --innodb_initialized
+            flavor: mariadb
+            url: mysql://verdin:verdin@127.0.0.1:3306/verdin
+          - name: mariadb-11.4
+            image: mariadb:11.4
+            port: "3306:3306"
+            health: healthcheck.sh --connect --innodb_initialized
+            flavor: mariadb
+            url: mysql://verdin:verdin@127.0.0.1:3306/verdin
+    services:
+      db:
+        # An empty image skips the service (SQLite runs in-process).
+        image: ${{ matrix.image }}
+        ports:
+          - ${{ matrix.port }}
+        env:
+          POSTGRES_USER: verdin
+          POSTGRES_PASSWORD: verdin
+          POSTGRES_DB: verdin
+          MYSQL_USER: verdin
+          MYSQL_PASSWORD: verdin
+          MYSQL_DATABASE: verdin
+          MYSQL_ROOT_PASSWORD: verdin
+          MARIADB_USER: verdin
+          MARIADB_PASSWORD: verdin
+          MARIADB_DATABASE: verdin
+          MARIADB_ROOT_PASSWORD: verdin
+        options: >-
+          --health-cmd "${{ matrix.health }}"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      VERDIN_TEST_DATABASE_URL: ${{ matrix.url }}
+      VERDIN_TEST_EXPECT_FLAVOR: ${{ matrix.flavor }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
