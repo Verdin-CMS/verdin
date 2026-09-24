@@ -8,10 +8,27 @@ pub struct Query {
     pub sort: Vec<Sort>,
     /// API names of the scalar fields to return; `None` means all of them.
     pub fields: Option<Vec<String>>,
-    /// API names of the components / dynamic zones to include.
-    pub populate: Vec<String>,
+    /// Components, dynamic zones and relations to include.
+    pub populate: Vec<Populate>,
     pub pagination: Pagination,
     pub status: Status,
+}
+
+/// One populated field. `query` shapes populated relations; components and dynamic
+/// zones are always returned whole.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Populate {
+    pub field: String,
+    pub query: Option<SubQuery>,
+}
+
+/// Options of a populated relation (`populate[category][fields][0]=name`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SubQuery {
+    pub fields: Option<Vec<String>>,
+    pub populate: Vec<Populate>,
+    pub filters: Option<Filter>,
+    pub sort: Vec<Sort>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -72,6 +89,20 @@ pub enum Filter {
     Or(Vec<Filter>),
     Not(Box<Filter>),
     Condition(Condition),
+    Relation(RelationFilter),
+}
+
+/// `filters[category][name][$eq]=x` (with `inner`) or `filters[category][$null]=true`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelationFilter {
+    pub link_table: String,
+    /// Whether the filtered type stores the links (else it is the `mappedBy` side).
+    pub owner: bool,
+    pub target_table: String,
+    pub target_draft_and_publish: bool,
+    /// `true` for "has no related document matching".
+    pub negate: bool,
+    pub inner: Option<Box<Filter>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

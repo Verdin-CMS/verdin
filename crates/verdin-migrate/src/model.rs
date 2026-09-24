@@ -26,6 +26,8 @@ pub struct Table {
     pub columns: Vec<Column>,
     #[serde(default)]
     pub indexes: Vec<Index>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub foreign_keys: Vec<ForeignKey>,
 }
 
 impl Table {
@@ -96,6 +98,14 @@ pub enum ColumnType {
 pub enum ColumnDefault {
     Text(String),
     Int(i64),
+}
+
+/// `columns` reference `table(references)`; rows are deleted with the referenced row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForeignKey {
+    pub columns: Vec<String>,
+    pub table: String,
+    pub references: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

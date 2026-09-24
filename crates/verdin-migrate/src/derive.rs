@@ -2,13 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use sha2::{Digest, Sha256};
+use verdin_schema::naming::link_table_name;
 use verdin_schema::{Attribute, AttributeKind, ContentType, Schema, VARCHAR_LENGTH};
 
-use crate::model::{Column, ColumnDefault, ColumnType, DbModel, Index, Table, hex};
-
-/// PostgreSQL allows 63-byte identifiers and MySQL 64; we stay under both.
-pub const MAX_IDENTIFIER: usize = 60;
+use crate::model::{Column, ColumnDefault, ColumnType, DbModel, ForeignKey, Index, Table};
 
 pub const DOCUMENT_ID_LENGTH: u16 = 26;
 pub const LOCALE_LENGTH: u16 = 16;
@@ -31,15 +28,60 @@ pub fn system_columns() -> Vec<Column> {
 }
 
 pub fn derive_model(schema: &Schema) -> DbModel {
-    let tables: BTreeMap<String, Table> = schema
-        .content_types
-        .values()
-        .map(|content_type| {
-            let table = content_type_table(content_type);
-            (table.name.clone(), table)
-        })
-        .collect();
+    let mut tables = BTreeMap::new();
+    for content_type in schema.content_types.values() {
+        let table = content_type_table(content_type);
+        for (name, attribute) in &content_type.attributes {
+            if let AttributeKind::Relation { relation, .. } = &attribute.kind
+                && attribute.kind.owns_relation()
+            {
+                let link = link_table(&table.name, name, relation.is_to_many());
+                tables.insert(link.name.clone(), link);
+            }
+        }
+        tables.insert(table.name.clone(), table);
+    }
     DbModel { tables }
+}
+
+/// Links of one owning relation attribute: source row → target document (§8.4).
+fn link_table(source_table: &str, attribute: &str, to_many: bool) -> Table {
+    let name = link_table_name(source_table, attribute);
+    let mut indexes = vec![
+        Index {
+            name: index_name(&name, "pair", "uq"),
+            columns: vec!["source_id".into(), "target_document_id".into()],
+            unique: true,
+        },
+        Index {
+            name: index_name(&name, "target", "idx"),
+            columns: vec!["target_document_id".into()],
+            unique: false,
+        },
+    ];
+    if !to_many {
+        indexes.push(Index {
+            name: index_name(&name, "source", "uq"),
+            columns: vec!["source_id".into()],
+            unique: true,
+        });
+    }
+    Table {
+        columns: vec![
+            Column::new("id", ColumnType::Id).not_null(),
+            Column::new("source_id", ColumnType::BigInt).not_null(),
+            Column::new("target_document_id", ColumnType::Char { length: DOCUMENT_ID_LENGTH })
+                .not_null(),
+            Column::new("position", ColumnType::Double).not_null(),
+        ],
+        indexes,
+        foreign_keys: vec![ForeignKey {
+            columns: vec!["source_id".into()],
+            table: source_table.to_owned(),
+            references: vec!["id".into()],
+        }],
+        name,
+    }
 }
 
 fn content_type_table(content_type: &ContentType) -> Table {
@@ -73,7 +115,7 @@ fn content_type_table(content_type: &ContentType) -> Table {
         }
     }
 
-    Table { name, columns, indexes }
+    Table { name, columns, indexes, foreign_keys: Vec::new() }
 }
 
 fn column_type(attribute: &Attribute) -> Option<ColumnType> {
@@ -101,20 +143,7 @@ fn column_type(attribute: &Attribute) -> Option<ColumnType> {
     })
 }
 
-/// `{table}_{part}_{suffix}`, shortened deterministically when over [`MAX_IDENTIFIER`].
-pub fn index_name(table: &str, part: &str, suffix: &str) -> String {
-    bounded(&format!("{table}_{part}_{suffix}"))
-}
-
-/// Truncates `name` to fit [`MAX_IDENTIFIER`], appending an 8-char hash of the full name
-/// so that distinct long names stay distinct.
-pub fn bounded(name: &str) -> String {
-    if name.len() <= MAX_IDENTIFIER {
-        return name.to_owned();
-    }
-    let hash = hex(&Sha256::digest(name.as_bytes()));
-    format!("{}_{}", &name[..MAX_IDENTIFIER - 9], &hash[..8])
-}
+pub use verdin_schema::naming::{MAX_IDENTIFIER, bounded, index_name};
 
 #[cfg(test)]
 mod tests {

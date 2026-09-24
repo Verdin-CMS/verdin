@@ -7,7 +7,7 @@
 
 use verdin_db::{Flavor, SqlValue};
 
-use crate::ast::{Condition, Filter, Op, Operand, Sort};
+use crate::ast::{Condition, Filter, Op, Operand, RelationFilter, Sort, Status};
 
 const MYSQL_BINARY_COLLATION: &str = "utf8mb4_bin";
 const LIKE_ESCAPE: char = '!';
@@ -62,7 +62,21 @@ impl SqlBuilder {
     }
 }
 
-pub fn write_filter(out: &mut SqlBuilder, filter: &Filter, alias: Option<&str>) {
+/// State of a filter being written: the status whose versions are compared, and the
+/// nesting depth of relation subqueries (for their aliases).
+#[derive(Debug, Clone, Copy)]
+pub struct FilterContext {
+    pub status: Status,
+    depth: usize,
+}
+
+impl FilterContext {
+    pub fn new(status: Status) -> Self {
+        Self { status, depth: 0 }
+    }
+}
+
+pub fn write_filter(out: &mut SqlBuilder, filter: &Filter, alias: &str, context: FilterContext) {
     match filter {
         Filter::And(children) | Filter::Or(children) if children.is_empty() => {
             out.push(if matches!(filter, Filter::And(_)) { "1 = 1" } else { "1 = 0" });
@@ -74,17 +88,60 @@ pub fn write_filter(out: &mut SqlBuilder, filter: &Filter, alias: Option<&str>) 
                 if index > 0 {
                     out.push(joiner);
                 }
-                write_filter(out, child, alias);
+                write_filter(out, child, alias, context);
             }
             out.push(")");
         }
         Filter::Not(child) => {
             out.push("NOT (");
-            write_filter(out, child, alias);
+            write_filter(out, child, alias, context);
             out.push(")");
         }
-        Filter::Condition(condition) => write_condition(out, condition, alias),
+        Filter::Condition(condition) => write_condition(out, condition, Some(alias)),
+        Filter::Relation(relation) => write_relation(out, relation, alias, context),
     }
+}
+
+/// `[NOT] EXISTS (SELECT 1 FROM link JOIN target … WHERE link points at the row [AND inner])`.
+/// Related versions match the status being read: drafts see drafts, published documents
+/// see published documents (types without draft & publish only have published rows).
+fn write_relation(
+    out: &mut SqlBuilder,
+    relation: &RelationFilter,
+    alias: &str,
+    context: FilterContext,
+) {
+    let inner_context = FilterContext { depth: context.depth + 1, ..context };
+    let link = format!("l{}", inner_context.depth);
+    let target = format!("r{}", inner_context.depth);
+    let state: i16 =
+        if relation.target_draft_and_publish && context.status == Status::Draft { 0 } else { 1 };
+
+    out.push(if relation.negate { "NOT EXISTS (SELECT 1 FROM " } else { "EXISTS (SELECT 1 FROM " });
+    out.ident(&relation.link_table).push(" AS ").ident(&link).push(" JOIN ");
+    out.ident(&relation.target_table).push(" AS ").ident(&target).push(" ON ");
+    if relation.owner {
+        out.column(Some(&target), "document_id")
+            .push(" = ")
+            .column(Some(&link), "target_document_id");
+    } else {
+        out.column(Some(&target), "id").push(" = ").column(Some(&link), "source_id");
+    }
+    out.push(" AND ").column(Some(&target), "locale").push(" = '' AND ");
+    out.column(Some(&target), "publication_state").push(" = ").param(SqlValue::SmallInt(state));
+    out.push(" WHERE ");
+    if relation.owner {
+        out.column(Some(&link), "source_id").push(" = ").column(Some(alias), "id");
+    } else {
+        out.column(Some(&link), "target_document_id")
+            .push(" = ")
+            .column(Some(alias), "document_id");
+    }
+    if let Some(inner) = &relation.inner {
+        out.push(" AND ");
+        write_filter(out, inner, &target, inner_context);
+    }
+    out.push(")");
 }
 
 fn write_condition(out: &mut SqlBuilder, condition: &Condition, alias: Option<&str>) {
@@ -270,23 +327,23 @@ mod tests {
 
     fn render(flavor: Flavor, filter: &Filter) -> (String, Vec<SqlValue>) {
         let mut out = SqlBuilder::new(flavor);
-        write_filter(&mut out, filter, None);
+        write_filter(&mut out, filter, "t", FilterContext::new(Status::Published));
         (out.sql, out.params)
     }
 
     #[test]
     fn exact_equality_on_mysql_text() {
         let (sql, params) = render(Flavor::MySql, &condition(Op::Eq, "a"));
-        assert_eq!(sql, "(`title` = ? AND `title` = ? COLLATE utf8mb4_bin)");
+        assert_eq!(sql, "(`t`.`title` = ? AND `t`.`title` = ? COLLATE utf8mb4_bin)");
         assert_eq!(params.len(), 2);
-        assert_eq!(render(Flavor::Postgres, &condition(Op::Eq, "a")).0, "\"title\" = ?");
+        assert_eq!(render(Flavor::Postgres, &condition(Op::Eq, "a")).0, "\"t\".\"title\" = ?");
     }
 
     #[test]
     fn patterns_per_dialect() {
         assert_eq!(
             render(Flavor::Postgres, &condition(Op::Containsi, "50%")).0,
-            "\"title\" ILIKE ? ESCAPE '!'"
+            "\"t\".\"title\" ILIKE ? ESCAPE '!'"
         );
         assert_eq!(
             render(Flavor::Postgres, &condition(Op::Containsi, "50%_!")).1,
@@ -294,25 +351,57 @@ mod tests {
         );
         assert_eq!(
             render(Flavor::MariaDb, &condition(Op::StartsWith, "a")).0,
-            "`title` LIKE ? COLLATE utf8mb4_bin ESCAPE '!'"
+            "`t`.`title` LIKE ? COLLATE utf8mb4_bin ESCAPE '!'"
         );
         assert_eq!(
             render(Flavor::Sqlite, &condition(Op::EndsWith, "a")).0,
-            "substr(\"title\", -length(?)) = ?"
+            "substr(\"t\".\"title\", -length(?)) = ?"
         );
         assert_eq!(
             render(Flavor::Sqlite, &condition(Op::NotContains, "a")).0,
-            "NOT (instr(\"title\", ?) > 0)"
+            "NOT (instr(\"t\".\"title\", ?) > 0)"
         );
-        assert_eq!(render(Flavor::Sqlite, &condition(Op::Contains, "")).0, "\"title\" IS NOT NULL");
+        assert_eq!(
+            render(Flavor::Sqlite, &condition(Op::Contains, "")).0,
+            "\"t\".\"title\" IS NOT NULL"
+        );
     }
 
     #[test]
     fn combinators() {
         let filter =
             Filter::Or(vec![condition(Op::Eq, "a"), Filter::Not(Box::new(condition(Op::Lt, "b")))]);
-        assert_eq!(render(Flavor::Sqlite, &filter).0, "(\"title\" = ? OR NOT (\"title\" < ?))");
+        assert_eq!(
+            render(Flavor::Sqlite, &filter).0,
+            "(\"t\".\"title\" = ? OR NOT (\"t\".\"title\" < ?))"
+        );
         assert_eq!(render(Flavor::Sqlite, &Filter::Or(vec![])).0, "1 = 0");
+    }
+
+    #[test]
+    fn relation_exists() {
+        let filter = Filter::Relation(RelationFilter {
+            link_table: "articles_category_lnk".into(),
+            owner: true,
+            target_table: "categories".into(),
+            target_draft_and_publish: true,
+            negate: false,
+            inner: Some(Box::new(condition(Op::Eq, "News"))),
+        });
+        let mut out = SqlBuilder::new(Flavor::Postgres);
+        write_filter(&mut out, &filter, "t0", FilterContext::new(Status::Draft));
+        assert_eq!(
+            out.sql,
+            "EXISTS (SELECT 1 FROM \"articles_category_lnk\" AS \"l1\" JOIN \"categories\" AS \"r1\" \
+             ON \"r1\".\"document_id\" = \"l1\".\"target_document_id\" AND \"r1\".\"locale\" = '' \
+             AND \"r1\".\"publication_state\" = ? WHERE \"l1\".\"source_id\" = \"t0\".\"id\" \
+             AND \"r1\".\"title\" = ?)"
+        );
+        assert_eq!(
+            out.params,
+            [SqlValue::SmallInt(0), SqlValue::Text("News".into())],
+            "drafts see drafts"
+        );
     }
 
     #[test]

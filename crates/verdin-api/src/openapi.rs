@@ -226,6 +226,9 @@ fn attributes_schema(
         }
         let (_, category) = verdin_query::attribute_kind(&attribute.kind);
         if category == FieldCategory::Relation {
+            if let Some(property) = relation_schema(schema, &attribute.kind, input) {
+                properties.insert(name.clone(), property);
+            }
             continue;
         }
         let mut property = attribute_schema(schema, &attribute.kind);
@@ -291,6 +294,41 @@ fn attribute_schema(schema: &Schema, kind: &AttributeKind) -> Value {
         }
         AttributeKind::Relation { .. } => json!({}),
     }
+}
+
+/// Output: the populated document(s). Input: documentIds, or `{ connect, disconnect, set }`
+/// (owning side only; `mappedBy` sides are read-only).
+fn relation_schema(schema: &Schema, kind: &AttributeKind, input: bool) -> Option<Value> {
+    let AttributeKind::Relation { relation, target, mapped_by, .. } = kind else { return None };
+    let target = schema.content_type(target)?;
+    if input {
+        if mapped_by.is_some() {
+            return None;
+        }
+        let id = json!({ "oneOf": [
+            { "type": "string" },
+            { "type": "object", "required": ["documentId"], "properties": {
+                "documentId": { "type": "string" },
+                "position": { "type": "object", "properties": {
+                    "before": { "type": "string" }, "after": { "type": "string" },
+                    "start": { "type": "boolean" }, "end": { "type": "boolean" }
+                }}
+            }}
+        ]});
+        let ids = json!({ "oneOf": [id, { "type": "array", "items": id }] });
+        return Some(json!({ "oneOf": [
+            { "type": "null" },
+            ids,
+            { "type": "object", "properties": { "connect": ids, "disconnect": ids, "set": ids } }
+        ]}));
+    }
+    let reference =
+        json!({ "$ref": format!("#/components/schemas/{}", pascal_case(&target.singular_name)) });
+    Some(if relation.is_to_many() {
+        json!({ "type": "array", "items": reference, "description": "Returned when populated." })
+    } else {
+        json!({ "oneOf": [reference, { "type": "null" }], "description": "Returned when populated." })
+    })
 }
 
 /// `shared.seo` → `SharedSeoComponent`.

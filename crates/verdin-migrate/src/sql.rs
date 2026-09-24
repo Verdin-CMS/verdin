@@ -104,11 +104,19 @@ impl Dialect {
     }
 
     pub fn create_table(&self, table: &Table, if_not_exists: bool) -> String {
-        let columns: Vec<_> = table
+        let mut columns: Vec<_> = table
             .columns
             .iter()
             .map(|column| format!("  {}", self.column_definition(column)))
             .collect();
+        for foreign_key in &table.foreign_keys {
+            columns.push(format!(
+                "  FOREIGN KEY ({}) REFERENCES {} ({}) ON DELETE CASCADE",
+                self.quote_list(&foreign_key.columns),
+                self.quote(&foreign_key.table),
+                self.quote_list(&foreign_key.references)
+            ));
+        }
         let mut sql = format!(
             "CREATE TABLE {}{} (\n{}\n)",
             if if_not_exists { "IF NOT EXISTS " } else { "" },
@@ -217,7 +225,8 @@ impl Dialect {
 
     /// SQLite's documented procedure for schema changes `ALTER TABLE` cannot express:
     /// create the new shape, copy the surviving columns, swap, recreate indexes.
-    // M3 (link tables with foreign keys) must disable `foreign_keys` around this.
+    // Runs with `PRAGMA foreign_keys = OFF` (see `apply`), so dropping the old table does
+    // not cascade into link tables; their references resolve to the renamed table.
     fn rebuild_table(&self, from: &Table, to: &Table) -> Vec<String> {
         let temporary = Table { name: format!("{REBUILD_PREFIX}{}", to.name), ..to.clone() };
         let shared: Vec<String> = to

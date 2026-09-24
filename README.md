@@ -3,7 +3,7 @@
 Open source headless CMS written in Rust. Inspired by Strapi, shipped as a single binary,
 running on PostgreSQL, MySQL, MariaDB and SQLite. 100% free — there is no enterprise edition.
 
-> **Status:** early development (milestones M0–M2: schema, migrations and the content REST API). See [docs/architecture.md](docs/architecture.md).
+> **Status:** early development (milestones M0–M3: schema, migrations, content REST API and relations). See [docs/architecture.md](docs/architecture.md).
 
 ## Development
 
@@ -61,6 +61,11 @@ curl -g 'localhost:1337/api/articles?filters[title][$containsi]=hello&sort=creat
 curl -XPUT 'localhost:1337/api/articles/<documentId>?status=draft' -H 'content-type: application/json' \
   -d '{"data":{"title":"Draft edit"}}'
 curl -XPOST localhost:1337/api/articles/<documentId>/actions/publish
+
+# Relations: write on the owning side, populate and filter through them
+curl -XPUT localhost:1337/api/articles/<documentId> -H 'content-type: application/json' \
+  -d '{"data":{"category":"<categoryId>","tags":{"connect":[{"documentId":"<tagId>","position":{"start":true}}]}}}'
+curl -g 'localhost:1337/api/articles?filters[category][name][$eq]=News&populate[tags][fields][0]=label'
 ```
 
 Connection URLs for every engine are listed at the top of

@@ -185,6 +185,11 @@ impl AttributeKind {
         }
     }
 
+    /// For relations: whether this side stores the links (everything but `mappedBy`).
+    pub fn owns_relation(&self) -> bool {
+        matches!(self, AttributeKind::Relation { mapped_by: None, .. })
+    }
+
     /// Whether the attribute is stored as a column on the owning row.
     /// Relations live in link tables instead.
     pub fn has_column(&self) -> bool {
@@ -224,6 +229,16 @@ impl RelationKind {
             RelationKind::OneWay => "oneWay",
             RelationKind::ManyWay => "manyWay",
         }
+    }
+
+    /// Whether a document links to many targets through this relation.
+    pub fn is_to_many(self) -> bool {
+        matches!(self, RelationKind::OneToMany | RelationKind::ManyToMany | RelationKind::ManyWay)
+    }
+
+    /// Whether a target may be linked from at most one source document.
+    pub fn has_unique_target(self) -> bool {
+        matches!(self, RelationKind::OneToOne | RelationKind::OneToMany)
     }
 
     /// The kind the other side of a bidirectional relation must declare.

@@ -6,7 +6,7 @@ use verdin_db::{ColumnKind, SqlValue};
 
 use crate::QueryError;
 use crate::ast::*;
-use crate::fields::{Field, FieldCategory, TypeFields};
+use crate::fields::{Catalog, Field, FieldCategory, TypeFields};
 use crate::params::Node;
 use crate::temporal::{parse_date, parse_datetime, parse_time};
 
@@ -15,20 +15,34 @@ pub struct Limits {
     pub default_page_size: u64,
     pub max_page_size: u64,
     pub max_conditions: usize,
+    pub max_populate_depth: usize,
 }
 
 impl Default for Limits {
     fn default() -> Self {
-        Self { default_page_size: 25, max_page_size: 100, max_conditions: 100 }
+        Self {
+            default_page_size: 25,
+            max_page_size: 100,
+            max_conditions: 100,
+            max_populate_depth: 5,
+        }
     }
 }
 
 const KNOWN_PARAMETERS: &[&str] =
     &["filters", "sort", "fields", "populate", "pagination", "status", "locale"];
+const SUB_QUERY_PARAMETERS: &[&str] = &["fields", "populate", "filters", "sort"];
+
+struct Parser<'a> {
+    catalog: &'a Catalog,
+    limits: &'a Limits,
+    conditions: usize,
+}
 
 pub fn parse(
     root: &IndexMap<String, Node>,
     fields: &TypeFields,
+    catalog: &Catalog,
     limits: &Limits,
 ) -> Result<Query, QueryError> {
     for key in root.keys() {
@@ -36,19 +50,10 @@ pub fn parse(
             return Err(QueryError::new(format!("invalid query parameter `{key}`")));
         }
     }
-
-    let mut conditions = 0;
-    let filters = root
-        .get("filters")
-        .map(|node| {
-            let map =
-                node.as_map().ok_or_else(|| QueryError::new("`filters` must be an object"))?;
-            parse_filter_map(map, fields, &mut conditions, limits)
-        })
-        .transpose()?;
+    let mut parser = Parser { catalog, limits, conditions: 0 };
 
     Ok(Query {
-        filters,
+        filters: root.get("filters").map(|node| parser.filters(node, fields)).transpose()?,
         sort: root
             .get("sort")
             .map(|node| parse_sort(node, fields))
@@ -57,7 +62,7 @@ pub fn parse(
         fields: root.get("fields").map(|node| parse_fields(node, fields)).transpose()?,
         populate: root
             .get("populate")
-            .map(|node| parse_populate(node, fields))
+            .map(|node| parser.populate(node, fields, 1))
             .transpose()?
             .unwrap_or_default(),
         pagination: parse_pagination(root.get("pagination"), limits)?,
@@ -70,95 +75,250 @@ pub fn parse(
     })
 }
 
-fn parse_filter_map(
-    map: &IndexMap<String, Node>,
-    fields: &TypeFields,
-    conditions: &mut usize,
-    limits: &Limits,
-) -> Result<Filter, QueryError> {
-    let mut all = Vec::with_capacity(map.len());
-    for (key, node) in map {
-        let filter = match key.as_str() {
-            "$and" | "$or" => {
-                let items =
-                    node.as_list().filter(|items| items.iter().all(|item| item.as_map().is_some()));
-                let items = items.ok_or_else(|| {
-                    QueryError::new(format!("`{key}` must be a list of filter objects"))
-                })?;
-                let children = items
-                    .into_iter()
-                    .map(|item| {
-                        parse_filter_map(
-                            item.as_map().expect("checked"),
-                            fields,
-                            conditions,
-                            limits,
-                        )
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                if key == "$and" { Filter::And(children) } else { Filter::Or(children) }
-            }
-            "$not" => {
-                let map = node
-                    .as_map()
-                    .ok_or_else(|| QueryError::new("`$not` must be a filter object"))?;
-                Filter::Not(Box::new(parse_filter_map(map, fields, conditions, limits)?))
-            }
-            name if name.starts_with('$') => {
+impl Parser<'_> {
+    fn filters(&mut self, node: &Node, fields: &TypeFields) -> Result<Filter, QueryError> {
+        let map = node.as_map().ok_or_else(|| QueryError::new("`filters` must be an object"))?;
+        self.filter_map(map, fields)
+    }
+
+    fn filter_map(
+        &mut self,
+        map: &IndexMap<String, Node>,
+        fields: &TypeFields,
+    ) -> Result<Filter, QueryError> {
+        let mut all = Vec::with_capacity(map.len());
+        for (key, node) in map {
+            let filter = match key.as_str() {
+                "$and" | "$or" => {
+                    let items = node
+                        .as_list()
+                        .filter(|items| items.iter().all(|item| item.as_map().is_some()))
+                        .ok_or_else(|| {
+                            QueryError::new(format!("`{key}` must be a list of filter objects"))
+                        })?;
+                    let children = items
+                        .into_iter()
+                        .map(|item| self.filter_map(item.as_map().expect("checked"), fields))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if key == "$and" { Filter::And(children) } else { Filter::Or(children) }
+                }
+                "$not" => {
+                    let map = node
+                        .as_map()
+                        .ok_or_else(|| QueryError::new("`$not` must be a filter object"))?;
+                    Filter::Not(Box::new(self.filter_map(map, fields)?))
+                }
+                name if name.starts_with('$') => {
+                    return Err(QueryError::new(format!(
+                        "invalid filter operator `{name}` at the top level"
+                    )));
+                }
+                name => self.field_filter(name, node, fields)?,
+            };
+            all.push(filter);
+        }
+        Ok(if all.len() == 1 { all.pop().expect("one") } else { Filter::And(all) })
+    }
+
+    fn field_filter(
+        &mut self,
+        name: &str,
+        node: &Node,
+        fields: &TypeFields,
+    ) -> Result<Filter, QueryError> {
+        let field = fields
+            .get(name)
+            .filter(|field| !field.is_private())
+            .ok_or_else(|| QueryError::new(format!("invalid key `{name}` in filters")))?;
+        match field.category {
+            FieldCategory::Scalar => {}
+            FieldCategory::Relation => return self.relation_filter(field, node),
+            FieldCategory::Nested => {
                 return Err(QueryError::new(format!(
-                    "invalid filter operator `{name}` at the top level"
+                    "filtering on fields of component `{name}` is not supported yet"
                 )));
             }
-            name => parse_field_filter(name, node, fields, conditions, limits)?,
-        };
-        all.push(filter);
-    }
-    Ok(if all.len() == 1 { all.pop().expect("one") } else { Filter::And(all) })
-}
-
-fn parse_field_filter(
-    name: &str,
-    node: &Node,
-    fields: &TypeFields,
-    conditions: &mut usize,
-    limits: &Limits,
-) -> Result<Filter, QueryError> {
-    let field = fields
-        .get(name)
-        .ok_or_else(|| QueryError::new(format!("invalid key `{name}` in filters")))?;
-    match field.category {
-        FieldCategory::Scalar if !field.is_private() => {}
-        FieldCategory::Relation | FieldCategory::Nested if !field.is_private() => {
-            return Err(QueryError::new(format!(
-                "filtering on nested fields of `{name}` is not supported yet"
-            )));
         }
-        _ => return Err(QueryError::new(format!("invalid key `{name}` in filters"))),
+
+        let operators: Vec<(&str, &Node)> = match node {
+            Node::Leaf(_) => vec![("$eq", node)],
+            Node::Map(map) => map.iter().map(|(key, value)| (key.as_str(), value)).collect(),
+        };
+        let mut filters = Vec::with_capacity(operators.len());
+        for (op_name, operand) in operators {
+            self.count_condition()?;
+            let op = Op::parse(op_name).ok_or_else(|| {
+                if op_name.starts_with('$') {
+                    QueryError::new(format!("invalid filter operator `{op_name}` on `{name}`"))
+                } else {
+                    QueryError::new(format!("`{name}` has no nested field `{op_name}`"))
+                }
+            })?;
+            filters.push(Filter::Condition(parse_condition(field, op, op_name, operand)?));
+        }
+        Ok(if filters.len() == 1 { filters.pop().expect("one") } else { Filter::And(filters) })
     }
 
-    let operators: Vec<(&str, &Node)> = match node {
-        Node::Leaf(_) => vec![("$eq", node)],
-        Node::Map(map) => map.iter().map(|(key, value)| (key.as_str(), value)).collect(),
-    };
-    let mut filters = Vec::with_capacity(operators.len());
-    for (op_name, operand) in operators {
-        *conditions += 1;
-        if *conditions > limits.max_conditions {
+    /// `filters[category][name][$eq]=x`, `filters[category][$null]=true`.
+    fn relation_filter(&mut self, field: &Field, node: &Node) -> Result<Filter, QueryError> {
+        let name = &field.api;
+        let relation = field.relation.as_ref().expect("relation fields carry relation info");
+        let target = self.catalog.get(&relation.target).expect("validated schema");
+        let map = node.as_map().ok_or_else(|| {
+            QueryError::new(format!(
+                "filter `{name}` by its fields, e.g. `filters[{name}][documentId][$eq]=…`"
+            ))
+        })?;
+        self.count_condition()?;
+
+        let mut negate = None;
+        let mut inner = IndexMap::new();
+        for (key, value) in map {
+            match key.as_str() {
+                "$null" | "$notNull" => {
+                    let flag = match value.as_leaf() {
+                        Some("true" | "1") => true,
+                        Some("false" | "0") => false,
+                        _ => {
+                            return Err(QueryError::new(format!(
+                                "`{name}.{key}` expects true or false"
+                            )));
+                        }
+                    };
+                    negate = Some(flag == (key == "$null"));
+                }
+                _ => {
+                    inner.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        let relation_filter = |negate: bool, inner: Option<Filter>| {
+            Filter::Relation(RelationFilter {
+                link_table: relation.link_table.clone(),
+                owner: relation.owner,
+                target_table: relation.target_table.clone(),
+                target_draft_and_publish: relation.target_draft_and_publish,
+                negate,
+                inner: inner.map(Box::new),
+            })
+        };
+        let inner = if inner.is_empty() { None } else { Some(self.filter_map(&inner, target)?) };
+        Ok(match (negate, inner) {
+            (None, inner) => relation_filter(false, inner),
+            (Some(negate), None) => relation_filter(negate, None),
+            (Some(negate), Some(inner)) => Filter::And(vec![
+                relation_filter(negate, None),
+                relation_filter(false, Some(inner)),
+            ]),
+        })
+    }
+
+    fn count_condition(&mut self) -> Result<(), QueryError> {
+        self.conditions += 1;
+        if self.conditions > self.limits.max_conditions {
             return Err(QueryError::new(format!(
                 "more than {} filter conditions",
-                limits.max_conditions
+                self.limits.max_conditions
             )));
         }
-        let op = Op::parse(op_name).ok_or_else(|| {
-            if op_name.starts_with('$') {
-                QueryError::new(format!("invalid filter operator `{op_name}` on `{name}`"))
-            } else {
-                QueryError::new(format!("`{name}` has no nested field `{op_name}`"))
-            }
-        })?;
-        filters.push(Filter::Condition(parse_condition(field, op, op_name, operand)?));
+        Ok(())
     }
-    Ok(if filters.len() == 1 { filters.pop().expect("one") } else { Filter::And(filters) })
+
+    fn populate(
+        &mut self,
+        node: &Node,
+        fields: &TypeFields,
+        depth: usize,
+    ) -> Result<Vec<Populate>, QueryError> {
+        if depth > self.limits.max_populate_depth {
+            return Err(QueryError::new(format!(
+                "populate is nested deeper than {} levels",
+                self.limits.max_populate_depth
+            )));
+        }
+        let populatable =
+            |field: &&Field| field.category != FieldCategory::Scalar && !field.is_private();
+
+        let entries: Vec<(String, Option<&Node>)> = match node {
+            Node::Leaf(text) if text == "*" => {
+                return Ok(fields
+                    .attributes()
+                    .filter(populatable)
+                    .map(|field| Populate { field: field.api.clone(), query: None })
+                    .collect());
+            }
+            Node::Leaf(text) => text
+                .split(',')
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(|name| (name.to_owned(), None))
+                .collect(),
+            Node::Map(map) => match node.as_list() {
+                Some(items) => items
+                    .into_iter()
+                    .map(|item| {
+                        item.as_leaf().map(|name| (name.to_owned(), None)).ok_or_else(|| {
+                            QueryError::new("`populate` entries must be field names")
+                        })
+                    })
+                    .collect::<Result<_, _>>()?,
+                None => map
+                    .iter()
+                    .filter(|(_, value)| !matches!(value.as_leaf(), Some("false")))
+                    .map(|(name, value)| (name.clone(), value.as_map().map(|_| value)))
+                    .collect(),
+            },
+        };
+
+        let mut populate: Vec<Populate> = Vec::new();
+        for (name, options) in entries {
+            let field = fields
+                .get(&name)
+                .filter(populatable)
+                .ok_or_else(|| QueryError::new(format!("invalid key `{name}` in populate")))?;
+            let query = match (field.category, options) {
+                (FieldCategory::Relation, Some(options)) => {
+                    let relation = field.relation.as_ref().expect("relation info");
+                    let target = self.catalog.get(&relation.target).expect("validated schema");
+                    Some(self.sub_query(options, target, depth)?)
+                }
+                // Components are stored whole; their populate options are accepted and ignored.
+                _ => None,
+            };
+            if !populate.iter().any(|existing| existing.field == name) {
+                populate.push(Populate { field: name, query });
+            }
+        }
+        Ok(populate)
+    }
+
+    fn sub_query(
+        &mut self,
+        node: &Node,
+        target: &TypeFields,
+        depth: usize,
+    ) -> Result<SubQuery, QueryError> {
+        let map = node.as_map().expect("caller passes maps");
+        for key in map.keys() {
+            if !SUB_QUERY_PARAMETERS.contains(&key.as_str()) {
+                return Err(QueryError::new(format!("invalid key `{key}` in populate options")));
+            }
+        }
+        Ok(SubQuery {
+            fields: map.get("fields").map(|node| parse_fields(node, target)).transpose()?,
+            populate: map
+                .get("populate")
+                .map(|node| self.populate(node, target, depth + 1))
+                .transpose()?
+                .unwrap_or_default(),
+            filters: map.get("filters").map(|node| self.filters(node, target)).transpose()?,
+            sort: map
+                .get("sort")
+                .map(|node| parse_sort(node, target))
+                .transpose()?
+                .unwrap_or_default(),
+        })
+    }
 }
 
 fn parse_condition(
@@ -312,58 +472,6 @@ fn parse_fields(node: &Node, fields: &TypeFields) -> Result<Vec<String>, QueryEr
         }
     }
     Ok(selected)
-}
-
-fn parse_populate(node: &Node, fields: &TypeFields) -> Result<Vec<String>, QueryError> {
-    let names: Vec<String> = match node {
-        Node::Leaf(text) if text == "*" => {
-            return Ok(fields
-                .attributes()
-                .filter(|field| field.category == FieldCategory::Nested && !field.is_private())
-                .map(|field| field.api.clone())
-                .collect());
-        }
-        Node::Leaf(text) => text
-            .split(',')
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(str::to_owned)
-            .collect(),
-        Node::Map(map) => match node.as_list() {
-            Some(items) => items
-                .into_iter()
-                .map(|item| {
-                    item.as_leaf()
-                        .map(str::to_owned)
-                        .ok_or_else(|| QueryError::new("`populate` entries must be field names"))
-                })
-                .collect::<Result<_, _>>()?,
-            // Object form: `populate[seo]=true` or `populate[seo][fields]…` (options apply
-            // to whole JSON-stored values, so they are accepted and ignored).
-            None => map
-                .iter()
-                .filter(|(_, value)| !matches!(value.as_leaf(), Some("false")))
-                .map(|(name, _)| name.clone())
-                .collect(),
-        },
-    };
-
-    let mut populate = Vec::new();
-    for name in names {
-        match fields.get(&name) {
-            Some(field) if field.category == FieldCategory::Nested && !field.is_private() => {}
-            Some(field) if field.category == FieldCategory::Relation && !field.is_private() => {
-                return Err(QueryError::new(format!(
-                    "populating relation `{name}` is not supported yet"
-                )));
-            }
-            _ => return Err(QueryError::new(format!("invalid key `{name}` in populate"))),
-        }
-        if !populate.contains(&name) {
-            populate.push(name);
-        }
-    }
-    Ok(populate)
 }
 
 fn parse_pagination(node: Option<&Node>, limits: &Limits) -> Result<Pagination, QueryError> {

@@ -11,6 +11,7 @@ use regex::Regex;
 use rust_decimal::Decimal;
 use serde_json::{Map, Value as Json};
 use verdin_db::SqlValue;
+use verdin_query::RelationInfo;
 use verdin_query::temporal::{parse_date, parse_datetime, parse_time};
 use verdin_schema::{Attribute, AttributeKind, Schema};
 
@@ -22,26 +23,80 @@ static UID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9\-_.~]*$"
 static EMAIL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap());
 
-/// Validates `data` for a create (`is_create`) or a partial update and returns the column
-/// assignments. On create, attribute defaults fill in missing values.
+/// A validated write to one owning relation attribute.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelationWrite {
+    pub field: String,
+    pub info: RelationInfo,
+    pub op: RelationOp,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RelationOp {
+    /// Replace every link (`[..]`, `"id"`, `null`, `{ set: [..] }`).
+    Set(Vec<String>),
+    /// `{ connect: [..], disconnect: [..] }`.
+    Change { connect: Vec<Connect>, disconnect: Vec<String> },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Connect {
+    pub document_id: String,
+    pub position: Option<Position>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Position {
+    Start,
+    End,
+    Before(String),
+    After(String),
+}
+
+/// Column assignments and relation writes of one request.
+#[derive(Debug, Default)]
+pub struct Prepared {
+    pub columns: Vec<(String, SqlValue)>,
+    pub relations: Vec<RelationWrite>,
+}
+
+/// Validates `data` for a create (`is_create`) or a partial update. On create, attribute
+/// defaults fill in missing values.
 pub fn prepare(
     model: &TypeModel,
     schema: &Schema,
     data: &Json,
     is_create: bool,
-) -> Result<Vec<(String, SqlValue)>, Vec<Issue>> {
+) -> Result<Prepared, Vec<Issue>> {
     let Some(object) = data.as_object() else {
         return Err(vec![Issue::new(Vec::new(), "data must be an object")]);
     };
     let mut issues = Vec::new();
     let mut columns = Vec::new();
+    let mut relations = Vec::new();
 
-    for key in object.keys() {
+    for (key, value) in object {
         match model.content_type.attributes.get(key) {
             None => issues.push(Issue::new(vec![key.clone().into()], format!("Invalid key {key}"))),
-            Some(Attribute { kind: AttributeKind::Relation { .. }, .. }) => issues.push(
-                Issue::new(vec![key.clone().into()], "writing relations is not supported yet"),
-            ),
+            Some(Attribute {
+                kind: AttributeKind::Relation { mapped_by: Some(owner), target, .. },
+                ..
+            }) => {
+                issues.push(Issue::new(
+                    vec![key.clone().into()],
+                    format!(
+                        "`{key}` is the inverse side of {target}.{owner}; write the relation there"
+                    ),
+                ));
+            }
+            Some(Attribute { kind: AttributeKind::Relation { .. }, .. }) => {
+                let field = model.fields.get(key).expect("attribute field");
+                let info = field.relation.clone().expect("relation info");
+                match relation_op(value, info.to_many) {
+                    Ok(op) => relations.push(RelationWrite { field: key.clone(), info, op }),
+                    Err(message) => issues.push(Issue::new(vec![key.clone().into()], message)),
+                }
+            }
             Some(_) => {}
         }
     }
@@ -77,7 +132,113 @@ pub fn prepare(
         }
     }
 
-    if issues.is_empty() { Ok(columns) } else { Err(issues) }
+    if issues.is_empty() { Ok(Prepared { columns, relations }) } else { Err(issues) }
+}
+
+/// Parses Strapi v5 relation input: `"id"`, `{ documentId }`, `[..]`, `null`, or
+/// `{ connect, disconnect, set }` where `connect` items may carry a `position`.
+fn relation_op(value: &Json, to_many: bool) -> Result<RelationOp, String> {
+    fn id(value: &Json) -> Result<String, String> {
+        let id = match value {
+            Json::String(id) => Some(id.as_str()),
+            Json::Object(object)
+                if object.keys().all(|key| key == "documentId" || key == "position") =>
+            {
+                object.get("documentId").and_then(Json::as_str)
+            }
+            _ => None,
+        };
+        id.filter(|id| !id.is_empty()).map(str::to_owned).ok_or_else(|| {
+            "relations take documentIds (strings) or `{ \"documentId\": … }`".to_owned()
+        })
+    }
+    fn ids(value: &Json) -> Result<Vec<String>, String> {
+        match value {
+            Json::Array(items) => items.iter().map(id).collect(),
+            other => Ok(vec![id(other)?]),
+        }
+    }
+    let single = |count: usize| {
+        if !to_many && count > 1 {
+            Err("this relation links a single document".to_owned())
+        } else {
+            Ok(())
+        }
+    };
+
+    let op = match value {
+        Json::Null => RelationOp::Set(Vec::new()),
+        Json::Object(object)
+            if ["connect", "disconnect", "set"].iter().any(|key| object.contains_key(*key)) =>
+        {
+            if let Some(key) =
+                object.keys().find(|key| !["connect", "disconnect", "set"].contains(&key.as_str()))
+            {
+                return Err(format!("invalid key `{key}` in relation input"));
+            }
+            if let Some(set) = object.get("set") {
+                if object.contains_key("connect") || object.contains_key("disconnect") {
+                    return Err("`set` cannot be combined with `connect` or `disconnect`".into());
+                }
+                RelationOp::Set(ids(set)?)
+            } else {
+                let disconnect = object.get("disconnect").map(ids).transpose()?.unwrap_or_default();
+                let connect = match object.get("connect") {
+                    None => Vec::new(),
+                    Some(Json::Array(items)) => {
+                        items.iter().map(connect_item).collect::<Result<_, _>>()?
+                    }
+                    Some(item) => vec![connect_item(item)?],
+                };
+                single(connect.len())?;
+                RelationOp::Change { connect, disconnect }
+            }
+        }
+        other => RelationOp::Set(ids(other)?),
+    };
+    if let RelationOp::Set(ids) = &op {
+        single(ids.len())?;
+    }
+    Ok(op)
+}
+
+fn connect_item(value: &Json) -> Result<Connect, String> {
+    let document_id = match value {
+        Json::String(id) => id.clone(),
+        Json::Object(object) => {
+            if let Some(key) = object.keys().find(|key| *key != "documentId" && *key != "position")
+            {
+                return Err(format!("invalid key `{key}` in connect"));
+            }
+            object.get("documentId").and_then(Json::as_str).unwrap_or_default().to_owned()
+        }
+        _ => String::new(),
+    };
+    if document_id.is_empty() {
+        return Err("connect items take a documentId".into());
+    }
+    let position = match value.get("position") {
+        None => None,
+        Some(Json::Object(position)) => {
+            let reference = |key: &str| position.get(key).and_then(Json::as_str).map(str::to_owned);
+            Some(if let Some(id) = reference("before") {
+                Position::Before(id)
+            } else if let Some(id) = reference("after") {
+                Position::After(id)
+            } else if position.get("start") == Some(&Json::Bool(true)) {
+                Position::Start
+            } else if position.get("end") == Some(&Json::Bool(true)) {
+                Position::End
+            } else {
+                return Err(
+                    "position must be { before }, { after }, { start: true } or { end: true }"
+                        .into(),
+                );
+            })
+        }
+        Some(_) => return Err("position must be an object".into()),
+    };
+    Ok(Connect { document_id, position })
 }
 
 enum Converted {

@@ -176,7 +176,23 @@ pub fn diff(old: &DbModel, new: &DbModel, renames: &Renames) -> Result<Diff, Mig
     let mut renamed = old.clone();
     let mut rename_changes = Vec::new();
 
+    // Renaming a content table renames its link tables (`{table}_{field}_lnk`) with it.
+    let mut table_renames = renames.tables.clone();
     for (from, to) in &renames.tables {
+        let prefix = format!("{from}_");
+        for name in old.tables.keys() {
+            if let Some(rest) = name.strip_prefix(&prefix)
+                && name.ends_with("_lnk")
+            {
+                let candidate = format!("{to}_{rest}");
+                if new.tables.contains_key(&candidate) && !old.tables.contains_key(&candidate) {
+                    table_renames.entry(name.clone()).or_insert(candidate);
+                }
+            }
+        }
+    }
+
+    for (from, to) in &table_renames {
         if !old.tables.contains_key(from) {
             return Err(MigrateError::InvalidRename(format!("table `{from}` does not exist")));
         }
@@ -188,6 +204,14 @@ pub fn diff(old: &DbModel, new: &DbModel, renames: &Renames) -> Result<Diff, Mig
         let mut table = renamed.tables.remove(from).expect("checked");
         table.name.clone_from(to);
         renamed.tables.insert(to.clone(), table);
+        // Databases update foreign keys that reference a renamed table; mirror that.
+        for table in renamed.tables.values_mut() {
+            for foreign_key in &mut table.foreign_keys {
+                if foreign_key.table == *from {
+                    foreign_key.table.clone_from(to);
+                }
+            }
+        }
         rename_changes.push(Change::RenameTable { from: from.clone(), to: to.clone() });
     }
 
@@ -291,6 +315,16 @@ pub fn diff(old: &DbModel, new: &DbModel, renames: &Renames) -> Result<Diff, Mig
         }
     }
 
+    // Referenced tables are created before, and dropped after, the tables referencing them.
+    let has_foreign_keys = |change: &Change| match change {
+        Change::CreateTable { table } | Change::DropTable { table } => {
+            !table.foreign_keys.is_empty()
+        }
+        _ => false,
+    };
+    create_tables.sort_by_key(|change| has_foreign_keys(change));
+    drop_tables.sort_by_key(|change| !has_foreign_keys(change));
+
     let hints = rename_hints(&add_columns, &drop_columns, &create_tables, &drop_tables);
 
     let changes = [
@@ -362,6 +396,7 @@ mod tests {
                     unique: *unique,
                 })
                 .collect(),
+            foreign_keys: Vec::new(),
         }
     }
 

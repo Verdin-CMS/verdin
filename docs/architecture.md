@@ -1,6 +1,6 @@
 # Verdin — Architecture (MVP)
 
-> Status: draft v0.4 · 2026-09-24 (M0–M2 implemented)
+> Status: draft v0.5 · 2026-09-24 (M0–M3 implemented)
 > Verdin is an open source headless CMS written in Rust, inspired by Strapi v5.
 > Everything is free software: there is no "Enterprise" edition and no paid features.
 
@@ -304,20 +304,24 @@ Same conceptual model as Strapi v5:
 
 ```sql
 -- articles_category_lnk
+id                  BIGINT   PK autoincrement
 source_id           BIGINT   NOT NULL  REFERENCES articles(id) ON DELETE CASCADE
 target_document_id  CHAR(26) NOT NULL
-position            DOUBLE   NOT NULL  -- ordering; allows inserting between two without renumbering
-PRIMARY KEY (source_id, target_document_id)
-INDEX (target_document_id)
+position            DOUBLE   NOT NULL  -- 1..n, rewritten on every write
+UNIQUE (source_id, target_document_id)
+UNIQUE (source_id)                     -- to-one kinds only (oneToOne, manyToOne, oneWay)
+INDEX  (target_document_id)
 ```
 
 - The target is resolved at query time: `JOIN categories c ON c.document_id = lnk.target_document_id AND c.publication_state = :current_state AND c.locale = :locale`.
   - A published article only sees published categories; if a category is unpublished it "disappears" from the published article without touching any link.
   - Publishing only copies the row's own links.
 - Only the **owning** side (`inversedBy`) stores the relation. The inverse side (`mappedBy`) queries the same table in reverse. No duplicated tables.
-- Supported kinds: `oneToOne`, `oneToMany`, `manyToOne`, `manyToMany`, `oneWay`, `manyWay`. Cardinality is validated in the application, plus unique indexes where applicable (e.g. `oneToOne` adds `UNIQUE(source_id)` and `UNIQUE(target_document_id)`).
-- Deleting a target document: orphan links are removed in the same transaction as the Document Service `delete`.
-- No FK on `target_document_id` (it is not unique in the target table). Integrity is enforced by the Document Service.
+- Supported kinds: `oneToOne`, `oneToMany`, `manyToOne`, `manyToMany`, `oneWay`, `manyWay`. "At most one target" is a unique index on `source_id`. "A target belongs to one source document" (`oneToOne`, `oneToMany`) cannot be an index, because a draft and its published version legitimately share targets; the Document Service enforces it by *moving* the target: linking it removes the links other documents' rows hold to it, in the same state (Strapi's behaviour).
+- Only the owning side is writable. Writing a `mappedBy` side is a validation error that names the owning attribute.
+- Deleting a document removes the links pointing at it in the same transaction; its own links go with its rows (`ON DELETE CASCADE`, which also covers unpublishing).
+- No FK on `target_document_id` (it is not unique in the target table). Integrity is enforced by the Document Service, which also rejects links to documents that do not exist.
+- Migrations run with SQLite's `foreign_keys` off, so table rebuilds do not cascade into link tables. Renaming a table renames its link tables with it.
 
 ### 8.5 Components and dynamic zones: a JSON column
 
@@ -338,7 +342,7 @@ Strapi stores each component in its own table with polymorphic link tables, whic
 
 - Strict validation against the component schema on every write.
 - Publish and discard copy the JSON as-is (free).
-- **Relations inside components** are stored as `document_id`s inside the JSON; the populate engine resolves them with batched queries (`WHERE document_id IN (…)`).
+- **Relations inside components** (planned) will be stored as `document_id`s inside the JSON and resolved by the populate engine with batched queries. Until then writing them is a validation error.
 - **Trade-off**: filtering on component fields needs dialect-specific JSON functions (`->>` on PG, `JSON_EXTRACT`/`JSON_VALUE` on MySQL/MariaDB, `json_extract` on SQLite). In the MVP only scalar fields of **non-repeatable** components are filterable. Repeatable components and dynamic zones are not filterable in v0.1 (in practice, filtering by them is rare).
 
 ### 8.6 MVP system tables
@@ -538,7 +542,11 @@ Pipeline: `query string → serde_qs → typed AST (verdin-query) → validation
 - Components and dynamic zones are returned only when populated (`populate=*`, `populate=seo`, `populate[seo]=true`). A populated component is returned whole, nested components included (Strapi requires populating each level). Every component item has an `id` unique within its attribute.
 - Values: `biginteger` as strings, `decimal` as numbers (rounded half away from zero to their scale, like the databases), `date` `YYYY-MM-DD`, `time` `HH:MM:SS.mmm`, `datetime` `YYYY-MM-DDTHH:MM:SS.mmmZ` (UTC).
 - Text filter semantics are the same on every engine: `$eq`, `$ne`, `$in`, `$contains`, `$startsWith`, `$endsWith` are exact (binary collation on MySQL/MariaDB, whose default collations ignore case and accents); the `…i` variants ignore case (and accents on MySQL/MariaDB; SQLite only folds ASCII). `ORDER BY` puts NULLs last in both directions and always ends with `id` for stable pagination.
-- Not yet: filtering on fields of components or relations, and populating relations (M3).
+- Relations are returned only when populated: `populate=category`, `populate=*` (one level), or `populate[category][fields][0]=name&populate[category][populate][…]&populate[category][filters][…]&populate[category][sort]=…`, nested up to `max_populate_depth` (5). Each level is one batched query per relation (`IN (…)`, chunked). A to-one relation is an object or `null`; a to-many one is an array in link order (or in `sort` order).
+- Related documents are resolved in the version being read: published documents see published targets, drafts see drafts (types without draft & publish always show their only version). Unpublishing a target hides it without touching links.
+- Filtering through relations: `filters[category][name][$eq]=News`, `filters[category][$null]=true`, nested (`filters[articles][tags][label][$eq]=rust`), on either side, as `EXISTS` subqueries (no duplicate rows).
+- Relation input (owning side): `"documentId"`, `{ "documentId": … }`, `[…]` (set), `null` (clear), or `{ "connect": […], "disconnect": […] }` / `{ "set": […] }` where `connect` items may carry `position: { before | after: documentId } | { start: true } | { end: true }`. Connecting a to-one relation replaces its target.
+- Not yet: filtering on fields of components, relations inside components.
 - `private` fields and internal system columns (`state`, `created_by_id`…) never appear in the content API.
 
 ### 12.4 OpenAPI
@@ -694,7 +702,7 @@ verdin version
 | **M0 Skeleton** ✅ | Workspace, CI, config, `verdin start` with `/_health`, connection to all 4 engines, `docker/compose.dev.yml` | Green CI across the matrix |
 | **M1 Schema + migrations** ✅ | Parser and validation, type mapping, snapshot, diff, plan, journaled apply (scalars, components and dynamic zones as JSON) | Create, alter and drop types on all 4 engines; resume after failure on MySQL |
 | **M2 Document Service + REST** ✅ | CRUD, filters, sort, pagination, fields, draft/publish, components/dynamic zones, OpenAPI | Conformance suite green on all engines |
-| **M3 Relations & components** | `_lnk` tables, 6 relation kinds, JSON components and dynamic zones, batched `populate` | Populate and publish conformance |
+| **M3 Relations & components** ✅ | `_lnk` tables, 6 relation kinds, JSON components and dynamic zones, batched `populate`, relation filters | Populate and publish conformance on all engines. Component filters and relations inside components moved to M6 |
 | **M4 Auth** | Admins, first admin, JWT + rotating refresh, roles, API tokens, public permissions | Security tests (refresh reuse, enumeration, rate limit) |
 | **M5 Admin** | Login, lists, dynamic editor, content-type builder (dev), settings | Playwright e2e of "create type → create content → publish → read over API" |
 | **M6 Release 0.1** | Binaries (macOS arm64/x64, Linux x64/arm64 musl, Windows), Docker image, `examples/blog`, README | `docker run` to first content in < 2 min |
@@ -729,3 +737,7 @@ verdin version
 | 14 | Writes without `?status=draft` | Publish (Strapi v5 REST behaviour) | Drop-in compatibility for existing clients |
 | 15 | Text comparison | Exact by default on every engine; `…i` operators for case-insensitive | Same results on MySQL as on PostgreSQL |
 | 16 | Temporary access control | `[api].open_access` switch, closed by default | Secure by default until M4 permissions |
+| 17 | "Target belongs to one document" | Enforced by moving the target, per state | A unique index would forbid a draft and its published version sharing a target |
+| 18 | Inverse (`mappedBy`) sides | Read-only | Writing through them is ambiguous with draft & publish (which owner version?) |
+| 19 | Link positions | Renumbered 1..n on each write | No float exhaustion; lists are small |
+| 20 | Link table rows | Keep an `id` primary key | Uniform tables for the migration engine and SQLite rebuilds |

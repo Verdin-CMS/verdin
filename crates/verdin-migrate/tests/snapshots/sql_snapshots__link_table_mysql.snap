@@ -1,0 +1,12 @@
+---
+source: crates/verdin-migrate/tests/sql_snapshots.rs
+expression: link
+---
+-- create table articles_category_lnk [safe]
+CREATE TABLE `articles_category_lnk` (
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `source_id` bigint NOT NULL,
+  `target_document_id` char(26) NOT NULL,
+  `position` double NOT NULL,
+  FOREIGN KEY (`source_id`) REFERENCES `articles` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

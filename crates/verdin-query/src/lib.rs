@@ -11,7 +11,7 @@ pub mod temporal;
 use std::fmt;
 
 pub use ast::*;
-pub use fields::{Field, FieldCategory, TypeFields, attribute_kind};
+pub use fields::{Catalog, Field, FieldCategory, RelationInfo, TypeFields, attribute_kind};
 pub use params::{Node, parse_query_string};
 pub use parse::{Limits, parse, scalar_value};
 
@@ -39,8 +39,9 @@ impl std::error::Error for QueryError {}
 pub fn parse_request(
     raw: Option<&str>,
     fields: &TypeFields,
+    catalog: &Catalog,
     limits: &Limits,
 ) -> Result<Query, QueryError> {
     let root = parse_query_string(raw.unwrap_or_default())?;
-    parse(&root, fields, limits)
+    parse(&root, fields, catalog, limits)
 }

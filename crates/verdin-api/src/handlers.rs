@@ -169,7 +169,8 @@ fn collection<'a>(state: &'a ApiState, name: &str) -> Result<&'a Route, ApiError
 
 fn parse_query(state: &ApiState, route: &Route, raw: Option<&str>) -> Result<Query, ApiError> {
     let model = state.service.registry().get(&route.uid)?;
-    Ok(verdin_query::parse_request(raw, &model.fields, &state.config.limits)?)
+    let catalog = state.service.registry().catalog();
+    Ok(verdin_query::parse_request(raw, &model.fields, catalog, &state.config.limits)?)
 }
 
 fn parse_data(body: &Bytes) -> Result<Value, ApiError> {

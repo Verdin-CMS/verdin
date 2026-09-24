@@ -248,6 +248,7 @@ fn system_tables() -> [Table; 2] {
                 bigint("created_at"),
             ],
             indexes: Vec::new(),
+            foreign_keys: Vec::new(),
         },
         Table {
             name: JOURNAL_TABLE.into(),
@@ -263,6 +264,7 @@ fn system_tables() -> [Table; 2] {
                 Column::new("error", ColumnType::Text),
             ],
             indexes: Vec::new(),
+            foreign_keys: Vec::new(),
         },
     ]
 }
@@ -293,8 +295,12 @@ async fn lock(conn: &mut Conn) -> Result<(), MigrateError> {
                 return Err(MigrateError::LockTimeout);
             }
         }
-        // SQLite serializes writers with `BEGIN IMMEDIATE`.
-        Flavor::Sqlite => {}
+        // SQLite serializes writers with `BEGIN IMMEDIATE`. Foreign keys are off while
+        // migrating, or table rebuilds would cascade-delete link rows (PRAGMA is a no-op
+        // inside a transaction, so it is set here, before `BEGIN`).
+        Flavor::Sqlite => {
+            conn.execute("PRAGMA foreign_keys = OFF", &[]).await?;
+        }
     }
     Ok(())
 }
@@ -312,7 +318,9 @@ async fn unlock(conn: &mut Conn) -> Result<(), DbError> {
             )
             .await?;
         }
-        Flavor::Sqlite => {}
+        Flavor::Sqlite => {
+            conn.execute("PRAGMA foreign_keys = ON", &[]).await?;
+        }
     }
     Ok(())
 }

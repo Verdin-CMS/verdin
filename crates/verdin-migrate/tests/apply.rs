@@ -174,3 +174,40 @@ async fn noop_apply_reports_nothing() {
     assert_eq!(report, ApplyReport { applied_steps: 0, resumed_from: None });
     test.drop().await;
 }
+
+/// Link rows follow their source row (ON DELETE CASCADE) and survive schema changes to
+/// the source table, including SQLite table rebuilds.
+#[tokio::test]
+async fn link_tables_cascade_and_survive_rebuilds() {
+    let test = TestDb::new().await;
+    let none = Renames::default();
+    let schema = |views: &str| {
+        model(&[
+            content_type(
+                "article",
+                "articles",
+                json!({ "title": { "type": "string" }, "views": { "type": views }, "tags": { "type": "relation", "relation": "manyWay", "target": "tag" } }),
+            ),
+            content_type("tag", "tags", json!({ "label": { "type": "string" } })),
+        ])
+    };
+    apply(&test.db, &schema("integer"), &none, SAFE).await.unwrap();
+    test.insert("articles", "01J0000000000000000000000A", &[("title", "A")]).await;
+    test.insert("articles", "01J0000000000000000000000B", &[("title", "B")]).await;
+    let link = "INSERT INTO articles_tags_lnk (source_id, target_document_id, position) SELECT id, ?, 1 FROM articles";
+    test.exec(link, &["01J00000000000000000000TAG".into()]).await;
+    assert_eq!(test.count("articles_tags_lnk").await, 2);
+
+    // A type change: a rebuild on SQLite, ALTER elsewhere. Links must survive.
+    apply(&test.db, &schema("string"), &none, RISKY).await.unwrap();
+    assert_up_to_date(&test, &schema("string")).await;
+    assert_eq!(test.count("articles_tags_lnk").await, 2);
+
+    test.exec("DELETE FROM articles WHERE document_id = ?", &["01J0000000000000000000000A".into()])
+        .await;
+    assert_eq!(test.count("articles_tags_lnk").await, 1, "links cascade with their source row");
+
+    apply(&test.db, &DbModel::default(), &none, ALL).await.unwrap();
+    assert!(!test.table_exists("articles_tags_lnk").await);
+    test.drop().await;
+}

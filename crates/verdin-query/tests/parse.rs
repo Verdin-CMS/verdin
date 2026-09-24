@@ -3,8 +3,8 @@ use verdin_db::{ColumnKind, SqlValue};
 use verdin_query::*;
 use verdin_schema::{Schema, Source};
 
-fn fields() -> TypeFields {
-    let schema = Schema::parse(&[
+fn schema() -> Schema {
+    Schema::parse(&[
         Source::content_type(
             "article",
             json!({
@@ -18,19 +18,40 @@ fn fields() -> TypeFields {
                     "meta": { "type": "json" },
                     "secret": { "type": "string", "private": true },
                     "seo": { "type": "component", "component": "shared.seo" },
-                    "author": { "type": "relation", "relation": "oneWay", "target": "article" }
+                    "author": { "type": "relation", "relation": "oneWay", "target": "article" },
+                    "category": { "type": "relation", "relation": "manyToOne", "target": "category", "inversedBy": "articles" }
+                }
+            })
+            .to_string(),
+        ),
+        Source::content_type(
+            "category",
+            json!({
+                "kind": "collectionType", "singularName": "category", "pluralName": "categories", "displayName": "Category",
+                "options": { "draftAndPublish": true },
+                "attributes": {
+                    "name": { "type": "string" },
+                    "articles": { "type": "relation", "relation": "oneToMany", "target": "article", "mappedBy": "category" }
                 }
             })
             .to_string(),
         ),
         Source::component("shared", "seo", json!({ "displayName": "SEO", "attributes": { "metaTitle": { "type": "string" } } }).to_string()),
     ])
-    .unwrap();
-    TypeFields::new(schema.content_type("api::article").unwrap())
+    .unwrap()
+}
+
+fn query_on(uid: &str, raw: &str) -> Result<Query, QueryError> {
+    let catalog = Catalog::new(&schema());
+    parse_request(Some(raw), catalog.get(uid).unwrap(), &catalog, &Limits::default())
 }
 
 fn query(raw: &str) -> Result<Query, QueryError> {
-    parse_request(Some(raw), &fields(), &Limits::default())
+    query_on("api::article", raw)
+}
+
+fn populated(query: &Query) -> Vec<&str> {
+    query.populate.iter().map(|populate| populate.field.as_str()).collect()
 }
 
 fn error(raw: &str) -> String {
@@ -103,6 +124,8 @@ fn rejects_invalid_filters() {
     assert!(query("filters[meta][$null]=true").is_ok());
     assert!(error("filters[views][$like]=1").contains("invalid filter operator"));
     assert!(error("filters[seo][metaTitle][$eq]=x").contains("not supported yet"));
+    assert!(error("filters[category]=x").contains("filter `category` by its fields"));
+    assert!(error("filters[category][nope][$eq]=x").contains("invalid key `nope`"));
     assert!(error("filters[publishOn][$between]=2026-01-01").contains("two values"));
     assert!(error("filters[$eq]=1").contains("top level"));
 }
@@ -131,10 +154,9 @@ fn sort_fields_populate() {
     );
     assert!(error("fields=seo").contains("invalid key `seo` in fields"));
 
-    assert_eq!(query("populate=*").unwrap().populate, ["seo"]);
-    assert_eq!(query("populate[seo][fields][0]=metaTitle").unwrap().populate, ["seo"]);
-    assert_eq!(query("populate[0]=seo").unwrap().populate, ["seo"]);
-    assert!(error("populate=author").contains("not supported yet"));
+    assert_eq!(populated(&query("populate=*").unwrap()), ["seo", "author", "category"]);
+    assert_eq!(populated(&query("populate[seo][fields][0]=metaTitle").unwrap()), ["seo"]);
+    assert_eq!(populated(&query("populate[0]=seo").unwrap()), ["seo"]);
     assert!(error("populate=title").contains("invalid key"));
 }
 
@@ -156,4 +178,50 @@ fn pagination_and_status() {
     assert_eq!(query("status=draft").unwrap().status, Status::Draft);
     assert!(error("status=archived").contains("status"));
     assert!(error("include=all").contains("invalid query parameter `include`"));
+}
+
+#[test]
+fn relation_filters() {
+    let q = query("filters[category][name][$eq]=News").unwrap();
+    let Some(Filter::Relation(relation)) = q.filters else { panic!() };
+    assert_eq!(relation.link_table, "articles_category_lnk");
+    assert!(relation.owner && !relation.negate && relation.target_draft_and_publish);
+    assert!(
+        matches!(relation.inner.as_deref(), Some(Filter::Condition(Condition { column, .. })) if column == "name")
+    );
+
+    let q = query("filters[category][$null]=true").unwrap();
+    assert!(matches!(
+        q.filters,
+        Some(Filter::Relation(RelationFilter { negate: true, inner: None, .. }))
+    ));
+
+    // The inverse side filters through the owner's link table.
+    let q = query_on("api::category", "filters[articles][title][$containsi]=rust").unwrap();
+    let Some(Filter::Relation(relation)) = q.filters else { panic!() };
+    assert_eq!(relation.link_table, "articles_category_lnk");
+    assert!(!relation.owner);
+    assert_eq!(relation.target_table, "articles");
+
+    // Nested relations.
+    assert!(query("filters[category][articles][author][title][$eq]=x").is_ok());
+}
+
+#[test]
+fn nested_populate() {
+    let q = query("populate[category][fields][0]=name&populate[category][populate][articles][sort]=title:desc&populate[category][filters][name][$ne]=x").unwrap();
+    let populate = &q.populate[0];
+    assert_eq!(populate.field, "category");
+    let sub = populate.query.as_ref().unwrap();
+    assert_eq!(sub.fields, Some(vec!["name".into()]));
+    assert!(sub.filters.is_some());
+    assert_eq!(sub.populate[0].field, "articles");
+    assert_eq!(
+        sub.populate[0].query.as_ref().unwrap().sort,
+        [Sort { column: "title".into(), descending: true }]
+    );
+
+    assert!(error("populate[category][limit]=1").contains("invalid key `limit`"));
+    let deep = "populate[category][populate][articles][populate][category][populate][articles][populate][category][populate][articles]=true";
+    assert!(error(deep).contains("deeper than"));
 }

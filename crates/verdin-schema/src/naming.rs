@@ -6,6 +6,31 @@ pub const MAX_TABLE_NAME: usize = 50;
 /// Maximum length of attribute names (and therefore column names).
 pub const MAX_ATTRIBUTE_NAME: usize = 50;
 
+/// PostgreSQL allows 63-byte identifiers and MySQL 64; generated names stay under both.
+pub const MAX_IDENTIFIER: usize = 60;
+
+/// Truncates `name` to fit [`MAX_IDENTIFIER`], appending an 8-char hash of the full name
+/// so that distinct long names stay distinct.
+pub fn bounded(name: &str) -> String {
+    use sha2::{Digest, Sha256};
+    if name.len() <= MAX_IDENTIFIER {
+        return name.to_owned();
+    }
+    let digest = Sha256::digest(name.as_bytes());
+    let hash: String = digest.iter().take(4).map(|byte| format!("{byte:02x}")).collect();
+    format!("{}_{hash}", &name[..MAX_IDENTIFIER - 9])
+}
+
+/// `{table}_{part}_{suffix}`, bounded.
+pub fn index_name(table: &str, part: &str, suffix: &str) -> String {
+    bounded(&format!("{table}_{part}_{suffix}"))
+}
+
+/// Link table of an owning relation attribute: `{table}_{column}_lnk`, bounded.
+pub fn link_table_name(table: &str, attribute: &str) -> String {
+    bounded(&format!("{table}_{}_lnk", snake_case(attribute)))
+}
+
 /// `singularName`, `pluralName`, component categories and names: `^[a-z][a-z0-9-]*$`,
 /// without leading, trailing or doubled dashes.
 pub fn is_kebab_name(name: &str) -> bool {

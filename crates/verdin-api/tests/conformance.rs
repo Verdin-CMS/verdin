@@ -1,17 +1,13 @@
 //! Content API conformance suite: the same HTTP requests against every database engine
 //! (`VERDIN_TEST_DATABASE_URL`, in-memory SQLite by default).
 
-use axum::Router;
-use axum::body::Body;
-use axum::http::{Method, Request, StatusCode};
-use http_body_util::BodyExt;
+mod common;
+
+use axum::http::{Method, StatusCode};
+use common::{App, error_paths};
 use serde_json::{Value, json};
-use tower::ServiceExt;
 use verdin_api::ApiConfig;
-use verdin_content::Registry;
-use verdin_migrate::{ApplyOptions, Renames, Risk};
 use verdin_schema::{Schema, Source};
-use verdin_testkit::TestDb;
 
 fn schema() -> Schema {
     let ct = |name: &str, value: Value| Source::content_type(name, value.to_string());
@@ -75,97 +71,27 @@ fn schema() -> Schema {
     .unwrap()
 }
 
-struct App {
-    router: Router,
-    test: TestDb,
+/// Creates a published article and returns its documentId.
+async fn article(app: &App, data: Value) -> String {
+    let (status, body) = app.post("/api/articles", data).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    body["data"]["documentId"].as_str().unwrap().to_owned()
 }
 
-impl App {
-    async fn new() -> Self {
-        Self::with_config(ApiConfig { open_access: true, ..ApiConfig::default() }).await
-    }
-
-    async fn with_config(config: ApiConfig) -> Self {
-        let test = TestDb::new().await;
-        let schema = schema();
-        let model = verdin_migrate::derive_model(&schema);
-        verdin_migrate::apply(
-            &test.db,
-            &model,
-            &Renames::default(),
-            ApplyOptions { allow: Risk::Safe },
-        )
-        .await
-        .unwrap();
-        let router = Router::new().nest(
-            "/api",
-            verdin_api::router(test.db.clone(), Registry::new(schema), config, "/api"),
-        );
-        Self { router, test }
-    }
-
-    async fn call(&self, method: Method, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
-        let request = Request::builder()
-            .method(method)
-            .uri(uri)
-            .header("content-type", "application/json")
-            .body(body.map_or_else(Body::empty, |body| Body::from(body.to_string())))
-            .unwrap();
-        let response = self.router.clone().oneshot(request).await.unwrap();
-        let status = response.status();
-        let bytes = response.into_body().collect().await.unwrap().to_bytes();
-        let value =
-            if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap() };
-        (status, value)
-    }
-
-    async fn get(&self, uri: &str) -> (StatusCode, Value) {
-        self.call(Method::GET, uri, None).await
-    }
-
-    async fn post(&self, uri: &str, data: Value) -> (StatusCode, Value) {
-        self.call(Method::POST, uri, Some(json!({ "data": data }))).await
-    }
-
-    async fn put(&self, uri: &str, data: Value) -> (StatusCode, Value) {
-        self.call(Method::PUT, uri, Some(json!({ "data": data }))).await
-    }
-
-    /// Creates a published article and returns its documentId.
-    async fn article(&self, data: Value) -> String {
-        let (status, body) = self.post("/api/articles", data).await;
-        assert_eq!(status, StatusCode::CREATED, "{body}");
-        body["data"]["documentId"].as_str().unwrap().to_owned()
-    }
-
-    async fn titles(&self, query: &str) -> Vec<String> {
-        let (status, body) = self.get(&format!("/api/articles?{query}")).await;
-        assert_eq!(status, StatusCode::OK, "{query}: {body}");
-        body["data"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|doc| doc["title"].as_str().unwrap().to_owned())
-            .collect()
-    }
-
-    async fn done(self) {
-        self.test.drop().await;
-    }
-}
-
-fn error_paths(body: &Value) -> Vec<Value> {
-    body["error"]["details"]["errors"]
+async fn titles(app: &App, query: &str) -> Vec<String> {
+    let (status, body) = app.get(&format!("/api/articles?{query}")).await;
+    assert_eq!(status, StatusCode::OK, "{query}: {body}");
+    body["data"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|error| error["path"].clone())
+        .map(|doc| doc["title"].as_str().unwrap().to_owned())
         .collect()
 }
 
 #[tokio::test]
 async fn crud_roundtrip() {
-    let app = App::new().await;
+    let app = App::new(schema()).await;
 
     let (status, body) = app.post("/api/articles", json!({ "title": "Hello", "views": 3 })).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -217,7 +143,7 @@ async fn crud_roundtrip() {
 
 #[tokio::test]
 async fn validates_input() {
-    let app = App::new().await;
+    let app = App::new(schema()).await;
 
     let (status, body) =
         app.call(Method::POST, "/api/articles", Some(json!({ "title": "x" }))).await;
@@ -285,42 +211,42 @@ async fn validates_input() {
 
 #[tokio::test]
 async fn draft_and_publish() {
-    let app = App::new().await;
+    let app = App::new(schema()).await;
 
     let (status, body) = app.post("/api/articles?status=draft", json!({ "title": "Draft" })).await;
     assert_eq!(status, StatusCode::CREATED);
     let id = body["data"]["documentId"].as_str().unwrap().to_owned();
-    assert!(app.titles("").await.is_empty(), "drafts are not published");
-    assert_eq!(app.titles("status=draft").await, ["Draft"]);
+    assert!(titles(&app, "").await.is_empty(), "drafts are not published");
+    assert_eq!(titles(&app, "status=draft").await, ["Draft"]);
     assert_eq!(app.get(&format!("/api/articles/{id}")).await.0, StatusCode::NOT_FOUND);
 
     let (status, body) =
         app.call(Method::POST, &format!("/api/articles/{id}/actions/publish"), None).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body["data"]["publishedAt"].is_string());
-    assert_eq!(app.titles("").await, ["Draft"]);
+    assert_eq!(titles(&app, "").await, ["Draft"]);
 
     // Editing only the draft leaves the published version untouched.
     let (status, _) =
         app.put(&format!("/api/articles/{id}?status=draft"), json!({ "title": "Edited" })).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(app.titles("").await, ["Draft"]);
-    assert_eq!(app.titles("status=draft").await, ["Edited"]);
+    assert_eq!(titles(&app, "").await, ["Draft"]);
+    assert_eq!(titles(&app, "status=draft").await, ["Edited"]);
 
     let (status, body) =
         app.call(Method::POST, &format!("/api/articles/{id}/actions/discard-draft"), None).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(app.titles("status=draft").await, ["Draft"]);
+    assert_eq!(titles(&app, "status=draft").await, ["Draft"]);
 
     // PUT without status publishes.
     app.put(&format!("/api/articles/{id}"), json!({ "title": "Live" })).await;
-    assert_eq!(app.titles("").await, ["Live"]);
+    assert_eq!(titles(&app, "").await, ["Live"]);
 
     let (status, _) =
         app.call(Method::POST, &format!("/api/articles/{id}/actions/unpublish"), None).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(app.titles("").await.is_empty());
-    assert_eq!(app.titles("status=draft").await, ["Live"]);
+    assert!(titles(&app, "").await.is_empty());
+    assert_eq!(titles(&app, "status=draft").await, ["Live"]);
 
     let (status, body) =
         app.call(Method::POST, &format!("/api/articles/{id}/actions/discard-draft"), None).await;
@@ -332,7 +258,7 @@ async fn draft_and_publish() {
 
     // Deleting removes every version.
     app.call(Method::DELETE, &format!("/api/articles/{id}"), None).await;
-    assert!(app.titles("status=draft").await.is_empty());
+    assert!(titles(&app, "status=draft").await.is_empty());
 
     app.done().await;
 }
@@ -348,89 +274,89 @@ async fn seed(app: &App) {
         if let Some(views) = views {
             data["views"] = json!(views);
         }
-        app.article(data).await;
+        article(app, data).await;
     }
 }
 
 #[tokio::test]
 async fn filters() {
-    let app = App::new().await;
+    let app = App::new(schema()).await;
     seed(&app).await;
     let sorted = |mut titles: Vec<String>| {
         titles.sort();
         titles
     };
 
-    assert_eq!(app.titles("filters[title][$eq]=Postgres%20tips").await, ["Postgres tips"]);
+    assert_eq!(titles(&app, "filters[title][$eq]=Postgres%20tips").await, ["Postgres tips"]);
     assert!(
-        app.titles("filters[title][$eq]=postgres%20tips").await.is_empty(),
+        titles(&app, "filters[title][$eq]=postgres%20tips").await.is_empty(),
         "$eq is case-sensitive everywhere"
     );
-    assert_eq!(app.titles("filters[title][$eqi]=postgres%20TIPS").await, ["Postgres tips"]);
+    assert_eq!(titles(&app, "filters[title][$eqi]=postgres%20TIPS").await, ["Postgres tips"]);
     assert_eq!(
-        sorted(app.titles("filters[title][$containsi]=RUST").await),
+        sorted(titles(&app, "filters[title][$containsi]=RUST").await),
         ["Rust in production", "rust for beginners"]
     );
-    assert_eq!(app.titles("filters[title][$contains]=Rust").await, ["Rust in production"]);
+    assert_eq!(titles(&app, "filters[title][$contains]=Rust").await, ["Rust in production"]);
     assert_eq!(
-        app.titles("filters[title][$notContainsi]=rust&sort=title").await,
+        titles(&app, "filters[title][$notContainsi]=rust&sort=title").await,
         ["MySQL 100% explained", "Postgres tips"]
     );
-    assert_eq!(app.titles("filters[title][$startsWith]=rust").await, ["rust for beginners"]);
+    assert_eq!(titles(&app, "filters[title][$startsWith]=rust").await, ["rust for beginners"]);
     assert_eq!(
-        sorted(app.titles("filters[title][$startsWithi]=rust").await),
+        sorted(titles(&app, "filters[title][$startsWithi]=rust").await),
         ["Rust in production", "rust for beginners"]
     );
-    assert_eq!(app.titles("filters[title][$endsWith]=tips").await, ["Postgres tips"]);
+    assert_eq!(titles(&app, "filters[title][$endsWith]=tips").await, ["Postgres tips"]);
     assert_eq!(
-        app.titles("filters[title][$contains]=100%25").await,
+        titles(&app, "filters[title][$contains]=100%25").await,
         ["MySQL 100% explained"],
         "LIKE wildcards are escaped"
     );
-    assert!(app.titles("filters[title][$contains]=_").await.is_empty());
+    assert!(titles(&app, "filters[title][$contains]=_").await.is_empty());
 
     assert_eq!(
-        app.titles("filters[views][$gt]=20&sort=views").await,
+        titles(&app, "filters[views][$gt]=20&sort=views").await,
         ["Postgres tips", "Rust in production"]
     );
-    assert_eq!(app.titles("filters[views][$lte]=15").await, ["rust for beginners"]);
-    assert_eq!(app.titles("filters[views][$null]=true").await, ["MySQL 100% explained"]);
-    assert_eq!(app.titles("filters[views][$notNull]=true").await.len(), 3);
+    assert_eq!(titles(&app, "filters[views][$lte]=15").await, ["rust for beginners"]);
+    assert_eq!(titles(&app, "filters[views][$null]=true").await, ["MySQL 100% explained"]);
+    assert_eq!(titles(&app, "filters[views][$notNull]=true").await.len(), 3);
     assert_eq!(
-        app.titles("filters[views][$between][0]=10&filters[views][$between][1]=50&sort=views")
+        titles(&app, "filters[views][$between][0]=10&filters[views][$between][1]=50&sort=views")
             .await,
         ["rust for beginners", "Postgres tips"]
     );
     assert_eq!(
-        app.titles("filters[views][$in][0]=15&filters[views][$in][1]=40&sort=views").await,
+        titles(&app, "filters[views][$in][0]=15&filters[views][$in][1]=40&sort=views").await,
         ["rust for beginners", "Postgres tips"]
     );
     assert_eq!(
-        app.titles("filters[stage][$notIn][0]=final&filters[stage][$notIn][1]=idea").await,
+        titles(&app, "filters[stage][$notIn][0]=final&filters[stage][$notIn][1]=idea").await,
         ["rust for beginners"]
     );
     assert_eq!(
-        sorted(app.titles("filters[featured]=true").await),
+        sorted(titles(&app, "filters[featured]=true").await),
         ["MySQL 100% explained", "Rust in production"]
     );
-    assert_eq!(app.titles("filters[price][$lt]=1").await, ["MySQL 100% explained"]);
+    assert_eq!(titles(&app, "filters[price][$lt]=1").await, ["MySQL 100% explained"]);
     assert_eq!(
-        app.titles("filters[publishOn][$gte]=2026-06-01&sort=publishOn").await,
+        titles(&app, "filters[publishOn][$gte]=2026-06-01&sort=publishOn").await,
         ["Postgres tips", "MySQL 100% explained"]
     );
-    assert_eq!(app.titles("filters[publishOn][$lt]=2026-02-01").await, ["Rust in production"]);
-    assert_eq!(app.titles("filters[createdAt][$lt]=2000-01-01").await.len(), 0);
+    assert_eq!(titles(&app, "filters[publishOn][$lt]=2026-02-01").await, ["Rust in production"]);
+    assert_eq!(titles(&app, "filters[createdAt][$lt]=2000-01-01").await.len(), 0);
 
     assert_eq!(
-        sorted(app.titles("filters[$or][0][stage]=idea&filters[$or][1][views][$gte]=100").await),
+        sorted(titles(&app, "filters[$or][0][stage]=idea&filters[$or][1][views][$gte]=100").await),
         ["MySQL 100% explained", "Rust in production"]
     );
     assert_eq!(
-        app.titles("filters[$not][stage][$eq]=final&filters[featured]=false").await,
+        titles(&app, "filters[$not][stage][$eq]=final&filters[featured]=false").await,
         ["rust for beginners"]
     );
     assert_eq!(
-        app.titles("filters[$and][0][stage]=final&filters[$and][1][featured]=false").await,
+        titles(&app, "filters[$and][0][stage]=final&filters[$and][1][featured]=false").await,
         ["Postgres tips"]
     );
 
@@ -447,17 +373,17 @@ async fn filters() {
 
 #[tokio::test]
 async fn sort_and_paginate() {
-    let app = App::new().await;
+    let app = App::new(schema()).await;
     seed(&app).await;
 
     assert_eq!(
-        app.titles("sort=views:desc").await,
+        titles(&app, "sort=views:desc").await,
         ["Rust in production", "Postgres tips", "rust for beginners", "MySQL 100% explained"],
         "NULLs sort last"
     );
-    assert_eq!(app.titles("sort=views:asc").await.last().unwrap(), "MySQL 100% explained");
+    assert_eq!(titles(&app, "sort=views:asc").await.last().unwrap(), "MySQL 100% explained");
     assert_eq!(
-        app.titles("sort[0]=featured:desc&sort[1]=views:desc").await.first().unwrap(),
+        titles(&app, "sort[0]=featured:desc&sort[1]=views:desc").await.first().unwrap(),
         "Rust in production"
     );
 
@@ -484,9 +410,10 @@ async fn sort_and_paginate() {
 
 #[tokio::test]
 async fn fields_types_and_populate() {
-    let app = App::new().await;
-    let id = app
-        .article(json!({
+    let app = App::new(schema()).await;
+    let id = article(
+        &app,
+        json!({
             "title": "Typed", "big": "9007199254740993", "rating": 4.5, "price": "12.345",
             "publishOn": "2026-09-24", "startsAt": "10:30", "happenedAt": "2026-09-24T12:00:00.123456+02:00",
             "extra": { "nested": [1, true, null] }, "contact": "a@b.co", "internalNote": "secret",
@@ -542,8 +469,8 @@ async fn fields_types_and_populate() {
 
 #[tokio::test]
 async fn unique_values() {
-    let app = App::new().await;
-    app.article(json!({ "title": "A", "slug": "same" })).await;
+    let app = App::new(schema()).await;
+    article(&app, json!({ "title": "A", "slug": "same" })).await;
 
     let (status, body) = app.post("/api/articles", json!({ "title": "B", "slug": "same" })).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
@@ -567,7 +494,7 @@ async fn unique_values() {
 
 #[tokio::test]
 async fn single_types() {
-    let app = App::new().await;
+    let app = App::new(schema()).await;
     assert_eq!(app.get("/api/homepage").await.0, StatusCode::NOT_FOUND);
     assert_eq!(
         app.post("/api/homepage", json!({ "headline": "x" })).await.0,
@@ -595,7 +522,7 @@ async fn single_types() {
 
 #[tokio::test]
 async fn closed_by_default() {
-    let app = App::with_config(ApiConfig::default()).await;
+    let app = App::with_config(schema(), ApiConfig::default()).await;
     let (status, body) = app.get("/api/articles").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(
@@ -609,7 +536,7 @@ async fn closed_by_default() {
 
 #[tokio::test]
 async fn openapi_document() {
-    let app = App::new().await;
+    let app = App::new(schema()).await;
     let (status, body) = app.get("/api/_openapi.json").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["openapi"], "3.1.0");

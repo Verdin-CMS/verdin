@@ -11,7 +11,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use serde_json::Value as Json;
 use verdin_db::DbError;
-use verdin_query::TypeFields;
+use verdin_query::{Catalog, TypeFields};
 use verdin_schema::{AttributeKind, ContentType, Schema};
 
 pub use output::OutputOptions;
@@ -67,8 +67,8 @@ pub struct TypeModel {
 }
 
 impl TypeModel {
-    fn new(content_type: &ContentType) -> Self {
-        let fields = TypeFields::new(content_type);
+    fn new(content_type: &ContentType, schema: &Schema) -> Self {
+        let fields = TypeFields::new(content_type, schema);
         let mut unique_indexes = HashMap::new();
         let mut columns = HashMap::new();
         for (name, attribute) in &content_type.attributes {
@@ -116,16 +116,38 @@ impl TypeModel {
 pub struct Registry {
     pub schema: Arc<Schema>,
     types: Arc<HashMap<String, Arc<TypeModel>>>,
+    catalog: Arc<Catalog>,
+    /// Target uid → link tables pointing at documents of that type.
+    incoming: Arc<HashMap<String, Vec<String>>>,
 }
 
 impl Registry {
     pub fn new(schema: Schema) -> Self {
-        let types = schema
+        let types: HashMap<_, _> = schema
             .content_types
             .values()
-            .map(|content_type| (content_type.uid.clone(), Arc::new(TypeModel::new(content_type))))
+            .map(|content_type| {
+                (content_type.uid.clone(), Arc::new(TypeModel::new(content_type, &schema)))
+            })
             .collect();
-        Self { schema: Arc::new(schema), types: Arc::new(types) }
+        let mut incoming: HashMap<String, Vec<String>> = HashMap::new();
+        for model in types.values() {
+            for relation in model.fields.iter().filter_map(|field| field.relation.as_ref()) {
+                if relation.owner {
+                    incoming
+                        .entry(relation.target.clone())
+                        .or_default()
+                        .push(relation.link_table.clone());
+                }
+            }
+        }
+        let catalog = Catalog::new(&schema);
+        Self {
+            schema: Arc::new(schema),
+            types: Arc::new(types),
+            catalog: Arc::new(catalog),
+            incoming: Arc::new(incoming),
+        }
     }
 
     pub fn get(&self, uid: &str) -> Result<&Arc<TypeModel>> {
@@ -134,5 +156,14 @@ impl Registry {
 
     pub fn types(&self) -> impl Iterator<Item = &Arc<TypeModel>> {
         self.types.values()
+    }
+
+    pub fn catalog(&self) -> &Catalog {
+        &self.catalog
+    }
+
+    /// Link tables whose targets are documents of `uid`.
+    pub fn incoming_links(&self, uid: &str) -> &[String] {
+        self.incoming.get(uid).map_or(&[], Vec::as_slice)
     }
 }
