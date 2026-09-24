@@ -17,6 +17,7 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub schema: SchemaConfig,
     pub api: ApiConfig,
+    pub admin: AdminConfig,
     pub log: LogConfig,
 }
 
@@ -71,9 +72,6 @@ pub struct ApiConfig {
     pub max_page_size: u64,
     /// Serialize decimals as strings (exact) instead of numbers (Strapi-compatible).
     pub decimal_as_string: bool,
-    /// Allow anonymous access to the whole content API. A stopgap until permissions (M4);
-    /// never enable it in production.
-    pub open_access: bool,
 }
 
 impl Default for ApiConfig {
@@ -83,8 +81,24 @@ impl Default for ApiConfig {
             default_page_size: 25,
             max_page_size: 100,
             decimal_as_string: false,
-            open_access: false,
         }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AdminConfig {
+    /// Path the admin panel is served under; its API lives at `{path}/api`.
+    pub path: String,
+    /// Mark the refresh cookie `Secure`. Only disable for plain-HTTP local development.
+    pub secure_cookies: bool,
+    /// Login, registration and refresh attempts per client IP per minute.
+    pub auth_rate_limit: u32,
+}
+
+impl Default for AdminConfig {
+    fn default() -> Self {
+        Self { path: "/admin".into(), secure_cookies: true, auth_rate_limit: 20 }
     }
 }
 

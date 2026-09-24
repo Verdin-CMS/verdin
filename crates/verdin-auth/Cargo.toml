@@ -1,5 +1,5 @@
 [package]
-name = "verdin-api"
+name = "verdin-auth"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,27 +7,25 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-axum = "0.8.9"
-bytes = "1.12.1"
-indexmap = "2.14.2"
+argon2 = "0.6.0"
+base64 = "0.23.1"
+getrandom = "0.4.3"
+hmac = "0.13.0"
+regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-time = "0.3.55"
+sha2 = "0.11.0"
+thiserror = "2.0.21"
+time = { version = "0.3.55", features = ["serde"] }
 tracing = "0.1.44"
-verdin-auth = { version = "0.0.1", path = "../verdin-auth" }
-verdin-content = { version = "0.0.1", path = "../verdin-content" }
 verdin-db = { version = "0.0.1", path = "../verdin-db" }
-verdin-query = { version = "0.0.1", path = "../verdin-query" }
-verdin-schema = { version = "0.0.1", path = "../verdin-schema" }
+verdin-migrate = { version = "0.0.1", path = "../verdin-migrate" }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
-http-body-util = "0.1.5"
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
-tower = { version = "0.5.3", features = ["util"] }
-verdin-auth = { path = "../verdin-auth" }
 verdin-migrate = { path = "../verdin-migrate" }
 verdin-schema = { path = "../verdin-schema" }
 verdin-testkit = { path = "../verdin-testkit" }

@@ -3,7 +3,7 @@
 Open source headless CMS written in Rust. Inspired by Strapi, shipped as a single binary,
 running on PostgreSQL, MySQL, MariaDB and SQLite. 100% free — there is no enterprise edition.
 
-> **Status:** early development (milestones M0–M3: schema, migrations, content REST API and relations). See [docs/architecture.md](docs/architecture.md).
+> **Status:** early development (milestones M0–M4: schema, migrations, content REST API, relations, auth). See [docs/architecture.md](docs/architecture.md).
 
 ## Development
 
@@ -49,13 +49,30 @@ verdin start --migrate                   # apply safe steps, then serve
 On MySQL/MariaDB (no transactional DDL) an interrupted migration resumes from the
 failed step on the next `migrate apply`.
 
+### Admin, tokens and permissions
+
+Secrets come from the environment only; generate them once:
+
+```sh
+eval "$(verdin secrets | sed 's/^/export /')"   # VERDIN_ADMIN_JWT_SECRET, VERDIN_TOKEN_PEPPER
+verdin start --migrate
+# register the first admin (only possible while none exists)
+curl -XPOST localhost:1337/admin/api/auth/register-first-admin -H 'content-type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+verdin admin create --email other@example.com          # password from VERDIN_ADMIN_PASSWORD or stdin
+verdin admin reset-password --email you@example.com
+```
+
+The content API is closed until you grant public permissions or create API tokens
+(`POST /admin/api/api-tokens`, `PUT /admin/api/public-permissions`). Local plain-HTTP
+development needs `VERDIN_ADMIN__SECURE_COOKIES=false` for the refresh cookie.
+
 ### Content API
 
 Strapi v5 compatible REST under `/api`, plus an OpenAPI document at `/api/_openapi.json`.
-Until permissions land (M4) it is closed; set `VERDIN_API__OPEN_ACCESS=true` to try it.
 
 ```sh
-curl -XPOST localhost:1337/api/articles -H 'content-type: application/json' \
+curl -XPOST localhost:1337/api/articles -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"data":{"title":"Hello","slug":"hello"}}'
 curl -g 'localhost:1337/api/articles?filters[title][$containsi]=hello&sort=createdAt:desc&populate=*'
 curl -XPUT 'localhost:1337/api/articles/<documentId>?status=draft' -H 'content-type: application/json' \
@@ -93,7 +110,11 @@ prefix = "/api"
 default_page_size = 25
 max_page_size = 100
 decimal_as_string = false
-open_access = false  # development only, until permissions (M4)
+
+[admin]
+path = "/admin"
+secure_cookies = true
+auth_rate_limit = 20  # login/registration/refresh per IP per minute
 
 [log]
 format = "pretty" # or "json"

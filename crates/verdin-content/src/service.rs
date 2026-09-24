@@ -33,10 +33,12 @@ const BASE: &str = "t0";
 /// Largest `IN (…)` list per statement.
 const IN_CHUNK: usize = 500;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct WriteOptions {
     /// Publish after writing (draft & publish types). `false` writes the draft only.
     pub publish: bool,
+    /// Admin user performing the write, recorded as `created_by_id` / `updated_by_id`.
+    pub actor: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -455,6 +457,8 @@ impl DocumentService {
             ),
             ("created_at".into(), SqlValue::DateTime(now)),
             ("updated_at".into(), SqlValue::DateTime(now)),
+            ("created_by_id".into(), actor_value(options.actor)),
+            ("updated_by_id".into(), actor_value(options.actor)),
         ];
         values.extend(prepared.columns);
         let mut insert = SqlBuilder::new(self.db.flavor());
@@ -467,7 +471,7 @@ impl DocumentService {
 
         if draft_and_publish {
             if options.publish {
-                self.publish_in(&mut tx, model, &document_id, now).await?;
+                self.publish_in(&mut tx, model, &document_id, now, options.actor).await?;
             }
         } else {
             self.ensure_required(&mut tx, model, &document_id, PUBLISHED).await?;
@@ -496,6 +500,7 @@ impl DocumentService {
             .ok_or(ContentError::NotFound)?;
         let mut assignments = prepared.columns;
         assignments.push(("updated_at".into(), SqlValue::DateTime(now)));
+        assignments.push(("updated_by_id".into(), actor_value(options.actor)));
         let mut update = SqlBuilder::new(self.db.flavor());
         write_update(&mut update, model.table(), assignments, id);
         tx.execute(&update.sql, &update.params).await.map_err(|error| db_error(model, error))?;
@@ -503,7 +508,7 @@ impl DocumentService {
 
         if model.draft_and_publish() {
             if options.publish {
-                self.publish_in(&mut tx, model, document_id, now).await?;
+                self.publish_in(&mut tx, model, document_id, now, options.actor).await?;
             }
         } else {
             self.ensure_required(&mut tx, model, document_id, PUBLISHED).await?;
@@ -547,10 +552,10 @@ impl DocumentService {
     }
 
     /// Copies the draft over the published version (creating it if needed).
-    pub async fn publish(&self, uid: &str, document_id: &str) -> Result<()> {
+    pub async fn publish(&self, uid: &str, document_id: &str, actor: Option<i64>) -> Result<()> {
         let model = self.draft_and_publish_model(uid)?;
         let mut tx = self.db.begin().await?;
-        self.publish_in(&mut tx, model, document_id, now()).await?;
+        self.publish_in(&mut tx, model, document_id, now(), actor).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -598,12 +603,28 @@ impl DocumentService {
         Ok(model)
     }
 
+    /// The admin who created a document (`None` when created through the content API).
+    /// `NotFound` if the document does not exist.
+    pub async fn created_by(&self, uid: &str, document_id: &str) -> Result<Option<i64>> {
+        let model = self.registry.get(uid)?;
+        let mut select = SqlBuilder::new(self.db.flavor());
+        select.push("SELECT ").ident("created_by_id").push(" FROM ").ident(model.table());
+        select.push(" WHERE ").ident("locale").push(" = '' AND ").ident("document_id").push(" = ");
+        select.param(SqlValue::Text(document_id.into()));
+        select.push(" ORDER BY ").ident("publication_state").push(" LIMIT 1");
+        let rows =
+            self.db.queries().fetch_all(&select.sql, &select.params, &[ColumnKind::BigInt]).await?;
+        let row = rows.into_iter().next().ok_or(ContentError::NotFound)?;
+        Ok(row[0].as_i64())
+    }
+
     async fn publish_in(
         &self,
         tx: &mut Tx,
         model: &TypeModel,
         document_id: &str,
         now: OffsetDateTime,
+        actor: Option<i64>,
     ) -> Result<()> {
         let draft =
             load_internal(tx, model, document_id, DRAFT).await?.ok_or(ContentError::NotFound)?;
@@ -622,6 +643,7 @@ impl DocumentService {
         let mut values = attribute_values(draft);
         values.push(("published_at".into(), SqlValue::DateTime(now)));
         values.push(("updated_at".into(), SqlValue::DateTime(now)));
+        values.push(("updated_by_id".into(), actor_value(actor)));
 
         let mut statement = SqlBuilder::new(self.db.flavor());
         let published_id = match row_id(tx, model, document_id, PUBLISHED, true).await? {
@@ -637,6 +659,10 @@ impl DocumentService {
                 values.push(("locale".into(), SqlValue::Text(String::new())));
                 values.push(("publication_state".into(), SqlValue::SmallInt(PUBLISHED)));
                 values.push(("created_at".into(), created_at.unwrap_or(SqlValue::DateTime(now))));
+                values.push((
+                    "created_by_id".into(),
+                    actor_value(created_by(tx, model, document_id).await?),
+                ));
                 write_insert(&mut statement, model.table(), values);
                 tx.insert_returning_id(&statement.sql, &statement.params)
                     .await
@@ -796,6 +822,19 @@ fn next_links(
         links = links.split_off(links.len() - 1);
     }
     Ok(links)
+}
+
+fn actor_value(actor: Option<i64>) -> SqlValue {
+    actor.map_or(SqlValue::Null(ColumnKind::BigInt), SqlValue::BigInt)
+}
+
+/// `created_by_id` of a document's draft (inside a transaction).
+async fn created_by(tx: &mut Tx, model: &TypeModel, document_id: &str) -> Result<Option<i64>> {
+    let mut select = SqlBuilder::new(tx.flavor());
+    select.push("SELECT ").ident("created_by_id").push(" FROM ").ident(model.table());
+    write_version(&mut select, DRAFT, document_id);
+    let rows = tx.fetch_all(&select.sql, &select.params, &[ColumnKind::BigInt]).await?;
+    Ok(rows.first().and_then(|row| row[0].as_i64()))
 }
 
 fn now() -> OffsetDateTime {

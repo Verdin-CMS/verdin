@@ -3,13 +3,17 @@
 //! Collection types: `/{pluralName}` and `/{pluralName}/{documentId}`.
 //! Single types: `/{singularName}`.
 //! With draft & publish, `POST` and `PUT` publish unless `?status=draft` (Strapi v5).
+//!
+//! Callers are the public role (no `Authorization`) or an API token (`Bearer`); every
+//! route needs its action granted, and reading drafts also needs `readDrafts`.
 
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use serde_json::{Value, json};
+use verdin_auth::{AuthError, ContentAction};
 use verdin_content::WriteOptions;
 use verdin_query::{Query, Status};
 
@@ -18,8 +22,12 @@ use crate::{ApiState, Route};
 
 type ApiResult = Result<Response, ApiError>;
 
-pub async fn openapi(State(state): State<ApiState>) -> ApiResult {
-    authorize(&state)?;
+/// Any valid API token may read the OpenAPI document.
+pub async fn openapi(State(state): State<ApiState>, headers: HeaderMap) -> ApiResult {
+    let actor = state.auth.content_actor(bearer(&headers)?).await.map_err(ApiError::from)?;
+    if !actor.is_token() {
+        return Err(ApiError::Forbidden);
+    }
     Ok(Json((*state.openapi).clone()).into_response())
 }
 
@@ -31,9 +39,11 @@ pub async fn root_get(
     State(state): State<ApiState>,
     Path(name): Path<String>,
     RawQuery(raw): RawQuery,
+    headers: HeaderMap,
 ) -> ApiResult {
-    let route = resolve(&state, &name)?;
-    let query = parse_query(&state, route, raw.as_deref())?;
+    let route = route(&state, &name)?;
+    let query =
+        authorized_query(&state, &headers, route, ContentAction::Find, raw.as_deref()).await?;
     if route.single {
         let document_id =
             state.service.single_document_id(&route.uid).await?.ok_or(ApiError::NotFound)?;
@@ -47,13 +57,15 @@ pub async fn root_post(
     State(state): State<ApiState>,
     Path(name): Path<String>,
     RawQuery(raw): RawQuery,
+    headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult {
-    let route = resolve(&state, &name)?;
+    let route = route(&state, &name)?;
     if route.single {
         return Err(ApiError::MethodNotAllowed);
     }
-    let query = parse_query(&state, route, raw.as_deref())?;
+    let query =
+        authorized_query(&state, &headers, route, ContentAction::Create, raw.as_deref()).await?;
     let data = parse_data(&body)?;
     let document_id = state.service.create(&route.uid, &data, write_options(&query)).await?;
     read_back(&state, route, &document_id, &query, StatusCode::CREATED).await
@@ -64,13 +76,15 @@ pub async fn root_put(
     State(state): State<ApiState>,
     Path(name): Path<String>,
     RawQuery(raw): RawQuery,
+    headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult {
-    let route = resolve(&state, &name)?;
+    let route = route(&state, &name)?;
     if !route.single {
         return Err(ApiError::MethodNotAllowed);
     }
-    let query = parse_query(&state, route, raw.as_deref())?;
+    let query =
+        authorized_query(&state, &headers, route, ContentAction::Update, raw.as_deref()).await?;
     let data = parse_data(&body)?;
     let options = write_options(&query);
     let document_id = match state.service.single_document_id(&route.uid).await? {
@@ -83,11 +97,16 @@ pub async fn root_put(
     read_back(&state, route, &document_id, &query, StatusCode::OK).await
 }
 
-pub async fn root_delete(State(state): State<ApiState>, Path(name): Path<String>) -> ApiResult {
-    let route = resolve(&state, &name)?;
+pub async fn root_delete(
+    State(state): State<ApiState>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let route = route(&state, &name)?;
     if !route.single {
         return Err(ApiError::MethodNotAllowed);
     }
+    authorize(&state, &headers, route, ContentAction::Delete).await?;
     let document_id =
         state.service.single_document_id(&route.uid).await?.ok_or(ApiError::NotFound)?;
     state.service.delete(&route.uid, &document_id).await?;
@@ -98,9 +117,11 @@ pub async fn document_get(
     State(state): State<ApiState>,
     Path((name, document_id)): Path<(String, String)>,
     RawQuery(raw): RawQuery,
+    headers: HeaderMap,
 ) -> ApiResult {
     let route = collection(&state, &name)?;
-    let query = parse_query(&state, route, raw.as_deref())?;
+    let query =
+        authorized_query(&state, &headers, route, ContentAction::FindOne, raw.as_deref()).await?;
     read_back(&state, route, &document_id, &query, StatusCode::OK).await
 }
 
@@ -108,10 +129,12 @@ pub async fn document_put(
     State(state): State<ApiState>,
     Path((name, document_id)): Path<(String, String)>,
     RawQuery(raw): RawQuery,
+    headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult {
     let route = collection(&state, &name)?;
-    let query = parse_query(&state, route, raw.as_deref())?;
+    let query =
+        authorized_query(&state, &headers, route, ContentAction::Update, raw.as_deref()).await?;
     let data = parse_data(&body)?;
     state.service.update(&route.uid, &document_id, &data, write_options(&query)).await?;
     read_back(&state, route, &document_id, &query, StatusCode::OK).await
@@ -120,8 +143,10 @@ pub async fn document_put(
 pub async fn document_delete(
     State(state): State<ApiState>,
     Path((name, document_id)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> ApiResult {
     let route = collection(&state, &name)?;
+    authorize(&state, &headers, route, ContentAction::Delete).await?;
     state.service.delete(&route.uid, &document_id).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -131,12 +156,14 @@ pub async fn document_action(
     State(state): State<ApiState>,
     Path((name, document_id, action)): Path<(String, String, String)>,
     RawQuery(raw): RawQuery,
+    headers: HeaderMap,
 ) -> ApiResult {
     let route = collection(&state, &name)?;
-    let mut query = parse_query(&state, route, raw.as_deref())?;
+    let mut query =
+        authorized_query(&state, &headers, route, ContentAction::Publish, raw.as_deref()).await?;
     match action.as_str() {
         "publish" => {
-            state.service.publish(&route.uid, &document_id).await?;
+            state.service.publish(&route.uid, &document_id, None).await?;
             query.status = Status::Published;
         }
         "unpublish" => {
@@ -152,18 +179,55 @@ pub async fn document_action(
     read_back(&state, route, &document_id, &query, StatusCode::OK).await
 }
 
-fn authorize(state: &ApiState) -> Result<(), ApiError> {
-    if state.config.open_access { Ok(()) } else { Err(ApiError::Forbidden) }
+/// The bearer token, if any. A malformed `Authorization` header is `401`.
+pub(crate) fn bearer(headers: &HeaderMap) -> Result<Option<&str>, ApiError> {
+    let Some(value) = headers.get(axum::http::header::AUTHORIZATION) else { return Ok(None) };
+    let value = value.to_str().map_err(|_| ApiError::Unauthorized)?;
+    value
+        .strip_prefix("Bearer ")
+        .map(|token| Some(token.trim()))
+        .filter(|token| token.is_some_and(|token| !token.is_empty()))
+        .ok_or(ApiError::Unauthorized)
 }
 
-fn resolve<'a>(state: &'a ApiState, name: &str) -> Result<&'a Route, ApiError> {
-    let route = state.routes.get(name).ok_or(ApiError::NotFound)?;
-    authorize(state)?;
-    Ok(route)
+async fn authorize(
+    state: &ApiState,
+    headers: &HeaderMap,
+    route: &Route,
+    action: ContentAction,
+) -> Result<verdin_auth::ContentActor, ApiError> {
+    let actor = state.auth.content_actor(bearer(headers)?).await.map_err(|error| match error {
+        AuthError::Unauthorized => ApiError::Unauthorized,
+        other => ApiError::from(other),
+    })?;
+    if actor.allows(&route.uid, action) { Ok(actor) } else { Err(ApiError::Forbidden) }
+}
+
+/// Authorizes `action`, parses the query, and requires `readDrafts` for `?status=draft`
+/// on reads.
+async fn authorized_query(
+    state: &ApiState,
+    headers: &HeaderMap,
+    route: &Route,
+    action: ContentAction,
+    raw: Option<&str>,
+) -> Result<Query, ApiError> {
+    let actor = authorize(state, headers, route, action).await?;
+    let query = parse_query(state, route, raw)?;
+    let read = matches!(action, ContentAction::Find | ContentAction::FindOne);
+    if read && query.status == Status::Draft && !actor.allows(&route.uid, ContentAction::ReadDrafts)
+    {
+        return Err(ApiError::Forbidden);
+    }
+    Ok(query)
+}
+
+fn route<'a>(state: &'a ApiState, name: &str) -> Result<&'a Route, ApiError> {
+    state.routes.get(name).ok_or(ApiError::NotFound)
 }
 
 fn collection<'a>(state: &'a ApiState, name: &str) -> Result<&'a Route, ApiError> {
-    let route = resolve(state, name)?;
+    let route = route(state, name)?;
     if route.single { Err(ApiError::NotFound) } else { Ok(route) }
 }
 
@@ -173,7 +237,7 @@ fn parse_query(state: &ApiState, route: &Route, raw: Option<&str>) -> Result<Que
     Ok(verdin_query::parse_request(raw, &model.fields, catalog, &state.config.limits)?)
 }
 
-fn parse_data(body: &Bytes) -> Result<Value, ApiError> {
+pub(crate) fn parse_data(body: &Bytes) -> Result<Value, ApiError> {
     let body: Value = serde_json::from_slice(body).map_err(|error| {
         ApiError::BadRequest(format!("request body is not valid JSON: {error}"))
     })?;
@@ -184,7 +248,7 @@ fn parse_data(body: &Bytes) -> Result<Value, ApiError> {
 }
 
 fn write_options(query: &Query) -> WriteOptions {
-    WriteOptions { publish: query.status == Status::Published }
+    WriteOptions { publish: query.status == Status::Published, actor: None }
 }
 
 /// After a write, the response shows the version that was written (`status`).

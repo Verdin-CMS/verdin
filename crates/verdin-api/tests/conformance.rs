@@ -4,9 +4,9 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{App, error_paths};
+use common::{App, As, error_paths};
 use serde_json::{Value, json};
-use verdin_api::ApiConfig;
+use verdin_auth::{ContentAction, NewApiToken, TokenKind};
 use verdin_schema::{Schema, Source};
 
 fn schema() -> Schema {
@@ -521,16 +521,130 @@ async fn single_types() {
 }
 
 #[tokio::test]
-async fn closed_by_default() {
-    let app = App::with_config(schema(), ApiConfig::default()).await;
-    let (status, body) = app.get("/api/articles").await;
+async fn content_api_access() {
+    let app = App::new(schema()).await;
+    let id = article(&app, json!({ "title": "Public" })).await;
+
+    // No token: the public role, closed by default.
+    let (status, body) = app.call_as(Method::GET, "/api/articles", None, As::Anonymous).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(
         body["error"],
         json!({ "status": 403, "name": "ForbiddenError", "message": "Forbidden", "details": {} })
     );
-    assert_eq!(app.post("/api/articles", json!({ "title": "x" })).await.0, StatusCode::FORBIDDEN);
-    assert_eq!(app.get("/api/_openapi.json").await.0, StatusCode::FORBIDDEN);
+    assert_eq!(
+        app.call_as(Method::GET, "/api/_openapi.json", None, As::Anonymous).await.0,
+        StatusCode::FORBIDDEN
+    );
+
+    app.auth.set_public_grants(&[("api::article".into(), ContentAction::Find)]).await.unwrap();
+    assert_eq!(
+        app.call_as(Method::GET, "/api/articles", None, As::Anonymous).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        app.call_as(Method::GET, &format!("/api/articles/{id}"), None, As::Anonymous).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.call_as(Method::GET, "/api/articles?status=draft", None, As::Anonymous).await.0,
+        StatusCode::FORBIDDEN,
+        "drafts need readDrafts"
+    );
+    assert_eq!(
+        app.call_as(Method::GET, "/api/tags", None, As::Anonymous).await.0,
+        StatusCode::FORBIDDEN
+    );
+
+    // Bad credentials are 401, not the public role.
+    assert_eq!(
+        app.call_as(Method::GET, "/api/articles", None, As::Bearer("vd_nope")).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let malformed = app
+        .request(
+            Method::GET,
+            "/api/articles",
+            None,
+            As::Anonymous,
+            &[("authorization", "Basic abc")],
+        )
+        .await;
+    assert_eq!(malformed.status, StatusCode::UNAUTHORIZED);
+
+    let token = |kind: TokenKind, permissions: Vec<(String, ContentAction)>| {
+        let auth = app.auth.clone();
+        async move {
+            let name = format!("{kind:?}-{}", permissions.len());
+            auth.create_api_token(NewApiToken {
+                name,
+                description: None,
+                kind,
+                expires_in_days: None,
+                permissions,
+            })
+            .await
+            .unwrap()
+            .1
+        }
+    };
+    let read_only = token(TokenKind::ReadOnly, vec![]).await;
+    assert_eq!(
+        app.call_as(Method::GET, &format!("/api/articles/{id}"), None, As::Bearer(&read_only))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        app.call_as(Method::GET, "/api/articles?status=draft", None, As::Bearer(&read_only))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let write = Some(json!({ "data": { "title": "x" } }));
+    assert_eq!(
+        app.call_as(Method::POST, "/api/articles", write.clone(), As::Bearer(&read_only)).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.call_as(Method::GET, "/api/_openapi.json", None, As::Bearer(&read_only)).await.0,
+        StatusCode::OK
+    );
+
+    let custom =
+        token(TokenKind::Custom, vec![("api::article".into(), ContentAction::Create)]).await;
+    let (status, body) =
+        app.call_as(Method::POST, "/api/articles", write, As::Bearer(&custom)).await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "the created document is returned, as in Strapi: {body}"
+    );
+    assert_eq!(
+        app.call_as(Method::GET, "/api/articles", None, As::Bearer(&custom)).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.call_as(Method::DELETE, &format!("/api/articles/{id}"), None, As::Bearer(&custom))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let deleter = token(
+        TokenKind::Custom,
+        vec![
+            ("api::article".into(), ContentAction::Create),
+            ("api::article".into(), ContentAction::Delete),
+        ],
+    )
+    .await;
+    assert_eq!(
+        app.call_as(Method::DELETE, &format!("/api/articles/{id}"), None, As::Bearer(&deleter))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+
     app.done().await;
 }
 

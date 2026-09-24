@@ -1,6 +1,6 @@
 # Verdin — Architecture (MVP)
 
-> Status: draft v0.5 · 2026-09-24 (M0–M3 implemented)
+> Status: draft v0.6 · 2026-09-24 (M0–M4 implemented)
 > Verdin is an open source headless CMS written in Rust, inspired by Strapi v5.
 > Everything is free software: there is no "Enterprise" edition and no paid features.
 
@@ -86,7 +86,7 @@ Media library and upload providers, content i18n, GraphQL, webhooks, WASM plugin
 | Dates | `time` | — |
 | Document IDs | `ulid` | Sortable, 26 chars, portable |
 | OpenAPI | `utoipa` (static routes) + custom generator (per-content-type routes) | — |
-| Auth | `jsonwebtoken`, `argon2`, `sha2`/`hmac`, `rand` | — |
+| Auth | `argon2` (argon2id), HS256 JWT on `hmac` + `sha2`, `getrandom`, `base64` | A dozen lines of HS256 avoid pulling `jsonwebtoken`'s RSA stack (and its advisories) |
 | Configuration | `figment` (TOML + env) | Layering and per-environment overrides |
 | CLI | `clap` | — |
 | Logs & tracing | `tracing`, `tracing-subscriber` (JSON in production) | — |
@@ -128,7 +128,7 @@ verdin/
 │   ├── verdin-migrate/        # snapshot, diff, plan, journaled execution
 │   ├── verdin-query/          # query params → AST → SQL (filters, sort, populate)
 │   ├── verdin-content/        # Document Service, data validation, draft/publish, event bus
-│   ├── verdin-auth/           # admin users, sessions, API tokens, RBAC
+│   ├── verdin-auth/           # admin users, sessions, API tokens, RBAC, public permissions
 │   ├── verdin-api/            # axum routers: content API, admin API, OpenAPI
 │   ├── verdin-testkit/        # test helpers (a fresh database per test); not published
 │   └── verdin/                # binary: config, bootstrap, CLI, embedded admin
@@ -347,7 +347,7 @@ Strapi stores each component in its own table with polymorphic link tables, whic
 
 ### 8.6 MVP system tables
 
-`vd_schema_snapshots`, `vd_migrations_journal`, `vd_admin_users`, `vd_admin_roles`, `vd_admin_permissions`, `vd_admin_user_roles`, `vd_sessions` (refresh tokens), `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions`.
+`vd_schema_snapshots` and `vd_migrations_journal` belong to the migration engine. The platform tables — `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (refresh tokens), `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` — are part of every derived model, so the migration engine creates and evolves them like content tables (they show up as safe steps in `migrate plan`).
 
 ---
 
@@ -560,22 +560,25 @@ Pipeline: `query string → serde_qs → typed AST (verdin-query) → validation
 Prefix `/admin/api`. Requires an admin session. Resources:
 
 ```
+GET  /auth/status                      { hasAdmin }
 POST /auth/register-first-admin        (only when no admin exists)
 POST /auth/login | /auth/refresh | /auth/logout
-GET  /auth/me
+GET  /auth/me                          user + effective permissions
 
 GET  /content-types                    schemas + UI metadata (field order, labels)
 GET  /components
 PUT  /content-types/:uid               (dev mode only) writes schema/*.json
 POST /schema/plan | /schema/apply      (dev mode only)
 
-GET|POST|PUT|DELETE /content/:uid[/:documentId]      typed proxy to the Document Service
-POST /content/:uid/:documentId/actions/publish|unpublish|discard
-GET  /content/:uid/uid-available?field=slug&value=…
+GET|POST|PUT|DELETE /content/:uid[/:documentId]      Document Service with admin RBAC
+POST /content/:uid/:documentId/actions/publish|unpublish|discard-draft
+GET  /content/:uid/uid-available?field=slug&value=…  (M5)
 
 CRUD /users, /roles, /api-tokens, /public-permissions
 GET  /system/info                      version, dialect, mode
 ```
+
+Admin content routes read drafts by default and write drafts only (publishing is an explicit action). Writes record `created_by_id` / `updated_by_id`; `is-creator` conditions filter reads and guard writes. Bodies of the settings routes are plain JSON (no `data` wrapper); content routes use `{ "data": … }` like the content API.
 
 UI metadata (list columns, visible fields, form layout) lives in `schema/content-types/<name>.ui.json`, separate from the data schema. It is the equivalent of Strapi's "configure the view", but versionable.
 
@@ -591,14 +594,19 @@ UI metadata (list columns, visible fields, form layout) lives in `schema/content
   - **Access token**: HS256 JWT, 15 min, kept in SPA memory (never in `localStorage`).
   - **Refresh token**: opaque 256-bit token, 30 days, in an `HttpOnly; Secure; SameSite=Strict; Path=/admin/api/auth` cookie. Stored as SHA-256 in `vd_sessions`.
   - Rotated on every refresh with **reuse detection**: a token that was already rotated revokes its whole session family.
-- Rate limiting and progressive lockout on login. Generic error messages (no user enumeration).
+- Five failed passwords lock the account for 15 minutes. Unknown email, wrong password, locked or deactivated account all answer the same `Invalid credentials`, and unknown emails still spend an argon2 verification (no timing oracle).
+- Login, registration and refresh are rate limited per client IP (`[admin].auth_rate_limit`, default 20/min).
+- Refresh and logout require the `X-Verdin-CSRF` header (any value): a cross-site form cannot send it, and a cross-site `fetch` with it needs a CORS preflight.
+- Deactivating a user or changing their password revokes their sessions; access tokens are checked against the user on every request. The last active Super Admin cannot be deactivated, deleted or demoted.
+- The first admin is registered through `POST /admin/api/auth/register-first-admin`, which only works while no admin exists (serialized on the Super Admin role row).
 
 ### 14.2 Content API
 
-Until M4, `[api].open_access = true` opens the whole content API (with a warning at startup); without it every request is answered `403`. It exists for development and tests only.
-
-- **Public**: no access by default. Per-type, per-action permissions (`find`, `findOne`, `create`, `update`, `delete`) are granted in settings.
-- **API tokens**: `read-only`, `full-access` and `custom` (per-type, per-action) kinds, with optional expiry. Shown once, stored as HMAC-SHA256 with `VERDIN_TOKEN_PEPPER`. Sent as `Authorization: Bearer <token>`.
+- Actions: `find`, `findOne`, `create`, `update`, `delete`, `publish` (the `actions/*` routes) and `readDrafts` (reading with `?status=draft`). Single types map `GET` to `find`, `PUT` to `update`.
+- **Public** (no `Authorization` header): no access by default; grants are `(content type, action)` pairs set in the admin.
+- **API tokens** (`Authorization: Bearer vd_…`): `read-only` (`find`/`findOne`, no drafts), `full-access`, or `custom` grants, with optional expiry. The secret is returned once (`accessKey`), stored as HMAC-SHA256 with `VERDIN_TOKEN_PEPPER`; only a 10-char prefix is kept for display. `last_used_at` is recorded at most once a minute.
+- An unknown, expired or malformed token is `401`, never the public role. Writes return the written document even without `find` (Strapi behaviour).
+- The OpenAPI document requires any valid API token.
 
 ### 14.3 Admin RBAC (MVP)
 
@@ -703,7 +711,7 @@ verdin version
 | **M1 Schema + migrations** ✅ | Parser and validation, type mapping, snapshot, diff, plan, journaled apply (scalars, components and dynamic zones as JSON) | Create, alter and drop types on all 4 engines; resume after failure on MySQL |
 | **M2 Document Service + REST** ✅ | CRUD, filters, sort, pagination, fields, draft/publish, components/dynamic zones, OpenAPI | Conformance suite green on all engines |
 | **M3 Relations & components** ✅ | `_lnk` tables, 6 relation kinds, JSON components and dynamic zones, batched `populate`, relation filters | Populate and publish conformance on all engines. Component filters and relations inside components moved to M6 |
-| **M4 Auth** | Admins, first admin, JWT + rotating refresh, roles, API tokens, public permissions | Security tests (refresh reuse, enumeration, rate limit) |
+| **M4 Auth** ✅ | Admins, first admin, JWT + rotating refresh, roles, API tokens, public permissions, admin API | Security tests (refresh reuse, lockout, enumeration, CSRF, RBAC) on all engines |
 | **M5 Admin** | Login, lists, dynamic editor, content-type builder (dev), settings | Playwright e2e of "create type → create content → publish → read over API" |
 | **M6 Release 0.1** | Binaries (macOS arm64/x64, Linux x64/arm64 musl, Windows), Docker image, `examples/blog`, README | `docker run` to first content in < 2 min |
 
@@ -736,8 +744,12 @@ verdin version
 | 13 | DML building | Own builder instead of `sea-query` | Per-dialect details dominate (typed NULLs, collations, SQLite formats); one less abstraction |
 | 14 | Writes without `?status=draft` | Publish (Strapi v5 REST behaviour) | Drop-in compatibility for existing clients |
 | 15 | Text comparison | Exact by default on every engine; `…i` operators for case-insensitive | Same results on MySQL as on PostgreSQL |
-| 16 | Temporary access control | `[api].open_access` switch, closed by default | Secure by default until M4 permissions |
+| 16 | Temporary access control (M2–M3) | `[api].open_access` switch, removed in M4 | Secure by default until permissions existed |
 | 17 | "Target belongs to one document" | Enforced by moving the target, per state | A unique index would forbid a draft and its published version sharing a target |
 | 18 | Inverse (`mappedBy`) sides | Read-only | Writing through them is ambiguous with draft & publish (which owner version?) |
 | 19 | Link positions | Renumbered 1..n on each write | No float exhaustion; lists are small |
 | 20 | Link table rows | Keep an `id` primary key | Uniform tables for the migration engine and SQLite rebuilds |
+| 21 | JWT library | Own HS256 (HMAC-SHA256, constant-time verify, `alg` pinned) | `jsonwebtoken` 11 needs a crypto backend that pulls RSA |
+| 22 | Platform tables | Derived with the content model | One migration mechanism for everything |
+| 23 | Refresh token reuse | Revoke the whole family, no grace window | Simple and strict; the admin retries login |
+| 24 | Drafts over the content API | Separate `readDrafts` grant | Tokens that read published content do not leak drafts |

@@ -1,8 +1,10 @@
-//! Content API (REST, Strapi v5 compatible) and its OpenAPI description
-//! (docs/architecture.md §12).
+//! Content API (REST, Strapi v5 compatible), its OpenAPI description, and the admin API
+//! (docs/architecture.md §12–§14).
 
+mod admin;
 mod error;
 mod handlers;
+mod limiter;
 mod openapi;
 
 use std::collections::HashMap;
@@ -10,20 +12,19 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::routing::{get, post};
+use verdin_auth::AuthService;
 use verdin_content::{DocumentService, OutputOptions, Registry};
 use verdin_db::Database;
 use verdin_query::Limits;
 use verdin_schema::ContentTypeKind;
 
+pub use admin::AdminConfig;
 pub use error::ApiError;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ApiConfig {
     pub limits: Limits,
     pub output: OutputOptions,
-    /// Temporary switch until permissions land (M4): without it every content API request
-    /// is rejected with 403.
-    pub open_access: bool,
 }
 
 /// How a URL segment maps to a content type.
@@ -36,13 +37,20 @@ struct Route {
 #[derive(Clone)]
 pub(crate) struct ApiState {
     service: DocumentService,
+    auth: AuthService,
     routes: Arc<HashMap<String, Route>>,
     config: ApiConfig,
     openapi: Arc<serde_json::Value>,
 }
 
-/// Routes to be nested under the API prefix (e.g. `/api`).
-pub fn router(db: Database, registry: Registry, config: ApiConfig, prefix: &str) -> Router {
+/// Content API routes, to be nested under the API prefix (e.g. `/api`).
+pub fn router(
+    db: Database,
+    registry: Registry,
+    auth: AuthService,
+    config: ApiConfig,
+    prefix: &str,
+) -> Router {
     let routes = registry
         .types()
         .map(|model| {
@@ -55,6 +63,7 @@ pub fn router(db: Database, registry: Registry, config: ApiConfig, prefix: &str)
     let openapi = openapi::document(&registry, prefix);
     let state = ApiState {
         service: DocumentService::new(db, registry, config.output),
+        auth,
         routes: Arc::new(routes),
         config,
         openapi: Arc::new(openapi),
@@ -78,4 +87,14 @@ pub fn router(db: Database, registry: Registry, config: ApiConfig, prefix: &str)
         .route("/{name}/{document_id}/actions/{action}", post(handlers::document_action))
         .fallback(handlers::not_found)
         .with_state(state)
+}
+
+/// Admin API routes, to be nested under `{admin.path}/api` (e.g. `/admin/api`).
+pub fn admin_router(
+    db: Database,
+    registry: Registry,
+    auth: AuthService,
+    config: AdminConfig,
+) -> Router {
+    admin::router(db, registry, auth, config)
 }

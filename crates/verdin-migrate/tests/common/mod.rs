@@ -23,5 +23,5 @@ pub fn content_type(name: &str, plural: &str, attributes: Value) -> Source {
 }
 
 pub fn model(sources: &[Source]) -> DbModel {
-    verdin_migrate::derive_model(&Schema::parse(sources).unwrap())
+    verdin_migrate::derive_content_model(&Schema::parse(sources).unwrap())
 }

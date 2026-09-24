@@ -16,18 +16,14 @@ pub struct AppState {
     pub db: Database,
 }
 
-/// Health endpoints plus `content_api` nested under `api_prefix`, behind the shared layers.
-pub fn router(
-    state: AppState,
-    config: &ServerConfig,
-    api_prefix: &str,
-    content_api: Router,
-) -> Router {
-    Router::new()
-        .route("/_health", get(health))
-        .route("/_ready", get(ready))
-        .with_state(state)
-        .nest(api_prefix, content_api)
+/// Health endpoints plus the given routers nested at their paths, behind shared layers.
+pub fn router(state: AppState, config: &ServerConfig, nested: &[(String, Router)]) -> Router {
+    let mut router =
+        Router::new().route("/_health", get(health)).route("/_ready", get(ready)).with_state(state);
+    for (path, nested_router) in nested {
+        router = router.nest(path, nested_router.clone());
+    }
+    router
         // Layers run bottom-up on requests: the request id is set before tracing sees it.
         .layer(RequestBodyLimitLayer::new(config.body_limit))
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, config.request_timeout()))
@@ -72,7 +68,7 @@ mod tests {
 
     async fn app() -> (Router, Database) {
         let db = Database::connect("sqlite::memory:", &ConnectOptions::default()).await.unwrap();
-        (router(AppState { db: db.clone() }, &ServerConfig::default(), "/api", Router::new()), db)
+        (router(AppState { db: db.clone() }, &ServerConfig::default(), &[]), db)
     }
 
     async fn get_json(app: Router, uri: &str) -> (StatusCode, Option<String>, Value) {

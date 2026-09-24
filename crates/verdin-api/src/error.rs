@@ -5,16 +5,21 @@ use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
+use verdin_auth::AuthError;
 use verdin_content::ContentError;
 use verdin_query::QueryError;
 
 #[derive(Debug)]
 pub enum ApiError {
     NotFound,
+    Unauthorized,
     Forbidden,
     MethodNotAllowed,
+    TooManyRequests,
     BadRequest(String),
+    Conflict(String),
     Content(ContentError),
+    Internal(String),
 }
 
 impl From<ContentError> for ApiError {
@@ -29,27 +34,65 @@ impl From<QueryError> for ApiError {
     }
 }
 
+impl From<AuthError> for ApiError {
+    fn from(error: AuthError) -> Self {
+        match error {
+            AuthError::InvalidCredentials => ApiError::BadRequest("Invalid credentials".into()),
+            AuthError::Unauthorized => ApiError::Unauthorized,
+            AuthError::Forbidden => ApiError::Forbidden,
+            AuthError::NotFound => ApiError::NotFound,
+            AuthError::AlreadyInitialized => ApiError::Forbidden,
+            AuthError::Validation(message) => ApiError::BadRequest(message),
+            AuthError::Conflict(message) => ApiError::Conflict(message),
+            AuthError::InvalidConfig(message) => ApiError::Internal(message),
+            AuthError::Db(error) => ApiError::Internal(error.to_string()),
+        }
+    }
+}
+
+fn simple(
+    status: StatusCode,
+    name: &'static str,
+    message: &str,
+) -> (StatusCode, &'static str, String, Value) {
+    (status, name, message.to_owned(), json!({}))
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, name, message, details) = match self {
-            ApiError::NotFound => {
-                (StatusCode::NOT_FOUND, "NotFoundError", "Not Found".to_owned(), json!({}))
+            ApiError::NotFound => simple(StatusCode::NOT_FOUND, "NotFoundError", "Not Found"),
+            ApiError::Unauthorized => {
+                simple(StatusCode::UNAUTHORIZED, "UnauthorizedError", "Unauthorized")
             }
-            ApiError::Forbidden => {
-                (StatusCode::FORBIDDEN, "ForbiddenError", "Forbidden".to_owned(), json!({}))
-            }
-            ApiError::MethodNotAllowed => (
+            ApiError::Forbidden => simple(StatusCode::FORBIDDEN, "ForbiddenError", "Forbidden"),
+            ApiError::MethodNotAllowed => simple(
                 StatusCode::METHOD_NOT_ALLOWED,
                 "MethodNotAllowedError",
-                "Method Not Allowed".to_owned(),
-                json!({}),
+                "Method Not Allowed",
+            ),
+            ApiError::TooManyRequests => simple(
+                StatusCode::TOO_MANY_REQUESTS,
+                "RateLimitError",
+                "Too many requests, please try again later",
             ),
             ApiError::BadRequest(message) => {
                 (StatusCode::BAD_REQUEST, "ValidationError", message, json!({}))
             }
+            ApiError::Conflict(message) => {
+                (StatusCode::CONFLICT, "ConflictError", message, json!({}))
+            }
+            ApiError::Internal(message) => {
+                tracing::error!(%message, "internal error");
+                simple(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "ApplicationError",
+                    "Internal Server Error",
+                )
+            }
             ApiError::Content(error) => match error {
                 ContentError::NotFound | ContentError::UnknownType(_) => {
-                    (StatusCode::NOT_FOUND, "NotFoundError", "Not Found".to_owned(), json!({}))
+                    simple(StatusCode::NOT_FOUND, "NotFoundError", "Not Found")
                 }
                 ContentError::Validation(ref issues) => {
                     let message = error.to_string();
@@ -64,12 +107,11 @@ impl IntoResponse for ApiError {
                     (StatusCode::BAD_REQUEST, "ValidationError", message, json!({}))
                 }
                 ContentError::Db(error) => {
-                    tracing::error!(%error, "database error while serving the content API");
-                    (
+                    tracing::error!(%error, "database error while serving an API request");
+                    simple(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         "ApplicationError",
-                        "Internal Server Error".to_owned(),
-                        json!({}),
+                        "Internal Server Error",
                     )
                 }
             },

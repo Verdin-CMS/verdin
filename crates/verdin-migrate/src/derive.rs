@@ -27,7 +27,17 @@ pub fn system_columns() -> Vec<Column> {
     ]
 }
 
+/// The tables `schema` needs, plus the platform tables (`vd_*`).
 pub fn derive_model(schema: &Schema) -> DbModel {
+    let mut model = derive_content_model(schema);
+    for table in crate::system::system_tables() {
+        model.tables.insert(table.name.clone(), table);
+    }
+    model
+}
+
+/// Only the tables of content types (and their link tables).
+pub fn derive_content_model(schema: &Schema) -> DbModel {
     let mut tables = BTreeMap::new();
     for content_type in schema.content_types.values() {
         let table = content_type_table(content_type);

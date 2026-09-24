@@ -36,8 +36,28 @@ pub enum Command {
     /// Plan and apply database migrations.
     #[command(subcommand)]
     Migrate(MigrateCommand),
+    /// Manage admin users.
+    #[command(subcommand)]
+    Admin(AdminCommand),
+    /// Print freshly generated secrets for VERDIN_ADMIN_JWT_SECRET and VERDIN_TOKEN_PEPPER.
+    Secrets,
     /// Print version information.
     Version,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AdminCommand {
+    /// Create a Super Admin. The password is read from VERDIN_ADMIN_PASSWORD or stdin.
+    Create {
+        #[arg(long)]
+        email: String,
+    },
+    /// Set a user's password, unlock the account and end its sessions.
+    /// The password is read from VERDIN_ADMIN_PASSWORD or stdin.
+    ResetPassword {
+        #[arg(long)]
+        email: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -133,18 +153,55 @@ impl Project {
             ConnectOptions { max_connections: self.config.database.pool_max, ..Default::default() };
         Database::connect(url, &options).await.context("connecting to database")
     }
+
+    /// Authentication, from the secrets in the environment (never in `verdin.toml`).
+    fn auth(&self, db: &Database) -> Result<verdin_auth::AuthService> {
+        let read = |name: &str| {
+            std::env::var(name).with_context(|| {
+                format!("{name} is not set (generate secrets with `verdin secrets`)")
+            })
+        };
+        let config = verdin_auth::AuthConfig::new(
+            &read("VERDIN_ADMIN_JWT_SECRET")?,
+            &read("VERDIN_TOKEN_PEPPER")?,
+        )?;
+        Ok(verdin_auth::AuthService::new(db.clone(), config))
+    }
+
+    /// A database whose platform tables are up to date, for commands that need them.
+    async fn migrated_database(&self) -> Result<(Database, Schema)> {
+        let schema = self.schema()?;
+        let db = self.database().await?;
+        let desired = verdin_migrate::derive_model(&schema);
+        if !matches!(
+            verdin_migrate::status(&db, &desired, &Renames::default()).await?,
+            Status::UpToDate
+        ) {
+            bail!("the database is behind the schema; run `verdin migrate apply` first");
+        }
+        Ok((db, schema))
+    }
 }
 
 pub async fn run(cli: Cli) -> Result<()> {
-    if let Command::Version = cli.command {
-        println!("verdin {}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
+    match cli.command {
+        Command::Version => {
+            println!("verdin {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        Command::Secrets => {
+            println!("VERDIN_ADMIN_JWT_SECRET={}", verdin_auth::crypto::random_token());
+            println!("VERDIN_TOKEN_PEPPER={}", verdin_auth::crypto::random_token());
+            return Ok(());
+        }
+        _ => {}
     }
     let project = Project::load(&cli.config)?;
     init_logging(&project.config.log);
 
     match cli.command {
-        Command::Version => unreachable!("handled above"),
+        Command::Version | Command::Secrets => unreachable!("handled above"),
+        Command::Admin(command) => admin(project, command).await,
         Command::Start { migrate } => start(project, migrate).await,
         Command::Schema(SchemaCommand::Check) => {
             let schema = project.schema()?;
@@ -171,6 +228,35 @@ pub async fn run(cli: Cli) -> Result<()> {
             result
         }
     }
+}
+
+async fn admin(project: Project, command: AdminCommand) -> Result<()> {
+    let (db, _) = project.migrated_database().await?;
+    let auth = project.auth(&db)?;
+    auth.bootstrap().await?;
+    let password = match std::env::var("VERDIN_ADMIN_PASSWORD") {
+        Ok(password) => password,
+        Err(_) => {
+            eprint!("password: ");
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line).context("reading the password from stdin")?;
+            line.trim_end_matches(['\r', '\n']).to_owned()
+        }
+    };
+    let result = match command {
+        AdminCommand::Create { email } => {
+            let user = auth.create_super_admin(&email, &password).await?;
+            println!("created Super Admin {} (id {})", user.email, user.id);
+            Ok(())
+        }
+        AdminCommand::ResetPassword { email } => {
+            auth.reset_password(&email, &password).await?;
+            println!("password updated; existing sessions were revoked");
+            Ok(())
+        }
+    };
+    db.close().await;
+    result
 }
 
 async fn migrate(db: &Database, desired: &DbModel, renames: &Renames, allow: Risk) -> Result<()> {
@@ -216,41 +302,66 @@ async fn start(project: Project, migrate: bool) -> Result<()> {
     }
 
     let api = &project.config.api;
-    if !api.prefix.starts_with('/') || api.prefix.len() < 2 || api.prefix.ends_with('/') {
-        bail!("[api].prefix must look like `/api` (got `{}`)", api.prefix);
+    let admin = &project.config.admin;
+    for (name, path) in [("[api].prefix", &api.prefix), ("[admin].path", &admin.path)] {
+        if !path.starts_with('/') || path.len() < 2 || path.ends_with('/') {
+            bail!("{name} must look like `/api` (got `{path}`)");
+        }
     }
     if api.default_page_size == 0 || api.default_page_size > api.max_page_size {
         bail!("[api].default_page_size must be between 1 and max_page_size");
     }
-    if api.open_access {
-        tracing::warn!("[api].open_access is on: anyone can read and write all content");
+    if !admin.secure_cookies {
+        tracing::warn!("[admin].secure_cookies is off: refresh cookies may travel over plain HTTP");
     }
+
+    let auth = project.auth(&db)?;
+    auth.bootstrap().await.context("creating built-in roles")?;
+    if !auth.has_admin().await? {
+        tracing::info!(url = %format!("{}/api/auth/register-first-admin", admin.path), "no admin yet: register the first one");
+    }
+
+    let registry = verdin_content::Registry::new(schema);
+    let limits = verdin_query::Limits {
+        default_page_size: api.default_page_size,
+        max_page_size: api.max_page_size,
+        ..Default::default()
+    };
+    let output = verdin_content::OutputOptions { decimal_as_string: api.decimal_as_string };
     let content_api = verdin_api::router(
         db.clone(),
-        verdin_content::Registry::new(schema),
-        verdin_api::ApiConfig {
-            limits: verdin_query::Limits {
-                default_page_size: api.default_page_size,
-                max_page_size: api.max_page_size,
-                ..Default::default()
-            },
-            output: verdin_content::OutputOptions { decimal_as_string: api.decimal_as_string },
-            open_access: api.open_access,
-        },
+        registry.clone(),
+        auth.clone(),
+        verdin_api::ApiConfig { limits, output },
         &api.prefix,
+    );
+    let admin_api = verdin_api::admin_router(
+        db.clone(),
+        registry,
+        auth,
+        verdin_api::AdminConfig {
+            path: admin.path.clone(),
+            secure_cookies: admin.secure_cookies,
+            limits,
+            output,
+            mode: "production",
+            auth_rate_limit: admin.auth_rate_limit,
+        },
     );
     let app = server::router(
         AppState { db: db.clone() },
         &project.config.server,
-        &api.prefix,
-        content_api,
+        &[(api.prefix.clone(), content_api), (format!("{}/api", admin.path), admin_api)],
     );
     let address = format!("{}:{}", project.config.server.host, project.config.server.port);
     let listener =
         TcpListener::bind(&address).await.with_context(|| format!("binding {address}"))?;
     tracing::info!(%address, version = env!("CARGO_PKG_VERSION"), "verdin listening");
 
-    axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()).await?;
+    // Client addresses feed the admin auth rate limiter.
+    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
     db.close().await;
     tracing::info!("verdin stopped");
     Ok(())

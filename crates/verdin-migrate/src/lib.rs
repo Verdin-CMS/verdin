@@ -7,11 +7,14 @@ mod diff;
 mod model;
 mod plan;
 mod sql;
+pub mod system;
 
 pub use apply::{ApplyOptions, ApplyReport, JOURNAL_TABLE, SNAPSHOTS_TABLE, Status, apply, status};
-pub use derive::{MAX_IDENTIFIER, bounded, derive_model, index_name, system_columns};
+pub use derive::{
+    MAX_IDENTIFIER, bounded, derive_content_model, derive_model, index_name, system_columns,
+};
 pub use diff::{Change, Diff, Renames, Risk, diff};
-pub use model::{Column, ColumnDefault, ColumnType, DbModel, Index, Table};
+pub use model::{Column, ColumnDefault, ColumnType, DbModel, ForeignKey, Index, Table};
 pub use plan::{Plan, Precheck, Step, build_plan};
 pub use sql::Dialect;
 
