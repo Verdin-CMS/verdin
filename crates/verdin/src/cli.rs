@@ -190,7 +190,8 @@ async fn migrate(db: &Database, desired: &DbModel, renames: &Renames, allow: Ris
 }
 
 async fn start(project: Project, migrate: bool) -> Result<()> {
-    let desired = verdin_migrate::derive_model(&project.schema()?);
+    let schema = project.schema()?;
+    let desired = verdin_migrate::derive_model(&schema);
     let db = project.database().await?;
 
     match verdin_migrate::status(&db, &desired, &Renames::default()).await? {
@@ -214,7 +215,36 @@ async fn start(project: Project, migrate: bool) -> Result<()> {
         }
     }
 
-    let app = server::router(AppState { db: db.clone() }, &project.config.server);
+    let api = &project.config.api;
+    if !api.prefix.starts_with('/') || api.prefix.len() < 2 || api.prefix.ends_with('/') {
+        bail!("[api].prefix must look like `/api` (got `{}`)", api.prefix);
+    }
+    if api.default_page_size == 0 || api.default_page_size > api.max_page_size {
+        bail!("[api].default_page_size must be between 1 and max_page_size");
+    }
+    if api.open_access {
+        tracing::warn!("[api].open_access is on: anyone can read and write all content");
+    }
+    let content_api = verdin_api::router(
+        db.clone(),
+        verdin_content::Registry::new(schema),
+        verdin_api::ApiConfig {
+            limits: verdin_query::Limits {
+                default_page_size: api.default_page_size,
+                max_page_size: api.max_page_size,
+                ..Default::default()
+            },
+            output: verdin_content::OutputOptions { decimal_as_string: api.decimal_as_string },
+            open_access: api.open_access,
+        },
+        &api.prefix,
+    );
+    let app = server::router(
+        AppState { db: db.clone() },
+        &project.config.server,
+        &api.prefix,
+        content_api,
+    );
     let address = format!("{}:{}", project.config.server.host, project.config.server.port);
     let listener =
         TcpListener::bind(&address).await.with_context(|| format!("binding {address}"))?;

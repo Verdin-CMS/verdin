@@ -22,12 +22,7 @@ impl Dialect {
     }
 
     pub fn quote(&self, identifier: &str) -> String {
-        debug_assert!(!identifier.contains(['"', '`']), "identifiers are validated upstream");
-        if self.flavor.is_mysql_family() {
-            format!("`{identifier}`")
-        } else {
-            format!("\"{identifier}\"")
-        }
+        self.flavor.quote(identifier)
     }
 
     fn quote_list(&self, identifiers: &[String]) -> String {

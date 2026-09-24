@@ -16,6 +16,7 @@ pub struct Config {
     pub server: ServerConfig,
     pub database: DatabaseConfig,
     pub schema: SchemaConfig,
+    pub api: ApiConfig,
     pub log: LogConfig,
 }
 
@@ -58,6 +59,32 @@ pub struct DatabaseConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self { url: None, pool_max: 10 }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ApiConfig {
+    /// Path the content API is served under.
+    pub prefix: String,
+    pub default_page_size: u64,
+    pub max_page_size: u64,
+    /// Serialize decimals as strings (exact) instead of numbers (Strapi-compatible).
+    pub decimal_as_string: bool,
+    /// Allow anonymous access to the whole content API. A stopgap until permissions (M4);
+    /// never enable it in production.
+    pub open_access: bool,
+}
+
+impl Default for ApiConfig {
+    fn default() -> Self {
+        Self {
+            prefix: "/api".into(),
+            default_page_size: 25,
+            max_page_size: 100,
+            decimal_as_string: false,
+            open_access: false,
+        }
     }
 }
 

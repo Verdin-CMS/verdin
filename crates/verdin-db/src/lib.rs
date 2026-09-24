@@ -4,6 +4,7 @@
 //! MySQL and MariaDB (which share a driver) can be told apart by the dialect layer.
 
 mod conn;
+pub mod value;
 mod version;
 
 use std::str::FromStr;
@@ -14,7 +15,8 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{MySqlPool, PgPool, SqlitePool};
 
-pub use conn::{Conn, Kind, Param, Value};
+pub use conn::{Conn, PoolQueries, Tx};
+pub use value::{ColumnKind, SqlValue};
 pub use version::Version;
 
 #[derive(Debug, thiserror::Error)]
@@ -29,6 +31,41 @@ pub enum DbError {
     UnparsableVersion(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
+}
+
+/// Where a unique constraint was violated, as far as the backend reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UniqueViolation {
+    /// PostgreSQL, MySQL and MariaDB name the index.
+    Index(String),
+    /// SQLite lists the columns (`table.column`).
+    Columns(Vec<String>),
+}
+
+impl DbError {
+    /// Details of a unique constraint violation, if that is what this error is.
+    pub fn unique_violation(&self) -> Option<UniqueViolation> {
+        let DbError::Sqlx(sqlx::Error::Database(error)) = self else { return None };
+        if !error.is_unique_violation() {
+            return None;
+        }
+        if let Some(constraint) = error.constraint() {
+            return Some(UniqueViolation::Index(constraint.to_owned()));
+        }
+        let message = error.message();
+        // MySQL: "Duplicate entry 'x' for key 'articles.articles_slug_uq'" (MariaDB omits the table).
+        if let Some((_, key)) = message.rsplit_once("for key '") {
+            let key = key.trim_end_matches('\'').rsplit('.').next().unwrap_or(key);
+            return Some(UniqueViolation::Index(key.to_owned()));
+        }
+        // SQLite: "UNIQUE constraint failed: articles.slug, articles.locale, …"
+        if let Some((_, columns)) = message.split_once("constraint failed: ") {
+            return Some(UniqueViolation::Columns(
+                columns.split(", ").map(|column| column.trim().to_owned()).collect(),
+            ));
+        }
+        Some(UniqueViolation::Columns(Vec::new()))
+    }
 }
 
 pub type Result<T> = std::result::Result<T, DbError>;
@@ -60,6 +97,13 @@ impl Flavor {
 
     pub fn is_mysql_family(self) -> bool {
         matches!(self, Flavor::MySql | Flavor::MariaDb)
+    }
+
+    /// Quotes an identifier. Identifiers must come from the validated schema
+    /// (`^[a-z_][a-z0-9_]*$`), so they never contain quote characters.
+    pub fn quote(self, identifier: &str) -> String {
+        debug_assert!(!identifier.contains(['"', '`']), "identifiers are validated upstream");
+        if self.is_mysql_family() { format!("`{identifier}`") } else { format!("\"{identifier}\"") }
     }
 
     pub fn as_str(self) -> &'static str {
@@ -185,16 +229,6 @@ impl Database {
 
     pub fn version(&self) -> Version {
         self.version
-    }
-
-    /// Checks out a dedicated connection from the pool.
-    pub async fn acquire(&self) -> Result<Conn> {
-        let inner = match &self.pool {
-            Pool::Postgres(pool) => conn::Inner::Postgres(pool.acquire().await?),
-            Pool::MySql(pool) => conn::Inner::MySql(pool.acquire().await?),
-            Pool::Sqlite(pool) => conn::Inner::Sqlite(pool.acquire().await?),
-        };
-        Ok(Conn { inner, flavor: self.flavor })
     }
 
     /// Round-trips a trivial query; used by readiness checks.

@@ -8,7 +8,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use verdin_db::{Conn, Database, DbError, Flavor, Kind, Param, Value};
+use verdin_db::{ColumnKind, Conn, Database, DbError, Flavor, SqlValue};
 
 use crate::MigrateError;
 use crate::diff::{Renames, Risk};
@@ -189,7 +189,7 @@ async fn apply_locked(
                 let _ = conn
                     .execute(
                         &format!("UPDATE {JOURNAL_TABLE} SET error = ? WHERE id = ?"),
-                        &[Param::Text(message), Param::Int(journal_id)],
+                        &[SqlValue::Text(message), SqlValue::BigInt(journal_id)],
                     )
                     .await;
                 return Err(MigrateError::StepFailed {
@@ -202,7 +202,7 @@ async fn apply_locked(
         }
         conn.execute(
             &format!("UPDATE {JOURNAL_TABLE} SET done_steps = ?, error = NULL WHERE id = ?"),
-            &[Param::Int(index as i64 + 1), Param::Int(journal_id)],
+            &[SqlValue::BigInt(index as i64 + 1), SqlValue::BigInt(journal_id)],
         )
         .await?;
     }
@@ -214,7 +214,7 @@ async fn apply_locked(
             &format!(
                 "UPDATE {JOURNAL_TABLE} SET status = 'completed', finished_at = ? WHERE id = ?"
             ),
-            &[Param::Int(now_millis()), Param::Int(journal_id)],
+            &[SqlValue::BigInt(now_millis()), SqlValue::BigInt(journal_id)],
         )
         .await?;
         Ok::<_, DbError>(())
@@ -278,18 +278,18 @@ async fn ensure_system_tables(conn: &mut Conn) -> Result<(), MigrateError> {
 async fn lock(conn: &mut Conn) -> Result<(), MigrateError> {
     match conn.flavor() {
         Flavor::Postgres => {
-            conn.execute("SELECT pg_advisory_lock(?)", &[Param::Int(PG_LOCK_KEY)]).await?;
+            conn.execute("SELECT pg_advisory_lock(?)", &[SqlValue::BigInt(PG_LOCK_KEY)]).await?;
         }
         Flavor::MySql | Flavor::MariaDb => {
             // Lock names are server-wide; scope them to the current database.
             let rows = conn
                 .fetch_all(
                     "SELECT GET_LOCK(CONCAT('verdin_migrate:', DATABASE()), ?)",
-                    &[Param::Int(MYSQL_LOCK_TIMEOUT_SECS)],
-                    &[Kind::Int],
+                    &[SqlValue::BigInt(MYSQL_LOCK_TIMEOUT_SECS)],
+                    &[ColumnKind::BigInt],
                 )
                 .await?;
-            if rows.first().and_then(|row| row[0].as_int()) != Some(1) {
+            if rows.first().and_then(|row| row[0].as_i64()) != Some(1) {
                 return Err(MigrateError::LockTimeout);
             }
         }
@@ -302,13 +302,13 @@ async fn lock(conn: &mut Conn) -> Result<(), MigrateError> {
 async fn unlock(conn: &mut Conn) -> Result<(), DbError> {
     match conn.flavor() {
         Flavor::Postgres => {
-            conn.execute("SELECT pg_advisory_unlock(?)", &[Param::Int(PG_LOCK_KEY)]).await?;
+            conn.execute("SELECT pg_advisory_unlock(?)", &[SqlValue::BigInt(PG_LOCK_KEY)]).await?;
         }
         Flavor::MySql | Flavor::MariaDb => {
             conn.fetch_all(
                 "SELECT RELEASE_LOCK(CONCAT('verdin_migrate:', DATABASE()))",
                 &[],
-                &[Kind::Int],
+                &[ColumnKind::BigInt],
             )
             .await?;
         }
@@ -322,10 +322,14 @@ async fn load_snapshot(conn: &mut Conn) -> Result<DbModel, MigrateError> {
         .fetch_all(
             &format!("SELECT model FROM {SNAPSHOTS_TABLE} ORDER BY id DESC LIMIT 1"),
             &[],
-            &[Kind::Text],
+            &[ColumnKind::Text],
         )
         .await?;
-    match rows.into_iter().next().and_then(|row| row.into_iter().next()).and_then(Value::into_text)
+    match rows
+        .into_iter()
+        .next()
+        .and_then(|row| row.into_iter().next())
+        .and_then(SqlValue::into_text)
     {
         Some(json) => serde_json::from_str(&json)
             .map_err(|error| MigrateError::CorruptSnapshot(error.to_string())),
@@ -336,7 +340,11 @@ async fn load_snapshot(conn: &mut Conn) -> Result<DbModel, MigrateError> {
 async fn insert_snapshot(conn: &mut Conn, model: &DbModel, json: &str) -> Result<(), DbError> {
     conn.execute(
         &format!("INSERT INTO {SNAPSHOTS_TABLE} (model_hash, model, created_at) VALUES (?, ?, ?)"),
-        &[Param::Text(model.hash()), Param::Text(json.to_owned()), Param::Int(now_millis())],
+        &[
+            SqlValue::Text(model.hash()),
+            SqlValue::Text(json.to_owned()),
+            SqlValue::BigInt(now_millis()),
+        ],
     )
     .await
     .map(drop)
@@ -357,12 +365,12 @@ async fn insert_journal(
              VALUES (?, ?, ?, ?, ?, ?, {finished})"
         ),
         &[
-            Param::Text(plan.hash()),
-            Param::Text(status.into()),
-            Param::Text(steps_json.to_owned()),
-            Param::Int(plan.steps.len() as i64),
-            Param::Int(done as i64),
-            Param::Int(now),
+            SqlValue::Text(plan.hash()),
+            SqlValue::Text(status.into()),
+            SqlValue::Text(steps_json.to_owned()),
+            SqlValue::BigInt(plan.steps.len() as i64),
+            SqlValue::BigInt(done as i64),
+            SqlValue::BigInt(now),
         ],
     )
     .await
@@ -376,15 +384,15 @@ async fn running_journal(conn: &mut Conn) -> Result<Option<JournalEntry>, DbErro
                  WHERE status = 'running' ORDER BY id DESC LIMIT 1"
             ),
             &[],
-            &[Kind::Int, Kind::Text, Kind::Int, Kind::Text],
+            &[ColumnKind::BigInt, ColumnKind::Text, ColumnKind::BigInt, ColumnKind::Text],
         )
         .await?;
     Ok(rows.into_iter().next().map(|row| {
         let mut row = row.into_iter();
-        let id = row.next().and_then(|value| value.as_int()).unwrap_or_default();
-        let plan_hash = row.next().and_then(Value::into_text).unwrap_or_default();
-        let done = row.next().and_then(|value| value.as_int()).unwrap_or_default();
-        let error = row.next().and_then(Value::into_text);
+        let id = row.next().and_then(|value| value.as_i64()).unwrap_or_default();
+        let plan_hash = row.next().and_then(SqlValue::into_text).unwrap_or_default();
+        let done = row.next().and_then(|value| value.as_i64()).unwrap_or_default();
+        let error = row.next().and_then(SqlValue::into_text);
         JournalEntry { id, plan_hash, done: usize::try_from(done).unwrap_or(0), error }
     }))
 }

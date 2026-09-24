@@ -3,7 +3,7 @@
 Open source headless CMS written in Rust. Inspired by Strapi, shipped as a single binary,
 running on PostgreSQL, MySQL, MariaDB and SQLite. 100% free — there is no enterprise edition.
 
-> **Status:** early development (milestones M0–M1: schema and migrations). See [docs/architecture.md](docs/architecture.md).
+> **Status:** early development (milestones M0–M2: schema, migrations and the content REST API). See [docs/architecture.md](docs/architecture.md).
 
 ## Development
 
@@ -49,6 +49,20 @@ verdin start --migrate                   # apply safe steps, then serve
 On MySQL/MariaDB (no transactional DDL) an interrupted migration resumes from the
 failed step on the next `migrate apply`.
 
+### Content API
+
+Strapi v5 compatible REST under `/api`, plus an OpenAPI document at `/api/_openapi.json`.
+Until permissions land (M4) it is closed; set `VERDIN_API__OPEN_ACCESS=true` to try it.
+
+```sh
+curl -XPOST localhost:1337/api/articles -H 'content-type: application/json' \
+  -d '{"data":{"title":"Hello","slug":"hello"}}'
+curl -g 'localhost:1337/api/articles?filters[title][$containsi]=hello&sort=createdAt:desc&populate=*'
+curl -XPUT 'localhost:1337/api/articles/<documentId>?status=draft' -H 'content-type: application/json' \
+  -d '{"data":{"title":"Draft edit"}}'
+curl -XPOST localhost:1337/api/articles/<documentId>/actions/publish
+```
+
 Connection URLs for every engine are listed at the top of
 [docker/compose.dev.yml](docker/compose.dev.yml).
 
@@ -68,6 +82,13 @@ request_timeout_secs = 30
 [database]
 url = "postgres://verdin:verdin@localhost:5417/verdin"
 pool_max = 10
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+decimal_as_string = false
+open_access = false  # development only, until permissions (M4)
 
 [log]
 format = "pretty" # or "json"

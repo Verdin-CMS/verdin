@@ -1,6 +1,6 @@
 # Verdin — Architecture (MVP)
 
-> Status: draft v0.3 · 2026-09-24 (M1 implemented)
+> Status: draft v0.4 · 2026-09-24 (M0–M2 implemented)
 > Verdin is an open source headless CMS written in Rust, inspired by Strapi v5.
 > Everything is free software: there is no "Enterprise" edition and no paid features.
 
@@ -78,7 +78,7 @@ Media library and upload providers, content i18n, GraphQL, webhooks, WASM plugin
 | Runtime | `tokio` | De facto standard |
 | HTTP | `axum` + `tower` + `tower-http` | Ergonomic, mature middleware (CORS, compression, timeouts, limits) |
 | SQL driver | `sqlx` (postgres, mysql, sqlite) | Async, pooling, TLS; MySQL and MariaDB share one driver |
-| SQL building | DDL: own per-dialect generator (`verdin-migrate`). DML: `sea-query` + `sea-query-binder` from M2 | Tables are dynamic (defined by the schema), so we need runtime, multi-dialect SQL. DDL needs exact control (`jsonb`, `datetime(3)`, collations, SQLite rebuilds). No ORM |
+| SQL building | Own per-dialect builders: DDL in `verdin-migrate`, DML in `verdin-query` / `verdin-content` | Tables are dynamic (defined by the schema), so SQL is built at runtime. Exact control is needed anyway (`jsonb`, `datetime(3)`, binary collations, typed NULLs on PostgreSQL, SQLite text formats). No ORM, no `sea-query` |
 | Serialization | `serde`, `serde_json` | — |
 | Query strings | `serde_qs` | Strapi-style bracket notation (`filters[title][$eq]=…`) |
 | Schema validation | Rust types + strict `serde` (`deny_unknown_fields`) | Clear errors when loading the schema |
@@ -130,6 +130,7 @@ verdin/
 │   ├── verdin-content/        # Document Service, data validation, draft/publish, event bus
 │   ├── verdin-auth/           # admin users, sessions, API tokens, RBAC
 │   ├── verdin-api/            # axum routers: content API, admin API, OpenAPI
+│   ├── verdin-testkit/        # test helpers (a fresh database per test); not published
 │   └── verdin/                # binary: config, bootstrap, CLI, embedded admin
 ├── admin/                     # Angular + spartan
 ├── website/                   # Astro Starlight (post-MVP)
@@ -494,7 +495,14 @@ PUT    /api/homepage
 DELETE /api/homepage
 ```
 
-Publishing from the content API: `POST /api/articles/:documentId/actions/publish|unpublish` (dedicated permission). Strapi does not offer this over REST.
+Publishing from the content API: `POST /api/articles/:documentId/actions/publish|unpublish|discard-draft` (dedicated permission). Strapi does not offer this over REST.
+
+Write semantics (Strapi v5):
+- `POST` / `PUT` on a draft & publish type write the draft **and publish it**, unless `?status=draft` is passed. `PUT` is a partial update.
+- `required` is enforced whenever a version becomes published (and on every write for types without draft & publish), including required attributes inside components and dynamic zones. A failed publish rolls the whole request back.
+- `POST` answers `201`, `DELETE` answers `204` with no body and removes every version of the document.
+- Single types answer `405` to `POST`; their first `PUT` creates the document.
+- Unknown keys, system fields (`id`, `documentId`, timestamps) and relation fields (until M3) in `data` are validation errors.
 
 ### 12.2 Parameters (Strapi v5 compatible)
 
@@ -527,11 +535,15 @@ Pipeline: `query string → serde_qs → typed AST (verdin-query) → validation
 ```
 
 - Flat format like Strapi v5 (no `attributes` wrapper). Field names are camelCase in the API and snake_case in the database; the mapping comes from the schema.
+- Components and dynamic zones are returned only when populated (`populate=*`, `populate=seo`, `populate[seo]=true`). A populated component is returned whole, nested components included (Strapi requires populating each level). Every component item has an `id` unique within its attribute.
+- Values: `biginteger` as strings, `decimal` as numbers (rounded half away from zero to their scale, like the databases), `date` `YYYY-MM-DD`, `time` `HH:MM:SS.mmm`, `datetime` `YYYY-MM-DDTHH:MM:SS.mmmZ` (UTC).
+- Text filter semantics are the same on every engine: `$eq`, `$ne`, `$in`, `$contains`, `$startsWith`, `$endsWith` are exact (binary collation on MySQL/MariaDB, whose default collations ignore case and accents); the `…i` variants ignore case (and accents on MySQL/MariaDB; SQLite only folds ASCII). `ORDER BY` puts NULLs last in both directions and always ends with `id` for stable pagination.
+- Not yet: filtering on fields of components or relations, and populating relations (M3).
 - `private` fields and internal system columns (`state`, `created_by_id`…) never appear in the content API.
 
 ### 12.4 OpenAPI
 
-`GET /api/_openapi.json` is generated at runtime from the registry: one path and one schema per content type, plus the shared parameters. `verdin openapi > openapi.json` exports it. `verdin types --lang ts` generates TS types for the content (right after the MVP).
+`GET /api/_openapi.json` (OpenAPI 3.1) is generated at startup from the registry: one path and one schema per content type, plus the shared parameters. `verdin openapi > openapi.json` exports it. `verdin types --lang ts` generates TS types for the content (right after the MVP).
 
 ---
 
@@ -574,6 +586,8 @@ UI metadata (list columns, visible fields, form layout) lives in `schema/content
 - Rate limiting and progressive lockout on login. Generic error messages (no user enumeration).
 
 ### 14.2 Content API
+
+Until M4, `[api].open_access = true` opens the whole content API (with a warning at startup); without it every request is answered `403`. It exists for development and tests only.
 
 - **Public**: no access by default. Per-type, per-action permissions (`find`, `findOne`, `create`, `update`, `delete`) are granted in settings.
 - **API tokens**: `read-only`, `full-access` and `custom` (per-type, per-action) kinds, with optional expiry. Shown once, stored as HMAC-SHA256 with `VERDIN_TOKEN_PEPPER`. Sent as `Authorization: Bearer <token>`.
@@ -679,7 +693,7 @@ verdin version
 |---|---|---|
 | **M0 Skeleton** ✅ | Workspace, CI, config, `verdin start` with `/_health`, connection to all 4 engines, `docker/compose.dev.yml` | Green CI across the matrix |
 | **M1 Schema + migrations** ✅ | Parser and validation, type mapping, snapshot, diff, plan, journaled apply (scalars, components and dynamic zones as JSON) | Create, alter and drop types on all 4 engines; resume after failure on MySQL |
-| **M2 Document Service + REST** | CRUD, filters, sort, pagination, fields, draft/publish, OpenAPI | Basic conformance suite green |
+| **M2 Document Service + REST** ✅ | CRUD, filters, sort, pagination, fields, draft/publish, components/dynamic zones, OpenAPI | Conformance suite green on all engines |
 | **M3 Relations & components** | `_lnk` tables, 6 relation kinds, JSON components and dynamic zones, batched `populate` | Populate and publish conformance |
 | **M4 Auth** | Admins, first admin, JWT + rotating refresh, roles, API tokens, public permissions | Security tests (refresh reuse, enumeration, rate limit) |
 | **M5 Admin** | Login, lists, dynamic editor, content-type builder (dev), settings | Playwright e2e of "create type → create content → publish → read over API" |
@@ -711,3 +725,7 @@ verdin version
 | 10 | `unique` enforcement | Unique index on `(column, locale, publication_state)` | Race-free; drafts and their published version share values |
 | 11 | State column name | `publication_state` | `state` is a common attribute name |
 | 12 | Reserved SQL words | Always quote identifiers | No arbitrary blocklist of attribute names |
+| 13 | DML building | Own builder instead of `sea-query` | Per-dialect details dominate (typed NULLs, collations, SQLite formats); one less abstraction |
+| 14 | Writes without `?status=draft` | Publish (Strapi v5 REST behaviour) | Drop-in compatibility for existing clients |
+| 15 | Text comparison | Exact by default on every engine; `…i` operators for case-insensitive | Same results on MySQL as on PostgreSQL |
+| 16 | Temporary access control | `[api].open_access` switch, closed by default | Secure by default until M4 permissions |
