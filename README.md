@@ -3,7 +3,7 @@
 Open source headless CMS written in Rust. Inspired by Strapi, shipped as a single binary,
 running on PostgreSQL, MySQL, MariaDB and SQLite. 100% free — there is no enterprise edition.
 
-> **Status:** early development (milestones M0–M4: schema, migrations, content REST API, relations, auth). See [docs/architecture.md](docs/architecture.md).
+> **Status:** early development (milestones M0–M5: schema, migrations, content REST API, relations, auth, admin panel). See [docs/architecture.md](docs/architecture.md).
 
 ## Development
 
@@ -28,6 +28,22 @@ cargo run -- -c examples/blog/verdin.toml migrate plan
 cargo run -- -c examples/blog/verdin.toml migrate apply
 cargo run -- -c examples/blog/verdin.toml start
 curl localhost:1337/_ready
+```
+
+### Admin panel
+
+Angular + spartan/ui in `admin/`, served by the server under `/admin`.
+
+```sh
+cd admin && npm ci
+npx ng build                                   # → admin/dist/admin/browser
+cargo build -p verdin --features embed-admin   # embed it into the binary
+# or serve it from disk: [admin] assets_dir = "../../admin/dist/admin/browser"
+
+verdin dev              # development mode: content-type builder, safe auto-migrations
+npx ng serve            # frontend work: http://localhost:4200/admin/ (proxies to :1337)
+npx ng test --watch=false
+npx playwright test     # end-to-end, needs `npx ng build` and `cargo build` first
 ```
 
 ### Schema and migrations

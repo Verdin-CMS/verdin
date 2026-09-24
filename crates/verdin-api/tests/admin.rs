@@ -19,7 +19,7 @@ fn schema() -> Schema {
         )
     };
     Schema::parse(&[
-        ct("article", "articles", json!({ "title": { "type": "string", "required": true }, "secret": { "type": "string", "private": true } })),
+        ct("article", "articles", json!({ "title": { "type": "string", "required": true }, "slug": { "type": "uid", "targetField": "title" }, "secret": { "type": "string", "private": true } })),
         ct("page", "pages", json!({ "title": { "type": "string" } })),
     ])
     .unwrap()
@@ -435,5 +435,65 @@ async fn tokens_roles_and_public_permissions() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(info["data"]["database"], app.test.flavor().as_str());
 
+    app.done().await;
+}
+
+#[tokio::test]
+async fn uid_availability() {
+    let app = App::new(schema()).await;
+    let admin = register(&app).await;
+    let content = "/admin/api/content/api::article";
+    let (_, body) = app
+        .call_as(
+            Method::POST,
+            content,
+            Some(json!({ "data": { "title": "Hello", "slug": "hello" } })),
+            As::Bearer(&admin),
+        )
+        .await;
+    let id = body["data"]["documentId"].as_str().unwrap().to_owned();
+
+    let (status, body) = app
+        .call_as(
+            Method::GET,
+            &format!("{content}/uid-available?field=slug&value=Hello%20World"),
+            None,
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"], json!({ "available": true, "suggestion": "hello-world" }));
+    let (_, body) = app
+        .call_as(
+            Method::GET,
+            &format!("{content}/uid-available?field=slug&value=hello"),
+            None,
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(body["data"], json!({ "available": false, "suggestion": "hello-1" }));
+    let (_, body) = app
+        .call_as(
+            Method::GET,
+            &format!("{content}/uid-available?field=slug&value=hello&documentId={id}"),
+            None,
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(body["data"]["available"], true, "a document does not collide with itself");
+    let (status, _) = app
+        .call_as(
+            Method::GET,
+            &format!("{content}/uid-available?field=title&value=x"),
+            None,
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "only uid attributes");
+    assert_eq!(
+        app.call_as(Method::GET, "/admin/api/schema", None, As::Bearer(&admin)).await.0,
+        StatusCode::NOT_FOUND,
+        "no builder outside dev mode"
+    );
     app.done().await;
 }

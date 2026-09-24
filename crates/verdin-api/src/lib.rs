@@ -18,7 +18,7 @@ use verdin_db::Database;
 use verdin_query::Limits;
 use verdin_schema::ContentTypeKind;
 
-pub use admin::AdminConfig;
+pub use admin::{AdminConfig, BoxFuture, SchemaChange, SchemaEditor};
 pub use error::ApiError;
 
 #[derive(Debug, Clone, Copy, Default)]

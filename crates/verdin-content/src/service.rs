@@ -603,6 +603,56 @@ impl DocumentService {
         Ok(model)
     }
 
+    /// Whether `value` is free for the `uid`/unique attribute `field` (ignoring
+    /// `document_id`'s own versions), plus a free suggestion derived from it.
+    pub async fn uid_availability(
+        &self,
+        uid: &str,
+        field: &str,
+        value: &str,
+        document_id: Option<&str>,
+    ) -> Result<(bool, String)> {
+        let model = self.registry.get(uid)?;
+        model
+            .content_type
+            .attributes
+            .get(field)
+            .filter(|attribute| matches!(attribute.kind, verdin_schema::AttributeKind::Uid { .. }))
+            .ok_or_else(|| ContentError::BadRequest(format!("`{field}` is not a uid attribute")))?;
+        let column = verdin_schema::Attribute::column_name(field);
+        let base = slugify(value);
+        let taken = |candidate: String| {
+            let mut select = SqlBuilder::new(self.db.flavor());
+            select
+                .push("SELECT 1 FROM ")
+                .ident(model.table())
+                .push(" WHERE ")
+                .ident(&column)
+                .push(" = ");
+            select.param(SqlValue::Text(candidate));
+            if let Some(document_id) = document_id {
+                select
+                    .push(" AND ")
+                    .ident("document_id")
+                    .push(" <> ")
+                    .param(SqlValue::Text(document_id.into()));
+            }
+            select.push(" LIMIT 1");
+            select
+        };
+        let exact = taken(value.to_owned());
+        let available = !self.db.queries().has_rows(&exact.sql, &exact.params).await?;
+        let mut suggestion = base.clone();
+        for counter in 1..=100 {
+            let query = taken(suggestion.clone());
+            if !self.db.queries().has_rows(&query.sql, &query.params).await? {
+                break;
+            }
+            suggestion = format!("{base}-{counter}");
+        }
+        Ok((available, suggestion))
+    }
+
     /// The admin who created a document (`None` when created through the content API).
     /// `NotFound` if the document does not exist.
     pub async fn created_by(&self, uid: &str, document_id: &str) -> Result<Option<i64>> {
@@ -822,6 +872,37 @@ fn next_links(
         links = links.split_off(links.len() - 1);
     }
     Ok(links)
+}
+
+/// `Hola Verdín!` → `hola-verdin`: lowercase ASCII letters and digits joined by dashes.
+pub fn slugify(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for c in value.chars().flat_map(fold_accent) {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+        } else if !out.ends_with('-') && !out.is_empty() {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').to_owned()
+}
+
+fn fold_accent(c: char) -> impl Iterator<Item = char> {
+    let folded = match c {
+        'á' | 'à' | 'ä' | 'â' | 'ã' | 'å' | 'Á' | 'À' | 'Ä' | 'Â' | 'Ã' | 'Å' => "a",
+        'é' | 'è' | 'ë' | 'ê' | 'É' | 'È' | 'Ë' | 'Ê' => "e",
+        'í' | 'ì' | 'ï' | 'î' | 'Í' | 'Ì' | 'Ï' | 'Î' => "i",
+        'ó' | 'ò' | 'ö' | 'ô' | 'õ' | 'Ó' | 'Ò' | 'Ö' | 'Ô' | 'Õ' => "o",
+        'ú' | 'ù' | 'ü' | 'û' | 'Ú' | 'Ù' | 'Ü' | 'Û' => "u",
+        'ñ' | 'Ñ' => "n",
+        'ç' | 'Ç' => "c",
+        'ß' => "ss",
+        _ => "",
+    };
+    let mut buffer = [0u8; 4];
+    let own: String =
+        if folded.is_empty() { c.encode_utf8(&mut buffer).to_owned() } else { folded.to_owned() };
+    own.chars().collect::<Vec<_>>().into_iter()
 }
 
 fn actor_value(actor: Option<i64>) -> SqlValue {
@@ -1144,6 +1225,14 @@ mod tests {
 
     fn connect(id: &str, position: Option<Position>) -> Connect {
         Connect { document_id: id.into(), position }
+    }
+
+    #[test]
+    fn slugifies() {
+        assert_eq!(slugify("Hola Verdín!"), "hola-verdin");
+        assert_eq!(slugify("  Rust & SQL -- 2026 "), "rust-sql-2026");
+        assert_eq!(slugify("Straße"), "strasse");
+        assert_eq!(slugify("¿?"), "");
     }
 
     #[test]

@@ -2,14 +2,13 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 use verdin_db::{ConnectOptions, Database};
 use verdin_migrate::{ApplyOptions, DbModel, Plan, Renames, Risk, Status};
 use verdin_schema::Schema;
 
+use crate::app::{self, AppContext, Mode, check_config, ensure_migrated};
 use crate::config::{Config, LogConfig, LogFormat};
-use crate::server::{self, AppState};
 
 #[derive(Debug, Parser)]
 #[command(name = "verdin", version, about = "Open source headless CMS")]
@@ -30,6 +29,9 @@ pub enum Command {
         #[arg(long)]
         migrate: bool,
     },
+    /// Start in development mode: safe migrations apply automatically and the admin's
+    /// content-type builder can edit the schema files.
+    Dev,
     /// Inspect the content schema.
     #[command(subcommand)]
     Schema(SchemaCommand),
@@ -202,7 +204,8 @@ pub async fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Version | Command::Secrets => unreachable!("handled above"),
         Command::Admin(command) => admin(project, command).await,
-        Command::Start { migrate } => start(project, migrate).await,
+        Command::Start { migrate } => start(project, Mode::Production, migrate).await,
+        Command::Dev => start(project, Mode::Development, true).await,
         Command::Schema(SchemaCommand::Check) => {
             let schema = project.schema()?;
             println!(
@@ -275,96 +278,23 @@ async fn migrate(db: &Database, desired: &DbModel, renames: &Renames, allow: Ris
     Ok(())
 }
 
-async fn start(project: Project, migrate: bool) -> Result<()> {
+async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
+    check_config(&project.config)?;
     let schema = project.schema()?;
-    let desired = verdin_migrate::derive_model(&schema);
     let db = project.database().await?;
+    ensure_migrated(&db, &schema, migrate || mode == Mode::Development).await?;
 
-    match verdin_migrate::status(&db, &desired, &Renames::default()).await? {
-        Status::UpToDate => {}
-        Status::Pending(_) if migrate => {
-            let report =
-                verdin_migrate::apply(&db, &desired, &Renames::default(), ApplyOptions::default())
-                    .await?;
-            tracing::info!(steps = report.applied_steps, "applied migrations");
-        }
-        Status::Pending(plan) => bail!(
-            "the database is {} step{} behind the schema; run `verdin migrate plan` to review \
-             and `verdin migrate apply`, or start with --migrate to apply safe steps",
-            plan.steps.len(),
-            plural(plan.steps.len())
-        ),
-        Status::Interrupted { .. } => {
-            bail!(
-                "a migration was interrupted; run `verdin migrate plan` and `verdin migrate apply`"
-            )
-        }
-    }
-
-    let api = &project.config.api;
     let admin = &project.config.admin;
-    for (name, path) in [("[api].prefix", &api.prefix), ("[admin].path", &admin.path)] {
-        if !path.starts_with('/') || path.len() < 2 || path.ends_with('/') {
-            bail!("{name} must look like `/api` (got `{path}`)");
-        }
-    }
-    if api.default_page_size == 0 || api.default_page_size > api.max_page_size {
-        bail!("[api].default_page_size must be between 1 and max_page_size");
-    }
     if !admin.secure_cookies {
         tracing::warn!("[admin].secure_cookies is off: refresh cookies may travel over plain HTTP");
     }
-
     let auth = project.auth(&db)?;
     auth.bootstrap().await.context("creating built-in roles")?;
     if !auth.has_admin().await? {
-        tracing::info!(url = %format!("{}/api/auth/register-first-admin", admin.path), "no admin yet: register the first one");
+        tracing::info!(url = %format!("{}/", admin.path), "no admin yet: open the admin panel to register the first one");
     }
-
-    let registry = verdin_content::Registry::new(schema);
-    let limits = verdin_query::Limits {
-        default_page_size: api.default_page_size,
-        max_page_size: api.max_page_size,
-        ..Default::default()
-    };
-    let output = verdin_content::OutputOptions { decimal_as_string: api.decimal_as_string };
-    let content_api = verdin_api::router(
-        db.clone(),
-        registry.clone(),
-        auth.clone(),
-        verdin_api::ApiConfig { limits, output },
-        &api.prefix,
-    );
-    let admin_api = verdin_api::admin_router(
-        db.clone(),
-        registry,
-        auth,
-        verdin_api::AdminConfig {
-            path: admin.path.clone(),
-            secure_cookies: admin.secure_cookies,
-            limits,
-            output,
-            mode: "production",
-            auth_rate_limit: admin.auth_rate_limit,
-        },
-    );
-    let app = server::router(
-        AppState { db: db.clone() },
-        &project.config.server,
-        &[(api.prefix.clone(), content_api), (format!("{}/api", admin.path), admin_api)],
-    );
-    let address = format!("{}:{}", project.config.server.host, project.config.server.port);
-    let listener =
-        TcpListener::bind(&address).await.with_context(|| format!("binding {address}"))?;
-    tracing::info!(%address, version = env!("CARGO_PKG_VERSION"), "verdin listening");
-
-    // Client addresses feed the admin auth rate limiter.
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
-    db.close().await;
-    tracing::info!("verdin stopped");
-    Ok(())
+    let context = AppContext { config: project.config, root: project.root, db, auth, mode };
+    app::serve(context, schema, shutdown_signal()).await
 }
 
 fn print_status(status: &Status) {

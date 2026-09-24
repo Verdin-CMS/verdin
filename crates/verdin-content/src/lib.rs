@@ -15,7 +15,7 @@ use verdin_query::{Catalog, TypeFields};
 use verdin_schema::{AttributeKind, ContentType, Schema};
 
 pub use output::OutputOptions;
-pub use service::{DocumentService, Page, PageMeta, WriteOptions};
+pub use service::{DocumentService, Page, PageMeta, WriteOptions, slugify};
 
 /// One validation problem, in Strapi's `details.errors[]` format.
 #[derive(Debug, Clone, PartialEq, Serialize)]

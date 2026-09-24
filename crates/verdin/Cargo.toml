@@ -8,12 +8,15 @@ repository.workspace = true
 
 [dependencies]
 anyhow = "1.0.104"
+arc-swap = "1.9.2"
 axum = "0.8.9"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 figment = { version = "0.10.19", features = ["toml", "env"] }
+rust-embed = { version = "8.12.0", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tokio = { version = "1.53.1", features = ["full"] }
+tower = { version = "0.5.3", features = ["util"] }
 tower-http = { version = "0.7.1", features = ["trace", "request-id", "timeout", "cors", "limit", "util"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
@@ -25,6 +28,10 @@ verdin-migrate = { version = "0.0.1", path = "../verdin-migrate" }
 verdin-query = { version = "0.0.1", path = "../verdin-query" }
 verdin-schema = { version = "0.0.1", path = "../verdin-schema" }
 
+[features]
+# Embed the built admin panel (admin/dist/admin/browser) into the binary.
+embed-admin = ["dep:rust-embed"]
+
 [lints]
 workspace = true
 
@@ -34,3 +41,4 @@ http-body-util = "0.1.5"
 serde_json = "1.0.151"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
+

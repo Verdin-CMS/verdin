@@ -1,6 +1,6 @@
 # Verdin — Architecture (MVP)
 
-> Status: draft v0.6 · 2026-09-24 (M0–M4 implemented)
+> Status: draft v0.7 · 2026-09-24 (M0–M5 implemented)
 > Verdin is an open source headless CMS written in Rust, inspired by Strapi v5.
 > Everything is free software: there is no "Enterprise" edition and no paid features.
 
@@ -100,16 +100,16 @@ Media library and upload providers, content i18n, GraphQL, webhooks, WASM plugin
 
 | Area | Choice |
 |---|---|
-| Framework | Angular ≥ 21: standalone, zoneless, signals |
-| UI | spartan/ui (brain + helm) on Tailwind CSS v4 |
+| Framework | Angular 22: standalone, zoneless, signals, lazy routes |
+| UI | spartan/ui (brain + helm, copied into `src/app/shared/ui`) on Tailwind CSS v4 via `@tailwindcss/postcss` |
 | Icons | `@ng-icons` with Lucide |
 | State | NgRx Signal Store |
 | Forms | Signal Forms (`@angular/forms/signals`) |
-| Tables | `@tanstack/angular-table` + spartan helm table |
-| API client | Types generated with `openapi-typescript` from the Admin API OpenAPI + a thin `HttpClient` wrapper |
-| UI i18n | Transloco (runtime language loading, works with a single embedded build) |
-| Markdown | `marked` + `DOMPurify` (preview) |
-| Tests | Vitest + Playwright (e2e against the binary on SQLite) |
+| Tables | spartan helm table (server-side paging and sorting; no table library needed so far) |
+| API client | Hand-written types (`core/types.ts`) + a thin promise-based `HttpClient` wrapper; generated types later |
+| UI i18n | English only in v0.1; Transloco planned (runtime language loading, single embedded build) |
+| Markdown | Plain textarea in v0.1; preview (`marked` + `DOMPurify`) planned |
+| Tests | Vitest (form model) + Playwright (e2e against the binary on SQLite) |
 
 ### 4.3 Documentation & website
 
@@ -636,10 +636,13 @@ admin/src/app/
 └── fields/        # dynamic field registry
 ```
 
+The session lives in memory (access token) plus the HttpOnly refresh cookie; an HTTP interceptor adds the bearer token and, on a `401`, refreshes once and retries. Guards restore the session from the cookie on page load.
+
 ### 15.2 Schema-driven dynamic forms
 
 - `GET /admin/api/content-types` returns the schema and layout; the editor builds the form at runtime with **Signal Forms**: the document model is a `signal<Record<string, unknown>>`, and the form tree plus its validators are derived from the schema.
-- **Field registry**: `Map<AttributeType, Type<FieldComponent>>` (`string` → input, `richtext` → Markdown editor, `relation` → combobox with paginated search, `component` → nested fieldset, `dynamiczone` → reorderable list with a component picker…). Adding a field type means registering a component. This is the future entry point for UI plugins.
+- A recursive `vd-fields` component renders any attribute map against a field tree: native inputs bound with `[formField]` for text, dates and times, and custom `FormValueControl`s for numbers (nullable; bigintegers stay strings), booleans, enumerations, datetimes (local ↔ UTC), JSON and relations (search-as-you-type picker with ordering). Components are nested fieldsets; repeatable components and dynamic zones are reorderable lists. A registry for plugin field types comes with plugins.
+- The model is converted from the populated document (relations → documentIds) and back to the `data` payload (empty strings → `null`, render keys and read-only `mappedBy` sides dropped); this conversion is unit-tested.
 - Client-side validation derived from the schema (instant feedback). The server remains the authority; its errors (`details.errors[].path`) are mapped back onto the matching field.
 - Explicit save with dirty tracking, a leave-page warning on unsaved changes, and Publish / Unpublish / Discard buttons depending on the state.
 
@@ -649,13 +652,14 @@ TanStack Table + helm table. Server-side pagination, sorting and filters, mirror
 
 ### 15.4 Content-type builder
 
-Visible only when the server runs in `dev` mode. It edits the schema and calls `/schema/plan`, which shows the diff and the steps (destructive ones flagged). On confirmation it writes `schema/*.json` and applies the plan. Since the output is files, the flow ends in a git commit.
+Visible only when the server runs in `dev` mode (`verdin dev`). It edits content types and components in their file format (fields, relation kinds and targets — creating the inverse attribute on the target —, components, dynamic zones, lengths, ranges, required/unique/private) and calls `POST /schema/plan`, which validates the would-be schema and returns the steps with their risk and SQL, plus rename suggestions the user can accept. `POST /schema/apply` migrates first, then writes `schema/*.json` atomically, then hot-swaps the whole app (content API, admin API, OpenAPI) for the new schema without a restart. Since the output is files, the flow ends in a git commit. Editing files by hand still needs a restart (no file watcher yet).
 
 ### 15.5 Build & distribution
 
-- `ng build` → `admin/dist/browser`, embedded in the binary with `rust-embed` (`embed-admin` feature, on for releases).
-- In development the server proxies `/admin/*` to `ng serve` (port 4200) or serves from disk.
-- Runtime config (base path, dev/prod mode) is injected into `index.html` by the server, so changing `admin.path` never requires rebuilding the admin.
+- `ng build` → `admin/dist/admin/browser`, embedded in the binary with `rust-embed` (`embed-admin` feature, on for releases) or served from `[admin].assets_dir`.
+- Frontend development: `ng serve` on `/admin/` with a proxy of `/admin/api` and `/api` to the server.
+- The server rewrites `<base href>` to `[admin].path` and injects the runtime config as `<meta name="verdin-config">` (no inline script), so changing `admin.path` never requires rebuilding the admin. Unknown paths fall back to `index.html`; fingerprinted bundles are cached as immutable.
+- Security headers on every admin response: a strict CSP (`script-src 'self'`, `frame-ancestors 'none'`, …; Angular's critical-CSS inlining is disabled because it needs inline handlers), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`.
 
 ---
 
@@ -665,7 +669,7 @@ Visible only when the server runs in `dev` mode. It edits the schema and calls `
 
 ```
 verdin new <dir> [--db postgres|mysql|mariadb|sqlite]   create a project
-verdin dev                                               server + schema watch + builder enabled
+verdin dev                                               server + safe auto-migrations + builder enabled
 verdin start [--migrate[=all]]                           production
 verdin migrate plan|apply|check
 verdin admin create|reset-password
@@ -712,7 +716,7 @@ verdin version
 | **M2 Document Service + REST** ✅ | CRUD, filters, sort, pagination, fields, draft/publish, components/dynamic zones, OpenAPI | Conformance suite green on all engines |
 | **M3 Relations & components** ✅ | `_lnk` tables, 6 relation kinds, JSON components and dynamic zones, batched `populate`, relation filters | Populate and publish conformance on all engines. Component filters and relations inside components moved to M6 |
 | **M4 Auth** ✅ | Admins, first admin, JWT + rotating refresh, roles, API tokens, public permissions, admin API | Security tests (refresh reuse, lockout, enumeration, CSRF, RBAC) on all engines |
-| **M5 Admin** | Login, lists, dynamic editor, content-type builder (dev), settings | Playwright e2e of "create type → create content → publish → read over API" |
+| **M5 Admin** ✅ | Login, lists, dynamic editor, content-type builder (dev), settings | Playwright e2e of "create type → create content → publish → read over API" |
 | **M6 Release 0.1** | Binaries (macOS arm64/x64, Linux x64/arm64 musl, Windows), Docker image, `examples/blog`, README | `docker run` to first content in < 2 min |
 
 ### After the MVP (tentative order)
@@ -753,3 +757,6 @@ verdin version
 | 22 | Platform tables | Derived with the content model | One migration mechanism for everything |
 | 23 | Refresh token reuse | Revoke the whole family, no grace window | Simple and strict; the admin retries login |
 | 24 | Drafts over the content API | Separate `readDrafts` grant | Tokens that read published content do not leak drafts |
+| 25 | Builder apply order | Migrate, then write files, then hot-swap the app | A failed migration leaves files and running app untouched |
+| 26 | Admin writes | Save drafts only; publishing is an explicit action | Matches editors' expectations; the content API keeps Strapi's publish-by-default |
+| 27 | Admin runtime config | `<meta>` tag, not inline script | Keeps the CSP free of `unsafe-inline` scripts |

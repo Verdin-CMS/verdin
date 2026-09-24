@@ -35,7 +35,36 @@ use crate::limiter::RateLimiter;
 pub const REFRESH_COOKIE: &str = "verdin_refresh";
 pub const CSRF_HEADER: &str = "x-verdin-csrf";
 
-#[derive(Debug, Clone)]
+/// A boxed future, for the object-safe [`SchemaEditor`].
+pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
+
+/// A proposed schema edit from the content-type builder. Values are schema files in their
+/// on-disk JSON format; `None` deletes the file.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct SchemaChange {
+    /// By `singularName`.
+    pub content_types: std::collections::BTreeMap<String, Option<Value>>,
+    /// By `category.name`.
+    pub components: std::collections::BTreeMap<String, Option<Value>>,
+    /// `old=new` table renames and `table.old=new` column renames.
+    pub rename_tables: Vec<String>,
+    pub rename_columns: Vec<String>,
+    /// Highest risk to apply: `safe`, `risky` or `destructive`.
+    pub allow: Option<String>,
+}
+
+/// Edits the schema files of a project in development mode (`verdin dev`).
+pub trait SchemaEditor: Send + Sync {
+    /// Current schema files: `{ contentTypes: { name: json }, components: { uid: json } }`.
+    fn sources(&self) -> BoxFuture<'_, Result<Value, ApiError>>;
+    /// Validates `change` and returns the migration it needs, without applying anything.
+    fn plan(&self, change: SchemaChange) -> BoxFuture<'_, Result<Value, ApiError>>;
+    /// Migrates the database, writes the files and reloads the server.
+    fn apply(&self, change: SchemaChange) -> BoxFuture<'_, Result<Value, ApiError>>;
+}
+
+#[derive(Clone)]
 pub struct AdminConfig {
     /// Admin mount path (e.g. `/admin`); the API lives under `{path}/api`.
     pub path: String,
@@ -47,6 +76,8 @@ pub struct AdminConfig {
     pub mode: &'static str,
     /// Login/registration/refresh attempts per client IP per minute.
     pub auth_rate_limit: u32,
+    /// Present in development mode: enables the content-type builder routes.
+    pub schema_editor: Option<Arc<dyn SchemaEditor>>,
 }
 
 impl Default for AdminConfig {
@@ -58,6 +89,7 @@ impl Default for AdminConfig {
             output: OutputOptions::default(),
             mode: "production",
             auth_rate_limit: 20,
+            schema_editor: None,
         }
     }
 }
@@ -104,6 +136,10 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
             get(content_get).put(content_update).delete(content_delete),
         )
         .route("/content/{uid}/{document_id}/actions/{action}", post(content_action))
+        .route("/content/{uid}/uid-available", get(uid_available))
+        .route("/schema", get(schema_sources))
+        .route("/schema/plan", post(schema_plan))
+        .route("/schema/apply", post(schema_apply))
         .route("/system/info", get(system_info))
         .fallback(|| async { ApiError::NotFound })
         .with_state(state)
@@ -925,4 +961,65 @@ async fn content_action(
         _ => return Err(ApiError::NotFound),
     }
     read_document(&state, &uid, &document_id, &query, StatusCode::OK).await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UidQuery {
+    field: String,
+    value: String,
+    document_id: Option<String>,
+}
+
+/// `GET /content/{uid}/uid-available?field=slug&value=…[&documentId=…]`.
+async fn uid_available(
+    State(state): State<AdminState>,
+    Path(uid): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<UidQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let principal = principal(&state, &headers).await?;
+    let writable = [actions::CONTENT_CREATE, actions::CONTENT_UPDATE]
+        .iter()
+        .any(|action| principal.permissions.content(action, &uid) != Grant::None);
+    if !writable {
+        return Err(ApiError::Forbidden);
+    }
+    let (available, suggestion) = state
+        .service
+        .uid_availability(&uid, &query.field, &query.value, query.document_id.as_deref())
+        .await?;
+    Ok(data(json!({ "available": available, "suggestion": suggestion })))
+}
+
+async fn editor(
+    state: &AdminState,
+    headers: &HeaderMap,
+) -> Result<Arc<dyn SchemaEditor>, ApiError> {
+    require(state, headers, actions::SCHEMA_MANAGE).await?;
+    // Outside development mode the builder does not exist.
+    state.config.schema_editor.clone().ok_or(ApiError::NotFound)
+}
+
+async fn schema_sources(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
+    let editor = editor(&state, &headers).await?;
+    Ok(data(editor.sources().await?))
+}
+
+async fn schema_plan(
+    State(state): State<AdminState>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> ApiResult {
+    let editor = editor(&state, &headers).await?;
+    Ok(data(editor.plan(body(&bytes)?).await?))
+}
+
+async fn schema_apply(
+    State(state): State<AdminState>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> ApiResult {
+    let editor = editor(&state, &headers).await?;
+    Ok(data(editor.apply(body(&bytes)?).await?))
 }

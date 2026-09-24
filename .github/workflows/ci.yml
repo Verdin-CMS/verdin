@@ -98,3 +98,28 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
+
+  admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - run: npx prettier --check "src/app/{core,features,layout}/**/*.ts" "e2e/**/*.ts"
+      - run: npm audit --audit-level=high
+      - run: npx ng test --watch=false
+      - run: npx ng build
+      # The server embeds the build it was compiled with.
+      - run: cargo build -p verdin --features embed-admin
+        working-directory: .
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test

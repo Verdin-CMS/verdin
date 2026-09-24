@@ -94,11 +94,14 @@ pub struct AdminConfig {
     pub secure_cookies: bool,
     /// Login, registration and refresh attempts per client IP per minute.
     pub auth_rate_limit: u32,
+    /// Serve the admin panel from this directory (relative to the configuration file)
+    /// instead of the copy embedded in the binary.
+    pub assets_dir: Option<PathBuf>,
 }
 
 impl Default for AdminConfig {
     fn default() -> Self {
-        Self { path: "/admin".into(), secure_cookies: true, auth_rate_limit: 20 }
+        Self { path: "/admin".into(), secure_cookies: true, auth_rate_limit: 20, assets_dir: None }
     }
 }
 
