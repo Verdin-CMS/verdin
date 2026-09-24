@@ -64,6 +64,6 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 ## Continuous
 
 - More admin languages (Traditional Chinese, Vietnamese, Indonesian, Czech, Swedish…) —
-  contributions welcome: copy `admin/src/app/core/i18n/messages/en*` and translate.
+  contributions welcome, see [translating.md](translating.md).
 - Performance: query batching, prepared statement cache, benchmarks against Strapi.
 - Accessibility audits of the admin (keyboard navigation, screen readers).

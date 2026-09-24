@@ -20,6 +20,8 @@ All notable changes to Verdin are documented here. The format follows
 
 ### Changed
 
+- Admin translations moved to Transloco with flat JSON catalogs and ICU MessageFormat
+  (FormatJS), ready for Weblate; see `docs/translating.md`.
 - Body size limits and timeouts apply per API router (uploads have their own limits).
 - The admin CSP allows images and video from a remote media library's origin.
 

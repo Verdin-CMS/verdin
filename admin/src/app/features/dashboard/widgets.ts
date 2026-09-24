@@ -21,7 +21,7 @@ import { Auth } from '../../core/auth';
 import { WidgetCondition, WidgetConfig } from '../../core/dashboard';
 import { Engagement, Poll, VoteTally } from '../../core/engagement';
 import { I18n } from '../../core/i18n/i18n';
-import { MessageKey } from '../../core/i18n/messages/en';
+import { MessageKey } from '../../core/i18n/keys';
 import { Schema } from '../../core/schema';
 import { ContentType, Document } from '../../core/types';
 import { VoteControl } from '../../shared/components/vote-control';

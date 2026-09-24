@@ -21,7 +21,7 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 import { Api, ApiFailure, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
-import { MessageKey } from '../../core/i18n/messages/en';
+import { MessageKey } from '../../core/i18n/keys';
 import { Schema } from '../../core/schema';
 import { Attribute, Document, PageMeta } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';

@@ -1,40 +1,27 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { TranslocoService } from '@jsverse/transloco';
 import { MonthLabels, injectBrnCalendarI18n } from '@spartan-ng/brain/calendar';
+import { firstValueFrom } from 'rxjs';
 
 import { Preferences } from '../preferences';
 import { DEFAULT_LOCALE, LOCALES, LocaleTag, matchLocale } from './locales';
-import { Catalog, Message, MessageKey, Params, en } from './messages/en';
+import { MessageKey, Params } from './keys';
 import { Weekday, firstDayOfWeek } from './week';
-
-const CATALOGS: Record<Exclude<LocaleTag, 'en'>, () => Promise<{ default: Catalog }>> = {
-  es: () => import('./messages/es'),
-  ca: () => import('./messages/ca'),
-  fr: () => import('./messages/fr'),
-  de: () => import('./messages/de'),
-  it: () => import('./messages/it'),
-  'pt-BR': () => import('./messages/pt-BR'),
-  nl: () => import('./messages/nl'),
-  pl: () => import('./messages/pl'),
-  tr: () => import('./messages/tr'),
-  ru: () => import('./messages/ru'),
-  uk: () => import('./messages/uk'),
-  ja: () => import('./messages/ja'),
-  ko: () => import('./messages/ko'),
-  'zh-Hans': () => import('./messages/zh-Hans'),
-};
 
 export type WeekStartPreference = 'auto' | Weekday;
 
 /**
- * Runtime translations and locale-aware formatting. Everything is signal-based, so
- * templates that call `t()` or the formatters update when the language changes.
+ * Runtime translations (Transloco + ICU MessageFormat, catalogs in `public/i18n`) and
+ * locale-aware formatting. `t()` and the formatters read the `locale` signal, so templates
+ * update when the language changes; new code may also use Transloco's `translateSignal`.
  */
 @Injectable({ providedIn: 'root' })
 export class I18n {
   private readonly document = inject(DOCUMENT);
   private readonly preferences = inject(Preferences);
   private readonly calendar = injectBrnCalendarI18n();
+  private readonly transloco = inject(TranslocoService);
 
   readonly locales = LOCALES;
   private readonly browserLocales: readonly string[] =
@@ -42,7 +29,6 @@ export class I18n {
 
   /** The interface language. */
   readonly locale = signal<LocaleTag>(DEFAULT_LOCALE);
-  private readonly catalog = signal<Catalog>(en);
 
   /**
    * The tag used for dates and numbers: the browser's own when it is a regional variant
@@ -68,7 +54,6 @@ export class I18n {
     return preference === 'auto' ? firstDayOfWeek(this.formatLocale()) : preference;
   });
 
-  private readonly pluralRules = computed(() => new Intl.PluralRules(this.locale()));
   private readonly numberFormat = computed(() => new Intl.NumberFormat(this.formatLocale()));
 
   constructor() {
@@ -103,35 +88,34 @@ export class I18n {
   }
 
   private async use(tag: LocaleTag): Promise<void> {
-    if (tag === 'en') {
-      this.catalog.set(en);
-    } else {
-      try {
-        this.catalog.set((await CATALOGS[tag]()).default);
-      } catch {
-        // A failed chunk load keeps the current language.
-        return;
-      }
+    try {
+      // English is the fallback of every other catalog.
+      await Promise.all([
+        firstValueFrom(this.transloco.load(DEFAULT_LOCALE)),
+        firstValueFrom(this.transloco.load(tag)),
+      ]);
+    } catch {
+      // A catalog that fails to load keeps the current language.
+      return;
     }
+    this.transloco.setActiveLang(tag);
     this.locale.set(tag);
   }
 
-  /** Translates `key`, filling `{name}` placeholders; `count` also picks the plural form. */
+  /**
+   * Translates `key`. Numbers are formatted for the locale, except `count`, which plural
+   * rules need raw (messages show it with `#` or `{count, number}`).
+   */
   readonly t = (key: MessageKey, params?: Params): string => {
-    const message: Message = this.catalog()[key] ?? en[key];
-    let text: string;
-    if (typeof message === 'string') {
-      text = message;
-    } else {
-      const rule = this.pluralRules().select(Number(params?.['count'] ?? 0));
-      text = message[rule] ?? message.other;
+    const lang = this.locale();
+    if (!params) return this.transloco.translate(key, {}, lang);
+    const values: Record<string, unknown> = {};
+    for (const [name, value] of Object.entries(params)) {
+      if (value === undefined || value === null) continue;
+      values[name] =
+        typeof value === 'number' && name !== 'count' ? this.numberFormat().format(value) : value;
     }
-    if (!params) return text;
-    return text.replace(/\{(\w+)\}/g, (placeholder, name: string) => {
-      const value = params[name];
-      if (value === undefined || value === null) return placeholder;
-      return typeof value === 'number' ? this.numberFormat().format(value) : String(value);
-    });
+    return this.transloco.translate(key, values, lang);
   };
 
   /** Date, time or both, in the user's locale; `—` for empty or invalid values. */

@@ -2,7 +2,7 @@
 
 import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
-import { MessageKey } from '../../core/i18n/messages/en';
+import { MessageKey } from '../../core/i18n/keys';
 import { mediaKind } from '../../core/media';
 import { MediaFile, MediaFolder, MediaKind } from '../../core/types';
 

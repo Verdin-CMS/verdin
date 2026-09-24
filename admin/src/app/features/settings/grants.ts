@@ -5,7 +5,7 @@ import { HlmEmptyImports } from '@spartan-ng/helm/empty';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { I18n } from '../../core/i18n/i18n';
-import { MessageKey } from '../../core/i18n/messages/en';
+import { MessageKey } from '../../core/i18n/keys';
 import { Schema } from '../../core/schema';
 import { CONTENT_ACTIONS, Grant, UPLOAD_SUBJECT } from '../../core/types';
 

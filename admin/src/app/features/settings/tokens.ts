@@ -14,7 +14,7 @@ import { HlmToggleGroupImports } from '@spartan-ng/helm/toggle-group';
 
 import { Api, ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
-import { MessageKey } from '../../core/i18n/messages/en';
+import { MessageKey } from '../../core/i18n/keys';
 import { ApiToken, Grant, TokenKind } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 import { GrantsMatrix } from './grants';

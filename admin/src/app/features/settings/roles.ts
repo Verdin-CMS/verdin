@@ -20,7 +20,7 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 import { Api, ApiFailure } from '../../core/api';
 import { Schema } from '../../core/schema';
 import { I18n } from '../../core/i18n/i18n';
-import { MessageKey } from '../../core/i18n/messages/en';
+import { MessageKey } from '../../core/i18n/keys';
 import {
   ADMIN_CONTENT_ACTIONS,
   ADMIN_SETTINGS_ACTIONS,

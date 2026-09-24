@@ -33,7 +33,7 @@ import {
 } from '../../core/dashboard';
 import { Engagement, Poll } from '../../core/engagement';
 import { I18n } from '../../core/i18n/i18n';
-import { MessageKey } from '../../core/i18n/messages/en';
+import { MessageKey } from '../../core/i18n/keys';
 import { Schema } from '../../core/schema';
 import { Attribute } from '../../core/types';
 import { DateControl } from '../content/fields/controls';

@@ -13,7 +13,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { ApiFailure } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
-import { MessageKey } from '../../core/i18n/messages/en';
+import { MessageKey } from '../../core/i18n/keys';
 import { Logo } from '../../shared/components/logo';
 import { PreferencesMenu } from '../../shared/components/preferences-menu';
 
