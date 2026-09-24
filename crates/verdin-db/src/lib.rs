@@ -3,6 +3,7 @@
 //! Wraps one `sqlx` pool per backend and detects the concrete server flavor, so that
 //! MySQL and MariaDB (which share a driver) can be told apart by the dialect layer.
 
+mod conn;
 mod version;
 
 use std::str::FromStr;
@@ -13,6 +14,7 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{MySqlPool, PgPool, SqlitePool};
 
+pub use conn::{Conn, Kind, Param, Value};
 pub use version::Version;
 
 #[derive(Debug, thiserror::Error)]
@@ -48,6 +50,16 @@ impl Flavor {
             Flavor::MariaDb => Version::new(10, 11),
             Flavor::Sqlite => Version::new(3, 35),
         }
+    }
+
+    /// Whether DDL statements take part in transactions. MySQL and MariaDB commit
+    /// implicitly on every DDL statement.
+    pub fn transactional_ddl(self) -> bool {
+        matches!(self, Flavor::Postgres | Flavor::Sqlite)
+    }
+
+    pub fn is_mysql_family(self) -> bool {
+        matches!(self, Flavor::MySql | Flavor::MariaDb)
     }
 
     pub fn as_str(self) -> &'static str {
@@ -131,8 +143,20 @@ impl Database {
                     .foreign_keys(true)
                     .journal_mode(SqliteJournalMode::Wal)
                     .busy_timeout(Duration::from_secs(5));
+                // Every connection to an in-memory database opens a *different* database,
+                // so in-memory pools are limited to a single connection.
+                let in_memory = url.contains(":memory:") || url.contains("mode=memory");
+                if !in_memory
+                    && let Some(parent) = connect.get_filename().parent()
+                    && !parent.as_os_str().is_empty()
+                {
+                    std::fs::create_dir_all(parent).map_err(|error| {
+                        DbError::InvalidUrl(format!("cannot create {}: {error}", parent.display()))
+                    })?;
+                }
+                let max_connections = if in_memory { 1 } else { options.max_connections };
                 let pool = SqlitePoolOptions::new()
-                    .max_connections(options.max_connections)
+                    .max_connections(max_connections)
                     .acquire_timeout(options.acquire_timeout)
                     .connect_with(connect)
                     .await?;
@@ -161,6 +185,16 @@ impl Database {
 
     pub fn version(&self) -> Version {
         self.version
+    }
+
+    /// Checks out a dedicated connection from the pool.
+    pub async fn acquire(&self) -> Result<Conn> {
+        let inner = match &self.pool {
+            Pool::Postgres(pool) => conn::Inner::Postgres(pool.acquire().await?),
+            Pool::MySql(pool) => conn::Inner::MySql(pool.acquire().await?),
+            Pool::Sqlite(pool) => conn::Inner::Sqlite(pool.acquire().await?),
+        };
+        Ok(Conn { inner, flavor: self.flavor })
     }
 
     /// Round-trips a trivial query; used by readiness checks.

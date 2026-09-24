@@ -3,7 +3,7 @@
 Open source headless CMS written in Rust. Inspired by Strapi, shipped as a single binary,
 running on PostgreSQL, MySQL, MariaDB and SQLite. 100% free — there is no enterprise edition.
 
-> **Status:** early development (milestone M0). See [docs/architecture.md](docs/architecture.md).
+> **Status:** early development (milestones M0–M1: schema and migrations). See [docs/architecture.md](docs/architecture.md).
 
 ## Development
 
@@ -16,16 +16,38 @@ docker compose -f docker/compose.dev.yml up -d --wait
 # Run the tests (in-memory SQLite by default)
 cargo test --workspace
 
-# Run them against a specific engine
-VERDIN_TEST_DATABASE_URL=mysql://verdin:verdin@localhost:3314/verdin \
+# Run them against a specific engine (tests create a database per test: use root on MySQL/MariaDB)
+VERDIN_TEST_DATABASE_URL=mysql://root:verdin@localhost:3314/verdin \
 VERDIN_TEST_EXPECT_FLAVOR=mariadb \
 cargo test --workspace
 
-# Run the server
-VERDIN_DATABASE_URL=sqlite://data/verdin.db cargo run -- start
-curl localhost:1337/_health
+# Try the example project
+export VERDIN_DATABASE_URL=sqlite://examples/blog/data/blog.db
+cargo run -- -c examples/blog/verdin.toml schema check
+cargo run -- -c examples/blog/verdin.toml migrate plan
+cargo run -- -c examples/blog/verdin.toml migrate apply
+cargo run -- -c examples/blog/verdin.toml start
 curl localhost:1337/_ready
 ```
+
+### Schema and migrations
+
+Content types live in `schema/content-types/<singularName>.json` and components in
+`schema/components/<category>/<name>.json` (format: [docs/architecture.md §7](docs/architecture.md)).
+
+```sh
+verdin schema check                      # validate every schema file
+verdin migrate plan                      # steps, risk level and exact SQL
+verdin migrate apply                     # safe steps only
+verdin migrate apply --allow risky       # also type changes and new unique constraints
+verdin migrate apply --allow destructive # also dropped columns and tables
+verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
+verdin start --migrate                   # apply safe steps, then serve
+```
+
+`verdin start` refuses to run while the database is behind the schema.
+On MySQL/MariaDB (no transactional DDL) an interrupted migration resumes from the
+failed step on the next `migrate apply`.
 
 Connection URLs for every engine are listed at the top of
 [docker/compose.dev.yml](docker/compose.dev.yml).

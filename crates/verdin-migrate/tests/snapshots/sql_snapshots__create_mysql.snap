@@ -1,0 +1,33 @@
+---
+source: crates/verdin-migrate/tests/sql_snapshots.rs
+expression: render(&plan)
+---
+-- create table articles [safe]
+CREATE TABLE `articles` (
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `document_id` char(26) NOT NULL,
+  `locale` varchar(16) NOT NULL DEFAULT '',
+  `publication_state` smallint NOT NULL,
+  `published_at` datetime(3),
+  `created_at` datetime(3) NOT NULL,
+  `updated_at` datetime(3) NOT NULL,
+  `created_by_id` bigint,
+  `updated_by_id` bigint,
+  `title` varchar(255),
+  `slug` varchar(255),
+  `body` longtext,
+  `views` int,
+  `price` decimal(10,2),
+  `featured` tinyint(1),
+  `publish_on` date,
+  `seo` json
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- create unique index articles_document_uq [safe]
+CREATE UNIQUE INDEX `articles_document_uq` ON `articles` (`document_id`, `locale`, `publication_state`);
+
+-- create index articles_state_idx [safe]
+CREATE INDEX `articles_state_idx` ON `articles` (`publication_state`, `locale`);
+
+-- create unique index articles_slug_uq [safe]
+CREATE UNIQUE INDEX `articles_slug_uq` ON `articles` (`slug`, `locale`, `publication_state`);

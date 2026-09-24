@@ -3,7 +3,7 @@
 //! Environment overrides use `VERDIN_<SECTION>__<KEY>` (e.g. `VERDIN_SERVER__PORT=8080`).
 //! `VERDIN_DATABASE_URL` is accepted as a shorthand for `database.url`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use figment::Figment;
@@ -15,6 +15,7 @@ use serde::{Deserialize, Deserializer};
 pub struct Config {
     pub server: ServerConfig,
     pub database: DatabaseConfig,
+    pub schema: SchemaConfig,
     pub log: LogConfig,
 }
 
@@ -57,6 +58,19 @@ pub struct DatabaseConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self { url: None, pool_max: 10 }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SchemaConfig {
+    /// Schema directory, relative to the configuration file.
+    pub path: PathBuf,
+}
+
+impl Default for SchemaConfig {
+    fn default() -> Self {
+        Self { path: PathBuf::from("schema") }
     }
 }
 

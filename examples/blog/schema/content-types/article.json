@@ -1,0 +1,19 @@
+{
+  "kind": "collectionType",
+  "singularName": "article",
+  "pluralName": "articles",
+  "displayName": "Article",
+  "options": { "draftAndPublish": true },
+  "attributes": {
+    "title": { "type": "string", "required": true, "maxLength": 200 },
+    "slug": { "type": "uid", "targetField": "title", "required": true },
+    "excerpt": { "type": "text", "maxLength": 500 },
+    "body": { "type": "richtext" },
+    "readingTime": { "type": "integer", "min": 0 },
+    "featured": { "type": "boolean", "default": false },
+    "category": { "type": "relation", "relation": "manyToOne", "target": "category", "inversedBy": "articles" },
+    "tags": { "type": "relation", "relation": "manyToMany", "target": "tag" },
+    "seo": { "type": "component", "component": "shared.seo" },
+    "blocks": { "type": "dynamiczone", "components": ["blocks.hero", "blocks.quote"] }
+  }
+}

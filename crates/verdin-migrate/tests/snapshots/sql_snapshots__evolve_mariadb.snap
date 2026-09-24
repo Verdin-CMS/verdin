@@ -1,0 +1,41 @@
+---
+source: crates/verdin-migrate/tests/sql_snapshots.rs
+expression: render(&plan)
+---
+-- rename column articles.title to headline [safe]
+ALTER TABLE `articles` RENAME COLUMN `title` TO `headline`;
+
+-- create table tags [safe]
+CREATE TABLE `tags` (
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `document_id` char(26) NOT NULL,
+  `locale` varchar(16) NOT NULL DEFAULT '',
+  `publication_state` smallint NOT NULL,
+  `published_at` datetime(3),
+  `created_at` datetime(3) NOT NULL,
+  `updated_at` datetime(3) NOT NULL,
+  `created_by_id` bigint,
+  `updated_by_id` bigint,
+  `label` varchar(255)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
+-- add column articles.rating [safe]
+ALTER TABLE `articles` ADD COLUMN `rating` double;
+
+-- alter column articles.views [risky]
+ALTER TABLE `articles` MODIFY COLUMN `views` bigint;
+
+-- alter column articles.publish_on [risky]
+ALTER TABLE `articles` MODIFY COLUMN `publish_on` datetime(3);
+
+-- drop column articles.featured [destructive]
+ALTER TABLE `articles` DROP COLUMN `featured`;
+
+-- create unique index articles_rating_uq [risky]
+CREATE UNIQUE INDEX `articles_rating_uq` ON `articles` (`rating`, `locale`, `publication_state`);
+
+-- create unique index tags_document_uq [safe]
+CREATE UNIQUE INDEX `tags_document_uq` ON `tags` (`document_id`, `locale`, `publication_state`);
+
+-- create index tags_state_idx [safe]
+CREATE INDEX `tags_state_idx` ON `tags` (`publication_state`, `locale`);

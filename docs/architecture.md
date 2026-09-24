@@ -1,6 +1,6 @@
 # Verdin — Architecture (MVP)
 
-> Status: draft v0.2 · 2026-09-24
+> Status: draft v0.3 · 2026-09-24 (M1 implemented)
 > Verdin is an open source headless CMS written in Rust, inspired by Strapi v5.
 > Everything is free software: there is no "Enterprise" edition and no paid features.
 
@@ -78,7 +78,7 @@ Media library and upload providers, content i18n, GraphQL, webhooks, WASM plugin
 | Runtime | `tokio` | De facto standard |
 | HTTP | `axum` + `tower` + `tower-http` | Ergonomic, mature middleware (CORS, compression, timeouts, limits) |
 | SQL driver | `sqlx` (postgres, mysql, sqlite) | Async, pooling, TLS; MySQL and MariaDB share one driver |
-| SQL building | `sea-query` + `sea-query-binder` | Tables are dynamic (defined by the schema), so we need a runtime, multi-dialect query builder. No ORM |
+| SQL building | DDL: own per-dialect generator (`verdin-migrate`). DML: `sea-query` + `sea-query-binder` from M2 | Tables are dynamic (defined by the schema), so we need runtime, multi-dialect SQL. DDL needs exact control (`jsonb`, `datetime(3)`, collations, SQLite rebuilds). No ORM |
 | Serialization | `serde`, `serde_json` | — |
 | Query strings | `serde_qs` | Strapi-style bracket notation (`filters[title][$eq]=…`) |
 | Schema validation | Rust types + strict `serde` (`deny_unknown_fields`) | Clear errors when loading the schema |
@@ -229,7 +229,7 @@ Content type UID: `api::article`. The Strapi form `api::article.article` is acce
 
 | Type | Options | Postgres | MySQL / MariaDB | SQLite |
 |---|---|---|---|---|
-| `string`, `email` | `maxLength`, `minLength`, `regex`, `unique` | `varchar(n)` | `varchar(n)` | `text` |
+| `string`, `email` | `maxLength` (≤ 255), `minLength`, `regex` (string), `unique` | `varchar(255)` | `varchar(255)` | `text` |
 | `text`, `richtext` | `maxLength` | `text` | `longtext` | `text` |
 | `uid` | `targetField`, implicitly `unique` | `varchar(255)` | `varchar(255)` | `text` |
 | `integer` | `min`, `max` | `integer` | `int` | `integer` |
@@ -240,7 +240,7 @@ Content type UID: `api::article`. The Strapi form `api::article.article` is acce
 | `date` | — | `date` | `date` | `text` (ISO) |
 | `time` | — | `time(3)` | `time(3)` | `text` |
 | `datetime` | — | `timestamptz(3)` | `datetime(3)` (UTC) | `text` (ISO UTC) |
-| `enumeration` | `enum` | `varchar(255)` + CHECK | `varchar(255)` | `text` |
+| `enumeration` | `enum` | `varchar(255)` | `varchar(255)` | `text` |
 | `json` | — | `jsonb` | `json` | `text` |
 | `relation` | see §8.4 | link table | link table | link table |
 | `component`, `dynamiczone` | see §8.5 | `jsonb` | `json` | `text` |
@@ -248,7 +248,9 @@ Content type UID: `api::article`. The Strapi form `api::article.article` is acce
 Common options: `required`, `default`, `private`, `unique` (where applicable), `configurable`.
 
 Notes:
-- `enumeration` does not use MySQL's native `ENUM`: altering it is expensive and not portable. Validation happens in the application (plus a CHECK constraint on PG).
+- `string`, `email`, `uid` and `enumeration` are always `varchar(255)`: MySQL counts `varchar` bytes against its 65,535-byte row limit, so longer values belong in `text`. A type may have at most 60 such attributes.
+- `enumeration` does not use MySQL's native `ENUM`: altering it is expensive and not portable. Values are validated in the application.
+- **Every attribute column is nullable.** As in Strapi v5, drafts may be incomplete, so `required` is enforced when publishing, not by the database. Adding a required attribute is therefore a safe migration.
 - `decimal` is stored exactly (`rust_decimal`) and serialized as a **JSON number** by default, matching Strapi, so existing frontends keep working. Projects that need values beyond double precision (> 15 significant digits) set `api.decimal_as_string = true`.
 - `richtext` in the MVP is Markdown. The `blocks` type (structured JSON, TipTap editor) comes later.
 
@@ -262,7 +264,8 @@ Notes:
 - System tables: `vd_` prefix (`vd_admin_users`, `vd_schema_snapshots`…).
 - Relation tables: `{source_table}_{field}_lnk`.
 - Identifiers are capped at **60 characters** (PG allows 63, MySQL 64). Longer names are truncated with a deterministic 8-char hash suffix.
-- Valid identifiers match `^[a-z][a-z0-9_]*$`. Reserved words of any of the four dialects are rejected at schema validation time.
+- Valid identifiers match `^[a-z][a-z0-9_]*$`, and every identifier is quoted in generated SQL, so SQL reserved words are harmless.
+- Attribute names are camelCase (`^[a-z][a-zA-Z0-9]*$`, ≤ 50 chars); columns are their snake_case form. Names used by the API or by system columns are reserved: `id`, `documentId`, `locale`, `publicationState`, `publishedAt`, `createdAt`, `updatedAt`, `createdBy`, `updatedBy` (and `id` inside components).
 
 ### 8.2 System columns on every content type
 
@@ -270,26 +273,28 @@ Notes:
 id             BIGINT       PK autoincrement
 document_id    CHAR(26)     NOT NULL        -- ULID, stable across draft/published/locales
 locale         VARCHAR(16)  NOT NULL DEFAULT ''   -- '' = not localized (ready for i18n)
-state          SMALLINT     NOT NULL        -- 0 = draft, 1 = published
+publication_state SMALLINT  NOT NULL        -- 0 = draft, 1 = published
 published_at   <datetime>   NULL
 created_at     <datetime>   NOT NULL
 updated_at     <datetime>   NOT NULL
 created_by_id  BIGINT       NULL            -- vd_admin_users.id
 updated_by_id  BIGINT       NULL
-UNIQUE (document_id, locale, state)
-INDEX  (state, locale)
+UNIQUE (document_id, locale, publication_state)
+INDEX  (publication_state, locale)
 ```
 
 `locale = ''` is used instead of `NULL` because NULLs never collide in unique indexes on any dialect, which would break uniqueness.
 
+`unique` attributes (and every `uid`) get a unique index on `(column, locale, publication_state)`: a draft and its published version share values, while two published documents cannot. The database enforces it, race-free.
+
 ### 8.3 Draft & publish
 
 Same conceptual model as Strapi v5:
-- A **document** (`document_id`) has at most one `state=0` (draft) row and one `state=1` (published) row per locale.
+- A **document** (`document_id`) has at most one `publication_state=0` (draft) row and one `publication_state=1` (published) row per locale.
 - Edits always target the draft row.
-- **Publish** copies the draft row onto the published row (upsert on `(document_id, locale, state=1)`) in one transaction, including the row's own relation links.
+- **Publish** copies the draft row onto the published row (upsert on `(document_id, locale, publication_state=1)`) in one transaction, including the row's own relation links.
 - **Unpublish** deletes the published row. **Discard draft** replaces the draft with a copy of the published row.
-- Content types without `draftAndPublish` only ever have a `state=1` row.
+- Content types without `draftAndPublish` only ever have a `publication_state=1` row.
 - The content API serves `published` by default; `?status=draft` requires a dedicated permission.
 
 ### 8.4 Relations: linked by `document_id`
@@ -305,7 +310,7 @@ PRIMARY KEY (source_id, target_document_id)
 INDEX (target_document_id)
 ```
 
-- The target is resolved at query time: `JOIN categories c ON c.document_id = lnk.target_document_id AND c.state = :current_state AND c.locale = :locale`.
+- The target is resolved at query time: `JOIN categories c ON c.document_id = lnk.target_document_id AND c.publication_state = :current_state AND c.locale = :locale`.
   - A published article only sees published categories; if a category is unpublished it "disappears" from the published article without touching any link.
   - Publishing only copies the row's own links.
 - Only the **owning** side (`inversedBy`) stores the relation. The inverse side (`mappedBy`) queries the same table in reverse. No duplicated tables.
@@ -383,7 +388,7 @@ pub trait Dialect {
 | Booleans | `boolean` | `tinyint(1)` | `tinyint(1)` | integer | Schema-driven decoding |
 | Datetime | `timestamptz` | `datetime(3)` | `datetime(3)` | ISO text | Always store UTC; `SET time_zone = '+00:00'` on every new MySQL/MariaDB connection |
 | Charset | UTF-8 | `utf8mb4` | `utf8mb4` | UTF-8 | Explicit charset on table creation |
-| Collation | — | `utf8mb4_0900_ai_ci` | `utf8mb4_uca1400_ai_ci` (11.x) / `utf8mb4_unicode_520_ci` (10.11) | `BINARY` | Explicit per table |
+| Collation | — | `utf8mb4_0900_ai_ci` | `utf8mb4_uca1400_ai_ci` (available since 10.10) | `BINARY` | Explicit per table |
 | `$contains` (case-sensitive) | `LIKE` | `LIKE … COLLATE utf8mb4_bin` | same | `GLOB`/`instr` | Dialect method |
 | `$containsi` | `ILIKE` | `LIKE` (ci collation) | same | `LIKE` (ASCII) + `lower()` | Dialect method; documented that SQLite is only case-insensitive for ASCII |
 | Upsert | `ON CONFLICT` | `ON DUPLICATE KEY UPDATE` | same | `ON CONFLICT` | `sea-query` |
@@ -398,12 +403,16 @@ pub trait Dialect {
 ### 10.1 Flow
 
 ```
-schema/*.json ──parse+validate──▶ Schema (current)
-vd_schema_snapshots (last applied) ──▶ Schema (previous)
-                 diff(previous, current) ──▶ Vec<Change> ──plan(dialect)──▶ Vec<Step> ──apply──▶ DB
+schema/*.json ──parse+validate──▶ Schema ──derive──▶ DbModel (desired)
+vd_schema_snapshots (last applied) ─────────────────▶ DbModel (current)
+                 diff(current, desired) ──▶ Vec<Change> ──plan(dialect)──▶ Vec<Step> ──apply──▶ DB
 ```
 
-The diff is computed **against the stored snapshot**, not against database introspection. It is deterministic and avoids introspection differences between dialects. Introspection is only used by `verdin migrate check` to detect drift (manual changes in the database).
+The snapshot stores the **physical model** (tables, columns, indexes), not the schema. When a later Verdin version derives more tables from the same schema (link tables in M3), the diff creates them naturally.
+
+The diff is computed **against the stored snapshot**, not against database introspection. It is deterministic and avoids introspection differences between dialects. Introspection will back a future `verdin migrate check` that detects drift (manual changes in the database).
+
+Changes that render to identical DDL on a dialect (e.g. `integer` → `biginteger` on SQLite) produce no step.
 
 ### 10.2 Change categories
 
@@ -411,25 +420,26 @@ The diff is computed **against the stored snapshot**, not against database intro
 - **Risky**: change column type (with conversion), add `required` without default to a table with rows, shrink a length, add `unique` (may fail on duplicates). Executed after a pre-check (e.g. `SELECT COUNT(*) … WHERE col IS NULL`).
 - **Destructive**: drop column, drop table, remove an enum value that is in use.
 
-**Renames**: a removed attribute plus a new one of the same type is *proposed* as a rename; the user confirms it in the CLI or in the content-type builder. It is never inferred silently.
+**Renames**: a removed attribute plus a new one of the same type is *proposed* as a rename (`verdin migrate plan` prints `--rename-column articles.title=headline`); the user passes it explicitly to `migrate apply` (and, later, confirms it in the content-type builder). It is never inferred silently. Table renames work the same way with `--rename-table old=new`.
 
 ### 10.3 Modes
 
-- `verdin dev`: watches `schema/`. Safe changes are applied automatically; risky and destructive ones ask for confirmation (interactive CLI or a dialog in the admin).
-- `verdin start` (production): the schema is read-only. If migrations are pending the server **does not start**, unless run with `--migrate` (safe changes only) or `--migrate=all`.
-- `verdin migrate plan` prints the steps and the exact SQL for the dialect. `verdin migrate apply` runs them.
+- `verdin dev` (M2+): watches `schema/`. Safe changes are applied automatically; risky and destructive ones ask for confirmation (interactive CLI or a dialog in the admin).
+- `verdin start` (production): the schema is read-only. If migrations are pending the server **does not start**, unless run with `--migrate` (safe changes only).
+- `verdin migrate plan` prints the steps, their risk and the exact SQL for the dialect. `verdin migrate apply [--allow safe|risky|destructive]` runs them; steps above the allowed risk abort the run before anything executes.
 
 ### 10.4 Execution that survives non-transactional DDL
 
 MySQL and MariaDB implicitly commit on every DDL statement, so a failure halfway leaves the database in an intermediate state. Strategy:
 
-1. Run every pre-check before the first DDL statement.
-2. Record the full plan in `vd_migrations_journal` (plan hash + steps).
-3. Execute step by step, marking each one as done.
-4. After a failure, the next start detects the incomplete plan and offers to **resume** from the failed step (steps are idempotent: `IF NOT EXISTS` or a prior existence check).
-5. The new snapshot is stored only once every step has completed.
+1. Take the migration lock (`pg_advisory_lock` / `GET_LOCK` scoped to the database; `BEGIN IMMEDIATE` on SQLite) on a dedicated connection.
+2. Run every pre-check before the first DDL statement (duplicates before a unique index, NULLs before `NOT NULL`, rows before a `NOT NULL` column without default).
+3. Record the full plan in `vd_migrations_journal` (plan hash + steps). On MySQL/MariaDB every step is a single statement.
+4. Execute step by step, recording progress after each one.
+5. After a failure, the journal stays `running` with the error. The next `apply` recomputes the plan; if its hash matches, it **resumes** from the failed step (single DDL statements are atomic on MySQL 8 / MariaDB, so the failed step simply runs again). If the schema changed meanwhile, it refuses and asks to restore the schema the plan came from.
+6. The new snapshot and the journal completion are committed together once every step has completed.
 
-On PostgreSQL and SQLite the whole plan runs in a single transaction.
+On PostgreSQL and SQLite the whole plan and the snapshot run in a single transaction: a failure rolls everything back.
 
 ---
 
@@ -454,7 +464,7 @@ impl DocumentService {
 ```
 
 - `Ctx` carries the actor (admin user, API token or public) and the resolved permissions. Permission filtering (e.g. the "only my entries" condition) is injected into the query, not applied afterwards.
-- **Validation** in two layers: schema types and constraints (`required`, `min`/`max`, `regex`, enum, cardinality), then uniqueness (`unique`, `uid`) checked against the database inside the transaction. Errors use the `ValidationError` format with the field path (`seo.metaTitle`, `blocks[2].text`).
+- **Validation** in two layers: schema types and constraints (`min`/`max`, `regex`, enum, cardinality; `required` on publish and on writes to types without draft & publish), then uniqueness (`unique`, `uid`) enforced by the scoped unique indexes and reported as a `ValidationError`. Errors use the `ValidationError` format with the field path (`seo.metaTitle`, `blocks[2].text`).
 - `uid`: slug generation from `targetField` and an availability endpoint (used by the admin).
 - **Event bus**:
   - *before* hooks: synchronous, ordered, can modify data or abort the operation (`BeforeCreate`, `BeforeUpdate`… traits).
@@ -667,8 +677,8 @@ verdin version
 
 | Milestone | Scope | Exit criteria |
 |---|---|---|
-| **M0 Skeleton** | Workspace, CI, config, `verdin start` with `/_health`, connection to all 4 engines, `docker/compose.dev.yml` | Green CI across the matrix |
-| **M1 Schema + migrations** | Parser and validation, type mapping, snapshot, diff, plan, journaled apply (scalars only) | Create, alter and drop types on all 4 engines; resume after failure on MySQL |
+| **M0 Skeleton** ✅ | Workspace, CI, config, `verdin start` with `/_health`, connection to all 4 engines, `docker/compose.dev.yml` | Green CI across the matrix |
+| **M1 Schema + migrations** ✅ | Parser and validation, type mapping, snapshot, diff, plan, journaled apply (scalars, components and dynamic zones as JSON) | Create, alter and drop types on all 4 engines; resume after failure on MySQL |
 | **M2 Document Service + REST** | CRUD, filters, sort, pagination, fields, draft/publish, OpenAPI | Basic conformance suite green |
 | **M3 Relations & components** | `_lnk` tables, 6 relation kinds, JSON components and dynamic zones, batched `populate` | Populate and publish conformance |
 | **M4 Auth** | Admins, first admin, JWT + rotating refresh, roles, API tokens, public permissions | Security tests (refresh reuse, enumeration, rate limit) |
@@ -696,3 +706,8 @@ verdin version
 | 5 | Strapi REST compatibility | **Same parameters and response shape**; Verdin-only extensions under `actions/` | Frontends migrate with minimal changes |
 | 6 | Admin JWT algorithm | HS256 | Single secret, simple; EdDSA if external verifiers ever appear |
 | 7 | Document IDs | ULID (26 chars) | Sortable and portable; Strapi's own ids are opaque 24-char strings, clients never parse them |
+| 8 | Snapshot content | Physical model, not schema | Later versions can derive new tables from an unchanged schema |
+| 9 | Attribute nullability | Always nullable; `required` checked on publish | Drafts may be incomplete (Strapi v5 behaviour); adding required fields is safe |
+| 10 | `unique` enforcement | Unique index on `(column, locale, publication_state)` | Race-free; drafts and their published version share values |
+| 11 | State column name | `publication_state` | `state` is a common attribute name |
+| 12 | Reserved SQL words | Always quote identifiers | No arbitrary blocklist of attribute names |

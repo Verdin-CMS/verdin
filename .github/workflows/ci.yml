@@ -54,19 +54,19 @@ jobs:
             port: "3306:3306"
             health: mysqladmin ping -h 127.0.0.1 -uroot -pverdin
             flavor: mysql
-            url: mysql://verdin:verdin@127.0.0.1:3306/verdin
+            url: mysql://root:verdin@127.0.0.1:3306/verdin
           - name: mariadb-10.11
             image: mariadb:10.11
             port: "3306:3306"
             health: healthcheck.sh --connect --innodb_initialized
             flavor: mariadb
-            url: mysql://verdin:verdin@127.0.0.1:3306/verdin
+            url: mysql://root:verdin@127.0.0.1:3306/verdin
           - name: mariadb-11.4
             image: mariadb:11.4
             port: "3306:3306"
             health: healthcheck.sh --connect --innodb_initialized
             flavor: mariadb
-            url: mysql://verdin:verdin@127.0.0.1:3306/verdin
+            url: mysql://root:verdin@127.0.0.1:3306/verdin
     services:
       db:
         # An empty image skips the service (SQLite runs in-process).

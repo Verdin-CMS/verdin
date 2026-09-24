@@ -1,0 +1,33 @@
+---
+source: crates/verdin-migrate/tests/sql_snapshots.rs
+expression: render(&plan)
+---
+-- create table articles [safe]
+CREATE TABLE "articles" (
+  "id" integer PRIMARY KEY AUTOINCREMENT,
+  "document_id" text NOT NULL,
+  "locale" text NOT NULL DEFAULT '',
+  "publication_state" integer NOT NULL,
+  "published_at" text,
+  "created_at" text NOT NULL,
+  "updated_at" text NOT NULL,
+  "created_by_id" integer,
+  "updated_by_id" integer,
+  "title" text,
+  "slug" text,
+  "body" text,
+  "views" integer,
+  "price" text,
+  "featured" integer,
+  "publish_on" text,
+  "seo" text
+);
+
+-- create unique index articles_document_uq [safe]
+CREATE UNIQUE INDEX "articles_document_uq" ON "articles" ("document_id", "locale", "publication_state");
+
+-- create index articles_state_idx [safe]
+CREATE INDEX "articles_state_idx" ON "articles" ("publication_state", "locale");
+
+-- create unique index articles_slug_uq [safe]
+CREATE UNIQUE INDEX "articles_slug_uq" ON "articles" ("slug", "locale", "publication_state");
