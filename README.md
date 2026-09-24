@@ -3,7 +3,40 @@
 Open source headless CMS written in Rust. Inspired by Strapi, shipped as a single binary,
 running on PostgreSQL, MySQL, MariaDB and SQLite. 100% free — there is no enterprise edition.
 
-> **Status:** early development (milestones M0–M5: schema, migrations, content REST API, relations, auth, admin panel). See [docs/architecture.md](docs/architecture.md).
+> **Status:** 0.1 — first release. See the [changelog](CHANGELOG.md), the
+> [architecture](docs/architecture.md) and the [roadmap](docs/roadmap.md).
+
+## Quick start
+
+With Docker (SQLite in a volume, content-type builder enabled):
+
+```sh
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+Open <http://localhost:1337/admin/>, create the first admin, model a type in the
+**Content-type builder**, add an entry, and allow `find` in **Settings → Public access**:
+
+```sh
+curl localhost:1337/api/articles
+```
+
+`dev` lets the builder edit the schema (stored in the volume under `/data/schema`); for
+production mount your versioned schema and run the default `start --migrate`:
+
+```sh
+docker run -p 1337:1337 --env-file verdin.env \
+  -e VERDIN_DATABASE_URL=postgres://user:pass@db:5432/verdin \
+  -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
+```
+
+With the binary ([releases](https://github.com/verdin-cms/verdin/releases)):
+
+```sh
+verdin new my-site            # verdin.toml, schema/, .env with fresh secrets, SQLite
+cd my-site && verdin dev      # --database postgres|mysql|mariadb for other engines
+```
 
 ## Development
 
@@ -22,7 +55,7 @@ VERDIN_TEST_EXPECT_FLAVOR=mariadb \
 cargo test --workspace
 
 # Try the example project
-export VERDIN_DATABASE_URL=sqlite://examples/blog/data/blog.db
+export VERDIN_DATABASE_URL=sqlite://data/blog.db   # relative to the project (examples/blog)
 cargo run -- -c examples/blog/verdin.toml schema check
 cargo run -- -c examples/blog/verdin.toml migrate plan
 cargo run -- -c examples/blog/verdin.toml migrate apply
@@ -80,8 +113,9 @@ verdin admin reset-password --email you@example.com
 ```
 
 The content API is closed until you grant public permissions or create API tokens
-(`POST /admin/api/api-tokens`, `PUT /admin/api/public-permissions`). Local plain-HTTP
-development needs `VERDIN_ADMIN__SECURE_COOKIES=false` for the refresh cookie.
+(`POST /admin/api/api-tokens`, `PUT /admin/api/public-permissions`). The refresh cookie
+is `Secure` in `verdin start` and not in `verdin dev`; set `[admin].secure_cookies` to
+override (e.g. `VERDIN_ADMIN__SECURE_COOKIES=false` to try `start` over plain HTTP).
 
 ### Content API
 
@@ -129,7 +163,7 @@ decimal_as_string = false
 
 [admin]
 path = "/admin"
-secure_cookies = true
+secure_cookies = true   # default: true in `start`, false in `dev`
 auth_rate_limit = 20  # login/registration/refresh per IP per minute
 
 [log]

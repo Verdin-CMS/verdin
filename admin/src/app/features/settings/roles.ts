@@ -19,9 +19,27 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { Api, ApiFailure } from '../../core/api';
 import { Schema } from '../../core/schema';
+import { I18n } from '../../core/i18n/i18n';
+import { MessageKey } from '../../core/i18n/messages/en';
 import { ADMIN_CONTENT_ACTIONS, ADMIN_SETTINGS_ACTIONS, Permission, Role } from '../../core/types';
+import { PageHeader } from '../../shared/components/page-header';
 
 type Level = 'none' | 'own' | 'all';
+
+const ACTION_LABELS: Record<
+  (typeof ADMIN_CONTENT_ACTIONS)[number] | (typeof ADMIN_SETTINGS_ACTIONS)[number],
+  MessageKey
+> = {
+  'content.read': 'settings.roles.action.content.read',
+  'content.create': 'settings.roles.action.content.create',
+  'content.update': 'settings.roles.action.content.update',
+  'content.delete': 'settings.roles.action.content.delete',
+  'content.publish': 'settings.roles.action.content.publish',
+  'users.manage': 'settings.roles.action.users.manage',
+  'roles.manage': 'settings.roles.action.roles.manage',
+  'tokens.manage': 'settings.roles.action.tokens.manage',
+  'schema.manage': 'settings.roles.action.schema.manage',
+};
 
 @Component({
   selector: 'vd-roles',
@@ -35,128 +53,210 @@ type Level = 'none' | 'own' | 'all';
     HlmInputImports,
     HlmNativeSelectImports,
     HlmAlertImports,
+    PageHeader,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="grid gap-6 lg:grid-cols-[16rem_1fr]">
-      <aside class="flex flex-col gap-2">
-        <h1 class="text-2xl font-semibold">Roles</h1>
-        @for (role of roles(); track role.id) {
-          <button
-            hlmBtn
-            [variant]="selected()?.id === role.id ? 'secondary' : 'ghost'"
-            class="justify-start"
-            (click)="select(role)"
-          >
-            {{ role.name }}
-            @if (role.builtin) {
-              <span hlmBadge variant="outline" class="ms-auto">built-in</span>
-            }
-          </button>
-        }
-        <div class="mt-4 flex flex-col gap-2 rounded-md border p-3">
-          <span class="text-sm font-medium">New role</span>
-          <input
-            hlmInput
-            placeholder="Name"
-            [value]="newName()"
-            (input)="newName.set($any($event.target).value)"
-            aria-label="New role name"
-          />
-          <button
-            hlmBtn
-            variant="outline"
-            size="sm"
-            [disabled]="!newName().trim()"
-            (click)="create()"
-          >
-            <ng-icon name="lucidePlus" /> Create
-          </button>
-        </div>
-      </aside>
+    <div class="flex flex-col gap-6">
+      <vd-page-header
+        [title]="t('settings.roles.title')"
+        [description]="t('settings.roles.description')"
+      >
+        <span eyebrow class="text-primary flex items-center gap-1.5 text-xs font-medium">
+          <ng-icon name="lucideShieldCheck" size="14" /> {{ t('shell.settings') }}
+        </span>
+      </vd-page-header>
 
-      @if (selected(); as role) {
-        <section class="flex flex-col gap-4">
-          <div class="flex flex-wrap items-center gap-3">
-            <div>
-              <h2 class="text-xl font-semibold">{{ role.name }}</h2>
-              <p class="text-muted-foreground text-sm">{{ role.description }}</p>
-            </div>
-            <div class="ms-auto flex gap-2">
-              @if (!role.builtin) {
-                <button hlmBtn variant="ghost" (click)="remove(role)">
-                  <ng-icon name="lucideTrash2" /> Delete
-                </button>
-              }
-              @if (!superAdmin()) {
-                <button hlmBtn (click)="save()"><ng-icon name="lucideSave" /> Save</button>
-              }
-            </div>
-          </div>
-          @if (superAdmin()) {
-            <div hlmAlert>
-              <p hlmAlertDescription>
-                Super Admins can do everything; their permissions cannot be changed.
-              </p>
-            </div>
-          } @else {
-            <div hlmTableContainer class="rounded-md border">
-              <table hlmTable>
-                <thead hlmTHead>
-                  <tr hlmTr>
-                    <th hlmTh>Content type</th>
-                    @for (action of contentActions; track action) {
-                      <th hlmTh>{{ action.replace('content.', '') }}</th>
-                    }
-                  </tr>
-                </thead>
-                <tbody hlmTBody>
-                  @for (subject of subjects(); track subject.uid) {
-                    <tr hlmTr>
-                      <td hlmTd>{{ subject.name }}</td>
-                      @for (action of contentActions; track action) {
-                        <td hlmTd>
-                          <hlm-native-select
-                            size="sm"
-                            [value]="level(action, subject.uid)"
-                            (valueChange)="setLevel(action, subject.uid, $any($event))"
-                            [attr.aria-label]="subject.name + ' ' + action"
-                          >
-                            <option hlmNativeSelectOption value="none">—</option>
-                            <option hlmNativeSelectOption value="own">Own</option>
-                            <option hlmNativeSelectOption value="all">All</option>
-                          </hlm-native-select>
-                        </td>
-                      }
-                    </tr>
+      <div class="grid items-start gap-6 lg:grid-cols-[16rem_1fr]">
+        <aside class="flex flex-col gap-4">
+          <nav class="bg-card flex flex-col gap-1 rounded-xl border p-2">
+            @for (role of roles(); track role.id) {
+              <button
+                hlmBtn
+                [variant]="selected()?.id === role.id ? 'secondary' : 'ghost'"
+                class="h-auto justify-start py-2"
+                [attr.aria-current]="selected()?.id === role.id ? 'true' : null"
+                (click)="select(role)"
+              >
+                <span class="flex min-w-0 flex-col items-start">
+                  <span class="truncate">{{ role.name }}</span>
+                  @if (role.code !== 'super-admin') {
+                    <span class="text-muted-foreground text-xs font-normal">{{
+                      t('settings.roles.permissions', { count: role.permissions.length })
+                    }}</span>
                   }
-                </tbody>
-              </table>
-            </div>
-            <fieldset hlmFieldSet>
-              <legend hlmFieldLegend>Settings</legend>
-              <div hlmFieldGroup>
-                @for (action of settingsActions; track action) {
-                  <div hlmField orientation="horizontal">
-                    <hlm-checkbox
-                      [inputId]="action"
-                      [checked]="hasSetting(action)"
-                      (checkedChange)="toggleSetting(action, $event === true)"
-                    />
-                    <label hlmFieldLabel [for]="action">{{ action }}</label>
-                  </div>
+                </span>
+                @if (role.builtin) {
+                  <span hlmBadge variant="outline" class="ms-auto">{{
+                    t('settings.roles.builtin')
+                  }}</span>
+                }
+              </button>
+            }
+          </nav>
+          <div class="bg-card flex flex-col gap-2 rounded-xl border p-3">
+            <span class="text-sm font-medium">{{ t('settings.roles.newRole') }}</span>
+            <input
+              hlmInput
+              [placeholder]="t('common.name')"
+              [value]="newName()"
+              (input)="newName.set($any($event.target).value)"
+              (keydown.enter)="newName().trim() && create()"
+              [attr.aria-label]="t('settings.roles.newRoleName')"
+            />
+            <button
+              hlmBtn
+              variant="outline"
+              size="sm"
+              [disabled]="!newName().trim()"
+              (click)="create()"
+            >
+              <ng-icon name="lucidePlus" /> {{ t('common.create') }}
+            </button>
+          </div>
+        </aside>
+
+        @if (selected(); as role) {
+          <section class="flex min-w-0 flex-col gap-6">
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="flex min-w-0 flex-col gap-1">
+                <h2 class="flex items-center gap-2 text-xl font-semibold tracking-tight">
+                  {{ role.name }}
+                  @if (role.builtin) {
+                    <span hlmBadge variant="outline">{{ t('settings.roles.builtin') }}</span>
+                  }
+                </h2>
+                @if (role.description) {
+                  <p class="text-muted-foreground text-sm">{{ role.description }}</p>
                 }
               </div>
-            </fieldset>
-          }
-        </section>
-      }
+              <div class="ms-auto flex gap-2">
+                @if (!role.builtin) {
+                  <button
+                    hlmBtn
+                    variant="ghost"
+                    class="text-destructive hover:text-destructive"
+                    (click)="remove(role)"
+                  >
+                    <ng-icon name="lucideTrash2" /> {{ t('common.delete') }}
+                  </button>
+                }
+                @if (!superAdmin()) {
+                  <button hlmBtn (click)="save()">
+                    <ng-icon name="lucideSave" /> {{ t('common.save') }}
+                  </button>
+                }
+              </div>
+            </div>
+            @if (superAdmin()) {
+              <div hlmAlert>
+                <ng-icon name="lucideShieldCheck" />
+                <p hlmAlertDescription>{{ t('settings.roles.superAdmin') }}</p>
+              </div>
+            } @else {
+              <div class="flex flex-col gap-3">
+                <div class="flex flex-col gap-0.5">
+                  <h3 class="text-sm font-medium">{{ t('settings.roles.content') }}</h3>
+                  <p class="text-muted-foreground text-xs">{{ t('settings.roles.contentHint') }}</p>
+                </div>
+                <div class="bg-card overflow-hidden rounded-xl border">
+                  <div hlmTableContainer class="max-h-[60vh] overflow-y-auto">
+                    <table hlmTable>
+                      <thead hlmTHead>
+                        <tr hlmTr class="hover:bg-transparent">
+                          <th hlmTh class="bg-muted sticky top-0 z-10 ps-4">
+                            {{ t('settings.grants.contentType') }}
+                          </th>
+                          @for (action of contentActions; track action) {
+                            <th hlmTh class="bg-muted sticky top-0 z-10">
+                              {{ t(actionLabels[action]) }}
+                            </th>
+                          }
+                        </tr>
+                      </thead>
+                      <tbody hlmTBody>
+                        @for (subject of subjects(); track subject.uid) {
+                          <tr hlmTr [class.bg-muted/30]="subject.uid === '*'">
+                            <td hlmTd class="ps-4">
+                              <div class="flex flex-col">
+                                <span class="font-medium">{{ subject.name }}</span>
+                                @if (subject.uid !== '*') {
+                                  <span class="text-muted-foreground font-mono text-xs">{{
+                                    subject.uid
+                                  }}</span>
+                                }
+                              </div>
+                            </td>
+                            @for (action of contentActions; track action) {
+                              <td hlmTd>
+                                <hlm-native-select
+                                  size="sm"
+                                  [value]="level(action, subject.uid)"
+                                  (valueChange)="setLevel(action, subject.uid, $any($event))"
+                                  [attr.aria-label]="subject.name + ' ' + t(actionLabels[action])"
+                                >
+                                  <option hlmNativeSelectOption value="none">
+                                    {{ t('settings.roles.level.none') }}
+                                  </option>
+                                  <option hlmNativeSelectOption value="own">
+                                    {{ t('settings.roles.level.own') }}
+                                  </option>
+                                  <option hlmNativeSelectOption value="all">
+                                    {{ t('settings.roles.level.all') }}
+                                  </option>
+                                </hlm-native-select>
+                              </td>
+                            }
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <fieldset hlmFieldSet class="bg-card rounded-xl border p-4">
+                <legend hlmFieldLegend class="sr-only">{{ t('settings.roles.settings') }}</legend>
+                <div class="flex flex-col gap-0.5">
+                  <h3 class="text-sm font-medium">{{ t('settings.roles.settings') }}</h3>
+                  <p class="text-muted-foreground text-xs">
+                    {{ t('settings.roles.settingsHint') }}
+                  </p>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  @for (action of settingsActions; track action) {
+                    <div
+                      hlmField
+                      orientation="horizontal"
+                      class="hover:bg-muted/50 rounded-lg border p-3 transition-colors"
+                    >
+                      <hlm-checkbox
+                        [inputId]="action"
+                        [checked]="hasSetting(action)"
+                        (checkedChange)="toggleSetting(action, $event === true)"
+                      />
+                      <label hlmFieldLabel [for]="action" class="flex flex-col items-start gap-0.5">
+                        <span>{{ t(actionLabels[action]) }}</span>
+                        <span class="text-muted-foreground font-mono text-xs font-normal">{{
+                          action
+                        }}</span>
+                      </label>
+                    </div>
+                  }
+                </div>
+              </fieldset>
+            }
+          </section>
+        }
+      </div>
     </div>
   `,
 })
 export class RolesPage implements OnInit {
   private readonly api = inject(Api);
   private readonly schema = inject(Schema);
+  protected readonly i18n = inject(I18n);
+  protected readonly t = this.i18n.t;
+  protected readonly actionLabels = ACTION_LABELS;
   protected readonly contentActions = ADMIN_CONTENT_ACTIONS;
   protected readonly settingsActions = ADMIN_SETTINGS_ACTIONS;
   protected readonly roles = signal<Role[]>([]);
@@ -165,7 +265,7 @@ export class RolesPage implements OnInit {
   protected readonly newName = signal('');
   protected readonly superAdmin = computed(() => this.selected()?.code === 'super-admin');
   protected readonly subjects = computed(() => [
-    { uid: '*', name: 'All content types' },
+    { uid: '*', name: this.t('settings.roles.allTypes') },
     ...this.schema.contentTypes().map((type) => ({ uid: type.uid, name: type.displayName })),
   ]);
 
@@ -223,7 +323,7 @@ export class RolesPage implements OnInit {
     try {
       await this.api.put(`/roles/${role.id}`, { permissions: this.permissions() });
       await this.reload(role.id);
-      toast.success('Role saved');
+      toast.success(this.t('settings.roles.saved'));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
     }
@@ -239,19 +339,19 @@ export class RolesPage implements OnInit {
       const role = await this.api.post<Role>('/roles', { code, name, permissions: [] });
       this.newName.set('');
       await this.reload(role.id);
-      toast.success('Role created');
+      toast.success(this.t('settings.roles.created'));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
     }
   }
 
   protected async remove(role: Role): Promise<void> {
-    if (!confirm(`Delete the role ${role.name}?`)) return;
+    if (!confirm(this.t('settings.roles.confirmDelete', { name: role.name }))) return;
     try {
       await this.api.delete(`/roles/${role.id}`);
       this.selected.set(null);
       await this.reload();
-      toast.success('Role deleted');
+      toast.success(this.t('settings.roles.deleted'));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
     }

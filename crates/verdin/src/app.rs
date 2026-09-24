@@ -91,7 +91,7 @@ pub fn build_app(
         context.auth.clone(),
         verdin_api::AdminConfig {
             path: admin.path.clone(),
-            secure_cookies: admin.secure_cookies,
+            secure_cookies: admin.secure_cookies.unwrap_or(context.mode == Mode::Production),
             limits,
             output,
             mode: context.mode.as_str(),

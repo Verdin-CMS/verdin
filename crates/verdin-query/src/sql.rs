@@ -99,6 +99,20 @@ pub fn write_filter(out: &mut SqlBuilder, filter: &Filter, alias: &str, context:
         }
         Filter::Condition(condition) => write_condition(out, condition, Some(alias)),
         Filter::Relation(relation) => write_relation(out, relation, alias, context),
+        Filter::Marked(mark) => {
+            out.push("EXISTS (SELECT 1 FROM ");
+            out.ident(&mark.table);
+            out.push(" mk WHERE ");
+            out.column(Some("mk"), "user_id").push(" = ").param(SqlValue::BigInt(mark.user_id));
+            out.push(" AND ");
+            out.column(Some("mk"), "content_type")
+                .push(" = ")
+                .param(SqlValue::Text(mark.content_type.clone()));
+            out.push(" AND ");
+            out.column(Some("mk"), "document_id").push(" = ");
+            out.column(Some(alias), "document_id");
+            out.push(")");
+        }
     }
 }
 
@@ -144,11 +158,81 @@ fn write_relation(
     out.push(")");
 }
 
+/// The compared expression: a column, or a value inside a JSON column (component fields).
+/// Path segments are validated attribute names, so they are safe inside the literal.
+fn operand<'a>(
+    out: &'a mut SqlBuilder,
+    condition: &Condition,
+    alias: Option<&str>,
+) -> &'a mut SqlBuilder {
+    use verdin_db::ColumnKind as K;
+    if condition.path.is_empty() {
+        return out.column(alias, &condition.column);
+    }
+    let numeric =
+        matches!(condition.kind, K::SmallInt | K::Int | K::BigInt | K::Double | K::Decimal);
+    match out.flavor {
+        Flavor::Postgres => {
+            out.push(if numeric { "((" } else { "(" });
+            out.column(alias, &condition.column);
+            out.push(&format!(" #>> '{{{}}}')", condition.path.join(",")));
+            if numeric {
+                out.push("::numeric)");
+            }
+        }
+        // JSON_VALUE turns JSON `null` into SQL NULL (JSON_EXTRACT would return 'null').
+        Flavor::MySql | Flavor::MariaDb => {
+            if numeric {
+                out.push("CAST(");
+            }
+            out.push("JSON_VALUE(");
+            out.column(alias, &condition.column);
+            out.push(&format!(", '$.{}')", condition.path.join(".")));
+            if numeric {
+                out.push(" AS DECIMAL(38,10))");
+            }
+        }
+        Flavor::Sqlite => {
+            out.push("json_extract(");
+            out.column(alias, &condition.column);
+            out.push(&format!(", '$.{}')", condition.path.join(".")));
+        }
+    }
+    out
+}
+
+/// JSON booleans read back as text: `true`/`false` on PostgreSQL and MySQL, `1`/`0` on
+/// MariaDB; SQLite compares them as integers.
+fn json_booleans(condition: &Condition, flavor: Flavor) -> Condition {
+    let as_text = |value: &SqlValue| match value {
+        SqlValue::Bool(flag) if flavor == Flavor::MariaDb => {
+            SqlValue::Text(if *flag { "1" } else { "0" }.to_owned())
+        }
+        SqlValue::Bool(flag) => SqlValue::Text(flag.to_string()),
+        other => other.clone(),
+    };
+    let mut condition = condition.clone();
+    if !condition.path.is_empty()
+        && condition.kind == verdin_db::ColumnKind::Bool
+        && flavor != Flavor::Sqlite
+    {
+        condition.kind = verdin_db::ColumnKind::Text;
+        condition.operand = match &condition.operand {
+            Operand::Value(value) => Operand::Value(as_text(value)),
+            Operand::List(values) => Operand::List(values.iter().map(as_text).collect()),
+            Operand::Pair(low, high) => Operand::Pair(as_text(low), as_text(high)),
+            Operand::None => Operand::None,
+        };
+    }
+    condition
+}
+
 fn write_condition(out: &mut SqlBuilder, condition: &Condition, alias: Option<&str>) {
+    let condition = &json_booleans(condition, out.flavor);
     let mysql = out.flavor.is_mysql_family();
     let exact_text = mysql && condition.kind == verdin_db::ColumnKind::Text;
     let col = |out: &mut SqlBuilder| {
-        out.column(alias, &condition.column);
+        operand(out, condition, alias);
     };
 
     match (&condition.operand, condition.op) {
@@ -239,7 +323,7 @@ fn write_pattern(
         if negate {
             out.push("1 = 0");
         } else {
-            out.column(alias, &condition.column).push(" IS NOT NULL");
+            operand(out, condition, alias).push(" IS NOT NULL");
         }
         return;
     }
@@ -251,23 +335,36 @@ fn write_pattern(
         // SQLite's LIKE ignores ASCII case; compare substrings instead.
         match op {
             Op::StartsWith => {
-                out.push("substr(").column(alias, &condition.column).push(", 1, length(");
+                out.push("substr(");
+                operand(out, condition, alias).push(", 1, length(");
                 out.param(SqlValue::Text(text.clone())).push(")) = ").param(SqlValue::Text(text));
             }
             Op::EndsWith => {
-                out.push("substr(").column(alias, &condition.column).push(", -length(");
+                out.push("substr(");
+                operand(out, condition, alias).push(", -length(");
                 out.param(SqlValue::Text(text.clone())).push(")) = ").param(SqlValue::Text(text));
             }
             _ => {
-                out.push("instr(").column(alias, &condition.column).push(", ");
+                out.push("instr(");
+                operand(out, condition, alias).push(", ");
                 out.param(SqlValue::Text(text)).push(") > 0");
             }
         }
     } else {
         let pattern = format!("{prefix}{}{suffix}", escape_like(&text));
-        out.column(alias, &condition.column);
-        let like = if out.flavor == Flavor::Postgres && insensitive { " ILIKE " } else { " LIKE " };
-        out.push(like).param(SqlValue::Text(pattern));
+        // JSON_VALUE yields a binary collation on MySQL/MariaDB: fold case explicitly.
+        let fold = insensitive && out.flavor.is_mysql_family() && !condition.path.is_empty();
+        if fold {
+            out.push("LOWER(");
+        }
+        operand(out, condition, alias);
+        if fold {
+            out.push(") LIKE LOWER(").param(SqlValue::Text(pattern)).push(")");
+        } else {
+            let like =
+                if out.flavor == Flavor::Postgres && insensitive { " ILIKE " } else { " LIKE " };
+            out.push(like).param(SqlValue::Text(pattern));
+        }
         if out.flavor.is_mysql_family() && !insensitive {
             out.push(&format!(" COLLATE {MYSQL_BINARY_COLLATION}"));
         }
@@ -319,6 +416,7 @@ mod tests {
     fn condition(op: Op, value: &str) -> Filter {
         Filter::Condition(Condition {
             column: "title".into(),
+            path: Vec::new(),
             kind: ColumnKind::Text,
             op,
             operand: Operand::Value(SqlValue::Text(value.into())),

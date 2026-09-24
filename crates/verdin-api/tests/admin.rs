@@ -497,3 +497,181 @@ async fn uid_availability() {
     );
     app.done().await;
 }
+
+#[tokio::test]
+async fn preferences_are_per_user() {
+    let app = App::new(schema()).await;
+    let admin = register(&app).await;
+    create_user(&app, &admin, "editor@example.com", "editor").await;
+    let editor = login(&app, "editor@example.com").await;
+    let url = "/admin/api/users/me/preferences";
+    async fn get(app: &App, who: &str) -> (StatusCode, Value) {
+        app.call_as(Method::GET, "/admin/api/users/me/preferences", None, As::Bearer(who)).await
+    }
+    async fn put(app: &App, who: &str, body: Value) -> (StatusCode, Value) {
+        let url = "/admin/api/users/me/preferences";
+        app.call_as(Method::PUT, url, Some(body), As::Bearer(who)).await
+    }
+
+    let (status, body) = get(&app, &admin).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"], json!({}));
+
+    let layout = json!({ "dashboard": { "widgets": [{ "id": "a", "type": "count" }] } });
+    assert_eq!(put(&app, &admin, json!({ "data": layout })).await.0, StatusCode::OK);
+    assert_eq!(get(&app, &admin).await.1["data"], layout);
+    assert_eq!(get(&app, &editor).await.1["data"], json!({}), "per user");
+
+    assert_eq!(put(&app, &admin, json!([1])).await.0, StatusCode::BAD_REQUEST);
+    let huge = json!({ "note": "x".repeat(70 * 1024) });
+    assert_eq!(put(&app, &admin, huge).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        app.call_as(Method::GET, url, None, As::Anonymous).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    app.done().await;
+}
+
+async fn call(app: &App, method: Method, uri: &str, body: Option<Value>, who: &str) -> Value {
+    let (status, body) = app.call_as(method, uri, body, As::Bearer(who)).await;
+    assert!(status.is_success(), "{uri}: {status} {body}");
+    body
+}
+
+fn titles(body: &Value) -> Vec<String> {
+    let mut titles: Vec<String> = body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|document| document["title"].as_str().unwrap().to_owned())
+        .collect();
+    titles.sort();
+    titles
+}
+
+#[tokio::test]
+async fn views_votes_and_polls() {
+    let app = App::new(schema()).await;
+    let admin = register(&app).await;
+    create_user(&app, &admin, "editor@example.com", "editor").await;
+    let editor = login(&app, "editor@example.com").await;
+    let content = "/admin/api/content/api::article";
+    let mut ids = Vec::new();
+    for title in ["One", "Two"] {
+        let body =
+            call(&app, Method::POST, content, Some(json!({ "data": { "title": title } })), &admin)
+                .await;
+        ids.push(body["data"]["documentId"].as_str().unwrap().to_owned());
+    }
+    let unseen = format!("{content}?unseen=true&sort=title");
+
+    // Unseen until opened; per user; an edit by someone else makes it unseen again.
+    assert_eq!(titles(&call(&app, Method::GET, &unseen, None, &editor).await), ["One", "Two"]);
+    let view = format!("/admin/api/engagement/api::article/{}/view", ids[0]);
+    call(&app, Method::PUT, &view, None, &editor).await;
+    assert_eq!(titles(&call(&app, Method::GET, &unseen, None, &editor).await), ["Two"]);
+    assert_eq!(titles(&call(&app, Method::GET, &unseen, None, &admin).await), ["One", "Two"]);
+    let filtered = format!("{unseen}&filters[title][$eq]=Two");
+    assert_eq!(titles(&call(&app, Method::GET, &filtered, None, &editor).await), ["Two"]);
+    call(&app, Method::PUT, &view, None, &editor).await; // idempotent
+    let document = format!("{content}/{}", ids[0]);
+    call(&app, Method::PUT, &document, Some(json!({ "data": { "title": "One!" } })), &admin).await;
+    assert_eq!(titles(&call(&app, Method::GET, &unseen, None, &editor).await), ["One!", "Two"]);
+    // The editor's own change keeps it seen for them.
+    call(&app, Method::PUT, &view, None, &editor).await;
+    call(&app, Method::PUT, &document, Some(json!({ "data": { "title": "One" } })), &editor).await;
+    assert_eq!(titles(&call(&app, Method::GET, &unseen, None, &editor).await), ["Two"]);
+    let missing = "/admin/api/engagement/api::article/01JNOTAREALDOCUMENTID00000/view";
+    assert_eq!(
+        app.call_as(Method::PUT, missing, None, As::Bearer(&editor)).await.0,
+        StatusCode::NOT_FOUND
+    );
+
+    // Votes: one per admin, withdrawable, ranked.
+    let vote = |id: &str| format!("/admin/api/engagement/api::article/{id}/vote");
+    let body = call(&app, Method::PUT, &vote(&ids[1]), Some(json!({ "value": 1 })), &admin).await;
+    assert_eq!(body["data"], json!({ "score": 1, "up": 1, "down": 0, "mine": 1 }));
+    call(&app, Method::PUT, &vote(&ids[1]), Some(json!({ "value": 1 })), &editor).await;
+    call(&app, Method::PUT, &vote(&ids[0]), Some(json!({ "value": -1 })), &editor).await;
+    let summaries =
+        format!("/admin/api/engagement/api::article/votes?documentIds={},{}", ids[0], ids[1]);
+    let body = call(&app, Method::GET, &summaries, None, &admin).await;
+    assert_eq!(body["data"][&ids[1]]["score"], 2);
+    assert_eq!(body["data"][&ids[0]], json!({ "score": -1, "up": 0, "down": 1, "mine": 0 }));
+    let top =
+        call(&app, Method::GET, "/admin/api/engagement/api::article/votes/top", None, &admin).await;
+    assert_eq!(top["data"][0]["documentId"], ids[1].as_str());
+    assert_eq!(top["data"][1]["score"], -1);
+    call(&app, Method::PUT, &vote(&ids[0]), Some(json!({ "value": 0 })), &editor).await;
+    let body = call(&app, Method::GET, &summaries, None, &editor).await;
+    assert_eq!(body["data"][&ids[0]]["score"], 0);
+    assert_eq!(
+        app.call_as(Method::PUT, &vote(&ids[0]), Some(json!({ "value": 5 })), As::Bearer(&admin))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+
+    // Deleting a document forgets its votes.
+    call(&app, Method::DELETE, &format!("{content}/{}", ids[1]), None, &admin).await;
+    let top =
+        call(&app, Method::GET, "/admin/api/engagement/api::article/votes/top", None, &admin).await;
+    assert_eq!(top["data"], json!([]));
+
+    // Polls.
+    let poll = json!({ "question": "Next feature?", "options": ["Media", "GraphQL", " "] });
+    let (status, _) =
+        app.call_as(Method::POST, "/admin/api/polls", Some(poll), As::Bearer(&editor)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let poll =
+        json!({ "question": "Next?", "options": ["Media", "GraphQL", "i18n"], "multiple": true });
+    let (status, body) =
+        app.call_as(Method::POST, "/admin/api/polls", Some(poll), As::Bearer(&editor)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let id = body["data"]["id"].as_i64().unwrap();
+    assert_eq!(body["data"]["canManage"], true);
+    let url = format!("/admin/api/polls/{id}");
+    call(&app, Method::PUT, &format!("{url}/vote"), Some(json!({ "choices": [0, 2] })), &editor)
+        .await;
+    let body =
+        call(&app, Method::PUT, &format!("{url}/vote"), Some(json!({ "choices": [0] })), &admin)
+            .await;
+    assert_eq!(body["data"]["results"], json!([2, 0, 1]));
+    assert_eq!(body["data"]["voters"], 2);
+    assert_eq!(body["data"]["mine"], json!([0]));
+    assert_eq!(body["data"]["canManage"], true, "Super Admin");
+    let body = call(&app, Method::GET, &url, None, &editor).await;
+    assert_eq!(body["data"]["mine"], json!([0, 2]));
+    let bad = app
+        .call_as(
+            Method::PUT,
+            &format!("{url}/vote"),
+            Some(json!({ "choices": [9] })),
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(bad.0, StatusCode::BAD_REQUEST);
+    let few = json!({ "question": "Q", "options": ["only one"] });
+    assert_eq!(
+        app.call_as(Method::POST, "/admin/api/polls", Some(few), As::Bearer(&admin)).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    call(&app, Method::PUT, &url, Some(json!({ "closed": true })), &editor).await;
+    let closed = app
+        .call_as(
+            Method::PUT,
+            &format!("{url}/vote"),
+            Some(json!({ "choices": [1] })),
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(closed.0, StatusCode::BAD_REQUEST);
+    let list = call(&app, Method::GET, &format!("/admin/api/polls?ids={id}"), None, &admin).await;
+    assert_eq!(list["data"][0]["open"], false);
+    call(&app, Method::DELETE, &url, None, &admin).await;
+    assert_eq!(
+        app.call_as(Method::GET, &url, None, As::Bearer(&admin)).await.0,
+        StatusCode::NOT_FOUND
+    );
+    app.done().await;
+}

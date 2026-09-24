@@ -23,15 +23,21 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
 import { Api, ApiFailure, Issue, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { Engagement } from '../../core/engagement';
+import { I18n } from '../../core/i18n/i18n';
 import { Schema } from '../../core/schema';
 import { Attributes, ContentType, Document } from '../../core/types';
+import { PageHeader } from '../../shared/components/page-header';
+import { VoteControl } from '../../shared/components/vote-control';
 import { FieldsComponent } from './fields/fields';
 import { FormModel, documentLabel, toModel, toPayload } from './fields/model';
 
 type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+type Translate = I18n['t'];
+
 /** Client-side checks mirroring the schema. `required` is left to the server: drafts may be incomplete. */
-function applyRules(path: SchemaPath<FormModel>, attributes: Attributes): void {
+function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Translate): void {
   for (const [name, attribute] of Object.entries(attributes)) {
     const field = (path as unknown as Record<string, SchemaPath<unknown>>)[name];
     validate(field, ({ value }) => {
@@ -40,24 +46,33 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes): void {
       if (typeof current === 'string') {
         const length = [...current].length;
         if (attribute.maxLength !== undefined && length > attribute.maxLength) {
-          return { kind: 'maxLength', message: `At most ${attribute.maxLength} characters.` };
+          return {
+            kind: 'maxLength',
+            message: t('content.validation.maxLength', { count: attribute.maxLength }),
+          };
         }
         if (attribute.minLength !== undefined && length < attribute.minLength) {
-          return { kind: 'minLength', message: `At least ${attribute.minLength} characters.` };
+          return {
+            kind: 'minLength',
+            message: t('content.validation.minLength', { count: attribute.minLength }),
+          };
         }
         if (attribute.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(current)) {
-          return { kind: 'email', message: 'Enter a valid email address.' };
+          return { kind: 'email', message: t('content.validation.email') };
         }
         if (attribute.regex && !new RegExp(attribute.regex).test(current)) {
-          return { kind: 'pattern', message: `Must match ${attribute.regex}.` };
+          return {
+            kind: 'pattern',
+            message: t('content.validation.pattern', { pattern: attribute.regex }),
+          };
         }
       }
       if (typeof current === 'number') {
         if (attribute.min !== undefined && current < attribute.min) {
-          return { kind: 'min', message: `Must be at least ${attribute.min}.` };
+          return { kind: 'min', message: t('content.validation.min', { min: attribute.min }) };
         }
         if (attribute.max !== undefined && current > attribute.max) {
-          return { kind: 'max', message: `Must be at most ${attribute.max}.` };
+          return { kind: 'max', message: t('content.validation.max', { max: attribute.max }) };
         }
       }
       return undefined;
@@ -69,10 +84,12 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes): void {
 @Component({
   selector: 'vd-document-form',
   imports: [
+    VoteControl,
     FormRoot,
     RouterLink,
     NgIcon,
     FieldsComponent,
+    PageHeader,
     HlmButtonImports,
     HlmBadgeImports,
     HlmCardImports,
@@ -83,57 +100,20 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes): void {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-6">
-      <div class="flex flex-wrap items-center gap-3">
+      <vd-page-header [title]="heading()">
         @if (type().kind === 'collectionType') {
-          <a
-            hlmBtn
-            variant="ghost"
-            size="icon"
-            [routerLink]="['/content', type().uid]"
-            aria-label="Back"
-            ><ng-icon name="lucideArrowLeft"
-          /></a>
-        }
-        <div class="min-w-0">
-          <h1 class="truncate text-2xl font-semibold">{{ heading() }}</h1>
-          <p class="text-muted-foreground text-sm">{{ type().displayName }}</p>
-        </div>
-        @if (type().draftAndPublish && documentId()) {
-          <span hlmBadge [variant]="status() === 'published' ? 'default' : 'secondary'">{{
-            statusLabel()
-          }}</span>
-        }
-        <div class="ms-auto flex flex-wrap items-center gap-2">
-          @if (
-            documentId() &&
-            type().draftAndPublish &&
-            published() &&
-            auth.canContent('content.publish', type().uid)
-          ) {
-            <button
-              hlmBtn
-              variant="outline"
-              type="button"
-              [disabled]="busy()"
-              (click)="action('unpublish')"
+          <div eyebrow>
+            <a
+              class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm transition-colors"
+              [routerLink]="['/content', type().uid]"
+              ><ng-icon name="lucideArrowLeft" size="14" />{{ type().displayName }}</a
             >
-              <ng-icon name="lucideEyeOff" /> Unpublish
-            </button>
-            @if (status() === 'modified') {
-              <button
-                hlmBtn
-                variant="outline"
-                type="button"
-                [disabled]="busy()"
-                (click)="action('discard-draft')"
-              >
-                <ng-icon name="lucideUndo2" /> Discard changes
-              </button>
-            }
-          }
+          </div>
+        }
+        <div actions>
           <button
             hlmBtn
-            variant="secondary"
+            variant="outline"
             type="button"
             [disabled]="busy() || !canSave()"
             (click)="save(false)"
@@ -143,18 +123,19 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes): void {
             } @else {
               <ng-icon name="lucideSave" />
             }
-            {{ type().draftAndPublish ? 'Save draft' : 'Save' }}
+            {{ type().draftAndPublish ? t('content.edit.saveDraft') : t('common.save') }}
           </button>
-          @if (type().draftAndPublish && auth.canContent('content.publish', type().uid)) {
+          @if (type().draftAndPublish && canPublish()) {
             <button hlmBtn type="button" [disabled]="busy() || !canSave()" (click)="save(true)">
-              <ng-icon name="lucideSend" /> Publish
+              <ng-icon name="lucideSend" /> {{ t('content.edit.publish') }}
             </button>
           }
         </div>
-      </div>
+      </vd-page-header>
 
       @if (problem()) {
         <div hlmAlert variant="destructive">
+          <ng-icon name="lucideCircleAlert" />
           <p hlmAlertTitle>{{ problem() }}</p>
           @if (unplacedIssues().length) {
             <ul hlmAlertDescription class="list-disc ps-4">
@@ -166,54 +147,150 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes): void {
         </div>
       }
 
-      <form [formRoot]="documentForm" (submit)="$event.preventDefault(); save(false)">
-        <section hlmCard>
-          <div hlmCardContent>
-            <vd-fields
-              [attributes]="type().attributes"
-              [tree]="tree"
-              [context]="{ uid: type().uid, documentId: documentId() }"
-              [relationLabels]="relationLabels"
-              [inverse]="inverse"
-              prefix="doc"
-            />
-          </div>
-        </section>
-      </form>
+      <div class="grid items-start gap-6 lg:grid-cols-3">
+        <form
+          class="min-w-0 lg:col-span-2"
+          [formRoot]="documentForm"
+          (submit)="$event.preventDefault(); save(false)"
+        >
+          <section hlmCard>
+            <div hlmCardContent>
+              <vd-fields
+                [attributes]="type().attributes"
+                [tree]="tree"
+                [context]="{ uid: type().uid, documentId: documentId() }"
+                [relationLabels]="relationLabels"
+                [inverse]="inverse"
+                prefix="doc"
+              />
+            </div>
+          </section>
+        </form>
 
-      @if (documentId() && auth.canContent('content.delete', type().uid)) {
-        <section hlmCard>
-          <div hlmCardHeader>
-            <h2 hlmCardTitle>Danger zone</h2>
-            <p hlmCardDescription>
-              Deleting removes every version of this document and the links pointing at it.
-            </p>
-          </div>
-          <div hlmCardFooter>
-            <hlm-alert-dialog>
-              <button hlmAlertDialogTrigger hlmBtn variant="destructive" type="button">
-                <ng-icon name="lucideTrash2" /> Delete
-              </button>
-              <hlm-alert-dialog-content *hlmAlertDialogPortal="let ctx">
-                <hlm-alert-dialog-header>
-                  <h2 hlmAlertDialogTitle>Delete this document?</h2>
-                  <p hlmAlertDialogDescription>This cannot be undone.</p>
-                </hlm-alert-dialog-header>
-                <hlm-alert-dialog-footer>
-                  <button hlmAlertDialogCancel (click)="ctx.close()">Cancel</button>
+        <aside class="flex flex-col gap-6 lg:sticky lg:top-6">
+          <section hlmCard size="sm">
+            <div hlmCardHeader>
+              <h2 hlmCardTitle>{{ t('content.edit.details') }}</h2>
+              @if (type().draftAndPublish) {
+                <div hlmCardAction>
+                  <span hlmBadge [variant]="status() === 'published' ? 'secondary' : 'outline'">
+                    <span
+                      class="size-1.5 rounded-full"
+                      aria-hidden="true"
+                      [class]="
+                        status() === 'published'
+                          ? 'bg-emerald-500'
+                          : status() === 'modified'
+                            ? 'bg-amber-500'
+                            : 'bg-muted-foreground/60'
+                      "
+                    ></span>
+                    {{ statusLabel() }}
+                  </span>
+                </div>
+              }
+            </div>
+            <div hlmCardContent class="flex flex-col gap-4">
+              @if (type().draftAndPublish && documentId()) {
+                <p class="text-muted-foreground text-sm">{{ statusHint() }}</p>
+              }
+              <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                <dt class="text-muted-foreground">{{ t('content.edit.created') }}</dt>
+                <dd class="text-end" [title]="i18n.formatDate(createdAt(), 'long')">
+                  {{ createdAt() ? i18n.formatDate(createdAt(), 'datetime') : '—' }}
+                </dd>
+                <dt class="text-muted-foreground">{{ t('content.edit.updated') }}</dt>
+                <dd class="text-end" [title]="i18n.formatDate(draftUpdatedAt(), 'long')">
+                  {{ draftUpdatedAt() ? i18n.formatDate(draftUpdatedAt(), 'datetime') : '—' }}
+                </dd>
+                @if (type().draftAndPublish) {
+                  <dt class="text-muted-foreground">{{ t('content.edit.lastPublished') }}</dt>
+                  <dd class="text-end" [title]="i18n.formatDate(publishedUpdatedAt(), 'long')">
+                    {{
+                      published() && publishedUpdatedAt()
+                        ? i18n.formatDate(publishedUpdatedAt(), 'datetime')
+                        : '—'
+                    }}
+                  </dd>
+                }
+              </dl>
+              @if (documentId(); as id) {
+                <div class="flex items-center justify-between border-t pt-3">
+                  <span class="text-muted-foreground text-sm">{{ t('votes.title') }}</span>
+                  <vd-vote-control [uid]="type().uid" [documentId]="id" />
+                </div>
+              }
+            </div>
+            @if (documentId() && type().draftAndPublish && published() && canPublish()) {
+              <div hlmCardFooter class="flex flex-col items-stretch gap-2 border-t">
+                <button
+                  hlmBtn
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  [disabled]="busy()"
+                  (click)="action('unpublish')"
+                >
+                  <ng-icon name="lucideEyeOff" /> {{ t('content.edit.unpublish') }}
+                </button>
+                @if (status() === 'modified') {
                   <button
-                    hlmAlertDialogAction
-                    variant="destructive"
-                    (click)="ctx.close(); remove()"
+                    hlmBtn
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    [disabled]="busy()"
+                    (click)="action('discard-draft')"
                   >
-                    Delete
+                    <ng-icon name="lucideUndo2" /> {{ t('content.edit.discard') }}
                   </button>
-                </hlm-alert-dialog-footer>
-              </hlm-alert-dialog-content>
-            </hlm-alert-dialog>
-          </div>
-        </section>
-      }
+                }
+              </div>
+            }
+          </section>
+
+          @if (documentId() && auth.canContent('content.delete', type().uid)) {
+            <section hlmCard size="sm" class="ring-destructive/30">
+              <div hlmCardHeader>
+                <h2 hlmCardTitle>{{ t('content.edit.dangerZone') }}</h2>
+                <p hlmCardDescription>{{ t('content.edit.dangerHint') }}</p>
+              </div>
+              <div hlmCardFooter>
+                <hlm-alert-dialog>
+                  <button
+                    hlmAlertDialogTrigger
+                    hlmBtn
+                    variant="destructive"
+                    size="sm"
+                    type="button"
+                    class="w-full"
+                  >
+                    <ng-icon name="lucideTrash2" /> {{ t('common.delete') }}
+                  </button>
+                  <hlm-alert-dialog-content *hlmAlertDialogPortal="let ctx">
+                    <hlm-alert-dialog-header>
+                      <h2 hlmAlertDialogTitle>{{ t('content.edit.deleteTitle') }}</h2>
+                      <p hlmAlertDialogDescription>{{ t('content.edit.deleteHint') }}</p>
+                    </hlm-alert-dialog-header>
+                    <hlm-alert-dialog-footer>
+                      <button hlmAlertDialogCancel (click)="ctx.close()">
+                        {{ t('common.cancel') }}
+                      </button>
+                      <button
+                        hlmAlertDialogAction
+                        variant="destructive"
+                        (click)="ctx.close(); remove()"
+                      >
+                        {{ t('common.delete') }}
+                      </button>
+                    </hlm-alert-dialog-footer>
+                  </hlm-alert-dialog-content>
+                </hlm-alert-dialog>
+              </div>
+            </section>
+          }
+        </aside>
+      </div>
     </div>
   `,
 })
@@ -223,6 +300,8 @@ export class DocumentForm implements OnInit {
   protected readonly auth = inject(Auth);
   private readonly schema = inject(Schema);
   private readonly injector = inject(Injector);
+  protected readonly i18n = inject(I18n);
+  protected readonly t = this.i18n.t;
 
   readonly type = input.required<ContentType>();
   /** The loaded draft (or only version); `null` for a new document. */
@@ -231,6 +310,7 @@ export class DocumentForm implements OnInit {
 
   protected readonly documentId = signal<string | null>(null);
   protected readonly published = signal(false);
+  protected readonly createdAt = signal<string | null>(null);
   protected readonly draftUpdatedAt = signal<string | null>(null);
   protected readonly publishedUpdatedAt = signal<string | null>(null);
   protected readonly busy = signal(false);
@@ -249,19 +329,38 @@ export class DocumentForm implements OnInit {
     const live = this.publishedUpdatedAt();
     return draft && live && draft > live ? 'modified' : 'published';
   });
-  protected readonly statusLabel = computed(
-    () =>
-      ({ draft: 'Draft', published: 'Published', modified: 'Modified since publishing' })[
-        this.status()
-      ],
+  protected readonly statusLabel = computed(() =>
+    this.t(
+      (
+        {
+          draft: 'content.status.draft',
+          published: 'content.status.published',
+          modified: 'content.status.modified',
+        } as const
+      )[this.status()],
+    ),
+  );
+  protected readonly statusHint = computed(() =>
+    this.t(
+      (
+        {
+          draft: 'content.edit.hint.draft',
+          published: 'content.edit.hint.published',
+          modified: 'content.edit.hint.modified',
+        } as const
+      )[this.status()],
+    ),
+  );
+  protected readonly canPublish = computed(() =>
+    this.auth.canContent('content.publish', this.type().uid),
   );
   protected readonly heading = computed(() => {
     const type = this.type();
     if (type.kind === 'singleType') return type.displayName;
-    if (!this.documentId()) return `New ${type.displayName.toLowerCase()}`;
+    if (!this.documentId()) return this.t('content.edit.newEntry');
     const field = this.schema.titleField(type);
     const title = field ? this.model()[field] : null;
-    return title ? String(title) : 'Untitled';
+    return title ? String(title) : this.t('content.edit.untitled');
   });
 
   protected canSave(): boolean {
@@ -276,12 +375,13 @@ export class DocumentForm implements OnInit {
     const document = this.document();
     const components = (uid: string) => this.schema.component(uid);
     this.model.set(toModel(type.attributes, document, components));
-    this.documentForm = form(this.model, (path) => applyRules(path, type.attributes), {
+    this.documentForm = form(this.model, (path) => applyRules(path, type.attributes, this.t), {
       injector: this.injector,
     }) as unknown as Tree;
     this.tree = this.documentForm;
     this.documentId.set(document?.documentId ?? null);
     this.published.set(!!this.publishedAt() || (!type.draftAndPublish && !!document));
+    this.createdAt.set(document?.createdAt ?? null);
     this.draftUpdatedAt.set(document?.updatedAt ?? null);
     this.publishedUpdatedAt.set(this.publishedAt());
 
@@ -329,6 +429,7 @@ export class DocumentForm implements OnInit {
         } else {
           document = await this.api.post<Document>(base, { data }, 'populate=*');
           this.documentId.set(document.documentId);
+          this.createdAt.set(document.createdAt ?? null);
         }
         this.draftUpdatedAt.set(document.updatedAt ?? null);
         if (publish) {
@@ -341,7 +442,9 @@ export class DocumentForm implements OnInit {
         } else if (!type.draftAndPublish) {
           this.published.set(true);
         }
-        toast.success(publish ? 'Published' : 'Saved');
+        toast.success(
+          this.t(publish ? 'content.edit.toast.published' : 'content.edit.toast.saved'),
+        );
         if (type.kind === 'collectionType' && !this.router.url.endsWith(document.documentId)) {
           await this.router.navigate(['/content', type.uid, document.documentId], {
             replaceUrl: true,
@@ -349,7 +452,10 @@ export class DocumentForm implements OnInit {
         }
         return undefined;
       } catch (error) {
-        return this.fail(error, publish ? 'Could not publish' : 'Could not save');
+        return this.fail(
+          error,
+          this.t(publish ? 'content.edit.error.publish' : 'content.edit.error.save'),
+        );
       }
     });
     this.busy.set(false);
@@ -362,7 +468,7 @@ export class DocumentForm implements OnInit {
       await this.api.post(`/content/${type.uid}/${this.documentId()}/actions/${action}`);
       if (action === 'unpublish') {
         this.published.set(false);
-        toast.success('Unpublished');
+        toast.success(this.t('content.edit.toast.unpublished'));
       } else {
         const draft = await this.api.get<Document>(
           `/content/${type.uid}/${this.documentId()}`,
@@ -370,10 +476,10 @@ export class DocumentForm implements OnInit {
         );
         this.model.set(toModel(type.attributes, draft, (uid) => this.schema.component(uid)));
         this.draftUpdatedAt.set(this.publishedUpdatedAt());
-        toast.success('Changes discarded');
+        toast.success(this.t('content.edit.toast.discarded'));
       }
     } catch (error) {
-      this.fail(error, 'Action failed');
+      this.fail(error, this.t('content.edit.error.action'));
     } finally {
       this.busy.set(false);
     }
@@ -383,10 +489,10 @@ export class DocumentForm implements OnInit {
     const type = this.type();
     try {
       await this.api.delete(`/content/${type.uid}/${this.documentId()}`);
-      toast.success('Deleted');
+      toast.success(this.t('content.edit.toast.deleted'));
       await this.router.navigate(type.kind === 'singleType' ? ['/'] : ['/content', type.uid]);
     } catch (error) {
-      this.fail(error, 'Could not delete');
+      this.fail(error, this.t('content.edit.error.delete'));
     }
   }
 
@@ -395,8 +501,8 @@ export class DocumentForm implements OnInit {
     const failure = ApiFailure.from(error);
     this.problem.set(
       failure.issues.length
-        ? `${title}: fix the highlighted fields`
-        : `${title}: ${failure.message}`,
+        ? this.t('content.edit.error.fixFields', { title })
+        : this.t('content.edit.error.withMessage', { title, message: failure.message }),
     );
     const placed: { kind: string; message: string; fieldTree: Tree }[] = [];
     const unplaced: Issue[] = [];
@@ -416,15 +522,21 @@ export class DocumentForm implements OnInit {
 /** Loads the document for the route, then renders a fresh `DocumentForm` for it. */
 @Component({
   selector: 'vd-content-edit',
-  imports: [DocumentForm, HlmSpinnerImports, HlmAlertImports],
+  imports: [DocumentForm, NgIcon, HlmSpinnerImports, HlmAlertImports],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (error()) {
       <div hlmAlert variant="destructive">
+        <ng-icon name="lucideCircleAlert" />
         <p hlmAlertTitle>{{ error() }}</p>
       </div>
     } @else if (loading() || !type()) {
-      <hlm-spinner />
+      <div
+        class="text-muted-foreground flex items-center justify-center gap-2 py-24 text-sm"
+        role="status"
+      >
+        <hlm-spinner /> {{ t('common.loading') }}
+      </div>
     } @else {
       @for (key of [loadKey()]; track key) {
         <vd-document-form [type]="type()!" [document]="document()" [publishedAt]="publishedAt()" />
@@ -434,7 +546,10 @@ export class DocumentForm implements OnInit {
 })
 export class ContentEdit {
   private readonly api = inject(Api);
+  private readonly engagement = inject(Engagement);
   private readonly schema = inject(Schema);
+  protected readonly i18n = inject(I18n);
+  protected readonly t = this.i18n.t;
 
   readonly uid = input.required<string>();
   readonly documentId = input<string>();
@@ -462,7 +577,7 @@ export class ContentEdit {
     const uid = this.uid();
     const type = this.type();
     if (!type) {
-      this.error.set(`Unknown content type ${uid}`);
+      this.error.set(this.t('content.edit.unknownType', { uid }));
       this.loading.set(false);
       return;
     }
@@ -479,6 +594,8 @@ export class ContentEdit {
         this.document.set(
           await this.api.get<Document>(`/content/${uid}/${documentId}`, 'populate=*&status=draft'),
         );
+        // Opening a document marks it seen (it leaves "unseen" dashboard widgets).
+        this.engagement.view(uid, documentId).catch(() => undefined);
         if (type.draftAndPublish) {
           try {
             const live = await this.api.get<Document>(
@@ -494,11 +611,7 @@ export class ContentEdit {
       this.loadKey.set(key);
     } catch (error) {
       const failure = ApiFailure.from(error);
-      this.error.set(
-        failure.status === 404
-          ? 'This document does not exist (or you cannot see it).'
-          : failure.message,
-      );
+      this.error.set(failure.status === 404 ? this.t('content.edit.notFound') : failure.message);
     } finally {
       this.loading.set(false);
     }

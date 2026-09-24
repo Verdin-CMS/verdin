@@ -90,8 +90,9 @@ impl Default for ApiConfig {
 pub struct AdminConfig {
     /// Path the admin panel is served under; its API lives at `{path}/api`.
     pub path: String,
-    /// Mark the refresh cookie `Secure`. Only disable for plain-HTTP local development.
-    pub secure_cookies: bool,
+    /// Mark the refresh cookie `Secure`. Unset means yes in `start` and no in `dev`
+    /// (plain-HTTP local development).
+    pub secure_cookies: Option<bool>,
     /// Login, registration and refresh attempts per client IP per minute.
     pub auth_rate_limit: u32,
     /// Serve the admin panel from this directory (relative to the configuration file)
@@ -101,7 +102,7 @@ pub struct AdminConfig {
 
 impl Default for AdminConfig {
     fn default() -> Self {
-        Self { path: "/admin".into(), secure_cookies: true, auth_rate_limit: 20, assets_dir: None }
+        Self { path: "/admin".into(), secure_cookies: None, auth_rate_limit: 20, assets_dir: None }
     }
 }
 

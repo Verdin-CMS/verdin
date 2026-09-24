@@ -1,0 +1,34 @@
+# Changelog
+
+All notable changes to Verdin are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/) (0.x: minor versions may break).
+
+## [0.1.0] - 2026-09-24
+
+First public release: the MVP described in [docs/architecture.md](docs/architecture.md).
+
+### Added
+
+- **Single binary** `verdin` with the admin panel embedded; Docker image (distroless, ~70 MB)
+  and release binaries for macOS (arm64, x64), Linux (x64, arm64, musl) and Windows.
+- **Databases**: PostgreSQL ≥ 14, MySQL ≥ 8.4, MariaDB ≥ 10.11 and SQLite, all covered by the
+  same test suite.
+- **Schema as code**: content types and components as JSON files (Strapi-like format);
+  `verdin schema check`.
+- **Migrations** derived from the schema: plan with risk levels and exact SQL, explicit
+  renames, journaled and resumable on MySQL/MariaDB, transactional elsewhere.
+- **Content REST API**, Strapi v5 compatible: CRUD, filters (including relation and component
+  fields), sort, pagination, field selection, `populate`, draft & publish, OpenAPI document.
+- **Relations** (one/many-to-one/many, one/many-way), **components** and **dynamic zones**.
+- **Authentication**: admin users, rotating refresh cookies with reuse detection, lockout,
+  rate limits, roles (Super Admin, Editor, Author), API tokens (read-only, full access,
+  custom), public permissions.
+- **Admin panel** (Angular + spartan/ui): content manager with schema-driven forms,
+  content-type builder in development mode, users, roles, API tokens and public access;
+  customizable dashboard with widgets (counters and lists with field conditions, "not seen
+  yet" inboxes, recent activity, polls, notes, quick links, system), votes on any entry;
+  dark mode; 15 languages; locale-aware calendar
+  (first day of the week follows the region, or your choice).
+- **CLI**: `verdin new`, `dev`, `start`, `migrate plan|apply`, `admin create|reset-password`,
+  `secrets`.

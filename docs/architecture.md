@@ -1,6 +1,6 @@
 # Verdin — Architecture (MVP)
 
-> Status: draft v0.7 · 2026-09-24 (M0–M5 implemented)
+> Status: v0.8 · 2026-09-24 (MVP M0–M6 implemented, release 0.1.0)
 > Verdin is an open source headless CMS written in Rust, inspired by Strapi v5.
 > Everything is free software: there is no "Enterprise" edition and no paid features.
 
@@ -575,6 +575,12 @@ POST /content/:uid/:documentId/actions/publish|unpublish|discard-draft
 GET  /content/:uid/uid-available?field=slug&value=…  (M5)
 
 CRUD /users, /roles, /api-tokens, /public-permissions
+GET|PUT /users/me/preferences          the caller's admin preferences (dashboard layout), any admin
+GET  /content/:uid?unseen=true         (admin lists) documents the caller has not opened since they changed
+PUT  /engagement/:uid/:documentId/view mark the current version seen (the editor opens it)
+PUT  /engagement/:uid/:documentId/vote { value: 1 | -1 | 0 }
+GET  /engagement/:uid/votes?documentIds=…  |  /engagement/:uid/votes/top?limit=
+CRUD /polls, PUT /polls/:id/vote { choices }   dashboard polls (author or Super Admin manages)
 GET  /system/info                      version, dialect, mode
 ```
 
@@ -714,18 +720,17 @@ verdin version
 | **M0 Skeleton** ✅ | Workspace, CI, config, `verdin start` with `/_health`, connection to all 4 engines, `docker/compose.dev.yml` | Green CI across the matrix |
 | **M1 Schema + migrations** ✅ | Parser and validation, type mapping, snapshot, diff, plan, journaled apply (scalars, components and dynamic zones as JSON) | Create, alter and drop types on all 4 engines; resume after failure on MySQL |
 | **M2 Document Service + REST** ✅ | CRUD, filters, sort, pagination, fields, draft/publish, components/dynamic zones, OpenAPI | Conformance suite green on all engines |
-| **M3 Relations & components** ✅ | `_lnk` tables, 6 relation kinds, JSON components and dynamic zones, batched `populate`, relation filters | Populate and publish conformance on all engines. Component filters and relations inside components moved to M6 |
+| **M3 Relations & components** ✅ | `_lnk` tables, 6 relation kinds, JSON components and dynamic zones, batched `populate`, relation filters | Populate and publish conformance on all engines. Component filters done in M6; relations inside components moved to 0.2 |
 | **M4 Auth** ✅ | Admins, first admin, JWT + rotating refresh, roles, API tokens, public permissions, admin API | Security tests (refresh reuse, lockout, enumeration, CSRF, RBAC) on all engines |
 | **M5 Admin** ✅ | Login, lists, dynamic editor, content-type builder (dev), settings | Playwright e2e of "create type → create content → publish → read over API" |
-| **M6 Release 0.1** | Binaries (macOS arm64/x64, Linux x64/arm64 musl, Windows), Docker image, `examples/blog`, README | `docker run` to first content in < 2 min |
+| **M6 Release 0.1** ✅ | Filters on component fields, `verdin new`, binaries (macOS arm64/x64, Linux x64/arm64 musl, Windows), Docker image, `examples/blog`, README; admin: dark mode, 15 languages, locale-aware calendar, customizable dashboard widgets | `docker run` to first content in < 2 min |
 
-### After the MVP (tentative order)
+### After the MVP
 
-1. **v0.2**: media library (local and S3 providers through `object_store`, thumbnails with `image`), field-level permissions, TS content types, `blocks` editor (TipTap).
-2. **v0.3**: content i18n (the `locale` column already exists), webhooks on the event bus, **Strapi v4/v5 importer** (schemas + data).
-3. **v0.4**: GraphQL (`async-graphql`), end users (registration, login, OAuth providers).
-4. **v0.5**: **WASM plugins** (Extism): Document Service hooks, custom routes and UI fields (Web Components loaded into the admin).
-5. **v0.6+**: SSO/OIDC, audit logs, content history, review workflows, scheduled releases, Astro Starlight documentation site.
+See [roadmap.md](roadmap.md): media library and upload providers, blocks editor, content
+i18n, webhooks, Strapi importer, GraphQL, end users, WASM plugins (including plugin
+dashboard widgets and custom fields), SSO, audit logs, review workflows, releases and the
+Astro Starlight documentation site.
 
 ---
 
@@ -760,3 +765,11 @@ verdin version
 | 25 | Builder apply order | Migrate, then write files, then hot-swap the app | A failed migration leaves files and running app untouched |
 | 26 | Admin writes | Save drafts only; publishing is an explicit action | Matches editors' expectations; the content API keeps Strapi's publish-by-default |
 | 27 | Admin runtime config | `<meta>` tag, not inline script | Keeps the CSP free of `unsafe-inline` scripts |
+| 28 | Filters on component fields | JSON path operators per dialect (`#>>`, `JSON_VALUE`, `json_extract`), non-repeatable components only | Repeatable components and dynamic zones need `EXISTS` over JSON arrays; rare, deferred |
+| 29 | Admin i18n | Own signal-based runtime catalogs (lazy chunk per language), not Angular's compile-time i18n | Language switch without reload or one build per locale; `Catalog` type makes missing keys a compile error |
+| 30 | Week start | `Intl.Locale#getWeekInfo` of the browser's regional tag (en-GB ≠ en-US), region table fallback, user override | Follows each user's region even when the UI language is shared |
+| 31 | Dashboard layout storage | Per-user JSON `preferences` column on `vd_admin_users` (≤ 64 KiB) | Follows the user across browsers; theme and language stay in `localStorage` because they apply before login |
+| 32 | Refresh cookie `Secure` default | On in `start`, off in `dev`, overridable | `verdin dev` over plain HTTP works in every browser; production stays strict |
+| 33 | Release profile | Thin LTO, 1 codegen unit, stripped; unwinding kept | A panicking handler must not take the server down |
+| 34 | "Unseen" documents | Per-user `vd_document_views` rows, deleted for everyone but the editor when a document changes; filtered with `NOT EXISTS` in SQL | Pagination and counts stay exact; no timestamps to compare per row |
+| 35 | Votes and polls | Admin-only collaboration tables (`vd_document_votes`, `vd_polls`, `vd_poll_votes`), any content type | Suggestion boxes and team decisions without modelling vote fields in every schema |

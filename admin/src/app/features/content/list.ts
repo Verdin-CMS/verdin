@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -21,8 +20,11 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { Api, ApiFailure, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { I18n } from '../../core/i18n/i18n';
+import { MessageKey } from '../../core/i18n/messages/en';
 import { Schema } from '../../core/schema';
 import { Attribute, Document, PageMeta } from '../../core/types';
+import { PageHeader } from '../../shared/components/page-header';
 import { humanize } from './fields/fields';
 
 const LISTABLE = new Set([
@@ -42,12 +44,18 @@ const PAGE_SIZE = 20;
 
 type Status = 'draft' | 'published' | 'modified';
 
+const STATUS_LABELS = {
+  draft: 'content.status.draft',
+  published: 'content.status.published',
+  modified: 'content.status.modified',
+} as const satisfies Record<Status, MessageKey>;
+
 @Component({
   selector: 'vd-content-list',
   imports: [
     RouterLink,
-    DatePipe,
     NgIcon,
+    PageHeader,
     HlmTableImports,
     HlmButtonImports,
     HlmBadgeImports,
@@ -59,165 +67,219 @@ type Status = 'draft' | 'published' | 'modified';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (type(); as type) {
-      <div class="flex flex-col gap-4">
-        <div class="flex flex-wrap items-center gap-3">
-          <div>
-            <h1 class="text-2xl font-semibold">{{ type.displayName }}</h1>
-            <p class="text-muted-foreground text-sm">
-              {{ total() }} {{ total() === 1 ? 'entry' : 'entries' }}
-            </p>
+      <div class="flex flex-col gap-6">
+        <vd-page-header [title]="type.displayName" [description]="type.description">
+          <div actions>
+            @if (canCreate()) {
+              <a hlmBtn [routerLink]="['/content', type.uid, 'new']"
+                ><ng-icon name="lucidePlus" /> {{ t('common.create') }}</a
+              >
+            }
           </div>
-          @if (auth.canContent('content.create', type.uid)) {
-            <a hlmBtn class="ms-auto" [routerLink]="['/content', type.uid, 'new']"
-              ><ng-icon name="lucidePlus" /> Create</a
-            >
-          }
-        </div>
-
-        @if (titleField()) {
-          <div hlmInputGroup class="max-w-sm">
-            <div hlmInputGroupAddon><ng-icon name="lucideSearch" /></div>
-            <input
-              hlmInputGroupInput
-              [placeholder]="'Search by ' + humanize(titleField()!)"
-              [value]="search()"
-              (input)="setSearch($any($event.target).value)"
-            />
-          </div>
-        }
+        </vd-page-header>
 
         @if (error()) {
           <div hlmAlert variant="destructive">
+            <ng-icon name="lucideCircleAlert" />
             <p hlmAlertTitle>{{ error() }}</p>
           </div>
         }
 
-        <div hlmTableContainer class="rounded-md border">
-          <table hlmTable>
-            <thead hlmTHead>
-              <tr hlmTr>
-                @for (column of columns(); track column.name) {
-                  <th hlmTh>
+        <div class="bg-card overflow-hidden rounded-xl border shadow-xs">
+          <div class="flex flex-wrap items-center gap-3 border-b px-4 py-3">
+            @if (titleField()) {
+              <div hlmInputGroup class="w-full sm:max-w-xs">
+                <div hlmInputGroupAddon><ng-icon name="lucideSearch" /></div>
+                <input
+                  hlmInputGroupInput
+                  type="search"
+                  [attr.aria-label]="t('common.search')"
+                  [placeholder]="t('content.list.searchBy', { field: humanize(titleField()!) })"
+                  [value]="search()"
+                  (input)="setSearch($any($event.target).value)"
+                />
+              </div>
+            }
+            <span class="text-muted-foreground ms-auto text-sm tabular-nums">
+              {{ t('content.list.total', { count: total() }) }}
+            </span>
+          </div>
+
+          <div hlmTableContainer>
+            <table hlmTable>
+              <thead hlmTHead class="bg-muted/40">
+                <tr hlmTr class="hover:bg-transparent">
+                  @for (column of columns(); track column.name) {
+                    <th hlmTh class="px-4" [attr.aria-sort]="ariaSort(column.name)">
+                      <button
+                        type="button"
+                        class="hover:text-foreground text-muted-foreground inline-flex items-center gap-1 text-xs font-medium tracking-wide uppercase"
+                        [class.text-foreground]="sort().field === column.name"
+                        (click)="toggleSort(column.name)"
+                      >
+                        {{ humanize(column.name) }}
+                        @if (sort().field === column.name) {
+                          <ng-icon
+                            [name]="sort().descending ? 'lucideArrowDown' : 'lucideArrowUp'"
+                            size="12"
+                          />
+                        }
+                      </button>
+                    </th>
+                  }
+                  @if (type.draftAndPublish) {
+                    <th
+                      hlmTh
+                      class="text-muted-foreground px-4 text-xs font-medium tracking-wide uppercase"
+                    >
+                      {{ t('content.list.status') }}
+                    </th>
+                  }
+                  <th hlmTh class="px-4" [attr.aria-sort]="ariaSort('updatedAt')">
                     <button
                       type="button"
-                      class="inline-flex items-center gap-1"
-                      (click)="toggleSort(column.name)"
+                      class="hover:text-foreground text-muted-foreground inline-flex items-center gap-1 text-xs font-medium tracking-wide uppercase"
+                      [class.text-foreground]="sort().field === 'updatedAt'"
+                      (click)="toggleSort('updatedAt')"
                     >
-                      {{ humanize(column.name) }}
-                      @if (sort().field === column.name) {
+                      {{ t('content.list.updated') }}
+                      @if (sort().field === 'updatedAt') {
                         <ng-icon
                           [name]="sort().descending ? 'lucideArrowDown' : 'lucideArrowUp'"
-                          size="14"
+                          size="12"
                         />
                       }
                     </button>
                   </th>
-                }
-                @if (type.draftAndPublish) {
-                  <th hlmTh>Status</th>
-                }
-                <th hlmTh>
-                  <button
-                    type="button"
-                    class="inline-flex items-center gap-1"
-                    (click)="toggleSort('updatedAt')"
-                  >
-                    Updated
-                    @if (sort().field === 'updatedAt') {
-                      <ng-icon
-                        [name]="sort().descending ? 'lucideArrowDown' : 'lucideArrowUp'"
-                        size="14"
-                      />
-                    }
-                  </button>
-                </th>
-              </tr>
-            </thead>
-            <tbody hlmTBody>
-              @if (loading()) {
-                @for (row of [1, 2, 3]; track row) {
-                  <tr hlmTr>
-                    <td hlmTd [attr.colspan]="columns().length + 2">
-                      <hlm-skeleton class="h-5 w-full" />
-                    </td>
-                  </tr>
-                }
-              } @else {
-                @for (document of documents(); track document.documentId) {
-                  <tr hlmTr class="cursor-pointer" (click)="open(document)">
-                    @for (column of columns(); track column.name) {
-                      <td hlmTd class="max-w-64 truncate">
-                        {{ cell(document, column.name, column.attribute) }}
-                      </td>
-                    }
-                    @if (type.draftAndPublish) {
-                      <td hlmTd>
-                        @let state = statusOf(document);
-                        <span
-                          hlmBadge
-                          [variant]="
-                            state === 'published'
-                              ? 'default'
-                              : state === 'modified'
-                                ? 'outline'
-                                : 'secondary'
-                          "
+                </tr>
+              </thead>
+              <tbody hlmTBody>
+                @if (loading()) {
+                  @for (row of skeletonRows; track row) {
+                    <tr hlmTr class="hover:bg-transparent">
+                      @for (column of columns(); track column.name; let first = $first) {
+                        <td hlmTd class="px-4 py-3">
+                          <hlm-skeleton class="h-4" [class.w-40]="first" [class.w-24]="!first" />
+                        </td>
+                      }
+                      @if (type.draftAndPublish) {
+                        <td hlmTd class="px-4 py-3">
+                          <hlm-skeleton class="h-5 w-20 rounded-full" />
+                        </td>
+                      }
+                      <td hlmTd class="px-4 py-3"><hlm-skeleton class="h-4 w-24" /></td>
+                    </tr>
+                  }
+                } @else {
+                  @for (document of documents(); track document.documentId) {
+                    <tr hlmTr class="cursor-pointer" (click)="open(document)">
+                      @for (column of columns(); track column.name; let first = $first) {
+                        <td
+                          hlmTd
+                          class="max-w-64 truncate px-4 py-3"
+                          [class.font-medium]="first"
+                          [class.text-muted-foreground]="!first"
                         >
-                          {{
-                            state === 'modified'
-                              ? 'Modified'
-                              : state === 'published'
-                                ? 'Published'
-                                : 'Draft'
-                          }}
-                        </span>
+                          {{ cell(document, column.name, column.attribute) }}
+                        </td>
+                      }
+                      @if (type.draftAndPublish) {
+                        <td hlmTd class="px-4 py-3">
+                          @let state = statusOf(document);
+                          <span
+                            hlmBadge
+                            [variant]="state === 'published' ? 'secondary' : 'outline'"
+                          >
+                            <span
+                              class="size-1.5 rounded-full"
+                              aria-hidden="true"
+                              [class]="
+                                state === 'published'
+                                  ? 'bg-emerald-500'
+                                  : state === 'modified'
+                                    ? 'bg-amber-500'
+                                    : 'bg-muted-foreground/60'
+                              "
+                            ></span>
+                            {{ t(STATUS_LABELS[state]) }}
+                          </span>
+                        </td>
+                      }
+                      <td
+                        hlmTd
+                        class="text-muted-foreground px-4 py-3"
+                        [title]="i18n.formatDate(document.updatedAt, 'long')"
+                      >
+                        {{ i18n.formatRelative(document.updatedAt) }}
                       </td>
-                    }
-                    <td hlmTd class="text-muted-foreground">
-                      {{ document.updatedAt | date: 'short' }}
-                    </td>
-                  </tr>
-                } @empty {
-                  <tr hlmTr>
-                    <td hlmTd [attr.colspan]="columns().length + 2">
-                      <div hlmEmpty>
-                        <div hlmEmptyHeader>
-                          <h2 hlmEmptyTitle>{{ search() ? 'No matches' : 'No entries yet' }}</h2>
+                    </tr>
+                  } @empty {
+                    <tr hlmTr class="hover:bg-transparent">
+                      <td hlmTd [attr.colspan]="colspan()">
+                        <div hlmEmpty class="py-12">
+                          <div hlmEmptyHeader>
+                            <div hlmEmptyMedia variant="icon">
+                              <ng-icon [name]="search() ? 'lucideSearch' : 'lucideFileText'" />
+                            </div>
+                            <h2 hlmEmptyTitle>
+                              {{ search() ? t('content.list.noMatches') : t('content.list.empty') }}
+                            </h2>
+                            <p hlmEmptyDescription>
+                              {{
+                                search()
+                                  ? t('content.list.noMatchesHint', { search: search() })
+                                  : canCreate()
+                                    ? t('content.list.emptyHint')
+                                    : t('content.list.emptyReadOnly')
+                              }}
+                            </p>
+                          </div>
+                          @if (!search() && canCreate()) {
+                            <div hlmEmptyContent>
+                              <a
+                                hlmBtn
+                                variant="outline"
+                                size="sm"
+                                [routerLink]="['/content', type.uid, 'new']"
+                                ><ng-icon name="lucidePlus" /> {{ t('content.list.addFirst') }}</a
+                              >
+                            </div>
+                          }
                         </div>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                    </tr>
+                  }
                 }
-              }
-            </tbody>
-          </table>
-        </div>
-
-        @if (pageCount() > 1) {
-          <div class="flex items-center justify-end gap-2">
-            <span class="text-muted-foreground text-sm"
-              >Page {{ page() }} of {{ pageCount() }}</span
-            >
-            <button
-              hlmBtn
-              variant="outline"
-              size="sm"
-              [disabled]="page() <= 1"
-              (click)="page.set(page() - 1)"
-            >
-              Previous
-            </button>
-            <button
-              hlmBtn
-              variant="outline"
-              size="sm"
-              [disabled]="page() >= pageCount()"
-              (click)="page.set(page() + 1)"
-            >
-              Next
-            </button>
+              </tbody>
+            </table>
           </div>
-        }
+
+          @if (pageCount() > 1) {
+            <div class="flex flex-wrap items-center justify-end gap-2 border-t px-4 py-3">
+              <span class="text-muted-foreground me-auto text-sm tabular-nums">
+                {{ t('common.page', { page: page(), count: pageCount() }) }}
+              </span>
+              <button
+                hlmBtn
+                variant="outline"
+                size="sm"
+                [disabled]="page() <= 1"
+                (click)="page.set(page() - 1)"
+              >
+                <ng-icon name="lucideArrowLeft" /> {{ t('common.previous') }}
+              </button>
+              <button
+                hlmBtn
+                variant="outline"
+                size="sm"
+                [disabled]="page() >= pageCount()"
+                (click)="page.set(page() + 1)"
+              >
+                {{ t('common.next') }} <ng-icon name="lucideChevronRight" />
+              </button>
+            </div>
+          }
+        </div>
       </div>
     }
   `,
@@ -227,7 +289,11 @@ export class ContentList {
   private readonly router = inject(Router);
   protected readonly auth = inject(Auth);
   protected readonly schema = inject(Schema);
+  protected readonly i18n = inject(I18n);
+  protected readonly t = this.i18n.t;
   protected readonly humanize = humanize;
+  protected readonly STATUS_LABELS = STATUS_LABELS;
+  protected readonly skeletonRows = [1, 2, 3, 4, 5];
 
   readonly uid = input.required<string>();
 
@@ -244,6 +310,11 @@ export class ContentList {
       .slice(0, 4)
       .map(([name, attribute]) => ({ name, attribute }));
   });
+
+  protected readonly canCreate = computed(() => this.auth.canContent('content.create', this.uid()));
+  protected readonly colspan = computed(
+    () => this.columns().length + (this.type()?.draftAndPublish ? 2 : 1),
+  );
 
   protected readonly page = signal(1);
   protected readonly search = signal('');
@@ -342,9 +413,27 @@ export class ContentList {
   protected cell(document: Document, name: string, attribute: Attribute): string {
     const value = document[name];
     if (value === null || value === undefined || value === '') return '—';
-    if (attribute.type === 'boolean') return value ? 'Yes' : 'No';
-    if (attribute.type === 'datetime') return new Date(String(value)).toLocaleString();
-    return String(value);
+    switch (attribute.type) {
+      case 'boolean':
+        return this.t(value ? 'common.yes' : 'common.no');
+      case 'datetime':
+        return this.i18n.formatDate(String(value), 'datetime');
+      case 'date':
+        return this.i18n.formatDate(String(value), 'date');
+      case 'integer':
+      case 'biginteger':
+      case 'float':
+      case 'decimal':
+        return this.i18n.formatNumber(value as number | string);
+      default:
+        return String(value);
+    }
+  }
+
+  protected ariaSort(field: string): 'ascending' | 'descending' | null {
+    const sort = this.sort();
+    if (sort.field !== field) return null;
+    return sort.descending ? 'descending' : 'ascending';
   }
 
   protected toggleSort(field: string): void {

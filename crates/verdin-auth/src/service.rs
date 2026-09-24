@@ -130,6 +130,9 @@ pub struct Session {
 }
 
 /// The admin making a request.
+/// Upper bound for a user's stored admin preferences.
+pub const MAX_PREFERENCES_BYTES: usize = 64 * 1024;
+
 #[derive(Debug, Clone)]
 pub struct AdminPrincipal {
     pub user: AdminUser,
@@ -606,6 +609,49 @@ impl AuthService {
                 }
             })
             .collect())
+    }
+
+    /// The user's admin panel preferences (an object; `{}` until first saved).
+    pub async fn preferences(&self, user_id: i64) -> Result<serde_json::Value> {
+        let rows = self
+            .db
+            .queries()
+            .fetch_all(
+                &format!("SELECT preferences FROM {ADMIN_USERS} WHERE id = ?"),
+                &[V::BigInt(user_id)],
+                &[K::Json],
+            )
+            .await?;
+        let row = rows.into_iter().next().ok_or(AuthError::NotFound)?;
+        Ok(match row.into_iter().next() {
+            Some(V::Json(value)) if value.is_object() => value,
+            _ => serde_json::json!({}),
+        })
+    }
+
+    /// Replaces the user's preferences: a JSON object of at most [`MAX_PREFERENCES_BYTES`].
+    pub async fn set_preferences(&self, user_id: i64, value: serde_json::Value) -> Result<()> {
+        if !value.is_object() {
+            return Err(AuthError::Validation("preferences must be an object".into()));
+        }
+        if value.to_string().len() > MAX_PREFERENCES_BYTES {
+            return Err(AuthError::Validation(format!(
+                "preferences exceed {} KiB",
+                MAX_PREFERENCES_BYTES / 1024
+            )));
+        }
+        let updated = self
+            .db
+            .queries()
+            .execute(
+                &format!("UPDATE {ADMIN_USERS} SET preferences = ? WHERE id = ?"),
+                &[V::Json(value), V::BigInt(user_id)],
+            )
+            .await?;
+        if updated == 0 {
+            return Err(AuthError::NotFound);
+        }
+        Ok(())
     }
 
     pub async fn create_user(&self, user: NewUser) -> Result<AdminUser> {

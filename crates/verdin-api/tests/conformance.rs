@@ -677,3 +677,47 @@ async fn openapi_document() {
     assert!(body["components"]["schemas"]["SharedSeoComponent"].is_object());
     app.done().await;
 }
+
+#[tokio::test]
+async fn filters_on_component_fields() {
+    let app = App::new(schema()).await;
+    for (title, meta, no_index) in
+        [("A", Some("Rust tips"), true), ("B", Some("rust news"), false), ("C", None, false)]
+    {
+        let mut data = json!({ "title": title });
+        if let Some(meta) = meta {
+            data["seo"] = json!({ "metaTitle": meta, "noIndex": no_index });
+        }
+        article(&app, data).await;
+    }
+    let sorted = |mut titles: Vec<String>| {
+        titles.sort();
+        titles
+    };
+    assert_eq!(titles(&app, "filters[seo][metaTitle][$eq]=Rust%20tips").await, ["A"]);
+    assert!(
+        titles(&app, "filters[seo][metaTitle][$eq]=rust%20tips").await.is_empty(),
+        "exact on every engine"
+    );
+    assert_eq!(sorted(titles(&app, "filters[seo][metaTitle][$containsi]=RUST").await), ["A", "B"]);
+    assert_eq!(titles(&app, "filters[seo][metaTitle][$startsWith]=rust").await, ["B"]);
+    assert_eq!(titles(&app, "filters[seo][noIndex][$eq]=true").await, ["A"]);
+    assert_eq!(titles(&app, "filters[seo][noIndex][$eq]=false").await, ["B"]);
+    assert_eq!(titles(&app, "filters[seo][metaTitle][$null]=true").await, ["C"]);
+    assert_eq!(
+        sorted(titles(&app, "filters[$or][0][seo][noIndex]=true&filters[$or][1][title]=C").await),
+        ["A", "C"]
+    );
+    assert_eq!(
+        app.get("/api/articles?filters[links][url][$eq]=x").await.0,
+        StatusCode::BAD_REQUEST,
+        "repeatable"
+    );
+    assert_eq!(
+        app.get("/api/articles?filters[blocks][title][$eq]=x").await.0,
+        StatusCode::BAD_REQUEST,
+        "dynamic zone"
+    );
+    assert_eq!(app.get("/api/articles?filters[seo][nope][$eq]=x").await.0, StatusCode::BAD_REQUEST);
+    app.done().await;
+}

@@ -174,6 +174,7 @@ fn relation_info(
 #[derive(Debug, Clone, Default)]
 pub struct Catalog {
     types: HashMap<String, TypeFields>,
+    components: HashMap<String, IndexMap<String, Attribute>>,
 }
 
 impl Catalog {
@@ -183,11 +184,21 @@ impl Catalog {
             .values()
             .map(|content_type| (content_type.uid.clone(), TypeFields::new(content_type, schema)))
             .collect();
-        Self { types }
+        let components = schema
+            .components
+            .values()
+            .map(|component| (component.uid.clone(), component.attributes.clone()))
+            .collect();
+        Self { types, components }
     }
 
     pub fn get(&self, uid: &str) -> Option<&TypeFields> {
         self.types.get(uid)
+    }
+
+    /// Attributes of a component.
+    pub fn component(&self, uid: &str) -> Option<&IndexMap<String, Attribute>> {
+        self.components.get(uid)
     }
 }
 

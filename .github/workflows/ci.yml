@@ -114,7 +114,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
-      - run: npx prettier --check "src/app/{core,features,layout}/**/*.ts" "e2e/**/*.ts"
+      - run: npx prettier --check "src/app/{core,features,layout,shared/components}/**/*.ts" "e2e/**/*.ts"
+      - run: npm run i18n:check
       - run: npm audit --audit-level=high
       - run: npx ng test --watch=false
       - run: npx ng build

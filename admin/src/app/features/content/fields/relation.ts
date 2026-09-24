@@ -16,6 +16,7 @@ import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmInputImports } from '@spartan-ng/helm/input';
 
 import { Api, toQuery } from '../../../core/api';
+import { I18n } from '../../../core/i18n/i18n';
 import { Schema } from '../../../core/schema';
 import { Document } from '../../../core/types';
 import { documentLabel } from './model';
@@ -33,7 +34,9 @@ import { documentLabel } from './model';
       @if (selected().length) {
         <ul class="flex flex-col gap-1">
           @for (id of selected(); track id; let index = $index) {
-            <li class="bg-muted flex items-center gap-2 rounded-md px-2 py-1 text-sm">
+            <li
+              class="bg-muted/50 flex items-center gap-2 rounded-md border py-1 ps-3 pe-1 text-sm"
+            >
               <span class="truncate">{{ labels()[id] ?? id }}</span>
               <span class="ms-auto flex items-center">
                 @if (many()) {
@@ -42,7 +45,7 @@ import { documentLabel } from './model';
                     size="icon-xs"
                     variant="ghost"
                     type="button"
-                    aria-label="Move up"
+                    [attr.aria-label]="t('content.fields.moveUp')"
                     [disabled]="index === 0"
                     (click)="move(index, -1)"
                   >
@@ -53,7 +56,7 @@ import { documentLabel } from './model';
                     size="icon-xs"
                     variant="ghost"
                     type="button"
-                    aria-label="Move down"
+                    [attr.aria-label]="t('content.fields.moveDown')"
                     [disabled]="index === selected().length - 1"
                     (click)="move(index, 1)"
                   >
@@ -65,7 +68,7 @@ import { documentLabel } from './model';
                   size="icon-xs"
                   variant="ghost"
                   type="button"
-                  aria-label="Remove"
+                  [attr.aria-label]="t('content.fields.remove')"
                   [disabled]="disabled()"
                   (click)="remove(id)"
                 >
@@ -78,16 +81,30 @@ import { documentLabel } from './model';
       }
       @if (many() || selected().length === 0) {
         <div class="relative">
+          <ng-icon
+            name="lucideSearch"
+            size="16"
+            class="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2"
+          />
           <input
             hlmInput
+            class="ps-8"
+            autocomplete="off"
             [id]="inputId()"
-            [placeholder]="'Search ' + targetName() + '…'"
+            [placeholder]="t('content.relation.search', { type: targetName() })"
             [value]="search()"
             [disabled]="disabled()"
             (input)="search.set($any($event.target).value)"
             (focus)="open.set(true)"
             (blur)="touch.emit(); closeSoon()"
           />
+          @if (open() && searched() && !results().length) {
+            <div
+              class="bg-popover text-muted-foreground absolute z-10 mt-1 w-full rounded-md border px-3 py-2 text-sm shadow-md"
+            >
+              {{ t('content.relation.noResults') }}
+            </div>
+          }
           @if (open() && results().length) {
             <ul
               class="bg-popover text-popover-foreground absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border p-1 shadow-md"
@@ -113,6 +130,8 @@ import { documentLabel } from './model';
 export class RelationControl implements FormValueControl<string | string[] | null> {
   private readonly api = inject(Api);
   private readonly schema = inject(Schema);
+  protected readonly i18n = inject(I18n);
+  protected readonly t = this.i18n.t;
 
   readonly value = model<string | string[] | null>(null);
   readonly disabled = input(false);
@@ -126,6 +145,8 @@ export class RelationControl implements FormValueControl<string | string[] | nul
   protected readonly search = signal('');
   protected readonly open = signal(false);
   protected readonly results = signal<Document[]>([]);
+  /** Whether a search has answered since the picker opened. */
+  protected readonly searched = signal(false);
   private readonly picked = signal<Record<string, string>>({});
 
   protected readonly labels = computed(() => ({ ...this.initialLabels(), ...this.picked() }));
@@ -134,7 +155,7 @@ export class RelationControl implements FormValueControl<string | string[] | nul
     return Array.isArray(value) ? value : value ? [value] : [];
   });
   protected readonly targetName = computed(
-    () => this.schema.type(this.target())?.displayName ?? 'documents',
+    () => this.schema.type(this.target())?.displayName ?? this.t('content.relation.documents'),
   );
   private readonly titleField = computed(() => {
     const type = this.schema.type(this.target());
@@ -167,6 +188,7 @@ export class RelationControl implements FormValueControl<string | string[] | nul
     } catch {
       this.results.set([]);
     }
+    this.searched.set(true);
   }
 
   protected pick(document: Document): void {
@@ -189,6 +211,9 @@ export class RelationControl implements FormValueControl<string | string[] | nul
   }
 
   protected closeSoon(): void {
-    setTimeout(() => this.open.set(false), 150);
+    setTimeout(() => {
+      this.open.set(false);
+      this.searched.set(false);
+    }, 150);
   }
 }

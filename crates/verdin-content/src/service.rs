@@ -99,6 +99,10 @@ impl DocumentService {
         &self.registry
     }
 
+    pub fn db(&self) -> &Database {
+        &self.db
+    }
+
     // ---------------------------------------------------------------- reads
 
     pub async fn find_many(&self, uid: &str, query: &Query) -> Result<Page> {

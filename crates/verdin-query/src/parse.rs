@@ -3,6 +3,7 @@
 use indexmap::IndexMap;
 use rust_decimal::Decimal;
 use verdin_db::{ColumnKind, SqlValue};
+use verdin_schema::AttributeKind;
 
 use crate::QueryError;
 use crate::ast::*;
@@ -134,12 +135,76 @@ impl Parser<'_> {
             FieldCategory::Scalar => {}
             FieldCategory::Relation => return self.relation_filter(field, node),
             FieldCategory::Nested => {
-                return Err(QueryError::new(format!(
-                    "filtering on fields of component `{name}` is not supported yet"
-                )));
+                return match field.attribute.as_ref().map(|attribute| &attribute.kind) {
+                    Some(AttributeKind::Component { component, repeatable: false, .. }) => {
+                        self.component_filter(&field.column, Vec::new(), component, name, node)
+                    }
+                    _ => Err(QueryError::new(format!(
+                        "filtering on repeatable components and dynamic zones (`{name}`) is not supported"
+                    ))),
+                };
             }
         }
+        self.operator_filters(field, Vec::new(), node)
+    }
 
+    /// `filters[seo][metaTitle][$eq]=…`: fields of a non-repeatable component, stored in the
+    /// JSON column `column` at `path`.
+    fn component_filter(
+        &mut self,
+        column: &str,
+        path: Vec<String>,
+        component: &str,
+        display: &str,
+        node: &Node,
+    ) -> Result<Filter, QueryError> {
+        let map = node.as_map().ok_or_else(|| {
+            QueryError::new(format!(
+                "filter `{display}` by its fields, e.g. `filters[{display}][field][$eq]=…`"
+            ))
+        })?;
+        let attributes = self.catalog.component(component).expect("validated schema").clone();
+        let mut filters = Vec::with_capacity(map.len());
+        for (key, value) in map {
+            let child_display = format!("{display}.{key}");
+            let attribute =
+                attributes.get(key).filter(|attribute| !attribute.private).ok_or_else(|| {
+                    QueryError::new(format!("invalid key `{child_display}` in filters"))
+                })?;
+            let mut child_path = path.clone();
+            child_path.push(key.clone());
+            let filter = match &attribute.kind {
+                AttributeKind::Component { component, repeatable: false, .. } => {
+                    self.component_filter(column, child_path, component, &child_display, value)?
+                }
+                kind => {
+                    let (column_kind, category) = crate::fields::attribute_kind(kind);
+                    if category != FieldCategory::Scalar || column_kind == ColumnKind::Json {
+                        return Err(QueryError::new(format!("cannot filter on `{child_display}`")));
+                    }
+                    let field = Field {
+                        api: child_display,
+                        column: column.to_owned(),
+                        kind: column_kind,
+                        category,
+                        attribute: Some(attribute.clone()),
+                        relation: None,
+                    };
+                    self.operator_filters(&field, child_path, value)?
+                }
+            };
+            filters.push(filter);
+        }
+        Ok(if filters.len() == 1 { filters.pop().expect("one") } else { Filter::And(filters) })
+    }
+
+    fn operator_filters(
+        &mut self,
+        field: &Field,
+        path: Vec<String>,
+        node: &Node,
+    ) -> Result<Filter, QueryError> {
+        let name = &field.api;
         let operators: Vec<(&str, &Node)> = match node {
             Node::Leaf(_) => vec![("$eq", node)],
             Node::Map(map) => map.iter().map(|(key, value)| (key.as_str(), value)).collect(),
@@ -154,7 +219,12 @@ impl Parser<'_> {
                     QueryError::new(format!("`{name}` has no nested field `{op_name}`"))
                 }
             })?;
-            filters.push(Filter::Condition(parse_condition(field, op, op_name, operand)?));
+            let mut condition = parse_condition(field, op, op_name, operand)?;
+            if !path.is_empty() {
+                condition.operand = json_operand(condition.operand);
+                condition.path = path.clone();
+            }
+            filters.push(Filter::Condition(condition));
         }
         Ok(if filters.len() == 1 { filters.pop().expect("one") } else { Filter::And(filters) })
     }
@@ -359,6 +429,7 @@ fn parse_condition(
             let op = if flag == (op == Op::IsNull) { Op::IsNull } else { Op::IsNotNull };
             return Ok(Condition {
                 column: field.column.clone(),
+                path: Vec::new(),
                 kind: field.kind,
                 op,
                 operand: Operand::None,
@@ -380,7 +451,25 @@ fn parse_condition(
         }
         _ => Operand::Value(value(leaf(node)?)?),
     };
-    Ok(Condition { column: field.column.clone(), kind: field.kind, op, operand })
+    Ok(Condition { column: field.column.clone(), path: Vec::new(), kind: field.kind, op, operand })
+}
+
+/// Component values are stored as API JSON: dates, times and timestamps as their
+/// canonical strings, which then compare correctly as text.
+fn json_operand(operand: Operand) -> Operand {
+    use verdin_db::value::{format_date, format_datetime, format_time};
+    let text = |value: SqlValue| match value {
+        SqlValue::Date(date) => SqlValue::Text(format_date(date)),
+        SqlValue::Time(time) => SqlValue::Text(format_time(time)),
+        SqlValue::DateTime(datetime) => SqlValue::Text(format_datetime(datetime)),
+        other => other,
+    };
+    match operand {
+        Operand::Value(value) => Operand::Value(text(value)),
+        Operand::List(values) => Operand::List(values.into_iter().map(text).collect()),
+        Operand::Pair(low, high) => Operand::Pair(text(low), text(high)),
+        Operand::None => Operand::None,
+    }
 }
 
 /// Converts a query-string value to the field's column type.

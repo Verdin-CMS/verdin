@@ -90,6 +90,17 @@ pub enum Filter {
     Not(Box<Filter>),
     Condition(Condition),
     Relation(RelationFilter),
+    /// Rows a user has marked in a per-user table (e.g. documents they have seen).
+    Marked(MarkFilter),
+}
+
+/// `EXISTS (SELECT 1 FROM {table} m WHERE m.user_id = ? AND m.content_type = ?
+/// AND m.document_id = row.document_id)`. Built by the server, never parsed from a request.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MarkFilter {
+    pub table: String,
+    pub user_id: i64,
+    pub content_type: String,
 }
 
 /// `filters[category][name][$eq]=x` (with `inner`) or `filters[category][$null]=true`.
@@ -108,6 +119,8 @@ pub struct RelationFilter {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Condition {
     pub column: String,
+    /// Path inside a JSON column (fields of non-repeatable components); empty for plain columns.
+    pub path: Vec<String>,
     pub kind: ColumnKind,
     pub op: Op,
     pub operand: Operand,

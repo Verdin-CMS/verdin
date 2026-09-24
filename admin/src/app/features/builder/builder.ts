@@ -17,17 +17,20 @@ import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmCardImports } from '@spartan-ng/helm/card';
 import { HlmCheckboxImports } from '@spartan-ng/helm/checkbox';
 import { HlmDialogImports } from '@spartan-ng/helm/dialog';
+import { HlmEmptyImports } from '@spartan-ng/helm/empty';
 import { HlmFieldImports } from '@spartan-ng/helm/field';
 import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmSwitchImports } from '@spartan-ng/helm/switch';
-import { HlmTableImports } from '@spartan-ng/helm/table';
 import { HlmToggleGroupImports } from '@spartan-ng/helm/toggle-group';
 
 import { Api, ApiFailure } from '../../core/api';
+import { I18n } from '../../core/i18n/i18n';
+import { MessageKey } from '../../core/i18n/messages/en';
 import { Schema } from '../../core/schema';
-import { Attribute, AttributeType, RelationKind, SchemaPlan } from '../../core/types';
+import { Attribute, AttributeType, PlanStep, RelationKind, SchemaPlan } from '../../core/types';
+import { PageHeader } from '../../shared/components/page-header';
 
 type SchemaFile = Record<string, unknown> & { attributes: Record<string, Attribute> };
 
@@ -44,34 +47,139 @@ interface Change {
   allow?: string;
 }
 
-const TYPES: AttributeType[] = [
-  'string',
-  'text',
-  'richtext',
-  'email',
-  'uid',
-  'integer',
-  'biginteger',
-  'float',
-  'decimal',
-  'boolean',
-  'date',
-  'time',
-  'datetime',
-  'enumeration',
-  'json',
-  'relation',
-  'component',
-  'dynamiczone',
+interface TypeInfo {
+  type: AttributeType;
+  icon: string;
+  label: MessageKey;
+  description: MessageKey;
+}
+
+/** The attribute types, in picker order, with their icon and message keys. */
+const TYPE_INFO: TypeInfo[] = [
+  {
+    type: 'string',
+    icon: 'lucideType',
+    label: 'builder.types.string',
+    description: 'builder.types.string.description',
+  },
+  {
+    type: 'text',
+    icon: 'lucideText',
+    label: 'builder.types.text',
+    description: 'builder.types.text.description',
+  },
+  {
+    type: 'richtext',
+    icon: 'lucideFileText',
+    label: 'builder.types.richtext',
+    description: 'builder.types.richtext.description',
+  },
+  {
+    type: 'email',
+    icon: 'lucideMail',
+    label: 'builder.types.email',
+    description: 'builder.types.email.description',
+  },
+  {
+    type: 'uid',
+    icon: 'lucideFingerprint',
+    label: 'builder.types.uid',
+    description: 'builder.types.uid.description',
+  },
+  {
+    type: 'integer',
+    icon: 'lucideHash',
+    label: 'builder.types.integer',
+    description: 'builder.types.integer.description',
+  },
+  {
+    type: 'biginteger',
+    icon: 'lucideHash',
+    label: 'builder.types.biginteger',
+    description: 'builder.types.biginteger.description',
+  },
+  {
+    type: 'float',
+    icon: 'lucideHash',
+    label: 'builder.types.float',
+    description: 'builder.types.float.description',
+  },
+  {
+    type: 'decimal',
+    icon: 'lucideHash',
+    label: 'builder.types.decimal',
+    description: 'builder.types.decimal.description',
+  },
+  {
+    type: 'boolean',
+    icon: 'lucideToggleLeft',
+    label: 'builder.types.boolean',
+    description: 'builder.types.boolean.description',
+  },
+  {
+    type: 'date',
+    icon: 'lucideCalendar',
+    label: 'builder.types.date',
+    description: 'builder.types.date.description',
+  },
+  {
+    type: 'time',
+    icon: 'lucideClock',
+    label: 'builder.types.time',
+    description: 'builder.types.time.description',
+  },
+  {
+    type: 'datetime',
+    icon: 'lucideCalendarClock',
+    label: 'builder.types.datetime',
+    description: 'builder.types.datetime.description',
+  },
+  {
+    type: 'enumeration',
+    icon: 'lucideList',
+    label: 'builder.types.enumeration',
+    description: 'builder.types.enumeration.description',
+  },
+  {
+    type: 'json',
+    icon: 'lucideBraces',
+    label: 'builder.types.json',
+    description: 'builder.types.json.description',
+  },
+  {
+    type: 'relation',
+    icon: 'lucideLink',
+    label: 'builder.types.relation',
+    description: 'builder.types.relation.description',
+  },
+  {
+    type: 'component',
+    icon: 'lucideBlocks',
+    label: 'builder.types.component',
+    description: 'builder.types.component.description',
+  },
+  {
+    type: 'dynamiczone',
+    icon: 'lucideLayers',
+    label: 'builder.types.dynamiczone',
+    description: 'builder.types.dynamiczone.description',
+  },
 ];
-const RELATIONS: { kind: RelationKind; label: string; bidirectional: boolean }[] = [
-  { kind: 'manyToOne', label: 'Many to one (belongs to)', bidirectional: true },
-  { kind: 'oneToMany', label: 'One to many (has many)', bidirectional: true },
-  { kind: 'manyToMany', label: 'Many to many', bidirectional: true },
-  { kind: 'oneToOne', label: 'One to one', bidirectional: true },
-  { kind: 'oneWay', label: 'Has one (one-way)', bidirectional: false },
-  { kind: 'manyWay', label: 'Has many (one-way)', bidirectional: false },
+const TYPE_BY_NAME = new Map(TYPE_INFO.map((info) => [info.type, info]));
+
+const RELATIONS: { kind: RelationKind; label: MessageKey; bidirectional: boolean }[] = [
+  { kind: 'manyToOne', label: 'builder.relations.manyToOne', bidirectional: true },
+  { kind: 'oneToMany', label: 'builder.relations.oneToMany', bidirectional: true },
+  { kind: 'manyToMany', label: 'builder.relations.manyToMany', bidirectional: true },
+  { kind: 'oneToOne', label: 'builder.relations.oneToOne', bidirectional: true },
+  { kind: 'oneWay', label: 'builder.relations.oneWay', bidirectional: false },
+  { kind: 'manyWay', label: 'builder.relations.manyWay', bidirectional: false },
 ];
+const RISK_LABELS: Record<PlanStep['risk'], MessageKey> = {
+  safe: 'builder.risk.safe',
+  risky: 'builder.risk.risky',
+  destructive: 'builder.risk.destructive',
+};
 const INVERSE: Partial<Record<RelationKind, RelationKind>> = {
   manyToOne: 'oneToMany',
   oneToMany: 'manyToOne',
@@ -115,6 +223,11 @@ function plural(name: string): string {
   return `${name}s`;
 }
 
+/** Splits a message on backticks: odd segments are code. */
+function segments(text: string): string[] {
+  return text.split('`');
+}
+
 interface AttributeDraft {
   originalName: string | null;
   name: string;
@@ -128,6 +241,7 @@ interface AttributeDraft {
   imports: [
     RouterLink,
     NgIcon,
+    PageHeader,
     HlmButtonImports,
     HlmBadgeImports,
     HlmCardImports,
@@ -137,82 +251,124 @@ interface AttributeDraft {
     HlmSwitchImports,
     HlmCheckboxImports,
     HlmToggleGroupImports,
-    HlmTableImports,
     HlmDialogImports,
     HlmAlertImports,
     HlmSpinnerImports,
+    HlmEmptyImports,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (!schema.devMode()) {
       <div hlmAlert>
-        <p hlmAlertTitle>The content-type builder is only available in development mode</p>
+        <ng-icon name="lucideInfo" />
+        <p hlmAlertTitle>{{ t('builder.devOnly.title') }}</p>
         <p hlmAlertDescription>
-          Run <code>verdin dev</code>, edit the schema, commit the files in <code>schema/</code> and
-          deploy.
+          @for (part of segments(t('builder.devOnly.description')); track $index) {
+            @if ($odd) {
+              <code class="bg-muted rounded px-1 py-0.5 font-mono text-xs">{{ part }}</code>
+            } @else {
+              {{ part }}
+            }
+          }
         </p>
       </div>
     } @else if (!sources()) {
-      <hlm-spinner />
+      <div class="flex justify-center py-16"><hlm-spinner /></div>
     } @else {
-      <div class="grid gap-6 lg:grid-cols-[16rem_1fr]">
-        <aside class="flex flex-col gap-4">
-          <div class="flex flex-col gap-1">
-            <div class="flex items-center justify-between">
-              <h2 class="text-sm font-semibold">Content types</h2>
+      <div class="grid items-start gap-6 lg:grid-cols-[16rem_1fr]">
+        <aside
+          class="bg-card flex flex-col gap-4 rounded-xl border p-3 shadow-xs lg:sticky lg:top-4"
+        >
+          <nav class="flex flex-col gap-1" [attr.aria-label]="t('builder.sidebar.contentTypes')">
+            <div class="flex items-center justify-between gap-2 px-2 pb-1">
+              <h2 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                {{ t('builder.sidebar.contentTypes') }}
+              </h2>
               <a
                 hlmBtn
-                size="icon-sm"
+                size="icon-xs"
                 variant="ghost"
                 routerLink="/builder/new"
-                aria-label="New content type"
+                [attr.aria-label]="t('builder.sidebar.newContentType')"
+                [attr.title]="t('builder.sidebar.newContentType')"
                 ><ng-icon name="lucidePlus"
               /></a>
             </div>
             @for (entry of typeEntries(); track entry.key) {
               <a
-                hlmBtn
-                [variant]="name() === entry.key ? 'secondary' : 'ghost'"
-                class="justify-start"
+                class="hover:bg-muted flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors"
+                [class.bg-primary/10]="name() === entry.key"
+                [class.text-primary]="name() === entry.key"
+                [class.font-medium]="name() === entry.key"
+                [attr.aria-current]="name() === entry.key ? 'page' : null"
                 [routerLink]="['/builder', entry.key]"
-                >{{ entry.label }}</a
               >
+                <ng-icon
+                  [name]="entry.single ? 'lucideFile' : 'lucideDatabase'"
+                  size="16"
+                  class="shrink-0 opacity-70"
+                />
+                <span class="truncate">{{ entry.label }}</span>
+                @if (entry.single) {
+                  <span class="text-muted-foreground ms-auto text-xs">{{
+                    t('builder.sidebar.single')
+                  }}</span>
+                }
+              </a>
+            } @empty {
+              <p class="text-muted-foreground px-2 py-1 text-sm">
+                {{ t('builder.sidebar.noContentTypes') }}
+              </p>
             }
-          </div>
-          <div class="flex flex-col gap-1">
-            <div class="flex items-center justify-between">
-              <h2 class="text-sm font-semibold">Components</h2>
+          </nav>
+          <div class="border-t"></div>
+          <nav class="flex flex-col gap-1" [attr.aria-label]="t('builder.sidebar.components')">
+            <div class="flex items-center justify-between gap-2 px-2 pb-1">
+              <h2 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                {{ t('builder.sidebar.components') }}
+              </h2>
               <a
                 hlmBtn
-                size="icon-sm"
+                size="icon-xs"
                 variant="ghost"
                 routerLink="/builder/new-component"
-                aria-label="New component"
+                [attr.aria-label]="t('builder.sidebar.newComponent')"
+                [attr.title]="t('builder.sidebar.newComponent')"
                 ><ng-icon name="lucidePlus"
               /></a>
             </div>
             @for (entry of componentEntries(); track entry.key) {
               <a
-                hlmBtn
-                [variant]="name() === entry.key ? 'secondary' : 'ghost'"
-                class="justify-start"
+                class="hover:bg-muted flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors"
+                [class.bg-primary/10]="name() === entry.key"
+                [class.text-primary]="name() === entry.key"
+                [class.font-medium]="name() === entry.key"
+                [attr.aria-current]="name() === entry.key ? 'page' : null"
                 [routerLink]="['/builder', entry.key]"
-                >{{ entry.label }}</a
               >
+                <ng-icon name="lucideBlocks" size="16" class="shrink-0 opacity-70" />
+                <span class="flex min-w-0 flex-col">
+                  <span class="truncate">{{ entry.displayName }}</span>
+                  <span class="text-muted-foreground truncate font-mono text-xs font-normal">{{
+                    entry.uid
+                  }}</span>
+                </span>
+              </a>
+            } @empty {
+              <p class="text-muted-foreground px-2 py-1 text-sm">
+                {{ t('builder.sidebar.noComponents') }}
+              </p>
             }
-          </div>
+          </nav>
         </aside>
 
         @if (draft(); as file) {
-          <section class="flex flex-col gap-4">
-            <div class="flex flex-wrap items-center gap-3">
-              <h1 class="text-2xl font-semibold">
-                {{ file['displayName'] || (isComponent() ? 'New component' : 'New content type') }}
-              </h1>
-              <div class="ms-auto flex gap-2">
+          <section class="flex min-w-0 flex-col gap-6">
+            <vd-page-header [title]="headerTitle()" [description]="headerDescription()">
+              <div actions>
                 @if (!isNew()) {
-                  <button hlmBtn variant="ghost" (click)="remove()">
-                    <ng-icon name="lucideTrash2" /> Delete
+                  <button hlmBtn variant="ghost" (click)="remove()" [disabled]="busy()">
+                    <ng-icon name="lucideTrash2" /> {{ t('common.delete') }}
                   </button>
                 }
                 <button hlmBtn (click)="plan()" [disabled]="busy()">
@@ -221,15 +377,20 @@ interface AttributeDraft {
                   } @else {
                     <ng-icon name="lucideSave" />
                   }
-                  Save
+                  {{ t('common.save') }}
                 </button>
               </div>
-            </div>
+            </vd-page-header>
 
             <section hlmCard>
+              <div hlmCardHeader>
+                <h2 hlmCardTitle>{{ t('builder.settings.title') }}</h2>
+              </div>
               <div hlmCardContent class="grid gap-4 sm:grid-cols-2">
                 <div hlmField>
-                  <label hlmFieldLabel for="display-name">Display name</label>
+                  <label hlmFieldLabel for="display-name">{{
+                    t('builder.settings.displayName')
+                  }}</label>
                   <input
                     hlmInput
                     id="display-name"
@@ -239,56 +400,89 @@ interface AttributeDraft {
                 </div>
                 @if (isComponent()) {
                   <div hlmField>
-                    <label hlmFieldLabel for="component-uid">Category.name</label>
+                    <label hlmFieldLabel for="component-uid">{{
+                      t('builder.settings.componentUid')
+                    }}</label>
                     <input
                       hlmInput
                       id="component-uid"
+                      class="font-mono"
                       [value]="componentUid()"
                       [disabled]="!isNew()"
                       (input)="componentUid.set($any($event.target).value)"
                     />
-                    <p hlmFieldDescription>For example <code>shared.seo</code>.</p>
+                    <p hlmFieldDescription>
+                      @for (
+                        part of segments(t('builder.settings.componentUidHint'));
+                        track $index
+                      ) {
+                        @if ($odd) {
+                          <code>{{ part }}</code>
+                        } @else {
+                          {{ part }}
+                        }
+                      }
+                    </p>
                   </div>
                 } @else {
                   <div hlmField>
-                    <label hlmFieldLabel for="singular">Singular name (API id)</label>
+                    <label hlmFieldLabel for="singular">{{ t('builder.settings.singular') }}</label>
                     <input
                       hlmInput
                       id="singular"
+                      class="font-mono"
                       [value]="file['singularName'] ?? ''"
                       [disabled]="!isNew()"
                       (input)="setFileValue('singularName', kebab($any($event.target).value))"
                     />
+                    @if (!isNew()) {
+                      <p hlmFieldDescription>{{ t('builder.settings.lockedHint') }}</p>
+                    }
                   </div>
                   <div hlmField>
-                    <label hlmFieldLabel for="plural">Plural name (route)</label>
+                    <label hlmFieldLabel for="plural">{{ t('builder.settings.plural') }}</label>
                     <input
                       hlmInput
                       id="plural"
+                      class="font-mono"
                       [value]="file['pluralName'] ?? ''"
                       [disabled]="!isNew()"
                       (input)="setFileValue('pluralName', kebab($any($event.target).value))"
                     />
+                    @if (!isNew()) {
+                      <p hlmFieldDescription>{{ t('builder.settings.lockedHint') }}</p>
+                    }
                   </div>
                   <div hlmField>
-                    <span hlmFieldLabel>Kind</span>
+                    <span hlmFieldLabel>{{ t('builder.settings.kind') }}</span>
                     <hlm-toggle-group
                       type="single"
                       variant="outline"
                       [value]="file['kind']"
                       (valueChange)="$event && setFileValue('kind', $event)"
                     >
-                      <button hlmToggleGroupItem value="collectionType">Collection</button>
-                      <button hlmToggleGroupItem value="singleType">Single</button>
+                      <button hlmToggleGroupItem value="collectionType">
+                        <ng-icon name="lucideDatabase" size="16" />
+                        {{ t('builder.settings.collection') }}
+                      </button>
+                      <button hlmToggleGroupItem value="singleType">
+                        <ng-icon name="lucideFile" size="16" />
+                        {{ t('builder.settings.single') }}
+                      </button>
                     </hlm-toggle-group>
                   </div>
-                  <div hlmField orientation="horizontal">
+                  <div hlmField orientation="horizontal" class="self-end">
                     <hlm-switch
                       inputId="dp"
                       [checked]="draftAndPublish()"
                       (checkedChange)="setDraftAndPublish($event)"
                     />
-                    <label hlmFieldLabel for="dp">Draft &amp; publish</label>
+                    <div hlmFieldContent>
+                      <label hlmFieldLabel for="dp">{{
+                        t('builder.settings.draftAndPublish')
+                      }}</label>
+                      <p hlmFieldDescription>{{ t('builder.settings.draftAndPublishHint') }}</p>
+                    </div>
                   </div>
                 }
               </div>
@@ -296,83 +490,118 @@ interface AttributeDraft {
 
             <section hlmCard>
               <div hlmCardHeader>
-                <h2 hlmCardTitle>Fields</h2>
+                <h2 hlmCardTitle>{{ t('builder.fields.title') }}</h2>
+                <p hlmCardDescription>
+                  {{ t('builder.fields.count', { count: attributeEntries().length }) }}
+                </p>
                 <div hlmCardAction>
                   <button hlmBtn size="sm" variant="outline" (click)="editAttribute(null)">
-                    <ng-icon name="lucidePlus" /> Add field
+                    <ng-icon name="lucidePlus" /> {{ t('builder.fields.add') }}
                   </button>
                 </div>
               </div>
               <div hlmCardContent>
-                <div hlmTableContainer>
-                  <table hlmTable>
-                    <thead hlmTHead>
-                      <tr hlmTr>
-                        <th hlmTh>Name</th>
-                        <th hlmTh>Type</th>
-                        <th hlmTh>Options</th>
-                        <th hlmTh></th>
-                      </tr>
-                    </thead>
-                    <tbody hlmTBody>
-                      @for (entry of attributeEntries(); track entry.name; let index = $index) {
-                        <tr hlmTr>
-                          <td hlmTd class="font-medium">{{ entry.name }}</td>
-                          <td hlmTd>
-                            <span hlmBadge variant="secondary">{{ entry.attribute.type }}</span>
-                          </td>
-                          <td hlmTd class="text-muted-foreground text-sm">
-                            {{ summary(entry.attribute) }}
-                          </td>
-                          <td hlmTd class="text-end whitespace-nowrap">
-                            <button
-                              hlmBtn
-                              size="icon-xs"
-                              variant="ghost"
-                              aria-label="Move up"
-                              [disabled]="index === 0"
-                              (click)="moveAttribute(index, -1)"
-                            >
-                              <ng-icon name="lucideArrowUp" />
-                            </button>
-                            <button
-                              hlmBtn
-                              size="icon-xs"
-                              variant="ghost"
-                              aria-label="Move down"
-                              [disabled]="index === attributeEntries().length - 1"
-                              (click)="moveAttribute(index, 1)"
-                            >
-                              <ng-icon name="lucideArrowDown" />
-                            </button>
-                            <button
-                              hlmBtn
-                              size="icon-xs"
-                              variant="ghost"
-                              [attr.aria-label]="'Edit ' + entry.name"
-                              (click)="editAttribute(entry.name)"
-                            >
-                              <ng-icon name="lucidePencil" />
-                            </button>
-                            <button
-                              hlmBtn
-                              size="icon-xs"
-                              variant="ghost"
-                              [attr.aria-label]="'Remove ' + entry.name"
-                              (click)="removeAttribute(entry.name)"
-                            >
-                              <ng-icon name="lucideTrash2" />
-                            </button>
-                          </td>
-                        </tr>
-                      } @empty {
-                        <tr hlmTr>
-                          <td hlmTd colspan="4" class="text-muted-foreground">No fields yet.</td>
-                        </tr>
-                      }
-                    </tbody>
-                  </table>
-                </div>
+                @if (attributeEntries().length) {
+                  <ul class="divide-y rounded-lg border">
+                    @for (entry of attributeEntries(); track entry.name; let index = $index) {
+                      @let info = typeInfo(entry.attribute.type);
+                      <li class="hover:bg-muted/40 flex items-center gap-3 px-3 py-2.5">
+                        <span
+                          class="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-md"
+                        >
+                          <ng-icon [name]="info?.icon ?? 'lucideType'" size="16" />
+                        </span>
+                        <div class="flex min-w-0 flex-1 flex-col">
+                          <span class="flex flex-wrap items-center gap-1.5">
+                            <span class="truncate font-mono text-sm font-medium">{{
+                              entry.name
+                            }}</span>
+                            <span hlmBadge variant="secondary">{{
+                              info ? t(info.label) : entry.attribute.type
+                            }}</span>
+                            @if (entry.attribute.required) {
+                              <span hlmBadge variant="outline">{{
+                                t('builder.fields.required')
+                              }}</span>
+                            }
+                            @if (entry.attribute.unique) {
+                              <span hlmBadge variant="outline">{{
+                                t('builder.fields.unique')
+                              }}</span>
+                            }
+                            @if (entry.attribute.private) {
+                              <span hlmBadge variant="outline">
+                                <ng-icon name="lucideEyeOff" />
+                                {{ t('builder.fields.private') }}
+                              </span>
+                            }
+                            @if (entry.attribute.repeatable) {
+                              <span hlmBadge variant="outline">{{
+                                t('builder.fields.repeatable')
+                              }}</span>
+                            }
+                          </span>
+                          @if (summary(entry.attribute); as text) {
+                            <span class="text-muted-foreground truncate text-xs">{{ text }}</span>
+                          }
+                        </div>
+                        <div class="flex shrink-0 items-center gap-0.5">
+                          <button
+                            hlmBtn
+                            size="icon-xs"
+                            variant="ghost"
+                            [attr.aria-label]="t('builder.fields.moveUp')"
+                            [attr.title]="t('builder.fields.moveUp')"
+                            [disabled]="index === 0"
+                            (click)="moveAttribute(index, -1)"
+                          >
+                            <ng-icon name="lucideArrowUp" />
+                          </button>
+                          <button
+                            hlmBtn
+                            size="icon-xs"
+                            variant="ghost"
+                            [attr.aria-label]="t('builder.fields.moveDown')"
+                            [attr.title]="t('builder.fields.moveDown')"
+                            [disabled]="index === attributeEntries().length - 1"
+                            (click)="moveAttribute(index, 1)"
+                          >
+                            <ng-icon name="lucideArrowDown" />
+                          </button>
+                          <button
+                            hlmBtn
+                            size="icon-xs"
+                            variant="ghost"
+                            [attr.aria-label]="t('builder.fields.edit', { name: entry.name })"
+                            [attr.title]="t('builder.fields.edit', { name: entry.name })"
+                            (click)="editAttribute(entry.name)"
+                          >
+                            <ng-icon name="lucidePencil" />
+                          </button>
+                          <button
+                            hlmBtn
+                            size="icon-xs"
+                            variant="ghost"
+                            class="hover:text-destructive"
+                            [attr.aria-label]="t('builder.fields.remove', { name: entry.name })"
+                            [attr.title]="t('builder.fields.remove', { name: entry.name })"
+                            (click)="removeAttribute(entry.name)"
+                          >
+                            <ng-icon name="lucideTrash2" />
+                          </button>
+                        </div>
+                      </li>
+                    }
+                  </ul>
+                } @else {
+                  <div hlmEmpty class="rounded-lg border border-dashed">
+                    <div hlmEmptyHeader>
+                      <div hlmEmptyMedia variant="icon"><ng-icon name="lucideLayers" /></div>
+                      <p hlmEmptyTitle>{{ t('builder.fields.empty') }}</p>
+                      <p hlmEmptyDescription>{{ t('builder.fields.emptyHint') }}</p>
+                    </div>
+                  </div>
+                }
               </div>
             </section>
           </section>
@@ -382,233 +611,305 @@ interface AttributeDraft {
 
     <!-- Field dialog -->
     <hlm-dialog [state]="attributeDraft() ? 'open' : 'closed'" (closed)="attributeDraft.set(null)">
-      <hlm-dialog-content *hlmDialogPortal="let ctx" class="sm:max-w-lg">
+      <hlm-dialog-content
+        *hlmDialogPortal="let ctx"
+        class="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-2xl"
+        [closeLabel]="t('common.close')"
+      >
         @if (attributeDraft(); as field) {
+          @let attr = field.attribute;
           <hlm-dialog-header>
-            <h2 hlmDialogTitle>{{ field.originalName ? 'Edit field' : 'Add field' }}</h2>
+            <h2 hlmDialogTitle>
+              {{ field.originalName ? t('builder.field.editTitle') : t('builder.field.addTitle') }}
+            </h2>
+            <p hlmDialogDescription>{{ t('builder.field.description') }}</p>
           </hlm-dialog-header>
-          <div class="flex flex-col gap-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div hlmField>
-                <label hlmFieldLabel for="field-name">Name</label>
-                <input
-                  hlmInput
-                  id="field-name"
-                  [value]="field.name"
-                  (input)="patchField({ name: camel($any($event.target).value) })"
-                />
-              </div>
-              <div hlmField>
-                <label hlmFieldLabel for="field-type">Type</label>
-                <hlm-native-select
-                  selectId="field-type"
-                  [value]="field.attribute.type"
-                  (valueChange)="setType($any($event))"
-                >
-                  @for (type of types; track type) {
-                    <option hlmNativeSelectOption [value]="type">{{ type }}</option>
+          <div class="-mx-6 flex flex-col gap-6 overflow-y-auto px-6">
+            @if (!field.originalName) {
+              <div class="flex flex-col gap-2">
+                <h3 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                  {{ t('builder.field.chooseKind') }}
+                </h3>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  @for (info of typeInfos; track info.type) {
+                    <button
+                      type="button"
+                      class="hover:bg-muted/60 focus-visible:ring-ring/50 flex items-start gap-2.5 rounded-lg border p-2.5 text-start transition-colors outline-none focus-visible:ring-[3px]"
+                      [class.border-primary]="attr.type === info.type"
+                      [class.bg-primary/5]="attr.type === info.type"
+                      [attr.aria-pressed]="attr.type === info.type"
+                      (click)="setType(info.type)"
+                    >
+                      <span
+                        class="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-md"
+                      >
+                        <ng-icon [name]="info.icon" size="16" />
+                      </span>
+                      <span class="flex min-w-0 flex-col">
+                        <span class="text-sm font-medium">{{ t(info.label) }}</span>
+                        <span class="text-muted-foreground text-xs leading-snug">{{
+                          t(info.description)
+                        }}</span>
+                      </span>
+                    </button>
                   }
-                </hlm-native-select>
+                </div>
               </div>
-            </div>
-            @let attr = field.attribute;
-            @if (attr.type === 'relation') {
-              <div hlmField>
-                <label hlmFieldLabel for="relation-kind">Relation</label>
-                <hlm-native-select
-                  selectId="relation-kind"
-                  [value]="attr.relation ?? 'manyToOne'"
-                  (valueChange)="patchAttribute({ relation: $any($event) })"
-                >
-                  @for (relation of relations; track relation.kind) {
-                    <option hlmNativeSelectOption [value]="relation.kind">
-                      {{ relation.label }}
-                    </option>
-                  }
-                </hlm-native-select>
-              </div>
-              <div hlmField>
-                <label hlmFieldLabel for="relation-target">Target</label>
-                <hlm-native-select
-                  selectId="relation-target"
-                  [value]="attr.target ?? ''"
-                  (valueChange)="patchAttribute({ target: $any($event) })"
-                >
-                  <option hlmNativeSelectOption value="">Choose…</option>
-                  @for (entry of typeEntries(); track entry.key) {
-                    <option hlmNativeSelectOption [value]="'api::' + entry.key">
-                      {{ entry.label }}
-                    </option>
-                  }
-                </hlm-native-select>
-              </div>
-              @if (isBidirectional(attr) && !attr.mappedBy) {
+            }
+
+            <div class="flex flex-col gap-4">
+              <h3 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                {{ t('builder.field.configure') }}
+              </h3>
+              <div class="grid gap-4 sm:grid-cols-2">
                 <div hlmField>
-                  <label hlmFieldLabel for="inverse-name">Field on the target (optional)</label>
+                  <label hlmFieldLabel for="field-name">{{ t('builder.field.name') }}</label>
                   <input
                     hlmInput
-                    id="inverse-name"
-                    [value]="field.inverseName"
-                    (input)="patchField({ inverseName: camel($any($event.target).value) })"
+                    id="field-name"
+                    class="font-mono"
+                    [value]="field.name"
+                    (input)="patchField({ name: camel($any($event.target).value) })"
                   />
-                  <p hlmFieldDescription>
-                    Creates the other side of the relation on the target type.
-                  </p>
                 </div>
-              }
-            }
-            @if (attr.type === 'component') {
-              <div hlmField>
-                <label hlmFieldLabel for="field-component">Component</label>
-                <hlm-native-select
-                  selectId="field-component"
-                  [value]="attr.component ?? ''"
-                  (valueChange)="patchAttribute({ component: $any($event) })"
-                >
-                  <option hlmNativeSelectOption value="">Choose…</option>
-                  @for (entry of componentEntries(); track entry.key) {
-                    <option hlmNativeSelectOption [value]="entry.uid">{{ entry.label }}</option>
-                  }
-                </hlm-native-select>
-              </div>
-              <div hlmField orientation="horizontal">
-                <hlm-switch
-                  inputId="field-repeatable"
-                  [checked]="!!attr.repeatable"
-                  (checkedChange)="patchAttribute({ repeatable: $event || undefined })"
-                />
-                <label hlmFieldLabel for="field-repeatable">Repeatable</label>
-              </div>
-            }
-            @if (attr.type === 'dynamiczone') {
-              <fieldset hlmFieldSet>
-                <legend hlmFieldLegend>Allowed components</legend>
-                <div hlmFieldGroup>
-                  @for (entry of componentEntries(); track entry.key) {
-                    <div hlmField orientation="horizontal">
-                      <hlm-checkbox
-                        [inputId]="'dz-' + entry.uid"
-                        [checked]="(attr.components ?? []).includes(entry.uid)"
-                        (checkedChange)="toggleZoneComponent(entry.uid, $event === true)"
-                      />
-                      <label hlmFieldLabel [for]="'dz-' + entry.uid">{{ entry.label }}</label>
-                    </div>
-                  } @empty {
-                    <p class="text-muted-foreground text-sm">Create a component first.</p>
-                  }
-                </div>
-              </fieldset>
-            }
-            @if (attr.type === 'enumeration') {
-              <div hlmField>
-                <label hlmFieldLabel for="field-enum">Values (comma-separated)</label>
-                <input
-                  hlmInput
-                  id="field-enum"
-                  [value]="(attr.enum ?? []).join(', ')"
-                  (change)="setEnum($any($event.target).value)"
-                />
-              </div>
-            }
-            @if (attr.type === 'uid') {
-              <div hlmField>
-                <label hlmFieldLabel for="field-target">Generated from</label>
-                <hlm-native-select
-                  selectId="field-target"
-                  [value]="attr.targetField ?? ''"
-                  (valueChange)="patchAttribute({ targetField: $any($event) || undefined })"
-                >
-                  <option hlmNativeSelectOption value="">—</option>
-                  @for (entry of attributeEntries(); track entry.name) {
-                    @if (entry.attribute.type === 'string' || entry.attribute.type === 'text') {
-                      <option hlmNativeSelectOption [value]="entry.name">{{ entry.name }}</option>
+                <div hlmField>
+                  <label hlmFieldLabel for="field-type">{{ t('builder.field.type') }}</label>
+                  <hlm-native-select
+                    selectId="field-type"
+                    [value]="attr.type"
+                    (valueChange)="setType($any($event))"
+                  >
+                    @for (info of typeInfos; track info.type) {
+                      <option hlmNativeSelectOption [value]="info.type">
+                        {{ t(info.label) }}
+                      </option>
                     }
-                  }
-                </hlm-native-select>
-              </div>
-            }
-            @if (lengthTypes.has(attr.type)) {
-              <div class="grid grid-cols-2 gap-4">
-                <div hlmField>
-                  <label hlmFieldLabel for="min-length">Min length</label
-                  ><input
-                    hlmInput
-                    id="min-length"
-                    inputmode="numeric"
-                    [value]="attr.minLength ?? ''"
-                    (change)="setNumber('minLength', $any($event.target).value)"
-                  />
-                </div>
-                <div hlmField>
-                  <label hlmFieldLabel for="max-length">Max length</label
-                  ><input
-                    hlmInput
-                    id="max-length"
-                    inputmode="numeric"
-                    [value]="attr.maxLength ?? ''"
-                    (change)="setNumber('maxLength', $any($event.target).value)"
-                  />
+                  </hlm-native-select>
                 </div>
               </div>
-            }
-            @if (numberTypes.has(attr.type)) {
-              <div class="grid grid-cols-2 gap-4">
-                <div hlmField>
-                  <label hlmFieldLabel for="min">Min</label
-                  ><input
-                    hlmInput
-                    id="min"
-                    inputmode="decimal"
-                    [value]="attr.min ?? ''"
-                    (change)="setNumber('min', $any($event.target).value)"
-                  />
+              @if (attr.type === 'relation') {
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <div hlmField>
+                    <label hlmFieldLabel for="relation-kind">{{
+                      t('builder.field.relation')
+                    }}</label>
+                    <hlm-native-select
+                      selectId="relation-kind"
+                      [value]="attr.relation ?? 'manyToOne'"
+                      (valueChange)="patchAttribute({ relation: $any($event) })"
+                    >
+                      @for (relation of relations; track relation.kind) {
+                        <option hlmNativeSelectOption [value]="relation.kind">
+                          {{ t(relation.label) }}
+                        </option>
+                      }
+                    </hlm-native-select>
+                  </div>
+                  <div hlmField>
+                    <label hlmFieldLabel for="relation-target">{{
+                      t('builder.field.target')
+                    }}</label>
+                    <hlm-native-select
+                      selectId="relation-target"
+                      [value]="attr.target ?? ''"
+                      (valueChange)="patchAttribute({ target: $any($event) })"
+                    >
+                      <option hlmNativeSelectOption value="">
+                        {{ t('builder.field.choose') }}
+                      </option>
+                      @for (entry of typeEntries(); track entry.key) {
+                        <option hlmNativeSelectOption [value]="'api::' + entry.key">
+                          {{ entry.label }}
+                        </option>
+                      }
+                    </hlm-native-select>
+                  </div>
                 </div>
+                @if (isBidirectional(attr) && !attr.mappedBy) {
+                  <div hlmField>
+                    <label hlmFieldLabel for="inverse-name">{{
+                      t('builder.field.inverseName')
+                    }}</label>
+                    <input
+                      hlmInput
+                      id="inverse-name"
+                      class="font-mono"
+                      [value]="field.inverseName"
+                      (input)="patchField({ inverseName: camel($any($event.target).value) })"
+                    />
+                    <p hlmFieldDescription>{{ t('builder.field.inverseHint') }}</p>
+                  </div>
+                }
+              }
+              @if (attr.type === 'component') {
                 <div hlmField>
-                  <label hlmFieldLabel for="max">Max</label
-                  ><input
-                    hlmInput
-                    id="max"
-                    inputmode="decimal"
-                    [value]="attr.max ?? ''"
-                    (change)="setNumber('max', $any($event.target).value)"
-                  />
+                  <label hlmFieldLabel for="field-component">{{
+                    t('builder.field.component')
+                  }}</label>
+                  <hlm-native-select
+                    selectId="field-component"
+                    [value]="attr.component ?? ''"
+                    (valueChange)="patchAttribute({ component: $any($event) })"
+                  >
+                    <option hlmNativeSelectOption value="">{{ t('builder.field.choose') }}</option>
+                    @for (entry of componentEntries(); track entry.key) {
+                      <option hlmNativeSelectOption [value]="entry.uid">{{ entry.label }}</option>
+                    }
+                  </hlm-native-select>
                 </div>
-              </div>
-            }
-            <div class="flex flex-wrap gap-6">
-              <div hlmField orientation="horizontal">
-                <hlm-switch
-                  inputId="field-required"
-                  [checked]="!!attr.required"
-                  (checkedChange)="patchAttribute({ required: $event || undefined })"
-                />
-                <label hlmFieldLabel for="field-required">Required</label>
-              </div>
-              @if (uniqueTypes.has(attr.type)) {
                 <div hlmField orientation="horizontal">
                   <hlm-switch
-                    inputId="field-unique"
-                    [checked]="!!attr.unique"
-                    (checkedChange)="patchAttribute({ unique: $event || undefined })"
+                    inputId="field-repeatable"
+                    [checked]="!!attr.repeatable"
+                    (checkedChange)="patchAttribute({ repeatable: $event || undefined })"
                   />
-                  <label hlmFieldLabel for="field-unique">Unique</label>
+                  <label hlmFieldLabel for="field-repeatable">{{
+                    t('builder.field.repeatable')
+                  }}</label>
                 </div>
               }
-              @if (!isComponent()) {
-                <div hlmField orientation="horizontal">
+              @if (attr.type === 'dynamiczone') {
+                <fieldset hlmFieldSet>
+                  <legend hlmFieldLegend>{{ t('builder.field.allowedComponents') }}</legend>
+                  <div hlmFieldGroup>
+                    @for (entry of componentEntries(); track entry.key) {
+                      <div hlmField orientation="horizontal">
+                        <hlm-checkbox
+                          [inputId]="'dz-' + entry.uid"
+                          [checked]="(attr.components ?? []).includes(entry.uid)"
+                          (checkedChange)="toggleZoneComponent(entry.uid, $event === true)"
+                        />
+                        <label hlmFieldLabel [for]="'dz-' + entry.uid">{{ entry.label }}</label>
+                      </div>
+                    } @empty {
+                      <p class="text-muted-foreground text-sm">
+                        {{ t('builder.field.noComponents') }}
+                      </p>
+                    }
+                  </div>
+                </fieldset>
+              }
+              @if (attr.type === 'enumeration') {
+                <div hlmField>
+                  <label hlmFieldLabel for="field-enum">{{ t('builder.field.enum') }}</label>
+                  <input
+                    hlmInput
+                    id="field-enum"
+                    [value]="(attr.enum ?? []).join(', ')"
+                    (change)="setEnum($any($event.target).value)"
+                  />
+                </div>
+              }
+              @if (attr.type === 'uid') {
+                <div hlmField>
+                  <label hlmFieldLabel for="field-target">{{
+                    t('builder.field.generatedFrom')
+                  }}</label>
+                  <hlm-native-select
+                    selectId="field-target"
+                    [value]="attr.targetField ?? ''"
+                    (valueChange)="patchAttribute({ targetField: $any($event) || undefined })"
+                  >
+                    <option hlmNativeSelectOption value="">—</option>
+                    @for (entry of attributeEntries(); track entry.name) {
+                      @if (entry.attribute.type === 'string' || entry.attribute.type === 'text') {
+                        <option hlmNativeSelectOption [value]="entry.name">{{ entry.name }}</option>
+                      }
+                    }
+                  </hlm-native-select>
+                </div>
+              }
+              @if (lengthTypes.has(attr.type)) {
+                <div class="grid grid-cols-2 gap-4">
+                  <div hlmField>
+                    <label hlmFieldLabel for="min-length">{{ t('builder.field.minLength') }}</label
+                    ><input
+                      hlmInput
+                      id="min-length"
+                      inputmode="numeric"
+                      [value]="attr.minLength ?? ''"
+                      (change)="setNumber('minLength', $any($event.target).value)"
+                    />
+                  </div>
+                  <div hlmField>
+                    <label hlmFieldLabel for="max-length">{{ t('builder.field.maxLength') }}</label
+                    ><input
+                      hlmInput
+                      id="max-length"
+                      inputmode="numeric"
+                      [value]="attr.maxLength ?? ''"
+                      (change)="setNumber('maxLength', $any($event.target).value)"
+                    />
+                  </div>
+                </div>
+              }
+              @if (numberTypes.has(attr.type)) {
+                <div class="grid grid-cols-2 gap-4">
+                  <div hlmField>
+                    <label hlmFieldLabel for="min">{{ t('builder.field.min') }}</label
+                    ><input
+                      hlmInput
+                      id="min"
+                      inputmode="decimal"
+                      [value]="attr.min ?? ''"
+                      (change)="setNumber('min', $any($event.target).value)"
+                    />
+                  </div>
+                  <div hlmField>
+                    <label hlmFieldLabel for="max">{{ t('builder.field.max') }}</label
+                    ><input
+                      hlmInput
+                      id="max"
+                      inputmode="decimal"
+                      [value]="attr.max ?? ''"
+                      (change)="setNumber('max', $any($event.target).value)"
+                    />
+                  </div>
+                </div>
+              }
+              <div class="bg-muted/40 flex flex-wrap gap-x-6 gap-y-3 rounded-lg border p-3">
+                <div hlmField orientation="horizontal" class="w-auto">
                   <hlm-switch
-                    inputId="field-private"
-                    [checked]="!!attr.private"
-                    (checkedChange)="patchAttribute({ private: $event || undefined })"
+                    inputId="field-required"
+                    [checked]="!!attr.required"
+                    (checkedChange)="patchAttribute({ required: $event || undefined })"
                   />
-                  <label hlmFieldLabel for="field-private">Private</label>
+                  <label hlmFieldLabel for="field-required">{{
+                    t('builder.field.required')
+                  }}</label>
                 </div>
-              }
+                @if (uniqueTypes.has(attr.type)) {
+                  <div hlmField orientation="horizontal" class="w-auto">
+                    <hlm-switch
+                      inputId="field-unique"
+                      [checked]="!!attr.unique"
+                      (checkedChange)="patchAttribute({ unique: $event || undefined })"
+                    />
+                    <label hlmFieldLabel for="field-unique">{{ t('builder.field.unique') }}</label>
+                  </div>
+                }
+                @if (!isComponent()) {
+                  <div hlmField orientation="horizontal" class="w-auto">
+                    <hlm-switch
+                      inputId="field-private"
+                      [checked]="!!attr.private"
+                      (checkedChange)="patchAttribute({ private: $event || undefined })"
+                    />
+                    <label hlmFieldLabel for="field-private">{{
+                      t('builder.field.private')
+                    }}</label>
+                  </div>
+                }
+              </div>
             </div>
           </div>
           <hlm-dialog-footer>
-            <button hlmBtn variant="outline" (click)="attributeDraft.set(null)">Cancel</button>
-            <button hlmBtn [disabled]="!field.name" (click)="commitAttribute()">Done</button>
+            <button hlmBtn variant="outline" (click)="attributeDraft.set(null)">
+              {{ t('common.cancel') }}
+            </button>
+            <button hlmBtn [disabled]="!field.name" (click)="commitAttribute()">
+              <ng-icon name="lucideCheck" /> {{ t('builder.field.done') }}
+            </button>
           </hlm-dialog-footer>
         }
       </hlm-dialog-content>
@@ -616,80 +917,133 @@ interface AttributeDraft {
 
     <!-- Plan dialog -->
     <hlm-dialog [state]="planResult() ? 'open' : 'closed'" (closed)="planResult.set(null)">
-      <hlm-dialog-content *hlmDialogPortal="let ctx" class="sm:max-w-3xl">
+      <hlm-dialog-content
+        *hlmDialogPortal="let ctx"
+        class="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-3xl"
+        [closeLabel]="t('common.close')"
+      >
         @if (planResult(); as result) {
           <hlm-dialog-header>
             <h2 hlmDialogTitle>
-              {{ result.valid ? 'Review the migration' : 'The schema is invalid' }}
+              {{ result.valid ? t('builder.plan.title') : t('builder.plan.invalidTitle') }}
             </h2>
             <p hlmDialogDescription>
               @if (result.valid) {
                 {{
-                  result.steps?.length
-                    ? 'Applying writes the schema files and runs these steps.'
-                    : 'No database changes needed.'
+                  result.steps?.length ? t('builder.plan.description') : t('builder.plan.noChanges')
                 }}
               } @else {
-                Fix these problems first.
+                {{ t('builder.plan.fixFirst') }}
               }
             </p>
           </hlm-dialog-header>
-          <div class="flex max-h-[60vh] flex-col gap-3 overflow-auto">
+          <div class="-mx-6 flex flex-col gap-4 overflow-y-auto px-6">
             @for (error of result.errors ?? []; track $index) {
               <div hlmAlert variant="destructive">
+                <ng-icon name="lucideCircleAlert" />
                 <p hlmAlertDescription>
-                  <code>{{ error.path }}</code> {{ error.message }}
+                  <code class="font-mono">{{ error.path }}</code> {{ error.message }}
                 </p>
               </div>
             }
-            @for (hint of result.hints ?? []; track hint) {
-              <div hlmField orientation="horizontal">
-                <hlm-checkbox
-                  [inputId]="'hint-' + $index"
-                  [checked]="acceptedHints().includes(hint)"
-                  (checkedChange)="toggleHint(hint, $event === true)"
-                />
-                <label hlmFieldLabel [for]="'hint-' + $index"
-                  >Treat as a rename (keeps the data):
-                  <code>{{
-                    hint.replace('--rename-column ', '').replace('--rename-table ', '')
-                  }}</code></label
-                >
+            @if (result.hints?.length) {
+              <fieldset hlmFieldSet class="rounded-lg border p-3">
+                <legend hlmFieldLegend variant="label" class="px-1">
+                  {{ t('builder.plan.renames') }}
+                </legend>
+                <div hlmFieldGroup class="gap-3">
+                  @for (hint of result.hints ?? []; track hint) {
+                    <div hlmField orientation="horizontal">
+                      <hlm-checkbox
+                        [inputId]="'hint-' + $index"
+                        [checked]="acceptedHints().includes(hint)"
+                        (checkedChange)="toggleHint(hint, $event === true)"
+                      />
+                      <label hlmFieldLabel [for]="'hint-' + $index"
+                        >{{ t('builder.plan.rename') }}
+                        <code class="bg-muted rounded px-1 py-0.5 font-mono text-xs">{{
+                          hint.replace('--rename-column ', '').replace('--rename-table ', '')
+                        }}</code></label
+                      >
+                    </div>
+                  }
+                </div>
+              </fieldset>
+            }
+            @if (result.valid && result.requires === 'destructive') {
+              <div hlmAlert variant="destructive">
+                <ng-icon name="lucideCircleAlert" />
+                <p hlmAlertTitle>{{ t('builder.plan.destructiveWarning') }}</p>
               </div>
             }
-            @for (step of result.steps ?? []; track $index) {
-              <div class="rounded-md border p-3">
-                <div class="flex items-center gap-2">
-                  <span
-                    hlmBadge
-                    [variant]="
-                      step.risk === 'destructive'
-                        ? 'destructive'
-                        : step.risk === 'risky'
-                          ? 'outline'
-                          : 'secondary'
-                    "
-                    >{{ step.risk }}</span
-                  >
-                  <span class="text-sm">{{ step.description }}</span>
-                </div>
-                <details class="mt-2">
-                  <summary class="text-muted-foreground cursor-pointer text-xs">SQL</summary>
-                  <pre class="bg-muted mt-1 overflow-auto rounded p-2 text-xs">{{
-                    step.statements.join(
-                      ';
+            @if (result.steps?.length) {
+              <div class="flex flex-col gap-2">
+                <h3 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                  {{ t('builder.plan.steps', { count: result.steps!.length }) }}
+                </h3>
+                <ol class="flex flex-col gap-2">
+                  @for (step of result.steps ?? []; track $index) {
+                    <li class="bg-card rounded-lg border">
+                      <div class="flex items-start gap-3 p-3">
+                        <span
+                          class="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium tabular-nums"
+                          >{{ $index + 1 }}</span
+                        >
+                        <span class="min-w-0 flex-1 pt-0.5 text-sm">{{ step.description }}</span>
+                        <span
+                          hlmBadge
+                          class="shrink-0"
+                          [variant]="
+                            step.risk === 'destructive'
+                              ? 'destructive'
+                              : step.risk === 'risky'
+                                ? 'outline'
+                                : 'secondary'
+                          "
+                        >
+                          @if (step.risk === 'risky') {
+                            <span class="size-1.5 rounded-full bg-amber-500"></span>
+                          }
+                          {{ t(riskLabels[step.risk]) }}
+                        </span>
+                      </div>
+                      @if (step.statements.length) {
+                        <details class="group border-t">
+                          <summary
+                            class="text-muted-foreground hover:text-foreground flex cursor-pointer list-none items-center gap-1 px-3 py-2 text-xs font-medium select-none"
+                          >
+                            <ng-icon
+                              name="lucideChevronRight"
+                              size="14"
+                              class="transition-transform group-open:rotate-90"
+                            />
+                            {{ t('builder.plan.sql') }}
+                          </summary>
+                          <pre
+                            class="bg-muted mx-3 mb-3 max-h-64 overflow-auto rounded-md p-3 font-mono text-xs leading-relaxed"
+                            >{{
+                              step.statements.join(
+                                ';
 '
-                    )
-                  }}</pre>
-                </details>
+                              )
+                            }}</pre>
+                        </details>
+                      }
+                    </li>
+                  }
+                </ol>
               </div>
             }
           </div>
           <hlm-dialog-footer>
-            <button hlmBtn variant="outline" (click)="planResult.set(null)">Cancel</button>
+            <button hlmBtn variant="outline" (click)="planResult.set(null)">
+              {{ t('common.cancel') }}
+            </button>
             @if (result.valid) {
               @if (acceptedHints().length) {
-                <button hlmBtn variant="secondary" (click)="plan()">Re-plan with renames</button>
+                <button hlmBtn variant="secondary" (click)="plan()">
+                  {{ t('builder.plan.replan') }}
+                </button>
               }
               <button
                 hlmBtn
@@ -700,7 +1054,7 @@ interface AttributeDraft {
                 @if (busy()) {
                   <hlm-spinner />
                 }
-                Apply
+                {{ t('builder.plan.apply') }}
               </button>
             }
           </hlm-dialog-footer>
@@ -713,11 +1067,15 @@ export class Builder {
   private readonly api = inject(Api);
   private readonly router = inject(Router);
   protected readonly schema = inject(Schema);
+  protected readonly i18n = inject(I18n);
+  protected readonly t = this.i18n.t;
 
   /** A content type's singularName, `component:category.name`, `new` or `new-component`. */
   readonly name = input<string>();
 
-  protected readonly types = TYPES;
+  protected readonly typeInfos = TYPE_INFO;
+  protected readonly riskLabels = RISK_LABELS;
+  protected readonly segments = segments;
   protected readonly relations = RELATIONS;
   protected readonly lengthTypes = LENGTH_TYPES;
   protected readonly numberTypes = NUMBER_TYPES;
@@ -748,12 +1106,14 @@ export class Builder {
     Object.entries(this.sources()?.contentTypes ?? {}).map(([key, file]) => ({
       key,
       label: String(file['displayName'] ?? key),
+      single: file['kind'] === 'singleType',
     })),
   );
   protected readonly componentEntries = computed(() =>
     Object.entries(this.sources()?.components ?? {}).map(([uid, file]) => ({
       key: `component:${uid}`,
       uid,
+      displayName: String(file['displayName'] ?? uid),
       label: `${file['displayName'] ?? uid} (${uid})`,
     })),
   );
@@ -763,6 +1123,24 @@ export class Builder {
       attribute,
     })),
   );
+
+  protected readonly headerTitle = computed(() => {
+    const displayName = this.draft()?.['displayName'];
+    if (displayName) return String(displayName);
+    return this.t(
+      this.isComponent() ? 'builder.header.newComponent' : 'builder.header.newContentType',
+    );
+  });
+  protected readonly headerDescription = computed(() => {
+    const file = this.draft();
+    if (!file || this.isNew()) return this.t('builder.header.newDescription');
+    if (this.isComponent())
+      return this.t('builder.header.component', { name: this.componentUid() });
+    return this.t(
+      file['kind'] === 'singleType' ? 'builder.header.singleType' : 'builder.header.collectionType',
+      { name: String(file['singularName'] ?? '') },
+    );
+  });
 
   constructor() {
     void this.reloadSources();
@@ -841,20 +1219,24 @@ export class Builder {
 
   protected summary(attribute: Attribute): string {
     const parts: string[] = [];
-    if (attribute.required) parts.push('required');
-    if (attribute.unique) parts.push('unique');
-    if (attribute.private) parts.push('private');
-    if (attribute.relation)
-      parts.push(
-        `${attribute.relation} → ${attribute.target}${attribute.mappedBy ? ` (via ${attribute.mappedBy})` : ''}`,
-      );
-    if (attribute.component)
-      parts.push(`${attribute.component}${attribute.repeatable ? ' ×n' : ''}`);
+    if (attribute.relation) {
+      const via = attribute.mappedBy
+        ? ` ${this.t('builder.summary.via', { field: attribute.mappedBy })}`
+        : '';
+      parts.push(`${attribute.relation} → ${attribute.target}${via}`);
+    }
+    if (attribute.component) parts.push(attribute.component);
     if (attribute.components) parts.push(attribute.components.join(', '));
     if (attribute.enum) parts.push(attribute.enum.join(' | '));
-    if (attribute.maxLength !== undefined) parts.push(`≤ ${attribute.maxLength} chars`);
-    if (attribute.targetField) parts.push(`from ${attribute.targetField}`);
+    if (attribute.maxLength !== undefined)
+      parts.push(this.t('builder.summary.maxLength', { count: attribute.maxLength }));
+    if (attribute.targetField)
+      parts.push(this.t('builder.summary.from', { field: attribute.targetField }));
     return parts.join(' · ');
+  }
+
+  protected typeInfo(type: AttributeType): TypeInfo | undefined {
+    return TYPE_BY_NAME.get(type);
   }
 
   protected editAttribute(name: string | null): void {
@@ -1037,7 +1419,7 @@ export class Builder {
         ...this.change(this.pendingRemoval),
         allow: result.requires ?? 'safe',
       });
-      toast.success('Schema updated');
+      toast.success(this.t('builder.toast.updated'));
       const removed = this.pendingRemoval;
       this.pendingRemoval = false;
       this.planResult.set(null);

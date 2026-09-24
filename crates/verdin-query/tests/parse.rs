@@ -123,7 +123,10 @@ fn rejects_invalid_filters() {
     assert!(error("filters[meta][$eq]=1").contains("cannot be used"));
     assert!(query("filters[meta][$null]=true").is_ok());
     assert!(error("filters[views][$like]=1").contains("invalid filter operator"));
-    assert!(error("filters[seo][metaTitle][$eq]=x").contains("not supported yet"));
+    assert!(
+        query("filters[seo][metaTitle][$eq]=x").is_ok(),
+        "non-repeatable component fields are filterable"
+    );
     assert!(error("filters[category]=x").contains("filter `category` by its fields"));
     assert!(error("filters[category][nope][$eq]=x").contains("invalid key `nope`"));
     assert!(error("filters[publishOn][$between]=2026-01-01").contains("two values"));

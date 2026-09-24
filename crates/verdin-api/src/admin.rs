@@ -32,8 +32,14 @@ use crate::error::ApiError;
 use crate::handlers::{bearer, parse_data};
 use crate::limiter::RateLimiter;
 
+#[path = "engagement.rs"]
+pub(crate) mod engagement;
+
 pub const REFRESH_COOKIE: &str = "verdin_refresh";
 pub const CSRF_HEADER: &str = "x-verdin-csrf";
+
+/// Refreshes allowed per login attempt allowed (per IP and minute).
+const REFRESH_BUDGET: u32 = 10;
 
 /// A boxed future, for the object-safe [`SchemaEditor`].
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
@@ -100,6 +106,9 @@ struct AdminState {
     service: DocumentService,
     config: Arc<AdminConfig>,
     limiter: Arc<RateLimiter>,
+    /// Refreshes run on every page load: their own, larger budget (the token itself is
+    /// unguessable and reuse revokes the session family).
+    refresh_limiter: Arc<RateLimiter>,
     flavor: &'static str,
 }
 
@@ -107,12 +116,17 @@ type ApiResult = Result<Response, ApiError>;
 
 pub fn router(db: Database, registry: Registry, auth: AuthService, config: AdminConfig) -> Router {
     let limiter = Arc::new(RateLimiter::new(config.auth_rate_limit, Duration::from_secs(60)));
+    let refresh_limiter = Arc::new(RateLimiter::new(
+        config.auth_rate_limit.saturating_mul(REFRESH_BUDGET),
+        Duration::from_secs(60),
+    ));
     let state = AdminState {
         flavor: db.flavor().as_str(),
         service: DocumentService::new(db, registry, config.output),
         auth,
         config: Arc::new(config),
         limiter,
+        refresh_limiter,
     };
     Router::new()
         .route("/auth/status", get(auth_status))
@@ -122,6 +136,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .route("/auth/logout", post(logout))
         .route("/auth/me", get(me))
         .route("/users", get(list_users).post(create_user))
+        .route("/users/me/preferences", get(get_preferences).put(put_preferences))
         .route("/users/{id}", get(get_user).put(update_user).delete(delete_user))
         .route("/roles", get(list_roles).post(create_role))
         .route("/roles/{id}", get(get_role).put(update_role).delete(delete_role))
@@ -141,6 +156,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .route("/schema/plan", post(schema_plan))
         .route("/schema/apply", post(schema_apply))
         .route("/system/info", get(system_info))
+        .merge(engagement::routes())
         .fallback(|| async { ApiError::NotFound })
         .with_state(state)
 }
@@ -290,7 +306,9 @@ async fn refresh(
     ClientIp(ip): ClientIp,
     headers: HeaderMap,
 ) -> ApiResult {
-    rate_limit(&state, &ip)?;
+    if !state.refresh_limiter.allow(&ip) {
+        return Err(ApiError::TooManyRequests);
+    }
     require_csrf(&headers)?;
     let token = refresh_cookie(&headers).ok_or(ApiError::Unauthorized)?;
     let session = state.auth.refresh(&token, user_agent(&headers)).await?;
@@ -313,6 +331,24 @@ async fn me(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
 }
 
 // ------------------------------------------------------------------ users
+
+/// Any signed-in admin reads and writes their own preferences; no permission needed.
+async fn get_preferences(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
+    let principal = principal(&state, &headers).await?;
+    Ok(data(state.auth.preferences(principal.user.id).await?))
+}
+
+async fn put_preferences(
+    State(state): State<AdminState>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> ApiResult {
+    let principal = principal(&state, &headers).await?;
+    let mut input: serde_json::Value = body(&bytes)?;
+    let value = input.get_mut("data").map(serde_json::Value::take).unwrap_or(input);
+    state.auth.set_preferences(principal.user.id, value.clone()).await?;
+    Ok(data(value))
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -850,6 +886,7 @@ fn admin_query(
     if grant == Grant::Own {
         let own = Filter::Condition(Condition {
             column: "created_by_id".into(),
+            path: Vec::new(),
             kind: ColumnKind::BigInt,
             op: Op::Eq,
             operand: Operand::Value(SqlValue::BigInt(principal.user.id)),
@@ -881,7 +918,29 @@ async fn content_list(
     headers: HeaderMap,
 ) -> ApiResult {
     let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_READ).await?;
-    let query = admin_query(&state, &uid, raw.as_deref(), &principal, grant)?;
+    // `unseen=true` (admin only): documents the caller has not opened since they changed.
+    let mut unseen = false;
+    let raw = raw.map(|raw| {
+        raw.split('&')
+            .filter(|pair| match *pair {
+                "unseen=true" => {
+                    unseen = true;
+                    false
+                }
+                "unseen=false" => false,
+                _ => true,
+            })
+            .collect::<Vec<_>>()
+            .join("&")
+    });
+    let mut query = admin_query(&state, &uid, raw.as_deref(), &principal, grant)?;
+    if unseen {
+        let filter = engagement::unseen_filter(&uid, principal.user.id);
+        query.filters = Some(match query.filters.take() {
+            Some(existing) => Filter::And(vec![existing, filter]),
+            None => filter,
+        });
+    }
     let page = state.service.find_many(&uid, &query).await?;
     Ok(Json(json!({ "data": page.documents, "meta": { "pagination": page.meta } })).into_response())
 }
@@ -926,6 +985,7 @@ async fn content_update(
     let data = parse_data(&bytes)?;
     let options = WriteOptions { publish: false, actor: Some(principal.user.id) };
     state.service.update(&uid, &document_id, &data, options).await?;
+    engagement::changed(state.service.db(), &uid, &document_id, Some(principal.user.id)).await?;
     let query = admin_query(&state, &uid, raw.as_deref(), &principal, Grant::All)?;
     read_document(&state, &uid, &document_id, &query, StatusCode::OK).await
 }
@@ -938,6 +998,7 @@ async fn content_delete(
     let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_DELETE).await?;
     ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
     state.service.delete(&uid, &document_id).await?;
+    engagement::deleted(state.service.db(), &uid, &document_id).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -960,6 +1021,7 @@ async fn content_action(
         "discard-draft" => state.service.discard_draft(&uid, &document_id).await?,
         _ => return Err(ApiError::NotFound),
     }
+    engagement::changed(state.service.db(), &uid, &document_id, Some(principal.user.id)).await?;
     read_document(&state, &uid, &document_id, &query, StatusCode::OK).await
 }
 

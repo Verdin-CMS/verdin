@@ -94,4 +94,81 @@ test('create a type, write content, publish it and read it over the API', async 
     body: 'Written by Playwright.',
   });
   expect(body.data[0].publishedAt).toBeTruthy();
+
+  // Votes on the entry itself.
+  await page.getByRole('link', { name: 'Article', exact: true }).first().click();
+  await page.getByRole('cell', { name: 'Hello from Playwright' }).click();
+  await page.getByRole('button', { name: 'Vote up' }).click();
+  await expect(page.getByRole('button', { name: 'Vote up' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  // Dashboard widgets: an "unseen" list (Ada opened the article, so it is empty) and a poll.
+  await page.getByRole('link', { name: 'Home' }).click();
+  await page.getByRole('button', { name: 'Customize' }).click();
+  await page.getByRole('button', { name: 'Add widget' }).first().click();
+  await dialog.getByRole('button', { name: /Entry list/ }).click();
+  await dialog.getByText('Only entries I have not seen').click();
+  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.getByText('All caught up: nothing new to see.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Add widget' }).first().click();
+  await dialog.getByRole('button', { name: /Poll/ }).click();
+  await dialog.getByLabel('Question').fill('What next?');
+  await dialog.getByLabel('Answer 1').fill('Media library');
+  await dialog.getByLabel('Answer 2').fill('GraphQL');
+  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: /Media library/ }).click();
+  await expect(page.getByText('1 voter')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Media library/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Done' }).click();
+  // The layout is stored on the server: it survives a reload.
+  await page.reload();
+  await expect(page.getByText('What next?')).toBeVisible();
+  await expect(page.getByText('All caught up: nothing new to see.')).toBeVisible();
+
+  // Optional visual tour (VERDIN_SCREENSHOTS=1): every main page in light, dark and Spanish.
+  if (process.env['VERDIN_SCREENSHOTS']) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const documentId = body.data[0].documentId as string;
+    const pages: [string, string][] = [
+      ['home', '/admin/'],
+      ['list', '/admin/content/api::article'],
+      ['edit', `/admin/content/api::article/${documentId}`],
+      ['builder', '/admin/builder/article'],
+      ['users', '/admin/settings/users'],
+      ['roles', '/admin/settings/roles'],
+      ['tokens', '/admin/settings/tokens'],
+      ['public', '/admin/settings/public'],
+    ];
+    for (const [variant, preferences] of [
+      ['light', { theme: 'light', locale: 'en' }],
+      ['dark', { theme: 'dark', locale: 'en' }],
+      ['es', { theme: 'light', locale: 'es' }],
+    ] as const) {
+      await page.evaluate(
+        (value) => localStorage.setItem('verdin.preferences', JSON.stringify(value)),
+        preferences,
+      );
+      for (const [name, url] of pages) {
+        await page.goto(url);
+        await page.waitForLoadState('networkidle');
+        await page.screenshot({ path: `test-results/tour/${variant}-${name}.png` });
+      }
+    }
+    await page.goto('/admin/');
+    await page.getByRole('button', { name: 'Personalizar' }).click();
+    await page.screenshot({ path: 'test-results/tour/es-dashboard-edit.png' });
+    await page.getByRole('button', { name: 'Añadir widget' }).first().click();
+    await page.screenshot({ path: 'test-results/tour/es-widget-dialog.png' });
+    await page.keyboard.press('Escape');
+    await page.context().clearCookies();
+    await page.evaluate(() => sessionStorage.clear());
+    await page.goto('/admin/login');
+    await page.screenshot({ path: 'test-results/tour/es-login.png' });
+  }
 });

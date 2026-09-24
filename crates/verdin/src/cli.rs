@@ -9,6 +9,7 @@ use verdin_schema::Schema;
 
 use crate::app::{self, AppContext, Mode, check_config, ensure_migrated};
 use crate::config::{Config, LogConfig, LogFormat};
+use crate::new::Engine;
 
 #[derive(Debug, Parser)]
 #[command(name = "verdin", version, about = "Open source headless CMS")]
@@ -23,6 +24,14 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Create a new project directory with a configuration, an empty schema and fresh secrets.
+    New {
+        /// Directory to create.
+        dir: PathBuf,
+        /// Database the generated `.env` points at.
+        #[arg(long, value_enum, default_value_t = Engine::Sqlite)]
+        database: Engine,
+    },
     /// Start the server in production mode.
     Start {
         /// Apply pending safe migrations before starting.
@@ -151,9 +160,10 @@ impl Project {
             .url
             .as_deref()
             .context("no database configured: set VERDIN_DATABASE_URL or [database].url")?;
+        let url = resolve_sqlite_path(url, &self.root);
         let options =
             ConnectOptions { max_connections: self.config.database.pool_max, ..Default::default() };
-        Database::connect(url, &options).await.context("connecting to database")
+        Database::connect(&url, &options).await.context("connecting to database")
     }
 
     /// Authentication, from the secrets in the environment (never in `verdin.toml`).
@@ -196,13 +206,21 @@ pub async fn run(cli: Cli) -> Result<()> {
             println!("VERDIN_TOKEN_PEPPER={}", verdin_auth::crypto::random_token());
             return Ok(());
         }
+        Command::New { dir, database } => {
+            crate::new::scaffold(&dir, database)?;
+            println!("created {}", dir.display());
+            println!("\n  cd {}\n  verdin dev\n", dir.display());
+            println!("then open http://localhost:1337/admin/ to register the first admin");
+            return Ok(());
+        }
         _ => {}
     }
+    load_dotenv(&cli.config)?;
     let project = Project::load(&cli.config)?;
     init_logging(&project.config.log);
 
     match cli.command {
-        Command::Version | Command::Secrets => unreachable!("handled above"),
+        Command::Version | Command::Secrets | Command::New { .. } => unreachable!("handled above"),
         Command::Admin(command) => admin(project, command).await,
         Command::Start { migrate } => start(project, Mode::Production, migrate).await,
         Command::Dev => start(project, Mode::Development, true).await,
@@ -285,7 +303,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     ensure_migrated(&db, &schema, migrate || mode == Mode::Development).await?;
 
     let admin = &project.config.admin;
-    if !admin.secure_cookies {
+    if mode == Mode::Production && admin.secure_cookies == Some(false) {
         tracing::warn!("[admin].secure_cookies is off: refresh cookies may travel over plain HTTP");
     }
     let auth = project.auth(&db)?;
@@ -333,6 +351,36 @@ fn print_plan(plan: &Plan, done: usize) {
     }
 }
 
+/// Relative SQLite paths are relative to the project, not to the working directory.
+fn resolve_sqlite_path(url: &str, root: &Path) -> String {
+    let Some(rest) = url.strip_prefix("sqlite://") else { return url.to_owned() };
+    let (path, query) =
+        rest.split_once('?').map_or((rest, None), |(path, query)| (path, Some(query)));
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.starts_with(':')
+        || root.as_os_str().is_empty()
+    {
+        return url.to_owned();
+    }
+    let joined = root.join(path);
+    match query {
+        Some(query) => format!("sqlite://{}?{query}", joined.display()),
+        None => format!("sqlite://{}", joined.display()),
+    }
+}
+
+/// Loads `.env` next to the configuration file; variables already set win.
+fn load_dotenv(config_path: &Path) -> Result<()> {
+    let dir = config_path.parent().filter(|dir| !dir.as_os_str().is_empty());
+    let path = dir.unwrap_or(Path::new(".")).join(".env");
+    match dotenvy::from_path(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.not_found() => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
+    }
+}
+
 fn plural(count: usize) -> &'static str {
     if count == 1 { "" } else { "s" }
 }
@@ -367,4 +415,23 @@ async fn shutdown_signal() {
         () = terminate => {},
     }
     tracing::info!("shutdown signal received");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_relative_sqlite_paths() {
+        let root = Path::new("site");
+        assert_eq!(resolve_sqlite_path("sqlite://data/a.db", root), "sqlite://site/data/a.db");
+        assert_eq!(
+            resolve_sqlite_path("sqlite://a.db?mode=rwc", root),
+            "sqlite://site/a.db?mode=rwc"
+        );
+        assert_eq!(resolve_sqlite_path("sqlite:///abs/a.db", root), "sqlite:///abs/a.db");
+        assert_eq!(resolve_sqlite_path("sqlite::memory:", root), "sqlite::memory:");
+        assert_eq!(resolve_sqlite_path("sqlite://a.db", Path::new("")), "sqlite://a.db");
+        assert_eq!(resolve_sqlite_path("postgres://h/db", root), "postgres://h/db");
+    }
 }

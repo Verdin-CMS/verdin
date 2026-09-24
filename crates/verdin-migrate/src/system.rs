@@ -14,6 +14,10 @@ pub const SESSIONS: &str = "vd_sessions";
 pub const API_TOKENS: &str = "vd_api_tokens";
 pub const API_TOKEN_PERMISSIONS: &str = "vd_api_token_permissions";
 pub const PUBLIC_PERMISSIONS: &str = "vd_public_permissions";
+pub const DOCUMENT_VIEWS: &str = "vd_document_views";
+pub const DOCUMENT_VOTES: &str = "vd_document_votes";
+pub const POLLS: &str = "vd_polls";
+pub const POLL_VOTES: &str = "vd_poll_votes";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -64,6 +68,8 @@ pub fn system_tables() -> Vec<Table> {
                     Column::new("is_active", ColumnType::Boolean).not_null(),
                     Column::new("failed_logins", ColumnType::Integer).not_null(),
                     Column::new("locked_until", ColumnType::DateTime),
+                    // Admin panel preferences (dashboard layout…), owned by the user.
+                    Column::new("preferences", ColumnType::Json),
                 ],
                 timestamps().to_vec(),
             ]
@@ -182,6 +188,74 @@ pub fn system_tables() -> Vec<Table> {
             ],
             indexes: vec![unique(PUBLIC_PERMISSIONS, "grant", &["subject", "action"])],
             foreign_keys: Vec::new(),
+        },
+        // Which admin has seen which document version (removed when someone else edits it).
+        Table {
+            name: DOCUMENT_VIEWS.into(),
+            columns: vec![
+                id(),
+                Column::new("user_id", ColumnType::BigInt).not_null(),
+                varchar("content_type", 255).not_null(),
+                varchar("document_id", 26).not_null(),
+                Column::new("viewed_at", ColumnType::DateTime).not_null(),
+            ],
+            indexes: vec![
+                unique(DOCUMENT_VIEWS, "view", &["user_id", "content_type", "document_id"]),
+                index(DOCUMENT_VIEWS, "document", &["content_type", "document_id"]),
+            ],
+            foreign_keys: vec![references("user_id", ADMIN_USERS)],
+        },
+        // One vote (+1 or -1) per admin and document.
+        Table {
+            name: DOCUMENT_VOTES.into(),
+            columns: vec![
+                id(),
+                Column::new("user_id", ColumnType::BigInt).not_null(),
+                varchar("content_type", 255).not_null(),
+                varchar("document_id", 26).not_null(),
+                Column::new("value", ColumnType::SmallInt).not_null(),
+                Column::new("created_at", ColumnType::DateTime).not_null(),
+            ],
+            indexes: vec![
+                unique(DOCUMENT_VOTES, "vote", &["user_id", "content_type", "document_id"]),
+                index(DOCUMENT_VOTES, "document", &["content_type", "document_id"]),
+            ],
+            foreign_keys: vec![references("user_id", ADMIN_USERS)],
+        },
+        // Polls shown in dashboard widgets. `created_by` has no foreign key: polls
+        // outlive their author.
+        Table {
+            name: POLLS.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("question", 500).not_null(),
+                    Column::new("options", ColumnType::Json).not_null(),
+                    Column::new("multiple", ColumnType::Boolean).not_null(),
+                    Column::new("closed", ColumnType::Boolean).not_null(),
+                    Column::new("closes_at", ColumnType::DateTime),
+                    Column::new("created_by", ColumnType::BigInt),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+        },
+        Table {
+            name: POLL_VOTES.into(),
+            columns: vec![
+                id(),
+                Column::new("poll_id", ColumnType::BigInt).not_null(),
+                Column::new("user_id", ColumnType::BigInt).not_null(),
+                Column::new("choice", ColumnType::SmallInt).not_null(),
+                Column::new("created_at", ColumnType::DateTime).not_null(),
+            ],
+            indexes: vec![
+                unique(POLL_VOTES, "vote", &["poll_id", "user_id", "choice"]),
+                index(POLL_VOTES, "user", &["user_id"]),
+            ],
+            foreign_keys: vec![references("poll_id", POLLS), references("user_id", ADMIN_USERS)],
         },
     ]
 }
