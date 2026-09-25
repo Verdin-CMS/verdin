@@ -24,10 +24,21 @@ All notable changes to Verdin are documented here. The format follows
   published version, `?locale=` on the REST and admin APIs and a `locale` argument in
   GraphQL, locale-aware relations and filters, a locale switcher and "fill from another
   locale" in the editor. See [docs/i18n.md](docs/i18n.md).
+- **`verdin import strapi`**: imports a Strapi v4/v5 export (`strapi export --no-encrypt`,
+  `.tar.gz`, `.tar` or directory): schema files, locales, media library, entries (drafts,
+  published versions, locales), relations and media, including inside components; writes a
+  Strapi → Verdin id map. See [docs/importing-from-strapi.md](docs/importing-from-strapi.md).
 - Admin: bulk publish, unpublish and delete from the content list, with progress and a
   summary of failures.
 - Admin: list view settings per content type and user (visible columns and their order,
   default sort and page size).
+
+### Changed
+
+- Attribute names follow Strapi's rule (a letter, then letters, digits and underscores:
+  `kit_man`, `SEO`) instead of camelCase only; names that map to the same column are refused.
+- `regex` options accept JavaScript-like patterns (look-around, backreferences), with a
+  backtracking limit.
 
 ### Fixed
 

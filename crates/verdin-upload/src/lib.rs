@@ -10,6 +10,7 @@ mod storage;
 
 pub use config::{Breakpoint, ProviderConfig, UploadConfig};
 pub use mime::{detect_mime, is_inline_safe};
+pub use service::import::{ImportedFile, ImportedObject};
 pub use service::{
     FileInfo, FileList, FileQuery, FileSort, Folder, IncomingFile, UploadError, UploadService,
 };

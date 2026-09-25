@@ -802,6 +802,9 @@ fn attribute_json(attribute: &Attribute) -> Value {
     if let Some(default) = &attribute.default {
         out.insert("default".into(), default.clone());
     }
+    if !attribute.localized {
+        out.insert("pluginOptions".into(), json!({ "i18n": { "localized": false } }));
+    }
     let mut set = |key: &str, value: Value| {
         if !value.is_null() && value != json!(false) {
             out.insert(key.into(), value);
@@ -906,6 +909,11 @@ async fn content_types(State(state): State<AdminState>, headers: HeaderMap) -> A
                 "displayName": content_type.display_name,
                 "description": content_type.description,
                 "draftAndPublish": content_type.draft_and_publish,
+                "pluginOptions": if content_type.localized {
+                    json!({ "i18n": { "localized": true } })
+                } else {
+                    json!({})
+                },
                 "attributes": attributes_json(&content_type.attributes),
             })
         })

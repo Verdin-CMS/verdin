@@ -58,10 +58,30 @@ pub enum Command {
         #[arg(long, short)]
         out: Option<PathBuf>,
     },
+    /// Import another CMS's project (schema and content).
+    #[command(subcommand)]
+    Import(ImportCommand),
     /// Print freshly generated secrets for VERDIN_ADMIN_JWT_SECRET and VERDIN_TOKEN_PEPPER.
     Secrets,
     /// Print version information.
     Version,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ImportCommand {
+    /// A Strapi v4/v5 project exported with `strapi export --no-encrypt` (a `.tar.gz`,
+    /// `.tar` or unpacked directory): content types and components become schema files,
+    /// then entries, locales, media, relations and folders are imported.
+    Strapi {
+        /// The export file or directory.
+        path: PathBuf,
+        /// Only write the schema files.
+        #[arg(long)]
+        schema_only: bool,
+        /// Overwrite existing schema files, and import into types that have entries.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -244,6 +264,9 @@ pub async fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
+        Command::Import(ImportCommand::Strapi { path, schema_only, force }) => {
+            import_strapi(project, &path, crate::import::Options { schema_only, force }).await
+        }
         Command::Schema(SchemaCommand::Check) => {
             let schema = project.schema()?;
             println!(
@@ -269,6 +292,62 @@ pub async fn run(cli: Cli) -> Result<()> {
             result
         }
     }
+}
+
+async fn import_strapi(
+    project: Project,
+    path: &Path,
+    options: crate::import::Options,
+) -> Result<()> {
+    let db = project.database().await?;
+    let storage = verdin_upload::Storage::new(&project.config.upload.provider, &project.root)
+        .context("configuring [upload].provider")?;
+    let upload =
+        verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone());
+    let schema_dir = project.root.join(&project.config.schema.path);
+    let result = crate::import::strapi(path, &schema_dir, &db, &upload, &options).await;
+    db.close().await;
+    let outcome = result?;
+    println!(
+        "Strapi {} export: {} schema file{} in {}",
+        outcome.strapi_version.as_deref().unwrap_or("(unknown version)"),
+        outcome.files.len(),
+        plural(outcome.files.len()),
+        schema_dir.display()
+    );
+    for warning in &outcome.schema_warnings {
+        println!("  warning: {warning}");
+    }
+    let Some(report) = outcome.report else { return Ok(()) };
+    println!(
+        "imported {} document{} ({} version{}), {} file{}, {} folder{}, {} locale{}, {} link{}, {} media link{}",
+        report.documents,
+        plural(report.documents),
+        report.versions.values().sum::<usize>(),
+        plural(report.versions.values().sum::<usize>()),
+        report.files,
+        plural(report.files),
+        report.folders,
+        plural(report.folders),
+        report.locales,
+        plural(report.locales),
+        report.links,
+        plural(report.links),
+        report.media,
+        plural(report.media),
+    );
+    for (uid, count) in &report.versions {
+        println!("  {uid}: {count}");
+    }
+    for warning in &report.warnings {
+        println!("  warning: {warning}");
+    }
+    let map = project.root.join("strapi-id-map.json");
+    let ids = serde_json::json!({ "documents": report.documents_map, "files": report.files_map });
+    std::fs::write(&map, serde_json::to_string_pretty(&ids)? + "\n")
+        .with_context(|| format!("writing {}", map.display()))?;
+    println!("Strapi → Verdin ids: {}", map.display());
+    Ok(())
 }
 
 async fn admin(project: Project, command: AdminCommand) -> Result<()> {

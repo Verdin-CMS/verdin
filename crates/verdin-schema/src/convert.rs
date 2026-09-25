@@ -286,7 +286,8 @@ fn check_lengths(raw: &RawAttribute, varchar: bool, issues: &mut Issues) {
 
 fn check_regex(pattern: Option<&str>, issues: &mut Issues) {
     if let Some(pattern) = pattern
-        && let Err(error) = Regex::new(pattern)
+        // JavaScript-like patterns (look-around, backreferences), as in Strapi.
+        && let Err(error) = fancy_regex::Regex::new(pattern)
     {
         issues.push(("regex".into(), format!("invalid regular expression: {error}")));
     }

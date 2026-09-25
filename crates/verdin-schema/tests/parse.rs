@@ -193,8 +193,25 @@ fn tag_with(attributes: Value) -> Source {
 #[test]
 fn checks_attribute_names() {
     assert_error(
-        &replace(blog(), tag_with(json!({ "Label": { "type": "string" } }))),
-        "must be camelCase",
+        &replace(blog(), tag_with(json!({ "_label": { "type": "string" } }))),
+        "must start with a letter",
+    );
+    // Strapi-style names are allowed; two names for one column are not.
+    assert!(
+        Schema::parse(&replace(
+            blog(),
+            tag_with(json!({ "Label": { "type": "string" }, "kit_man": { "type": "string" } }))
+        ))
+        .is_ok()
+    );
+    assert_error(
+        &replace(
+            blog(),
+            tag_with(
+                json!({ "metaTitle": { "type": "string" }, "meta_title": { "type": "string" } }),
+            ),
+        ),
+        "maps to the same column `meta_title`",
     );
     assert_error(
         &replace(blog(), tag_with(json!({ "createdAt": { "type": "datetime" } }))),
@@ -316,7 +333,7 @@ fn collects_all_errors() {
     let sources = replace(
         blog(),
         tag_with(
-            json!({ "Bad": { "type": "string" }, "worse": { "type": "markdown" }, "slug": { "type": "uid", "targetField": "nope" } }),
+            json!({ "_bad": { "type": "string" }, "worse": { "type": "markdown" }, "slug": { "type": "uid", "targetField": "nope" } }),
         ),
     );
     assert_eq!(errors(&sources).len(), 3);

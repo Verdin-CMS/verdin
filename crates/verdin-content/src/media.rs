@@ -281,7 +281,12 @@ async fn current_media(tx: &mut Tx, link_table: &str, source_id: i64) -> Result<
     Ok(rows.iter().filter_map(|row| row[0].as_i64()).collect())
 }
 
-async fn replace_media(tx: &mut Tx, link_table: &str, source_id: i64, files: &[i64]) -> Result<()> {
+pub(crate) async fn replace_media(
+    tx: &mut Tx,
+    link_table: &str,
+    source_id: i64,
+    files: &[i64],
+) -> Result<()> {
     let mut delete = SqlBuilder::new(tx.flavor());
     delete.push("DELETE FROM ").ident(link_table).push(" WHERE ").ident("source_id");
     delete.push(" = ").param(SqlValue::BigInt(source_id));

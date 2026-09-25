@@ -13,6 +13,9 @@ use verdin_migrate::system::{FILES, FOLDERS};
 use verdin_query::sql::SqlBuilder;
 use verdin_schema::MediaType;
 
+#[path = "import.rs"]
+pub mod import;
+
 use crate::config::UploadConfig;
 use crate::image::{analyse, dimensions, resizable};
 use crate::mime::{detect_mime, extension_of};

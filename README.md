@@ -179,6 +179,16 @@ const { data } = await verdin.collection('articles').find({ populate: { category
 update, publish, unpublish, delete…), retries failed deliveries with backoff and keeps a
 delivery log. Payloads, signature checks and settings: [docs/webhooks.md](docs/webhooks.md).
 
+### Coming from Strapi
+
+```sh
+npx strapi export --no-encrypt -f my-export      # in the Strapi project
+verdin import strapi ../my-export.tar.gz         # in the Verdin project
+```
+
+Schema, entries, locales, media and relations come over; see
+[docs/importing-from-strapi.md](docs/importing-from-strapi.md).
+
 ### Internationalization
 
 Mark a content type as localized (`"pluginOptions": { "i18n": { "localized": true } }`) to

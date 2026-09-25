@@ -19,6 +19,12 @@ use crate::output::{OutputOptions, value_to_json};
 use crate::{Issue, TypeModel};
 
 /// Strapi's default `uid` alphabet.
+/// Whether `text` matches a schema `regex` (JavaScript-like syntax). Patterns that
+/// exceed the backtracking limit count as not matching.
+fn matches_pattern(pattern: &str, text: &str) -> bool {
+    fancy_regex::Regex::new(pattern).is_ok_and(|regex| regex.is_match(text).unwrap_or(false))
+}
+
 static UID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9\-_.~]*$").unwrap());
 static EMAIL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap());
@@ -321,7 +327,7 @@ fn convert(
             let text = expect_str(value).ok_or_else(|| fail("must be a string".into()))?;
             check_length(text, *min_length, *max_length).map_err(fail)?;
             if let Some(pattern) = regex
-                && !Regex::new(pattern).is_ok_and(|regex| regex.is_match(text))
+                && !matches_pattern(pattern, text)
             {
                 return Err(fail(format!("must match {pattern}")));
             }
@@ -345,7 +351,7 @@ fn convert(
             let text = expect_str(value).ok_or_else(|| fail("must be a string".into()))?;
             check_length(text, *min_length, *max_length).map_err(fail)?;
             let valid = match regex {
-                Some(pattern) => Regex::new(pattern).is_ok_and(|regex| regex.is_match(text)),
+                Some(pattern) => matches_pattern(pattern, text),
                 None => UID.is_match(text),
             };
             if !valid {

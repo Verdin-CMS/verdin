@@ -54,9 +54,11 @@ pub fn is_snake_identifier(name: &str) -> bool {
 }
 
 /// Attribute names are camelCase: `^[a-z][a-zA-Z0-9]*$`.
+/// A letter, then letters, digits and underscores (Strapi's rule): `title`, `metaTitle`,
+/// `kit_man`, `UID`.
 pub fn is_attribute_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    matches!(chars.next(), Some('a'..='z')) && name.chars().all(|c| c.is_ascii_alphanumeric())
+    name.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// `metaTitle` → `meta_title`, `seo2Title` → `seo2_title`.
@@ -100,8 +102,10 @@ mod tests {
     fn attribute_names() {
         assert!(is_attribute_name("title"));
         assert!(is_attribute_name("metaTitle2"));
-        assert!(!is_attribute_name("MetaTitle"));
-        assert!(!is_attribute_name("meta_title"));
+        assert!(is_attribute_name("MetaTitle"));
+        assert!(is_attribute_name("meta_title"));
+        assert!(!is_attribute_name("_meta"));
+        assert!(!is_attribute_name("2meta"));
         assert!(!is_attribute_name("meta-title"));
     }
 

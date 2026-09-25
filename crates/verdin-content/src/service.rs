@@ -34,6 +34,9 @@ use crate::{ContentError, Issue, Registry, Result, TypeModel};
 
 const DRAFT: i16 = 0;
 const PUBLISHED: i16 = 1;
+
+#[path = "import.rs"]
+pub mod import;
 /// Base table alias in reads.
 const BASE: &str = "t0";
 /// Largest `IN (…)` list per statement.

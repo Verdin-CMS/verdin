@@ -26,7 +26,7 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 |---|---|---|
 | **Content i18n** ✅ | L | Locales management, per-type and per-field localization (the `locale` column already exists), `?locale=` in the API, locale switcher and "fill from another locale" in the editor |
 | **Webhooks** ✅ | M | Event bus (entry create/update/delete/publish/unpublish, media events), signed deliveries (HMAC), retries with backoff, delivery log in the admin |
-| **Strapi importer** | L | `verdin import strapi` reads a Strapi v4/v5 project (schemas, components) and its database or a transfer export (data, relations, media) |
+| **Strapi importer** ✅ | L | `verdin import strapi` reads a Strapi v4/v5 project (schemas, components) and its database or a transfer export (data, relations, media) |
 | Content history ✅ | M | Versions of every document with diff and restore |
 | Bulk actions ✅ | S | Publish, unpublish and delete many entries from the list |
 | List view settings ✅ | S | Choose columns, default sort and page size per type |

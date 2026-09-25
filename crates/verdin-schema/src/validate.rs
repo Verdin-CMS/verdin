@@ -300,7 +300,11 @@ fn check_attributes(
         };
 
         if !naming::is_attribute_name(name) {
-            report.push(file, at(""), "attribute names must be camelCase: start with a lowercase letter, then letters and digits");
+            report.push(
+                file,
+                at(""),
+                "attribute names must start with a letter, then letters, digits and underscores",
+            );
             continue;
         }
         if name.len() > MAX_ATTRIBUTE_NAME {
