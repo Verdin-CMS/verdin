@@ -1,7 +1,8 @@
 name: Release
 
 # Pushing a tag such as v0.1.0 builds the binaries (admin panel embedded), publishes a
-# GitHub release with checksums and pushes the multi-arch image to ghcr.io.
+# GitHub release with checksums, pushes the multi-arch image to ghcr.io and publishes
+# @verdin/client to npm (with an NPM_TOKEN secret).
 on:
   push:
     tags: ["v*.*.*"]
@@ -155,3 +156,29 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  npm:
+    # Publishes @verdin/client when the repository has an NPM_TOKEN secret.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: packages/client
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm test && npm run build
+      - name: Publish
+        run: |
+          test "$(node -p 'require("./package.json").version')" = "${GITHUB_REF_NAME#v}" \
+            || { echo "packages/client/package.json does not match $GITHUB_REF_NAME"; exit 1; }
+          if [ -z "$NODE_AUTH_TOKEN" ]; then echo "No NPM_TOKEN secret: skipping"; exit 0; fi
+          npm publish --access public --provenance

@@ -50,6 +50,12 @@ pub enum Command {
     /// Manage admin users.
     #[command(subcommand)]
     Admin(AdminCommand),
+    /// Generate TypeScript definitions of the content API from the schema.
+    Types {
+        /// Write to this file instead of standard output.
+        #[arg(long, short)]
+        out: Option<PathBuf>,
+    },
     /// Print freshly generated secrets for VERDIN_ADMIN_JWT_SECRET and VERDIN_TOKEN_PEPPER.
     Secrets,
     /// Print version information.
@@ -224,6 +230,18 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Admin(command) => admin(project, command).await,
         Command::Start { migrate } => start(project, Mode::Production, migrate).await,
         Command::Dev => start(project, Mode::Development, true).await,
+        Command::Types { out } => {
+            let types = crate::typescript::generate(&project.schema()?);
+            match out {
+                Some(path) => {
+                    std::fs::write(&path, types)
+                        .with_context(|| format!("writing {}", path.display()))?;
+                    println!("wrote {}", path.display());
+                }
+                None => print!("{types}"),
+            }
+            Ok(())
+        }
         Command::Schema(SchemaCommand::Check) => {
             let schema = project.schema()?;
             println!(

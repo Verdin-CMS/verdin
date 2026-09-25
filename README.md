@@ -159,6 +159,29 @@ mutation { createArticle(data: { title: "Hello" }, status: DRAFT) { documentId }
 Settings: `playground` (GraphiQL on `GET /graphql`), `introspection`, `maxDepth`,
 `maxComplexity`.
 
+### TypeScript
+
+`verdin types -o src/verdin-types.ts` writes interfaces for every content type and
+component (responses and write inputs). [`@verdin/client`](packages/client) uses them for
+a typed REST, upload and GraphQL client:
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337', token: process.env.VERDIN_TOKEN });
+const { data } = await verdin.collection('articles').find({ populate: { category: true } });
+```
+
+### Rich text, components and field permissions
+
+- `blocks` fields hold Strapi's rich text JSON and are edited with a blocks editor;
+  `richtext` fields are Markdown with a live preview.
+- Components and dynamic zones may contain media and `oneWay`/`manyWay` relations. Write
+  file ids and `documentId`s, and read the files and documents back with `populate`.
+- A role's content permission may list fields (`"fields": ["title", "slug"]`): the role
+  then reads and writes only those. Edit the list per action in **Settings → Roles**.
+
 Connection URLs for every engine are listed at the top of
 [docker/compose.dev.yml](docker/compose.dev.yml).
 

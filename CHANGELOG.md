@@ -28,6 +28,20 @@ All notable changes to Verdin are documented here. The format follows
   made it (the base for webhooks).
 - **API documentation** feature: the OpenAPI document plus an embedded Scalar reference at
   `/api/docs` when made public (off by default: the document stays token-only).
+- **Blocks** attribute type: Strapi's rich text JSON (headings, paragraphs, lists, quotes,
+  code, images, links), validated on write (links must be `http(s)`, `mailto:` or relative);
+  TipTap-based blocks editor in the admin and a `blocks` field type in the builder.
+- Markdown preview for `richtext` fields (sanitized with DOMPurify).
+- **Relations and media inside components** and dynamic zones (`oneWay`/`manyWay` relations,
+  single or multiple media): stored as references in the component JSON, checked on write
+  (existence, allowed media types) and resolved on `populate` in the requested version.
+- **Field-level permissions**: content permissions may list the fields a role can read and
+  write; enforced in the content API, GraphQL and the admin, and editable per role.
+- **`verdin types`**: TypeScript definitions of every content type and component, their
+  write inputs and a route map.
+- **`@verdin/client`**: small typed client (REST documents, uploads, GraphQL) that uses
+  the generated types.
+- `verdin dev` reloads the schema when files change on disk.
 - `vd_settings` table; built-in roles of existing installations receive new permissions once.
 
 ### Changed

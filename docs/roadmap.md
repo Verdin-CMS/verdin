@@ -1,6 +1,6 @@
 # Verdin roadmap
 
-What is left after 0.1, grouped by release. The order is tentative and driven by feedback;
+What is left after 0.2, grouped by release. The order is tentative and driven by feedback;
 everything lands in the open source edition (there is no paid tier).
 
 Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
@@ -12,13 +12,13 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 | Runtime features ✅ | M | Settings → Features, switched live; API documentation with Scalar |
 | **GraphQL** ✅ | L | Feature switch; `async-graphql` dynamic schema generated from content types (queries, `_connection`, mutations, Strapi v5 shapes), same permissions as REST, filters/pagination/sort compatible with Strapi's GraphQL plugin, depth and complexity limits |
 | **Media library** ✅ | L | `media` attribute type (single/multiple, allowed types), `vd_files` + folders, upload API (`POST /api/upload`, Strapi-compatible response), image metadata, thumbnails and responsive formats (`image` crate, generated on upload, WebP/AVIF), focal point, alt text and captions, drag-and-drop library in the admin with grid/list views, search and folders, picker dialog in forms |
-| Upload providers ✅ | M | Local disk (default) and S3-compatible (AWS, R2, B2, RustFS) through `object_store`, size limits and MIME sniffing. Next: signed URLs for private buckets, WebP/AVIF variants, media inside components |
-| **Blocks editor** | L | Strapi `blocks` JSON format, TipTap-based editor in the admin (headings, lists, quotes, code, images from the media library, links) |
-| Markdown preview | S | Split view for `richtext` fields |
-| Relations and media inside components | M | Links from component JSON to documents and files, populate |
-| Field-level permissions | M | Per-role readable/writable fields in the admin and for API tokens |
-| TypeScript types & SDK | M | `verdin types` generates TS interfaces for every content type; small typed REST client (`@verdin/client`) |
-| Schema file watcher | S | `verdin dev` reloads when schema files change on disk |
+| Upload providers ✅ | M | Local disk (default) and S3-compatible (AWS, R2, B2, RustFS) through `object_store`, size limits and MIME sniffing. Next: signed URLs for private buckets, WebP/AVIF variants |
+| **Blocks editor** ✅ | L | Strapi `blocks` JSON format, TipTap-based editor in the admin (headings, lists, quotes, code, images from the media library, links) |
+| Markdown preview ✅ | S | Split view for `richtext` fields |
+| Relations and media inside components ✅ | M | `oneWay`/`manyWay` relations and media in components and dynamic zones, stored as references, checked on write, resolved on populate |
+| Field-level permissions ✅ | M | Per-role readable/writable fields in the admin and for API tokens |
+| TypeScript types & SDK ✅ | M | `verdin types` generates TS interfaces for every content type; small typed REST client (`@verdin/client`) |
+| Schema file watcher ✅ | S | `verdin dev` reloads when schema files change on disk |
 
 ## 0.3 — Content operations
 

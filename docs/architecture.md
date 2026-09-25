@@ -1,6 +1,6 @@
 # Verdin — Architecture (MVP)
 
-> Status: v0.8 · 2026-09-24 (MVP M0–M6 implemented, release 0.1.0)
+> Status: v0.9 · 2026-09-25 (MVP M0–M6 implemented; release 0.2.0: media, GraphQL, blocks, field permissions)
 > Verdin is an open source headless CMS written in Rust, inspired by Strapi v5.
 > Everything is free software: there is no "Enterprise" edition and no paid features.
 
