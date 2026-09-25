@@ -6,6 +6,8 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-25
+
 ### Added
 
 - **Webhooks** (Settings → Webhooks): entry and media events, per content type filters,

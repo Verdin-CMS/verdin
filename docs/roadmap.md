@@ -1,6 +1,6 @@
 # Verdin roadmap
 
-What is left after 0.2, grouped by release. The order is tentative and driven by feedback;
+What is left after 0.3, grouped by release. The order is tentative and driven by feedback;
 everything lands in the open source edition (there is no paid tier).
 
 Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
