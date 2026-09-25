@@ -296,6 +296,51 @@ test('create a type, write content, publish it and read it over the API', async 
   await expect(page.getByText('1 entry unpublished')).toBeVisible();
   expect((await (await request.get('/api/articles')).json()).data).toHaveLength(0);
 
+  // Content i18n: add French, build a localized type and write both versions.
+  await page.getByRole('link', { name: 'Internationalization' }).click();
+  await page.getByRole('button', { name: 'Add locale' }).first().click();
+  await dialog.getByLabel('Code').fill('fr');
+  await dialog.getByRole('button', { name: 'Add locale' }).click();
+  await expect(page.getByRole('cell', { name: 'fr', exact: true })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Content-type builder' }).click();
+  await page.getByRole('link', { name: 'New content type' }).click();
+  await expect(page.getByRole('heading', { name: 'New content type', level: 1 })).toBeVisible();
+  await page.getByLabel('Display name').fill('Page');
+  await expect(page.getByLabel('Plural name (route)')).toHaveValue('pages');
+  await page.getByLabel('Localized').click();
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await dialog.getByLabel('Name').fill('heading');
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await dialog.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.getByText('Schema updated').first()).toBeVisible();
+  expect(
+    JSON.parse(readFileSync(join(project, 'schema', 'content-types', 'page.json'), 'utf8'))
+      .pluginOptions,
+  ).toEqual({ i18n: { localized: true } });
+
+  await page.getByRole('link', { name: 'Page', exact: true }).first().click();
+  await page.getByRole('link', { name: 'Create' }).click();
+  await page.getByLabel('Heading').fill('Welcome');
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: /^Locale:/ }).click();
+  await page.getByRole('menuitemradio', { name: /French|Français|fr/ }).click();
+  await expect(page.getByText(/has no .* version yet/)).toBeVisible();
+  await page.getByLabel('Heading').fill('Bienvenue');
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/has no .* version yet/)).toBeHidden();
+  await expect(page.getByText('Last published')).toBeVisible();
+  await page.screenshot({ path: 'test-results/screens/i18n-editor.png' });
+  const pages = await (
+    await request.get('/admin/api/content/api::page?locale=fr', {
+      headers: { authorization: `Bearer ${await token(page)}` },
+    })
+  ).json();
+  expect(pages.data?.[0]?.heading ?? pages).toBe('Bienvenue');
+
   // Optional visual tour (VERDIN_SCREENSHOTS=1): every main page in light, dark and Spanish.
   if (process.env['VERDIN_SCREENSHOTS']) {
     await page.setViewportSize({ width: 1440, height: 900 });

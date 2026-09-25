@@ -26,6 +26,8 @@ export interface Version {
   documentId: string;
   event: HistoryEvent | string;
   status: 'draft' | 'published';
+  /** The version's locale (localized types). */
+  locale?: string | null;
   createdAt: string;
   createdBy: VersionAuthor | null;
 }

@@ -19,12 +19,14 @@ import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmCheckboxImports } from '@spartan-ng/helm/checkbox';
 import { HlmEmptyImports } from '@spartan-ng/helm/empty';
 import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
+import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { Api, ApiFailure, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { ContentLocales, isLocalized } from '../../core/content-locales';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { Schema } from '../../core/schema';
@@ -103,6 +105,7 @@ interface LiveVersion {
     HlmBadgeImports,
     HlmCheckboxImports,
     HlmInputGroupImports,
+    HlmNativeSelectImports,
     HlmSkeletonImports,
     HlmSpinnerImports,
     HlmEmptyImports,
@@ -116,7 +119,7 @@ interface LiveVersion {
         <vd-page-header [title]="type.displayName" [description]="type.description">
           <div actions>
             @if (canCreate()) {
-              <a hlmBtn [routerLink]="['/content', type.uid, 'new']"
+              <a hlmBtn [routerLink]="['/content', type.uid, 'new']" [queryParams]="localeQuery()"
                 ><ng-icon name="lucidePlus" /> {{ t('common.create') }}</a
               >
             }
@@ -143,6 +146,28 @@ interface LiveVersion {
                   [value]="search()"
                   (input)="setSearch($any($event.target).value)"
                 />
+              </div>
+            }
+            @if (localized() && locales.list()?.length) {
+              <div class="flex items-center gap-2">
+                <label for="list-locale" class="text-muted-foreground flex items-center">
+                  <ng-icon name="lucideLanguages" aria-hidden="true" />
+                  <span class="sr-only">{{ t('content.locale.label') }}</span>
+                </label>
+                <hlm-native-select
+                  selectId="list-locale"
+                  size="sm"
+                  class="w-44"
+                  [value]="locale() ?? ''"
+                  [disabled]="running()"
+                  (valueChange)="setLocale($event)"
+                >
+                  @for (option of locales.list() ?? []; track option.code) {
+                    <option hlmNativeSelectOption [value]="option.code">
+                      {{ option.name }} ({{ option.code }})
+                    </option>
+                  }
+                </hlm-native-select>
               </div>
             }
             <span class="text-muted-foreground ms-auto text-sm tabular-nums">
@@ -314,6 +339,7 @@ interface LiveVersion {
                                 variant="outline"
                                 size="sm"
                                 [routerLink]="['/content', type.uid, 'new']"
+                                [queryParams]="localeQuery()"
                                 ><ng-icon name="lucidePlus" /> {{ t('content.list.addFirst') }}</a
                               >
                             </div>
@@ -431,6 +457,7 @@ export class ContentList {
   private readonly api = inject(Api);
   private readonly router = inject(Router);
   private readonly preferences = inject(UserPreferences);
+  protected readonly locales = inject(ContentLocales);
   protected readonly auth = inject(Auth);
   protected readonly schema = inject(Schema);
   protected readonly i18n = inject(I18n);
@@ -450,6 +477,18 @@ export class ContentList {
   protected readonly main = computed(() => {
     const type = this.type();
     return type ? mainColumn(type, this.titleField()) : 'id';
+  });
+
+  protected readonly localized = computed(() => isLocalized(this.type()));
+  /** The listed locale (localized types): the last one chosen for the type, else the default. */
+  protected readonly locale = computed(() => {
+    if (!this.localized()) return null;
+    const saved = asObject(this.preferences.value()['listLocales'])[this.uid()];
+    return this.locales.resolve(typeof saved === 'string' ? saved : null);
+  });
+  protected readonly localeQuery = computed(() => {
+    const locale = this.locale();
+    return locale ? { locale } : {};
   });
 
   /** The view saved for this type, as stored (validated by `resolveView`). */
@@ -482,7 +521,11 @@ export class ContentList {
   private readonly reloads = signal(0);
   /** A different type starts unfiltered; defaults apply once the preferences are in. */
   private readonly viewSource = computed(
-    () => ({ uid: this.uid(), ready: this.preferences.loaded() && !!this.type() }),
+    () => ({
+      uid: this.uid(),
+      ready:
+        this.preferences.loaded() && !!this.type() && (!this.localized() || this.locales.loaded()),
+    }),
     { equal: (a, b) => a.uid === b.uid && a.ready === b.ready },
   );
   protected readonly search = linkedSignal({ source: this.uid, computation: () => '' });
@@ -496,13 +539,14 @@ export class ContentList {
   });
   /** Back to the first page whenever what is listed changes. */
   protected readonly page = linkedSignal({
-    source: () => [this.uid(), this.search(), this.sort(), this.pageSize()],
+    source: () => [this.uid(), this.locale(), this.search(), this.sort(), this.pageSize()],
     computation: () => 1,
   });
   /** Selected document ids; only ever entries of the current page. */
   protected readonly selection = linkedSignal<unknown, Set<string>>({
     source: () => [
       this.uid(),
+      this.locale(),
       this.page(),
       this.search(),
       this.sort(),
@@ -544,9 +588,14 @@ export class ContentList {
 
   constructor() {
     void this.preferences.load();
+    // Needed by localized types only; the list waits for it then.
+    this.locales.load().catch((error) => {
+      if (this.localized()) this.error.set(ApiFailure.from(error).message);
+    });
     effect(() => {
       const request = {
         uid: this.uid(),
+        locale: this.locale(),
         page: this.page(),
         pageSize: this.pageSize(),
         search: this.search(),
@@ -564,6 +613,7 @@ export class ContentList {
 
   private async load(request: {
     uid: string;
+    locale: string | null;
     page: number;
     pageSize: number;
     search: string;
@@ -575,6 +625,7 @@ export class ContentList {
     const query: Record<string, unknown> = {
       pagination: { page: request.page, pageSize: request.pageSize },
       sort: `${request.sort.field}:${request.sort.descending ? 'desc' : 'asc'}`,
+      locale: request.locale,
     };
     const field = this.titleField();
     if (request.search && field) query['filters'] = { [field]: { $containsi: request.search } };
@@ -587,7 +638,7 @@ export class ContentList {
         this.page.set(Math.max(1, meta.pageCount ?? 1));
         return;
       }
-      await this.loadPublished(request.uid, response.data);
+      await this.loadPublished(request.uid, request.locale, response.data);
       if (current !== this.requests) return;
       this.documents.set(response.data);
       this.meta.set(meta);
@@ -599,7 +650,11 @@ export class ContentList {
   }
 
   /** The published versions of the listed drafts. */
-  private async loadPublished(uid: string, documents: Document[]): Promise<void> {
+  private async loadPublished(
+    uid: string,
+    locale: string | null,
+    documents: Document[],
+  ): Promise<void> {
     if (!this.type()?.draftAndPublish || !documents.length) {
       this.published.set(new Map());
       return;
@@ -612,6 +667,7 @@ export class ContentList {
       fields: { 0: 'updatedAt', 1: 'publishedAt' },
       pagination: { pageSize: documents.length },
       filters: { documentId: { $in: ids } },
+      locale,
     });
     const response = await this.api.list<Document>(`/content/${uid}`, query);
     this.published.set(
@@ -685,7 +741,19 @@ export class ContentList {
   }
 
   protected open(document: Document): void {
-    void this.router.navigate(['/content', this.uid(), document.documentId]);
+    void this.router.navigate(['/content', this.uid(), document.documentId], {
+      queryParams: this.localeQuery(),
+    });
+  }
+
+  /** Lists another locale; the choice is remembered per type (the default is not stored). */
+  protected setLocale(code: string | null | undefined): void {
+    const type = this.type();
+    if (!type || !code || code === this.locale()) return;
+    const stored = code === this.locales.defaultCode() ? undefined : code;
+    this.preferences
+      .set(['listLocales', type.uid], stored)
+      .catch((error) => toast.error(ApiFailure.from(error).message));
   }
 
   // Selection and bulk actions
@@ -730,10 +798,11 @@ export class ContentList {
     const targets = this.targets(action);
     if (!targets.length || this.running()) return;
     const base = `/content/${uid}`;
+    const query = toQuery({ locale: this.locale() }) || undefined;
     const task = (document: Document): Promise<unknown> =>
       action === 'delete'
-        ? this.api.delete(`${base}/${document.documentId}`)
-        : this.api.post(`${base}/${document.documentId}/actions/${action}`);
+        ? this.api.delete(`${base}/${document.documentId}`, query)
+        : this.api.post(`${base}/${document.documentId}/actions/${action}`, {}, query);
 
     this.progress.set({ done: 0, total: targets.length });
     const outcomes = await runLimited(targets, BULK_CONCURRENCY, task, (done, total) =>

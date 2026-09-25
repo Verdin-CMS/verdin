@@ -38,6 +38,12 @@ import {
   SchemaPlan,
 } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
+import {
+  attributeLocalized,
+  setAttributeLocalized,
+  setTypeLocalized,
+  typeLocalized,
+} from './i18n-options';
 
 type SchemaFile = Record<string, unknown> & { attributes: Record<string, Attribute> };
 
@@ -512,6 +518,19 @@ interface AttributeDraft {
                       <p hlmFieldDescription>{{ t('builder.settings.draftAndPublishHint') }}</p>
                     </div>
                   </div>
+                  <div hlmField orientation="horizontal">
+                    <hlm-switch
+                      inputId="localized"
+                      [checked]="localized()"
+                      (checkedChange)="setLocalized($event)"
+                    />
+                    <div hlmFieldContent>
+                      <label hlmFieldLabel for="localized">{{
+                        t('builder.settings.localized')
+                      }}</label>
+                      <p hlmFieldDescription>{{ t('builder.settings.localizedHint') }}</p>
+                    </div>
+                  </div>
                 }
               </div>
             </section>
@@ -572,6 +591,12 @@ interface AttributeDraft {
                               <span hlmBadge variant="outline">{{
                                 t('builder.fields.repeatable')
                               }}</span>
+                            }
+                            @if (localized() && !attributeLocalized(entry.attribute)) {
+                              <span hlmBadge variant="outline">
+                                <ng-icon name="lucideGlobe" />
+                                {{ t('builder.fields.shared') }}
+                              </span>
                             }
                           </span>
                           @if (summary(entry.attribute); as text) {
@@ -960,6 +985,21 @@ interface AttributeDraft {
                     <label hlmFieldLabel for="field-unique">{{ t('builder.field.unique') }}</label>
                   </div>
                 }
+                @if (localized()) {
+                  <div hlmField orientation="horizontal" class="w-auto">
+                    <hlm-switch
+                      inputId="field-localized"
+                      [checked]="attributeLocalized(attr)"
+                      (checkedChange)="setFieldLocalized($event)"
+                    />
+                    <div hlmFieldContent>
+                      <label hlmFieldLabel for="field-localized">{{
+                        t('builder.field.localized')
+                      }}</label>
+                      <p hlmFieldDescription>{{ t('builder.field.localizedHint') }}</p>
+                    </div>
+                  </div>
+                }
                 @if (!isComponent()) {
                   <div hlmField orientation="horizontal" class="w-auto">
                     <hlm-switch
@@ -1153,6 +1193,7 @@ export class Builder {
   protected readonly uniqueTypes = UNIQUE_TYPES;
   protected readonly kebab = kebab;
   protected readonly camel = camel;
+  protected readonly attributeLocalized = attributeLocalized;
 
   protected readonly sources = signal<Sources | null>(null);
   protected readonly draft = signal<SchemaFile | null>(null);
@@ -1182,6 +1223,8 @@ export class Builder {
     () =>
       !!(this.draft()?.['options'] as { draftAndPublish?: boolean } | undefined)?.draftAndPublish,
   );
+  /** Content types only: components follow the attribute that holds them. */
+  protected readonly localized = computed(() => !this.isComponent() && typeLocalized(this.draft()));
   protected readonly typeEntries = computed(() =>
     Object.entries(this.sources()?.contentTypes ?? {}).map(([key, file]) => ({
       key,
@@ -1297,6 +1340,16 @@ export class Builder {
       });
   }
 
+  protected setLocalized(value: boolean): void {
+    this.draft.update((file) => (file ? setTypeLocalized(file, value) : file));
+  }
+
+  protected setFieldLocalized(value: boolean): void {
+    this.attributeDraft.update((field) =>
+      field ? { ...field, attribute: setAttributeLocalized(field.attribute, value) } : field,
+    );
+  }
+
   protected summary(attribute: Attribute): string {
     const parts: string[] = [];
     if (attribute.relation) {
@@ -1355,7 +1408,16 @@ export class Builder {
     if (type === 'enumeration') base.enum = ['option-a', 'option-b'];
     if (type === 'dynamiczone') base.components = [];
     this.attributeDraft.update((field) =>
-      field ? { ...field, attribute: { ...base, required: field.attribute.required } } : field,
+      field
+        ? {
+            ...field,
+            attribute: {
+              ...base,
+              required: field.attribute.required,
+              pluginOptions: field.attribute.pluginOptions,
+            },
+          }
+        : field,
     );
   }
 

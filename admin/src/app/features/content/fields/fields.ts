@@ -10,6 +10,7 @@ import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmTextareaImports } from '@spartan-ng/helm/textarea';
+import { HlmTooltipImports } from '@spartan-ng/helm/tooltip';
 
 import { Api, ApiFailure, toQuery } from '../../../core/api';
 import { I18n } from '../../../core/i18n/i18n';
@@ -33,6 +34,8 @@ import { RelationControl } from './relation';
 export interface FieldsContext {
   uid: string;
   documentId: string | null;
+  /** The document's locale, for localized types. */
+  locale?: string | null;
 }
 
 /** `metaTitle` → `Meta title`. */
@@ -58,6 +61,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
     HlmNativeSelectImports,
     HlmButtonImports,
     HlmBadgeImports,
+    HlmTooltipImports,
     NumberControl,
     SwitchControl,
     EnumControl,
@@ -91,6 +95,9 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                 <span class="text-sm font-medium">{{ humanize(name) }}</span>
                 @if (attribute.required) {
                   <span class="text-destructive" aria-hidden="true">*</span>
+                }
+                @if (isShared(name)) {
+                  <ng-container *ngTemplateOutlet="sharedMark" />
                 }
                 @if (listCount(name, attribute); as count) {
                   <span hlmBadge variant="outline" class="ms-auto tabular-nums">{{
@@ -228,6 +235,9 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                 @if (attribute.required) {
                   <span class="text-destructive" aria-hidden="true">*</span>
                 }
+                @if (isShared(name)) {
+                  <ng-container *ngTemplateOutlet="sharedMark" />
+                }
                 @if (listCount(name, attribute); as count) {
                   <span hlmBadge variant="outline" class="ms-auto tabular-nums">{{
                     i18n.formatNumber(count)
@@ -329,6 +339,9 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                 }
                 @if (attribute.private) {
                   <span hlmBadge variant="outline">{{ t('content.fields.private') }}</span>
+                }
+                @if (isShared(name)) {
+                  <ng-container *ngTemplateOutlet="sharedMark" />
                 }
               </label>
               @switch (attribute.type) {
@@ -455,6 +468,18 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
       }
     </div>
 
+    <ng-template #sharedMark>
+      <span
+        class="text-muted-foreground inline-flex items-center"
+        tabindex="0"
+        role="img"
+        [attr.aria-label]="t('content.locale.shared')"
+        [hlmTooltip]="t('content.locale.shared')"
+      >
+        <ng-icon name="lucideGlobe" size="14" aria-hidden="true" />
+      </span>
+    </ng-template>
+
     <ng-template #errors let-name>
       @if (hasErrors(name)) {
         @for (error of child(name)().errors(); track $index) {
@@ -482,6 +507,8 @@ export class FieldsComponent {
   readonly refs = input<References>({ labels: {}, files: [] });
   /** Read-only `mappedBy` relations, per attribute. */
   readonly inverse = input<Record<string, { id: string; label: string }[]>>({});
+  /** Attributes shared by every locale (top level of a localized type), marked with a globe. */
+  readonly shared = input<readonly string[]>([]);
 
   protected readonly humanize = humanize;
   protected readonly isToMany = isToMany;
@@ -491,6 +518,10 @@ export class FieldsComponent {
   protected readonly entries = computed(() =>
     Object.entries(this.attributes()).map(([name, attribute]) => ({ name, attribute })),
   );
+
+  protected isShared(name: string): boolean {
+    return this.shared().includes(name);
+  }
 
   protected idFor(name: string): string {
     return `${this.prefix()}-${name}`;
@@ -592,11 +623,11 @@ export class FieldsComponent {
       }));
       return;
     }
-    const { uid, documentId } = this.context();
+    const { uid, documentId, locale } = this.context();
     try {
       const result = await this.api.get<{ available: boolean; suggestion: string }>(
         `/content/${uid}/uid-available`,
-        toQuery({ field: name, value: text, documentId }),
+        toQuery({ field: name, value: text, documentId, locale }),
       );
       this.setValue(name, result.suggestion);
       this.uidNotes.update((notes) => ({ ...notes, [name]: '' }));

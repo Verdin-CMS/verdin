@@ -52,6 +52,13 @@ export interface Attribute {
   /** Media fields. */
   multiple?: boolean;
   allowedTypes?: MediaKind[];
+  /** `i18n.localized: false` shares the attribute across the locales of a localized type. */
+  pluginOptions?: PluginOptions;
+}
+
+/** Strapi's `pluginOptions`; only `i18n.localized` is read. */
+export interface PluginOptions {
+  i18n?: { localized?: boolean };
 }
 
 export type MediaKind = 'images' | 'videos' | 'audios' | 'files';
@@ -117,6 +124,8 @@ export interface ContentType {
   displayName: string;
   description?: string | null;
   draftAndPublish: boolean;
+  /** `i18n.localized: true`: documents have one version per content locale. */
+  pluginOptions?: PluginOptions;
   attributes: Attributes;
 }
 
@@ -262,4 +271,5 @@ export const ADMIN_SETTINGS_ACTIONS = [
   'schema.manage',
   'features.manage',
   'webhooks.manage',
+  'locales.manage',
 ] as const;

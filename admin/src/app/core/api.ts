@@ -111,8 +111,8 @@ export class Api {
     return this.request<T>('PUT', path, body, query);
   }
 
-  delete(path: string): Promise<void> {
-    return this.request<void>('DELETE', path);
+  delete(path: string, query?: string): Promise<void> {
+    return this.request<void>('DELETE', path, undefined, query);
   }
 }
 

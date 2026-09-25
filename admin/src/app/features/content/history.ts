@@ -23,6 +23,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
 import { Api, ApiFailure, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { ContentLocales, isLocalized } from '../../core/content-locales';
 import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { Schema } from '../../core/schema';
@@ -72,6 +73,7 @@ type Problem = 'forbidden' | 'unavailable' | 'other';
           <a
             class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm transition-colors"
             [routerLink]="editor()"
+            [queryParams]="editorQuery()"
             ><ng-icon name="lucideArrowLeft" size="14" />{{ t('content.history.backToEditor') }}</a
           >
         </div>
@@ -132,7 +134,7 @@ type Problem = 'forbidden' | 'unavailable' | 'other';
               </p>
             </div>
             <div hlmEmptyContent>
-              <a hlmBtn variant="outline" [routerLink]="editor()">
+              <a hlmBtn variant="outline" [routerLink]="editor()" [queryParams]="editorQuery()">
                 <ng-icon name="lucideArrowLeft" /> {{ t('content.history.backToEditor') }}
               </a>
             </div>
@@ -338,8 +340,19 @@ export class ContentHistory {
 
   readonly uid = input.required<string>();
   readonly documentId = input.required<string>();
+  /** `?locale=`, passed on by the editor (localized types). */
+  readonly locale = input<string>();
 
+  private readonly locales = inject(ContentLocales);
   protected readonly type = computed(() => this.schema.type(this.uid()));
+  /** The locale whose versions are listed; `null` for types that are not localized. */
+  protected readonly activeLocale = computed(() =>
+    isLocalized(this.type()) ? (this.locale() ?? this.locales.defaultCode()) : null,
+  );
+  protected readonly editorQuery = computed(() => {
+    const locale = this.activeLocale();
+    return locale ? { locale } : {};
+  });
   protected readonly versions = signal<Version[] | null>(null);
   protected readonly meta = signal<PageMeta>({});
   protected readonly page = signal(1);
@@ -373,7 +386,13 @@ export class ContentHistory {
     if (!type) return null;
     const field = this.schema.titleField(type);
     const title = field ? this.detail()?.data?.[field] : null;
-    return title ? `${type.displayName} · ${title}` : type.displayName;
+    const locale = this.activeLocale();
+    const parts = [
+      type.displayName,
+      title ? String(title) : null,
+      locale ? this.locales.name(locale) : null,
+    ];
+    return parts.filter(Boolean).join(' · ');
   });
 
   private listRequest = 0;
@@ -382,8 +401,12 @@ export class ContentHistory {
   constructor() {
     // A new document starts over at page 1.
     effect(() => {
+      if (isLocalized(this.type())) untracked(() => this.locales.load().catch(() => undefined));
+    });
+    effect(() => {
       this.uid();
       this.documentId();
+      this.activeLocale();
       untracked(() => {
         this.page.set(1);
         this.selectedId.set(null);
@@ -393,8 +416,9 @@ export class ContentHistory {
     effect(() => {
       const uid = this.uid();
       const documentId = this.documentId();
+      const locale = this.activeLocale();
       const page = this.page();
-      untracked(() => void this.loadList(uid, documentId, page));
+      untracked(() => void this.loadList(uid, documentId, locale, page));
     });
     effect(() => {
       const id = this.selectedId();
@@ -427,14 +451,19 @@ export class ContentHistory {
     return authorInitials(version.createdBy);
   }
 
-  private async loadList(uid: string, documentId: string, page: number): Promise<void> {
+  private async loadList(
+    uid: string,
+    documentId: string,
+    locale: string | null,
+    page: number,
+  ): Promise<void> {
     if (!this.type()) return;
     const request = ++this.listRequest;
     this.listLoading.set(true);
     try {
       const response = await this.api.list<Version>(
         `/history/${uid}/${documentId}`,
-        toQuery({ page, pageSize: PAGE_SIZE }),
+        toQuery({ page, pageSize: PAGE_SIZE, locale }),
       );
       if (request !== this.listRequest) return;
       this.listProblem.set(null);
@@ -500,6 +529,7 @@ export class ContentHistory {
       );
       await this.router.navigate(
         editorLink(type.kind, this.uid(), result?.documentId ?? this.documentId()),
+        { queryParams: this.editorQuery() },
       );
     } catch (error) {
       const failure = ApiFailure.from(error);

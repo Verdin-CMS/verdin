@@ -34,4 +34,4 @@ for (const [key, message] of Object.entries(additions)) {
   entries.splice(index < 0 ? entries.length : index + 1, 0, [key, message]);
 }
 writeFileSync(file, JSON.stringify(Object.fromEntries(entries), null, 2) + '\n');
-console.log(`en.json: ${Object.keys(additions).length} key(s) added or updated`);
+console.log(`${locale}.json: ${Object.keys(additions).length} key(s) added or updated`);

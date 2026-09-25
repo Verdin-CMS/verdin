@@ -218,6 +218,18 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                     </a>
                   </li>
                 }
+                <li hlmSidebarMenuItem>
+                  <a
+                    hlmSidebarMenuButton
+                    routerLink="/settings/internationalization"
+                    routerLinkActive
+                    #locales="routerLinkActive"
+                    [isActive]="locales.isActive"
+                  >
+                    <ng-icon name="lucideLanguages" />
+                    <span>{{ t('shell.locales') }}</span>
+                  </a>
+                </li>
                 @if (auth.can('features.manage')) {
                   <li hlmSidebarMenuItem>
                     <a
