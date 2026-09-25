@@ -25,6 +25,9 @@ pub const WEBHOOKS: &str = "vd_webhooks";
 pub const WEBHOOK_DELIVERIES: &str = "vd_webhook_deliveries";
 pub const HISTORY_VERSIONS: &str = "vd_history_versions";
 pub const LOCALES: &str = "vd_locales";
+pub const USERS: &str = "vd_users";
+pub const USER_ROLES: &str = "vd_user_roles";
+pub const USER_ROLE_PERMISSIONS: &str = "vd_user_role_permissions";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -421,6 +424,69 @@ pub fn system_tables() -> Vec<Table> {
             .concat(),
             indexes: vec![unique(LOCALES, "code", &["code"])],
             foreign_keys: Vec::new(),
+        },
+        // End users' roles for the content API (`type` is `authenticated` or a custom slug;
+        // the public role is `vd_public_permissions`).
+        Table {
+            name: USER_ROLES.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("name", 255).not_null(),
+                    Column::new("description", ColumnType::Text),
+                    varchar("type", 64).not_null(),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![unique(USER_ROLES, "type", &["type"])],
+            foreign_keys: Vec::new(),
+        },
+        Table {
+            name: USER_ROLE_PERMISSIONS.into(),
+            columns: vec![
+                id(),
+                Column::new("role_id", ColumnType::BigInt).not_null(),
+                varchar("subject", 255).not_null(),
+                varchar("action", 32).not_null(),
+            ],
+            indexes: vec![unique(
+                USER_ROLE_PERMISSIONS,
+                "grant",
+                &["role_id", "subject", "action"],
+            )],
+            foreign_keys: vec![references("role_id", USER_ROLES)],
+        },
+        // End users (Strapi's users-permissions). Tokens are stored as SHA-256 hashes;
+        // `token_version` invalidates issued JWTs (password change, block).
+        Table {
+            name: USERS.into(),
+            columns: [
+                vec![
+                    id(),
+                    Column::new("document_id", ColumnType::Char { length: 26 }).not_null(),
+                    varchar("username", 255).not_null(),
+                    varchar("email", 255).not_null(),
+                    varchar("password_hash", 255),
+                    varchar("provider", 32).not_null(),
+                    Column::new("confirmed", ColumnType::Boolean).not_null(),
+                    Column::new("blocked", ColumnType::Boolean).not_null(),
+                    Column::new("role_id", ColumnType::BigInt).not_null(),
+                    Column::new("token_version", ColumnType::Integer).not_null(),
+                    varchar("confirmation_token", 64),
+                    varchar("reset_token", 64),
+                    Column::new("reset_expires_at", ColumnType::DateTime),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![
+                unique(USERS, "document", &["document_id"]),
+                unique(USERS, "username", &["username"]),
+                unique(USERS, "email", &["email"]),
+                index(USERS, "role", &["role_id"]),
+            ],
+            foreign_keys: vec![references("role_id", USER_ROLES)],
         },
     ]
 }

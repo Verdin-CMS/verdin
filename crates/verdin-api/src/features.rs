@@ -27,6 +27,7 @@ pub const OPENAPI: &str = "openapi";
 pub const GRAPHQL: &str = "graphql";
 pub const WEBHOOKS: &str = "webhooks";
 pub const HISTORY: &str = "history";
+pub const USERS: &str = "users";
 
 /// Every feature, in display order.
 pub const CATALOG: &[FeatureSpec] = &[
@@ -57,20 +58,9 @@ pub const CATALOG: &[FeatureSpec] = &[
         default_enabled: true,
         core: true,
     },
-    FeatureSpec {
-        id: "users",
-        available: false,
-        planned: Some("0.4"),
-        default_enabled: false,
-        core: false,
-    },
-    FeatureSpec {
-        id: "email",
-        available: false,
-        planned: Some("0.4"),
-        default_enabled: false,
-        core: false,
-    },
+    FeatureSpec { id: USERS, available: true, planned: None, default_enabled: false, core: false },
+    // Configured in `[email]`.
+    FeatureSpec { id: "email", available: true, planned: None, default_enabled: true, core: true },
     FeatureSpec {
         id: "plugins",
         available: false,
@@ -193,15 +183,15 @@ mod tests {
         assert!(states.enabled(OPENAPI), "on by default");
         assert!(states.enabled("media"), "core");
         assert!(states.enabled(WEBHOOKS), "on by default");
-        assert!(!states.enabled("users"));
+        assert!(!states.enabled("plugins"));
         states.0.insert(OPENAPI.into(), FeatureState { enabled: false, settings: Value::Null });
         assert!(!states.enabled(OPENAPI));
-        states.0.insert("users".into(), FeatureState { enabled: true, settings: Value::Null });
-        assert!(!states.enabled("users"), "unavailable features stay off");
+        states.0.insert("plugins".into(), FeatureState { enabled: true, settings: Value::Null });
+        assert!(!states.enabled("plugins"), "unavailable features stay off");
 
         let on = FeatureState { enabled: true, settings: Value::Null };
         assert!(validate(OPENAPI, &on).is_ok());
-        assert!(matches!(validate("users", &on), Err(ApiError::BadRequest(_))));
+        assert!(matches!(validate("plugins", &on), Err(ApiError::BadRequest(_))));
         assert!(matches!(validate("media", &on), Err(ApiError::BadRequest(_))));
         assert!(matches!(validate("nope", &on), Err(ApiError::NotFound)));
         let bad = FeatureState { enabled: true, settings: json!([1]) };

@@ -2,7 +2,9 @@
 //! (docs/architecture.md §12–§14).
 
 mod admin;
+pub mod cache;
 mod docs;
+pub mod end_users;
 mod error;
 pub mod features;
 mod handlers;
@@ -120,18 +122,32 @@ pub fn document_service(
     )
 }
 
+/// What the content API is built with besides its configuration.
+#[derive(Clone, Default)]
+pub struct ContentServices {
+    pub upload: Option<verdin_upload::UploadService>,
+    /// Webhooks, history…: see [`document_service`].
+    pub listeners: Listeners,
+    pub locales: verdin_content::locales::Locales,
+    /// End users' routes (the `users` feature).
+    pub users: Option<end_users::Users>,
+    pub traffic: cache::TrafficConfig,
+    /// Anonymous reads cache; its listener must be among `listeners` (and the media
+    /// library's) so that changes empty it.
+    pub cache: Option<cache::ResponseCache>,
+}
+
 /// Content API routes, to be nested under the API prefix (e.g. `/api`).
-#[allow(clippy::too_many_arguments)]
 pub fn router(
     db: Database,
     registry: Registry,
     auth: AuthService,
     config: ApiConfig,
     prefix: &str,
-    upload: Option<verdin_upload::UploadService>,
-    listeners: &Listeners,
-    locales: &verdin_content::locales::Locales,
+    services: ContentServices,
 ) -> Router {
+    let ContentServices { upload, listeners, locales, users, traffic, cache } = services;
+    let (listeners, locales) = (&listeners, &locales);
     let routes = registry
         .types()
         .map(|model| {
@@ -174,7 +190,16 @@ pub fn router(
                 .delete(handlers::document_delete),
         )
         .route("/{name}/{document_id}/actions/{action}", post(handlers::document_action));
-    config.http.apply(regular).merge(uploads).fallback(handlers::not_found).with_state(state)
+    let router =
+        config.http.apply(regular).merge(uploads).fallback(handlers::not_found).with_state(state);
+    let router = match users {
+        Some(users) => router.merge(config.http.apply(end_users::routes(users))),
+        None => router,
+    };
+    router.layer(axum::middleware::from_fn_with_state(
+        cache::Traffic::new(traffic, cache),
+        cache::middleware,
+    ))
 }
 
 /// Admin API routes, to be nested under `{admin.path}/api` (e.g. `/admin/api`).

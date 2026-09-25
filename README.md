@@ -195,6 +195,13 @@ Mark a content type as localized (`"pluginOptions": { "i18n": { "localized": tru
 keep one version per locale, then read and write with `?locale=fr`. Locales are managed in
 **Settings → Internationalization**; details in [docs/i18n.md](docs/i18n.md).
 
+### End users
+
+Turn on **Settings → Features → End users** for Strapi-compatible sign-up and sign-in
+(`/api/auth/local/register`, `/api/auth/local`, OAuth, password reset) with roles for the
+content API. Emails go through `[email]` (SMTP, Resend, Postmark). See
+[docs/end-users.md](docs/end-users.md).
+
 ### Content history
 
 Every change of a document is kept as a version (`[history].max_versions`, 50 by
@@ -235,6 +242,10 @@ prefix = "/api"
 default_page_size = 25
 max_page_size = 100
 decimal_as_string = false
+public_rate_limit = 0   # requests per minute and IP without a token (0: unlimited)
+token_rate_limit = 0    # per API token or end user
+cache_ttl_secs = 0      # cache anonymous reads in memory (0: off); changes empty it
+cache_entries = 1000
 
 [admin]
 path = "/admin"
@@ -249,6 +260,16 @@ provider = { name = "local", dir = "public/uploads" }   # served at /uploads
 #              endpoint = "https://<account>.r2.cloudflarestorage.com",
 #              public_url = "https://media.example.com", path_style = false }
 # S3 credentials: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+
+[email]
+provider = "log"        # smtp, resend, postmark; secrets in VERDIN_EMAIL_SMTP_PASSWORD / VERDIN_EMAIL_API_KEY
+from = "Verdin <no-reply@localhost>"
+
+[webhooks]
+allow_private_networks = false   # default: false in `start`, true in `dev`
+
+[history]
+max_versions = 50
 
 [log]
 format = "pretty" # or "json"

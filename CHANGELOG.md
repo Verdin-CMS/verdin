@@ -6,6 +6,28 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **End users** (the `users` feature, Settings → End users): Strapi v5 compatible
+  `/api/auth/local/register`, `/api/auth/local`, email confirmation, forgot/reset/change
+  password and `/api/users/me`; roles with content API grants; JWTs revoked on password
+  change and block; OAuth sign-in (GitHub, Google, any OAuth 2 provider) with signed,
+  cookie-bound state; accounts, roles and settings in the admin (`endusers.manage`). See
+  [docs/end-users.md](docs/end-users.md).
+- **Email** (`[email]`): SMTP, Resend, Postmark and a log provider; secrets from the
+  environment; test emails from Settings → Features. Mailpit in the development compose
+  file.
+- Content API traffic controls: rate limits per IP (`[api].public_rate_limit`) and per
+  token or end user (`[api].token_rate_limit`), `ETag`s with `304 Not Modified`, and an
+  optional in-memory cache of anonymous reads (`[api].cache_ttl_secs`) emptied on every
+  change.
+- `verdin import strapi` imports end users (bcrypt passwords keep working), custom roles
+  and the public/authenticated permissions.
+
+### Changed
+
+- `auth`, `users` and `connect` are reserved route names for content types.
+
 ## [0.3.0] - 2026-09-25
 
 ### Added

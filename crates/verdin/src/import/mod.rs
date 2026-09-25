@@ -38,6 +38,7 @@ pub async fn strapi(
     schema_dir: &Path,
     db: &Database,
     upload: &verdin_upload::UploadService,
+    auth: Option<&verdin_auth::AuthService>,
     options: &Options,
 ) -> Result<Outcome> {
     let export = export::Export::open(source)?;
@@ -94,6 +95,9 @@ pub async fn strapi(
     verdin_migrate::apply(db, &desired, &Renames::default(), ApplyOptions { allow: Risk::Safe })
         .await
         .context("migrating the database to the imported schema")?;
+    if let Some(auth) = auth {
+        auth.bootstrap().await.context("creating built-in roles")?;
+    }
 
     let registry = verdin_content::Registry::new(schema.clone());
     if !options.force {
@@ -119,6 +123,7 @@ pub async fn strapi(
         service: &service,
         upload,
         db,
+        auth,
     };
     outcome.report = Some(data::import(&context).await?);
     Ok(outcome)
@@ -190,9 +195,10 @@ mod tests {
     async fn imports_a_strapi_5_export() {
         let target = target().await;
         let options = Options::default();
-        let outcome = strapi(&fixture(), &target.schema_dir, &target.db, &target.upload, &options)
-            .await
-            .unwrap();
+        let outcome =
+            strapi(&fixture(), &target.schema_dir, &target.db, &target.upload, None, &options)
+                .await
+                .unwrap();
         assert_eq!(outcome.strapi_version.as_deref(), Some("5.20.0"));
         assert_eq!(outcome.files.len(), 21);
         let report = outcome.report.unwrap();
@@ -240,7 +246,8 @@ mod tests {
 
         // A second run refuses to overwrite.
         let again =
-            strapi(&fixture(), &target.schema_dir, &target.db, &target.upload, &options).await;
+            strapi(&fixture(), &target.schema_dir, &target.db, &target.upload, None, &options)
+                .await;
         assert!(again.err().unwrap().to_string().contains("already exist"));
     }
 
@@ -285,6 +292,14 @@ mod tests {
                 json!({ "type": "api::page.page", "id": 1, "data": { "title": "Home", "locale": "en", "publishedAt": "2024-01-01T00:00:00.000Z", "hero": { "id": 10, "heading": "Hi" } } }),
                 json!({ "type": "api::page.page", "id": 2, "data": { "title": "Accueil", "locale": "fr", "publishedAt": null, "hero": { "id": 11, "heading": "Salut" } } }),
                 json!({ "type": "api::page.page", "id": 3, "data": { "title": "About", "locale": "en", "publishedAt": null, "hero": null } }),
+                json!({ "type": "plugin::users-permissions.role", "id": 1, "data": { "name": "Authenticated", "type": "authenticated" } }),
+                json!({ "type": "plugin::users-permissions.role", "id": 2, "data": { "name": "Public", "type": "public" } }),
+                json!({ "type": "plugin::users-permissions.role", "id": 3, "data": { "name": "Editors", "type": "editors" } }),
+                json!({ "type": "plugin::users-permissions.permission", "id": 1, "data": { "action": "api::page.page.find" } }),
+                json!({ "type": "plugin::users-permissions.permission", "id": 2, "data": { "action": "api::page.page.findOne" } }),
+                json!({ "type": "plugin::users-permissions.permission", "id": 3, "data": { "action": "plugin::users-permissions.user.me" } }),
+                json!({ "type": "plugin::users-permissions.user", "id": 1, "data": { "username": "ada", "email": "ada@example.com", "provider": "local",
+                        "password": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", "confirmed": true, "blocked": false } }),
             ],
         );
         write(
@@ -294,6 +309,10 @@ mod tests {
                 json!({ "kind": "relation.circular", "relation": "manyToMany", "left": { "type": "api::page.page", "ref": 1, "field": "related", "pos": 1 }, "right": { "type": "api::page.page", "ref": 3 } }),
                 json!({ "kind": "relation.basic", "relation": "oneToOne", "left": { "type": "blocks.hero", "ref": 10, "field": "link" }, "right": { "type": "api::page.page", "ref": 3 } }),
                 json!({ "kind": "relation.morph", "relation": "morphToMany", "left": { "type": "plugin::upload.file", "ref": 7, "field": "related" }, "right": { "type": "blocks.hero", "ref": 11, "field": "image", "pos": 1 } }),
+                json!({ "kind": "relation.basic", "relation": "manyToOne", "left": { "type": "plugin::users-permissions.permission", "ref": 1, "field": "role" }, "right": { "type": "plugin::users-permissions.role", "ref": 2 } }),
+                json!({ "kind": "relation.basic", "relation": "manyToOne", "left": { "type": "plugin::users-permissions.permission", "ref": 2, "field": "role" }, "right": { "type": "plugin::users-permissions.role", "ref": 3 } }),
+                json!({ "kind": "relation.basic", "relation": "manyToOne", "left": { "type": "plugin::users-permissions.permission", "ref": 3, "field": "role" }, "right": { "type": "plugin::users-permissions.role", "ref": 1 } }),
+                json!({ "kind": "relation.basic", "relation": "manyToOne", "left": { "type": "plugin::users-permissions.user", "ref": 1, "field": "role" }, "right": { "type": "plugin::users-permissions.role", "ref": 3 } }),
             ],
         );
         std::fs::create_dir_all(root.join("assets/uploads")).unwrap();
@@ -308,10 +327,20 @@ mod tests {
         }
 
         let target = target().await;
-        let outcome =
-            strapi(&archive, &target.schema_dir, &target.db, &target.upload, &Options::default())
-                .await
-                .unwrap();
+        let auth = verdin_auth::AuthService::new(
+            target.db.clone(),
+            verdin_auth::AuthConfig::new(&"s".repeat(32), &"p".repeat(32)).unwrap(),
+        );
+        let outcome = strapi(
+            &archive,
+            &target.schema_dir,
+            &target.db,
+            &target.upload,
+            Some(&auth),
+            &Options::default(),
+        )
+        .await
+        .unwrap();
         let report = outcome.report.unwrap();
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);
         assert_eq!(report.documents, 2, "Home and Accueil are one document");

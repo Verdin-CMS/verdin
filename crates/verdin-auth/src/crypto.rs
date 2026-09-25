@@ -85,6 +85,9 @@ pub struct Claims {
     pub aud: String,
     pub iat: i64,
     pub exp: i64,
+    /// End users' token version: bumping it revokes their issued tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ver: Option<i64>,
 }
 
 pub const ISSUER: &str = "verdin";
@@ -156,6 +159,7 @@ mod tests {
     fn jwt_roundtrip_and_rejections() {
         let secret = b"0123456789abcdef0123456789abcdef";
         let claims = Claims {
+            ver: None,
             sub: "7".into(),
             iss: ISSUER.into(),
             aud: ADMIN_AUDIENCE.into(),

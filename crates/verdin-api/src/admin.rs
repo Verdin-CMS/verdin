@@ -32,6 +32,8 @@ use crate::error::ApiError;
 use crate::handlers::{bearer, parse_data};
 use crate::limiter::RateLimiter;
 
+#[path = "end_users_admin.rs"]
+mod end_users_admin;
 #[path = "engagement.rs"]
 pub(crate) mod engagement;
 #[path = "history_admin.rs"]
@@ -105,6 +107,8 @@ pub struct AdminConfig {
     pub listeners: crate::Listeners,
     /// The content locales, shared with the other Document Services.
     pub locales: verdin_content::locales::Locales,
+    /// `[email]`, for test emails.
+    pub mailer: Option<verdin_email::Mailer>,
 }
 
 impl Default for AdminConfig {
@@ -124,6 +128,7 @@ impl Default for AdminConfig {
             history: None,
             listeners: Vec::new(),
             locales: Default::default(),
+            mailer: None,
         }
     }
 }
@@ -196,7 +201,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(engagement::routes())
         .merge(webhooks_admin::routes())
         .merge(history_admin::routes())
-        .merge(locales_admin::routes());
+        .merge(locales_admin::routes())
+        .merge(end_users_admin::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
     http.apply(regular).merge(uploads).fallback(|| async { ApiError::NotFound }).with_state(state)

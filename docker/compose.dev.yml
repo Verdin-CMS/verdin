@@ -9,6 +9,7 @@
 # S3-compatible storage (RustFS) for the media library: http://localhost:9000, bucket
 # `verdin` (create it with `docker compose -f docker/compose.dev.yml run --rm rustfs-bucket`),
 # access key `verdin` / secret `verdin-secret`, console on :9001.
+# Email (Mailpit): SMTP localhost:1025 (no TLS, no auth), inbox at http://localhost:8025.
 # Integration tests create a database per test, so on MySQL/MariaDB they need
 # root (password `verdin`): mysql://root:verdin@localhost:3384/verdin
 name: verdin-dev
@@ -76,6 +77,11 @@ services:
       RUSTFS_SECRET_KEY: verdin-secret
       RUSTFS_CONSOLE_ENABLE: "true"
     ports: ["9000:9000", "9001:9001"]
+
+  # SMTP sink for email tests: SMTP on :1025, web UI and API on :8025.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["1025:1025", "8025:8025"]
 
   # Creates the `verdin` bucket (run once: `docker compose … run --rm rustfs-bucket`).
   rustfs-bucket:

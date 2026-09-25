@@ -47,6 +47,9 @@ pub struct App {
     /// A full-access API token, sent by default.
     pub token: String,
     pub webhooks: verdin_api::Webhooks,
+    pub cache: verdin_api::cache::ResponseCache,
+    /// Emails sent to end users.
+    pub emails: std::sync::Arc<std::sync::Mutex<Vec<verdin_email::Message>>>,
 }
 
 /// Who a request authenticates as.
@@ -81,6 +84,37 @@ pub struct Response {
 
 impl App {
     pub async fn new(schema: Schema) -> Self {
+        Self::with_users(
+            schema,
+            serde_json::json!({ "resetPasswordUrl": "https://app.test/reset" }),
+        )
+        .await
+    }
+
+    /// End user routes with these settings (Settings → End users); emails are kept in
+    /// [`App::emails`].
+    pub async fn with_users(schema: Schema, settings: Value) -> Self {
+        Self::build(schema, settings, &[]).await
+    }
+
+    /// Like [`App::with_users`], with OAuth client secrets `(provider, secret)`.
+    pub async fn build(schema: Schema, settings: Value, oauth_secrets: &[(&str, &str)]) -> Self {
+        Self::build_with(schema, settings, oauth_secrets, Default::default()).await
+    }
+
+    /// With rate limits and the anonymous reads cache.
+    pub async fn with_traffic(schema: Schema, traffic: verdin_api::cache::TrafficConfig) -> Self {
+        Self::build_with(schema, serde_json::json!({}), &[], traffic).await
+    }
+
+    async fn build_with(
+        schema: Schema,
+        settings: Value,
+        oauth_secrets: &[(&str, &str)],
+        traffic: verdin_api::cache::TrafficConfig,
+    ) -> Self {
+        let cache =
+            verdin_api::cache::ResponseCache::new(traffic.cache_ttl, traffic.cache_entries.max(1));
         let test = TestDb::new().await;
         let model = verdin_migrate::derive_model(&schema);
         verdin_migrate::apply(
@@ -104,6 +138,7 @@ impl App {
             .await
             .unwrap();
         let registry = Registry::new(schema);
+        let (mailer, emails) = verdin_email::Mailer::memory();
         let store = std::sync::Arc::new(object_store::memory::InMemory::new());
         // Local receivers, and retries due at once (tests call `deliver_due`).
         let webhooks = verdin_api::Webhooks::new(
@@ -120,10 +155,12 @@ impl App {
             verdin_upload::Storage::with_store(store, "local", "/uploads"),
             verdin_upload::UploadConfig { max_file_size: 2 * 1024 * 1024, ..Default::default() },
         )
-        .with_listener(std::sync::Arc::new(webhooks.clone()));
+        .with_listener(std::sync::Arc::new(webhooks.clone()))
+        .with_listener(std::sync::Arc::new(cache.clone()));
         // 10 versions per document, to exercise pruning.
         let history = verdin_api::History::new(test.db.clone(), 10);
-        let listeners: verdin_api::Listeners = vec![webhooks.listener(), history.listener()];
+        let listeners: verdin_api::Listeners =
+            vec![webhooks.listener(), history.listener(), cache.listener()];
         let locales = verdin_content::locales::Locales::new(
             verdin_api::i18n::load_locales(&test.db).await.unwrap(),
         );
@@ -136,6 +173,7 @@ impl App {
             history: Some(history.clone()),
             listeners: listeners.clone(),
             locales: locales.clone(),
+            mailer: Some(mailer.clone()),
             ..AdminConfig::default()
         };
         let router = Router::new()
@@ -147,16 +185,30 @@ impl App {
                     auth.clone(),
                     ApiConfig::default(),
                     "/api",
-                    Some(upload.clone()),
-                    &listeners,
-                    &locales,
+                    verdin_api::ContentServices {
+                        upload: Some(upload.clone()),
+                        listeners: listeners.clone(),
+                        locales: locales.clone(),
+                        traffic,
+                        cache: Some(cache.clone()),
+                        users: Some(oauth_secrets.iter().fold(
+                            verdin_api::end_users::Users::new(
+                                auth.clone(),
+                                serde_json::from_value(settings).unwrap(),
+                                mailer.clone(),
+                                "https://cms.test/api".into(),
+                                false,
+                            ),
+                            |users, (provider, secret)| users.with_oauth_secret(provider, secret),
+                        )),
+                    },
                 ),
             )
             .nest(
                 "/admin/api",
                 verdin_api::admin_router(test.db.clone(), registry, auth.clone(), admin),
             );
-        Self { router, test, auth, upload, token, webhooks }
+        Self { router, test, auth, upload, token, webhooks, emails, cache }
     }
 
     pub async fn request(

@@ -35,9 +35,9 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 
 | Item | Size | Notes |
 |---|---|---|
-| End users | L | The `users-permissions` equivalent: registration, email confirmation, password reset, JWT, roles for the content API, OAuth providers (Google, GitHub, …) |
-| Email providers | M | SMTP and API providers (Resend, SES, Postmark) for end-user and admin emails |
-| Rate limiting & caching for the content API | M | Per-token limits, ETags, optional in-memory response cache |
+| End users ✅ | L | The `users-permissions` equivalent: registration, email confirmation, password reset, JWT, roles for the content API, OAuth providers (Google, GitHub, …) |
+| Email providers ✅ | M | SMTP and API providers (Resend, SES, Postmark) for end-user and admin emails |
+| Rate limiting & caching for the content API ✅ | M | Per-token limits, ETags, optional in-memory response cache |
 
 ## 0.5 — Extensibility
 

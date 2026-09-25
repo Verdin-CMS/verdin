@@ -1,0 +1,20 @@
+[package]
+name = "verdin-email"
+description = "Email delivery for Verdin: SMTP, Resend, Postmark and a log provider"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lettre = { version = "0.11.23", default-features = false, features = ["tokio1", "tokio1-rustls", "builder", "smtp-transport", "hostname", "aws-lc-rs", "rustls-platform-verifier"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.21"
+tokio = { version = "1.53.1", features = ["macros", "rt"] }
+tracing = "0.1.44"
+
+[lints]
+workspace = true

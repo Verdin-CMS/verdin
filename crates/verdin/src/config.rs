@@ -21,6 +21,7 @@ pub struct Config {
     pub upload: verdin_upload::UploadConfig,
     pub webhooks: WebhooksConfig,
     pub history: HistoryConfig,
+    pub email: verdin_email::EmailConfig,
     pub log: LogConfig,
 }
 
@@ -105,6 +106,13 @@ pub struct ApiConfig {
     pub max_page_size: u64,
     /// Serialize decimals as strings (exact) instead of numbers (Strapi-compatible).
     pub decimal_as_string: bool,
+    /// Requests per minute and client IP without a token (0: unlimited).
+    pub public_rate_limit: u32,
+    /// Requests per minute and API token or end user (0: unlimited).
+    pub token_rate_limit: u32,
+    /// Keep anonymous reads in memory this long (0: no cache); changes empty the cache.
+    pub cache_ttl_secs: u64,
+    pub cache_entries: usize,
 }
 
 impl Default for ApiConfig {
@@ -114,6 +122,10 @@ impl Default for ApiConfig {
             default_page_size: 25,
             max_page_size: 100,
             decimal_as_string: false,
+            public_rate_limit: 0,
+            token_rate_limit: 0,
+            cache_ttl_secs: 0,
+            cache_entries: 1000,
         }
     }
 }

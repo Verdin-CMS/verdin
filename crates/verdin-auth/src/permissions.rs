@@ -18,6 +18,7 @@ pub mod actions {
     pub const FEATURES_MANAGE: &str = "features.manage";
     pub const WEBHOOKS_MANAGE: &str = "webhooks.manage";
     pub const LOCALES_MANAGE: &str = "locales.manage";
+    pub const ENDUSERS_MANAGE: &str = "endusers.manage";
     pub const MEDIA_READ: &str = "media.read";
     pub const MEDIA_CREATE: &str = "media.create";
     pub const MEDIA_UPDATE: &str = "media.update";
@@ -33,6 +34,7 @@ pub mod actions {
         FEATURES_MANAGE,
         WEBHOOKS_MANAGE,
         LOCALES_MANAGE,
+        ENDUSERS_MANAGE,
     ];
     /// Media library actions: no subject; `is-creator` limits them to the user's files.
     pub const MEDIA: &[&str] = &[MEDIA_READ, MEDIA_CREATE, MEDIA_UPDATE, MEDIA_DELETE];
@@ -324,13 +326,24 @@ pub type Grants = HashSet<(String, ContentAction)>;
 #[derive(Debug, Clone)]
 pub enum ContentActor {
     Public(Grants),
-    Token { id: i64, kind: TokenKind, grants: Grants },
+    Token {
+        id: i64,
+        kind: TokenKind,
+        grants: Grants,
+    },
+    /// A signed-in end user, with their role's grants.
+    User {
+        id: i64,
+        grants: Grants,
+    },
 }
 
 impl ContentActor {
     pub fn allows(&self, uid: &str, action: ContentAction) -> bool {
         match self {
-            ContentActor::Public(grants) => grants.contains(&(uid.to_owned(), action)),
+            ContentActor::Public(grants) | ContentActor::User { grants, .. } => {
+                grants.contains(&(uid.to_owned(), action))
+            }
             ContentActor::Token { kind: TokenKind::FullAccess, .. } => true,
             ContentActor::Token { kind: TokenKind::ReadOnly, .. } => {
                 matches!(action, ContentAction::Find | ContentAction::FindOne)

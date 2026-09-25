@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tower::ServiceExt;
 use verdin_api::features::{
-    FeatureHost, FeatureState, FeatureStates, GRAPHQL, HISTORY, OPENAPI, WEBHOOKS,
+    FeatureHost, FeatureState, FeatureStates, GRAPHQL, HISTORY, OPENAPI, USERS, WEBHOOKS,
 };
 use verdin_api::{ApiError, BoxFuture, SchemaChange, SchemaEditor};
 use verdin_auth::AuthService;
@@ -52,6 +52,22 @@ pub struct AppContext {
     pub history: verdin_api::History,
     /// Content locales, loaded when serving starts.
     pub locales: verdin_content::locales::Locales,
+    /// `[email]`, for end users' confirmations and password resets.
+    pub mailer: verdin_email::Mailer,
+    /// Anonymous reads cache (`[api].cache_ttl_secs`), emptied on every change.
+    pub cache: verdin_api::cache::ResponseCache,
+}
+
+impl AppContext {
+    /// Absolute URL of the content API, for links in emails and OAuth callbacks.
+    pub fn api_url(&self) -> String {
+        let server = &self.config.server;
+        let origin = server
+            .public_url
+            .clone()
+            .unwrap_or_else(|| format!("http://localhost:{}", server.port));
+        format!("{}{}", origin.trim_end_matches('/'), self.config.api.prefix)
+    }
 }
 
 /// The webhooks service configured for `mode`.
@@ -108,7 +124,7 @@ pub fn build_app(
     };
     let output = verdin_content::OutputOptions { decimal_as_string: api.decimal_as_string };
     let listeners: verdin_api::Listeners =
-        vec![context.webhooks.listener(), context.history.listener()];
+        vec![context.webhooks.listener(), context.history.listener(), context.cache.listener()];
     let http = verdin_api::HttpLimits {
         body_limit: context.config.server.body_limit,
         request_timeout: context.config.server.request_timeout(),
@@ -129,9 +145,36 @@ pub fn build_app(
                 .unwrap_or(false),
         },
         &api.prefix,
-        Some(context.upload.clone()),
-        &listeners,
-        &context.locales,
+        verdin_api::ContentServices {
+            upload: Some(context.upload.clone()),
+            listeners: listeners.clone(),
+            locales: context.locales.clone(),
+            traffic: verdin_api::cache::TrafficConfig {
+                public_per_minute: api.public_rate_limit,
+                token_per_minute: api.token_rate_limit,
+                cache_ttl: std::time::Duration::from_secs(api.cache_ttl_secs),
+                cache_entries: api.cache_entries,
+            },
+            cache: Some(context.cache.clone()),
+            users: states.enabled(USERS).then(|| {
+                let raw = states.settings(USERS);
+                let settings = if raw.is_null() {
+                    Default::default()
+                } else {
+                    serde_json::from_value(raw.clone()).unwrap_or_else(|error| {
+                        tracing::warn!(%error, "invalid end user settings; using the defaults");
+                        Default::default()
+                    })
+                };
+                verdin_api::end_users::Users::new(
+                    context.auth.clone(),
+                    settings,
+                    context.mailer.clone(),
+                    context.api_url(),
+                    context.api_url().starts_with("https://"),
+                )
+            }),
+        },
     );
     let admin_api = verdin_api::admin_router(
         context.db.clone(),
@@ -152,6 +195,7 @@ pub fn build_app(
             history: states.enabled(HISTORY).then(|| context.history.clone()),
             listeners: listeners.clone(),
             locales: context.locales.clone(),
+            mailer: Some(context.mailer.clone()),
         },
     );
     let graphql = states.enabled(GRAPHQL).then(|| {
@@ -779,6 +823,8 @@ mod tests {
             webhooks,
             history,
             locales: Default::default(),
+            mailer: verdin_email::Mailer::memory().0,
+            cache: verdin_api::cache::ResponseCache::new(std::time::Duration::ZERO, 1),
         })
     }
 

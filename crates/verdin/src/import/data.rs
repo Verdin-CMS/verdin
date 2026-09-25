@@ -23,6 +23,9 @@ use super::export::{Export, Link};
 const FILE: &str = "plugin::upload.file";
 const FOLDER: &str = "plugin::upload.folder";
 const LOCALE: &str = "plugin::i18n.locale";
+const USER: &str = "plugin::users-permissions.user";
+const ROLE: &str = "plugin::users-permissions.role";
+const PERMISSION: &str = "plugin::users-permissions.permission";
 
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +36,8 @@ pub struct Report {
     pub files: usize,
     pub folders: usize,
     pub locales: usize,
+    pub end_users: usize,
+    pub end_user_roles: usize,
     pub links: usize,
     pub media: usize,
     pub warnings: Vec<String>,
@@ -50,6 +55,8 @@ pub struct Context<'a> {
     pub service: &'a DocumentService,
     pub upload: &'a UploadService,
     pub db: &'a Database,
+    /// End users and their roles are imported with it.
+    pub auth: Option<&'a verdin_auth::AuthService>,
 }
 
 /// Where a component reference goes: row index, JSON pointer, component uid, field.
@@ -338,7 +345,108 @@ pub async fn import(context: &Context<'_>) -> Result<Report> {
         }
     }
     report.files_map = files.into_iter().collect();
+    if let Some(auth) = context.auth {
+        import_end_users(context, auth, &mut report).await?;
+    }
     Ok(report)
+}
+
+/// `api::article.article.find` → (`api::article`, find); the media library's actions.
+fn strapi_permission(
+    types: &HashMap<String, String>,
+    action: &str,
+) -> Option<(String, verdin_auth::ContentAction)> {
+    use verdin_auth::ContentAction as A;
+    if let Some(rest) = action.strip_prefix("plugin::upload.content-api.") {
+        let action = match rest {
+            "find" => A::Find,
+            "findOne" => A::FindOne,
+            "upload" => A::Create,
+            "destroy" => A::Delete,
+            _ => return None,
+        };
+        return Some((verdin_auth::UPLOAD_SUBJECT.into(), action));
+    }
+    let (uid, action) = action.rsplit_once('.')?;
+    let action = A::parse(action).filter(|action| {
+        matches!(action, A::Find | A::FindOne | A::Create | A::Update | A::Delete)
+    })?;
+    Some((types.get(uid)?.clone(), action))
+}
+
+async fn import_end_users(
+    context: &Context<'_>,
+    auth: &verdin_auth::AuthService,
+    report: &mut Report,
+) -> Result<()> {
+    let export = context.export;
+    let role_of = |uid: &str| single_links(&export.links, uid, "role");
+    let permission_roles = role_of(PERMISSION);
+    let user_roles = role_of(USER);
+    // Grants per Strapi role id.
+    let mut grants: HashMap<i64, Vec<(String, verdin_auth::ContentAction)>> = HashMap::new();
+    for permission in export.entities.iter().filter(|entity| entity.uid == PERMISSION) {
+        let (Some(role), Some(action)) = (
+            permission_roles.get(&permission.id),
+            permission.data.get("action").and_then(Json::as_str),
+        ) else {
+            continue;
+        };
+        if let Some(grant) = strapi_permission(context.types, action) {
+            grants.entry(*role).or_default().push(grant);
+        }
+    }
+    let mut roles: HashMap<i64, i64> = HashMap::new();
+    for role in export.entities.iter().filter(|entity| entity.uid == ROLE) {
+        let kind = role.data.get("type").and_then(Json::as_str).unwrap_or_default();
+        let name = role.data.get("name").and_then(Json::as_str).unwrap_or(kind);
+        let description = role.data.get("description").and_then(Json::as_str);
+        let role_grants = grants.remove(&role.id).unwrap_or_default();
+        match kind {
+            "public" => {
+                auth.set_public_grants(&role_grants).await?;
+            }
+            "authenticated" => {
+                let id = auth.end_user_role_id("authenticated").await?;
+                auth.save_end_user_role(Some(id), name, description, &role_grants).await?;
+                roles.insert(role.id, id);
+            }
+            _ => {
+                let id = auth.save_end_user_role(None, name, description, &role_grants).await?;
+                roles.insert(role.id, id);
+                report.end_user_roles += 1;
+            }
+        }
+    }
+    let default_role = auth.end_user_role_id("authenticated").await?;
+    for user in export.entities.iter().filter(|entity| entity.uid == USER) {
+        let data = &user.data;
+        let text = |key: &str| data.get(key).and_then(Json::as_str);
+        let (Some(username), Some(email)) = (text("username"), text("email")) else { continue };
+        let role = user_roles
+            .get(&user.id)
+            .and_then(|role| roles.get(role))
+            .copied()
+            .unwrap_or(default_role);
+        match auth
+            .import_end_user(
+                username,
+                email,
+                text("password").filter(|hash| hash.starts_with('$')),
+                text("provider").unwrap_or("local"),
+                data.get("confirmed").and_then(Json::as_bool).unwrap_or(false),
+                data.get("blocked").and_then(Json::as_bool).unwrap_or(false),
+                role,
+            )
+            .await
+        {
+            Ok(_) => report.end_users += 1,
+            Err(error) => {
+                report.warnings.push(format!("end user {username}: not imported ({error})"))
+            }
+        }
+    }
+    Ok(())
 }
 
 /// v4: rows linked through `localizations` are locales of one document.

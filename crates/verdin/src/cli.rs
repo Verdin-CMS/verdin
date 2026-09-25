@@ -305,7 +305,19 @@ async fn import_strapi(
     let upload =
         verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone());
     let schema_dir = project.root.join(&project.config.schema.path);
-    let result = crate::import::strapi(path, &schema_dir, &db, &upload, &options).await;
+    // End users need the platform tables and roles; secrets are not used while importing.
+    let auth = match project.auth(&db) {
+        Ok(auth) => Some(auth),
+        Err(_) => Some(verdin_auth::AuthService::new(
+            db.clone(),
+            verdin_auth::AuthConfig::new(
+                &verdin_auth::crypto::random_token(),
+                &verdin_auth::crypto::random_token(),
+            )?,
+        )),
+    };
+    let result =
+        crate::import::strapi(path, &schema_dir, &db, &upload, auth.as_ref(), &options).await;
     db.close().await;
     let outcome = result?;
     println!(
@@ -413,10 +425,22 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     let storage = verdin_upload::Storage::new(&project.config.upload.provider, &project.root)
         .context("configuring [upload].provider")?;
     let webhooks = crate::app::webhooks(&project.config, db.clone(), mode);
+    let api = &project.config.api;
+    let cache = verdin_api::cache::ResponseCache::new(
+        std::time::Duration::from_secs(api.cache_ttl_secs),
+        api.cache_entries,
+    );
     let upload =
         verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone())
-            .with_listener(Arc::new(webhooks.clone()));
+            .with_listener(Arc::new(webhooks.clone()))
+            .with_listener(Arc::new(cache.clone()));
     let history = verdin_api::History::new(db.clone(), project.config.history.max_versions);
+    let mailer =
+        verdin_email::Mailer::new(&project.config.email, &verdin_email::EmailSecrets::from_env())
+            .context("configuring [email]")?;
+    if mode == Mode::Production && mailer.provider() == "log" {
+        tracing::warn!("[email].provider is `log`: emails are written to the log, not sent");
+    }
     let context = AppContext {
         config: project.config,
         root: project.root,
@@ -427,6 +451,8 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         webhooks,
         history,
         locales: Default::default(),
+        mailer,
+        cache,
     };
     app::serve(context, schema, shutdown_signal()).await
 }

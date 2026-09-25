@@ -25,7 +25,7 @@ pub const RESERVED_CONTENT_TYPE_ATTRIBUTES: &[&str] = &[
 ];
 
 /// Content type names that would collide with API routes (`/api/upload`…).
-pub const RESERVED_ROUTE_NAMES: &[&str] = &["upload", "uploads"];
+pub const RESERVED_ROUTE_NAMES: &[&str] = &["upload", "uploads", "auth", "users", "connect"];
 
 /// Attribute names reserved on components (each stored component item carries an `id`).
 pub const RESERVED_COMPONENT_ATTRIBUTES: &[&str] = &["id"];

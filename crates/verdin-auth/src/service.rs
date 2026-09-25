@@ -13,6 +13,9 @@ use verdin_migrate::system::{
     API_TOKENS, PUBLIC_PERMISSIONS, SESSIONS, SETTINGS,
 };
 
+#[path = "users.rs"]
+pub mod users;
+
 use crate::crypto::{
     self, ADMIN_AUDIENCE, Claims, ISSUER, decode_jwt, encode_jwt, hash_password, hmac_hex,
     needs_rehash, random_hex, random_token, sha256_hex, verify_password,
@@ -275,6 +278,7 @@ impl AuthService {
 
     /// Creates missing built-in roles. Idempotent; run at startup after migrations.
     pub async fn bootstrap(&self) -> Result<()> {
+        self.bootstrap_users().await?;
         let mut tx = self.db.begin().await?;
         // Installations older than the current built-in permissions get what was added
         // since, once: later edits of those roles are respected.
@@ -563,6 +567,7 @@ impl AuthService {
         let issued = OffsetDateTime::now_utc();
         let expires = issued + self.config.access_ttl;
         let claims = Claims {
+            ver: None,
             sub: user_id.to_string(),
             iss: ISSUER.into(),
             aud: ADMIN_AUDIENCE.into(),
@@ -1156,6 +1161,11 @@ impl AuthService {
         let Some(token) = bearer else {
             return Ok(ContentActor::Public(self.public_grants().await?));
         };
+        // API tokens carry a prefix; anything else is an end user's JWT.
+        if !token.starts_with(API_TOKEN_PREFIX) {
+            let (user, grants) = self.end_user_actor(token).await?;
+            return Ok(ContentActor::User { id: user.id, grants });
+        }
         let hash = hmac_hex(&self.config.token_pepper, token);
         let rows = self
             .db
