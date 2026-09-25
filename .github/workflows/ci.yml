@@ -159,6 +159,12 @@ jobs:
         working-directory: .
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-results
+          path: admin/test-results
+          retention-days: 7
 
   client:
     runs-on: ubuntu-latest
