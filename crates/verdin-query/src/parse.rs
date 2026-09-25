@@ -274,6 +274,7 @@ impl Parser<'_> {
                 owner: relation.owner,
                 target_table: relation.target_table.clone(),
                 target_draft_and_publish: relation.target_draft_and_publish,
+                target_localized: relation.target_localized,
                 negate,
                 inner: inner.map(Box::new),
             })

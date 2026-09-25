@@ -33,6 +33,31 @@ pub async fn openapi(State(state): State<ApiState>, headers: HeaderMap) -> ApiRe
     Ok(Json((*state.openapi).clone()).into_response())
 }
 
+/// The state with its Document Service reading and writing `?locale=` (the default
+/// locale when absent).
+fn localized(mut state: ApiState, raw: Option<&str>) -> Result<ApiState, ApiError> {
+    state.service = state.service.in_locale(locale_param(raw)?);
+    Ok(state)
+}
+
+/// `locale` of a raw query string, checked.
+pub(crate) fn locale_param(raw: Option<&str>) -> Result<Option<String>, ApiError> {
+    let Some(value) = raw
+        .into_iter()
+        .flat_map(|raw| raw.split('&'))
+        .filter_map(|pair| pair.split_once('='))
+        .find(|(key, _)| *key == "locale")
+        .map(|(_, value)| value)
+    else {
+        return Ok(None);
+    };
+    if verdin_content::locales::valid_code(value) {
+        Ok(Some(value.to_owned()))
+    } else {
+        Err(ApiError::BadRequest(format!("invalid locale `{value}`")))
+    }
+}
+
 pub async fn not_found() -> ApiError {
     ApiError::NotFound
 }
@@ -43,6 +68,7 @@ pub async fn root_get(
     RawQuery(raw): RawQuery,
     headers: HeaderMap,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let route = route(&state, &name)?;
     let query =
         authorized_query(&state, &headers, route, ContentAction::Find, raw.as_deref()).await?;
@@ -62,6 +88,7 @@ pub async fn root_post(
     headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let route = route(&state, &name)?;
     if route.single {
         return Err(ApiError::MethodNotAllowed);
@@ -81,6 +108,7 @@ pub async fn root_put(
     headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let route = route(&state, &name)?;
     if !route.single {
         return Err(ApiError::MethodNotAllowed);
@@ -102,8 +130,10 @@ pub async fn root_put(
 pub async fn root_delete(
     State(state): State<ApiState>,
     Path(name): Path<String>,
+    RawQuery(raw): RawQuery,
     headers: HeaderMap,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let route = route(&state, &name)?;
     if !route.single {
         return Err(ApiError::MethodNotAllowed);
@@ -121,6 +151,7 @@ pub async fn document_get(
     RawQuery(raw): RawQuery,
     headers: HeaderMap,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let route = collection(&state, &name)?;
     let query =
         authorized_query(&state, &headers, route, ContentAction::FindOne, raw.as_deref()).await?;
@@ -134,6 +165,7 @@ pub async fn document_put(
     headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let route = collection(&state, &name)?;
     let query =
         authorized_query(&state, &headers, route, ContentAction::Update, raw.as_deref()).await?;
@@ -145,8 +177,10 @@ pub async fn document_put(
 pub async fn document_delete(
     State(state): State<ApiState>,
     Path((name, document_id)): Path<(String, String)>,
+    RawQuery(raw): RawQuery,
     headers: HeaderMap,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let route = collection(&state, &name)?;
     authorize(&state, &headers, route, ContentAction::Delete).await?;
     state.service.delete(&route.uid, &document_id).await?;
@@ -160,6 +194,7 @@ pub async fn document_action(
     RawQuery(raw): RawQuery,
     headers: HeaderMap,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let route = collection(&state, &name)?;
     let mut query =
         authorized_query(&state, &headers, route, ContentAction::Publish, raw.as_deref()).await?;

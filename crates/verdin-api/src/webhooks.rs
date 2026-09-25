@@ -652,6 +652,7 @@ impl DocumentListener for Webhooks {
                 "createdAt": format_datetime(now()),
                 "model": model.map(|model| model.singular_name.clone()),
                 "uid": event.uid,
+                "locale": event.locale,
                 "entry": entry,
             });
             if let Err(error) = self.enqueue(name, Some(&event.uid), payload).await {

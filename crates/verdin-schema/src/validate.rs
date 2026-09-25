@@ -189,6 +189,7 @@ fn parse_content_type(source: &Source, report: &mut Report) -> Option<ContentTyp
         description: raw.description,
         collection_name,
         draft_and_publish: raw.options.draft_and_publish.unwrap_or(false),
+        localized: crate::raw::RawPluginOptions::localized(&raw.plugin_options).unwrap_or(false),
         attributes,
     })
 }

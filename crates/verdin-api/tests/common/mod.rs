@@ -124,6 +124,9 @@ impl App {
         // 10 versions per document, to exercise pruning.
         let history = verdin_api::History::new(test.db.clone(), 10);
         let listeners: verdin_api::Listeners = vec![webhooks.listener(), history.listener()];
+        let locales = verdin_content::locales::Locales::new(
+            verdin_api::i18n::load_locales(&test.db).await.unwrap(),
+        );
         let admin = AdminConfig {
             secure_cookies: false,
             auth_rate_limit: 1000,
@@ -132,6 +135,7 @@ impl App {
             webhooks: Some(webhooks.clone()),
             history: Some(history.clone()),
             listeners: listeners.clone(),
+            locales: locales.clone(),
             ..AdminConfig::default()
         };
         let router = Router::new()
@@ -145,6 +149,7 @@ impl App {
                     "/api",
                     Some(upload.clone()),
                     &listeners,
+                    &locales,
                 ),
             )
             .nest(

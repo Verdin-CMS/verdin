@@ -179,6 +179,12 @@ const { data } = await verdin.collection('articles').find({ populate: { category
 update, publish, unpublish, delete…), retries failed deliveries with backoff and keeps a
 delivery log. Payloads, signature checks and settings: [docs/webhooks.md](docs/webhooks.md).
 
+### Internationalization
+
+Mark a content type as localized (`"pluginOptions": { "i18n": { "localized": true } }`) to
+keep one version per locale, then read and write with `?locale=fr`. Locales are managed in
+**Settings → Internationalization**; details in [docs/i18n.md](docs/i18n.md).
+
 ### Content history
 
 Every change of a document is kept as a version (`[history].max_versions`, 50 by

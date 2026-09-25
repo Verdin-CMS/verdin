@@ -42,12 +42,14 @@ fn service(state: &AdminState) -> Result<&History, ApiError> {
 struct PageQuery {
     page: Option<u64>,
     page_size: Option<u64>,
+    locale: Option<String>,
 }
 
 struct Row {
     id: i64,
     uid: String,
     document_id: String,
+    locale: String,
     event: String,
     status: String,
     data: Option<Value>,
@@ -55,8 +57,10 @@ struct Row {
     created_at: Option<time::OffsetDateTime>,
 }
 
-const COLUMNS: &str = "id, content_type, document_id, event, status, created_by, created_at";
-const KINDS: [K; 7] = [K::BigInt, K::Text, K::Text, K::Text, K::Text, K::BigInt, K::DateTime];
+const COLUMNS: &str =
+    "id, content_type, document_id, locale, event, status, created_by, created_at";
+const KINDS: [K; 8] =
+    [K::BigInt, K::Text, K::Text, K::Text, K::Text, K::Text, K::BigInt, K::DateTime];
 
 fn decode(row: Vec<V>, with_data: bool) -> Row {
     let mut row = row.into_iter();
@@ -65,6 +69,7 @@ fn decode(row: Vec<V>, with_data: bool) -> Row {
         id: next().as_i64().unwrap_or_default(),
         uid: next().into_text().unwrap_or_default(),
         document_id: next().into_text().unwrap_or_default(),
+        locale: next().into_text().unwrap_or_default(),
         event: next().into_text().unwrap_or_default(),
         status: next().into_text().unwrap_or_default(),
         created_by: next().as_i64(),
@@ -126,6 +131,7 @@ fn summary(row: &Row, authors: &HashMap<i64, Value>) -> Value {
         "id": row.id,
         "uid": row.uid,
         "documentId": row.document_id,
+        "locale": (!row.locale.is_empty()).then_some(&row.locale),
         "event": row.event,
         "status": row.status,
         "createdAt": row.created_at.map(format_datetime),
@@ -146,14 +152,21 @@ async fn versions(
     ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
     let page = query.page.unwrap_or(1).max(1);
     let size = query.page_size.unwrap_or(20).clamp(1, 100);
-    let params = [V::Text(uid.clone()), V::Text(document_id.clone())];
+    if let Some(code) =
+        query.locale.as_deref().filter(|code| !verdin_content::locales::valid_code(code))
+    {
+        return Err(ApiError::BadRequest(format!("invalid locale `{code}`")));
+    }
+    let model = state.service.registry().get(&uid)?;
+    let locale = state.service.in_locale(query.locale.clone()).locale_of(model)?;
+    let params = [V::Text(uid.clone()), V::Text(document_id.clone()), V::Text(locale.clone())];
     let rows = history
         .database()
         .queries()
         .fetch_all(
             &format!(
                 "SELECT {COLUMNS} FROM {HISTORY_VERSIONS} WHERE content_type = ? AND document_id = ? \
-                 ORDER BY id DESC LIMIT {size} OFFSET {}",
+                 AND locale = ? ORDER BY id DESC LIMIT {size} OFFSET {}",
                 (page - 1) * size
             ),
             &params,
@@ -166,7 +179,8 @@ async fn versions(
         .queries()
         .fetch_all(
             &format!(
-                "SELECT COUNT(*) FROM {HISTORY_VERSIONS} WHERE content_type = ? AND document_id = ?"
+                "SELECT COUNT(*) FROM {HISTORY_VERSIONS} WHERE content_type = ? AND document_id = ? \
+                 AND locale = ?"
             ),
             &params,
             &[K::BigInt],
@@ -269,11 +283,12 @@ async fn restore(
         content_grant(&state, &headers, &row.uid, actions::CONTENT_UPDATE).await?;
     ensure_owner(&state, &row.uid, &row.document_id, &principal, grant).await?;
     let snapshot = row.data.clone().unwrap_or(Value::Object(Map::new()));
-    let (mut input, dropped) = state.service.restorable(&row.uid, &snapshot).await?;
+    let service = state.service.in_locale((!row.locale.is_empty()).then(|| row.locale.clone()));
+    let (mut input, dropped) = service.restorable(&row.uid, &snapshot).await?;
     let writable = principal.permissions.content_fields(actions::CONTENT_UPDATE, &row.uid);
     restrict(&mut input, writable.as_deref());
     let options = WriteOptions { publish: false, actor: Some(principal.user.id) };
-    state.service.update(&row.uid, &row.document_id, &input, options).await?;
+    service.update(&row.uid, &row.document_id, &input, options).await?;
     Ok(data(json!({
         "documentId": row.document_id,
         "restored": row.id,

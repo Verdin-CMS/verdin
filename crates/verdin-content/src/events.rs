@@ -36,6 +36,8 @@ pub struct DocumentEvent {
     pub kind: EventKind,
     pub uid: String,
     pub document_id: String,
+    /// The locale of the version written, for localized types.
+    pub locale: Option<String>,
     /// The admin who made the change (`None` for the content API).
     pub actor: Option<i64>,
 }

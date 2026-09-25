@@ -69,12 +69,13 @@ impl History {
         db.queries()
             .execute(
                 &format!(
-                    "INSERT INTO {HISTORY_VERSIONS} (content_type, document_id, event, status, data, \
-                     created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO {HISTORY_VERSIONS} (content_type, document_id, locale, event, status, \
+                     data, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
                 ),
                 &[
                     V::Text(event.uid.clone()),
                     V::Text(event.document_id.clone()),
+                    V::Text(event.locale.clone().unwrap_or_default()),
                     V::Text(event.kind.as_str().into()),
                     V::Text(status.as_str().into()),
                     V::Json(data),
@@ -83,22 +84,23 @@ impl History {
                 ],
             )
             .await?;
-        self.prune(&event.uid, &event.document_id).await?;
+        self.prune(&event.uid, &event.document_id, event.locale.as_deref().unwrap_or_default())
+            .await?;
         Ok(())
     }
 
     /// Keeps the newest `max_versions` of a document.
-    async fn prune(&self, uid: &str, document_id: &str) -> Result<(), DbError> {
+    async fn prune(&self, uid: &str, document_id: &str, locale: &str) -> Result<(), DbError> {
         let db = &self.inner.db;
         let rows = db
             .queries()
             .fetch_all(
                 &format!(
                     "SELECT id FROM {HISTORY_VERSIONS} WHERE content_type = ? AND document_id = ? \
-                     ORDER BY id DESC LIMIT 1000 OFFSET {}",
+                     AND locale = ? ORDER BY id DESC LIMIT 1000 OFFSET {}",
                     self.inner.max_versions
                 ),
-                &[V::Text(uid.into()), V::Text(document_id.into())],
+                &[V::Text(uid.into()), V::Text(document_id.into()), V::Text(locale.into())],
                 &[K::BigInt],
             )
             .await?;
@@ -118,16 +120,17 @@ impl History {
         Ok(())
     }
 
-    /// Forgets a deleted document's versions.
-    async fn forget(&self, uid: &str, document_id: &str) -> Result<(), DbError> {
+    /// Forgets the versions of a deleted document (or of its deleted locale).
+    async fn forget(&self, uid: &str, document_id: &str, locale: &str) -> Result<(), DbError> {
         self.inner
             .db
             .queries()
             .execute(
                 &format!(
-                    "DELETE FROM {HISTORY_VERSIONS} WHERE content_type = ? AND document_id = ?"
+                    "DELETE FROM {HISTORY_VERSIONS} WHERE content_type = ? AND document_id = ? \
+                     AND locale = ?"
                 ),
-                &[V::Text(uid.into()), V::Text(document_id.into())],
+                &[V::Text(uid.into()), V::Text(document_id.into()), V::Text(locale.into())],
             )
             .await?;
         Ok(())
@@ -142,7 +145,8 @@ impl DocumentListener for History {
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             if event.kind == EventKind::Deleted {
-                if let Err(error) = self.forget(&event.uid, &event.document_id).await {
+                let locale = event.locale.as_deref().unwrap_or_default();
+                if let Err(error) = self.forget(&event.uid, &event.document_id, locale).await {
                     tracing::warn!(%error, uid = %event.uid, "could not remove history versions");
                 }
                 return;

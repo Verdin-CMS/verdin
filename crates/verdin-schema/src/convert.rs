@@ -250,6 +250,7 @@ pub fn convert_attribute(raw: RawAttribute) -> Result<Attribute, Issues> {
             required: raw.required.unwrap_or(false),
             private: raw.private.unwrap_or(false),
             configurable: raw.configurable.unwrap_or(true),
+            localized: crate::raw::RawPluginOptions::localized(&raw.plugin_options).unwrap_or(true),
             default: raw.default,
             kind,
         })

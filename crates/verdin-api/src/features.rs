@@ -46,13 +46,8 @@ pub const CATALOG: &[FeatureSpec] = &[
         default_enabled: true,
         core: false,
     },
-    FeatureSpec {
-        id: "i18n",
-        available: false,
-        planned: Some("0.3"),
-        default_enabled: false,
-        core: false,
-    },
+    // Switched per content type in the schema (`pluginOptions.i18n.localized`).
+    FeatureSpec { id: "i18n", available: true, planned: None, default_enabled: true, core: true },
     FeatureSpec { id: HISTORY, available: true, planned: None, default_enabled: true, core: false },
     FeatureSpec {
         id: "importer",

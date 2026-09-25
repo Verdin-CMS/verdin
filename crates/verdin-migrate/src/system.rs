@@ -24,6 +24,7 @@ pub const SETTINGS: &str = "vd_settings";
 pub const WEBHOOKS: &str = "vd_webhooks";
 pub const WEBHOOK_DELIVERIES: &str = "vd_webhook_deliveries";
 pub const HISTORY_VERSIONS: &str = "vd_history_versions";
+pub const LOCALES: &str = "vd_locales";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -395,6 +396,7 @@ pub fn system_tables() -> Vec<Table> {
                 id(),
                 varchar("content_type", 255).not_null(),
                 varchar("document_id", 26).not_null(),
+                varchar("locale", 35).not_null(),
                 varchar("event", 32).not_null(),
                 varchar("status", 16).not_null(),
                 Column::new("data", ColumnType::Json).not_null(),
@@ -402,6 +404,22 @@ pub fn system_tables() -> Vec<Table> {
                 Column::new("created_at", ColumnType::DateTime).not_null(),
             ],
             indexes: vec![index(HISTORY_VERSIONS, "document", &["content_type", "document_id"])],
+            foreign_keys: Vec::new(),
+        },
+        // Content locales; exactly one is the default.
+        Table {
+            name: LOCALES.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("code", 35).not_null(),
+                    varchar("name", 255).not_null(),
+                    Column::new("is_default", ColumnType::Boolean).not_null(),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![unique(LOCALES, "code", &["code"])],
             foreign_keys: Vec::new(),
         },
     ]

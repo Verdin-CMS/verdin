@@ -5,6 +5,7 @@ mod blocks;
 pub mod events;
 mod history;
 mod input;
+pub mod locales;
 pub mod media;
 mod output;
 mod refs;
@@ -21,7 +22,7 @@ use verdin_schema::{AttributeKind, ContentType, Schema};
 
 pub use history::Dropped;
 pub use output::OutputOptions;
-pub use service::{DocumentService, Page, PageMeta, WriteOptions, slugify};
+pub use service::{DocumentService, LocaleVersion, Page, PageMeta, WriteOptions, slugify};
 
 /// One validation problem, in Strapi's `details.errors[]` format.
 #[derive(Debug, Clone, PartialEq, Serialize)]

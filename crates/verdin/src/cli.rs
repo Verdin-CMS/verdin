@@ -347,6 +347,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         upload,
         webhooks,
         history,
+        locales: Default::default(),
     };
     app::serve(context, schema, shutdown_signal()).await
 }

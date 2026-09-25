@@ -111,6 +111,7 @@ pub struct RelationFilter {
     pub owner: bool,
     pub target_table: String,
     pub target_draft_and_publish: bool,
+    pub target_localized: bool,
     /// `true` for "has no related document matching".
     pub negate: bool,
     pub inner: Option<Box<Filter>>,

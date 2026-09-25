@@ -28,6 +28,7 @@ use verdin_query::{
 };
 
 use crate::input::{Position, RelationOp, RelationWrite, check_required, prepare};
+use crate::locales::Locales;
 use crate::output::{OutputOptions, value_to_json};
 use crate::{ContentError, Issue, Registry, Result, TypeModel};
 
@@ -94,11 +95,55 @@ pub struct DocumentService {
     registry: Registry,
     output: OutputOptions,
     listeners: Vec<Arc<dyn DocumentListener>>,
+    locales: Locales,
+    /// The locale requested for localized types (`None`: the default locale).
+    locale: Option<String>,
 }
 
 impl DocumentService {
     pub fn new(db: Database, registry: Registry, output: OutputOptions) -> Self {
-        Self { db, registry, output, listeners: Vec::new() }
+        Self {
+            db,
+            registry,
+            output,
+            listeners: Vec::new(),
+            locales: Locales::default(),
+            locale: None,
+        }
+    }
+
+    /// Shares the content locales (see [`Locales`]).
+    pub fn with_locales(mut self, locales: Locales) -> Self {
+        self.locales = locales;
+        self
+    }
+
+    pub fn locales(&self) -> &Locales {
+        &self.locales
+    }
+
+    /// The same service, reading and writing localized types in `locale`.
+    pub fn in_locale(&self, locale: Option<String>) -> Self {
+        Self { locale, ..self.clone() }
+    }
+
+    /// The requested locale, or the default one.
+    pub fn context_locale(&self) -> String {
+        self.locale.clone().unwrap_or_else(|| self.locales.default_code())
+    }
+
+    /// The `locale` column value of `model`'s rows for this request: empty for types that
+    /// are not localized.
+    pub fn locale_of(&self, model: &TypeModel) -> Result<String> {
+        if !model.content_type.localized {
+            return Ok(String::new());
+        }
+        let code = self.context_locale();
+        if self.locales.contains(&code) {
+            Ok(code)
+        } else {
+            Err(ContentError::BadRequest(format!("unknown locale `{code}`")))
+        }
     }
 
     /// Announces writes to `listener` (see [`DocumentEvent`]).
@@ -111,8 +156,19 @@ impl DocumentService {
         if self.listeners.is_empty() {
             return;
         }
-        let event =
-            DocumentEvent { kind, uid: uid.to_owned(), document_id: document_id.to_owned(), actor };
+        let locale = self
+            .registry
+            .get(uid)
+            .ok()
+            .filter(|model| model.content_type.localized)
+            .map(|_| self.context_locale());
+        let event = DocumentEvent {
+            kind,
+            uid: uid.to_owned(),
+            document_id: document_id.to_owned(),
+            locale,
+            actor,
+        };
         for listener in &self.listeners {
             listener.notify(&event, self).await;
         }
@@ -150,7 +206,9 @@ impl DocumentService {
         let total = if query.pagination.with_count {
             let mut count = SqlBuilder::new(self.db.flavor());
             count.push("SELECT COUNT(*) FROM ").ident(model.table()).push(" AS ").ident(BASE);
-            write_scope(&mut count, state, &Scope::All, query.filters.as_ref(), query.status);
+            let (locale, context) = (self.locale_of(model)?, self.context_locale());
+            let filter = FilterContext::with_locale(query.status, &context);
+            write_scope(&mut count, state, &locale, &Scope::All, query.filters.as_ref(), filter);
             let rows = self
                 .db
                 .queries()
@@ -204,7 +262,7 @@ impl DocumentService {
         let model = self.registry.get(uid)?;
         let mut select = SqlBuilder::new(self.db.flavor());
         select.push("SELECT ").ident("document_id").push(" FROM ").ident(model.table());
-        select.push(" WHERE ").ident("locale").push(" = '' ORDER BY ").ident("id").push(" LIMIT 1");
+        select.push(" ORDER BY ").ident("id").push(" LIMIT 1");
         let rows = self.db.queries().fetch_all(&select.sql, &[], &[ColumnKind::Text]).await?;
         Ok(rows
             .into_iter()
@@ -231,11 +289,13 @@ impl DocumentService {
             Scope::Documents(ids) => ids.chunks(IN_CHUNK).map(Scope::Documents).collect(),
             other => vec![other],
         };
+        let (locale, context) = (self.locale_of(model)?, self.context_locale());
         let mut docs = Vec::new();
         for chunk in chunks {
             let mut select = SqlBuilder::new(self.db.flavor());
             write_select(&mut select, model.table(), fields);
-            write_scope(&mut select, state, &chunk, filters, status);
+            let filter = FilterContext::with_locale(status, &context);
+            write_scope(&mut select, state, &locale, &chunk, filters, filter);
             write_order_by(&mut select, sort, Some(BASE));
             if let Some((limit, offset)) = page {
                 select.push(" LIMIT ").param(SqlValue::BigInt(to_i64(limit)));
@@ -462,14 +522,21 @@ impl DocumentService {
             select.column(Some(BASE), "id").push(" = ").column(Some("l"), "source_id");
             select.push(" WHERE ").column(Some("l"), "target_document_id").push(" IN ");
             write_list(&mut select, chunk.iter().map(|id| SqlValue::Text(id.clone())));
-            select.push(" AND ").column(Some(BASE), "locale").push(" = '' AND ");
+            select.push(" AND ").column(Some(BASE), "locale").push(" = ");
+            select.param(SqlValue::Text(self.locale_of(owner)?)).push(" AND ");
             select
                 .column(Some(BASE), "publication_state")
                 .push(" = ")
                 .param(SqlValue::SmallInt(state));
             if let Some(filter) = &sub.filters {
                 select.push(" AND ");
-                write_filter(&mut select, filter, BASE, FilterContext::new(status));
+                let context = self.context_locale();
+                write_filter(
+                    &mut select,
+                    filter,
+                    BASE,
+                    FilterContext::with_locale(status, &context),
+                );
             }
             write_order_by(&mut select, &sub.sort, Some(BASE));
             let rows = self.db.queries().fetch_all(&select.sql, &select.params, &kinds).await?;
@@ -497,7 +564,7 @@ impl DocumentService {
         let mut tx = self.db.begin().await?;
         let mut values: Vec<(String, SqlValue)> = vec![
             ("document_id".into(), SqlValue::Text(document_id.clone())),
-            ("locale".into(), SqlValue::Text(String::new())),
+            ("locale".into(), SqlValue::Text(self.locale_of(model)?)),
             ("publication_state".into(), SqlValue::SmallInt(state)),
             (
                 "published_at".into(),
@@ -552,11 +619,27 @@ impl DocumentService {
         let state = if model.draft_and_publish() { DRAFT } else { PUBLISHED };
         let now = now();
 
+        let locale = self.locale_of(model)?;
         let mut tx = self.db.begin().await?;
-        let id = row_id(&mut tx, model, document_id, state, true)
-            .await?
-            .ok_or(ContentError::NotFound)?;
+        let id = match row_id(&mut tx, model, document_id, state, &locale, true).await? {
+            Some(id) => id,
+            // A new locale of an existing document.
+            None if model.content_type.localized => {
+                self.create_locale_version(
+                    &mut tx,
+                    model,
+                    document_id,
+                    state,
+                    &locale,
+                    now,
+                    options.actor,
+                )
+                .await?
+            }
+            None => return Err(ContentError::NotFound),
+        };
         self.check_references(&mut tx, model, &prepared.columns).await?;
+        let shared = shared_columns(model, &prepared.columns);
         let mut assignments = prepared.columns;
         assignments.push(("updated_at".into(), SqlValue::DateTime(now)));
         assignments.push(("updated_by_id".into(), actor_value(options.actor)));
@@ -565,6 +648,32 @@ impl DocumentService {
         tx.execute(&update.sql, &update.params).await.map_err(|error| db_error(model, error))?;
         self.write_relations(&mut tx, model, id, document_id, state, &prepared.relations).await?;
         crate::media::write_media(&mut tx, id, &prepared.media).await?;
+        if model.content_type.localized {
+            let relations: Vec<RelationWrite> = prepared
+                .relations
+                .iter()
+                .filter(|write| !localized_field(model, &write.field))
+                .cloned()
+                .collect();
+            let media: Vec<crate::input::MediaWrite> = prepared
+                .media
+                .iter()
+                .filter(|write| !localized_field(model, &write.field))
+                .cloned()
+                .collect();
+            for sibling in sibling_rows(&mut tx, model, document_id, state, &locale).await? {
+                if !shared.is_empty() {
+                    let mut update = SqlBuilder::new(self.db.flavor());
+                    write_update(&mut update, model.table(), shared.clone(), sibling);
+                    tx.execute(&update.sql, &update.params)
+                        .await
+                        .map_err(|error| db_error(model, error))?;
+                }
+                self.write_relations(&mut tx, model, sibling, document_id, state, &relations)
+                    .await?;
+                crate::media::write_media(&mut tx, sibling, &media).await?;
+            }
+        }
 
         if model.draft_and_publish() {
             if options.publish {
@@ -584,32 +693,29 @@ impl DocumentService {
     /// Deletes every version of a document, and every link pointing at it.
     pub async fn delete(&self, uid: &str, document_id: &str) -> Result<()> {
         let model = self.registry.get(uid)?;
+        let locale = self.locale_of(model)?;
         let mut tx = self.db.begin().await?;
-        for link_table in self.registry.incoming_links(uid) {
-            let mut delete = SqlBuilder::new(self.db.flavor());
-            delete
-                .push("DELETE FROM ")
-                .ident(link_table)
-                .push(" WHERE ")
-                .ident("target_document_id");
-            delete.push(" = ").param(SqlValue::Text(document_id.into()));
-            tx.execute(&delete.sql, &delete.params).await?;
-        }
         let mut delete = SqlBuilder::new(self.db.flavor());
-        delete
-            .push("DELETE FROM ")
-            .ident(model.table())
-            .push(" WHERE ")
-            .ident("document_id")
-            .push(" = ");
-        delete
-            .param(SqlValue::Text(document_id.into()))
-            .push(" AND ")
-            .ident("locale")
-            .push(" = ''");
+        delete.push("DELETE FROM ").ident(model.table()).push(" WHERE ").ident("document_id");
+        delete.push(" = ").param(SqlValue::Text(document_id.into())).push(" AND ");
+        delete.ident("locale").push(" = ").param(SqlValue::Text(locale));
         let deleted = tx.execute(&delete.sql, &delete.params).await?;
         if deleted == 0 {
             return Err(ContentError::NotFound);
+        }
+        // Links pointing at the document go once no locale is left.
+        let mut remaining = SqlBuilder::new(self.db.flavor());
+        remaining.push("SELECT 1 FROM ").ident(model.table()).push(" WHERE ").ident("document_id");
+        remaining.push(" = ").param(SqlValue::Text(document_id.into())).push(" LIMIT 1");
+        let gone = !tx.has_rows(&remaining.sql, &remaining.params).await?;
+        if gone {
+            for link_table in self.registry.incoming_links(uid) {
+                let mut delete = SqlBuilder::new(self.db.flavor());
+                delete.push("DELETE FROM ").ident(link_table).push(" WHERE ");
+                delete.ident("target_document_id").push(" = ");
+                delete.param(SqlValue::Text(document_id.into()));
+                tx.execute(&delete.sql, &delete.params).await?;
+            }
         }
         tx.commit().await?;
         self.emit(EventKind::Deleted, uid, document_id, None).await;
@@ -629,11 +735,14 @@ impl DocumentService {
     /// Removes the published version (its links go with it); the draft stays.
     pub async fn unpublish(&self, uid: &str, document_id: &str) -> Result<()> {
         let model = self.draft_and_publish_model(uid)?;
+        let locale = self.locale_of(model)?;
         let mut tx = self.db.begin().await?;
-        row_id(&mut tx, model, document_id, DRAFT, true).await?.ok_or(ContentError::NotFound)?;
+        row_id(&mut tx, model, document_id, DRAFT, &locale, true)
+            .await?
+            .ok_or(ContentError::NotFound)?;
         let mut delete = SqlBuilder::new(self.db.flavor());
         delete.push("DELETE FROM ").ident(model.table());
-        write_version(&mut delete, PUBLISHED, document_id);
+        write_version(&mut delete, PUBLISHED, &locale, document_id);
         tx.execute(&delete.sql, &delete.params).await?;
         tx.commit().await?;
         self.emit(EventKind::Unpublished, uid, document_id, None).await;
@@ -643,11 +752,12 @@ impl DocumentService {
     /// Replaces the draft (fields and links) with the published version.
     pub async fn discard_draft(&self, uid: &str, document_id: &str) -> Result<()> {
         let model = self.draft_and_publish_model(uid)?;
+        let locale = self.locale_of(model)?;
         let mut tx = self.db.begin().await?;
-        let draft_id = row_id(&mut tx, model, document_id, DRAFT, true)
+        let draft_id = row_id(&mut tx, model, document_id, DRAFT, &locale, true)
             .await?
             .ok_or(ContentError::NotFound)?;
-        let published = load_internal(&mut tx, model, document_id, PUBLISHED).await?;
+        let published = load_internal(&mut tx, model, document_id, PUBLISHED, &locale).await?;
         let published = published.ok_or_else(|| {
             ContentError::BadRequest("the document has no published version".into())
         })?;
@@ -688,6 +798,7 @@ impl DocumentService {
             .filter(|attribute| matches!(attribute.kind, verdin_schema::AttributeKind::Uid { .. }))
             .ok_or_else(|| ContentError::BadRequest(format!("`{field}` is not a uid attribute")))?;
         let column = verdin_schema::Attribute::column_name(field);
+        let locale = self.locale_of(model)?;
         let base = slugify(value);
         let taken = |candidate: String| {
             let mut select = SqlBuilder::new(self.db.flavor());
@@ -698,6 +809,7 @@ impl DocumentService {
                 .ident(&column)
                 .push(" = ");
             select.param(SqlValue::Text(candidate));
+            select.push(" AND ").ident("locale").push(" = ").param(SqlValue::Text(locale.clone()));
             if let Some(document_id) = document_id {
                 select
                     .push(" AND ")
@@ -727,9 +839,14 @@ impl DocumentService {
         let model = self.registry.get(uid)?;
         let mut select = SqlBuilder::new(self.db.flavor());
         select.push("SELECT ").ident("created_by_id").push(" FROM ").ident(model.table());
-        select.push(" WHERE ").ident("locale").push(" = '' AND ").ident("document_id").push(" = ");
+        select.push(" WHERE ").ident("document_id").push(" = ");
         select.param(SqlValue::Text(document_id.into()));
-        select.push(" ORDER BY ").ident("publication_state").push(" LIMIT 1");
+        select
+            .push(" ORDER BY ")
+            .ident("publication_state")
+            .push(", ")
+            .ident("id")
+            .push(" LIMIT 1");
         let rows =
             self.db.queries().fetch_all(&select.sql, &select.params, &[ColumnKind::BigInt]).await?;
         let row = rows.into_iter().next().ok_or(ContentError::NotFound)?;
@@ -744,8 +861,10 @@ impl DocumentService {
         now: OffsetDateTime,
         actor: Option<i64>,
     ) -> Result<()> {
-        let draft =
-            load_internal(tx, model, document_id, DRAFT).await?.ok_or(ContentError::NotFound)?;
+        let locale = self.locale_of(model)?;
+        let draft = load_internal(tx, model, document_id, DRAFT, &locale)
+            .await?
+            .ok_or(ContentError::NotFound)?;
         let document = internal_json(&draft);
         let draft_id = row_id_of(&draft);
         let mut issues =
@@ -760,12 +879,13 @@ impl DocumentService {
             .find(|(field, _)| field.api == "createdAt")
             .map(|(_, value)| value.clone());
         let mut values = attribute_values(draft);
+        let shared = shared_columns(model, &values);
         values.push(("published_at".into(), SqlValue::DateTime(now)));
         values.push(("updated_at".into(), SqlValue::DateTime(now)));
         values.push(("updated_by_id".into(), actor_value(actor)));
 
         let mut statement = SqlBuilder::new(self.db.flavor());
-        let published_id = match row_id(tx, model, document_id, PUBLISHED, true).await? {
+        let published_id = match row_id(tx, model, document_id, PUBLISHED, &locale, true).await? {
             Some(id) => {
                 write_update(&mut statement, model.table(), values, id);
                 tx.execute(&statement.sql, &statement.params)
@@ -775,12 +895,12 @@ impl DocumentService {
             }
             None => {
                 values.push(("document_id".into(), SqlValue::Text(document_id.into())));
-                values.push(("locale".into(), SqlValue::Text(String::new())));
+                values.push(("locale".into(), SqlValue::Text(locale.clone())));
                 values.push(("publication_state".into(), SqlValue::SmallInt(PUBLISHED)));
                 values.push(("created_at".into(), created_at.unwrap_or(SqlValue::DateTime(now))));
                 values.push((
                     "created_by_id".into(),
-                    actor_value(created_by(tx, model, document_id).await?),
+                    actor_value(created_by(tx, model, document_id, &locale).await?),
                 ));
                 write_insert(&mut statement, model.table(), values);
                 tx.insert_returning_id(&statement.sql, &statement.params)
@@ -788,7 +908,49 @@ impl DocumentService {
                     .map_err(|error| db_error(model, error))?
             }
         };
-        self.copy_links(tx, model, draft_id, published_id, document_id, PUBLISHED).await
+        self.copy_links(tx, model, draft_id, published_id, document_id, PUBLISHED).await?;
+        if model.content_type.localized {
+            self.share_published(tx, model, document_id, &locale, &shared, published_id).await?;
+        }
+        Ok(())
+    }
+
+    /// Copies the shared (non-localized) fields of a just published row to the published
+    /// versions of the other locales.
+    async fn share_published(
+        &self,
+        tx: &mut Tx,
+        model: &TypeModel,
+        document_id: &str,
+        locale: &str,
+        shared: &[(String, SqlValue)],
+        published_id: i64,
+    ) -> Result<()> {
+        let is_shared =
+            |field: &&Field| field.attribute.as_ref().is_some_and(|attribute| !attribute.localized);
+        for sibling in sibling_rows(tx, model, document_id, PUBLISHED, locale).await? {
+            if !shared.is_empty() {
+                let mut update = SqlBuilder::new(tx.flavor());
+                write_update(&mut update, model.table(), shared.to_vec(), sibling);
+                tx.execute(&update.sql, &update.params)
+                    .await
+                    .map_err(|error| db_error(model, error))?;
+            }
+            let media =
+                model.fields.iter().filter(is_shared).filter_map(|field| field.media.as_ref());
+            crate::media::copy_media(tx, media, published_id, sibling).await?;
+            for relation in model
+                .fields
+                .iter()
+                .filter(is_shared)
+                .filter_map(|field| field.relation.as_ref())
+                .filter(|relation| relation.owner)
+            {
+                let links = current_links(tx, &relation.link_table, published_id).await?;
+                replace_links(tx, &relation.link_table, sibling, &links).await?;
+            }
+        }
+        Ok(())
     }
 
     /// Types without draft & publish are always published, so `required` holds on every write.
@@ -799,8 +961,10 @@ impl DocumentService {
         document_id: &str,
         state: i16,
     ) -> Result<()> {
-        let row =
-            load_internal(tx, model, document_id, state).await?.ok_or(ContentError::NotFound)?;
+        let locale = self.locale_of(model)?;
+        let row = load_internal(tx, model, document_id, state, &locale)
+            .await?
+            .ok_or(ContentError::NotFound)?;
         let document = internal_json(&row);
         let mut issues =
             check_required(&self.registry.schema, &model.content_type.attributes, &document, &[]);
@@ -1133,15 +1297,199 @@ async fn missing_media(tx: &mut Tx, model: &TypeModel, id: i64) -> Result<Vec<Is
     Ok(issues)
 }
 
+impl DocumentService {
+    /// Adds `locale` to an existing document: a new row sharing the document id, holding
+    /// the values of the non-localized fields of another locale.
+    #[allow(clippy::too_many_arguments)]
+    async fn create_locale_version(
+        &self,
+        tx: &mut Tx,
+        model: &TypeModel,
+        document_id: &str,
+        state: i16,
+        locale: &str,
+        now: OffsetDateTime,
+        actor: Option<i64>,
+    ) -> Result<i64> {
+        let mut select = SqlBuilder::new(tx.flavor());
+        select.push("SELECT ").ident("locale").push(" FROM ").ident(model.table());
+        select.push(" WHERE ").ident("document_id").push(" = ");
+        select.param(SqlValue::Text(document_id.into()));
+        select
+            .push(" ORDER BY ")
+            .ident("publication_state")
+            .push(", ")
+            .ident("id")
+            .push(" LIMIT 1");
+        let rows = tx.fetch_all(&select.sql, &select.params, &[ColumnKind::Text]).await?;
+        let source_locale = rows
+            .into_iter()
+            .next()
+            .and_then(|row| row.into_iter().next())
+            .and_then(SqlValue::into_text)
+            .ok_or(ContentError::NotFound)?;
+        // Prefer the source's version in the same state (the draft, usually).
+        let source = match load_internal(tx, model, document_id, state, &source_locale).await? {
+            Some(row) => row,
+            None => load_internal(tx, model, document_id, PUBLISHED, &source_locale)
+                .await?
+                .ok_or(ContentError::NotFound)?,
+        };
+        let source_id = row_id_of(&source);
+        let mut values: Vec<(String, SqlValue)> = source
+            .into_iter()
+            .filter(|(field, _)| {
+                field.attribute.as_ref().is_some_and(|attribute| !attribute.localized)
+            })
+            .map(|(field, value)| (field.column.clone(), value))
+            .collect();
+        values.extend([
+            ("document_id".into(), SqlValue::Text(document_id.into())),
+            ("locale".into(), SqlValue::Text(locale.into())),
+            ("publication_state".into(), SqlValue::SmallInt(state)),
+            (
+                "published_at".into(),
+                if state == PUBLISHED {
+                    SqlValue::DateTime(now)
+                } else {
+                    SqlValue::Null(ColumnKind::DateTime)
+                },
+            ),
+            ("created_at".into(), SqlValue::DateTime(now)),
+            ("updated_at".into(), SqlValue::DateTime(now)),
+            ("created_by_id".into(), actor_value(actor)),
+            ("updated_by_id".into(), actor_value(actor)),
+        ]);
+        let mut insert = SqlBuilder::new(tx.flavor());
+        write_insert(&mut insert, model.table(), values);
+        let id = tx
+            .insert_returning_id(&insert.sql, &insert.params)
+            .await
+            .map_err(|error| db_error(model, error))?;
+        // Shared relations and media come along.
+        let shared =
+            |field: &&Field| field.attribute.as_ref().is_some_and(|attribute| !attribute.localized);
+        let media = model.fields.iter().filter(shared).filter_map(|field| field.media.as_ref());
+        crate::media::copy_media(tx, media, source_id, id).await?;
+        for relation in model
+            .fields
+            .iter()
+            .filter(shared)
+            .filter_map(|field| field.relation.as_ref())
+            .filter(|relation| relation.owner)
+        {
+            let links = current_links(tx, &relation.link_table, source_id).await?;
+            replace_links(tx, &relation.link_table, id, &links).await?;
+        }
+        Ok(id)
+    }
+
+    /// The locales a document exists in, with whether each has a draft and a published
+    /// version (empty for types that are not localized).
+    pub async fn document_locales(
+        &self,
+        uid: &str,
+        document_id: &str,
+    ) -> Result<Vec<LocaleVersion>> {
+        let model = self.registry.get(uid)?;
+        if !model.content_type.localized {
+            return Ok(Vec::new());
+        }
+        let mut select = SqlBuilder::new(self.db.flavor());
+        select.push("SELECT ").ident("locale").push(", ").ident("publication_state");
+        select.push(" FROM ").ident(model.table()).push(" WHERE ").ident("document_id").push(" = ");
+        select.param(SqlValue::Text(document_id.into()));
+        let kinds = [ColumnKind::Text, ColumnKind::SmallInt];
+        let rows = self.db.queries().fetch_all(&select.sql, &select.params, &kinds).await?;
+        let mut out: Vec<LocaleVersion> = Vec::new();
+        for row in rows {
+            let mut row = row.into_iter();
+            let locale = row.next().and_then(SqlValue::into_text).unwrap_or_default();
+            let published =
+                row.next().and_then(|value| value.as_i64()) == Some(i64::from(PUBLISHED));
+            let entry = match out.iter_mut().find(|entry| entry.locale == locale) {
+                Some(entry) => entry,
+                None => {
+                    out.push(LocaleVersion { locale, draft: false, published: false });
+                    out.last_mut().expect("just pushed")
+                }
+            };
+            if published || !model.draft_and_publish() {
+                entry.published = true;
+            } else {
+                entry.draft = true;
+            }
+        }
+        out.sort_by(|a, b| a.locale.cmp(&b.locale));
+        Ok(out)
+    }
+}
+
+/// One locale of a document.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LocaleVersion {
+    pub locale: String,
+    pub draft: bool,
+    pub published: bool,
+}
+
+/// Whether `field` has one value per locale.
+fn localized_field(model: &TypeModel, field: &str) -> bool {
+    model.content_type.attributes.get(field).is_none_or(|attribute| attribute.localized)
+}
+
+/// Assignments of non-localized attributes, shared by every locale.
+fn shared_columns(model: &TypeModel, columns: &[(String, SqlValue)]) -> Vec<(String, SqlValue)> {
+    if !model.content_type.localized {
+        return Vec::new();
+    }
+    columns
+        .iter()
+        .filter(|(column, _)| {
+            model.fields.iter().any(|field| {
+                &field.column == column
+                    && field.attribute.as_ref().is_some_and(|attribute| !attribute.localized)
+            })
+        })
+        .cloned()
+        .collect()
+}
+
+/// Rows of the other locales of a document in `state`.
+async fn sibling_rows(
+    tx: &mut Tx,
+    model: &TypeModel,
+    document_id: &str,
+    state: i16,
+    locale: &str,
+) -> Result<Vec<i64>> {
+    let mut select = SqlBuilder::new(tx.flavor());
+    select.push("SELECT ").ident("id").push(" FROM ").ident(model.table());
+    select
+        .push(" WHERE ")
+        .ident("document_id")
+        .push(" = ")
+        .param(SqlValue::Text(document_id.into()));
+    select.push(" AND ").ident("publication_state").push(" = ").param(SqlValue::SmallInt(state));
+    select.push(" AND ").ident("locale").push(" <> ").param(SqlValue::Text(locale.into()));
+    let rows = tx.fetch_all(&select.sql, &select.params, &[ColumnKind::BigInt]).await?;
+    Ok(rows.into_iter().filter_map(|row| row.first().and_then(SqlValue::as_i64)).collect())
+}
+
 fn actor_value(actor: Option<i64>) -> SqlValue {
     actor.map_or(SqlValue::Null(ColumnKind::BigInt), SqlValue::BigInt)
 }
 
 /// `created_by_id` of a document's draft (inside a transaction).
-async fn created_by(tx: &mut Tx, model: &TypeModel, document_id: &str) -> Result<Option<i64>> {
+async fn created_by(
+    tx: &mut Tx,
+    model: &TypeModel,
+    document_id: &str,
+    locale: &str,
+) -> Result<Option<i64>> {
     let mut select = SqlBuilder::new(tx.flavor());
     select.push("SELECT ").ident("created_by_id").push(" FROM ").ident(model.table());
-    write_version(&mut select, DRAFT, document_id);
+    write_version(&mut select, DRAFT, locale, document_id);
     let rows = tx.fetch_all(&select.sql, &select.params, &[ColumnKind::BigInt]).await?;
     Ok(rows.first().and_then(|row| row[0].as_i64()))
 }
@@ -1231,11 +1579,13 @@ fn write_select(out: &mut SqlBuilder, table: &str, fields: &[&Field]) {
 fn write_scope(
     out: &mut SqlBuilder,
     state: i16,
+    locale: &str,
     scope: &Scope<'_>,
     filters: Option<&Filter>,
-    status: Status,
+    context: FilterContext,
 ) {
-    out.push(" WHERE ").column(Some(BASE), "locale").push(" = '' AND ");
+    out.push(" WHERE ").column(Some(BASE), "locale").push(" = ");
+    out.param(SqlValue::Text(locale.into())).push(" AND ");
     out.column(Some(BASE), "publication_state").push(" = ").param(SqlValue::SmallInt(state));
     match scope {
         Scope::All => {}
@@ -1250,13 +1600,14 @@ fn write_scope(
     }
     if let Some(filter) = filters {
         out.push(" AND ");
-        write_filter(out, filter, BASE, FilterContext::new(status));
+        write_filter(out, filter, BASE, context);
     }
 }
 
 /// ` WHERE` clause selecting one version of a document (unaliased, for DML).
-fn write_version(out: &mut SqlBuilder, state: i16, document_id: &str) {
-    out.push(" WHERE ").ident("locale").push(" = '' AND ").ident("publication_state").push(" = ");
+fn write_version(out: &mut SqlBuilder, state: i16, locale: &str, document_id: &str) {
+    out.push(" WHERE ").ident("locale").push(" = ").param(SqlValue::Text(locale.into()));
+    out.push(" AND ").ident("publication_state").push(" = ");
     out.param(SqlValue::SmallInt(state)).push(" AND ").ident("document_id").push(" = ");
     out.param(SqlValue::Text(document_id.into()));
 }
@@ -1307,11 +1658,12 @@ async fn row_id(
     model: &TypeModel,
     document_id: &str,
     state: i16,
+    locale: &str,
     lock: bool,
 ) -> Result<Option<i64>> {
     let mut select = SqlBuilder::new(tx.flavor());
     select.push("SELECT ").ident("id").push(" FROM ").ident(model.table());
-    write_version(&mut select, state, document_id);
+    write_version(&mut select, state, locale, document_id);
     // SQLite transactions already hold the write lock (`BEGIN IMMEDIATE`).
     if lock && tx.flavor() != Flavor::Sqlite {
         select.push(" FOR UPDATE");
@@ -1326,6 +1678,7 @@ async fn load_internal<'a>(
     model: &'a TypeModel,
     document_id: &str,
     state: i16,
+    locale: &str,
 ) -> Result<Option<Vec<(&'a Field, SqlValue)>>> {
     let fields = internal_fields(model);
     let mut select = SqlBuilder::new(tx.flavor());
@@ -1337,7 +1690,7 @@ async fn load_internal<'a>(
         select.ident(&field.column);
     }
     select.push(" FROM ").ident(model.table());
-    write_version(&mut select, state, document_id);
+    write_version(&mut select, state, locale, document_id);
     let kinds: Vec<ColumnKind> = fields.iter().map(|field| field.kind).collect();
     let rows = tx.fetch_all(&select.sql, &select.params, &kinds).await?;
     Ok(rows.into_iter().next().map(|row| fields.into_iter().zip(row).collect()))
@@ -1361,7 +1714,7 @@ pub(crate) async fn missing_documents(
     for chunk in ids.chunks(IN_CHUNK) {
         let mut select = SqlBuilder::new(tx.flavor());
         select.push("SELECT DISTINCT ").ident("document_id").push(" FROM ").ident(table);
-        select.push(" WHERE ").ident("locale").push(" = '' AND ").ident("document_id").push(" IN ");
+        select.push(" WHERE ").ident("document_id").push(" IN ");
         write_list(&mut select, chunk.iter().map(|id| SqlValue::Text(id.clone())));
         for row in tx.fetch_all(&select.sql, &select.params, &[ColumnKind::Text]).await? {
             if let Some(id) = row.into_iter().next().and_then(SqlValue::into_text) {

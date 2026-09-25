@@ -17,6 +17,7 @@ pub mod actions {
     pub const SCHEMA_MANAGE: &str = "schema.manage";
     pub const FEATURES_MANAGE: &str = "features.manage";
     pub const WEBHOOKS_MANAGE: &str = "webhooks.manage";
+    pub const LOCALES_MANAGE: &str = "locales.manage";
     pub const MEDIA_READ: &str = "media.read";
     pub const MEDIA_CREATE: &str = "media.create";
     pub const MEDIA_UPDATE: &str = "media.update";
@@ -31,6 +32,7 @@ pub mod actions {
         SCHEMA_MANAGE,
         FEATURES_MANAGE,
         WEBHOOKS_MANAGE,
+        LOCALES_MANAGE,
     ];
     /// Media library actions: no subject; `is-creator` limits them to the user's files.
     pub const MEDIA: &[&str] = &[MEDIA_READ, MEDIA_CREATE, MEDIA_UPDATE, MEDIA_DELETE];

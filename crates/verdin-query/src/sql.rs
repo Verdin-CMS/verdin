@@ -65,14 +65,20 @@ impl SqlBuilder {
 /// State of a filter being written: the status whose versions are compared, and the
 /// nesting depth of relation subqueries (for their aliases).
 #[derive(Debug, Clone, Copy)]
-pub struct FilterContext {
+pub struct FilterContext<'a> {
     pub status: Status,
+    /// The locale that localized related types are read in.
+    pub locale: &'a str,
     depth: usize,
 }
 
-impl FilterContext {
+impl<'a> FilterContext<'a> {
     pub fn new(status: Status) -> Self {
-        Self { status, depth: 0 }
+        Self { status, locale: "", depth: 0 }
+    }
+
+    pub fn with_locale(status: Status, locale: &'a str) -> Self {
+        Self { status, locale, depth: 0 }
     }
 }
 
@@ -141,7 +147,12 @@ fn write_relation(
     } else {
         out.column(Some(&target), "id").push(" = ").column(Some(&link), "source_id");
     }
-    out.push(" AND ").column(Some(&target), "locale").push(" = '' AND ");
+    let locale = if relation.target_localized { context.locale } else { "" };
+    out.push(" AND ")
+        .column(Some(&target), "locale")
+        .push(" = ")
+        .param(SqlValue::Text(locale.into()));
+    out.push(" AND ");
     out.column(Some(&target), "publication_state").push(" = ").param(SqlValue::SmallInt(state));
     out.push(" WHERE ");
     if relation.owner {
@@ -483,6 +494,7 @@ mod tests {
             owner: true,
             target_table: "categories".into(),
             target_draft_and_publish: true,
+            target_localized: false,
             negate: false,
             inner: Some(Box::new(condition(Op::Eq, "News"))),
         });
@@ -491,13 +503,13 @@ mod tests {
         assert_eq!(
             out.sql,
             "EXISTS (SELECT 1 FROM \"articles_category_lnk\" AS \"l1\" JOIN \"categories\" AS \"r1\" \
-             ON \"r1\".\"document_id\" = \"l1\".\"target_document_id\" AND \"r1\".\"locale\" = '' \
+             ON \"r1\".\"document_id\" = \"l1\".\"target_document_id\" AND \"r1\".\"locale\" = ? \
              AND \"r1\".\"publication_state\" = ? WHERE \"l1\".\"source_id\" = \"t0\".\"id\" \
              AND \"r1\".\"title\" = ?)"
         );
         assert_eq!(
             out.params,
-            [SqlValue::SmallInt(0), SqlValue::Text("News".into())],
+            [SqlValue::Text(String::new()), SqlValue::SmallInt(0), SqlValue::Text("News".into())],
             "drafts see drafts"
         );
     }

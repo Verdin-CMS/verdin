@@ -17,8 +17,28 @@ pub struct RawContentType {
     pub collection_name: Option<String>,
     #[serde(default)]
     pub options: RawOptions,
+    pub plugin_options: Option<RawPluginOptions>,
     #[serde(default)]
     pub attributes: IndexMap<String, RawAttribute>,
+}
+
+/// `pluginOptions` (Strapi's format); only `i18n.localized` is read.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawPluginOptions {
+    pub i18n: Option<RawI18n>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RawI18n {
+    pub localized: Option<bool>,
+}
+
+impl RawPluginOptions {
+    pub fn localized(options: &Option<Self>) -> Option<bool> {
+        options.as_ref().and_then(|options| options.i18n.as_ref()).and_then(|i18n| i18n.localized)
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -47,6 +67,7 @@ pub struct RawAttribute {
     pub required: Option<bool>,
     pub private: Option<bool>,
     pub configurable: Option<bool>,
+    pub plugin_options: Option<RawPluginOptions>,
     pub default: Option<Value>,
     pub unique: Option<bool>,
     pub min_length: Option<u32>,

@@ -31,6 +31,8 @@ pub struct ContentType {
     pub description: Option<String>,
     pub collection_name: String,
     pub draft_and_publish: bool,
+    /// Documents have one version per locale (`pluginOptions.i18n.localized`).
+    pub localized: bool,
     pub attributes: IndexMap<String, Attribute>,
 }
 
@@ -50,6 +52,9 @@ pub struct Attribute {
     pub required: bool,
     pub private: bool,
     pub configurable: bool,
+    /// In a localized type, each locale has its own value; `false` shares the value
+    /// across locales (`pluginOptions.i18n.localized: false`).
+    pub localized: bool,
     pub default: Option<Value>,
     pub kind: AttributeKind,
 }

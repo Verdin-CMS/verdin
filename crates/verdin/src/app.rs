@@ -50,6 +50,8 @@ pub struct AppContext {
     pub webhooks: verdin_api::Webhooks,
     /// Content history; the `history` feature switches recording on and off.
     pub history: verdin_api::History,
+    /// Content locales, loaded when serving starts.
+    pub locales: verdin_content::locales::Locales,
 }
 
 /// The webhooks service configured for `mode`.
@@ -129,6 +131,7 @@ pub fn build_app(
         &api.prefix,
         Some(context.upload.clone()),
         &listeners,
+        &context.locales,
     );
     let admin_api = verdin_api::admin_router(
         context.db.clone(),
@@ -148,6 +151,7 @@ pub fn build_app(
             webhooks: states.enabled(WEBHOOKS).then(|| context.webhooks.clone()),
             history: states.enabled(HISTORY).then(|| context.history.clone()),
             listeners: listeners.clone(),
+            locales: context.locales.clone(),
         },
     );
     let graphql = states.enabled(GRAPHQL).then(|| {
@@ -212,6 +216,9 @@ pub async fn serve(
 ) -> Result<()> {
     let context = Arc::new(context);
     let states = load_features(&context.db).await.context("reading feature switches")?;
+    context
+        .locales
+        .set(verdin_api::i18n::load_locales(&context.db).await.context("reading content locales")?);
     let host = AppHost::new(context.clone(), schema, states);
     let deliveries = context.webhooks.spawn();
     // Keeps the watcher alive while serving.
@@ -267,8 +274,13 @@ fn graphql_router(
         introspection: flag("introspection", defaults.introspection),
         playground: flag("playground", context.mode == Mode::Development),
     };
-    let service =
-        verdin_api::document_service(context.db.clone(), registry.clone(), output, listeners);
+    let service = verdin_api::document_service(
+        context.db.clone(),
+        registry.clone(),
+        output,
+        listeners,
+        &context.locales,
+    );
     match verdin_graphql::schema(service, limits, &options) {
         Ok(schema) => verdin_graphql::router(schema, context.auth.clone(), options, "/graphql"),
         Err(error) => {
@@ -766,6 +778,7 @@ mod tests {
             upload,
             webhooks,
             history,
+            locales: Default::default(),
         })
     }
 

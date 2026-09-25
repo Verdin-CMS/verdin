@@ -36,6 +36,8 @@ use crate::limiter::RateLimiter;
 pub(crate) mod engagement;
 #[path = "history_admin.rs"]
 mod history_admin;
+#[path = "locales_admin.rs"]
+mod locales_admin;
 #[path = "upload_admin.rs"]
 mod upload_admin;
 #[path = "webhooks_admin.rs"]
@@ -101,6 +103,8 @@ pub struct AdminConfig {
     pub history: Option<crate::History>,
     /// Webhooks, history…: see [`crate::document_service`].
     pub listeners: crate::Listeners,
+    /// The content locales, shared with the other Document Services.
+    pub locales: verdin_content::locales::Locales,
 }
 
 impl Default for AdminConfig {
@@ -119,6 +123,7 @@ impl Default for AdminConfig {
             webhooks: None,
             history: None,
             listeners: Vec::new(),
+            locales: Default::default(),
         }
     }
 }
@@ -145,7 +150,13 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
     ));
     let state = AdminState {
         flavor: db.flavor().as_str(),
-        service: crate::document_service(db, registry, config.output, &config.listeners),
+        service: crate::document_service(
+            db,
+            registry,
+            config.output,
+            &config.listeners,
+            &config.locales,
+        ),
         auth,
         config: Arc::new(config),
         limiter,
@@ -175,6 +186,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         )
         .route("/content/{uid}/{document_id}/actions/{action}", post(content_action))
         .route("/content/{uid}/uid-available", get(uid_available))
+        .route("/content/{uid}/{document_id}/locales", get(content_locales))
         .route("/schema", get(schema_sources))
         .route("/schema/plan", post(schema_plan))
         .route("/schema/apply", post(schema_apply))
@@ -183,7 +195,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .route("/features/{id}", axum::routing::put(update_feature))
         .merge(engagement::routes())
         .merge(webhooks_admin::routes())
-        .merge(history_admin::routes());
+        .merge(history_admin::routes())
+        .merge(locales_admin::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
     http.apply(regular).merge(uploads).fallback(|| async { ApiError::NotFound }).with_state(state)
@@ -933,6 +946,23 @@ async fn system_info(State(state): State<AdminState>, headers: HeaderMap) -> Api
 
 /// Resolves `action` on `uid` for the admin: `None` is forbidden, `Own` adds a creator
 /// restriction.
+/// The state with its Document Service in `?locale=`.
+fn localized(mut state: AdminState, raw: Option<&str>) -> Result<AdminState, ApiError> {
+    state.service = state.service.in_locale(crate::handlers::locale_param(raw)?);
+    Ok(state)
+}
+
+/// `GET /content/{uid}/{documentId}/locales`: the locales the document exists in.
+async fn content_locales(
+    State(state): State<AdminState>,
+    Path((uid, document_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_READ).await?;
+    ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
+    Ok(data(state.service.document_locales(&uid, &document_id).await?))
+}
+
 async fn content_grant(
     state: &AdminState,
     headers: &HeaderMap,
@@ -1047,6 +1077,7 @@ async fn content_list(
     RawQuery(raw): RawQuery,
     headers: HeaderMap,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_READ).await?;
     // `unseen=true` (admin only): documents the caller has not opened since they changed.
     let mut unseen = false;
@@ -1081,6 +1112,7 @@ async fn content_get(
     RawQuery(raw): RawQuery,
     headers: HeaderMap,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_READ).await?;
     let query = admin_query(&state, &uid, raw.as_deref(), &principal, grant)?;
     read_document(&state, &uid, &document_id, &query, StatusCode::OK).await
@@ -1094,6 +1126,7 @@ async fn content_create(
     headers: HeaderMap,
     bytes: Bytes,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let (principal, _) = content_grant(&state, &headers, &uid, actions::CONTENT_CREATE).await?;
     let data = parse_data(&bytes)?;
     writable_fields(&principal, actions::CONTENT_CREATE, &uid, &data)?;
@@ -1111,6 +1144,7 @@ async fn content_update(
     headers: HeaderMap,
     bytes: Bytes,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_UPDATE).await?;
     ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
     let data = parse_data(&bytes)?;
@@ -1124,8 +1158,10 @@ async fn content_update(
 async fn content_delete(
     State(state): State<AdminState>,
     Path((uid, document_id)): Path<(String, String)>,
+    RawQuery(raw): RawQuery,
     headers: HeaderMap,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_DELETE).await?;
     ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
     state.service.delete(&uid, &document_id).await?;
@@ -1138,6 +1174,7 @@ async fn content_action(
     RawQuery(raw): RawQuery,
     headers: HeaderMap,
 ) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
     let (principal, grant) =
         content_grant(&state, &headers, &uid, actions::CONTENT_PUBLISH).await?;
     ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
@@ -1160,6 +1197,7 @@ struct UidQuery {
     field: String,
     value: String,
     document_id: Option<String>,
+    locale: Option<String>,
 }
 
 /// `GET /content/{uid}/uid-available?field=slug&value=…[&documentId=…]`.
@@ -1176,8 +1214,15 @@ async fn uid_available(
     if !writable {
         return Err(ApiError::Forbidden);
     }
+    let locale = match query.locale.as_deref() {
+        Some(code) if !verdin_content::locales::valid_code(code) => {
+            return Err(ApiError::BadRequest(format!("invalid locale `{code}`")));
+        }
+        code => code.map(str::to_owned),
+    };
     let (available, suggestion) = state
         .service
+        .in_locale(locale)
         .uid_availability(&uid, &query.field, &query.value, query.document_id.as_deref())
         .await?;
     Ok(data(json!({ "available": available, "suggestion": suggestion })))

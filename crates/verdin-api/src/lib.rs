@@ -7,6 +7,7 @@ mod error;
 pub mod features;
 mod handlers;
 pub mod history;
+pub mod i18n;
 mod limiter;
 mod openapi;
 mod upload;
@@ -109,14 +110,18 @@ pub fn document_service(
     registry: Registry,
     output: OutputOptions,
     listeners: &Listeners,
+    locales: &verdin_content::locales::Locales,
 ) -> DocumentService {
     listeners.iter().fold(
-        DocumentService::new(db.clone(), registry, output).with_listener(engagement_listener(db)),
+        DocumentService::new(db.clone(), registry, output)
+            .with_locales(locales.clone())
+            .with_listener(engagement_listener(db)),
         |service, listener| service.with_listener(listener.clone()),
     )
 }
 
 /// Content API routes, to be nested under the API prefix (e.g. `/api`).
+#[allow(clippy::too_many_arguments)]
 pub fn router(
     db: Database,
     registry: Registry,
@@ -125,6 +130,7 @@ pub fn router(
     prefix: &str,
     upload: Option<verdin_upload::UploadService>,
     listeners: &Listeners,
+    locales: &verdin_content::locales::Locales,
 ) -> Router {
     let routes = registry
         .types()
@@ -137,7 +143,7 @@ pub fn router(
         .collect();
     let openapi = openapi::document(&registry, prefix);
     let state = ApiState {
-        service: document_service(db, registry, config.output, listeners),
+        service: document_service(db, registry, config.output, listeners, locales),
         auth,
         routes: Arc::new(routes),
         config,

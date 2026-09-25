@@ -209,7 +209,8 @@ pub fn schema(
                         }),
                         &type_name,
                     )
-                    .argument(status_argument()),
+                    .argument(status_argument())
+                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
                 )
                 .field(
                     with_list_arguments(
@@ -224,7 +225,8 @@ pub fn schema(
                         }),
                         &type_name,
                     )
-                    .argument(status_argument()),
+                    .argument(status_argument())
+                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
                 )
                 .field(
                     Field::new(&singular, TypeRef::named(&type_name), {
@@ -235,7 +237,8 @@ pub fn schema(
                         }
                     })
                     .argument(InputValue::new("documentId", TypeRef::named_nn(TypeRef::ID)))
-                    .argument(status_argument()),
+                    .argument(status_argument())
+                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
                 );
             mutation = mutation
                 .field(
@@ -252,7 +255,8 @@ pub fn schema(
                         "data",
                         TypeRef::named_nn(format!("{type_name}Input")),
                     ))
-                    .argument(status_argument()),
+                    .argument(status_argument())
+                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
                 )
                 .field(
                     Field::new(format!("update{type_name}"), TypeRef::named(&type_name), {
@@ -269,7 +273,8 @@ pub fn schema(
                         "data",
                         TypeRef::named_nn(format!("{type_name}Input")),
                     ))
-                    .argument(status_argument()),
+                    .argument(status_argument())
+                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
                 )
                 .field(
                     Field::new(
@@ -294,7 +299,8 @@ pub fn schema(
                         FieldFuture::new(async move { find_one(ctx, &uid, &fields).await })
                     }
                 })
-                .argument(status_argument()),
+                .argument(status_argument())
+                .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
             );
             mutation = mutation
                 .field(
@@ -311,7 +317,8 @@ pub fn schema(
                         "data",
                         TypeRef::named_nn(format!("{type_name}Input")),
                     ))
-                    .argument(status_argument()),
+                    .argument(status_argument())
+                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
                 )
                 .field(Field::new(
                     format!("delete{type_name}"),
@@ -664,6 +671,21 @@ fn query_of(
         .map_err(|failure| error("BAD_USER_INPUT", failure.message))
 }
 
+/// The Document Service in the `locale` argument (the default locale without it).
+fn localized(ctx: &ResolverContext<'_>) -> async_graphql::Result<verdin_content::DocumentService> {
+    let locale = match ctx.args.get("locale") {
+        Some(value) => {
+            let code = value.string()?;
+            if !verdin_content::locales::valid_code(code) {
+                return Err(error("BAD_USER_INPUT", format!("invalid locale `{code}`")));
+            }
+            Some(code.to_owned())
+        }
+        None => None,
+    };
+    Ok(state(ctx)?.service.in_locale(locale))
+}
+
 fn check_drafts(ctx: &ResolverContext<'_>, uid: &str, query: &Query) -> async_graphql::Result<()> {
     if query.status == Status::Draft {
         allow(ctx, uid, ContentAction::ReadDrafts)?;
@@ -680,7 +702,7 @@ async fn find_many<'a>(
     allow(&ctx, uid, ContentAction::Find)?;
     let query = query_of(&ctx, fields, connection)?;
     check_drafts(&ctx, uid, &query)?;
-    let page = state(&ctx)?.service.find_many(uid, &query).await.map_err(content_error)?;
+    let page = localized(&ctx)?.find_many(uid, &query).await.map_err(content_error)?;
     if !connection {
         return Ok(Some(FieldValue::list(page.documents.into_iter().map(FieldValue::owned_any))));
     }
@@ -705,7 +727,7 @@ async fn find_one<'a>(
     allow(&ctx, uid, ContentAction::FindOne)?;
     let query = query_of(&ctx, fields, false)?;
     check_drafts(&ctx, uid, &query)?;
-    let service = &state(&ctx)?.service;
+    let service = &localized(&ctx)?;
     let document_id = match ctx.args.get("documentId") {
         Some(value) => value.string()?.to_owned(),
         None => match service.single_document_id(uid).await.map_err(content_error)? {
@@ -731,7 +753,7 @@ async fn write<'a>(
     fields: &TypeFields,
     kind: Write,
 ) -> async_graphql::Result<Option<FieldValue<'a>>> {
-    let service = &state(&ctx)?.service;
+    let service = &localized(&ctx)?;
     let data = ctx.args.try_get("data")?.as_value().clone().into_json()?;
     let query = query_of(&ctx, fields, false)?;
     let options = WriteOptions { publish: query.status == Status::Published, actor: None };
@@ -769,7 +791,7 @@ async fn delete<'a>(
     uid: &str,
 ) -> async_graphql::Result<Option<FieldValue<'a>>> {
     allow(&ctx, uid, ContentAction::Delete)?;
-    let service = &state(&ctx)?.service;
+    let service = &localized(&ctx)?;
     let document_id = match ctx.args.get("documentId") {
         Some(value) => value.string()?.to_owned(),
         None => match service.single_document_id(uid).await.map_err(content_error)? {

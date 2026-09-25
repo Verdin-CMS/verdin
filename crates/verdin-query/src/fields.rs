@@ -58,6 +58,8 @@ pub struct RelationInfo {
     /// The target type's table.
     pub target_table: String,
     pub target_draft_and_publish: bool,
+    /// The target type has one version per locale.
+    pub target_localized: bool,
 }
 
 impl Field {
@@ -91,6 +93,7 @@ pub struct TypeFields {
     pub uid: String,
     pub table: String,
     pub draft_and_publish: bool,
+    pub localized: bool,
     fields: IndexMap<String, Field>,
 }
 
@@ -148,10 +151,15 @@ impl TypeFields {
         ] {
             fields.insert(field.api.clone(), field);
         }
+        if content_type.localized {
+            let locale = system("locale", "locale", ColumnKind::Text);
+            fields.insert(locale.api.clone(), locale);
+        }
         Self {
             uid: content_type.uid.clone(),
             table: content_type.collection_name.clone(),
             draft_and_publish: content_type.draft_and_publish,
+            localized: content_type.localized,
             fields,
         }
     }
@@ -213,6 +221,7 @@ fn relation_info(
         link_table,
         target_table: target_type.collection_name.clone(),
         target_draft_and_publish: target_type.draft_and_publish,
+        target_localized: target_type.localized,
     })
 }
 
