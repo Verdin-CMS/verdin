@@ -125,6 +125,7 @@ const ICONS: Record<string, string> = {
                     @for (option of graphqlOptions; track option.key) {
                       <label class="flex items-start gap-3">
                         <hlm-switch
+                          [aria-label]="t(option.label)"
                           [checked]="setting(feature, option.key, option.default)"
                           [disabled]="!canManage() || busy() === feature.id"
                           (checkedChange)="setOption(feature, option.key, $event)"
@@ -185,6 +186,7 @@ const ICONS: Record<string, string> = {
                   <div class="flex flex-col gap-3 border-t pt-4">
                     <label class="flex items-start gap-3">
                       <hlm-switch
+                        [aria-label]="t('features.openapi.public')"
                         [checked]="!!feature.settings?.['public']"
                         [disabled]="!canManage() || busy() === feature.id"
                         (checkedChange)="

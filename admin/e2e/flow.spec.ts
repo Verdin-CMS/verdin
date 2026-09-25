@@ -345,10 +345,23 @@ test('create a type, write content, publish it and read it over the API', async 
   await page.getByRole('link', { name: 'Features' }).click();
   await page.getByLabel('Turn Users & permissions on or off').click();
   await expect(page.getByRole('link', { name: 'Configure end users' })).toBeVisible();
-  const signUp = await request.post('/api/auth/local/register', {
+  // The app is rebuilt after the switch: retry until the routes are there.
+  let signUp = await request.post('/api/auth/local/register', {
     data: { username: 'reader', email: 'reader@example.com', password: 'correct horse 1' },
   });
-  expect(signUp.status()).toBe(200);
+  await expect
+    .poll(
+      async () => {
+        if (signUp.status() === 404) {
+          signUp = await request.post('/api/auth/local/register', {
+            data: { username: 'reader', email: 'reader@example.com', password: 'correct horse 1' },
+          });
+        }
+        return signUp.status();
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(200);
   const { jwt } = await signUp.json();
   const me = await request.get('/api/users/me', { headers: { authorization: `Bearer ${jwt}` } });
   expect((await me.json()).username).toBe('reader');
