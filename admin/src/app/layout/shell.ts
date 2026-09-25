@@ -190,6 +190,20 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                     </a>
                   </li>
                 }
+                @if (auth.can('endusers.manage')) {
+                  <li hlmSidebarMenuItem>
+                    <a
+                      hlmSidebarMenuButton
+                      routerLink="/settings/end-users"
+                      routerLinkActive
+                      #endUsers="routerLinkActive"
+                      [isActive]="endUsers.isActive"
+                    >
+                      <ng-icon name="lucideContactRound" />
+                      <span>{{ t('shell.endUsers') }}</span>
+                    </a>
+                  </li>
+                }
                 @if (auth.can('tokens.manage')) {
                   <li hlmSidebarMenuItem>
                     <a

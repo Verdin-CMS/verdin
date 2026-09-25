@@ -81,6 +81,30 @@ export const routes: Routes = [
         loadComponent: () => import('./features/settings/locales').then((m) => m.LocalesPage),
       },
       {
+        path: 'settings/end-users',
+        pathMatch: 'full',
+        redirectTo: 'settings/end-users/users',
+      },
+      {
+        path: 'settings/end-users/users',
+        loadComponent: () => import('./features/settings/end-users').then((m) => m.EndUsersPage),
+      },
+      {
+        path: 'settings/end-users/roles',
+        loadComponent: () =>
+          import('./features/settings/end-user-roles').then((m) => m.EndUserRolesPage),
+      },
+      {
+        path: 'settings/end-users/roles/:id',
+        loadComponent: () =>
+          import('./features/settings/end-user-role-edit').then((m) => m.EndUserRoleEditPage),
+      },
+      {
+        path: 'settings/end-users/settings',
+        loadComponent: () =>
+          import('./features/settings/end-users-settings').then((m) => m.EndUsersSettingsPage),
+      },
+      {
         path: 'settings/public',
         loadComponent: () => import('./features/settings/public').then((m) => m.PublicPage),
       },

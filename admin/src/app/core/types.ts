@@ -272,4 +272,5 @@ export const ADMIN_SETTINGS_ACTIONS = [
   'features.manage',
   'webhooks.manage',
   'locales.manage',
+  'endusers.manage',
 ] as const;

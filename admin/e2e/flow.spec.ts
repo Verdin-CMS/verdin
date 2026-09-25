@@ -341,6 +341,36 @@ test('create a type, write content, publish it and read it over the API', async 
   ).json();
   expect(pages.data?.[0]?.heading ?? pages).toBe('Bienvenue');
 
+  // End users: switch the feature on, sign up over the API, block from the admin.
+  await page.getByRole('link', { name: 'Features' }).click();
+  await page.getByLabel('Turn Users & permissions on or off').click();
+  await expect(page.getByRole('link', { name: 'Configure end users' })).toBeVisible();
+  const signUp = await request.post('/api/auth/local/register', {
+    data: { username: 'reader', email: 'reader@example.com', password: 'correct horse 1' },
+  });
+  expect(signUp.status()).toBe(200);
+  const { jwt } = await signUp.json();
+  const me = await request.get('/api/users/me', { headers: { authorization: `Bearer ${jwt}` } });
+  expect((await me.json()).username).toBe('reader');
+
+  await page.getByRole('link', { name: 'End users', exact: true }).click();
+  await expect(page.getByRole('cell', { name: /reader@example.com/ })).toBeVisible();
+  await page.screenshot({ path: 'test-results/screens/end-users.png' });
+  await page.getByRole('button', { name: 'Block reader' }).click();
+  await expect(page.getByText('reader is blocked')).toBeVisible();
+  const blocked = await request.post('/api/auth/local', {
+    data: { identifier: 'reader', password: 'correct horse 1' },
+  });
+  expect(blocked.status()).toBe(400);
+
+  // Email: a test message through the log provider.
+  await page.getByRole('link', { name: 'Features' }).click();
+  await page.getByRole('button', { name: 'Send a test email' }).click();
+  await dialog.getByLabel('Send to').fill('ops@example.com');
+  await dialog.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(dialog.getByText('Test email sent')).toBeVisible();
+  await page.keyboard.press('Escape');
+
   // Optional visual tour (VERDIN_SCREENSHOTS=1): every main page in light, dark and Spanish.
   if (process.env['VERDIN_SCREENSHOTS']) {
     await page.setViewportSize({ width: 1440, height: 900 });

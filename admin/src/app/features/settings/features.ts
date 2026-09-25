@@ -12,11 +12,16 @@ import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
 import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
+import { HlmDialogImports } from '@spartan-ng/helm/dialog';
+import { HlmFieldImports } from '@spartan-ng/helm/field';
+import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
+import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmSwitchImports } from '@spartan-ng/helm/switch';
 
 import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { EmailTestResult, EndUsers } from '../../core/end-users';
 import { Feature, Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
@@ -48,7 +53,11 @@ const ICONS: Record<string, string> = {
     HlmAlertImports,
     HlmBadgeImports,
     HlmButtonImports,
+    HlmDialogImports,
+    HlmFieldImports,
+    HlmInputImports,
     HlmSkeletonImports,
+    HlmSpinnerImports,
     HlmSwitchImports,
     PageHeader,
   ],
@@ -157,6 +166,21 @@ const ICONS: Record<string, string> = {
                   </div>
                 }
 
+                @if (feature.id === 'users' && canManageEndUsers()) {
+                  <div class="flex flex-col gap-3 border-t pt-4">
+                    <p class="text-muted-foreground text-xs">{{ t('features.users.hint') }}</p>
+                    <a
+                      hlmBtn
+                      size="sm"
+                      variant="outline"
+                      class="self-start"
+                      routerLink="/settings/end-users/settings"
+                    >
+                      <ng-icon name="lucideContactRound" /> {{ t('features.users.open') }}
+                    </a>
+                  </div>
+                }
+
                 @if (feature.id === 'openapi' && feature.enabled) {
                   <div class="flex flex-col gap-3 border-t pt-4">
                     <label class="flex items-start gap-3">
@@ -212,17 +236,33 @@ const ICONS: Record<string, string> = {
             </h2>
             <div class="grid gap-4 md:grid-cols-2">
               @for (feature of core(); track feature.id) {
-                <article class="bg-card flex items-start gap-3 rounded-xl border p-5">
-                  <span
-                    class="bg-primary/10 text-primary inline-flex size-10 shrink-0 items-center justify-center rounded-lg"
-                  >
-                    <ng-icon [name]="icon(feature.id)" size="20" />
-                  </span>
-                  <div class="flex min-w-0 flex-1 flex-col gap-1">
-                    <h3 class="font-medium">{{ name(feature.id) }}</h3>
-                    <p class="text-muted-foreground text-sm">{{ description(feature.id) }}</p>
-                  </div>
-                  <span hlmBadge variant="secondary">{{ t('features.core') }}</span>
+                <article class="bg-card flex flex-col gap-4 rounded-xl border p-5">
+                  <header class="flex items-start gap-3">
+                    <span
+                      class="bg-primary/10 text-primary inline-flex size-10 shrink-0 items-center justify-center rounded-lg"
+                    >
+                      <ng-icon [name]="icon(feature.id)" size="20" />
+                    </span>
+                    <div class="flex min-w-0 flex-1 flex-col gap-1">
+                      <h3 class="font-medium">{{ name(feature.id) }}</h3>
+                      <p class="text-muted-foreground text-sm">{{ description(feature.id) }}</p>
+                    </div>
+                    <span hlmBadge variant="secondary">{{ t('features.core') }}</span>
+                  </header>
+                  @if (feature.id === 'email' && canManage()) {
+                    <div class="flex flex-col gap-3 border-t pt-4">
+                      <p class="text-muted-foreground text-xs">{{ t('features.email.hint') }}</p>
+                      <button
+                        hlmBtn
+                        size="sm"
+                        variant="outline"
+                        class="self-start"
+                        (click)="openEmailTest()"
+                      >
+                        <ng-icon name="lucideSend" /> {{ t('features.email.test') }}
+                      </button>
+                    </div>
+                  }
                 </article>
               }
             </div>
@@ -258,18 +298,86 @@ const ICONS: Record<string, string> = {
         </section>
       }
     </div>
+
+    <hlm-dialog [state]="emailTest() ? 'open' : 'closed'" (closed)="emailTest.set(null)">
+      <hlm-dialog-content *hlmDialogPortal="let ctx" class="sm:max-w-md">
+        @if (emailTest(); as test) {
+          <hlm-dialog-header>
+            <h2 hlmDialogTitle>{{ t('features.email.testTitle') }}</h2>
+            <p hlmDialogDescription>{{ t('features.email.testDescription') }}</p>
+          </hlm-dialog-header>
+          <div class="flex flex-col gap-4">
+            <div hlmField>
+              <label hlmFieldLabel for="email-test-to">{{ t('features.email.to') }}</label>
+              <input
+                hlmInput
+                id="email-test-to"
+                type="email"
+                autocomplete="email"
+                [value]="test.to"
+                (input)="emailTest.set({ to: $any($event.target).value })"
+                (keydown.enter)="sendTestEmail()"
+              />
+            </div>
+            @if (emailResult(); as result) {
+              <div hlmAlert [variant]="result.sent ? 'default' : 'destructive'">
+                <ng-icon
+                  hlmAlertIcon
+                  [name]="result.sent ? 'lucideCircleCheck' : 'lucideCircleAlert'"
+                />
+                <p hlmAlertTitle>
+                  {{ result.sent ? t('features.email.sent') : t('features.email.notSent') }}
+                </p>
+                <div hlmAlertDescription class="flex flex-col gap-1">
+                  <span>{{ t('features.email.provider', { provider: result.provider }) }}</span>
+                  @if (result.from) {
+                    <span>{{ t('features.email.from', { from: result.from }) }}</span>
+                  }
+                  @if (result.error) {
+                    <span class="font-mono text-xs break-all">{{ result.error }}</span>
+                  }
+                  @if (result.provider === 'log') {
+                    <span>{{ t('features.email.logHint') }}</span>
+                  }
+                </div>
+              </div>
+            }
+            <p class="text-muted-foreground text-xs">{{ t('features.email.configHint') }}</p>
+          </div>
+          <hlm-dialog-footer>
+            <button hlmBtn variant="outline" (click)="emailTest.set(null)">
+              {{ t('common.close') }}
+            </button>
+            <button hlmBtn [disabled]="sending() || !test.to.trim()" (click)="sendTestEmail()">
+              @if (sending()) {
+                <hlm-spinner class="size-4" />
+              } @else {
+                <ng-icon name="lucideSend" />
+              }
+              {{ t('features.email.send') }}
+            </button>
+          </hlm-dialog-footer>
+        }
+      </hlm-dialog-content>
+    </hlm-dialog>
   `,
 })
 export class FeaturesPage implements OnInit {
   private readonly catalog = inject(Features);
   private readonly auth = inject(Auth);
   private readonly config = inject(RUNTIME_CONFIG);
+  private readonly endUsers = inject(EndUsers);
   protected readonly t = inject(I18n).t;
 
   protected readonly features = this.catalog.catalog;
   protected readonly busy = signal<string | null>(null);
   protected readonly canManage = computed(() => this.auth.can('features.manage'));
   protected readonly canManageWebhooks = computed(() => this.auth.can('webhooks.manage'));
+  protected readonly canManageEndUsers = computed(() => this.auth.can('endusers.manage'));
+  /** The test email dialog: `null` when closed. */
+  protected readonly emailTest = signal<{ to: string } | null>(null);
+  protected readonly emailResult = signal<EmailTestResult | null>(null);
+  protected readonly sending = signal(false);
   protected readonly available = computed(() =>
     (this.features() ?? []).filter((feature) => feature.available && !feature.core),
   );
@@ -319,6 +427,30 @@ export class FeaturesPage implements OnInit {
     } catch (error) {
       this.features.set([]);
       toast.error(ApiFailure.from(error).message);
+    }
+  }
+
+  protected openEmailTest(): void {
+    this.emailResult.set(null);
+    this.emailTest.set({ to: this.auth.user()?.email ?? '' });
+  }
+
+  protected async sendTestEmail(): Promise<void> {
+    const to = this.emailTest()?.to.trim();
+    if (!to || this.sending()) return;
+    this.sending.set(true);
+    this.emailResult.set(null);
+    try {
+      const result = await this.endUsers.testEmail(to);
+      this.emailResult.set(result);
+      if (result.sent) toast.success(this.t('features.email.sentTo', { to }));
+    } catch (error) {
+      const failure = ApiFailure.from(error);
+      toast.error(
+        failure.status === 404 ? this.t('features.email.notConfigured') : failure.message,
+      );
+    } finally {
+      this.sending.set(false);
     }
   }
 
