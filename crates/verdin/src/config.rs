@@ -19,7 +19,25 @@ pub struct Config {
     pub api: ApiConfig,
     pub admin: AdminConfig,
     pub upload: verdin_upload::UploadConfig,
+    pub webhooks: WebhooksConfig,
     pub log: LogConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct WebhooksConfig {
+    /// Allow webhook URLs on loopback, private and link-local addresses. Unset means no
+    /// in `start` (an admin could otherwise reach internal services) and yes in `dev`.
+    pub allow_private_networks: Option<bool>,
+    pub timeout_secs: u64,
+    /// Days the delivery log is kept.
+    pub retention_days: u64,
+}
+
+impl Default for WebhooksConfig {
+    fn default() -> Self {
+        Self { allow_private_networks: None, timeout_secs: 10, retention_days: 30 }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -114,7 +114,7 @@ impl DocumentService {
         let event =
             DocumentEvent { kind, uid: uid.to_owned(), document_id: document_id.to_owned(), actor };
         for listener in &self.listeners {
-            listener.notify(&event).await;
+            listener.notify(&event, self).await;
         }
     }
 

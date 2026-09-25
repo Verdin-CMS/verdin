@@ -9,6 +9,7 @@ mod handlers;
 mod limiter;
 mod openapi;
 mod upload;
+pub mod webhooks;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,6 +25,7 @@ use verdin_schema::ContentTypeKind;
 
 pub use admin::{AdminConfig, BoxFuture, SchemaChange, SchemaEditor};
 pub use error::ApiError;
+pub use webhooks::{WebhookOptions, Webhooks};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ApiConfig {
@@ -95,6 +97,22 @@ pub fn engagement_listener(db: Database) -> Arc<dyn verdin_content::events::Docu
     Arc::new(admin::engagement::EngagementListener::new(db))
 }
 
+/// A Document Service with the platform's listeners ("seen" marks, webhooks): every API
+/// writing content should use one.
+pub fn document_service(
+    db: Database,
+    registry: Registry,
+    output: OutputOptions,
+    webhooks: Option<&Webhooks>,
+) -> DocumentService {
+    let service =
+        DocumentService::new(db.clone(), registry, output).with_listener(engagement_listener(db));
+    match webhooks {
+        Some(webhooks) => service.with_listener(webhooks.listener()),
+        None => service,
+    }
+}
+
 /// Content API routes, to be nested under the API prefix (e.g. `/api`).
 pub fn router(
     db: Database,
@@ -103,6 +121,7 @@ pub fn router(
     config: ApiConfig,
     prefix: &str,
     upload: Option<verdin_upload::UploadService>,
+    webhooks: Option<&Webhooks>,
 ) -> Router {
     let routes = registry
         .types()
@@ -115,8 +134,7 @@ pub fn router(
         .collect();
     let openapi = openapi::document(&registry, prefix);
     let state = ApiState {
-        service: DocumentService::new(db.clone(), registry, config.output)
-            .with_listener(engagement_listener(db)),
+        service: document_service(db, registry, config.output, webhooks),
         auth,
         routes: Arc::new(routes),
         config,

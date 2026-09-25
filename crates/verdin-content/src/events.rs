@@ -40,8 +40,38 @@ pub struct DocumentEvent {
     pub actor: Option<i64>,
 }
 
-/// Receives events after the write committed. Failures are the listener's to log: the
-/// write itself already succeeded.
+/// Receives events after the write committed, with the service that made it (to read the
+/// document). Failures are the listener's to log: the write itself already succeeded.
 pub trait DocumentListener: Send + Sync {
-    fn notify<'a>(&'a self, event: &'a DocumentEvent) -> BoxFuture<'a, ()>;
+    fn notify<'a>(
+        &'a self,
+        event: &'a DocumentEvent,
+        service: &'a crate::DocumentService,
+    ) -> BoxFuture<'a, ()>;
+}
+
+/// Media library changes, announced after they are stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileEventKind {
+    Created,
+    Updated,
+    Deleted,
+}
+
+impl FileEventKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Created => "media.create",
+            Self::Updated => "media.update",
+            Self::Deleted => "media.delete",
+        }
+    }
+}
+
+pub trait FileListener: Send + Sync {
+    fn file_changed<'a>(
+        &'a self,
+        kind: FileEventKind,
+        file: &'a crate::media::FileRecord,
+    ) -> BoxFuture<'a, ()>;
 }

@@ -46,6 +46,7 @@ pub struct App {
     pub upload: verdin_upload::UploadService,
     /// A full-access API token, sent by default.
     pub token: String,
+    pub webhooks: verdin_api::Webhooks,
 }
 
 /// Who a request authenticates as.
@@ -104,16 +105,28 @@ impl App {
             .unwrap();
         let registry = Registry::new(schema);
         let store = std::sync::Arc::new(object_store::memory::InMemory::new());
+        // Local receivers, and retries due at once (tests call `deliver_due`).
+        let webhooks = verdin_api::Webhooks::new(
+            test.db.clone(),
+            verdin_api::WebhookOptions {
+                allow_private_networks: true,
+                retry_delays: vec![std::time::Duration::ZERO; 2],
+                timeout: std::time::Duration::from_secs(5),
+                ..Default::default()
+            },
+        );
         let upload = verdin_upload::UploadService::new(
             test.db.clone(),
             verdin_upload::Storage::with_store(store, "local", "/uploads"),
             verdin_upload::UploadConfig { max_file_size: 2 * 1024 * 1024, ..Default::default() },
-        );
+        )
+        .with_listener(std::sync::Arc::new(webhooks.clone()));
         let admin = AdminConfig {
             secure_cookies: false,
             auth_rate_limit: 1000,
             upload: Some(upload.clone()),
             features: Some(std::sync::Arc::new(MemoryFeatures::default())),
+            webhooks: Some(webhooks.clone()),
             ..AdminConfig::default()
         };
         let router = Router::new()
@@ -126,13 +139,14 @@ impl App {
                     ApiConfig::default(),
                     "/api",
                     Some(upload.clone()),
+                    Some(&webhooks),
                 ),
             )
             .nest(
                 "/admin/api",
                 verdin_api::admin_router(test.db.clone(), registry, auth.clone(), admin),
             );
-        Self { router, test, auth, upload, token }
+        Self { router, test, auth, upload, token, webhooks }
     }
 
     pub async fn request(

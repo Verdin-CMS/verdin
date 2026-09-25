@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use tracing_subscriber::EnvFilter;
@@ -331,9 +333,12 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     }
     let storage = verdin_upload::Storage::new(&project.config.upload.provider, &project.root)
         .context("configuring [upload].provider")?;
+    let webhooks = crate::app::webhooks(&project.config, db.clone(), mode);
     let upload =
-        verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone());
-    let context = AppContext { config: project.config, root: project.root, db, auth, mode, upload };
+        verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone())
+            .with_listener(Arc::new(webhooks.clone()));
+    let context =
+        AppContext { config: project.config, root: project.root, db, auth, mode, upload, webhooks };
     app::serve(context, schema, shutdown_signal()).await
 }
 

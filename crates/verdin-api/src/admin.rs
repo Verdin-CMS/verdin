@@ -36,6 +36,8 @@ use crate::limiter::RateLimiter;
 pub(crate) mod engagement;
 #[path = "upload_admin.rs"]
 mod upload_admin;
+#[path = "webhooks_admin.rs"]
+mod webhooks_admin;
 
 pub const REFRESH_COOKIE: &str = "verdin_refresh";
 pub const CSRF_HEADER: &str = "x-verdin-csrf";
@@ -91,6 +93,8 @@ pub struct AdminConfig {
     pub features: Option<Arc<dyn crate::features::FeatureHost>>,
     /// The media library; its routes answer 404 without it.
     pub upload: Option<verdin_upload::UploadService>,
+    /// Present when the `webhooks` feature is on; its routes answer 404 without it.
+    pub webhooks: Option<crate::Webhooks>,
 }
 
 impl Default for AdminConfig {
@@ -106,6 +110,7 @@ impl Default for AdminConfig {
             http: crate::HttpLimits::default(),
             features: None,
             upload: None,
+            webhooks: None,
         }
     }
 }
@@ -132,8 +137,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
     ));
     let state = AdminState {
         flavor: db.flavor().as_str(),
-        service: DocumentService::new(db.clone(), registry, config.output)
-            .with_listener(Arc::new(engagement::EngagementListener::new(db))),
+        service: crate::document_service(db, registry, config.output, config.webhooks.as_ref()),
         auth,
         config: Arc::new(config),
         limiter,
@@ -169,7 +173,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .route("/system/info", get(system_info))
         .route("/features", get(list_features))
         .route("/features/{id}", axum::routing::put(update_feature))
-        .merge(engagement::routes());
+        .merge(engagement::routes())
+        .merge(webhooks_admin::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
     http.apply(regular).merge(uploads).fallback(|| async { ApiError::NotFound }).with_state(state)

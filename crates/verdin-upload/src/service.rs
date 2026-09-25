@@ -5,6 +5,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value as Json, json};
 use time::OffsetDateTime;
+use verdin_content::events::{FileEventKind, FileListener};
 use verdin_content::media::FileRecord;
 use verdin_db::value::{format_datetime, truncate_millis};
 use verdin_db::{ColumnKind, Database, DbError, SqlValue};
@@ -140,11 +141,33 @@ pub struct UploadService {
     db: Database,
     storage: Storage,
     config: Arc<UploadConfig>,
+    listeners: Listeners,
+}
+
+#[derive(Clone, Default)]
+struct Listeners(Vec<Arc<dyn FileListener>>);
+
+impl std::fmt::Debug for Listeners {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} listener(s)", self.0.len())
+    }
 }
 
 impl UploadService {
     pub fn new(db: Database, storage: Storage, config: UploadConfig) -> Self {
-        Self { db, storage, config: Arc::new(config) }
+        Self { db, storage, config: Arc::new(config), listeners: Listeners::default() }
+    }
+
+    /// Announces file changes to `listener` (webhooks).
+    pub fn with_listener(mut self, listener: Arc<dyn FileListener>) -> Self {
+        self.listeners.0.push(listener);
+        self
+    }
+
+    async fn emit(&self, kind: FileEventKind, file: &FileRecord) {
+        for listener in &self.listeners.0 {
+            listener.file_changed(kind, file).await;
+        }
     }
 
     pub fn storage(&self) -> &Storage {
@@ -283,7 +306,11 @@ impl UploadService {
         }
         .await;
         match result {
-            Ok(id) => self.find(id).await?.ok_or(UploadError::NotFound),
+            Ok(id) => {
+                let file = self.find(id).await?.ok_or(UploadError::NotFound)?;
+                self.emit(FileEventKind::Created, &file).await;
+                Ok(file)
+            }
             Err(error) => {
                 for key in &stored {
                     if let Err(cleanup) = self.storage.delete(key).await {
@@ -448,7 +475,9 @@ impl UploadService {
         }
         update.push(" WHERE ").ident("id").push(" = ").param(SqlValue::BigInt(current.id));
         self.db.queries().execute(&update.sql, &update.params).await?;
-        self.find(id).await?.ok_or(UploadError::NotFound)
+        let file = self.find(id).await?.ok_or(UploadError::NotFound)?;
+        self.emit(FileEventKind::Updated, &file).await;
+        Ok(file)
     }
 
     /// Deletes the file, its formats and every link to it.
@@ -459,6 +488,7 @@ impl UploadService {
             .execute(&format!("DELETE FROM {FILES} WHERE id = ?"), &[SqlValue::BigInt(id)])
             .await?;
         self.remove_objects(&file).await;
+        self.emit(FileEventKind::Deleted, &file).await;
         Ok(file)
     }
 

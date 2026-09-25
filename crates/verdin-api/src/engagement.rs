@@ -70,6 +70,7 @@ impl verdin_content::events::DocumentListener for EngagementListener {
     fn notify<'a>(
         &'a self,
         event: &'a verdin_content::events::DocumentEvent,
+        _: &'a verdin_content::DocumentService,
     ) -> verdin_content::events::BoxFuture<'a, ()> {
         Box::pin(async move {
             use verdin_content::events::EventKind;

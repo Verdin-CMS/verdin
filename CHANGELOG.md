@@ -6,6 +6,18 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Webhooks** (Settings → Webhooks): entry and media events, per content type filters,
+  custom headers, HMAC-SHA256 signatures, a durable delivery queue with retries and
+  backoff, a delivery log with manual retry, test deliveries, SSRF protection in
+  production (`[webhooks]` settings); `webhooks.manage` permission. See
+  [docs/webhooks.md](docs/webhooks.md).
+
+### Fixed
+
+- Writes made through GraphQL did not reach document listeners (for example "not seen yet" marks).
+
 ## [0.2.0] - 2026-09-25
 
 ### Added

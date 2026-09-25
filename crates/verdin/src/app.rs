@@ -10,7 +10,7 @@ use axum::Router;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tower::ServiceExt;
-use verdin_api::features::{FeatureHost, FeatureState, FeatureStates, GRAPHQL, OPENAPI};
+use verdin_api::features::{FeatureHost, FeatureState, FeatureStates, GRAPHQL, OPENAPI, WEBHOOKS};
 use verdin_api::{ApiError, BoxFuture, SchemaChange, SchemaEditor};
 use verdin_auth::AuthService;
 use verdin_db::Database;
@@ -44,6 +44,24 @@ pub struct AppContext {
     pub auth: AuthService,
     pub mode: Mode,
     pub upload: verdin_upload::UploadService,
+    /// The delivery queue; the `webhooks` feature switches it on and off.
+    pub webhooks: verdin_api::Webhooks,
+}
+
+/// The webhooks service configured for `mode`.
+pub fn webhooks(config: &Config, db: Database, mode: Mode) -> verdin_api::Webhooks {
+    let settings = &config.webhooks;
+    verdin_api::Webhooks::new(
+        db,
+        verdin_api::WebhookOptions {
+            allow_private_networks: settings
+                .allow_private_networks
+                .unwrap_or(mode == Mode::Development),
+            timeout: std::time::Duration::from_secs(settings.timeout_secs.max(1)),
+            retention: std::time::Duration::from_secs(settings.retention_days.max(1) * 86_400),
+            ..Default::default()
+        },
+    )
 }
 
 impl AppContext {
@@ -104,6 +122,7 @@ pub fn build_app(
         },
         &api.prefix,
         Some(context.upload.clone()),
+        Some(&context.webhooks),
     );
     let admin_api = verdin_api::admin_router(
         context.db.clone(),
@@ -120,6 +139,7 @@ pub fn build_app(
             http,
             features,
             upload: Some(context.upload.clone()),
+            webhooks: states.enabled(WEBHOOKS).then(|| context.webhooks.clone()),
         },
     );
     let graphql = states
@@ -185,6 +205,7 @@ pub async fn serve(
     let context = Arc::new(context);
     let states = load_features(&context.db).await.context("reading feature switches")?;
     let host = AppHost::new(context.clone(), schema, states);
+    let deliveries = context.webhooks.spawn();
     // Keeps the watcher alive while serving.
     let _watcher = match &host.editor {
         Some(editor) => match watch_schema(editor.clone()) {
@@ -209,6 +230,7 @@ pub async fn serve(
     axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(shutdown)
         .await?;
+    deliveries.abort();
     context.db.close().await;
     tracing::info!("verdin stopped");
     Ok(())
@@ -236,8 +258,12 @@ fn graphql_router(
         introspection: flag("introspection", defaults.introspection),
         playground: flag("playground", context.mode == Mode::Development),
     };
-    let service =
-        verdin_content::DocumentService::new(context.db.clone(), registry.clone(), output);
+    let service = verdin_api::document_service(
+        context.db.clone(),
+        registry.clone(),
+        output,
+        Some(&context.webhooks),
+    );
     match verdin_graphql::schema(service, limits, &options) {
         Ok(schema) => verdin_graphql::router(schema, context.auth.clone(), options, "/graphql"),
         Err(error) => {
@@ -334,6 +360,7 @@ impl AppHost {
         let editor = self.editor.clone().map(|editor| editor as Arc<dyn SchemaEditor>);
         let features = self.this.upgrade().map(|host| host as Arc<dyn FeatureHost>);
         let states = self.features.load();
+        self.context.webhooks.set_enabled(states.enabled(WEBHOOKS));
         self.current.store(Arc::new(build_app(&self.context, schema, editor, features, &states)));
     }
 
@@ -722,6 +749,7 @@ mod tests {
         let config = Config::default();
         let storage = verdin_upload::Storage::new(&config.upload.provider, root).unwrap();
         let upload = verdin_upload::UploadService::new(db.clone(), storage, config.upload.clone());
+        let webhooks = webhooks(&config, db.clone(), Mode::Production);
         Arc::new(AppContext {
             config,
             root: root.to_owned(),
@@ -729,6 +757,7 @@ mod tests {
             auth,
             mode: Mode::Production,
             upload,
+            webhooks,
         })
     }
 

@@ -25,6 +25,7 @@ pub struct FeatureSpec {
 
 pub const OPENAPI: &str = "openapi";
 pub const GRAPHQL: &str = "graphql";
+pub const WEBHOOKS: &str = "webhooks";
 
 /// Every feature, in display order.
 pub const CATALOG: &[FeatureSpec] = &[
@@ -38,10 +39,10 @@ pub const CATALOG: &[FeatureSpec] = &[
         core: false,
     },
     FeatureSpec {
-        id: "webhooks",
-        available: false,
-        planned: Some("0.3"),
-        default_enabled: false,
+        id: WEBHOOKS,
+        available: true,
+        planned: None,
+        default_enabled: true,
         core: false,
     },
     FeatureSpec {
@@ -200,15 +201,16 @@ mod tests {
         let mut states = FeatureStates::default();
         assert!(states.enabled(OPENAPI), "on by default");
         assert!(states.enabled("media"), "core");
-        assert!(!states.enabled("webhooks"));
+        assert!(states.enabled(WEBHOOKS), "on by default");
+        assert!(!states.enabled("users"));
         states.0.insert(OPENAPI.into(), FeatureState { enabled: false, settings: Value::Null });
         assert!(!states.enabled(OPENAPI));
-        states.0.insert("webhooks".into(), FeatureState { enabled: true, settings: Value::Null });
-        assert!(!states.enabled("webhooks"), "unavailable features stay off");
+        states.0.insert("users".into(), FeatureState { enabled: true, settings: Value::Null });
+        assert!(!states.enabled("users"), "unavailable features stay off");
 
         let on = FeatureState { enabled: true, settings: Value::Null };
         assert!(validate(OPENAPI, &on).is_ok());
-        assert!(matches!(validate("webhooks", &on), Err(ApiError::BadRequest(_))));
+        assert!(matches!(validate("users", &on), Err(ApiError::BadRequest(_))));
         assert!(matches!(validate("media", &on), Err(ApiError::BadRequest(_))));
         assert!(matches!(validate("nope", &on), Err(ApiError::NotFound)));
         let bad = FeatureState { enabled: true, settings: json!([1]) };

@@ -21,6 +21,8 @@ pub const POLL_VOTES: &str = "vd_poll_votes";
 pub const FILES: &str = "vd_files";
 pub const FOLDERS: &str = "vd_folders";
 pub const SETTINGS: &str = "vd_settings";
+pub const WEBHOOKS: &str = "vd_webhooks";
+pub const WEBHOOK_DELIVERIES: &str = "vd_webhook_deliveries";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -336,6 +338,54 @@ pub fn system_tables() -> Vec<Table> {
                 index(POLL_VOTES, "user", &["user_id"]),
             ],
             foreign_keys: vec![references("poll_id", POLLS), references("user_id", ADMIN_USERS)],
+        },
+        // `events` and `content_types` are JSON arrays (empty `content_types`: every type);
+        // `secret` signs deliveries (HMAC-SHA256).
+        Table {
+            name: WEBHOOKS.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("name", 255).not_null(),
+                    Column::new("url", ColumnType::Text).not_null(),
+                    Column::new("headers", ColumnType::Json).not_null(),
+                    Column::new("events", ColumnType::Json).not_null(),
+                    Column::new("content_types", ColumnType::Json).not_null(),
+                    varchar("secret", 128),
+                    Column::new("enabled", ColumnType::Boolean).not_null(),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+        },
+        // The delivery queue and log: `pending` rows are due at `next_attempt_at`, `sending`
+        // is claimed by a worker, `succeeded` and `failed` are final.
+        Table {
+            name: WEBHOOK_DELIVERIES.into(),
+            columns: [
+                vec![
+                    id(),
+                    Column::new("webhook_id", ColumnType::BigInt).not_null(),
+                    varchar("event", 64).not_null(),
+                    Column::new("payload", ColumnType::Json).not_null(),
+                    varchar("status", 16).not_null(),
+                    Column::new("attempts", ColumnType::Integer).not_null(),
+                    Column::new("next_attempt_at", ColumnType::DateTime),
+                    Column::new("response_status", ColumnType::Integer),
+                    Column::new("response_body", ColumnType::Text),
+                    Column::new("error", ColumnType::Text),
+                    Column::new("duration_ms", ColumnType::Integer),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![
+                index(WEBHOOK_DELIVERIES, "due", &["status", "next_attempt_at"]),
+                index(WEBHOOK_DELIVERIES, "webhook", &["webhook_id", "created_at"]),
+            ],
+            foreign_keys: vec![references("webhook_id", WEBHOOKS)],
         },
     ]
 }

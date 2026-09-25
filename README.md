@@ -173,6 +173,12 @@ const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337', token:
 const { data } = await verdin.collection('articles').find({ populate: { category: true } });
 ```
 
+### Webhooks
+
+**Settings → Webhooks** sends signed `POST` requests on entry and media events (create,
+update, publish, unpublish, delete…), retries failed deliveries with backoff and keeps a
+delivery log. Payloads, signature checks and settings: [docs/webhooks.md](docs/webhooks.md).
+
 ### Rich text, components and field permissions
 
 - `blocks` fields hold Strapi's rich text JSON and are edited with a blocks editor;
