@@ -121,12 +121,17 @@ impl App {
             verdin_upload::UploadConfig { max_file_size: 2 * 1024 * 1024, ..Default::default() },
         )
         .with_listener(std::sync::Arc::new(webhooks.clone()));
+        // 10 versions per document, to exercise pruning.
+        let history = verdin_api::History::new(test.db.clone(), 10);
+        let listeners: verdin_api::Listeners = vec![webhooks.listener(), history.listener()];
         let admin = AdminConfig {
             secure_cookies: false,
             auth_rate_limit: 1000,
             upload: Some(upload.clone()),
             features: Some(std::sync::Arc::new(MemoryFeatures::default())),
             webhooks: Some(webhooks.clone()),
+            history: Some(history.clone()),
+            listeners: listeners.clone(),
             ..AdminConfig::default()
         };
         let router = Router::new()
@@ -139,7 +144,7 @@ impl App {
                     ApiConfig::default(),
                     "/api",
                     Some(upload.clone()),
-                    Some(&webhooks),
+                    &listeners,
                 ),
             )
             .nest(

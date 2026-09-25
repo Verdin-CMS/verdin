@@ -23,6 +23,7 @@ pub const FOLDERS: &str = "vd_folders";
 pub const SETTINGS: &str = "vd_settings";
 pub const WEBHOOKS: &str = "vd_webhooks";
 pub const WEBHOOK_DELIVERIES: &str = "vd_webhook_deliveries";
+pub const HISTORY_VERSIONS: &str = "vd_history_versions";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -386,6 +387,22 @@ pub fn system_tables() -> Vec<Table> {
                 index(WEBHOOK_DELIVERIES, "webhook", &["webhook_id", "created_at"]),
             ],
             foreign_keys: vec![references("webhook_id", WEBHOOKS)],
+        },
+        // Content history: the document after each change (`data` is populated one level).
+        Table {
+            name: HISTORY_VERSIONS.into(),
+            columns: vec![
+                id(),
+                varchar("content_type", 255).not_null(),
+                varchar("document_id", 26).not_null(),
+                varchar("event", 32).not_null(),
+                varchar("status", 16).not_null(),
+                Column::new("data", ColumnType::Json).not_null(),
+                Column::new("created_by", ColumnType::BigInt),
+                Column::new("created_at", ColumnType::DateTime).not_null(),
+            ],
+            indexes: vec![index(HISTORY_VERSIONS, "document", &["content_type", "document_id"])],
+            foreign_keys: Vec::new(),
         },
     ]
 }

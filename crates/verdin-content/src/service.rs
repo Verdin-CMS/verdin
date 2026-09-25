@@ -1352,7 +1352,11 @@ fn attribute_values(row: Vec<(&Field, SqlValue)>) -> Vec<(String, SqlValue)> {
 }
 
 /// Document ids among `ids` that exist in no version of `table`.
-async fn missing_documents(tx: &mut Tx, table: &str, ids: &[String]) -> Result<Vec<String>> {
+pub(crate) async fn missing_documents(
+    tx: &mut Tx,
+    table: &str,
+    ids: &[String],
+) -> Result<Vec<String>> {
     let mut found = HashSet::new();
     for chunk in ids.chunks(IN_CHUNK) {
         let mut select = SqlBuilder::new(tx.flavor());

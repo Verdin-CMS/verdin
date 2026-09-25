@@ -13,6 +13,11 @@ All notable changes to Verdin are documented here. The format follows
   backoff, a delivery log with manual retry, test deliveries, SSRF protection in
   production (`[webhooks]` settings); `webhooks.manage` permission. See
   [docs/webhooks.md](docs/webhooks.md).
+- **Content history**: a version of the document after every create, save, publish,
+  unpublish and discarded draft, from any API. Browse the versions from the editor and
+  restore one as the draft: fields that no longer exist are skipped, and references to
+  deleted entries or files are dropped and reported. Newest `[history].max_versions`
+  versions (50) are kept per document.
 
 ### Fixed
 

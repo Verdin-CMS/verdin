@@ -179,6 +179,12 @@ const { data } = await verdin.collection('articles').find({ populate: { category
 update, publish, unpublish, delete…), retries failed deliveries with backoff and keeps a
 delivery log. Payloads, signature checks and settings: [docs/webhooks.md](docs/webhooks.md).
 
+### Content history
+
+Every change of a document is kept as a version (`[history].max_versions`, 50 by
+default). Open **History** in the editor to compare versions and restore one as the
+current draft.
+
 ### Rich text, components and field permissions
 
 - `blocks` fields hold Strapi's rich text JSON and are edited with a blocks editor;

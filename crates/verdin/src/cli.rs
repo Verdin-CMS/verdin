@@ -337,8 +337,17 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     let upload =
         verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone())
             .with_listener(Arc::new(webhooks.clone()));
-    let context =
-        AppContext { config: project.config, root: project.root, db, auth, mode, upload, webhooks };
+    let history = verdin_api::History::new(db.clone(), project.config.history.max_versions);
+    let context = AppContext {
+        config: project.config,
+        root: project.root,
+        db,
+        auth,
+        mode,
+        upload,
+        webhooks,
+        history,
+    };
     app::serve(context, schema, shutdown_signal()).await
 }
 

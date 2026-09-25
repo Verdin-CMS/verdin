@@ -3,6 +3,7 @@
 
 mod blocks;
 pub mod events;
+mod history;
 mod input;
 pub mod media;
 mod output;
@@ -18,6 +19,7 @@ use verdin_db::DbError;
 use verdin_query::{Catalog, TypeFields};
 use verdin_schema::{AttributeKind, ContentType, Schema};
 
+pub use history::Dropped;
 pub use output::OutputOptions;
 pub use service::{DocumentService, Page, PageMeta, WriteOptions, slugify};
 

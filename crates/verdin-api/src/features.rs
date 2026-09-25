@@ -26,6 +26,7 @@ pub struct FeatureSpec {
 pub const OPENAPI: &str = "openapi";
 pub const GRAPHQL: &str = "graphql";
 pub const WEBHOOKS: &str = "webhooks";
+pub const HISTORY: &str = "history";
 
 /// Every feature, in display order.
 pub const CATALOG: &[FeatureSpec] = &[
@@ -52,13 +53,7 @@ pub const CATALOG: &[FeatureSpec] = &[
         default_enabled: false,
         core: false,
     },
-    FeatureSpec {
-        id: "history",
-        available: false,
-        planned: Some("0.3"),
-        default_enabled: false,
-        core: false,
-    },
+    FeatureSpec { id: HISTORY, available: true, planned: None, default_enabled: true, core: false },
     FeatureSpec {
         id: "importer",
         available: false,

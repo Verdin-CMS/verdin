@@ -6,6 +6,7 @@ mod docs;
 mod error;
 pub mod features;
 mod handlers;
+pub mod history;
 mod limiter;
 mod openapi;
 mod upload;
@@ -25,6 +26,7 @@ use verdin_schema::ContentTypeKind;
 
 pub use admin::{AdminConfig, BoxFuture, SchemaChange, SchemaEditor};
 pub use error::ApiError;
+pub use history::History;
 pub use webhooks::{WebhookOptions, Webhooks};
 
 #[derive(Debug, Clone, Copy)]
@@ -97,20 +99,21 @@ pub fn engagement_listener(db: Database) -> Arc<dyn verdin_content::events::Docu
     Arc::new(admin::engagement::EngagementListener::new(db))
 }
 
-/// A Document Service with the platform's listeners ("seen" marks, webhooks): every API
-/// writing content should use one.
+/// Listeners every Document Service carries besides "seen" marks (webhooks, history).
+pub type Listeners = Vec<Arc<dyn verdin_content::events::DocumentListener>>;
+
+/// A Document Service with the platform's listeners: every API writing content should
+/// use one.
 pub fn document_service(
     db: Database,
     registry: Registry,
     output: OutputOptions,
-    webhooks: Option<&Webhooks>,
+    listeners: &Listeners,
 ) -> DocumentService {
-    let service =
-        DocumentService::new(db.clone(), registry, output).with_listener(engagement_listener(db));
-    match webhooks {
-        Some(webhooks) => service.with_listener(webhooks.listener()),
-        None => service,
-    }
+    listeners.iter().fold(
+        DocumentService::new(db.clone(), registry, output).with_listener(engagement_listener(db)),
+        |service, listener| service.with_listener(listener.clone()),
+    )
 }
 
 /// Content API routes, to be nested under the API prefix (e.g. `/api`).
@@ -121,7 +124,7 @@ pub fn router(
     config: ApiConfig,
     prefix: &str,
     upload: Option<verdin_upload::UploadService>,
-    webhooks: Option<&Webhooks>,
+    listeners: &Listeners,
 ) -> Router {
     let routes = registry
         .types()
@@ -134,7 +137,7 @@ pub fn router(
         .collect();
     let openapi = openapi::document(&registry, prefix);
     let state = ApiState {
-        service: document_service(db, registry, config.output, webhooks),
+        service: document_service(db, registry, config.output, listeners),
         auth,
         routes: Arc::new(routes),
         config,

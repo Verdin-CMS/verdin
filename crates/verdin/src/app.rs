@@ -10,7 +10,9 @@ use axum::Router;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tower::ServiceExt;
-use verdin_api::features::{FeatureHost, FeatureState, FeatureStates, GRAPHQL, OPENAPI, WEBHOOKS};
+use verdin_api::features::{
+    FeatureHost, FeatureState, FeatureStates, GRAPHQL, HISTORY, OPENAPI, WEBHOOKS,
+};
 use verdin_api::{ApiError, BoxFuture, SchemaChange, SchemaEditor};
 use verdin_auth::AuthService;
 use verdin_db::Database;
@@ -46,6 +48,8 @@ pub struct AppContext {
     pub upload: verdin_upload::UploadService,
     /// The delivery queue; the `webhooks` feature switches it on and off.
     pub webhooks: verdin_api::Webhooks,
+    /// Content history; the `history` feature switches recording on and off.
+    pub history: verdin_api::History,
 }
 
 /// The webhooks service configured for `mode`.
@@ -101,6 +105,8 @@ pub fn build_app(
         ..Default::default()
     };
     let output = verdin_content::OutputOptions { decimal_as_string: api.decimal_as_string };
+    let listeners: verdin_api::Listeners =
+        vec![context.webhooks.listener(), context.history.listener()];
     let http = verdin_api::HttpLimits {
         body_limit: context.config.server.body_limit,
         request_timeout: context.config.server.request_timeout(),
@@ -122,7 +128,7 @@ pub fn build_app(
         },
         &api.prefix,
         Some(context.upload.clone()),
-        Some(&context.webhooks),
+        &listeners,
     );
     let admin_api = verdin_api::admin_router(
         context.db.clone(),
@@ -140,11 +146,13 @@ pub fn build_app(
             features,
             upload: Some(context.upload.clone()),
             webhooks: states.enabled(WEBHOOKS).then(|| context.webhooks.clone()),
+            history: states.enabled(HISTORY).then(|| context.history.clone()),
+            listeners: listeners.clone(),
         },
     );
-    let graphql = states
-        .enabled(GRAPHQL)
-        .then(|| graphql_router(context, &registry_for_graphql, limits, output, states));
+    let graphql = states.enabled(GRAPHQL).then(|| {
+        graphql_router(context, &registry_for_graphql, limits, output, states, &listeners)
+    });
     let mut app = server::router(
         AppState { db: context.db.clone() },
         &[(api.prefix.clone(), content_api), (format!("{}/api", admin.path), admin_api)],
@@ -244,6 +252,7 @@ fn graphql_router(
     limits: verdin_query::Limits,
     output: verdin_content::OutputOptions,
     states: &FeatureStates,
+    listeners: &verdin_api::Listeners,
 ) -> Router {
     let settings = states.settings(GRAPHQL);
     let flag =
@@ -258,12 +267,8 @@ fn graphql_router(
         introspection: flag("introspection", defaults.introspection),
         playground: flag("playground", context.mode == Mode::Development),
     };
-    let service = verdin_api::document_service(
-        context.db.clone(),
-        registry.clone(),
-        output,
-        Some(&context.webhooks),
-    );
+    let service =
+        verdin_api::document_service(context.db.clone(), registry.clone(), output, listeners);
     match verdin_graphql::schema(service, limits, &options) {
         Ok(schema) => verdin_graphql::router(schema, context.auth.clone(), options, "/graphql"),
         Err(error) => {
@@ -361,6 +366,7 @@ impl AppHost {
         let features = self.this.upgrade().map(|host| host as Arc<dyn FeatureHost>);
         let states = self.features.load();
         self.context.webhooks.set_enabled(states.enabled(WEBHOOKS));
+        self.context.history.set_enabled(states.enabled(HISTORY));
         self.current.store(Arc::new(build_app(&self.context, schema, editor, features, &states)));
     }
 
@@ -750,6 +756,7 @@ mod tests {
         let storage = verdin_upload::Storage::new(&config.upload.provider, root).unwrap();
         let upload = verdin_upload::UploadService::new(db.clone(), storage, config.upload.clone());
         let webhooks = webhooks(&config, db.clone(), Mode::Production);
+        let history = verdin_api::History::new(db.clone(), config.history.max_versions);
         Arc::new(AppContext {
             config,
             root: root.to_owned(),
@@ -758,6 +765,7 @@ mod tests {
             mode: Mode::Production,
             upload,
             webhooks,
+            history,
         })
     }
 

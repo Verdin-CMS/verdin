@@ -20,7 +20,21 @@ pub struct Config {
     pub admin: AdminConfig,
     pub upload: verdin_upload::UploadConfig,
     pub webhooks: WebhooksConfig,
+    pub history: HistoryConfig,
     pub log: LogConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct HistoryConfig {
+    /// Versions kept per document (older ones are removed).
+    pub max_versions: usize,
+}
+
+impl Default for HistoryConfig {
+    fn default() -> Self {
+        Self { max_versions: 50 }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

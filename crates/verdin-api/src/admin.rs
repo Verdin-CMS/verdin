@@ -34,6 +34,8 @@ use crate::limiter::RateLimiter;
 
 #[path = "engagement.rs"]
 pub(crate) mod engagement;
+#[path = "history_admin.rs"]
+mod history_admin;
 #[path = "upload_admin.rs"]
 mod upload_admin;
 #[path = "webhooks_admin.rs"]
@@ -95,6 +97,10 @@ pub struct AdminConfig {
     pub upload: Option<verdin_upload::UploadService>,
     /// Present when the `webhooks` feature is on; its routes answer 404 without it.
     pub webhooks: Option<crate::Webhooks>,
+    /// Present when the `history` feature is on; its routes answer 404 without it.
+    pub history: Option<crate::History>,
+    /// Webhooks, history…: see [`crate::document_service`].
+    pub listeners: crate::Listeners,
 }
 
 impl Default for AdminConfig {
@@ -111,6 +117,8 @@ impl Default for AdminConfig {
             features: None,
             upload: None,
             webhooks: None,
+            history: None,
+            listeners: Vec::new(),
         }
     }
 }
@@ -137,7 +145,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
     ));
     let state = AdminState {
         flavor: db.flavor().as_str(),
-        service: crate::document_service(db, registry, config.output, config.webhooks.as_ref()),
+        service: crate::document_service(db, registry, config.output, &config.listeners),
         auth,
         config: Arc::new(config),
         limiter,
@@ -174,7 +182,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .route("/features", get(list_features))
         .route("/features/{id}", axum::routing::put(update_feature))
         .merge(engagement::routes())
-        .merge(webhooks_admin::routes());
+        .merge(webhooks_admin::routes())
+        .merge(history_admin::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
     http.apply(regular).merge(uploads).fallback(|| async { ApiError::NotFound }).with_state(state)

@@ -280,6 +280,66 @@ pub(crate) fn substitute(
     walk_mut(schema, kind, value, documents, files);
 }
 
+/// Replaces every relation or media value inside component items with `f`'s result.
+pub(crate) fn rewrite(
+    schema: &Schema,
+    kind: &AttributeKind,
+    value: &mut Json,
+    f: &mut dyn FnMut(&Attribute, &Target, &Json) -> Json,
+) {
+    fn item(
+        schema: &Schema,
+        object: &mut Map<String, Json>,
+        attributes: &IndexMap<String, Attribute>,
+        f: &mut dyn FnMut(&Attribute, &Target, &Json) -> Json,
+    ) {
+        for (name, attribute) in attributes {
+            let Some(value) = object.get_mut(name) else { continue };
+            match &attribute.kind {
+                AttributeKind::Relation { .. } | AttributeKind::Media { .. } => {
+                    if let Some(target) = target_of(schema, attribute) {
+                        *value = f(attribute, &target, value);
+                    }
+                }
+                AttributeKind::Component { .. } | AttributeKind::DynamicZone { .. } => {
+                    rewrite(schema, &attribute.kind, value, f)
+                }
+                _ => {}
+            }
+        }
+    }
+    match (kind, value) {
+        (AttributeKind::Component { component, .. }, Json::Object(object)) => {
+            if let Some(component) = schema.component(component) {
+                item(schema, object, &component.attributes, f);
+            }
+        }
+        (AttributeKind::Component { component, .. }, Json::Array(items)) => {
+            if let Some(component) = schema.component(component) {
+                for value in items {
+                    if let Json::Object(object) = value {
+                        item(schema, object, &component.attributes, f);
+                    }
+                }
+            }
+        }
+        (AttributeKind::DynamicZone { .. }, Json::Array(items)) => {
+            for value in items {
+                let Json::Object(object) = value else { continue };
+                let Some(component) = object
+                    .get("__component")
+                    .and_then(Json::as_str)
+                    .and_then(|uid| schema.component(uid))
+                else {
+                    continue;
+                };
+                item(schema, object, &component.attributes, f);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// A reference issue for `path`.
 pub(crate) fn issue(path: &[Json], message: impl Into<String>) -> Issue {
     Issue::new(path.to_vec(), message)
