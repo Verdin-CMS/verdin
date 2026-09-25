@@ -164,6 +164,30 @@ impl FileRecord {
     }
 }
 
+/// Files by id (for references inside components).
+pub(crate) async fn files_by_ids(db: &Database, ids: &[i64]) -> Result<HashMap<i64, Json>> {
+    let mut files = HashMap::new();
+    for chunk in ids.chunks(crate::service::IN_CHUNK) {
+        let mut select = SqlBuilder::new(db.flavor());
+        select.push("SELECT ");
+        FileRecord::select_list(&mut select, None);
+        select.push(" FROM ").ident(FILES).push(" WHERE ").ident("id").push(" IN (");
+        for (index, id) in chunk.iter().enumerate() {
+            if index > 0 {
+                select.push(", ");
+            }
+            select.param(SqlValue::BigInt(*id));
+        }
+        select.push(")");
+        for row in db.queries().fetch_all(&select.sql, &select.params, &FileRecord::kinds()).await?
+        {
+            let file = FileRecord::from_row(row);
+            files.insert(file.id, file.to_json());
+        }
+    }
+    Ok(files)
+}
+
 /// Files linked to each source row of one media field, in order.
 pub(crate) async fn files_of_sources(
     db: &Database,
@@ -274,7 +298,7 @@ async fn replace_media(tx: &mut Tx, link_table: &str, source_id: i64, files: &[i
     Ok(())
 }
 
-async fn file_mimes(tx: &mut Tx, ids: &[i64]) -> Result<HashMap<i64, String>> {
+pub(crate) async fn file_mimes(tx: &mut Tx, ids: &[i64]) -> Result<HashMap<i64, String>> {
     if ids.is_empty() {
         return Ok(HashMap::new());
     }

@@ -285,6 +285,11 @@ fn attribute_schema(schema: &Schema, kind: &AttributeKind) -> Value {
             json!({ "type": nullable("string"), "format": "date-time" })
         }
         AttributeKind::Json => json!({}),
+        AttributeKind::Blocks => json!({
+            "type": ["array", "null"],
+            "description": "Rich text blocks (Strapi format)",
+            "items": { "type": "object", "required": ["type"], "properties": { "type": { "type": "string" } } }
+        }),
         AttributeKind::Component { component, repeatable, .. } => {
             let reference =
                 json!({ "$ref": format!("#/components/schemas/{}", component_name(component)) });

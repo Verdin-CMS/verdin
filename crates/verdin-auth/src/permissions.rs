@@ -48,6 +48,9 @@ pub struct Permission {
     pub subject: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conditions: Vec<String>,
+    /// Content read/create/update only: the attributes it covers (`None`: all of them).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Vec<String>>,
 }
 
 impl Permission {
@@ -66,6 +69,11 @@ impl Permission {
         }
         if media && self.subject.is_some() {
             return Err(format!("`{}` takes no subject", self.action));
+        }
+        let field_actions =
+            [actions::CONTENT_READ, actions::CONTENT_CREATE, actions::CONTENT_UPDATE];
+        if self.fields.is_some() && !field_actions.contains(&self.action.as_str()) {
+            return Err(format!("`{}` does not take fields", self.action));
         }
         if let Some(condition) = self.conditions.iter().find(|condition| *condition != IS_CREATOR) {
             return Err(format!("unknown condition `{condition}`"));
@@ -128,6 +136,32 @@ impl PermissionSet {
         grant
     }
 
+    /// Attributes a content permission covers for `uid`: `None` when unrestricted (or when
+    /// no permission matches: callers check the grant first).
+    pub fn content_fields(&self, action: &str, uid: &str) -> Option<Vec<String>> {
+        if self.super_admin {
+            return None;
+        }
+        let mut fields: Vec<String> = Vec::new();
+        let mut matched = false;
+        for permission in &self.permissions {
+            let subject_matches = permission
+                .subject
+                .as_deref()
+                .is_some_and(|subject| subject == ALL_SUBJECTS || subject == uid);
+            if permission.action != action || !subject_matches {
+                continue;
+            }
+            matched = true;
+            for field in permission.fields.as_ref()? {
+                if !fields.contains(field) {
+                    fields.push(field.clone());
+                }
+            }
+        }
+        matched.then_some(fields)
+    }
+
     pub fn allows(&self, action: &str) -> bool {
         self.super_admin || self.permissions.iter().any(|permission| permission.action == action)
     }
@@ -140,6 +174,7 @@ pub fn builtin_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<Per
         action: action.into(),
         subject: Some(ALL_SUBJECTS.into()),
         conditions: conditions.iter().map(|condition| (*condition).into()).collect(),
+        fields: None,
     };
     let mut roles = vec![
         (SUPER_ADMIN, "Super Admin", "Everything, including users, roles and tokens.", Vec::new()),
@@ -182,6 +217,7 @@ pub fn builtin_additions(version: i64) -> Vec<(&'static str, Vec<Permission>)> {
         action: action.into(),
         subject: None,
         conditions: conditions.iter().map(|condition| (*condition).into()).collect(),
+        fields: None,
     };
     match version {
         // 0.2: the media library.
@@ -310,6 +346,7 @@ mod tests {
             action: action.into(),
             subject: subject.map(Into::into),
             conditions: conditions.iter().map(|c| (*c).into()).collect(),
+            fields: None,
         }
     }
 

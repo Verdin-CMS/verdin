@@ -297,13 +297,14 @@ fn checks_components() {
     sources.push(component("shared", "link", json!({ "displayName": "Link", "attributes": { "to": { "type": "relation", "relation": "manyToOne", "target": "article" } } })));
     assert_error(&sources, "relations inside components must be `oneWay` or `manyWay`");
 
+    // Media inside components is allowed (stored as file ids in the component JSON).
     let mut sources = blog();
     sources.push(component(
         "shared",
         "photo",
         json!({ "displayName": "Photo", "attributes": { "file": { "type": "media" } } }),
     ));
-    assert_error(&sources, "media fields inside components are not supported yet");
+    assert!(Schema::parse(&sources).is_ok());
 
     let mut sources = blog();
     sources.push(ct("upload", json!({ "kind": "collectionType", "singularName": "upload", "pluralName": "uploads", "displayName": "Upload", "attributes": {} })));
@@ -315,7 +316,7 @@ fn collects_all_errors() {
     let sources = replace(
         blog(),
         tag_with(
-            json!({ "Bad": { "type": "string" }, "worse": { "type": "blocks" }, "slug": { "type": "uid", "targetField": "nope" } }),
+            json!({ "Bad": { "type": "string" }, "worse": { "type": "markdown" }, "slug": { "type": "uid", "targetField": "nope" } }),
         ),
     );
     assert_eq!(errors(&sources).len(), 3);

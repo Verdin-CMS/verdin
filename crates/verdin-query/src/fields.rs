@@ -164,6 +164,29 @@ impl TypeFields {
         self.fields.values()
     }
 
+    /// A view where only `allowed` attributes are visible: the others behave as private
+    /// (not returned, not filterable, sortable or populatable). System fields stay.
+    pub fn restricted(&self, allowed: &[String]) -> TypeFields {
+        let mut view = self.clone();
+        for field in view.fields.values_mut() {
+            if let Some(attribute) = &mut field.attribute
+                && !allowed.contains(&field.api)
+            {
+                attribute.private = true;
+            }
+        }
+        view
+    }
+
+    /// Visible scalar fields, system fields included (a full `fields` selection).
+    pub fn visible_scalars(&self) -> Vec<String> {
+        self.fields
+            .values()
+            .filter(|field| field.category == FieldCategory::Scalar && !field.is_private())
+            .map(|field| field.api.clone())
+            .collect()
+    }
+
     /// Attribute fields (no system fields), in schema order.
     pub fn attributes(&self) -> impl Iterator<Item = &Field> {
         self.fields.values().filter(|field| !field.is_system())
@@ -244,7 +267,7 @@ pub fn attribute_kind(kind: &AttributeKind) -> (ColumnKind, FieldCategory) {
         A::Date { .. } => scalar(ColumnKind::Date),
         A::Time { .. } => scalar(ColumnKind::Time),
         A::DateTime { .. } => scalar(ColumnKind::DateTime),
-        A::Json => scalar(ColumnKind::Json),
+        A::Json | A::Blocks => scalar(ColumnKind::Json),
         A::Component { .. } | A::DynamicZone { .. } => (ColumnKind::Json, FieldCategory::Nested),
         A::Relation { .. } => (ColumnKind::Json, FieldCategory::Relation),
         A::Media { .. } => (ColumnKind::Json, FieldCategory::Media),

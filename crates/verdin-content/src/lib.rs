@@ -1,10 +1,12 @@
 //! Document Service: the single internal API for reading and writing content
 //! (docs/architecture.md §11).
 
+mod blocks;
 pub mod events;
 mod input;
 pub mod media;
 mod output;
+mod refs;
 mod service;
 
 use std::collections::HashMap;

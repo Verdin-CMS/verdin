@@ -732,3 +732,75 @@ async fn features_catalog_and_switches() {
     assert_eq!(unknown.0, StatusCode::NOT_FOUND);
     app.done().await;
 }
+
+#[tokio::test]
+async fn field_level_permissions() {
+    let app = App::new(schema()).await;
+    let admin = register(&app).await;
+    let content = "/admin/api/content/api::article";
+    let (_, body) = app
+        .call_as(
+            Method::POST,
+            content,
+            Some(json!({ "data": { "title": "Hello", "slug": "hello" } })),
+            As::Bearer(&admin),
+        )
+        .await;
+    let document = body["data"]["documentId"].as_str().unwrap().to_owned();
+
+    let permissions = json!([
+        { "action": "content.read", "subject": "api::article", "fields": ["title"] },
+        { "action": "content.update", "subject": "api::article", "fields": ["title"] }
+    ]);
+    let role = json!({ "code": "copy", "name": "Copy editors", "permissions": permissions });
+    let (status, body) =
+        app.call_as(Method::POST, "/admin/api/roles", Some(role), As::Bearer(&admin)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    create_user(&app, &admin, "copy@example.com", "copy").await;
+    let copy = login(&app, "copy@example.com").await;
+
+    let (status, body) = app.call_as(Method::GET, content, None, As::Bearer(&copy)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let entry = &body["data"][0];
+    assert_eq!(entry["title"], "Hello");
+    assert!(entry.get("slug").is_none(), "hidden field: {entry}");
+    assert!(entry.get("updatedAt").is_some(), "system fields stay");
+    for query in ["filters[slug][$eq]=hello", "sort=slug:asc", "fields[0]=slug"] {
+        let (status, _) =
+            app.call_as(Method::GET, &format!("{content}?{query}"), None, As::Bearer(&copy)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{query}");
+    }
+
+    let url = format!("{content}/{document}");
+    let (status, body) = app
+        .call_as(Method::PUT, &url, Some(json!({ "data": { "slug": "other" } })), As::Bearer(&copy))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"]["message"].as_str().unwrap().contains("slug"), "{body}");
+    let (status, body) = app
+        .call_as(
+            Method::PUT,
+            &url,
+            Some(json!({ "data": { "title": "Edited" } })),
+            As::Bearer(&copy),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["data"].get("slug").is_none());
+
+    // Validation of the role.
+    for bad in [
+        json!([{ "action": "content.read", "subject": "*", "fields": ["title"] }]),
+        json!([{ "action": "content.read", "subject": "api::article", "fields": ["nope"] }]),
+        json!([{ "action": "content.publish", "subject": "api::article", "fields": ["title"] }]),
+    ] {
+        let role = json!({ "code": "bad", "name": "Bad", "permissions": bad });
+        let (status, _) =
+            app.call_as(Method::POST, "/admin/api/roles", Some(role), As::Bearer(&admin)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    // /auth/me reports the restriction for the panel.
+    let (_, me) = app.call_as(Method::GET, "/admin/api/auth/me", None, As::Bearer(&copy)).await;
+    assert_eq!(me["data"]["permissions"]["permissions"][0]["fields"], json!(["title"]));
+    app.done().await;
+}

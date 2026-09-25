@@ -20,6 +20,8 @@ use verdin_db::value::truncate_millis;
 use verdin_db::{ColumnKind, Database, DbError, Flavor, SqlValue, Tx};
 use verdin_query::sql::{FilterContext, SqlBuilder, write_filter, write_order_by};
 
+use verdin_schema::AttributeKind;
+
 use crate::events::{DocumentEvent, DocumentListener, EventKind};
 use verdin_query::{
     Field, FieldCategory, Filter, PageMode, Populate, Query, Sort, Status, SubQuery,
@@ -275,6 +277,12 @@ impl DocumentService {
             }
             for item in populate {
                 let Some(field) = model.fields.get(&item.field) else { continue };
+                if field.category == FieldCategory::Nested
+                    && let Some(attribute) = &field.attribute
+                {
+                    self.resolve_references(&attribute.kind, &item.field, docs, status).await?;
+                    continue;
+                }
                 if let Some(info) = &field.media {
                     let ids: Vec<i64> = docs.iter().map(|doc| doc.id).collect();
                     let mut files = crate::media::files_of_sources(&self.db, info, &ids).await?;
@@ -504,6 +512,7 @@ impl DocumentService {
             ("created_by_id".into(), actor_value(options.actor)),
             ("updated_by_id".into(), actor_value(options.actor)),
         ];
+        self.check_references(&mut tx, model, &prepared.columns).await?;
         values.extend(prepared.columns);
         let mut insert = SqlBuilder::new(self.db.flavor());
         write_insert(&mut insert, model.table(), values);
@@ -547,6 +556,7 @@ impl DocumentService {
         let id = row_id(&mut tx, model, document_id, state, true)
             .await?
             .ok_or(ContentError::NotFound)?;
+        self.check_references(&mut tx, model, &prepared.columns).await?;
         let mut assignments = prepared.columns;
         assignments.push(("updated_at".into(), SqlValue::DateTime(now)));
         assignments.push(("updated_by_id".into(), actor_value(options.actor)));
@@ -796,6 +806,147 @@ impl DocumentService {
             check_required(&self.registry.schema, &model.content_type.attributes, &document, &[]);
         issues.extend(missing_media(tx, model, row_id_of(&row)).await?);
         if issues.is_empty() { Ok(()) } else { Err(ContentError::Validation(issues)) }
+    }
+
+    /// Relations and media stored inside components and dynamic zones must point at
+    /// existing documents and files of an allowed type.
+    async fn check_references(
+        &self,
+        tx: &mut Tx,
+        model: &TypeModel,
+        columns: &[(String, SqlValue)],
+    ) -> Result<()> {
+        let schema = &self.registry.schema;
+        let mut issues = Vec::new();
+        for (name, attribute) in &model.content_type.attributes {
+            if !matches!(
+                attribute.kind,
+                AttributeKind::Component { .. } | AttributeKind::DynamicZone { .. }
+            ) {
+                continue;
+            }
+            let column = verdin_schema::Attribute::column_name(name);
+            let Some((_, SqlValue::Json(value))) = columns.iter().find(|(c, _)| *c == column)
+            else {
+                continue;
+            };
+            for reference in
+                crate::refs::collect(schema, &attribute.kind, value, &[Json::from(name.as_str())])
+            {
+                match &reference.target {
+                    crate::refs::Target::Documents { uid } => {
+                        let ids: Vec<String> = reference
+                            .values
+                            .iter()
+                            .filter_map(|v| v.as_str().map(str::to_owned))
+                            .collect();
+                        let table = self.registry.get(uid)?.table().to_owned();
+                        let missing = missing_documents(tx, &table, &ids).await?;
+                        if !missing.is_empty() {
+                            issues.push(crate::refs::issue(
+                                &reference.path,
+                                format!("related documents do not exist: {}", missing.join(", ")),
+                            ));
+                        }
+                    }
+                    crate::refs::Target::Files { allowed } => {
+                        let ids: Vec<i64> =
+                            reference.values.iter().filter_map(Json::as_i64).collect();
+                        let mimes = crate::media::file_mimes(tx, &ids).await?;
+                        let missing: Vec<String> = ids
+                            .iter()
+                            .filter(|id| !mimes.contains_key(id))
+                            .map(i64::to_string)
+                            .collect();
+                        if !missing.is_empty() {
+                            issues.push(crate::refs::issue(
+                                &reference.path,
+                                format!("files do not exist: {}", missing.join(", ")),
+                            ));
+                        } else if !allowed.is_empty()
+                            && ids.iter().any(|id| {
+                                !allowed.contains(&verdin_schema::MediaType::of_mime(&mimes[id]))
+                            })
+                        {
+                            let kinds: Vec<&str> = allowed.iter().map(|ty| ty.as_str()).collect();
+                            issues.push(crate::refs::issue(
+                                &reference.path,
+                                format!("only {} are allowed", kinds.join(", ")),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        if issues.is_empty() { Ok(()) } else { Err(ContentError::Validation(issues)) }
+    }
+
+    /// Resolves the references inside a populated component or dynamic zone field, in
+    /// batches: related documents in the version being read, and files.
+    async fn resolve_references(
+        &self,
+        kind: &AttributeKind,
+        field: &str,
+        docs: &mut [Doc],
+        status: Status,
+    ) -> Result<()> {
+        let schema = &self.registry.schema;
+        let mut wanted: HashMap<String, Vec<String>> = HashMap::new();
+        let mut file_ids: Vec<i64> = Vec::new();
+        for doc in docs.iter() {
+            let Some(value) = doc.json.get(field) else { continue };
+            for reference in crate::refs::collect(schema, kind, value, &[]) {
+                match reference.target {
+                    crate::refs::Target::Documents { uid } => {
+                        let ids = wanted.entry(uid).or_default();
+                        ids.extend(
+                            reference.values.iter().filter_map(|v| v.as_str().map(str::to_owned)),
+                        );
+                    }
+                    crate::refs::Target::Files { .. } => {
+                        file_ids.extend(reference.values.iter().filter_map(Json::as_i64));
+                    }
+                }
+            }
+        }
+        if wanted.is_empty() && file_ids.is_empty() {
+            return Ok(());
+        }
+        let mut documents: HashMap<(String, String), Json> = HashMap::new();
+        for (uid, mut ids) in wanted {
+            ids.sort();
+            ids.dedup();
+            let target = self.registry.get(&uid)?;
+            let fields = public_fields(target, None, &[]);
+            let found = self
+                .fetch_docs(
+                    target,
+                    &fields,
+                    state_for(target, status),
+                    Scope::Documents(&ids),
+                    None,
+                    status,
+                    &[],
+                    None,
+                )
+                .await?;
+            for doc in found {
+                documents.insert((uid.clone(), doc.document_id), Json::Object(doc.json));
+            }
+        }
+        file_ids.sort_unstable();
+        file_ids.dedup();
+        let files = if file_ids.is_empty() {
+            HashMap::new()
+        } else {
+            crate::media::files_by_ids(&self.db, &file_ids).await?
+        };
+        for doc in docs.iter_mut() {
+            if let Some(value) = doc.json.get_mut(field) {
+                crate::refs::substitute(schema, kind, value, &documents, &files);
+            }
+        }
+        Ok(())
     }
 
     /// Applies relation writes to the links of one row.

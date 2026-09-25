@@ -309,6 +309,7 @@ fn convert(
     if value.is_null() {
         return Ok(match kind {
             AttributeKind::Json
+            | AttributeKind::Blocks
             | AttributeKind::Component { .. }
             | AttributeKind::DynamicZone { .. } => Converted::Json(Json::Null),
             _ => Converted::Sql(SqlValue::Null(column_kind)),
@@ -430,6 +431,10 @@ fn convert(
             )
         }
         AttributeKind::Json => return Ok(Converted::Json(value.clone())),
+        AttributeKind::Blocks => {
+            crate::blocks::validate(value, path)?;
+            return Ok(Converted::Json(value.clone()));
+        }
         AttributeKind::Component { component, repeatable, min, max } => {
             let normalized = if *repeatable {
                 let items =
@@ -555,9 +560,26 @@ fn component_item(
             None => continue,
         };
         let attribute_path = child_path(path, name.as_str());
-        if matches!(attribute.kind, AttributeKind::Relation { .. }) {
-            issues.push(Issue::new(attribute_path, "writing relations is not supported yet"));
-            continue;
+        match &attribute.kind {
+            AttributeKind::Relation { relation, .. } => {
+                match crate::refs::normalize_relation(&value, relation.is_to_many()) {
+                    Ok(value) => {
+                        out.insert(name.clone(), value);
+                    }
+                    Err(message) => issues.push(Issue::new(attribute_path, message)),
+                }
+                continue;
+            }
+            AttributeKind::Media { multiple, .. } => {
+                match crate::refs::normalize_media(&value, *multiple) {
+                    Ok(value) => {
+                        out.insert(name.clone(), value);
+                    }
+                    Err(message) => issues.push(Issue::new(attribute_path, message)),
+                }
+                continue;
+            }
+            _ => {}
         }
         match convert(schema, &attribute.kind, &value, &attribute_path, new_items_get_defaults) {
             Ok(Converted::Sql(value)) => {

@@ -122,6 +122,8 @@ pub fn system_tables() -> Vec<Table> {
                 varchar("subject", 255),
                 // JSON array of condition names, e.g. ["is-creator"].
                 Column::new("conditions", ColumnType::Text),
+                // JSON list of attribute names; NULL means every field.
+                Column::new("fields", ColumnType::Text),
             ],
             indexes: vec![index(ADMIN_PERMISSIONS, "role", &["role_id"])],
             foreign_keys: vec![references("role_id", ADMIN_ROLES)],

@@ -408,7 +408,7 @@ fn scalar_type(kind: &AttributeKind) -> Option<&'static str> {
         A::Date { .. } => "Date",
         A::Time { .. } => "Time",
         A::DateTime { .. } => "DateTime",
-        A::Json => "JSON",
+        A::Json | A::Blocks => "JSON",
         _ => return None,
     })
 }
@@ -503,7 +503,7 @@ fn filter_type(content: &ContentSchema, attribute: &Attribute) -> Option<String>
         A::Date { .. } => "DateFilterInput".into(),
         A::Time { .. } => "TimeFilterInput".into(),
         A::DateTime { .. } => "DateTimeFilterInput".into(),
-        A::Json => "JSONFilterInput".into(),
+        A::Json | A::Blocks => "JSONFilterInput".into(),
         A::Relation { .. } => format!("{}FiltersInput", relation_target(content, attribute)),
         A::Component { component, repeatable: false, .. } => {
             format!("{}FiltersInput", names::component(component))

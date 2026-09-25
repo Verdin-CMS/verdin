@@ -28,6 +28,7 @@ fn allowed_options(ty: &str) -> Option<&'static [&'static str]> {
         "integer" | "biginteger" | "float" => &["default", "unique", "min", "max"],
         "decimal" => &["default", "unique", "min", "max", "precision", "scale"],
         "boolean" | "json" => &["default"],
+        "blocks" => &[],
         "date" | "time" | "datetime" => &["default", "unique"],
         "enumeration" => &["default", "enum"],
         "relation" => &["relation", "target", "inversedBy", "mappedBy"],
@@ -132,6 +133,7 @@ pub fn convert_attribute(raw: RawAttribute) -> Result<Attribute, Issues> {
         "time" => AttributeKind::Time { unique },
         "datetime" => AttributeKind::DateTime { unique },
         "json" => AttributeKind::Json,
+        "blocks" => AttributeKind::Blocks,
         "enumeration" => {
             let values = raw.enum_values.clone().unwrap_or_default();
             if values.is_empty() {
@@ -396,6 +398,7 @@ fn check_default(kind: &AttributeKind, default: &Value, issues: &mut Issues) {
             }
         }
         AttributeKind::Json => {}
+        AttributeKind::Blocks => unreachable!("default rejected by allowed_options"),
         AttributeKind::Relation { .. }
         | AttributeKind::Media { .. }
         | AttributeKind::Component { .. }
@@ -460,7 +463,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_type() {
-        assert_eq!(issue_paths(json!({ "type": "blocks" })), ["type"]);
+        assert_eq!(issue_paths(json!({ "type": "markdown" })), ["type"]);
     }
 
     #[test]

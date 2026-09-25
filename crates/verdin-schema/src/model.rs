@@ -124,6 +124,8 @@ pub enum AttributeKind {
         values: Vec<String>,
     },
     Json,
+    /// Rich text as Strapi's blocks JSON (paragraphs, headings, lists, quotes, code, images).
+    Blocks,
     Relation {
         relation: RelationKind,
         target: String,
@@ -208,6 +210,7 @@ impl AttributeKind {
             AttributeKind::DateTime { .. } => "datetime",
             AttributeKind::Enumeration { .. } => "enumeration",
             AttributeKind::Json => "json",
+            AttributeKind::Blocks => "blocks",
             AttributeKind::Relation { .. } => "relation",
             AttributeKind::Component { .. } => "component",
             AttributeKind::DynamicZone { .. } => "dynamiczone",

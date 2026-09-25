@@ -197,6 +197,7 @@ fn column_type(attribute: &Attribute) -> Option<ColumnType> {
         AttributeKind::Time { .. } => ColumnType::Time,
         AttributeKind::DateTime { .. } => ColumnType::DateTime,
         AttributeKind::Json
+        | AttributeKind::Blocks
         | AttributeKind::Component { .. }
         | AttributeKind::DynamicZone { .. } => ColumnType::Json,
         AttributeKind::Relation { .. } | AttributeKind::Media { .. } => return None,

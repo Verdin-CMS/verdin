@@ -168,6 +168,7 @@ async fn users_roles_and_the_last_super_admin() {
                 action: actions::CONTENT_PUBLISH.into(),
                 subject: Some("api::article".into()),
                 conditions: vec![],
+                fields: None,
             }],
         )
         .await

@@ -487,6 +487,22 @@ struct RolePatch {
 
 fn check_subjects(state: &AdminState, permissions: &[Permission]) -> Result<(), ApiError> {
     for permission in permissions {
+        if let (Some(fields), Some(subject)) = (&permission.fields, &permission.subject) {
+            if subject == verdin_auth::ALL_SUBJECTS {
+                return Err(ApiError::BadRequest(
+                    "field permissions need a content type subject, not `*`".into(),
+                ));
+            }
+            let model =
+                state.service.registry().get(subject).map_err(|_| {
+                    ApiError::BadRequest(format!("unknown content type `{subject}`"))
+                })?;
+            if let Some(unknown) =
+                fields.iter().find(|field| !model.content_type.attributes.contains_key(*field))
+            {
+                return Err(ApiError::BadRequest(format!("`{subject}` has no field `{unknown}`")));
+            }
+        }
         if let Some(subject) = &permission.subject
             && subject != verdin_auth::ALL_SUBJECTS
             && state.service.registry().get(subject).is_err()
@@ -808,7 +824,7 @@ fn attribute_json(attribute: &Attribute) -> Value {
             set("unique", json!(unique))
         }
         A::Enumeration { values } => set("enum", json!(values)),
-        A::Boolean | A::Json => {}
+        A::Boolean | A::Json | A::Blocks => {}
         A::Relation { relation, target, inversed_by, mapped_by } => {
             set("relation", json!(relation.as_str()));
             set("target", json!(target));
@@ -917,6 +933,31 @@ async fn content_grant(
     }
 }
 
+/// Field-level permissions on writes: every key of `data` must be allowed.
+fn writable_fields(
+    principal: &AdminPrincipal,
+    action: &str,
+    uid: &str,
+    data: &Value,
+) -> Result<(), ApiError> {
+    let Some(allowed) = principal.permissions.content_fields(action, uid) else { return Ok(()) };
+    let refused: Vec<&str> = data
+        .as_object()
+        .map(|object| {
+            object
+                .keys()
+                .map(String::as_str)
+                .filter(|key| !allowed.iter().any(|a| a == key))
+                .collect()
+        })
+        .unwrap_or_default();
+    if refused.is_empty() {
+        Ok(())
+    } else {
+        Err(ApiError::BadRequest(format!("you may not change: {}", refused.join(", "))))
+    }
+}
+
 async fn ensure_owner(
     state: &AdminState,
     uid: &str,
@@ -942,8 +983,17 @@ fn admin_query(
 ) -> Result<Query, ApiError> {
     let registry = state.service.registry();
     let model = registry.get(uid)?;
+    // Field-level permissions: hidden fields behave as private for this admin.
+    let allowed = principal.permissions.content_fields(actions::CONTENT_READ, uid);
+    let restricted = allowed.as_ref().map(|allowed| model.fields.restricted(allowed));
+    let fields = restricted.as_ref().unwrap_or(&model.fields);
     let mut query =
-        verdin_query::parse_request(raw, &model.fields, registry.catalog(), &state.config.limits)?;
+        verdin_query::parse_request(raw, fields, registry.catalog(), &state.config.limits)?;
+    if let Some(view) = &restricted
+        && query.fields.is_none()
+    {
+        query.fields = Some(view.visible_scalars());
+    }
     let explicit_status =
         raw.is_some_and(|raw| raw.split('&').any(|pair| pair.starts_with("status=")));
     if !explicit_status {
@@ -1032,6 +1082,7 @@ async fn content_create(
 ) -> ApiResult {
     let (principal, _) = content_grant(&state, &headers, &uid, actions::CONTENT_CREATE).await?;
     let data = parse_data(&bytes)?;
+    writable_fields(&principal, actions::CONTENT_CREATE, &uid, &data)?;
     let options = WriteOptions { publish: false, actor: Some(principal.user.id) };
     let document_id = state.service.create(&uid, &data, options).await?;
     // The creator may always see what they just wrote.
@@ -1049,6 +1100,7 @@ async fn content_update(
     let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_UPDATE).await?;
     ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
     let data = parse_data(&bytes)?;
+    writable_fields(&principal, actions::CONTENT_UPDATE, &uid, &data)?;
     let options = WriteOptions { publish: false, actor: Some(principal.user.id) };
     state.service.update(&uid, &document_id, &data, options).await?;
     let query = admin_query(&state, &uid, raw.as_deref(), &principal, Grant::All)?;
