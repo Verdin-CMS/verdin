@@ -35,6 +35,8 @@ pub(super) fn routes() -> Router<AdminState> {
         .route("/polls", get(list_polls).post(create_poll))
         .route("/polls/{id}", get(get_poll).put(update_poll).delete(delete_poll))
         .route("/polls/{id}/vote", put(vote_poll))
+        .route("/engagement/unseen", get(unseen_counts))
+        .route("/content/{uid}/stats", get(content_stats))
 }
 
 fn now() -> OffsetDateTime {
@@ -693,4 +695,110 @@ async fn vote_poll(
     tx.commit().await.map_err(internal)?;
     let mut list = polls_json(&state, vec![poll], &principal).await?;
     Ok(data(list.remove(0)))
+}
+
+// ------------------------------------------------------------------ counts
+
+/// `GET /engagement/unseen`: for each readable content type, how many entries the caller
+/// has not seen since they changed (sidebar badges).
+async fn unseen_counts(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
+    let principal = principal(&state, &headers).await?;
+    let mut counts = serde_json::Map::new();
+    let uids: Vec<String> =
+        state.service.registry().types().map(|model| model.content_type.uid.clone()).collect();
+    for uid in uids {
+        let grant = principal.permissions.content(actions::CONTENT_READ, &uid);
+        if grant == verdin_auth::Grant::None {
+            continue;
+        }
+        let raw = "pagination[pageSize]=1&pagination[withCount]=true";
+        let mut query = super::admin_query(&state, &uid, Some(raw), &principal, grant)?;
+        let filter = unseen_filter(&uid, principal.user.id);
+        query.filters = Some(match query.filters.take() {
+            Some(existing) => Filter::And(vec![existing, filter]),
+            None => filter,
+        });
+        let page = state.service.find_many(&uid, &query).await?;
+        let total = match page.meta {
+            verdin_content::PageMeta::Page { total, .. }
+            | verdin_content::PageMeta::Offset { total, .. } => total.unwrap_or_default(),
+        };
+        counts.insert(uid, json!(total));
+    }
+    Ok(data(counts))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct StatsQuery {
+    days: Option<i64>,
+    interval: Option<String>,
+    locale: Option<String>,
+}
+
+/// Start of the bucket `at` falls in (UTC days, or weeks starting on Monday).
+fn bucket(at: OffsetDateTime, weekly: bool) -> time::Date {
+    let date = at.to_offset(time::UtcOffset::UTC).date();
+    if weekly {
+        date - time::Duration::days(i64::from(date.weekday().number_days_from_monday()))
+    } else {
+        date
+    }
+}
+
+/// `GET /content/{uid}/stats?days=30&interval=day|week`: entries created and published
+/// per day or week (chart widgets).
+async fn content_stats(
+    State(state): State<AdminState>,
+    Path(uid): Path<String>,
+    Query(query): Query<StatsQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    content_grant(&state, &headers, &uid, actions::CONTENT_READ).await?;
+    let days = query.days.unwrap_or(30).clamp(1, 366);
+    let weekly = match query.interval.as_deref() {
+        None | Some("day") => false,
+        Some("week") => true,
+        Some(other) => {
+            return Err(ApiError::BadRequest(format!(
+                "interval must be day or week, not `{other}`"
+            )));
+        }
+    };
+    if let Some(code) =
+        query.locale.as_deref().filter(|code| !verdin_content::locales::valid_code(code))
+    {
+        return Err(ApiError::BadRequest(format!("invalid locale `{code}`")));
+    }
+    let today = OffsetDateTime::now_utc();
+    let start = bucket(today - time::Duration::days(days - 1), weekly);
+    let since = start.midnight().assume_utc();
+    let timeline = state.service.in_locale(query.locale).timeline(&uid, since).await?;
+    let mut buckets: std::collections::BTreeMap<time::Date, (u64, u64)> =
+        std::collections::BTreeMap::new();
+    let mut day = start;
+    let end = bucket(today, weekly);
+    while day <= end {
+        buckets.insert(day, (0, 0));
+        day += time::Duration::days(if weekly { 7 } else { 1 });
+    }
+    for at in &timeline.created {
+        if let Some(entry) = buckets.get_mut(&bucket(*at, weekly)) {
+            entry.0 += 1;
+        }
+    }
+    for at in &timeline.published {
+        if let Some(entry) = buckets.get_mut(&bucket(*at, weekly)) {
+            entry.1 += 1;
+        }
+    }
+    let series: Vec<Value> = buckets
+        .into_iter()
+        .map(|(date, (created, published))| json!({ "date": date.to_string(), "created": created, "published": published }))
+        .collect();
+    Ok(data(json!({
+        "interval": if weekly { "week" } else { "day" },
+        "series": series,
+        "totals": { "documents": timeline.documents, "published": timeline.published_documents },
+    })))
 }

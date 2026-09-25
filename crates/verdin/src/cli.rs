@@ -435,6 +435,11 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
             .with_listener(Arc::new(webhooks.clone()))
             .with_listener(Arc::new(cache.clone()));
     let history = verdin_api::History::new(db.clone(), project.config.history.max_versions);
+    let plugins =
+        verdin_plugins::Plugins::load(&project.root.join(&project.config.plugins.path), db.clone());
+    for plugin in plugins.list() {
+        tracing::info!(plugin = %plugin.manifest.name, version = %plugin.manifest.version, "plugin found");
+    }
     let mailer =
         verdin_email::Mailer::new(&project.config.email, &verdin_email::EmailSecrets::from_env())
             .context("configuring [email]")?;
@@ -453,6 +458,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         locales: Default::default(),
         mailer,
         cache,
+        plugins,
     };
     app::serve(context, schema, shutdown_signal()).await
 }

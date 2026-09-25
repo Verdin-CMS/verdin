@@ -198,7 +198,7 @@ fn attributes(
         let mut warn = |message: String| warnings.push(format!("{owner}.{name}: {message}"));
         if let Some(custom) = attribute["customField"].as_str() {
             warn(format!(
-                "custom field `{custom}` imported as a plain `{}`",
+                "custom field `{custom}` kept: a plugin must provide it (else it is edited as a plain `{}`)",
                 attribute["type"].as_str().unwrap_or("?")
             ));
         }
@@ -267,6 +267,9 @@ fn attributes(
             && converted.remove("unique").is_some()
         {
             warn(format!("`unique` is not supported on `{ty}` attributes; dropped"));
+        }
+        if let Some(custom) = attribute["customField"].as_str() {
+            converted.insert("customField".into(), json!(custom));
         }
         if !in_component && attribute["pluginOptions"]["i18n"]["localized"].as_bool() == Some(false)
         {

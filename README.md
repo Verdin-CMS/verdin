@@ -195,6 +195,12 @@ Mark a content type as localized (`"pluginOptions": { "i18n": { "localized": tru
 keep one version per locale, then read and write with `?locale=fr`. Locales are managed in
 **Settings → Internationalization**; details in [docs/i18n.md](docs/i18n.md).
 
+### Plugins
+
+WebAssembly plugins (Extism) hook into writes, add routes and jobs, and bring dashboard
+widgets and custom fields to the admin, sandboxed and limited to the capabilities they
+declare. See [docs/plugins.md](docs/plugins.md).
+
 ### End users
 
 Turn on **Settings → Features → End users** for Strapi-compatible sign-up and sign-in

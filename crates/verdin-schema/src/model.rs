@@ -55,6 +55,8 @@ pub struct Attribute {
     /// In a localized type, each locale has its own value; `false` shares the value
     /// across locales (`pluginOptions.i18n.localized: false`).
     pub localized: bool,
+    /// `plugin::{plugin}.{field}`: the admin edits it with that plugin's custom field.
+    pub custom_field: Option<String>,
     pub default: Option<Value>,
     pub kind: AttributeKind,
 }

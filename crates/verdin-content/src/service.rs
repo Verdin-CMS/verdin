@@ -22,7 +22,9 @@ use verdin_query::sql::{FilterContext, SqlBuilder, write_filter, write_order_by}
 
 use verdin_schema::AttributeKind;
 
-use crate::events::{DocumentEvent, DocumentListener, EventKind};
+use crate::events::{
+    DocumentEvent, DocumentHook, DocumentListener, EventKind, HookAction, HookContext,
+};
 use verdin_query::{
     Field, FieldCategory, Filter, PageMode, Populate, Query, Sort, Status, SubQuery,
 };
@@ -98,6 +100,7 @@ pub struct DocumentService {
     registry: Registry,
     output: OutputOptions,
     listeners: Vec<Arc<dyn DocumentListener>>,
+    hooks: Vec<Arc<dyn DocumentHook>>,
     locales: Locales,
     /// The locale requested for localized types (`None`: the default locale).
     locale: Option<String>,
@@ -110,9 +113,57 @@ impl DocumentService {
             registry,
             output,
             listeners: Vec::new(),
+            hooks: Vec::new(),
             locales: Locales::default(),
             locale: None,
         }
+    }
+
+    /// Runs `hook` before every write (see [`DocumentHook`]).
+    pub fn with_hook(mut self, hook: Arc<dyn DocumentHook>) -> Self {
+        self.hooks.push(hook);
+        self
+    }
+
+    /// The same service without before-write hooks (plugins writing through the host must
+    /// not trigger themselves).
+    pub fn without_hooks(&self) -> Self {
+        Self { hooks: Vec::new(), ..self.clone() }
+    }
+
+    /// Runs the hooks; returns the data to write (possibly replaced by a hook).
+    async fn run_hooks(
+        &self,
+        action: HookAction,
+        uid: &str,
+        document_id: Option<&str>,
+        data: Option<&Json>,
+    ) -> Result<Option<Json>> {
+        if self.hooks.is_empty() {
+            return Ok(None);
+        }
+        let mut current = data.cloned();
+        let locale = self
+            .registry
+            .get(uid)
+            .ok()
+            .filter(|model| model.content_type.localized)
+            .map(|_| self.context_locale());
+        let mut replaced = false;
+        for hook in &self.hooks {
+            let context = HookContext {
+                action,
+                uid,
+                document_id,
+                locale: locale.clone(),
+                data: current.as_ref(),
+            };
+            if let Some(data) = hook.before(context).await.map_err(ContentError::BadRequest)? {
+                current = Some(data);
+                replaced = true;
+            }
+        }
+        Ok(current.filter(|_| replaced))
     }
 
     /// Shares the content locales (see [`Locales`]).
@@ -557,6 +608,8 @@ impl DocumentService {
     /// Creates a document and returns its id.
     pub async fn create(&self, uid: &str, data: &Json, options: WriteOptions) -> Result<String> {
         let model = self.registry.get(uid)?;
+        let hooked = self.run_hooks(HookAction::Create, uid, None, Some(data)).await?;
+        let data = hooked.as_ref().unwrap_or(data);
         let prepared =
             prepare(model, &self.registry.schema, data, true).map_err(ContentError::Validation)?;
         let document_id = ulid::Ulid::generate().to_string().to_lowercase();
@@ -617,6 +670,8 @@ impl DocumentService {
         options: WriteOptions,
     ) -> Result<()> {
         let model = self.registry.get(uid)?;
+        let hooked = self.run_hooks(HookAction::Update, uid, Some(document_id), Some(data)).await?;
+        let data = hooked.as_ref().unwrap_or(data);
         let prepared =
             prepare(model, &self.registry.schema, data, false).map_err(ContentError::Validation)?;
         let state = if model.draft_and_publish() { DRAFT } else { PUBLISHED };
@@ -696,6 +751,7 @@ impl DocumentService {
     /// Deletes every version of a document, and every link pointing at it.
     pub async fn delete(&self, uid: &str, document_id: &str) -> Result<()> {
         let model = self.registry.get(uid)?;
+        self.run_hooks(HookAction::Delete, uid, Some(document_id), None).await?;
         let locale = self.locale_of(model)?;
         let mut tx = self.db.begin().await?;
         let mut delete = SqlBuilder::new(self.db.flavor());
@@ -728,6 +784,7 @@ impl DocumentService {
     /// Copies the draft over the published version (creating it if needed).
     pub async fn publish(&self, uid: &str, document_id: &str, actor: Option<i64>) -> Result<()> {
         let model = self.draft_and_publish_model(uid)?;
+        self.run_hooks(HookAction::Publish, uid, Some(document_id), None).await?;
         let mut tx = self.db.begin().await?;
         self.publish_in(&mut tx, model, document_id, now(), actor).await?;
         tx.commit().await?;
@@ -738,6 +795,7 @@ impl DocumentService {
     /// Removes the published version (its links go with it); the draft stays.
     pub async fn unpublish(&self, uid: &str, document_id: &str) -> Result<()> {
         let model = self.draft_and_publish_model(uid)?;
+        self.run_hooks(HookAction::Unpublish, uid, Some(document_id), None).await?;
         let locale = self.locale_of(model)?;
         let mut tx = self.db.begin().await?;
         row_id(&mut tx, model, document_id, DRAFT, &locale, true)
@@ -1425,6 +1483,81 @@ impl DocumentService {
         }
         out.sort_by(|a, b| a.locale.cmp(&b.locale));
         Ok(out)
+    }
+}
+
+/// Dates of a content type's documents in the current locale, for charts.
+#[derive(Debug, Clone, Default)]
+pub struct Timeline {
+    /// `created_at` of documents created since the start.
+    pub created: Vec<OffsetDateTime>,
+    /// `published_at` of published versions published since the start.
+    pub published: Vec<OffsetDateTime>,
+    pub documents: i64,
+    pub published_documents: i64,
+}
+
+impl DocumentService {
+    pub async fn timeline(&self, uid: &str, since: OffsetDateTime) -> Result<Timeline> {
+        let model = self.registry.get(uid)?;
+        let locale = self.locale_of(model)?;
+        let base = if model.draft_and_publish() { DRAFT } else { PUBLISHED };
+        let dates = |column: &'static str, state: i16| {
+            let mut select = SqlBuilder::new(self.db.flavor());
+            select.push("SELECT ").ident(column).push(" FROM ").ident(model.table());
+            select
+                .push(" WHERE ")
+                .ident("publication_state")
+                .push(" = ")
+                .param(SqlValue::SmallInt(state));
+            select.push(" AND ").ident("locale").push(" = ").param(SqlValue::Text(locale.clone()));
+            select.push(" AND ").ident(column).push(" >= ").param(SqlValue::DateTime(since));
+            select
+        };
+        let count = |state: i16| {
+            let mut select = SqlBuilder::new(self.db.flavor());
+            select.push("SELECT COUNT(*) FROM ").ident(model.table());
+            select
+                .push(" WHERE ")
+                .ident("publication_state")
+                .push(" = ")
+                .param(SqlValue::SmallInt(state));
+            select.push(" AND ").ident("locale").push(" = ").param(SqlValue::Text(locale.clone()));
+            select
+        };
+        let mut timeline = Timeline::default();
+        for (select, into) in
+            [(dates("created_at", base), 0), (dates("published_at", PUBLISHED), 1)]
+        {
+            let rows = self
+                .db
+                .queries()
+                .fetch_all(&select.sql, &select.params, &[ColumnKind::DateTime])
+                .await?;
+            let values = rows.into_iter().filter_map(|row| match row.into_iter().next() {
+                Some(SqlValue::DateTime(at)) => Some(at),
+                _ => None,
+            });
+            if into == 0 {
+                timeline.created.extend(values)
+            } else {
+                timeline.published.extend(values)
+            }
+        }
+        for (select, into) in [(count(base), 0), (count(PUBLISHED), 1)] {
+            let rows = self
+                .db
+                .queries()
+                .fetch_all(&select.sql, &select.params, &[ColumnKind::BigInt])
+                .await?;
+            let total = rows.first().and_then(|row| row[0].as_i64()).unwrap_or_default();
+            if into == 0 {
+                timeline.documents = total
+            } else {
+                timeline.published_documents = total
+            }
+        }
+        Ok(timeline)
     }
 }
 

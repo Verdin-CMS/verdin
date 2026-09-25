@@ -28,6 +28,7 @@ pub const LOCALES: &str = "vd_locales";
 pub const USERS: &str = "vd_users";
 pub const USER_ROLES: &str = "vd_user_roles";
 pub const USER_ROLE_PERMISSIONS: &str = "vd_user_role_permissions";
+pub const PLUGIN_KV: &str = "vd_plugin_kv";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -487,6 +488,19 @@ pub fn system_tables() -> Vec<Table> {
                 index(USERS, "role", &["role_id"]),
             ],
             foreign_keys: vec![references("role_id", USER_ROLES)],
+        },
+        // Plugins' key-value storage.
+        Table {
+            name: PLUGIN_KV.into(),
+            columns: vec![
+                id(),
+                varchar("plugin", 100).not_null(),
+                varchar("key", 255).not_null(),
+                Column::new("value", ColumnType::Json).not_null(),
+                Column::new("updated_at", ColumnType::DateTime).not_null(),
+            ],
+            indexes: vec![unique(PLUGIN_KV, "key", &["plugin", "key"])],
+            foreign_keys: Vec::new(),
         },
     ]
 }

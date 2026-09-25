@@ -6,6 +6,20 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **WASM plugins** (Extism): before/after write hooks (change or refuse data), routes under
+  `/api/plugins/{name}`, cron jobs, key-value storage, settings and logs; capabilities per
+  plugin (content types read/written, HTTP hosts, storage) and time and memory limits;
+  Settings → Plugins (`plugins.manage`). See [docs/plugins.md](docs/plugins.md).
+- **Plugin widgets and custom fields**: Web Components shipped by plugins, loaded by the
+  admin; attributes with `customField: "plugin::{plugin}.{field}"` (Strapi-compatible;
+  kept by `verdin import strapi`).
+- Chart widgets (entries created and published per day or week,
+  `GET /admin/api/content/{uid}/stats`).
+- Unseen badges in the sidebar (`GET /admin/api/engagement/unseen`).
+- Document Service before-write hooks (`DocumentHook`).
+
 ## [0.4.0] - 2026-09-25
 
 ### Added

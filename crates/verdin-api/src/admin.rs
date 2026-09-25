@@ -40,6 +40,8 @@ pub(crate) mod engagement;
 mod history_admin;
 #[path = "locales_admin.rs"]
 mod locales_admin;
+#[path = "plugins_admin.rs"]
+mod plugins_admin;
 #[path = "upload_admin.rs"]
 mod upload_admin;
 #[path = "webhooks_admin.rs"]
@@ -109,6 +111,8 @@ pub struct AdminConfig {
     pub locales: verdin_content::locales::Locales,
     /// `[email]`, for test emails.
     pub mailer: Option<verdin_email::Mailer>,
+    /// Installed plugins (Settings → Plugins, hooks on admin writes).
+    pub plugins: Option<verdin_plugins::Plugins>,
 }
 
 impl Default for AdminConfig {
@@ -129,6 +133,7 @@ impl Default for AdminConfig {
             listeners: Vec::new(),
             locales: Default::default(),
             mailer: None,
+            plugins: None,
         }
     }
 }
@@ -161,6 +166,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
             config.output,
             &config.listeners,
             &config.locales,
+            config.plugins.as_ref(),
         ),
         auth,
         config: Arc::new(config),
@@ -202,7 +208,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(webhooks_admin::routes())
         .merge(history_admin::routes())
         .merge(locales_admin::routes())
-        .merge(end_users_admin::routes());
+        .merge(end_users_admin::routes())
+        .merge(plugins_admin::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
     http.apply(regular).merge(uploads).fallback(|| async { ApiError::NotFound }).with_state(state)
@@ -810,6 +817,9 @@ fn attribute_json(attribute: &Attribute) -> Value {
     }
     if !attribute.localized {
         out.insert("pluginOptions".into(), json!({ "i18n": { "localized": false } }));
+    }
+    if let Some(custom) = &attribute.custom_field {
+        out.insert("customField".into(), json!(custom));
     }
     let mut set = |key: &str, value: Value| {
         if !value.is_null() && value != json!(false) {

@@ -12,6 +12,7 @@ pub mod history;
 pub mod i18n;
 mod limiter;
 mod openapi;
+pub mod plugins;
 mod upload;
 pub mod webhooks;
 
@@ -113,13 +114,18 @@ pub fn document_service(
     output: OutputOptions,
     listeners: &Listeners,
     locales: &verdin_content::locales::Locales,
+    plugins: Option<&verdin_plugins::Plugins>,
 ) -> DocumentService {
-    listeners.iter().fold(
+    let service = listeners.iter().fold(
         DocumentService::new(db.clone(), registry, output)
             .with_locales(locales.clone())
             .with_listener(engagement_listener(db)),
         |service, listener| service.with_listener(listener.clone()),
-    )
+    );
+    match plugins {
+        Some(plugins) => service.with_hook(Arc::new(plugins.clone())),
+        None => service,
+    }
 }
 
 /// What the content API is built with besides its configuration.
@@ -135,6 +141,9 @@ pub struct ContentServices {
     /// Anonymous reads cache; its listener must be among `listeners` (and the media
     /// library's) so that changes empty it.
     pub cache: Option<cache::ResponseCache>,
+    /// Plugins: before-write hooks, routes under `/plugins/{name}` and their content host
+    /// (their after-write hooks must be among `listeners`).
+    pub plugins: Option<verdin_plugins::Plugins>,
 }
 
 /// Content API routes, to be nested under the API prefix (e.g. `/api`).
@@ -146,7 +155,7 @@ pub fn router(
     prefix: &str,
     services: ContentServices,
 ) -> Router {
-    let ContentServices { upload, listeners, locales, users, traffic, cache } = services;
+    let ContentServices { upload, listeners, locales, users, traffic, cache, plugins } = services;
     let (listeners, locales) = (&listeners, &locales);
     let routes = registry
         .types()
@@ -158,14 +167,25 @@ pub fn router(
         })
         .collect();
     let openapi = openapi::document(&registry, prefix);
+    let auth_for_plugins = auth.clone();
     let state = ApiState {
-        service: document_service(db, registry, config.output, listeners, locales),
+        service: document_service(
+            db,
+            registry,
+            config.output,
+            listeners,
+            locales,
+            plugins.as_ref(),
+        ),
         auth,
         routes: Arc::new(routes),
         config,
         openapi: Arc::new(openapi),
         upload,
     };
+    if let Some(plugins) = &plugins {
+        plugins.set_host(plugins::content_host(&state.service, config.limits));
+    }
 
     let uploads = upload::content_routes(state.upload.as_ref());
     let mut regular = Router::new();
@@ -194,6 +214,12 @@ pub fn router(
         config.http.apply(regular).merge(uploads).fallback(handlers::not_found).with_state(state);
     let router = match users {
         Some(users) => router.merge(config.http.apply(end_users::routes(users))),
+        None => router,
+    };
+    let router = match plugins {
+        Some(plugins) => {
+            router.merge(config.http.apply(plugins::routes(plugins, auth_for_plugins)))
+        }
         None => router,
     };
     router.layer(axum::middleware::from_fn_with_state(

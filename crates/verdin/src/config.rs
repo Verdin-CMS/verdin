@@ -22,7 +22,21 @@ pub struct Config {
     pub webhooks: WebhooksConfig,
     pub history: HistoryConfig,
     pub email: verdin_email::EmailConfig,
+    pub plugins: PluginsConfig,
     pub log: LogConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PluginsConfig {
+    /// Directory of plugins (one sub-directory each), relative to the configuration file.
+    pub path: PathBuf,
+}
+
+impl Default for PluginsConfig {
+    fn default() -> Self {
+        Self { path: PathBuf::from("plugins") }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -244,6 +244,18 @@ pub fn convert_attribute(raw: RawAttribute) -> Result<Attribute, Issues> {
     if let Some(default) = &raw.default {
         check_default(&kind, default, &mut issues);
     }
+    if let Some(custom) = &raw.custom_field {
+        let valid = custom
+            .strip_prefix("plugin::")
+            .or_else(|| custom.strip_prefix("global::"))
+            .is_some_and(|rest| {
+                !rest.is_empty()
+                    && rest.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+            });
+        if !valid {
+            issues.push(("customField".into(), "must look like `plugin::{plugin}.{field}`".into()));
+        }
+    }
 
     if issues.is_empty() {
         Ok(Attribute {
@@ -251,6 +263,7 @@ pub fn convert_attribute(raw: RawAttribute) -> Result<Attribute, Issues> {
             private: raw.private.unwrap_or(false),
             configurable: raw.configurable.unwrap_or(true),
             localized: crate::raw::RawPluginOptions::localized(&raw.plugin_options).unwrap_or(true),
+            custom_field: raw.custom_field.clone(),
             default: raw.default,
             kind,
         })

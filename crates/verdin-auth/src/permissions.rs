@@ -19,6 +19,7 @@ pub mod actions {
     pub const WEBHOOKS_MANAGE: &str = "webhooks.manage";
     pub const LOCALES_MANAGE: &str = "locales.manage";
     pub const ENDUSERS_MANAGE: &str = "endusers.manage";
+    pub const PLUGINS_MANAGE: &str = "plugins.manage";
     pub const MEDIA_READ: &str = "media.read";
     pub const MEDIA_CREATE: &str = "media.create";
     pub const MEDIA_UPDATE: &str = "media.update";
@@ -35,6 +36,7 @@ pub mod actions {
         WEBHOOKS_MANAGE,
         LOCALES_MANAGE,
         ENDUSERS_MANAGE,
+        PLUGINS_MANAGE,
     ];
     /// Media library actions: no subject; `is-creator` limits them to the user's files.
     pub const MEDIA: &[&str] = &[MEDIA_READ, MEDIA_CREATE, MEDIA_UPDATE, MEDIA_DELETE];

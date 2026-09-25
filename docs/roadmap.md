@@ -43,11 +43,11 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 
 | Item | Size | Notes |
 |---|---|---|
-| **WASM plugins** | L | Extism-based: Document Service hooks (before/after create, update, publish…), custom routes, scheduled jobs; capability-based permissions |
-| **Plugin widgets and fields** | M | Plugins ship Web Components loaded into the admin: dashboard widgets (next to the built-in counter, list, recent activity, poll, note, links and system widgets), custom field types, settings pages |
-| Custom fields | M | Declared by plugins: storage type, validation, admin input |
-| Widget notifications | S | Badge in the sidebar and optional email digest for "not seen yet" widgets |
-| Chart widgets | S | Entries created per day/week, published vs drafts (needs an aggregation endpoint) |
+| **WASM plugins** ✅ | L | Extism-based: Document Service hooks (before/after create, update, publish…), custom routes, scheduled jobs; capability-based permissions |
+| **Plugin widgets and fields** ✅ | M | Plugins ship Web Components loaded into the admin: dashboard widgets and custom field types; settings are edited as JSON (settings pages later) |
+| Custom fields ✅ | M | Declared by plugins: storage type and admin input (server-side validation by plugins through before hooks) |
+| Widget notifications ✅ | S | Badge in the sidebar (an email digest can come later) |
+| Chart widgets ✅ | S | Entries created per day/week, published vs drafts (needs an aggregation endpoint) |
 
 ## 0.6+ — Governance and scale
 

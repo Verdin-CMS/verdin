@@ -68,6 +68,8 @@ pub struct RawAttribute {
     pub private: Option<bool>,
     pub configurable: Option<bool>,
     pub plugin_options: Option<RawPluginOptions>,
+    /// `plugin::{plugin}.{field}`: edited with a plugin's field in the admin.
+    pub custom_field: Option<String>,
     pub default: Option<Value>,
     pub unique: Option<bool>,
     pub min_length: Option<u32>,

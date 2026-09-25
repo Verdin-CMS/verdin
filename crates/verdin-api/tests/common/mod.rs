@@ -99,12 +99,17 @@ impl App {
 
     /// Like [`App::with_users`], with OAuth client secrets `(provider, secret)`.
     pub async fn build(schema: Schema, settings: Value, oauth_secrets: &[(&str, &str)]) -> Self {
-        Self::build_with(schema, settings, oauth_secrets, Default::default()).await
+        Self::build_with(schema, settings, oauth_secrets, Default::default(), None).await
+    }
+
+    /// With the plugins installed in `dir` (all disabled until switched on).
+    pub async fn with_plugins(schema: Schema, dir: &std::path::Path) -> Self {
+        Self::build_with(schema, serde_json::json!({}), &[], Default::default(), Some(dir)).await
     }
 
     /// With rate limits and the anonymous reads cache.
     pub async fn with_traffic(schema: Schema, traffic: verdin_api::cache::TrafficConfig) -> Self {
-        Self::build_with(schema, serde_json::json!({}), &[], traffic).await
+        Self::build_with(schema, serde_json::json!({}), &[], traffic, None).await
     }
 
     async fn build_with(
@@ -112,6 +117,7 @@ impl App {
         settings: Value,
         oauth_secrets: &[(&str, &str)],
         traffic: verdin_api::cache::TrafficConfig,
+        plugins_dir: Option<&std::path::Path>,
     ) -> Self {
         let cache =
             verdin_api::cache::ResponseCache::new(traffic.cache_ttl, traffic.cache_entries.max(1));
@@ -159,8 +165,12 @@ impl App {
         .with_listener(std::sync::Arc::new(cache.clone()));
         // 10 versions per document, to exercise pruning.
         let history = verdin_api::History::new(test.db.clone(), 10);
-        let listeners: verdin_api::Listeners =
+        let plugins = plugins_dir.map(|dir| verdin_plugins::Plugins::load(dir, test.db.clone()));
+        let mut listeners: verdin_api::Listeners =
             vec![webhooks.listener(), history.listener(), cache.listener()];
+        if let Some(plugins) = &plugins {
+            listeners.push(std::sync::Arc::new(plugins.clone()));
+        }
         let locales = verdin_content::locales::Locales::new(
             verdin_api::i18n::load_locales(&test.db).await.unwrap(),
         );
@@ -174,6 +184,7 @@ impl App {
             listeners: listeners.clone(),
             locales: locales.clone(),
             mailer: Some(mailer.clone()),
+            plugins: plugins.clone(),
             ..AdminConfig::default()
         };
         let router = Router::new()
@@ -191,6 +202,7 @@ impl App {
                         locales: locales.clone(),
                         traffic,
                         cache: Some(cache.clone()),
+                        plugins: plugins.clone(),
                         users: Some(oauth_secrets.iter().fold(
                             verdin_api::end_users::Users::new(
                                 auth.clone(),

@@ -56,6 +56,8 @@ pub struct AppContext {
     pub mailer: verdin_email::Mailer,
     /// Anonymous reads cache (`[api].cache_ttl_secs`), emptied on every change.
     pub cache: verdin_api::cache::ResponseCache,
+    /// Installed plugins (`[plugins].path`), loaded when serving starts.
+    pub plugins: verdin_plugins::Plugins,
 }
 
 impl AppContext {
@@ -123,8 +125,12 @@ pub fn build_app(
         ..Default::default()
     };
     let output = verdin_content::OutputOptions { decimal_as_string: api.decimal_as_string };
-    let listeners: verdin_api::Listeners =
-        vec![context.webhooks.listener(), context.history.listener(), context.cache.listener()];
+    let listeners: verdin_api::Listeners = vec![
+        context.webhooks.listener(),
+        context.history.listener(),
+        context.cache.listener(),
+        Arc::new(context.plugins.clone()),
+    ];
     let http = verdin_api::HttpLimits {
         body_limit: context.config.server.body_limit,
         request_timeout: context.config.server.request_timeout(),
@@ -156,6 +162,7 @@ pub fn build_app(
                 cache_entries: api.cache_entries,
             },
             cache: Some(context.cache.clone()),
+            plugins: Some(context.plugins.clone()),
             users: states.enabled(USERS).then(|| {
                 let raw = states.settings(USERS);
                 let settings = if raw.is_null() {
@@ -196,6 +203,7 @@ pub fn build_app(
             listeners: listeners.clone(),
             locales: context.locales.clone(),
             mailer: Some(context.mailer.clone()),
+            plugins: Some(context.plugins.clone()),
         },
     );
     let graphql = states.enabled(GRAPHQL).then(|| {
@@ -211,6 +219,7 @@ pub fn build_app(
     if let Some(dir) = context.upload.storage().local_dir() {
         app = app.nest_service("/uploads", uploads::service(dir.to_owned()));
     }
+    app = app.merge(plugin_assets(&admin.path, context.plugins.clone()));
     let assets_dir = admin.assets_dir.as_ref().map(|dir| context.root.join(dir));
     if let Some(assets) = admin_ui::Assets::resolve(assets_dir.as_deref()) {
         let media: Vec<String> = context.upload.storage().public_origin().into_iter().collect();
@@ -223,6 +232,39 @@ pub fn build_app(
         ));
     }
     app
+}
+
+/// `{admin}/plugins/{name}/…`: the `admin/` files of enabled plugins (their Web
+/// Components), served from the same origin so the panel's CSP allows them.
+fn plugin_assets(admin_path: &str, plugins: verdin_plugins::Plugins) -> Router {
+    use axum::extract::{Path as UrlPath, Request};
+    use axum::http::{HeaderValue, StatusCode, header};
+    use axum::response::IntoResponse;
+    let handler = move |UrlPath((name, file)): UrlPath<(String, String)>, request: Request| {
+        let plugins = plugins.clone();
+        async move {
+            let Some(plugin) = plugins.get(&name).filter(|plugin| plugin.enabled()).cloned() else {
+                return StatusCode::NOT_FOUND.into_response();
+            };
+            let files = tower_http::services::ServeDir::new(plugin.dir.join("admin"));
+            let (mut parts, body) = request.into_parts();
+            parts.uri = match format!("/{file}").parse() {
+                Ok(uri) => uri,
+                Err(_) => return StatusCode::NOT_FOUND.into_response(),
+            };
+            let request = Request::from_parts(parts, body);
+            let mut response = tower::ServiceExt::oneshot(files, request)
+                .await
+                .expect("ServeDir is infallible")
+                .into_response();
+            let headers = response.headers_mut();
+            headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+            headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+            response
+        }
+    };
+    Router::new()
+        .route(&format!("{admin_path}/plugins/{{name}}/{{*file}}"), axum::routing::get(handler))
 }
 
 /// Brings the database to the schema: `--migrate` / development mode apply safe steps.
@@ -263,8 +305,12 @@ pub async fn serve(
     context
         .locales
         .set(verdin_api::i18n::load_locales(&context.db).await.context("reading content locales")?);
+    context.plugins.apply(
+        &verdin_api::plugins::load_states(&context.db).await.context("reading plugin switches")?,
+    );
     let host = AppHost::new(context.clone(), schema, states);
     let deliveries = context.webhooks.spawn();
+    let jobs = context.plugins.spawn_jobs();
     // Keeps the watcher alive while serving.
     let _watcher = match &host.editor {
         Some(editor) => match watch_schema(editor.clone()) {
@@ -290,6 +336,7 @@ pub async fn serve(
         .with_graceful_shutdown(shutdown)
         .await?;
     deliveries.abort();
+    jobs.iter().for_each(tokio::task::JoinHandle::abort);
     context.db.close().await;
     tracing::info!("verdin stopped");
     Ok(())
@@ -324,6 +371,7 @@ fn graphql_router(
         output,
         listeners,
         &context.locales,
+        Some(&context.plugins),
     );
     match verdin_graphql::schema(service, limits, &options) {
         Ok(schema) => verdin_graphql::router(schema, context.auth.clone(), options, "/graphql"),
@@ -825,6 +873,7 @@ mod tests {
             locales: Default::default(),
             mailer: verdin_email::Mailer::memory().0,
             cache: verdin_api::cache::ResponseCache::new(std::time::Duration::ZERO, 1),
+            plugins: Default::default(),
         })
     }
 

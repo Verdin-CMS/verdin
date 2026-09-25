@@ -77,3 +77,45 @@ pub trait FileListener: Send + Sync {
         file: &'a crate::media::FileRecord,
     ) -> BoxFuture<'a, ()>;
 }
+
+/// Writes a [`DocumentHook`] runs before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookAction {
+    Create,
+    Update,
+    Delete,
+    Publish,
+    Unpublish,
+}
+
+impl HookAction {
+    /// `beforeCreate`, `beforeUpdate`… (Strapi's lifecycle names).
+    pub fn before(self) -> &'static str {
+        match self {
+            Self::Create => "beforeCreate",
+            Self::Update => "beforeUpdate",
+            Self::Delete => "beforeDelete",
+            Self::Publish => "beforePublish",
+            Self::Unpublish => "beforeUnpublish",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HookContext<'a> {
+    pub action: HookAction,
+    pub uid: &'a str,
+    pub document_id: Option<&'a str>,
+    pub locale: Option<String>,
+    /// The data being written (create, update).
+    pub data: Option<&'a serde_json::Value>,
+}
+
+/// Runs before a write: may replace the data (`Ok(Some(data))`) or refuse the write
+/// (`Err(message)`, a 400 for the caller).
+pub trait DocumentHook: Send + Sync {
+    fn before<'a>(
+        &'a self,
+        context: HookContext<'a>,
+    ) -> BoxFuture<'a, Result<Option<serde_json::Value>, String>>;
+}

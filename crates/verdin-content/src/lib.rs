@@ -23,7 +23,9 @@ use verdin_schema::{AttributeKind, ContentType, Schema};
 pub use history::Dropped;
 pub use output::OutputOptions;
 pub use service::import::ImportedVersion;
-pub use service::{DocumentService, LocaleVersion, Page, PageMeta, WriteOptions, slugify};
+pub use service::{
+    DocumentService, LocaleVersion, Page, PageMeta, Timeline, WriteOptions, slugify,
+};
 
 /// One validation problem, in Strapi's `details.errors[]` format.
 #[derive(Debug, Clone, PartialEq, Serialize)]
