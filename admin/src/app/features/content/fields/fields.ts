@@ -23,8 +23,10 @@ import {
   NumberControl,
   SwitchControl,
 } from './controls';
+import { BlocksControl } from './blocks-control';
+import { MarkdownControl } from './markdown-control';
 import { MediaControl } from './media-control';
-import { FormModel, isToMany, keyed, newComponentItem } from './model';
+import { FormModel, References, isToMany, keyed, newComponentItem } from './model';
 import { RelationControl } from './relation';
 
 /** Where the fields live, for uid checks and element ids. */
@@ -64,6 +66,8 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
     JsonControl,
     RelationControl,
     MediaControl,
+    BlocksControl,
+    MarkdownControl,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -149,6 +153,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                           [attributes]="componentAttributes(attribute.component)"
                           [tree]="at(name, index)"
                           [context]="context()"
+                          [refs]="refs()"
                           [prefix]="id + '-' + index"
                         />
                       </div>
@@ -189,6 +194,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                     [attributes]="componentAttributes(attribute.component)"
                     [tree]="child(name)"
                     [context]="context()"
+                    [refs]="refs()"
                     [prefix]="id"
                   />
                   <div>
@@ -278,6 +284,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                         [attributes]="componentAttributes(item['__component'])"
                         [tree]="at(name, index)"
                         [context]="context()"
+                        [refs]="refs()"
                         [prefix]="id + '-' + index"
                       />
                     </div>
@@ -329,13 +336,10 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                   <textarea hlmTextarea [id]="id" rows="3" [formField]="child(name)"></textarea>
                 }
                 @case ('richtext') {
-                  <textarea
-                    hlmTextarea
-                    [id]="id"
-                    rows="10"
-                    class="font-mono text-sm"
-                    [formField]="child(name)"
-                  ></textarea>
+                  <vd-markdown-control [inputId]="id" [formField]="child(name)" />
+                }
+                @case ('blocks') {
+                  <vd-blocks-control [inputId]="id" [formField]="child(name)" />
                 }
                 @case ('email') {
                   <input hlmInput [id]="id" type="email" [formField]="child(name)" />
@@ -426,7 +430,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                       [inputId]="id"
                       [target]="attribute.target ?? ''"
                       [many]="isToMany(attribute)"
-                      [initialLabels]="relationLabels()[name] ?? {}"
+                      [initialLabels]="relationLabels()[name] ?? refs().labels"
                       [formField]="child(name)"
                     />
                   }
@@ -436,7 +440,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                     [inputId]="id"
                     [multiple]="!!attribute.multiple"
                     [allowedTypes]="attribute.allowedTypes ?? []"
-                    [initialFiles]="mediaFiles()[name] ?? []"
+                    [initialFiles]="mediaFiles()[name] ?? refs().files"
                     [formField]="child(name)"
                   />
                 }
@@ -474,6 +478,8 @@ export class FieldsComponent {
   readonly relationLabels = input<Record<string, Record<string, string>>>({});
   /** Files of media attributes in the loaded document (top-level only). */
   readonly mediaFiles = input<Record<string, MediaFile[]>>({});
+  /** Labels and files of populated references at any depth (components, dynamic zones). */
+  readonly refs = input<References>({ labels: {}, files: [] });
   /** Read-only `mappedBy` relations, per attribute. */
   readonly inverse = input<Record<string, { id: string; label: string }[]>>({});
 

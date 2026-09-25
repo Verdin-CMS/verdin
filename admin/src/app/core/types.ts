@@ -5,6 +5,7 @@ export type AttributeType =
   | 'email'
   | 'text'
   | 'richtext'
+  | 'blocks'
   | 'uid'
   | 'integer'
   | 'biginteger'
@@ -149,6 +150,8 @@ export interface Permission {
   action: string;
   subject?: string;
   conditions?: string[];
+  /** Content read/create/update limited to these attributes of `subject` (absent: all). */
+  fields?: string[];
 }
 
 export interface PermissionSet {

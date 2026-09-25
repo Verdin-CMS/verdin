@@ -12,6 +12,7 @@ import { HlmAlertImports } from '@spartan-ng/helm/alert';
 import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmCheckboxImports } from '@spartan-ng/helm/checkbox';
+import { HlmDialogImports } from '@spartan-ng/helm/dialog';
 import { HlmFieldImports } from '@spartan-ng/helm/field';
 import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
@@ -32,6 +33,23 @@ import { PageHeader } from '../../shared/components/page-header';
 
 type Level = 'none' | 'own' | 'all';
 type MediaAction = (typeof MEDIA_ACTIONS)[number];
+type Coverage = 'none' | 'some' | 'all';
+
+/** Content actions that can be limited to some fields of a content type. */
+const FIELD_ACTIONS = ['content.read', 'content.create', 'content.update'] as const;
+type FieldAction = (typeof FIELD_ACTIONS)[number];
+
+/** How a role grants a field action on one content type. */
+type FieldGrant = 'type' | 'wildcard' | 'none';
+
+/** The field permissions dialog: the attributes of one type and the pending selection. */
+interface FieldsEditor {
+  uid: string;
+  name: string;
+  attributes: string[];
+  /** `null` means every field. */
+  selection: Record<FieldAction, string[] | null>;
+}
 
 /** Media actions that can be limited to the files the user uploaded. */
 const MEDIA_SCOPED = new Set<MediaAction>(['media.update', 'media.delete']);
@@ -64,6 +82,7 @@ const ACTION_LABELS: Record<
     HlmButtonImports,
     HlmBadgeImports,
     HlmCheckboxImports,
+    HlmDialogImports,
     HlmFieldImports,
     HlmInputImports,
     HlmNativeSelectImports,
@@ -187,6 +206,9 @@ const ACTION_LABELS: Record<
                               {{ t(actionLabels[action]) }}
                             </th>
                           }
+                          <th hlmTh class="bg-muted sticky top-0 z-10 pe-4">
+                            {{ t('settings.roles.fields') }}
+                          </th>
                         </tr>
                       </thead>
                       <tbody hlmTBody>
@@ -203,6 +225,7 @@ const ACTION_LABELS: Record<
                               </div>
                             </td>
                             @for (action of contentActions; track action) {
+                              @let restriction = fieldRestriction(action, subject.uid);
                               <td hlmTd>
                                 <hlm-native-select
                                   size="sm"
@@ -220,8 +243,32 @@ const ACTION_LABELS: Record<
                                     {{ t('settings.roles.level.all') }}
                                   </option>
                                 </hlm-native-select>
+                                @if (restriction) {
+                                  <span hlmBadge variant="secondary" class="mt-1.5">{{
+                                    t('settings.roles.fieldsCount', { count: restriction.length })
+                                  }}</span>
+                                }
                               </td>
                             }
+                            <td hlmTd class="pe-4">
+                              @if (subject.uid === '*') {
+                                <span class="text-muted-foreground/60 text-sm">—</span>
+                              } @else {
+                                <button
+                                  hlmBtn
+                                  variant="outline"
+                                  size="sm"
+                                  [disabled]="!canRestrict(subject.uid)"
+                                  [attr.aria-label]="
+                                    t('settings.roles.fieldsFor', { type: subject.name })
+                                  "
+                                  (click)="openFields(subject.uid, subject.name)"
+                                >
+                                  <ng-icon name="lucideListChecks" />
+                                  {{ t('settings.roles.fields') }}
+                                </button>
+                              }
+                            </td>
                           </tr>
                         }
                       </tbody>
@@ -319,6 +366,109 @@ const ACTION_LABELS: Record<
         }
       </div>
     </div>
+
+    <hlm-dialog [state]="fieldsEditor() ? 'open' : 'closed'" (closed)="fieldsEditor.set(null)">
+      <hlm-dialog-content
+        *hlmDialogPortal="let ctx"
+        class="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-2xl"
+        [closeLabel]="t('common.close')"
+      >
+        @if (fieldsEditor(); as editor) {
+          <hlm-dialog-header>
+            <h2 hlmDialogTitle>{{ t('settings.roles.fieldsTitle', { type: editor.name }) }}</h2>
+            <p hlmDialogDescription>{{ t('settings.roles.fieldsDescription') }}</p>
+          </hlm-dialog-header>
+          <div class="-mx-6 flex flex-col gap-4 overflow-y-auto px-6">
+            @for (action of fieldActions; track action) {
+              @if (fieldGrant(action, editor.uid) === 'wildcard') {
+                <div hlmAlert>
+                  <ng-icon name="lucideInfo" />
+                  <h4 hlmAlertTitle>
+                    {{ t('settings.roles.fieldsWildcard', { action: t(actionLabels[action]) }) }}
+                  </h4>
+                  <div hlmAlertDescription class="flex flex-col items-start gap-2">
+                    <p>
+                      {{
+                        t('settings.roles.fieldsConvertHint', { action: t(actionLabels[action]) })
+                      }}
+                    </p>
+                    <button hlmBtn variant="outline" size="sm" (click)="convertWildcard(action)">
+                      {{ t('settings.roles.fieldsConvert') }}
+                    </button>
+                  </div>
+                </div>
+              }
+            }
+            @if (editor.attributes.length === 0) {
+              <p class="text-muted-foreground text-sm">{{ t('settings.roles.fieldsEmpty') }}</p>
+            } @else {
+              <div class="overflow-hidden rounded-lg border">
+                <table hlmTable>
+                  <thead hlmTHead>
+                    <tr hlmTr class="hover:bg-transparent">
+                      <th hlmTh class="bg-muted ps-4">{{ t('settings.roles.fieldsField') }}</th>
+                      @for (action of fieldActions; track action) {
+                        @let editable = fieldGrant(action, editor.uid) === 'type';
+                        @let cover = coverage(editor, action);
+                        <th hlmTh class="bg-muted h-auto py-2 text-center">
+                          <div class="flex flex-col items-center gap-1.5">
+                            <span>{{ t(actionLabels[action]) }}</span>
+                            @if (editable) {
+                              <label class="flex items-center gap-1.5 text-xs font-normal">
+                                <hlm-checkbox
+                                  [checked]="cover === 'all'"
+                                  [indeterminate]="cover === 'some'"
+                                  (checkedChange)="setAllFields(action, $event === true)"
+                                />
+                                {{ t('settings.roles.fieldsAll') }}
+                              </label>
+                            } @else {
+                              <span class="text-muted-foreground text-xs font-normal">{{
+                                t('settings.roles.fieldsNotGranted')
+                              }}</span>
+                            }
+                          </div>
+                        </th>
+                      }
+                    </tr>
+                  </thead>
+                  <tbody hlmTBody>
+                    @for (attribute of editor.attributes; track attribute) {
+                      <tr hlmTr>
+                        <td hlmTd class="ps-4 font-mono text-xs">{{ attribute }}</td>
+                        @for (action of fieldActions; track action) {
+                          <td hlmTd class="text-center">
+                            @if (fieldGrant(action, editor.uid) === 'type') {
+                              <div class="flex justify-center">
+                                <hlm-checkbox
+                                  [aria-label]="attribute + ' ' + t(actionLabels[action])"
+                                  [checked]="isFieldSelected(editor, action, attribute)"
+                                  (checkedChange)="toggleField(action, attribute, $event === true)"
+                                />
+                              </div>
+                            } @else {
+                              <span class="text-muted-foreground/60 text-sm">—</span>
+                            }
+                          </td>
+                        }
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+          <hlm-dialog-footer>
+            <button hlmBtn variant="outline" (click)="fieldsEditor.set(null)">
+              {{ t('common.cancel') }}
+            </button>
+            <button hlmBtn (click)="applyFields()">
+              <ng-icon name="lucideCheck" /> {{ t('settings.roles.fieldsApply') }}
+            </button>
+          </hlm-dialog-footer>
+        }
+      </hlm-dialog-content>
+    </hlm-dialog>
   `,
 })
 export class RolesPage implements OnInit {
@@ -331,6 +481,8 @@ export class RolesPage implements OnInit {
   protected readonly settingsActions = ADMIN_SETTINGS_ACTIONS;
   protected readonly mediaActions = MEDIA_ACTIONS;
   protected readonly mediaScoped = MEDIA_SCOPED;
+  protected readonly fieldActions = FIELD_ACTIONS;
+  protected readonly fieldsEditor = signal<FieldsEditor | null>(null);
   protected readonly roles = signal<Role[]>([]);
   protected readonly selected = signal<Role | null>(null);
   protected readonly permissions = signal<Permission[]>([]);
@@ -368,7 +520,9 @@ export class RolesPage implements OnInit {
     return permission.conditions?.includes('is-creator') ? 'own' : 'all';
   }
 
+  /** Changing the level keeps the field restriction. */
   protected setLevel(action: string, subject: string, level: Level): void {
+    const fields = this.contentPermission(action, subject)?.fields;
     const rest = this.permissions().filter(
       (item) => !(item.action === action && item.subject === subject),
     );
@@ -376,8 +530,106 @@ export class RolesPage implements OnInit {
     else
       this.permissions.set([
         ...rest,
-        { action, subject, conditions: level === 'own' ? ['is-creator'] : [] },
+        {
+          action,
+          subject,
+          conditions: level === 'own' ? ['is-creator'] : [],
+          ...(fields ? { fields } : {}),
+        },
       ]);
+  }
+
+  private contentPermission(action: string, subject: string): Permission | undefined {
+    return this.permissions().find((item) => item.action === action && item.subject === subject);
+  }
+
+  /** The fields an action is limited to on a type, or `null` for every field. */
+  protected fieldRestriction(action: string, subject: string): string[] | null {
+    return this.contentPermission(action, subject)?.fields ?? null;
+  }
+
+  protected fieldGrant(action: FieldAction, uid: string): FieldGrant {
+    if (this.contentPermission(action, uid)) return 'type';
+    return this.contentPermission(action, '*') ? 'wildcard' : 'none';
+  }
+
+  protected canRestrict(uid: string): boolean {
+    return FIELD_ACTIONS.some((action) => this.fieldGrant(action, uid) !== 'none');
+  }
+
+  protected openFields(uid: string, name: string): void {
+    const attributes = Object.keys(this.schema.type(uid)?.attributes ?? {});
+    const selection = {} as Record<FieldAction, string[] | null>;
+    for (const action of FIELD_ACTIONS) {
+      const fields = this.fieldRestriction(action, uid);
+      selection[action] = fields ? attributes.filter((item) => fields.includes(item)) : null;
+    }
+    this.fieldsEditor.set({ uid, name, attributes, selection });
+  }
+
+  protected isFieldSelected(editor: FieldsEditor, action: FieldAction, attribute: string): boolean {
+    const fields = editor.selection[action];
+    return !fields || fields.includes(attribute);
+  }
+
+  protected coverage(editor: FieldsEditor, action: FieldAction): Coverage {
+    const fields = editor.selection[action];
+    if (!fields || fields.length === editor.attributes.length) return 'all';
+    return fields.length ? 'some' : 'none';
+  }
+
+  private setSelection(action: FieldAction, fields: string[] | null): void {
+    this.fieldsEditor.update((editor) => {
+      if (!editor) return editor;
+      const all = fields && fields.length === editor.attributes.length;
+      return { ...editor, selection: { ...editor.selection, [action]: all ? null : fields } };
+    });
+  }
+
+  protected toggleField(action: FieldAction, attribute: string, checked: boolean): void {
+    const editor = this.fieldsEditor();
+    if (!editor) return;
+    const current = editor.selection[action] ?? editor.attributes;
+    this.setSelection(
+      action,
+      editor.attributes.filter((item) => (item === attribute ? checked : current.includes(item))),
+    );
+  }
+
+  protected setAllFields(action: FieldAction, checked: boolean): void {
+    this.setSelection(action, checked ? null : []);
+  }
+
+  /** Replaces the `*` permission of an action with one permission per content type. */
+  protected convertWildcard(action: FieldAction): void {
+    const wildcard = this.contentPermission(action, '*');
+    if (!wildcard) return;
+    const rest = this.permissions().filter((item) => item !== wildcard);
+    const additions = this.schema
+      .contentTypes()
+      .filter((type) => !rest.some((item) => item.action === action && item.subject === type.uid))
+      .map((type) => ({
+        action,
+        subject: type.uid,
+        conditions: [...(wildcard.conditions ?? [])],
+      }));
+    this.permissions.set([...rest, ...additions]);
+  }
+
+  /** Writes the selection into the role's permissions (saved with the role). */
+  protected applyFields(): void {
+    const editor = this.fieldsEditor();
+    if (!editor) return;
+    this.permissions.update((permissions) =>
+      permissions.map((item) => {
+        if (item.subject !== editor.uid || !FIELD_ACTIONS.includes(item.action as FieldAction))
+          return item;
+        const { fields: _previous, ...permission } = item;
+        const fields = editor.selection[item.action as FieldAction];
+        return fields ? { ...permission, fields } : permission;
+      }),
+    );
+    this.fieldsEditor.set(null);
   }
 
   protected hasSetting(action: string): boolean {

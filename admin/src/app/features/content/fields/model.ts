@@ -43,6 +43,8 @@ export function emptyValue(attribute: Attribute, _components?: ComponentLookup):
       return [];
     case 'media':
       return attribute.multiple ? [] : null;
+    case 'blocks':
+      return fallback ?? null;
     default:
       return fallback ?? '';
   }
@@ -81,9 +83,7 @@ export function toModel(
     }
     switch (attribute.type) {
       case 'relation':
-        model[name] = Array.isArray(value)
-          ? value.map((item) => (item as { documentId: string }).documentId)
-          : (value as { documentId: string }).documentId;
+        model[name] = Array.isArray(value) ? value.map(relationId) : relationId(value);
         break;
       case 'component': {
         const component = components(attribute.component ?? '');
@@ -122,6 +122,13 @@ export function toModel(
   return model;
 }
 
+/** A populated related document (or a documentId already) → its documentId. */
+function relationId(value: unknown): string {
+  return typeof value === 'object' && value !== null
+    ? String((value as { documentId: unknown }).documentId)
+    : String(value);
+}
+
 /** A populated file object (or an id already) → its id. */
 function mediaId(value: unknown): number {
   return typeof value === 'object' && value !== null
@@ -144,6 +151,65 @@ export function mediaFilesOf(
     );
   }
   return files;
+}
+
+/** Labels and files of populated references anywhere in a document, components included. */
+export interface References {
+  /** documentId → label, for relation pickers. */
+  labels: Record<string, string>;
+  /** Populated files, for media previews. */
+  files: MediaFile[];
+}
+
+/**
+ * Walks a populated document (attributes, components, dynamic zones) and collects the labels
+ * of related documents and the populated files, so nested controls can show names and previews.
+ */
+export function referencesOf(
+  attributes: Attributes,
+  document: Record<string, unknown> | null,
+  components: ComponentLookup,
+  titleFieldOf: (target: string) => string | null,
+  into: References = { labels: {}, files: [] },
+): References {
+  if (!document) return into;
+  for (const [name, attribute] of Object.entries(attributes)) {
+    const value = document[name];
+    if (value === null || value === undefined) continue;
+    const list = (Array.isArray(value) ? value : [value]).filter(
+      (item): item is Record<string, unknown> => typeof item === 'object' && item !== null,
+    );
+    switch (attribute.type) {
+      case 'relation': {
+        const titleField = titleFieldOf(attribute.target ?? '');
+        for (const item of list) {
+          if (item['documentId'] !== undefined)
+            into.labels[String(item['documentId'])] = documentLabel(item, titleField);
+        }
+        break;
+      }
+      case 'media':
+        for (const item of list) {
+          if ('id' in item && !into.files.some((file) => file.id === item['id']))
+            into.files.push(item as unknown as MediaFile);
+        }
+        break;
+      case 'component': {
+        const component = components(attribute.component ?? '');
+        if (component)
+          for (const item of list)
+            referencesOf(component.attributes, item, components, titleFieldOf, into);
+        break;
+      }
+      case 'dynamiczone':
+        for (const item of list) {
+          const component = components(String(item['__component']));
+          if (component) referencesOf(component.attributes, item, components, titleFieldOf, into);
+        }
+        break;
+    }
+  }
+  return into;
 }
 
 function withId(model: FormModel, source: Record<string, unknown>): FormModel {
@@ -188,6 +254,14 @@ export function toPayload(
       case 'media':
         // File ids; the order of a multiple field is kept.
         payload[name] = Array.isArray(value) ? [...value] : (value ?? null);
+        break;
+      case 'relation':
+        // documentIds; to-many relations keep their order.
+        payload[name] = Array.isArray(value) ? [...value] : (value ?? null);
+        break;
+      case 'blocks':
+        // An empty editor is "no value".
+        payload[name] = Array.isArray(value) && value.length ? value : null;
         break;
       default:
         // Empty strings are "no value" (and must not collide on unique attributes).

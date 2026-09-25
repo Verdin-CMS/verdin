@@ -1,0 +1,153 @@
+/* Rich text typography for the blocks editor and the Markdown preview (global: the content is
+   rendered by TipTap / marked, outside Angular's style encapsulation). Semantic tokens only, so
+   light and dark themes both work. */
+.vd-prose {
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.vd-prose > :first-child {
+  margin-top: 0;
+}
+.vd-prose > :last-child {
+  margin-bottom: 0;
+}
+.vd-prose p,
+.vd-prose ul,
+.vd-prose ol,
+.vd-prose blockquote,
+.vd-prose pre,
+.vd-prose table,
+.vd-prose img,
+.vd-prose hr {
+  margin: 0.75em 0;
+}
+.vd-prose h1,
+.vd-prose h2,
+.vd-prose h3,
+.vd-prose h4,
+.vd-prose h5,
+.vd-prose h6 {
+  margin: 1.25em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.vd-prose h1 {
+  font-size: 1.75em;
+}
+.vd-prose h2 {
+  font-size: 1.45em;
+}
+.vd-prose h3 {
+  font-size: 1.2em;
+}
+.vd-prose h4 {
+  font-size: 1.05em;
+}
+.vd-prose h5,
+.vd-prose h6 {
+  font-size: 1em;
+}
+.vd-prose h6 {
+  color: var(--muted-foreground);
+}
+.vd-prose ul,
+.vd-prose ol {
+  padding-inline-start: 1.5em;
+}
+.vd-prose ul {
+  list-style: disc;
+}
+.vd-prose ol {
+  list-style: decimal;
+}
+.vd-prose ul ul {
+  list-style: circle;
+}
+.vd-prose ol ol {
+  list-style: lower-alpha;
+}
+.vd-prose li > p,
+.vd-prose li > ul,
+.vd-prose li > ol {
+  margin: 0.2em 0;
+}
+.vd-prose li::marker {
+  color: var(--muted-foreground);
+}
+.vd-prose blockquote {
+  border-inline-start: 3px solid var(--border);
+  padding-inline-start: 1em;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.vd-prose a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.vd-prose code {
+  background: var(--muted);
+  border-radius: 0.25rem;
+  padding: 0.1em 0.35em;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.85em;
+}
+.vd-prose pre {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+.vd-prose pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85em;
+}
+.vd-prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+}
+.vd-prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.vd-prose table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.vd-prose th,
+.vd-prose td {
+  border: 1px solid var(--border);
+  padding: 0.35em 0.6em;
+  text-align: start;
+}
+.vd-prose th {
+  background: var(--muted);
+  font-weight: 600;
+}
+
+/* Editor surface. */
+.vd-prose.ProseMirror {
+  min-height: 10rem;
+  outline: none;
+  white-space: pre-wrap;
+}
+.vd-prose.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.vd-prose.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: inline-start;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}

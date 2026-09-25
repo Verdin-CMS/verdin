@@ -63,6 +63,14 @@ test('create a type, write content, publish it and read it over the API', async 
   await dialog.getByLabel('Type').selectOption('text');
   await dialog.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Add field' }).click();
+  await dialog.getByLabel('Name').fill('summary');
+  await dialog.getByLabel('Type').selectOption('blocks');
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await dialog.getByLabel('Name').fill('notes');
+  await dialog.getByLabel('Type').selectOption('richtext');
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Add field' }).click();
   await dialog.getByLabel('Name').fill('cover');
   await dialog.getByLabel('Type').selectOption('media');
   await dialog.getByRole('button', { name: 'Done' }).click();
@@ -90,6 +98,18 @@ test('create a type, write content, publish it and read it over the API', async 
   await expect(page.getByText('title is a required field')).toBeVisible();
   await page.screenshot({ path: 'test-results/screens/editor-error.png' });
   await page.getByLabel('Title').fill('Hello from Playwright');
+  // Blocks editor: a paragraph with bold text.
+  const summary = page.locator('.vd-prose[contenteditable="true"]');
+  await summary.click();
+  await page.getByRole('button', { name: 'Bold' }).click();
+  await page.keyboard.type('Rich');
+  await page.getByRole('button', { name: 'Bold' }).click();
+  await page.keyboard.type(' summary');
+  // Markdown with a live preview.
+  await page.getByLabel('Notes').fill('# Notes\n\nSome **markdown**.');
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Notes', level: 1 })).toBeVisible();
+  await page.screenshot({ path: 'test-results/screens/editor-rich.png' });
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
 
@@ -113,6 +133,16 @@ test('create a type, write content, publish it and read it over the API', async 
     body: 'Written by Playwright.',
   });
   expect(body.data[0].publishedAt).toBeTruthy();
+  expect(body.data[0].summary).toEqual([
+    {
+      type: 'paragraph',
+      children: [
+        { type: 'text', text: 'Rich', bold: true },
+        { type: 'text', text: ' summary' },
+      ],
+    },
+  ]);
+  expect(body.data[0].notes).toBe('# Notes\n\nSome **markdown**.');
 
   // Features: publish the API documentation (applies live, no restart).
   expect((await request.get('/api/docs')).status()).toBe(404);

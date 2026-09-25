@@ -82,6 +82,12 @@ const TYPE_INFO: TypeInfo[] = [
     description: 'builder.types.richtext.description',
   },
   {
+    type: 'blocks',
+    icon: 'lucideTextQuote',
+    label: 'builder.types.blocks',
+    description: 'builder.types.blocks.description',
+  },
+  {
     type: 'email',
     icon: 'lucideMail',
     label: 'builder.types.email',
@@ -179,8 +185,6 @@ const TYPE_INFO: TypeInfo[] = [
   },
 ];
 const TYPE_BY_NAME = new Map(TYPE_INFO.map((info) => [info.type, info]));
-/** Types the server rejects inside components. */
-const NOT_IN_COMPONENTS = new Set<AttributeType>(['media']);
 
 const MEDIA_KINDS: { kind: MediaKind; label: MessageKey }[] = [
   { kind: 'images', label: 'builder.field.mediaKind.images' },
@@ -197,6 +201,8 @@ const RELATIONS: { kind: RelationKind; label: MessageKey; bidirectional: boolean
   { kind: 'oneWay', label: 'builder.relations.oneWay', bidirectional: false },
   { kind: 'manyWay', label: 'builder.relations.manyWay', bidirectional: false },
 ];
+/** Components can only hold one-way relations. */
+const COMPONENT_RELATIONS = RELATIONS.filter((relation) => !relation.bidirectional);
 const RISK_LABELS: Record<PlanStep['risk'], MessageKey> = {
   safe: 'builder.risk.safe',
   risky: 'builder.risk.risky',
@@ -658,7 +664,7 @@ interface AttributeDraft {
                   {{ t('builder.field.chooseKind') }}
                 </h3>
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  @for (info of availableTypes(); track info.type) {
+                  @for (info of availableTypes; track info.type) {
                     <button
                       type="button"
                       class="hover:bg-muted/60 focus-visible:ring-ring/50 flex items-start gap-2.5 rounded-lg border p-2.5 text-start transition-colors outline-none focus-visible:ring-[3px]"
@@ -681,12 +687,6 @@ interface AttributeDraft {
                     </button>
                   }
                 </div>
-                @if (isComponent()) {
-                  <p class="text-muted-foreground flex items-center gap-1.5 text-xs">
-                    <ng-icon name="lucideInfo" size="14" class="shrink-0" />
-                    {{ t('builder.field.mediaInComponent') }}
-                  </p>
-                }
               </div>
             }
 
@@ -712,7 +712,7 @@ interface AttributeDraft {
                     [value]="attr.type"
                     (valueChange)="setType($any($event))"
                   >
-                    @for (info of availableTypes(); track info.type) {
+                    @for (info of availableTypes; track info.type) {
                       <option hlmNativeSelectOption [value]="info.type">
                         {{ t(info.label) }}
                       </option>
@@ -728,15 +728,18 @@ interface AttributeDraft {
                     }}</label>
                     <hlm-native-select
                       selectId="relation-kind"
-                      [value]="attr.relation ?? 'manyToOne'"
+                      [value]="attr.relation ?? defaultRelation()"
                       (valueChange)="patchAttribute({ relation: $any($event) })"
                     >
-                      @for (relation of relations; track relation.kind) {
+                      @for (relation of availableRelations(); track relation.kind) {
                         <option hlmNativeSelectOption [value]="relation.kind">
                           {{ t(relation.label) }}
                         </option>
                       }
                     </hlm-native-select>
+                    @if (isComponent()) {
+                      <p hlmFieldDescription>{{ t('builder.field.relationInComponent') }}</p>
+                    }
                   </div>
                   <div hlmField>
                     <label hlmFieldLabel for="relation-target">{{
@@ -1145,7 +1148,6 @@ export class Builder {
   protected readonly mediaKinds = MEDIA_KINDS;
   protected readonly riskLabels = RISK_LABELS;
   protected readonly segments = segments;
-  protected readonly relations = RELATIONS;
   protected readonly lengthTypes = LENGTH_TYPES;
   protected readonly numberTypes = NUMBER_TYPES;
   protected readonly uniqueTypes = UNIQUE_TYPES;
@@ -1166,9 +1168,14 @@ export class Builder {
     const name = this.name() ?? '';
     return name === 'new-component' || name.startsWith('component:');
   });
-  /** The attribute types offered in the picker (components cannot hold media). */
-  protected readonly availableTypes = computed(() =>
-    this.isComponent() ? TYPE_INFO.filter((info) => !NOT_IN_COMPONENTS.has(info.type)) : TYPE_INFO,
+  /** The attribute types offered in the picker. */
+  protected readonly availableTypes = TYPE_INFO;
+  /** The relation kinds offered (components only hold one-way relations). */
+  protected readonly availableRelations = computed(() =>
+    this.isComponent() ? COMPONENT_RELATIONS : RELATIONS,
+  );
+  protected readonly defaultRelation = computed<RelationKind>(() =>
+    this.isComponent() ? 'oneWay' : 'manyToOne',
   );
   protected readonly isNew = computed(() => ['new', 'new-component'].includes(this.name() ?? ''));
   protected readonly draftAndPublish = computed(
@@ -1344,7 +1351,7 @@ export class Builder {
 
   protected setType(type: AttributeType): void {
     const base: Attribute = { type };
-    if (type === 'relation') Object.assign(base, { relation: 'manyToOne', target: '' });
+    if (type === 'relation') Object.assign(base, { relation: this.defaultRelation(), target: '' });
     if (type === 'enumeration') base.enum = ['option-a', 'option-b'];
     if (type === 'dynamiczone') base.components = [];
     this.attributeDraft.update((field) =>

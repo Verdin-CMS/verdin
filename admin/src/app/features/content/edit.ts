@@ -30,7 +30,15 @@ import { Attributes, ContentType, Document, MediaFile } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 import { VoteControl } from '../../shared/components/vote-control';
 import { FieldsComponent } from './fields/fields';
-import { FormModel, documentLabel, mediaFilesOf, toModel, toPayload } from './fields/model';
+import {
+  FormModel,
+  References,
+  documentLabel,
+  mediaFilesOf,
+  referencesOf,
+  toModel,
+  toPayload,
+} from './fields/model';
 
 type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -161,6 +169,7 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
                 [context]="{ uid: type().uid, documentId: documentId() }"
                 [relationLabels]="relationLabels"
                 [mediaFiles]="mediaFiles"
+                [refs]="refs"
                 [inverse]="inverse"
                 prefix="doc"
               />
@@ -324,6 +333,7 @@ export class DocumentForm implements OnInit {
   protected relationLabels: Record<string, Record<string, string>> = {};
   protected inverse: Record<string, { id: string; label: string }[]> = {};
   protected mediaFiles: Record<string, MediaFile[]> = {};
+  protected refs: References = { labels: {}, files: [] };
 
   protected readonly status = computed<'draft' | 'published' | 'modified'>(() => {
     if (!this.published()) return 'draft';
@@ -388,6 +398,11 @@ export class DocumentForm implements OnInit {
     this.publishedUpdatedAt.set(this.publishedAt());
 
     this.mediaFiles = mediaFilesOf(type.attributes, document);
+    // Labels and previews for relations and media nested in components and dynamic zones.
+    this.refs = referencesOf(type.attributes, document, components, (target) => {
+      const targetType = this.schema.type(target);
+      return targetType ? this.schema.titleField(targetType) : null;
+    });
 
     // Labels for relation pickers and read-only inverse sides, from the populated document.
     for (const [name, attribute] of Object.entries(type.attributes)) {

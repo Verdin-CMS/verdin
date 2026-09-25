@@ -6,6 +6,8 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-25
+
 ### Added
 
 - **Media library**: `media` attribute type (single or multiple, `allowedTypes`), uploads
