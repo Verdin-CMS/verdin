@@ -32,6 +32,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/content/edit').then((m) => m.ContentEdit),
       },
       {
+        path: 'content/:uid/:documentId/history',
+        loadComponent: () => import('./features/content/history').then((m) => m.ContentHistory),
+      },
+      {
         path: 'single/:uid',
         loadComponent: () => import('./features/content/edit').then((m) => m.ContentEdit),
       },
@@ -62,6 +66,15 @@ export const routes: Routes = [
       {
         path: 'settings/features',
         loadComponent: () => import('./features/settings/features').then((m) => m.FeaturesPage),
+      },
+      {
+        path: 'settings/webhooks',
+        loadComponent: () => import('./features/settings/webhooks').then((m) => m.WebhooksPage),
+      },
+      {
+        path: 'settings/webhooks/:id',
+        loadComponent: () =>
+          import('./features/settings/webhook-edit').then((m) => m.WebhookEditPage),
       },
       {
         path: 'settings/public',

@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 
-import { Api } from './api';
 import { ContentType } from './types';
+import { UserPreferences } from './user-preferences';
 
 /** Built-in widget kinds. Plugins will register more (see docs/roadmap.md). */
 export type WidgetType = 'count' | 'recent' | 'list' | 'links' | 'system' | 'note' | 'poll';
@@ -96,25 +96,19 @@ export function defaultLayout(types: ContentType[]): DashboardLayout {
  */
 @Injectable({ providedIn: 'root' })
 export class Dashboard {
-  private readonly api = inject(Api);
+  private readonly preferences = inject(UserPreferences);
 
   /** `null` until loaded or when the user never customised it (use the default). */
   readonly layout = signal<DashboardLayout | null>(null);
   readonly loaded = signal(false);
   readonly saving = signal(false);
 
-  private preferences: Record<string, unknown> = {};
-  /** The last queued write; each waits for the previous one. */
+  /** The last queued write; `saving` clears once it settles. */
   private writes: Promise<unknown> = Promise.resolve();
 
   async load(): Promise<void> {
-    try {
-      this.preferences =
-        (await this.api.get<Record<string, unknown>>('/users/me/preferences')) ?? {};
-      this.layout.set(sanitize(this.preferences['dashboard']));
-    } catch {
-      this.layout.set(null);
-    }
+    const preferences = await this.preferences.load();
+    this.layout.set(sanitize(preferences['dashboard']));
     this.loaded.set(true);
   }
 
@@ -122,27 +116,20 @@ export class Dashboard {
   set(layout: DashboardLayout): Promise<void> {
     const next = { ...layout, widgets: layout.widgets.slice(0, MAX_WIDGETS) };
     this.layout.set(next);
-    this.preferences = { ...this.preferences, dashboard: next };
-    return this.write(this.preferences);
+    return this.write(next);
   }
 
   /** Back to the default layout (forgets the saved one). */
   reset(): Promise<void> {
     this.layout.set(null);
-    const { dashboard: _removed, ...rest } = this.preferences;
-    this.preferences = rest;
-    return this.write(rest);
+    return this.write(undefined);
   }
 
-  private write(preferences: Record<string, unknown>): Promise<void> {
+  private write(layout: DashboardLayout | undefined): Promise<void> {
     this.saving.set(true);
-    const write = this.writes
-      .catch(() => undefined)
-      .then(() => this.api.put('/users/me/preferences', { data: preferences }))
-      .then(() => undefined)
-      .finally(() => {
-        if (this.writes === write) this.saving.set(false);
-      });
+    const write = this.preferences.set(['dashboard'], layout).finally(() => {
+      if (this.writes === write) this.saving.set(false);
+    });
     this.writes = write;
     return write;
   }

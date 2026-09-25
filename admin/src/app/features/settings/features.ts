@@ -6,6 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
@@ -14,21 +15,12 @@ import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 import { HlmSwitchImports } from '@spartan-ng/helm/switch';
 
-import { Api, ApiFailure, RUNTIME_CONFIG } from '../../core/api';
+import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { Feature, Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { PageHeader } from '../../shared/components/page-header';
-
-/** A feature as `/features` reports it. */
-interface Feature {
-  id: string;
-  available: boolean;
-  planned: string | null;
-  core: boolean;
-  enabled: boolean;
-  settings: Record<string, unknown> | null;
-}
 
 const ICONS: Record<string, string> = {
   media: 'lucideImage',
@@ -52,6 +44,7 @@ const ICONS: Record<string, string> = {
   selector: 'vd-features',
   imports: [
     NgIcon,
+    RouterLink,
     HlmAlertImports,
     HlmBadgeImports,
     HlmButtonImports,
@@ -146,6 +139,21 @@ const ICONS: Record<string, string> = {
                         <ng-icon name="lucideExternalLink" /> {{ t('features.graphql.open') }}
                       </a>
                     }
+                  </div>
+                }
+
+                @if (feature.id === 'webhooks' && feature.enabled && canManageWebhooks()) {
+                  <div class="flex flex-col gap-3 border-t pt-4">
+                    <p class="text-muted-foreground text-xs">{{ t('features.webhooks.hint') }}</p>
+                    <a
+                      hlmBtn
+                      size="sm"
+                      variant="outline"
+                      class="self-start"
+                      routerLink="/settings/webhooks"
+                    >
+                      <ng-icon name="lucideWebhook" /> {{ t('features.webhooks.open') }}
+                    </a>
                   </div>
                 }
 
@@ -253,14 +261,15 @@ const ICONS: Record<string, string> = {
   `,
 })
 export class FeaturesPage implements OnInit {
-  private readonly api = inject(Api);
+  private readonly catalog = inject(Features);
   private readonly auth = inject(Auth);
   private readonly config = inject(RUNTIME_CONFIG);
   protected readonly t = inject(I18n).t;
 
-  protected readonly features = signal<Feature[] | null>(null);
+  protected readonly features = this.catalog.catalog;
   protected readonly busy = signal<string | null>(null);
   protected readonly canManage = computed(() => this.auth.can('features.manage'));
+  protected readonly canManageWebhooks = computed(() => this.auth.can('webhooks.manage'));
   protected readonly available = computed(() =>
     (this.features() ?? []).filter((feature) => feature.available && !feature.core),
   );
@@ -306,7 +315,7 @@ export class FeaturesPage implements OnInit {
 
   async ngOnInit(): Promise<void> {
     try {
-      this.features.set(await this.api.get<Feature[]>('/features'));
+      await this.catalog.load();
     } catch (error) {
       this.features.set([]);
       toast.error(ApiFailure.from(error).message);
@@ -332,9 +341,7 @@ export class FeaturesPage implements OnInit {
   ): Promise<void> {
     this.busy.set(feature.id);
     try {
-      this.features.set(
-        await this.api.put<Feature[]>(`/features/${feature.id}`, { enabled, settings }),
-      );
+      await this.catalog.update(feature.id, enabled, settings);
       toast.success(
         this.t(enabled ? 'features.on' : 'features.off', { name: this.name(feature.id) }),
       );

@@ -24,6 +24,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { Api, ApiFailure, Issue, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { Engagement } from '../../core/engagement';
+import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { Schema } from '../../core/schema';
 import { Attributes, ContentType, Document, MediaFile } from '../../core/types';
@@ -119,6 +120,15 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
           </div>
         }
         <div actions>
+          @if (documentId() && historyOn()) {
+            <a
+              hlmBtn
+              variant="ghost"
+              [routerLink]="['/content', type().uid, documentId(), 'history']"
+            >
+              <ng-icon name="lucideHistory" /> {{ t('content.history.open') }}
+            </a>
+          }
           <button
             hlmBtn
             variant="outline"
@@ -363,6 +373,9 @@ export class DocumentForm implements OnInit {
       )[this.status()],
     ),
   );
+  private readonly features = inject(Features);
+  /** Content history is an optional feature; its entry point hides while it is off. */
+  protected readonly historyOn = computed(() => this.features.enabled('history'));
   protected readonly canPublish = computed(() =>
     this.auth.canContent('content.publish', this.type().uid),
   );

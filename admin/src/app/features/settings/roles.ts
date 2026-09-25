@@ -72,6 +72,7 @@ const ACTION_LABELS: Record<
   'roles.manage': 'settings.roles.action.roles.manage',
   'tokens.manage': 'settings.roles.action.tokens.manage',
   'schema.manage': 'settings.roles.action.schema.manage',
+  'webhooks.manage': 'settings.roles.action.webhooks.manage',
 };
 
 @Component({

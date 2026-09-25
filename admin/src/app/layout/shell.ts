@@ -18,6 +18,7 @@ import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 
 import { ApiFailure } from '../core/api';
 import { Auth } from '../core/auth';
+import { Features } from '../core/features';
 import { I18n } from '../core/i18n/i18n';
 import { Schema } from '../core/schema';
 import { Logo } from '../shared/components/logo';
@@ -203,6 +204,20 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                     </a>
                   </li>
                 }
+                @if (auth.can('webhooks.manage') && features.enabled('webhooks')) {
+                  <li hlmSidebarMenuItem>
+                    <a
+                      hlmSidebarMenuButton
+                      routerLink="/settings/webhooks"
+                      routerLinkActive
+                      #webhooks="routerLinkActive"
+                      [isActive]="webhooks.isActive"
+                    >
+                      <ng-icon name="lucideWebhook" />
+                      <span>{{ t('shell.webhooks') }}</span>
+                    </a>
+                  </li>
+                }
                 @if (auth.can('features.manage')) {
                   <li hlmSidebarMenuItem>
                     <a
@@ -311,6 +326,7 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
 export class Shell implements OnInit {
   protected readonly auth = inject(Auth);
   protected readonly schema = inject(Schema);
+  protected readonly features = inject(Features);
   protected readonly t = inject(I18n).t;
   protected readonly error = signal<string | null>(null);
 
@@ -327,6 +343,8 @@ export class Shell implements OnInit {
   });
 
   async ngOnInit(): Promise<void> {
+    // Optional parts of the navigation; without the catalog they stay hidden.
+    this.features.load().catch(() => undefined);
     try {
       await this.schema.load();
     } catch (error) {

@@ -261,4 +261,5 @@ export const ADMIN_SETTINGS_ACTIONS = [
   'tokens.manage',
   'schema.manage',
   'features.manage',
+  'webhooks.manage',
 ] as const;

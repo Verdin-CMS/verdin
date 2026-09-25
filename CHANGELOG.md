@@ -18,6 +18,10 @@ All notable changes to Verdin are documented here. The format follows
   restore one as the draft: fields that no longer exist are skipped, and references to
   deleted entries or files are dropped and reported. Newest `[history].max_versions`
   versions (50) are kept per document.
+- Admin: bulk publish, unpublish and delete from the content list, with progress and a
+  summary of failures.
+- Admin: list view settings per content type and user (visible columns and their order,
+  default sort and page size).
 
 ### Fixed
 

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 
 import { project } from '../playwright.config';
@@ -94,7 +96,7 @@ test('create a type, write content, publish it and read it over the API', async 
   await page.getByRole('link', { name: 'Article', exact: true }).first().click();
   await page.getByRole('link', { name: 'Create' }).click();
   await page.getByLabel('Body').fill('Written by Playwright.');
-  await page.getByRole('button', { name: 'Publish' }).click();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(page.getByText('title is a required field')).toBeVisible();
   await page.screenshot({ path: 'test-results/screens/editor-error.png' });
   await page.getByLabel('Title').fill('Hello from Playwright');
@@ -110,11 +112,13 @@ test('create a type, write content, publish it and read it over the API', async 
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Notes', level: 1 })).toBeVisible();
   await page.screenshot({ path: 'test-results/screens/editor-rich.png' });
-  await page.getByRole('button', { name: 'Publish' }).click();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
 
   await page.getByRole('link', { name: 'Article', exact: true }).first().click();
-  await expect(page.getByRole('cell', { name: 'Hello from Playwright' })).toBeVisible();
+  await expect(
+    page.getByRole('cell', { name: 'Hello from Playwright', exact: true }),
+  ).toBeVisible();
   await page.screenshot({ path: 'test-results/screens/list.png' });
 
   // The content API is closed until the public role may read articles.
@@ -187,7 +191,7 @@ test('create a type, write content, publish it and read it over the API', async 
   expect(served.headers()['content-security-policy']).toContain('sandbox');
 
   await page.getByRole('link', { name: 'Article', exact: true }).first().click();
-  await page.getByRole('cell', { name: 'Hello from Playwright' }).click();
+  await page.getByRole('cell', { name: 'Hello from Playwright', exact: true }).click();
   await page.getByRole('button', { name: 'Cover' }).click();
   await dialog
     .getByRole('button', { name: /sunset\.png/ })
@@ -200,7 +204,7 @@ test('create a type, write content, publish it and read it over the API', async 
 
   // Votes on the entry itself.
   await page.getByRole('link', { name: 'Article', exact: true }).first().click();
-  await page.getByRole('cell', { name: 'Hello from Playwright' }).click();
+  await page.getByRole('cell', { name: 'Hello from Playwright', exact: true }).click();
   await page.getByRole('button', { name: 'Vote up' }).click();
   await expect(page.getByRole('button', { name: 'Vote up' })).toHaveAttribute(
     'aria-pressed',
@@ -233,6 +237,64 @@ test('create a type, write content, publish it and read it over the API', async 
   await page.reload();
   await expect(page.getByText('What next?')).toBeVisible();
   await expect(page.getByText('All caught up: nothing new to see.')).toBeVisible();
+
+  // Webhooks: a local receiver gets a signed delivery when an article is published.
+  const received: { event: string; signature: string; body: Record<string, unknown> }[] = [];
+  const receiver = createServer((request, response) => {
+    let raw = '';
+    request.on('data', (chunk) => (raw += chunk));
+    request.on('end', () => {
+      received.push({
+        event: String(request.headers['x-verdin-event']),
+        signature: String(request.headers['x-verdin-signature'] ?? ''),
+        body: JSON.parse(raw),
+      });
+      response.end('thanks');
+    });
+  });
+  await new Promise<void>((resolve) => receiver.listen(0, '127.0.0.1', resolve));
+  const hookUrl = `http://127.0.0.1:${(receiver.address() as AddressInfo).port}/hook`;
+  await page.getByRole('link', { name: 'Webhooks' }).click();
+  await page.getByRole('link', { name: 'New webhook' }).first().click();
+  await page.getByLabel('Name').fill('Rebuild');
+  await page.getByLabel('URL', { exact: true }).fill(hookUrl);
+  await page.getByLabel('entry.publish').check();
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page.getByText('Copy the signing secret')).toBeVisible();
+  await page.screenshot({ path: 'test-results/screens/webhook-secret.png' });
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Send test event' }).click();
+  await expect.poll(() => received.map((r) => r.event)).toContain('trigger-test');
+  expect(received[0].signature).toMatch(/^t=\d+,v1=[0-9a-f]{64}$/);
+
+  // Content history: edit the article, then restore the previous version.
+  await page.getByRole('link', { name: 'Article', exact: true }).first().click();
+  await page.getByRole('cell', { name: 'Hello from Playwright', exact: true }).click();
+  await page.getByLabel('Title').fill('A title to undo');
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
+  await expect.poll(() => received.map((r) => r.event)).toContain('entry.publish');
+  const publish = received.find((r) => r.event === 'entry.publish')!;
+  expect((publish.body['entry'] as { title: string }).title).toBe('A title to undo');
+  receiver.close();
+
+  await page.getByRole('link', { name: 'History' }).click();
+  await expect(page.getByRole('heading', { name: 'History' }).first()).toBeVisible();
+  await page.screenshot({ path: 'test-results/screens/history.png' });
+  await page.getByRole('button', { name: /Saved/ }).nth(1).click();
+  await expect(page.getByText('Hello from Playwright').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Restore' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Restore' }).click();
+  await expect(page.getByText('Version restored as the current draft')).toBeVisible();
+  await expect(page.getByLabel('Title')).toHaveValue('Hello from Playwright');
+
+  // Bulk actions: unpublish every entry on the page.
+  await page.getByRole('link', { name: 'Article', exact: true }).first().click();
+  await page.getByLabel('Select all entries on this page').click();
+  await expect(page.getByText('1 selected')).toBeVisible();
+  await page.getByRole('button', { name: 'Unpublish', exact: true }).click();
+  await expect(page.getByText('1 entry unpublished')).toBeVisible();
+  expect((await (await request.get('/api/articles')).json()).data).toHaveLength(0);
 
   // Optional visual tour (VERDIN_SCREENSHOTS=1): every main page in light, dark and Spanish.
   if (process.env['VERDIN_SCREENSHOTS']) {

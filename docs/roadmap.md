@@ -28,8 +28,8 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 | **Webhooks** ✅ | M | Event bus (entry create/update/delete/publish/unpublish, media events), signed deliveries (HMAC), retries with backoff, delivery log in the admin |
 | **Strapi importer** | L | `verdin import strapi` reads a Strapi v4/v5 project (schemas, components) and its database or a transfer export (data, relations, media) |
 | Content history ✅ | M | Versions of every document with diff and restore |
-| Bulk actions | S | Publish, unpublish and delete many entries from the list |
-| List view settings | S | Choose columns, default sort and page size per type |
+| Bulk actions ✅ | S | Publish, unpublish and delete many entries from the list |
+| List view settings ✅ | S | Choose columns, default sort and page size per type |
 
 ## 0.4 — End users
 
