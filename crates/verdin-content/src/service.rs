@@ -505,7 +505,9 @@ impl DocumentService {
 
                 for doc in docs.iter_mut() {
                     let mut items = related.remove(&doc.id).unwrap_or_default();
-                    let value = if relation.to_many {
+                    let value = if sub.count {
+                        serde_json::json!({ "count": items.len() })
+                    } else if relation.to_many {
                         Json::Array(items)
                     } else if items.is_empty() {
                         Json::Null

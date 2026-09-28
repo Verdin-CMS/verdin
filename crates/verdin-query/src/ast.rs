@@ -29,6 +29,8 @@ pub struct SubQuery {
     pub populate: Vec<Populate>,
     pub filters: Option<Filter>,
     pub sort: Vec<Sort>,
+    /// `populate[tags][count]=true`: `{ "count": n }` instead of the related documents.
+    pub count: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -92,6 +94,12 @@ pub enum Filter {
     Relation(RelationFilter),
     /// Rows a user has marked in a per-user table (e.g. documents they have seen).
     Marked(MarkFilter),
+    /// `hasPublishedVersion=true|false`: rows whose document has (or has not) a published
+    /// version in the same locale. `table` is the type's table.
+    HasPublished {
+        table: String,
+        published: bool,
+    },
 }
 
 /// `EXISTS (SELECT 1 FROM {table} m WHERE m.user_id = ? AND m.content_type = ?

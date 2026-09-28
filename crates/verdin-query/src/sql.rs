@@ -105,6 +105,17 @@ pub fn write_filter(out: &mut SqlBuilder, filter: &Filter, alias: &str, context:
         }
         Filter::Condition(condition) => write_condition(out, condition, Some(alias)),
         Filter::Relation(relation) => write_relation(out, relation, alias, context),
+        Filter::HasPublished { table, published } => {
+            out.push(if *published { "EXISTS" } else { "NOT EXISTS" });
+            out.push(" (SELECT 1 FROM ").ident(table).push(" pv WHERE ");
+            out.column(Some("pv"), "document_id").push(" = ");
+            out.column(Some(alias), "document_id");
+            out.push(" AND ");
+            out.column(Some("pv"), "locale").push(" = ");
+            out.column(Some(alias), "locale");
+            out.push(" AND ");
+            out.column(Some("pv"), "publication_state").push(" = 1)");
+        }
         Filter::Marked(mark) => {
             out.push("EXISTS (SELECT 1 FROM ");
             out.ident(&mark.table);

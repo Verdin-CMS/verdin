@@ -30,9 +30,17 @@ impl Default for Limits {
     }
 }
 
-const KNOWN_PARAMETERS: &[&str] =
-    &["filters", "sort", "fields", "populate", "pagination", "status", "locale"];
-const SUB_QUERY_PARAMETERS: &[&str] = &["fields", "populate", "filters", "sort"];
+const KNOWN_PARAMETERS: &[&str] = &[
+    "filters",
+    "sort",
+    "fields",
+    "populate",
+    "pagination",
+    "status",
+    "locale",
+    "hasPublishedVersion",
+];
+const SUB_QUERY_PARAMETERS: &[&str] = &["fields", "populate", "filters", "sort", "count"];
 
 struct Parser<'a> {
     catalog: &'a Catalog,
@@ -52,9 +60,25 @@ pub fn parse(
         }
     }
     let mut parser = Parser { catalog, limits, conditions: 0 };
+    let mut filters = root.get("filters").map(|node| parser.filters(node, fields)).transpose()?;
+    if let Some(node) = root.get("hasPublishedVersion") {
+        let published = match node.as_leaf() {
+            Some("true") => true,
+            Some("false") => false,
+            _ => return Err(QueryError::new("`hasPublishedVersion` is `true` or `false`")),
+        };
+        if !fields.draft_and_publish {
+            return Err(QueryError::new(format!("`{}` has no draft and publish", fields.uid)));
+        }
+        let has = Filter::HasPublished { table: fields.table.clone(), published };
+        filters = Some(match filters {
+            Some(existing) => Filter::And(vec![existing, has]),
+            None => has,
+        });
+    }
 
     Ok(Query {
-        filters: root.get("filters").map(|node| parser.filters(node, fields)).transpose()?,
+        filters,
         sort: root
             .get("sort")
             .map(|node| parse_sort(node, fields))
@@ -357,7 +381,13 @@ impl Parser<'_> {
                 (FieldCategory::Relation, Some(options)) => {
                     let relation = field.relation.as_ref().expect("relation info");
                     let target = self.catalog.get(&relation.target).expect("validated schema");
-                    Some(self.sub_query(options, target, depth)?)
+                    let query = self.sub_query(options, target, depth)?;
+                    if query.count && !relation.to_many {
+                        return Err(QueryError::new(format!(
+                            "`count` needs a to-many relation (`{name}` is to-one)"
+                        )));
+                    }
+                    Some(query)
                 }
                 // Components are stored whole; their populate options are accepted and ignored.
                 _ => None,
@@ -394,6 +424,11 @@ impl Parser<'_> {
                 .map(|node| parse_sort(node, target))
                 .transpose()?
                 .unwrap_or_default(),
+            count: match map.get("count").map(|node| node.as_leaf()) {
+                None | Some(Some("false")) => false,
+                Some(Some("true")) => true,
+                Some(_) => return Err(QueryError::new("`count` is `true` or `false`")),
+            },
         })
     }
 }

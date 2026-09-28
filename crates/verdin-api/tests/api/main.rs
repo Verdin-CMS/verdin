@@ -15,6 +15,7 @@ mod i18n;
 mod media;
 mod password;
 mod plugins;
+mod populate;
 mod preview;
 mod relations;
 mod releases;
