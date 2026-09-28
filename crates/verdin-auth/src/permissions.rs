@@ -72,6 +72,9 @@ pub struct Permission {
     /// Content read/create/update only: the attributes it covers (`None`: all of them).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fields: Option<Vec<String>>,
+    /// Content actions on localized types: the locales it covers (`None`: all of them).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locales: Option<Vec<String>>,
 }
 
 impl Permission {
@@ -95,6 +98,12 @@ impl Permission {
             [actions::CONTENT_READ, actions::CONTENT_CREATE, actions::CONTENT_UPDATE];
         if self.fields.is_some() && !field_actions.contains(&self.action.as_str()) {
             return Err(format!("`{}` does not take fields", self.action));
+        }
+        if self.locales.is_some() && !content {
+            return Err(format!("`{}` does not take locales", self.action));
+        }
+        if let Some(code) = self.locales.iter().flatten().find(|code| !valid_locale(code)) {
+            return Err(format!("invalid locale `{code}`"));
         }
         if let Some(condition) = self.conditions.iter().find(|condition| *condition != IS_CREATOR) {
             return Err(format!("unknown condition `{condition}`"));
@@ -121,7 +130,13 @@ pub struct PermissionSet {
 }
 
 impl PermissionSet {
+    /// The grant on `uid` in any locale (see [`PermissionSet::content_in`]).
     pub fn content(&self, action: &str, uid: &str) -> Grant {
+        self.content_in(action, uid, None)
+    }
+
+    /// The grant on `uid` in `locale` (`None`: whatever the locale).
+    pub fn content_in(&self, action: &str, uid: &str, locale: Option<&str>) -> Grant {
         if self.super_admin {
             return Grant::All;
         }
@@ -131,7 +146,11 @@ impl PermissionSet {
                 .subject
                 .as_deref()
                 .is_some_and(|subject| subject == ALL_SUBJECTS || subject == uid);
-            if permission.action != action || !subject_matches {
+            let locale_matches = match (locale, &permission.locales) {
+                (Some(locale), Some(locales)) => locales.iter().any(|code| code == locale),
+                _ => true,
+            };
+            if permission.action != action || !subject_matches || !locale_matches {
                 continue;
             }
             if permission.conditions.is_empty() {
@@ -196,6 +215,7 @@ pub fn builtin_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<Per
         subject: Some(ALL_SUBJECTS.into()),
         conditions: conditions.iter().map(|condition| (*condition).into()).collect(),
         fields: None,
+        locales: None,
     };
     let mut roles = vec![
         (SUPER_ADMIN, "Super Admin", "Everything, including users, roles and tokens.", Vec::new()),
@@ -239,6 +259,7 @@ pub fn builtin_additions(version: i64) -> Vec<(&'static str, Vec<Permission>)> {
         subject: None,
         conditions: conditions.iter().map(|condition| (*condition).into()).collect(),
         fields: None,
+        locales: None,
     };
     match version {
         // 0.2: the media library.
@@ -379,6 +400,7 @@ mod tests {
             subject: subject.map(Into::into),
             conditions: conditions.iter().map(|c| (*c).into()).collect(),
             fields: None,
+            locales: None,
         }
     }
 
@@ -440,4 +462,9 @@ mod tests {
                 && !custom.allows("api::article", ContentAction::Create)
         );
     }
+}
+
+/// Locale codes (`en`, `pt-BR`, `zh-Hans`): letters, digits and dashes.
+fn valid_locale(code: &str) -> bool {
+    (2..=35).contains(&code.len()) && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }

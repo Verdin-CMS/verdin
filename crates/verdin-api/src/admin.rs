@@ -1067,9 +1067,11 @@ async fn content_grant(
     uid: &str,
     action: &str,
 ) -> Result<(AdminPrincipal, Grant), ApiError> {
-    state.service.registry().get(uid)?;
+    let model = state.service.registry().get(uid)?;
     let principal = principal(state, headers).await?;
-    match principal.permissions.content(action, uid) {
+    // Localized types: the request's locale (the default one when not given).
+    let locale = model.content_type.localized.then(|| state.service.context_locale());
+    match principal.permissions.content_in(action, uid, locale.as_deref()) {
         Grant::None => Err(ApiError::Forbidden),
         grant => Ok((principal, grant)),
     }

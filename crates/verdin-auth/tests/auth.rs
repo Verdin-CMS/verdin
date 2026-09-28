@@ -169,6 +169,7 @@ async fn users_roles_and_the_last_super_admin() {
                 subject: Some("api::article".into()),
                 conditions: vec![],
                 fields: None,
+                locales: None,
             }],
         )
         .await

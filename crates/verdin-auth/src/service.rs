@@ -845,12 +845,12 @@ impl AuthService {
             .queries()
             .fetch_all(
                 &format!(
-                    "SELECT r.code, p.action, p.subject, p.conditions, p.fields FROM {ADMIN_USER_ROLES} ur \
+                    "SELECT r.code, p.action, p.subject, p.conditions, p.fields, p.locales FROM {ADMIN_USER_ROLES} ur \
                      JOIN {ADMIN_ROLES} r ON r.id = ur.role_id \
                      LEFT JOIN {ADMIN_PERMISSIONS} p ON p.role_id = r.id WHERE ur.user_id = ?"
                 ),
                 &[V::BigInt(user_id)],
-                &[K::Text, K::Text, K::Text, K::Text, K::Text],
+                &[K::Text, K::Text, K::Text, K::Text, K::Text, K::Text],
             )
             .await?;
         let mut set = PermissionSet::default();
@@ -868,7 +868,9 @@ impl AuthService {
                     .unwrap_or_default();
                 let fields =
                     row.next().and_then(text).and_then(|json| serde_json::from_str(&json).ok());
-                let permission = Permission { action, subject, conditions, fields };
+                let locales =
+                    row.next().and_then(text).and_then(|json| serde_json::from_str(&json).ok());
+                let permission = Permission { action, subject, conditions, fields, locales };
                 if !set.permissions.contains(&permission) {
                     set.permissions.push(permission);
                 }
@@ -909,9 +911,9 @@ impl AuthService {
             .db
             .queries()
             .fetch_all(
-                &format!("SELECT role_id, action, subject, conditions, fields FROM {ADMIN_PERMISSIONS} ORDER BY id"),
+                &format!("SELECT role_id, action, subject, conditions, fields, locales FROM {ADMIN_PERMISSIONS} ORDER BY id"),
                 &[],
-                &[K::BigInt, K::Text, K::Text, K::Text, K::Text],
+                &[K::BigInt, K::Text, K::Text, K::Text, K::Text, K::Text],
             )
             .await?;
         let mut permissions: HashMap<i64, Vec<Permission>> = HashMap::new();
@@ -927,11 +929,14 @@ impl AuthService {
                 .unwrap_or_default();
             let fields =
                 row.next().and_then(text).and_then(|json| serde_json::from_str(&json).ok());
+            let locales =
+                row.next().and_then(text).and_then(|json| serde_json::from_str(&json).ok());
             permissions.entry(role).or_default().push(Permission {
                 action,
                 subject,
                 conditions,
                 fields,
+                locales,
             });
         }
         Ok(rows
@@ -1424,13 +1429,14 @@ async fn insert_permissions(tx: &mut Tx, role_id: i64, permissions: &[Permission
         } else {
             V::Text(serde_json::to_string(&permission.conditions).expect("strings serialize"))
         };
-        let fields = match &permission.fields {
-            Some(fields) => V::Text(serde_json::to_string(fields).expect("strings serialize")),
+        let list = |values: &Option<Vec<String>>| match values {
+            Some(values) => V::Text(serde_json::to_string(values).expect("strings serialize")),
             None => V::Null(K::Text),
         };
+        let (fields, locales) = (list(&permission.fields), list(&permission.locales));
         tx.execute(
-            &format!("INSERT INTO {ADMIN_PERMISSIONS} (role_id, action, subject, conditions, fields) VALUES (?, ?, ?, ?, ?)"),
-            &[V::BigInt(role_id), V::Text(permission.action.clone()), optional_text(permission.subject.clone()), conditions, fields],
+            &format!("INSERT INTO {ADMIN_PERMISSIONS} (role_id, action, subject, conditions, fields, locales) VALUES (?, ?, ?, ?, ?, ?)"),
+            &[V::BigInt(role_id), V::Text(permission.action.clone()), optional_text(permission.subject.clone()), conditions, fields, locales],
         )
         .await?;
     }

@@ -223,3 +223,88 @@ async fn relations_follow_the_locale() {
     );
     app.done().await;
 }
+
+#[tokio::test]
+async fn permissions_per_locale() {
+    let app = App::new(schema()).await;
+    let admin = register(&app).await;
+    app.call_as(
+        Method::POST,
+        "/admin/api/i18n/locales",
+        Some(json!({ "code": "fr", "name": "Français" })),
+        As::Bearer(&admin),
+    )
+    .await;
+    let role = json!({
+        "code": "french-editor", "name": "French editor",
+        "permissions": [
+            { "action": "content.read", "subject": "api::article", "locales": ["fr"] },
+            { "action": "content.create", "subject": "api::article", "locales": ["fr"] },
+            { "action": "content.update", "subject": "api::article", "locales": ["fr"] }
+        ]
+    });
+    let (status, role) =
+        app.call_as(Method::POST, "/admin/api/roles", Some(role), As::Bearer(&admin)).await;
+    assert_eq!(status, StatusCode::CREATED, "{role}");
+    let bad = json!({ "code": "x", "name": "X", "permissions": [{ "action": "users.manage", "locales": ["fr"] }] });
+    assert_eq!(
+        app.call_as(Method::POST, "/admin/api/roles", Some(bad), As::Bearer(&admin)).await.0,
+        StatusCode::BAD_REQUEST,
+        "settings take no locales"
+    );
+    let body = json!({ "email": "fr@example.com", "password": "correct horse 1", "roles": [role["data"]["id"]] });
+    app.call_as(Method::POST, "/admin/api/users", Some(body), As::Bearer(&admin)).await;
+    let login = json!({ "email": "fr@example.com", "password": "correct horse 1" });
+    let (_, session) =
+        app.call_as(Method::POST, "/admin/api/auth/login", Some(login), As::Anonymous).await;
+    let editor = session["data"]["accessToken"].as_str().unwrap().to_owned();
+
+    let content = "/admin/api/content/api::article";
+    let entry = json!({ "data": { "title": "Bonjour", "slug": "bonjour", "price": 1 } });
+    let (status, created) = app
+        .call_as(
+            Method::POST,
+            &format!("{content}?locale=fr"),
+            Some(entry.clone()),
+            As::Bearer(&editor),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let id = created["data"]["documentId"].as_str().unwrap().to_owned();
+    assert_eq!(
+        app.call_as(Method::POST, content, Some(entry), As::Bearer(&editor)).await.0,
+        StatusCode::FORBIDDEN,
+        "the default locale (en) is not granted"
+    );
+    assert_eq!(
+        app.call_as(Method::GET, &format!("{content}?locale=fr"), None, As::Bearer(&editor))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        app.call_as(Method::GET, &format!("{content}?locale=en"), None, As::Bearer(&editor))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let update = json!({ "data": { "title": "Hello" } });
+    assert_eq!(
+        app.call_as(
+            Method::PUT,
+            &format!("{content}/{id}?locale=en"),
+            Some(update),
+            As::Bearer(&editor)
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let (_, me) = app.call_as(Method::GET, "/admin/api/auth/me", None, As::Bearer(&editor)).await;
+    assert_eq!(
+        me["data"]["permissions"]["permissions"][0]["locales"],
+        json!(["fr"]),
+        "the admin panel sees them"
+    );
+    app.done().await;
+}

@@ -26,6 +26,8 @@ All notable changes to Verdin are documented here. The format follows
   GitLab and LinkedIn, and HTML email templates.
 - **Admin branding** in `[admin.branding]`: title, logo, favicon, accent color and text
   overrides per language.
+- **Permissions per locale**: admin content permissions take an optional `locales` list
+  (`{ "action": "content.update", "subject": "api::article", "locales": ["fr"] }`).
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.
