@@ -43,6 +43,7 @@ import { previewTemplate } from '../../core/feature-settings';
 import { EntryReview as EntryReviewState, pendingPublishStage } from '../../core/review';
 import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
+import { isMorphOwner } from '../../core/morph';
 import { Schema } from '../../core/schema';
 import { ContentType, Document, MediaFile } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
@@ -55,6 +56,7 @@ import {
   References,
   MorphEntry,
   mediaFilesOf,
+  mergeMorphEntries,
   morphEntriesOf,
   referencesOf,
   relationLabelsOf,
@@ -652,7 +654,7 @@ export class DocumentForm implements OnInit {
   protected tree!: Tree;
   protected readonly relationLabels = signal<Record<string, Record<string, string>>>({});
   protected readonly inverse = signal<Record<string, { id: string; label: string }[]>>({});
-  /** Linked entries of the loaded version's polymorphic relations (read-only). */
+  /** Linked entries of polymorphic relations: owners' labels, inverse sides' lists. */
   protected readonly morphs = signal<Record<string, MorphEntry[]>>({});
   protected readonly mediaFiles = signal<Record<string, MediaFile[]>>({});
   protected readonly refs = signal<References>({ labels: {}, files: [] });
@@ -786,13 +788,24 @@ export class DocumentForm implements OnInit {
 
   /** The polymorphic links of the loaded version (populated by `populate=*`). */
   private showMorphs(document: Document | null): void {
-    this.morphs.set(
-      morphEntriesOf(
-        this.type().attributes,
-        document,
-        (uid) => this.schema.type(uid),
-        (type) => this.schema.titleField(type),
-      ),
+    this.morphs.set(this.morphEntries(document));
+  }
+
+  /** The linked entries of a populated document (`ownersOnly`: of polymorphic owners). */
+  private morphEntries(
+    document: Document | null,
+    ownersOnly = false,
+  ): Record<string, MorphEntry[]> {
+    const attributes = this.type().attributes;
+    const entries = morphEntriesOf(
+      attributes,
+      document,
+      (uid) => this.schema.type(uid),
+      (type) => this.schema.titleField(type),
+    );
+    if (!ownersOnly) return entries;
+    return Object.fromEntries(
+      Object.entries(entries).filter(([name]) => isMorphOwner(attributes[name])),
     );
   }
 
@@ -890,6 +903,10 @@ export class DocumentForm implements OnInit {
         withLocale('populate=*&status=draft', source),
       );
       this.absorb(document);
+      // Polymorphic links copied from the other locale keep their type names and labels.
+      this.morphs.update((current) =>
+        mergeMorphEntries(current, this.morphEntries(document, true)),
+      );
       this.model.set(
         fillFromLocale(
           type.attributes,
@@ -941,6 +958,10 @@ export class DocumentForm implements OnInit {
           this.createdAt.set(document.createdAt ?? null);
         }
         this.draftUpdatedAt.set(document.updatedAt ?? null);
+        // Saved links, as populated: their current labels.
+        this.morphs.update((current) =>
+          mergeMorphEntries(current, this.morphEntries(document, true)),
+        );
         if (publish) {
           const live = await this.api.post<Document>(
             `${base}/${document.documentId}/actions/publish`,

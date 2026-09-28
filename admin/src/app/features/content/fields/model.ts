@@ -1,4 +1,11 @@
-import { isMorph, morphLinks } from '../../../core/morph';
+import {
+  isMorph,
+  isMorphOwner,
+  morphKey,
+  morphLinks,
+  morphRefs,
+  morphValue,
+} from '../../../core/morph';
 import { Attribute, Attributes, Component, ContentType, MediaFile } from '../../../core/types';
 
 /** Looks up component schemas by uid. */
@@ -16,11 +23,14 @@ export function keyed(item: FormModel): FormModel {
 const TEXT_TYPES = new Set(['string', 'email', 'text', 'richtext', 'uid', 'date', 'time']);
 
 /**
- * Whether the admin edits this attribute: the `mappedBy` side of relations and polymorphic
- * relations (managed through the API) are read-only and never sent back.
+ * Whether the admin edits this attribute: the `mappedBy` side of relations and the inverse
+ * sides of polymorphic relations (`morphOne`, `morphMany`) are read-only and never sent back.
  */
 export function isEditable(attribute: Attribute): boolean {
-  return !(attribute.type === 'relation' && (attribute.mappedBy || isMorph(attribute)));
+  return !(
+    attribute.type === 'relation' &&
+    (attribute.mappedBy || (isMorph(attribute) && !isMorphOwner(attribute)))
+  );
 }
 
 /** The form value of an empty attribute, honouring schema defaults. */
@@ -89,7 +99,12 @@ export function toModel(
     }
     switch (attribute.type) {
       case 'relation':
-        model[name] = Array.isArray(value) ? value.map(relationId) : relationId(value);
+        // Polymorphic owners keep `{ __type, documentId }` links.
+        model[name] = isMorphOwner(attribute)
+          ? morphValue(morphRefs(value), isToMany(attribute))
+          : Array.isArray(value)
+            ? value.map(relationId)
+            : relationId(value);
         break;
       case 'component': {
         const component = components(attribute.component ?? '');
@@ -264,8 +279,10 @@ export function toPayload(
         payload[name] = Array.isArray(value) ? [...value] : (value ?? null);
         break;
       case 'relation':
-        // documentIds; to-many relations keep their order.
-        payload[name] = Array.isArray(value) ? [...value] : (value ?? null);
+        // documentIds (polymorphic owners: `{ __type, documentId }`); to-many keep their order.
+        if (isMorphOwner(attribute))
+          payload[name] = morphValue(morphRefs(value), isToMany(attribute));
+        else payload[name] = Array.isArray(value) ? [...value] : (value ?? null);
         break;
       case 'blocks':
         // An empty editor is "no value".
@@ -396,4 +413,18 @@ export function morphEntry(
         ? ['/single', type.uid]
         : ['/content', type.uid, link.documentId],
   };
+}
+
+/** Known linked entries per attribute, `extra` added after `current` (same link once). */
+export function mergeMorphEntries(
+  current: Record<string, MorphEntry[]>,
+  extra: Record<string, MorphEntry[]>,
+): Record<string, MorphEntry[]> {
+  const out: Record<string, MorphEntry[]> = { ...current };
+  for (const [name, entries] of Object.entries(extra)) {
+    const byKey = new Map((out[name] ?? []).map((entry) => [morphKey(entry), entry]));
+    for (const entry of entries) byKey.set(morphKey(entry), entry);
+    out[name] = [...byKey.values()];
+  }
+  return out;
 }

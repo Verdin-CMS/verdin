@@ -5,6 +5,7 @@ import {
   isEditable,
   isToMany,
   mediaFilesOf,
+  mergeMorphEntries,
   morphEntriesOf,
   referencesOf,
   relationLabelsOf,
@@ -338,19 +339,63 @@ describe('polymorphic relations', () => {
   const typeOf = (uid: string) => types.find((type) => type.uid === uid);
   const titleFieldOf = (type: ContentType) => Object.keys(type.attributes)[0] ?? null;
 
-  it('are read-only: never sent back in the payload', () => {
-    expect(isEditable(morphs.related)).toBe(false);
+  it('edit owners as { __type, documentId } links; inverse sides are never sent back', () => {
+    expect(isEditable(morphs.related)).toBe(true);
+    expect(isEditable(morphs.main)).toBe(true);
     expect(isEditable(morphs.comments)).toBe(false);
     expect(isToMany(morphs.related)).toBe(true);
     expect(isToMany(morphs.main)).toBe(false);
     const document = {
       title: 'Hi',
-      related: [{ __type: 'api::article.article', documentId: 'a1', title: 'A' }],
-      main: null,
+      related: [
+        { __type: 'api::article.article', documentId: 'a1', title: 'A' },
+        { __type: 'api::home.home', documentId: 'h1', heading: 'Home' },
+      ],
+      main: { __type: 'api::home.home', documentId: 'h1', heading: 'Home' },
       comments: [{ __type: 'api::comment.comment', documentId: 'c1' }],
     };
     const model = toModel(morphs, document, components);
-    expect(toPayload(morphs, model, components)).toEqual({ title: 'Hi' });
+    // Populated fields are dropped from the form value.
+    expect(model['related']).toEqual([
+      { __type: 'api::article.article', documentId: 'a1' },
+      { __type: 'api::home.home', documentId: 'h1' },
+    ]);
+    expect(model['main']).toEqual({ __type: 'api::home.home', documentId: 'h1' });
+    expect(toPayload(morphs, model, components)).toEqual({
+      title: 'Hi',
+      related: [
+        { __type: 'api::article.article', documentId: 'a1' },
+        { __type: 'api::home.home', documentId: 'h1' },
+      ],
+      main: { __type: 'api::home.home', documentId: 'h1' },
+    });
+  });
+
+  it('write empty owners as an empty list or null', () => {
+    const model = toModel(morphs, { title: 'Hi' }, components);
+    expect(model['related']).toEqual([]);
+    expect(model['main']).toBeNull();
+    expect(toPayload(morphs, model, components)).toEqual({ title: 'Hi', related: [], main: null });
+    // Malformed items (no type) are not sent.
+    expect(
+      toPayload(morphs, { ...model, related: [{ documentId: 'x' }], main: 'a1' }, components),
+    ).toEqual({ title: 'Hi', related: [], main: null });
+  });
+
+  it('merge known linked entries without repeating a link', () => {
+    const entry = (uid: string, documentId: string, label: string) => ({
+      uid,
+      documentId,
+      typeName: uid,
+      label,
+      link: null,
+    });
+    const merged = mergeMorphEntries(
+      { related: [entry('api::a', '1', 'Old'), entry('api::b', '1', 'B')] },
+      { related: [entry('api::a', '1', 'New')], main: [entry('api::a', '2', 'Two')] },
+    );
+    expect(merged['related'].map((item) => item.label)).toEqual(['New', 'B']);
+    expect(merged['main'].map((item) => item.label)).toEqual(['Two']);
   });
 
   it('are left out of picker labels and nested references', () => {

@@ -5,9 +5,10 @@ import { join } from 'node:path';
 import { project } from '../playwright.config';
 
 /**
- * Polymorphic relations (morphToOne / morphToMany and their inverse sides): read-only in the
- * editor, left out of list filters, listed read-only by the builder, and never overwritten
- * by a save. Named to run after flow.spec.ts, which registers the first admin.
+ * Polymorphic relations (morphToOne / morphToMany and their inverse sides): owners edited in
+ * the editor (picker, reorder, remove), inverse sides read-only, left out of list filters,
+ * created and edited in the builder. Named to run after flow.spec.ts, which registers the
+ * first admin.
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -102,7 +103,7 @@ async function links(api: Api, documentId: string) {
   };
 }
 
-test('the editor shows polymorphic links read-only and a save keeps them', async ({ page }) => {
+test('the editor edits polymorphic links: add, reorder, remove, to-one', async ({ page }) => {
   const problems: string[] = [];
   page.on('pageerror', (error) => problems.push(error.message));
   await signIn(page);
@@ -110,6 +111,7 @@ test('the editor shows polymorphic links read-only and a save keeps them', async
   const tag = `M${Date.now()}`;
   const post = await create(api, 'api::ppost', { title: `Rust ${tag}` });
   const other = await create(api, 'api::ppage', { heading: `Home ${tag}` });
+  const extra = await create(api, 'api::ppost', { title: `Zig ${tag}` });
   const note = await create(api, 'api::pnote', {
     text: `First ${tag}`,
     refs: [
@@ -127,36 +129,103 @@ test('the editor shows polymorphic links read-only and a save keeps them', async
   const list = refs.getByRole('list', { name: 'Refs' });
   await expect(list.getByRole('listitem')).toHaveCount(2);
   await expect(list.getByRole('listitem').first()).toContainText('Post card');
-  await expect(list.getByRole('link', { name: `Rust ${tag}` })).toHaveAttribute(
-    'href',
-    `/admin/content/api::ppost/${post}`,
-  );
+  await expect(list.getByRole('listitem').first()).toContainText(`Rust ${tag}`);
   await expect(list.getByRole('listitem').nth(1)).toContainText('Plain page');
-  await expect(list.getByRole('link', { name: `Home ${tag}` })).toBeVisible();
-  await expect(refs.getByText('Polymorphic relation — managed through the API.')).toBeVisible();
-  await expect(page.locator('[data-field="about"]').getByText('No linked entries')).toBeVisible();
-  await page.screenshot({ path: 'test-results/screens/polymorphic-editor.png' });
+  await expect(list.getByRole('listitem').nth(1)).toContainText(`Home ${tag}`);
+  const about = page.locator('[data-field="about"]');
+  await expect(about.getByText('No linked entries')).toBeVisible();
 
-  // Saving another field leaves the links as they are (they are not sent back).
+  // Saving another field leaves the links as they are.
   await page.getByLabel('Text').fill(`Edited ${tag}`);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
-  const after = await links(api, note);
-  expect(after.text).toBe(`Edited ${tag}`);
-  expect(after.refs).toEqual(before.refs);
-  expect(after.about).toBeNull();
+  const saved = await links(api, note);
+  expect(saved.text).toBe(`Edited ${tag}`);
+  expect(saved.refs).toEqual(before.refs);
+  expect(saved.about).toBeNull();
 
-  // The inverse side lists the note; saving the post is not rejected.
-  await list.getByRole('link', { name: `Rust ${tag}` }).click();
-  await expect(page).toHaveURL(new RegExp(`/content/api::ppost/${post}`));
-  const notes = page.locator('[data-field="notes"]').getByRole('list', { name: 'Notes' });
-  await expect(notes.getByRole('link', { name: `Edited ${tag}` })).toBeVisible();
+  // Reorder with the keyboard-reachable buttons.
+  await list.getByRole('button', { name: `Move Home ${tag} up` }).click();
+  await expect(list.getByRole('listitem').first()).toContainText(`Home ${tag}`);
+
+  // Add: pick a type, search it, check entries; linked ones are not offered again.
+  await refs.getByRole('button', { name: 'Link entries' }).click();
+  const picker = page.getByRole('dialog', { name: 'Link entries' });
+  await picker.getByLabel('Content type').selectOption({ label: 'Post card' });
+  await picker.getByLabel('Search entries').fill(tag);
+  const results = picker.getByRole('list', { name: 'Post card entries' });
+  await expect(results.getByRole('listitem')).toHaveCount(2);
+  await expect(results.getByRole('checkbox', { name: `Rust ${tag}` })).toBeDisabled();
+  await expect(results.getByRole('listitem').filter({ hasText: `Rust ${tag}` })).toContainText(
+    'Linked',
+  );
+  await results.getByRole('checkbox', { name: `Zig ${tag}` }).click();
+  await picker.getByRole('button', { name: 'Add 1 entry' }).click();
+  await expect(picker).toBeHidden();
+  await expect(list.getByRole('listitem')).toHaveCount(3);
+  await expect(list.getByRole('listitem').nth(2)).toContainText(`Zig ${tag}`);
+
+  // Remove one.
+  await list.getByRole('button', { name: `Remove Rust ${tag}` }).click();
+  await expect(list.getByRole('listitem')).toHaveCount(2);
+
+  // To-one: clicking a result links it and closes the picker.
+  await about.getByRole('button', { name: 'Link an entry' }).click();
+  const one = page.getByRole('dialog', { name: 'Link an entry' });
+  await one.getByLabel('Content type').selectOption({ label: 'Plain page' });
+  await one.getByLabel('Search entries').fill(tag);
+  await one.getByRole('button', { name: `Home ${tag}` }).click();
+  await expect(one).toBeHidden();
+  const aboutList = about.getByRole('list', { name: 'About' });
+  await expect(aboutList.getByRole('listitem')).toContainText('Plain page');
+  await expect(aboutList.getByRole('listitem')).toContainText(`Home ${tag}`);
+  await expect(about.getByRole('button', { name: 'Link an entry' })).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/screens/polymorphic-editor.png' });
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
+  const after = await links(api, note);
+  expect(after.refs).toEqual([`api::ppage:${other}`, `api::ppost:${extra}`]);
+  expect(after.about).toMatchObject({ __type: 'api::ppage', documentId: other });
+
+  // The to-one link is removed again; a reload shows what was saved.
+  await aboutList.getByRole('button', { name: `Remove Home ${tag}` }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
+  expect((await links(api, note)).about).toBeNull();
+  await page.reload();
+  await expect(list.getByRole('listitem')).toHaveCount(2);
+  await expect(list.getByRole('listitem').nth(1)).toContainText(`Zig ${tag}`);
+  expect(problems).toEqual([]);
+});
+
+test('inverse sides stay read-only and a save keeps the links', async ({ page }) => {
+  await signIn(page);
+  const api = await ensureTypes(page);
+  const tag = `I${Date.now()}`;
+  const post = await create(api, 'api::ppost', { title: `Rust ${tag}` });
+  const note = await create(api, 'api::pnote', {
+    text: `Note ${tag}`,
+    refs: [{ __type: 'api::ppost', documentId: post }],
+  });
+  const before = await links(api, note);
+
+  await page.goto(`/admin/content/api::ppost/${post}`);
+  const field = page.locator('[data-field="notes"]');
+  const notes = field.getByRole('list', { name: 'Notes' });
+  await expect(notes.getByRole('link', { name: `Note ${tag}` })).toHaveAttribute(
+    'href',
+    `/admin/content/api::pnote/${note}`,
+  );
   await expect(notes).toContainText('Pin note');
+  await expect(
+    field.getByText('Read-only: linked from the “refs” field of Pin note.'),
+  ).toBeVisible();
+  await expect(field.getByRole('button', { name: /Link/ })).toHaveCount(0);
   await page.getByLabel('Title').fill(`Rust edited ${tag}`);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
   expect((await links(api, note)).refs).toEqual(before.refs);
-  expect(problems).toEqual([]);
 });
 
 test('lists leave polymorphic relations out of the filters', async ({ page }) => {
@@ -171,7 +240,7 @@ test('lists leave polymorphic relations out of the filters', async ({ page }) =>
   await expect(field.locator('option', { hasText: /Refs|About/ })).toHaveCount(0);
 });
 
-test('the builder lists polymorphic fields read-only and keeps them on save', async ({ page }) => {
+test('the builder edits polymorphic fields and keeps them on save', async ({ page }) => {
   await signIn(page);
   const api = await ensureTypes(page);
   const note = await create(api, 'api::pnote', {
@@ -184,9 +253,16 @@ test('the builder lists polymorphic fields read-only and keeps them on save', as
   const refs = page.getByRole('listitem').filter({ hasText: 'refs' });
   await expect(refs.getByText('Polymorphic', { exact: true })).toBeVisible();
   await expect(refs.getByText('morphToMany', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Edit refs' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Remove refs' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Edit text' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit refs' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove refs' })).toBeVisible();
+
+  // An owner links any type: no target to choose.
+  const dialog = page.getByRole('dialog');
+  await page.getByRole('button', { name: 'Edit refs' }).click();
+  await expect(dialog.getByLabel('Relation', { exact: true })).toHaveValue('morphToMany');
+  await expect(dialog.locator('#relation-target')).toHaveCount(0);
+  await expect(dialog.locator('[data-morph-owner-hint]')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
 
   // The inverse side names the owner type and attribute.
   await page.goto('/admin/builder/ppost');
@@ -195,9 +271,37 @@ test('the builder lists polymorphic fields read-only and keeps them on save', as
   await expect(inverse).toContainText('morphMany → api::pnote');
   await expect(inverse).toContainText('refs');
 
+  // Adding an inverse side: the owner type, then its field of the matching kind.
+  await page.goto('/admin/builder/ppage');
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await dialog.getByLabel('Name').fill('mentions');
+  await dialog.getByLabel('Type').selectOption('relation');
+  await dialog.getByLabel('Relation', { exact: true }).selectOption('morphMany');
+  await expect(dialog.locator('[data-field-issue]')).toHaveText('Choose the owner type.');
+  await expect(dialog.getByRole('button', { name: 'Done' })).toBeDisabled();
+  await dialog.getByLabel('Owner type').selectOption({ label: 'Pin note' });
+  // `refs` is Pin note's only morphToMany field.
+  await expect(dialog.getByLabel('Owner field')).toHaveValue('refs');
+  await expect(
+    dialog.getByLabel('Owner field').locator('option', { hasText: 'about' }),
+  ).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog.getByRole('heading', { name: 'Review the migration' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.getByText('Schema updated')).toBeVisible();
+  const pageFile = JSON.parse(
+    readFileSync(join(project, 'schema', 'content-types', 'ppage.json'), 'utf8'),
+  );
+  expect(pageFile.attributes.mentions).toEqual({
+    type: 'relation',
+    relation: 'morphMany',
+    target: 'api::pnote',
+    morphBy: 'refs',
+  });
+
   // Adding a field saves the whole file: the polymorphic attributes stay as written.
   await page.goto('/admin/builder/pnote');
-  const dialog = page.getByRole('dialog');
   await page.getByRole('button', { name: 'Add field' }).click();
   await dialog.getByLabel('Name').fill('mood');
   await dialog.getByRole('button', { name: 'Done' }).click();
