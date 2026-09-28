@@ -264,6 +264,7 @@ impl App {
                     ApiConfig::default(),
                     "/api",
                     verdin_api::ContentServices {
+                        admin_url: Some("https://cms.test/admin".into()),
                         upload: Some(upload.clone()),
                         listeners: listeners.clone(),
                         locales: locales.clone(),

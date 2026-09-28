@@ -213,6 +213,7 @@ pub fn build_app(
         },
         &api.prefix,
         verdin_api::ContentServices {
+            admin_url: Some(format!("{}{}", context.origin().trim_end_matches('/'), admin.path)),
             upload: Some(context.upload.clone()),
             listeners: listeners.clone(),
             locales: context.locales.clone(),

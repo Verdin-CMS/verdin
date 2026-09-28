@@ -107,7 +107,7 @@ Hygraph) that fit Verdin best.
 |---|---|---|
 | **Realtime API** ✅ | M | SSE (and GraphQL subscriptions) on document events, filtered by the reader's permissions; PocketBase-style, fits the event bus |
 | Document locking & presence | S | "Who is editing" avatars and a soft lock in the editor, over the realtime channel; the step before co-editing |
-| **Visual editing** | M | Content source maps (stega) in preview responses and a small overlay script: click on the site, jump to the field |
+| **Visual editing** ✅ | M | Content source maps (stega) in preview responses and a small overlay script: click on the site, jump to the field (focusing the field in the admin's preview pending) |
 | Comments & tasks (API ✅) | M | Threads on entries and fields, @mentions, assignable tasks, email notifications; admin UI and the digest pending |
 | Polymorphic relations in the admin | M | Editable, not only shown: in the editor, a picker that searches entries across content types (choose the type, then the entry) to add, remove and reorder `morphToOne`/`morphToMany` links; in the builder, create and edit `morph*` attributes (inverse sides with `target` and `morphBy`, validated against the owner); inverse sides stay read-only, as in the API. Strapi has no admin UI for them |
 | Where used (API ✅) | S | Inverse references of an entry or file (relations, components, blocks), shown in the editor and the media library; warns before delete |

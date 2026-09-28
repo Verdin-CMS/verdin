@@ -37,4 +37,5 @@ mod transfer;
 mod two_factor;
 mod usage;
 mod views;
+mod visual_editing;
 mod webhooks;

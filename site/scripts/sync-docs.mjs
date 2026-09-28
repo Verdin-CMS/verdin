@@ -33,6 +33,7 @@ const ROUTES = {
   'docs/mcp.md': 'guides/mcp',
   'docs/backups.md': 'guides/backups',
   'docs/realtime.md': 'guides/realtime',
+  'docs/visual-editing.md': 'guides/visual-editing',
   'docs/architecture.md': 'reference/architecture',
   'docs/roadmap.md': 'project/roadmap',
   'docs/translating.md': 'project/translating',

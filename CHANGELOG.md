@@ -39,6 +39,9 @@ All notable changes to Verdin are documented here. The format follows
 - **Deploys and CDN purges**: build hook targets behind a "Deploy" button with a
   provider status callback (`deploy.manage`, `deploy.trigger`), and `[cdn]` purges by
   cache tag on Cloudflare, Fastly or a webhook when content changes publicly.
+- **Visual editing**: source maps hidden in the text of authenticated reads that send
+  `X-Verdin-Stega: true`, and an overlay script (`/admin/api/visual-editing.js`) that
+  jumps from the site to the field. See [docs/visual-editing.md](docs/visual-editing.md).
 
 ## [0.8.0] - 2026-09-28
 

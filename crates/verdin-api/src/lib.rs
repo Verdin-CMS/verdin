@@ -25,6 +25,7 @@ mod realtime_routes;
 pub mod releases;
 pub mod review;
 pub mod sso;
+pub mod stega;
 mod upload;
 pub mod webhooks;
 
@@ -165,6 +166,9 @@ pub struct ContentServices {
     pub review: Option<review::Review>,
     /// `GET /_events` (the `realtime` feature).
     pub realtime: Option<realtime::Realtime>,
+    /// The admin panel's URL (`https://cms.example.com/admin`), for visual editing's
+    /// source maps; `None` turns them off.
+    pub admin_url: Option<String>,
 }
 
 /// Content API routes, to be nested under the API prefix (e.g. `/api`).
@@ -186,6 +190,7 @@ pub fn router(
         plugins,
         review,
         realtime,
+        admin_url,
     } = services;
     let auth_for_events = auth.clone();
     let (listeners, locales) = (&listeners, &locales);
@@ -196,6 +201,16 @@ pub fn router(
             let single = content_type.kind == ContentTypeKind::SingleType;
             let name = if single { &content_type.singular_name } else { &content_type.plural_name };
             (name.clone(), Route { uid: content_type.uid.clone(), single })
+        })
+        .collect();
+    let registry_schema = registry.schema.clone();
+    let stega_routes: HashMap<String, String> = registry
+        .types()
+        .map(|model| {
+            let content_type = &model.content_type;
+            let single = content_type.kind == ContentTypeKind::SingleType;
+            let name = if single { &content_type.singular_name } else { &content_type.plural_name };
+            (name.clone(), content_type.uid.clone())
         })
         .collect();
     let tag_names: HashMap<String, String> = registry
@@ -252,7 +267,11 @@ pub fn router(
                 .delete(handlers::document_delete),
         )
         .route("/{name}/{document_id}/actions/{action}", post(handlers::document_action))
-        .layer(axum::middleware::from_fn_with_state(Arc::new(tag_names), cdn::tag_responses));
+        .layer(axum::middleware::from_fn_with_state(Arc::new(tag_names), cdn::tag_responses))
+        .layer(axum::middleware::from_fn_with_state(
+            Arc::new(StegaState { schema: registry_schema, routes: stega_routes, admin_url }),
+            mark_text,
+        ));
     let router =
         config.http.apply(regular).merge(uploads).fallback(handlers::not_found).with_state(state);
     let router = match users {
@@ -284,4 +303,62 @@ pub fn admin_router(
     config: AdminConfig,
 ) -> Router {
     admin::router(db, registry, auth, config)
+}
+
+struct StegaState {
+    schema: Arc<verdin_schema::Schema>,
+    /// Route name → content type uid.
+    routes: HashMap<String, String>,
+    admin_url: Option<String>,
+}
+
+/// Visual editing: authenticated reads that ask for it get source maps in their text.
+async fn mark_text(
+    axum::extract::State(state): axum::extract::State<Arc<StegaState>>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let headers = request.headers();
+    let asked = headers
+        .get(stega::HEADER)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| matches!(value, "true" | "1"));
+    let authenticated = headers.contains_key(axum::http::header::AUTHORIZATION)
+        || headers.contains_key("x-verdin-preview");
+    let uid = request
+        .uri()
+        .path()
+        .trim_start_matches('/')
+        .split('/')
+        .next()
+        .and_then(|name| state.routes.get(name))
+        .cloned();
+    let reading = request.method() == axum::http::Method::GET;
+    let response = next.run(request).await;
+    let (Some(admin), Some(uid), true, true, true) =
+        (&state.admin_url, uid, asked, authenticated, reading)
+    else {
+        return response;
+    };
+    if !response.status().is_success() {
+        return response;
+    }
+    let (mut parts, body) = response.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
+        return axum::response::IntoResponse::into_response(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    };
+    let Ok(mut json) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return axum::response::Response::from_parts(parts, axum::body::Body::from(bytes));
+    };
+    if let Some(data) = json.get_mut("data") {
+        stega::mark_response(&state.schema, &uid, data, admin.trim_end_matches('/'));
+    }
+    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+    parts.headers.insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("private, no-store"),
+    );
+    axum::response::Response::from_parts(parts, axum::body::Body::from(json.to_string()))
 }

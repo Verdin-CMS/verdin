@@ -269,6 +269,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .route("/schema/plan", post(schema_plan))
         .route("/schema/apply", post(schema_apply))
         .route("/system/info", get(system_info))
+        .route("/visual-editing.js", get(visual_editing_script))
         .route("/features", get(list_features))
         .route("/features/{id}", axum::routing::put(update_feature))
         .merge(engagement::routes())
@@ -405,6 +406,18 @@ fn session_response(state: &AdminState, session: Session, status: StatusCode) ->
         .insert(header::SET_COOKIE, cookie(state, &session.refresh_token, max_age));
     response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
+}
+
+/// The visual editing overlay, for sites to load in preview.
+async fn visual_editing_script() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static("text/javascript; charset=utf-8")),
+            (header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=3600")),
+        ],
+        crate::stega::OVERLAY,
+    )
+        .into_response()
 }
 
 async fn auth_status(State(state): State<AdminState>) -> ApiResult {

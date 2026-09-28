@@ -55,6 +55,7 @@ export default defineConfig({
             'guides/mcp',
             'guides/backups',
             'guides/realtime',
+            'guides/visual-editing',
           ],
         },
         {
