@@ -105,6 +105,29 @@ pub fn write_filter(out: &mut SqlBuilder, filter: &Filter, alias: &str, context:
         }
         Filter::Condition(condition) => write_condition(out, condition, Some(alias)),
         Filter::Relation(relation) => write_relation(out, relation, alias, context),
+        Filter::Items { column, inner } => {
+            out.push("EXISTS (SELECT 1 FROM ");
+            match out.flavor {
+                Flavor::Postgres => {
+                    out.push("jsonb_array_elements(COALESCE(");
+                    out.column(Some(alias), column);
+                    out.push(", '[]'::jsonb)) AS ji(value)");
+                }
+                Flavor::MySql | Flavor::MariaDb => {
+                    out.push("JSON_TABLE(COALESCE(");
+                    out.column(Some(alias), column);
+                    out.push(", '[]'), '$[*]' COLUMNS (value JSON PATH '$')) AS ji");
+                }
+                Flavor::Sqlite => {
+                    out.push("json_each(COALESCE(");
+                    out.column(Some(alias), column);
+                    out.push(", '[]')) AS ji");
+                }
+            }
+            out.push(" WHERE ");
+            write_filter(out, inner, "ji", context);
+            out.push(")");
+        }
         Filter::HasPublished { table, published } => {
             out.push(if *published { "EXISTS" } else { "NOT EXISTS" });
             out.push(" (SELECT 1 FROM ").ident(table).push(" pv WHERE ");

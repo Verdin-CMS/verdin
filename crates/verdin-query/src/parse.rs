@@ -168,9 +168,18 @@ impl Parser<'_> {
                     Some(AttributeKind::Component { component, repeatable: false, .. }) => {
                         self.component_filter(&field.column, Vec::new(), component, name, node)
                     }
-                    _ => Err(QueryError::new(format!(
-                        "filtering on repeatable components and dynamic zones (`{name}`) is not supported"
-                    ))),
+                    // Some item matches: `filters[links][url][$contains]=…`.
+                    Some(AttributeKind::Component { component, repeatable: true, .. }) => {
+                        let inner =
+                            self.component_filter("value", Vec::new(), component, name, node)?;
+                        Ok(Filter::Items { column: field.column.clone(), inner: Box::new(inner) })
+                    }
+                    // Dynamic zones, by component: `filters[blocks][__component][$eq]=blocks.hero`.
+                    Some(AttributeKind::DynamicZone { .. }) => {
+                        let inner = self.zone_filter(name, node)?;
+                        Ok(Filter::Items { column: field.column.clone(), inner: Box::new(inner) })
+                    }
+                    _ => Err(QueryError::new(format!("cannot filter on `{name}`"))),
                 };
             }
         }
@@ -224,6 +233,33 @@ impl Parser<'_> {
                 }
             };
             filters.push(filter);
+        }
+        Ok(if filters.len() == 1 { filters.pop().expect("one") } else { Filter::And(filters) })
+    }
+
+    /// The items of a dynamic zone can be filtered by `__component` only (their fields
+    /// depend on the component).
+    fn zone_filter(&mut self, display: &str, node: &Node) -> Result<Filter, QueryError> {
+        let map = node
+            .as_map()
+            .ok_or_else(|| QueryError::new(format!("filter `{display}` by `__component`")))?;
+        let mut filters = Vec::with_capacity(map.len());
+        for (key, value) in map {
+            if key != "__component" {
+                return Err(QueryError::new(format!(
+                    "dynamic zones are filtered by `__component` only (got `{display}.{key}`)"
+                )));
+            }
+            let field = Field {
+                api: format!("{display}.__component"),
+                column: "value".into(),
+                kind: ColumnKind::Text,
+                category: FieldCategory::Scalar,
+                attribute: None,
+                relation: None,
+                media: None,
+            };
+            filters.push(self.operator_filters(&field, vec!["__component".into()], value)?);
         }
         Ok(if filters.len() == 1 { filters.pop().expect("one") } else { Filter::And(filters) })
     }

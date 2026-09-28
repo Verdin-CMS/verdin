@@ -100,6 +100,12 @@ pub enum Filter {
         table: String,
         published: bool,
     },
+    /// Repeatable components and dynamic zones: some item of the JSON array in `column`
+    /// matches `inner`, whose conditions read the item as column `value` of alias `ji`.
+    Items {
+        column: String,
+        inner: Box<Filter>,
+    },
 }
 
 /// `EXISTS (SELECT 1 FROM {table} m WHERE m.user_id = ? AND m.content_type = ?

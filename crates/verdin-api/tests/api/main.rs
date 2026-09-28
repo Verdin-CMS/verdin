@@ -10,6 +10,7 @@ mod components;
 mod conformance;
 mod digest;
 mod end_users;
+mod filters;
 mod history;
 mod i18n;
 mod media;

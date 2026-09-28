@@ -1,0 +1,88 @@
+//! Filters on repeatable components and dynamic zones.
+
+use axum::http::StatusCode;
+use serde_json::{Value, json};
+use verdin_schema::{Schema, Source};
+
+use crate::common::App;
+
+fn schema() -> Schema {
+    Schema::parse(&[
+        Source::content_type(
+            "page",
+            json!({ "kind": "collectionType", "singularName": "page", "pluralName": "pages",
+                    "displayName": "Page",
+                    "attributes": {
+                        "title": { "type": "string" },
+                        "links": { "type": "component", "component": "shared.link", "repeatable": true },
+                        "blocks": { "type": "dynamiczone", "components": ["shared.link", "blocks.hero"] }
+                    } })
+            .to_string(),
+        ),
+        Source::component(
+            "shared",
+            "link",
+            json!({ "displayName": "Link", "attributes": {
+                "url": { "type": "string" }, "clicks": { "type": "integer" }, "external": { "type": "boolean" }
+            } })
+            .to_string(),
+        ),
+        Source::component(
+            "blocks",
+            "hero",
+            json!({ "displayName": "Hero", "attributes": { "heading": { "type": "string" } } }).to_string(),
+        ),
+    ])
+    .unwrap()
+}
+
+fn titles(body: &Value) -> Vec<String> {
+    let mut titles: Vec<String> = body["data"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{body}"))
+        .iter()
+        .map(|doc| doc["title"].as_str().unwrap().to_owned())
+        .collect();
+    titles.sort();
+    titles
+}
+
+#[tokio::test]
+async fn filters_on_repeatable_components_and_zones() {
+    let app = App::new(schema()).await;
+    let link = |url: &str, clicks: i64, external: bool| json!({ "url": url, "clicks": clicks, "external": external });
+    for (title, links, blocks) in [
+        (
+            "Docs",
+            vec![link("https://verdin.dev", 10, false), link("https://rust-lang.org", 3, true)],
+            json!([{ "__component": "blocks.hero", "heading": "Hi" }]),
+        ),
+        (
+            "Blog",
+            vec![link("https://verdin.dev/blog", 1, false)],
+            json!([{ "__component": "shared.link", "url": "https://x.y", "clicks": 0, "external": true }]),
+        ),
+        ("Empty", vec![], json!([])),
+    ] {
+        let (status, body) = app
+            .post("/api/pages", json!({ "title": title, "links": links, "blocks": blocks }))
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+    for (query, expected) in [
+        ("filters[links][url][$contains]=rust", vec!["Docs"]),
+        ("filters[links][url][$startsWith]=https://verdin.dev", vec!["Blog", "Docs"]),
+        ("filters[links][clicks][$gte]=5", vec!["Docs"]),
+        ("filters[links][external][$eq]=true", vec!["Docs"]),
+        ("filters[$not][links][clicks][$gt]=0", vec!["Empty"]),
+        ("filters[blocks][__component][$eq]=blocks.hero", vec!["Docs"]),
+        ("filters[blocks][__component][$in][0]=shared.link&filters[title][$ne]=Docs", vec!["Blog"]),
+    ] {
+        let (status, body) = app.get(&format!("/api/pages?{query}")).await;
+        assert_eq!(status, StatusCode::OK, "{query}: {body}");
+        assert_eq!(titles(&body), expected, "{query}");
+    }
+    let (status, _) = app.get("/api/pages?filters[blocks][heading][$eq]=Hi").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "zone items are filtered by __component only");
+    app.done().await;
+}
