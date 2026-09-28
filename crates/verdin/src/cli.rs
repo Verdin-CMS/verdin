@@ -500,6 +500,17 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         api.cache_entries,
     );
     let realtime = verdin_api::realtime::Realtime::new();
+    let metrics = project.config.metrics.enabled.then(|| {
+        crate::metrics::Metrics::new(
+            db.clone(),
+            realtime.clone(),
+            &project.config.api.prefix,
+            &project.config.admin.path,
+            std::env::var("VERDIN_METRICS_TOKEN")
+                .ok()
+                .or_else(|| project.config.metrics.token.clone()),
+        )
+    });
     let upload =
         verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone())
             .with_listener(Arc::new(webhooks.clone()))
@@ -547,6 +558,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         releases,
         digest,
         review,
+        metrics,
         realtime,
         plugins,
         audit,

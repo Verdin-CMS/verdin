@@ -186,6 +186,13 @@ See [Plugins](/guides/plugins/).
 | `format` | `"pretty"` | `pretty` or `json`. |
 | `level` | unset (`info`) | Default filter; `RUST_LOG` takes precedence when set. |
 
+## `[metrics]`
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `enabled` | `false` | Serve Prometheus metrics at `/_metrics`: HTTP requests by area (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), method and status class with latency histograms, pending webhook deliveries, open realtime streams and uptime. |
+| `token` | unset | Scrapes need `Authorization: Bearer <token>`. `VERDIN_METRICS_TOKEN` wins over it. Without a token, anyone who reaches the port can read the metrics. |
+
 ## Environment variables
 
 Besides the `VERDIN_<SECTION>__<KEY>` overrides, Verdin reads these variables:

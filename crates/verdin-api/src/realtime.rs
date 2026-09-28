@@ -106,6 +106,11 @@ impl Realtime {
         Arc::new(self.clone())
     }
 
+    /// Open event streams.
+    pub fn subscribers(&self) -> usize {
+        self.sender.receiver_count()
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<Message> {
         self.sender.subscribe()
     }

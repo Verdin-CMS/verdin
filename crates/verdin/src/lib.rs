@@ -5,6 +5,7 @@ pub mod app;
 pub mod cli;
 pub mod config;
 pub mod import;
+pub mod metrics;
 mod new;
 pub mod server;
 pub mod transfer;

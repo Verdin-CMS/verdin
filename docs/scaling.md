@@ -15,6 +15,8 @@ instance, and the settings that matter.
   The instances then start on the migrated database.
 - **Shared media storage.** Use the S3 provider (`[upload.provider] name = "s3"`), or a
   volume mounted on every instance for the local provider.
+- **Metrics.** With `[metrics] enabled = true`, each instance serves Prometheus metrics at
+  `/_metrics` (protect them with `VERDIN_METRICS_TOKEN`); scrape every instance.
 - **Health checks.** Point the load balancer at `GET /_ready`. It answers 503 when the
   database cannot be reached. `GET /_health` only says that the process is up, which
   suits a liveness probe.

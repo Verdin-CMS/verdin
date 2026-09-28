@@ -12,6 +12,8 @@ All notable changes to Verdin are documented here. The format follows
   and `GET /admin/api/events`, each filtered by what the subscriber may read, and
   **presence** on entries (`/admin/api/presence`) with a soft lock for the first editor.
   See [docs/realtime.md](docs/realtime.md).
+- **Prometheus metrics** at `/_metrics` (`[metrics]`): requests and latency by area,
+  webhook queue, realtime streams, uptime.
 
 ## [0.8.0] - 2026-09-28
 

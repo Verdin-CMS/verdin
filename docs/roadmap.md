@@ -119,7 +119,7 @@ Hygraph) that fit Verdin best.
 | Official plugins | S each | SEO fields + sitemap, redirects, nested pages and menus, form builder with submissions |
 | AI actions | M | Translate a locale, alt text, summaries and SEO suggestions, with the key of the user's provider (Anthropic, OpenAI, local); off by default |
 | Deploy & CDN hooks | S | "Deploy" button calling a build hook with its status; CDN purge (Cloudflare, Fastly, Vercel tags) on publish |
-| Metrics | S | Prometheus `/_metrics` (requests, latency, queues, plugin time); optional Sentry reporting |
+| Metrics ✅ | S | Prometheus `/_metrics` (requests, latency, webhook queue, realtime streams); plugin time and Sentry reporting moved to Later |
 
 ## Later
 
@@ -139,6 +139,7 @@ Large items worth doing once 0.9 lands:
 - Guided tour for first-time admins.
 - Signed URLs for private buckets (every file URL in responses signed for a short time).
 - Scoped, owner-bound admin API tokens (Strapi 5.47).
+- Plugin call times in the metrics, and optional Sentry error reporting.
 - RBAC conditions declared by plugins, and "is owner" for end users.
 - Encrypted exports, scheduled backups to S3, and `verdin transfer` between running
   instances with transfer tokens.

@@ -26,6 +26,16 @@ pub struct Config {
     pub audit: AuditConfig,
     pub digest: DigestConfig,
     pub log: LogConfig,
+    pub metrics: MetricsConfig,
+}
+
+/// `[metrics]`: Prometheus metrics at `/_metrics`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct MetricsConfig {
+    pub enabled: bool,
+    /// Scrapes need `Authorization: Bearer <token>` (`VERDIN_METRICS_TOKEN` wins).
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

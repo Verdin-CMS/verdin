@@ -69,6 +69,8 @@ pub struct AppContext {
     pub review: verdin_api::review::Review,
     /// Realtime events (admin always; the content API with the `realtime` feature).
     pub realtime: verdin_api::realtime::Realtime,
+    /// `[metrics]`: kept across rebuilds.
+    pub metrics: Option<crate::metrics::Metrics>,
 }
 
 impl AppContext {
@@ -315,6 +317,18 @@ pub fn build_app(
                 branding: admin_ui::Branding::load(&admin.branding, &context.root),
             },
         ));
+    }
+    if let Some(metrics) = &context.metrics {
+        app = app
+            .merge(
+                Router::new()
+                    .route("/_metrics", axum::routing::get(crate::metrics::scrape))
+                    .with_state(metrics.clone()),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                metrics.clone(),
+                crate::metrics::middleware,
+            ));
     }
     app
 }
@@ -1084,6 +1098,7 @@ mod tests {
             releases: verdin_api::releases::Releases::new(db_for_releases),
             review: verdin_api::review::Review::new(db_for_review),
             realtime: verdin_api::realtime::Realtime::new(),
+            metrics: None,
             digest: verdin_api::digest::Digest::new(
                 auth_for_digest,
                 verdin_email::Mailer::memory().0,
