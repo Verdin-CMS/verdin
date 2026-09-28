@@ -4,6 +4,7 @@ export type AttributeType =
   | 'string'
   | 'email'
   | 'text'
+  | 'password'
   | 'richtext'
   | 'blocks'
   | 'uid'

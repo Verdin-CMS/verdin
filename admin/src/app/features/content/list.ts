@@ -9,7 +9,8 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Params, Router, RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
@@ -17,6 +18,7 @@ import { HlmAlertDialogImports } from '@spartan-ng/helm/alert-dialog';
 import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmCheckboxImports } from '@spartan-ng/helm/checkbox';
+import { HlmDropdownMenuImports } from '@spartan-ng/helm/dropdown-menu';
 import { HlmEmptyImports } from '@spartan-ng/helm/empty';
 import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
@@ -26,6 +28,7 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { Api, ApiFailure, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { EntryDuplicates } from '../../core/duplicate';
 import { ContentLocales, isLocalized } from '../../core/content-locales';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
@@ -38,6 +41,18 @@ import { PageHeader } from '../../shared/components/page-header';
 import { StageBadge } from '../../shared/components/stage-badge';
 import { humanize } from './fields/fields';
 import { BULK_CONCURRENCY, BulkAction, failureReason, runLimited, summarize } from './list-bulk';
+import { ListFilterBuilder, operatorLabel } from './list-filter-builder';
+import {
+  FilterCondition,
+  FilterField,
+  VALUELESS,
+  conditionKey,
+  filterParams,
+  filterTree,
+  filterableFields,
+  isFilterParam,
+  parseFilterParams,
+} from './list-filters';
 import { ListSettings } from './list-settings';
 import {
   ListColumn,
@@ -104,7 +119,9 @@ interface LiveVersion {
     PageHeader,
     StageBadge,
     ListSettings,
+    ListFilterBuilder,
     HlmTableImports,
+    HlmDropdownMenuImports,
     HlmButtonImports,
     HlmBadgeImports,
     HlmCheckboxImports,
@@ -174,7 +191,13 @@ interface LiveVersion {
                 </hlm-native-select>
               </div>
             }
-            <span class="text-muted-foreground ms-auto text-sm tabular-nums">
+            <vd-list-filter-builder
+              [fields]="filterFields()"
+              [conditions]="conditions()"
+              [label]="filterLabel"
+              (applied)="setFilters($event)"
+            />
+            <span class="text-muted-foreground ms-auto text-sm tabular-nums" aria-live="polite">
               {{ t('content.list.total', { count: total() }) }}
             </span>
             @if (view(); as view) {
@@ -189,6 +212,38 @@ interface LiveVersion {
               />
             }
           </div>
+
+          @if (conditions().length) {
+            <div
+              class="bg-muted/20 flex flex-wrap items-center gap-2 border-b px-4 py-2"
+              role="region"
+              [attr.aria-label]="t('content.filters.active')"
+            >
+              <ul class="contents">
+                @for (condition of conditions(); track $index; let index = $index) {
+                  @let text = describe(condition);
+                  <li
+                    hlmBadge
+                    variant="secondary"
+                    class="h-7 max-w-full gap-1 rounded-full py-0 ps-3 pe-1 font-normal"
+                  >
+                    <span class="truncate" [title]="text">{{ text }}</span>
+                    <button
+                      type="button"
+                      class="hover:bg-foreground/10 focus-visible:ring-ring/50 inline-flex size-5 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2"
+                      [attr.aria-label]="t('content.filters.remove', { filter: text })"
+                      (click)="removeFilter(index)"
+                    >
+                      <ng-icon name="lucideX" size="12" />
+                    </button>
+                  </li>
+                }
+              </ul>
+              <button hlmBtn variant="ghost" size="xs" type="button" (click)="setFilters([])">
+                {{ t('content.filters.clear') }}
+              </button>
+            </div>
+          }
 
           <div hlmTableContainer>
             <table hlmTable>
@@ -231,6 +286,15 @@ interface LiveVersion {
                       }
                     </th>
                   }
+                  @if (localized()) {
+                    <th hlmTh class="px-4">
+                      <span
+                        class="text-muted-foreground text-xs font-medium tracking-wide uppercase"
+                      >
+                        {{ t('content.locale.label') }}
+                      </span>
+                    </th>
+                  }
                   @if (workflow()) {
                     <th hlmTh class="px-4">
                       <span
@@ -238,6 +302,11 @@ interface LiveVersion {
                       >
                         {{ t('review.list.stage') }}
                       </span>
+                    </th>
+                  }
+                  @if (canCreate()) {
+                    <th hlmTh class="w-12 pe-4">
+                      <span class="sr-only">{{ t('content.list.actions') }}</span>
                     </th>
                   }
                 </tr>
@@ -258,10 +327,16 @@ interface LiveVersion {
                           }
                         </td>
                       }
+                      @if (localized()) {
+                        <td hlmTd class="px-4 py-3"><hlm-skeleton class="h-5 w-10" /></td>
+                      }
                       @if (workflow()) {
                         <td hlmTd class="px-4 py-3">
                           <hlm-skeleton class="h-5 w-20 rounded-full" />
                         </td>
+                      }
+                      @if (canCreate()) {
+                        <td hlmTd class="pe-4"></td>
                       }
                     </tr>
                   }
@@ -328,11 +403,48 @@ interface LiveVersion {
                           </td>
                         }
                       }
+                      @if (localized()) {
+                        @let code = localeOf(document);
+                        <td hlmTd class="px-4 py-3">
+                          @if (code) {
+                            <span
+                              hlmBadge
+                              variant="outline"
+                              class="font-mono"
+                              [title]="locales.name(code)"
+                              >{{ code }}</span
+                            >
+                          }
+                        </td>
+                      }
                       @if (workflow(); as flow) {
                         <td hlmTd class="px-4 py-3">
                           @if (stageOfRow(flow, document.documentId); as stage) {
                             <vd-stage-badge [name]="stage.name" [color]="stage.color" />
                           }
+                        </td>
+                      }
+                      @if (canCreate()) {
+                        <td hlmTd class="pe-4 text-end" (click)="$event.stopPropagation()">
+                          <button
+                            hlmBtn
+                            variant="ghost"
+                            size="icon-sm"
+                            type="button"
+                            [disabled]="running() || duplicating() !== null"
+                            [attr.aria-label]="
+                              t('content.list.rowActions', { title: titleOf(document) })
+                            "
+                            [hlmDropdownMenuTrigger]="rowMenu"
+                            [hlmDropdownMenuTriggerData]="{ $implicit: document }"
+                            align="end"
+                          >
+                            @if (duplicating() === document.documentId) {
+                              <hlm-spinner class="size-4" />
+                            } @else {
+                              <ng-icon name="lucideEllipsis" />
+                            }
+                          </button>
                         </td>
                       }
                     </tr>
@@ -342,22 +454,36 @@ interface LiveVersion {
                         <div hlmEmpty class="py-12">
                           <div hlmEmptyHeader>
                             <div hlmEmptyMedia variant="icon">
-                              <ng-icon [name]="search() ? 'lucideSearch' : 'lucideFileText'" />
+                              <ng-icon
+                                [name]="
+                                  search()
+                                    ? 'lucideSearch'
+                                    : conditions().length
+                                      ? 'lucideListFilter'
+                                      : 'lucideFileText'
+                                "
+                              />
                             </div>
                             <h2 hlmEmptyTitle>
-                              {{ search() ? t('content.list.noMatches') : t('content.list.empty') }}
+                              {{
+                                search() || conditions().length
+                                  ? t('content.list.noMatches')
+                                  : t('content.list.empty')
+                              }}
                             </h2>
                             <p hlmEmptyDescription>
                               {{
                                 search()
                                   ? t('content.list.noMatchesHint', { search: search() })
-                                  : canCreate()
-                                    ? t('content.list.emptyHint')
-                                    : t('content.list.emptyReadOnly')
+                                  : conditions().length
+                                    ? t('content.filters.noMatchesHint')
+                                    : canCreate()
+                                      ? t('content.list.emptyHint')
+                                      : t('content.list.emptyReadOnly')
                               }}
                             </p>
                           </div>
-                          @if (!search() && canCreate()) {
+                          @if (!search() && !conditions().length && canCreate()) {
                             <div hlmEmptyContent>
                               <a
                                 hlmBtn
@@ -449,6 +575,17 @@ interface LiveVersion {
         }
       </div>
 
+      <ng-template #rowMenu let-document>
+        <hlm-dropdown-menu class="w-44">
+          <button hlmDropdownMenuItem (triggered)="open(document)">
+            <ng-icon name="lucidePencil" /> {{ t('common.edit') }}
+          </button>
+          <button hlmDropdownMenuItem (triggered)="duplicate(document)">
+            <ng-icon name="lucideCopyPlus" /> {{ t('content.duplicate.action') }}
+          </button>
+        </hlm-dropdown-menu>
+      </ng-template>
+
       <hlm-alert-dialog [state]="confirming() ? 'open' : 'closed'" (closed)="confirming.set(null)">
         <hlm-alert-dialog-content *hlmAlertDialogPortal="let ctx">
           @if (confirming(); as action) {
@@ -491,6 +628,8 @@ export class ContentList {
   protected readonly t = this.i18n.t;
   private readonly features = inject(Features);
   private readonly review = inject(ReviewWorkflows);
+  private readonly route = inject(ActivatedRoute);
+  private readonly duplicates = inject(EntryDuplicates);
 
   /** The type's review workflow (feature on and a workflow set), for the Stage column. */
   protected readonly workflow = signal<Workflow | null>(null);
@@ -550,7 +689,30 @@ export class ContentList {
   );
   protected readonly selectable = computed(() => this.canDelete() || this.canPublish());
   protected readonly colspan = computed(
-    () => this.columns().length + (this.selectable() ? 1 : 0) + (this.workflow() ? 1 : 0),
+    () =>
+      this.columns().length +
+      (this.selectable() ? 1 : 0) +
+      (this.localized() ? 1 : 0) +
+      (this.workflow() ? 1 : 0) +
+      (this.canCreate() ? 1 : 0),
+  );
+
+  /** The entry being duplicated (its row shows a spinner). */
+  protected readonly duplicating = signal<string | null>(null);
+
+  // Filters: kept in the URL (`filters[$and][i][field][$op]=value`).
+  private readonly queryParams = toSignal(this.route.queryParams, { initialValue: {} as Params });
+  protected readonly filterFields = computed<FilterField[]>(() => {
+    const type = this.type();
+    if (!type) return [];
+    return filterableFields(type, (target) => {
+      const targetType = this.schema.type(target);
+      return targetType ? this.schema.titleField(targetType) : null;
+    });
+  });
+  protected readonly conditions = computed<FilterCondition[]>(
+    () => parseFilterParams(this.queryParams(), this.filterFields()),
+    { equal: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   );
 
   /** Bumped to reload the current page. */
@@ -575,7 +737,14 @@ export class ContentList {
   });
   /** Back to the first page whenever what is listed changes. */
   protected readonly page = linkedSignal({
-    source: () => [this.uid(), this.locale(), this.search(), this.sort(), this.pageSize()],
+    source: () => [
+      this.uid(),
+      this.locale(),
+      this.search(),
+      this.conditions(),
+      this.sort(),
+      this.pageSize(),
+    ],
     computation: () => 1,
   });
   /** Selected document ids; only ever entries of the current page. */
@@ -585,6 +754,7 @@ export class ContentList {
       this.locale(),
       this.page(),
       this.search(),
+      this.conditions(),
       this.sort(),
       this.pageSize(),
       this.reloads(),
@@ -635,6 +805,7 @@ export class ContentList {
         page: this.page(),
         pageSize: this.pageSize(),
         search: this.search(),
+        conditions: this.conditions(),
         sort: this.sort(),
       };
       this.reloads();
@@ -653,6 +824,7 @@ export class ContentList {
     page: number;
     pageSize: number;
     search: string;
+    conditions: FilterCondition[];
     sort: ListSort;
   }): Promise<void> {
     const current = ++this.requests;
@@ -664,7 +836,13 @@ export class ContentList {
       locale: request.locale,
     };
     const field = this.titleField();
-    if (request.search && field) query['filters'] = { [field]: { $containsi: request.search } };
+    const filters = filterTree(request.conditions) as { $and?: Record<number, unknown> };
+    if (request.search && field) {
+      const search = { [field]: { $containsi: request.search } };
+      if (filters.$and) filters.$and[Object.keys(filters.$and).length] = search;
+      else Object.assign(filters, search);
+    }
+    query['filters'] = filters;
     try {
       const response = await this.api.list<Document>(`/content/${request.uid}`, toQuery(query));
       if (current !== this.requests) return;
@@ -805,6 +983,76 @@ export class ContentList {
   protected setSearch(value: string): void {
     clearTimeout(this.searchTimer);
     this.searchTimer = setTimeout(() => this.search.set(value), 250);
+  }
+
+  /** The locale of a listed version (localized types). */
+  protected localeOf(document: Document): string | null {
+    const locale = document['locale'];
+    return typeof locale === 'string' && locale ? locale : this.locale();
+  }
+
+  protected readonly filterLabel = (field: FilterField): string => {
+    if (!field.path) return this.columnLabel(field.field);
+    return this.t('content.filters.relationField', {
+      relation: humanize(field.field),
+      field:
+        field.path === 'documentId' ? this.t('content.filters.documentId') : humanize(field.path),
+    });
+  };
+
+  /** "Title contains “news”", for a chip. */
+  protected describe(condition: FilterCondition): string {
+    const field = this.filterFields().find((option) => option.key === conditionKey(condition));
+    if (!field) return '';
+    const subject =
+      VALUELESS.has(condition.operator) && field.relation
+        ? humanize(field.field)
+        : this.filterLabel(field);
+    const operator = this.t(operatorLabel(field, condition.operator));
+    if (VALUELESS.has(condition.operator)) return `${subject} ${operator}`;
+    const values = (Array.isArray(condition.value) ? condition.value : [condition.value]).map(
+      (value) => {
+        switch (field.kind) {
+          case 'boolean':
+            return this.t(value === 'true' ? 'common.yes' : 'common.no');
+          case 'date':
+          case 'datetime':
+            return this.i18n.formatDate(value.slice(0, 10), 'date');
+          case 'number':
+            return this.i18n.formatNumber(value);
+          default:
+            return `“${value}”`;
+        }
+      },
+    );
+    return `${subject} ${operator} ${this.i18n.formatList(values, 'disjunction')}`;
+  }
+
+  /** Applies filters: a new history entry, so going back restores the previous ones. */
+  protected setFilters(conditions: FilterCondition[]): void {
+    const kept = Object.fromEntries(
+      Object.entries(this.queryParams()).filter(([key]) => !isFilterParam(key)),
+    );
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { ...kept, ...filterParams(conditions) },
+    });
+  }
+
+  protected removeFilter(index: number): void {
+    this.setFilters(this.conditions().filter((_, position) => position !== index));
+  }
+
+  protected async duplicate(document: Document): Promise<void> {
+    if (this.duplicating()) return;
+    this.duplicating.set(document.documentId);
+    try {
+      await this.duplicates.duplicate(this.uid(), document.documentId, this.locale(), (name) =>
+        this.columnLabel(name),
+      );
+    } finally {
+      this.duplicating.set(null);
+    }
   }
 
   protected open(document: Document): void {

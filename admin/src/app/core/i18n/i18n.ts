@@ -184,6 +184,12 @@ export class I18n {
     return Number.isFinite(number) ? this.numberFormat().format(number) : String(value);
   };
 
+  /** `a, b and c` (or `a, b or c`), in the interface language. */
+  readonly formatList = (
+    items: readonly string[],
+    type: 'conjunction' | 'disjunction' = 'conjunction',
+  ): string => new Intl.ListFormat(this.formatLocale(), { type }).format(items);
+
   private configureCalendar(tag: string, weekStart: Weekday): void {
     // 2023-01-01 was a Sunday: index 0 of the calendar's weekdays.
     const weekday = (index: number, width: 'short' | 'long') =>

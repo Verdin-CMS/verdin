@@ -10,7 +10,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { FieldTree, FormRoot, SchemaPath, form, submit, validate } from '@angular/forms/signals';
+import { FieldTree, FormRoot, form, submit } from '@angular/forms/signals';
 import { Router, RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -27,6 +27,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
 import { Api, ApiFailure, Issue, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { EntryDuplicates } from '../../core/duplicate';
 import {
   ContentLocales,
   LocaleState,
@@ -41,26 +42,29 @@ import { EntryReview as EntryReviewState, pendingPublishStage } from '../../core
 import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { Schema } from '../../core/schema';
-import { Attributes, ContentType, Document, MediaFile } from '../../core/types';
+import { ContentType, Document, MediaFile } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 import { VoteControl } from '../../shared/components/vote-control';
 import { EntryReleases } from './entry-releases';
 import { EntryReview } from './entry-review';
-import { FieldsComponent } from './fields/fields';
+import { FieldsComponent, humanize } from './fields/fields';
 import {
   FormModel,
   References,
-  documentLabel,
   mediaFilesOf,
   referencesOf,
+  relationLabelsOf,
   toModel,
   toPayload,
+  withoutPasswords,
 } from './fields/model';
+import { RelatedEditor } from './fields/related-editor';
+import { applyRules } from './fields/rules';
 import { fillFromLocale, prefillShared, sharedFields } from './locale-model';
+import { PreviewPane, SPLIT_DEFAULT, frameableUrl, splitAfterKey, splitAt } from './preview-pane';
+import { RelatedEntrySheet } from './related-entry-sheet';
 
 type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-
-type Translate = I18n['t'];
 
 const LOCALE_STATE_LABELS = {
   published: 'content.locale.state.published',
@@ -84,50 +88,6 @@ function withLocale(query: string, locale: string | null): string {
   return query ? `${query}&${param}` : param;
 }
 
-/** Client-side checks mirroring the schema. `required` is left to the server: drafts may be incomplete. */
-function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Translate): void {
-  for (const [name, attribute] of Object.entries(attributes)) {
-    const field = (path as unknown as Record<string, SchemaPath<unknown>>)[name];
-    validate(field, ({ value }) => {
-      const current = value();
-      if (current === null || current === undefined || current === '') return undefined;
-      if (typeof current === 'string') {
-        const length = [...current].length;
-        if (attribute.maxLength !== undefined && length > attribute.maxLength) {
-          return {
-            kind: 'maxLength',
-            message: t('content.validation.maxLength', { count: attribute.maxLength }),
-          };
-        }
-        if (attribute.minLength !== undefined && length < attribute.minLength) {
-          return {
-            kind: 'minLength',
-            message: t('content.validation.minLength', { count: attribute.minLength }),
-          };
-        }
-        if (attribute.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(current)) {
-          return { kind: 'email', message: t('content.validation.email') };
-        }
-        if (attribute.regex && !new RegExp(attribute.regex).test(current)) {
-          return {
-            kind: 'pattern',
-            message: t('content.validation.pattern', { pattern: attribute.regex }),
-          };
-        }
-      }
-      if (typeof current === 'number') {
-        if (attribute.min !== undefined && current < attribute.min) {
-          return { kind: 'min', message: t('content.validation.min', { min: attribute.min }) };
-        }
-        if (attribute.max !== undefined && current > attribute.max) {
-          return { kind: 'max', message: t('content.validation.max', { max: attribute.max }) };
-        }
-      }
-      return undefined;
-    });
-  }
-}
-
 /** The editable form of one document; recreated per document by `ContentEdit`. */
 @Component({
   selector: 'vd-document-form',
@@ -140,6 +100,8 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
     NgIcon,
     FieldsComponent,
     PageHeader,
+    PreviewPane,
+    RelatedEntrySheet,
     HlmButtonImports,
     HlmBadgeImports,
     HlmCardImports,
@@ -151,6 +113,8 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
     HlmNativeSelectImports,
     HlmSpinnerImports,
   ],
+  // Relation pickers open related entries in this editor's side sheet.
+  providers: [RelatedEditor],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-6">
@@ -232,6 +196,18 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
               }
               {{ t('content.preview.open') }}
             </button>
+            <button
+              hlmBtn
+              variant="ghost"
+              type="button"
+              class="max-lg:hidden"
+              [attr.aria-pressed]="sideBySide()"
+              [disabled]="previewLoading()"
+              (click)="toggleSideBySide()"
+            >
+              <ng-icon name="lucideColumns2" />
+              {{ t('content.preview.sideBySide') }}
+            </button>
           }
           @if (documentId() && historyOn() && !missing()) {
             <a
@@ -242,6 +218,28 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
             >
               <ng-icon name="lucideHistory" /> {{ t('content.history.open') }}
             </a>
+          }
+          @if (canDuplicate()) {
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon"
+              type="button"
+              [disabled]="busy()"
+              [attr.aria-label]="t('content.edit.moreActions')"
+              [title]="t('content.edit.moreActions')"
+              [hlmDropdownMenuTrigger]="moreMenu"
+              align="end"
+            >
+              <ng-icon name="lucideEllipsis" />
+            </button>
+            <ng-template #moreMenu>
+              <hlm-dropdown-menu class="w-48">
+                <button hlmDropdownMenuItem (triggered)="duplicate()">
+                  <ng-icon name="lucideCopyPlus" /> {{ t('content.duplicate.action') }}
+                </button>
+              </hlm-dropdown-menu>
+            </ng-template>
           }
           <button
             hlmBtn
@@ -313,182 +311,231 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
         </div>
       }
 
-      <div class="grid items-start gap-6 lg:grid-cols-3">
-        <form
-          class="min-w-0 lg:col-span-2"
-          [formRoot]="documentForm"
-          (submit)="$event.preventDefault(); save(false)"
-        >
-          <section hlmCard>
-            <div hlmCardContent>
-              <vd-fields
-                [attributes]="type().attributes"
-                [tree]="tree"
-                [context]="{ uid: type().uid, documentId: documentId(), locale: locale() }"
-                [relationLabels]="relationLabels()"
-                [mediaFiles]="mediaFiles()"
-                [refs]="refs()"
-                [inverse]="inverse()"
-                [shared]="shared()"
-                prefix="doc"
-              />
-            </div>
-          </section>
-        </form>
+      <div
+        #splitBox
+        class="flex flex-col gap-6"
+        [class.lg:grid]="sideBySide()"
+        [class.lg:gap-0]="sideBySide()"
+        [class.lg:items-start]="sideBySide()"
+        [style.grid-template-columns]="sideBySide() ? splitColumns() : null"
+      >
+        <div class="grid min-w-0 items-start gap-6" [class.lg:grid-cols-3]="!sideBySide()">
+          <form
+            class="min-w-0"
+            [class.lg:col-span-2]="!sideBySide()"
+            [formRoot]="documentForm"
+            (submit)="$event.preventDefault(); save(false)"
+          >
+            <section hlmCard>
+              <div hlmCardContent>
+                <vd-fields
+                  [attributes]="type().attributes"
+                  [tree]="tree"
+                  [context]="{ uid: type().uid, documentId: documentId(), locale: locale() }"
+                  [relationLabels]="relationLabels()"
+                  [mediaFiles]="mediaFiles()"
+                  [refs]="refs()"
+                  [inverse]="inverse()"
+                  [shared]="shared()"
+                  prefix="doc"
+                />
+              </div>
+            </section>
+          </form>
 
-        <aside class="flex flex-col gap-6 lg:sticky lg:top-6">
-          <section hlmCard size="sm">
-            <div hlmCardHeader>
-              <h2 hlmCardTitle>{{ t('content.edit.details') }}</h2>
-              @if (type().draftAndPublish && !missing()) {
-                <div hlmCardAction>
-                  <span hlmBadge [variant]="status() === 'published' ? 'secondary' : 'outline'">
-                    <span
-                      class="size-1.5 rounded-full"
-                      aria-hidden="true"
-                      [class]="
-                        status() === 'published'
-                          ? 'bg-emerald-500'
-                          : status() === 'modified'
-                            ? 'bg-amber-500'
-                            : 'bg-muted-foreground/60'
-                      "
-                    ></span>
-                    {{ statusLabel() }}
-                  </span>
-                </div>
-              }
-            </div>
-            <div hlmCardContent class="flex flex-col gap-4">
-              @if (type().draftAndPublish && documentId() && !missing()) {
-                <p class="text-muted-foreground text-sm">{{ statusHint() }}</p>
-              }
-              <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                <dt class="text-muted-foreground">{{ t('content.edit.created') }}</dt>
-                <dd class="text-end" [title]="i18n.formatDate(createdAt(), 'long')">
-                  {{ createdAt() ? i18n.formatDate(createdAt(), 'datetime') : '—' }}
-                </dd>
-                <dt class="text-muted-foreground">{{ t('content.edit.updated') }}</dt>
-                <dd class="text-end" [title]="i18n.formatDate(draftUpdatedAt(), 'long')">
-                  {{ draftUpdatedAt() ? i18n.formatDate(draftUpdatedAt(), 'datetime') : '—' }}
-                </dd>
-                @if (type().draftAndPublish) {
-                  <dt class="text-muted-foreground">{{ t('content.edit.lastPublished') }}</dt>
-                  <dd class="text-end" [title]="i18n.formatDate(publishedUpdatedAt(), 'long')">
-                    {{
-                      published() && publishedUpdatedAt()
-                        ? i18n.formatDate(publishedUpdatedAt(), 'datetime')
-                        : '—'
-                    }}
-                  </dd>
+          <aside
+            class="flex flex-col gap-6"
+            [class.lg:sticky]="!sideBySide()"
+            [class.lg:top-6]="!sideBySide()"
+          >
+            <section hlmCard size="sm">
+              <div hlmCardHeader>
+                <h2 hlmCardTitle>{{ t('content.edit.details') }}</h2>
+                @if (type().draftAndPublish && !missing()) {
+                  <div hlmCardAction>
+                    <span hlmBadge [variant]="status() === 'published' ? 'secondary' : 'outline'">
+                      <span
+                        class="size-1.5 rounded-full"
+                        aria-hidden="true"
+                        [class]="
+                          status() === 'published'
+                            ? 'bg-emerald-500'
+                            : status() === 'modified'
+                              ? 'bg-amber-500'
+                              : 'bg-muted-foreground/60'
+                        "
+                      ></span>
+                      {{ statusLabel() }}
+                    </span>
+                  </div>
                 }
-              </dl>
-              @if (documentId(); as id) {
-                <div class="flex items-center justify-between border-t pt-3">
-                  <span class="text-muted-foreground text-sm">{{ t('votes.title') }}</span>
-                  <vd-vote-control [uid]="type().uid" [documentId]="id" />
-                </div>
-              }
-            </div>
-            @if (documentId() && type().draftAndPublish && published() && canPublish()) {
-              <div hlmCardFooter class="flex flex-col items-stretch gap-2 border-t">
-                <button
-                  hlmBtn
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  [disabled]="busy()"
-                  (click)="action('unpublish')"
-                >
-                  <ng-icon name="lucideEyeOff" /> {{ t('content.edit.unpublish') }}
-                </button>
-                @if (status() === 'modified') {
+              </div>
+              <div hlmCardContent class="flex flex-col gap-4">
+                @if (type().draftAndPublish && documentId() && !missing()) {
+                  <p class="text-muted-foreground text-sm">{{ statusHint() }}</p>
+                }
+                <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                  <dt class="text-muted-foreground">{{ t('content.edit.created') }}</dt>
+                  <dd class="text-end" [title]="i18n.formatDate(createdAt(), 'long')">
+                    {{ createdAt() ? i18n.formatDate(createdAt(), 'datetime') : '—' }}
+                  </dd>
+                  <dt class="text-muted-foreground">{{ t('content.edit.updated') }}</dt>
+                  <dd class="text-end" [title]="i18n.formatDate(draftUpdatedAt(), 'long')">
+                    {{ draftUpdatedAt() ? i18n.formatDate(draftUpdatedAt(), 'datetime') : '—' }}
+                  </dd>
+                  @if (type().draftAndPublish) {
+                    <dt class="text-muted-foreground">{{ t('content.edit.lastPublished') }}</dt>
+                    <dd class="text-end" [title]="i18n.formatDate(publishedUpdatedAt(), 'long')">
+                      {{
+                        published() && publishedUpdatedAt()
+                          ? i18n.formatDate(publishedUpdatedAt(), 'datetime')
+                          : '—'
+                      }}
+                    </dd>
+                  }
+                </dl>
+                @if (documentId(); as id) {
+                  <div class="flex items-center justify-between border-t pt-3">
+                    <span class="text-muted-foreground text-sm">{{ t('votes.title') }}</span>
+                    <vd-vote-control [uid]="type().uid" [documentId]="id" />
+                  </div>
+                }
+              </div>
+              @if (documentId() && type().draftAndPublish && published() && canPublish()) {
+                <div hlmCardFooter class="flex flex-col items-stretch gap-2 border-t">
                   <button
                     hlmBtn
                     variant="outline"
                     size="sm"
                     type="button"
                     [disabled]="busy()"
-                    (click)="action('discard-draft')"
+                    (click)="action('unpublish')"
                   >
-                    <ng-icon name="lucideUndo2" /> {{ t('content.edit.discard') }}
+                    <ng-icon name="lucideEyeOff" /> {{ t('content.edit.unpublish') }}
                   </button>
-                }
-              </div>
-            }
-          </section>
-
-          @if (reviewOn() && !missing()) {
-            @if (documentId(); as id) {
-              <vd-entry-review
-                [uid]="type().uid"
-                [documentId]="id"
-                [locale]="locale()"
-                (changed)="review.set($event)"
-              />
-            }
-          }
-
-          @if (releasesOn() && type().draftAndPublish && !missing()) {
-            @if (documentId(); as id) {
-              <vd-entry-releases
-                [uid]="type().uid"
-                [documentId]="id"
-                [locale]="locale()"
-                [canAdd]="canPublish()"
-              />
-            }
-          }
-
-          @if (documentId() && !missing() && auth.canContent('content.delete', type().uid)) {
-            <section hlmCard size="sm" class="ring-destructive/30">
-              <div hlmCardHeader>
-                <h2 hlmCardTitle>{{ t('content.edit.dangerZone') }}</h2>
-                <p hlmCardDescription>
-                  {{
-                    locale()
-                      ? t('content.locale.dangerHint', { locale: locales.name(locale()) })
-                      : t('content.edit.dangerHint')
-                  }}
-                </p>
-              </div>
-              <div hlmCardFooter>
-                <hlm-alert-dialog>
-                  <button
-                    hlmAlertDialogTrigger
-                    hlmBtn
-                    variant="destructive"
-                    size="sm"
-                    type="button"
-                    class="w-full"
-                  >
-                    <ng-icon name="lucideTrash2" /> {{ t('common.delete') }}
-                  </button>
-                  <hlm-alert-dialog-content *hlmAlertDialogPortal="let ctx">
-                    <hlm-alert-dialog-header>
-                      <h2 hlmAlertDialogTitle>{{ t('content.edit.deleteTitle') }}</h2>
-                      <p hlmAlertDialogDescription>{{ t('content.edit.deleteHint') }}</p>
-                    </hlm-alert-dialog-header>
-                    <hlm-alert-dialog-footer>
-                      <button hlmAlertDialogCancel (click)="ctx.close()">
-                        {{ t('common.cancel') }}
-                      </button>
-                      <button
-                        hlmAlertDialogAction
-                        variant="destructive"
-                        (click)="ctx.close(); remove()"
-                      >
-                        {{ t('common.delete') }}
-                      </button>
-                    </hlm-alert-dialog-footer>
-                  </hlm-alert-dialog-content>
-                </hlm-alert-dialog>
-              </div>
+                  @if (status() === 'modified') {
+                    <button
+                      hlmBtn
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      [disabled]="busy()"
+                      (click)="action('discard-draft')"
+                    >
+                      <ng-icon name="lucideUndo2" /> {{ t('content.edit.discard') }}
+                    </button>
+                  }
+                </div>
+              }
             </section>
-          }
-        </aside>
+
+            @if (reviewOn() && !missing()) {
+              @if (documentId(); as id) {
+                <vd-entry-review
+                  [uid]="type().uid"
+                  [documentId]="id"
+                  [locale]="locale()"
+                  (changed)="review.set($event)"
+                />
+              }
+            }
+
+            @if (releasesOn() && type().draftAndPublish && !missing()) {
+              @if (documentId(); as id) {
+                <vd-entry-releases
+                  [uid]="type().uid"
+                  [documentId]="id"
+                  [locale]="locale()"
+                  [canAdd]="canPublish()"
+                />
+              }
+            }
+
+            @if (documentId() && !missing() && auth.canContent('content.delete', type().uid)) {
+              <section hlmCard size="sm" class="ring-destructive/30">
+                <div hlmCardHeader>
+                  <h2 hlmCardTitle>{{ t('content.edit.dangerZone') }}</h2>
+                  <p hlmCardDescription>
+                    {{
+                      locale()
+                        ? t('content.locale.dangerHint', { locale: locales.name(locale()) })
+                        : t('content.edit.dangerHint')
+                    }}
+                  </p>
+                </div>
+                <div hlmCardFooter>
+                  <hlm-alert-dialog>
+                    <button
+                      hlmAlertDialogTrigger
+                      hlmBtn
+                      variant="destructive"
+                      size="sm"
+                      type="button"
+                      class="w-full"
+                    >
+                      <ng-icon name="lucideTrash2" /> {{ t('common.delete') }}
+                    </button>
+                    <hlm-alert-dialog-content *hlmAlertDialogPortal="let ctx">
+                      <hlm-alert-dialog-header>
+                        <h2 hlmAlertDialogTitle>{{ t('content.edit.deleteTitle') }}</h2>
+                        <p hlmAlertDialogDescription>{{ t('content.edit.deleteHint') }}</p>
+                      </hlm-alert-dialog-header>
+                      <hlm-alert-dialog-footer>
+                        <button hlmAlertDialogCancel (click)="ctx.close()">
+                          {{ t('common.cancel') }}
+                        </button>
+                        <button
+                          hlmAlertDialogAction
+                          variant="destructive"
+                          (click)="ctx.close(); remove()"
+                        >
+                          {{ t('common.delete') }}
+                        </button>
+                      </hlm-alert-dialog-footer>
+                    </hlm-alert-dialog-content>
+                  </hlm-alert-dialog>
+                </div>
+              </section>
+            }
+          </aside>
+        </div>
+        @if (sideBySide()) {
+          <div
+            role="separator"
+            tabindex="0"
+            aria-orientation="vertical"
+            aria-controls="document-preview"
+            [attr.aria-label]="t('content.preview.resize')"
+            [attr.aria-valuenow]="split()"
+            aria-valuemin="30"
+            aria-valuemax="70"
+            class="group hidden cursor-col-resize touch-none justify-center px-1.5 outline-none lg:sticky lg:top-6 lg:flex lg:h-[calc(100dvh-8rem)]"
+            (pointerdown)="startResize($event, splitBox)"
+            (pointermove)="resize($event, splitBox)"
+            (pointerup)="stopResize($event)"
+            (pointercancel)="stopResize($event)"
+            (keydown)="resizeKey($event)"
+          >
+            <span
+              class="bg-border group-hover:bg-primary/60 group-focus-visible:bg-primary group-focus-visible:ring-ring/50 h-full w-1 rounded-full transition-colors group-focus-visible:ring-3"
+            ></span>
+          </div>
+          <vd-preview-pane
+            id="document-preview"
+            class="h-[70dvh] lg:sticky lg:top-6 lg:h-[calc(100dvh-8rem)]"
+            [url]="previewUrl()"
+            [version]="previewVersion()"
+            [title]="heading()"
+            [loading]="previewLoading()"
+            (reload)="refreshPreview()"
+            (openTab)="openPreview()"
+            (closed)="sideBySide.set(false)"
+          />
+        }
       </div>
     </div>
+
+    <vd-related-entry-sheet />
 
     <hlm-dialog [state]="filling() ? 'open' : 'closed'" (closed)="filling.set(false)">
       <hlm-dialog-content
@@ -642,6 +689,26 @@ export class DocumentForm implements OnInit {
       !!previewTemplate(this.features.settings('preview'), this.type().uid),
   );
   protected readonly previewing = signal(false);
+  /** The side-by-side preview: its URL (checked http(s)) and a counter that reloads it. */
+  protected readonly sideBySide = signal(false);
+  protected readonly previewUrl = signal<string | null>(null);
+  protected readonly previewVersion = signal(0);
+  protected readonly previewLoading = signal(false);
+  /** The form column's share, in percent. */
+  protected readonly split = signal(SPLIT_DEFAULT);
+  protected readonly splitColumns = computed(
+    () => `minmax(0, ${this.split()}fr) auto minmax(0, ${100 - this.split()}fr)`,
+  );
+  private resizing = false;
+
+  private readonly duplicates = inject(EntryDuplicates);
+  protected readonly canDuplicate = computed(
+    () =>
+      this.type().kind === 'collectionType' &&
+      !!this.documentId() &&
+      !this.missing() &&
+      this.auth.canContent('content.create', this.type().uid),
+  );
   protected readonly heading = computed(() => {
     const type = this.type();
     if (type.kind === 'singleType') return type.displayName;
@@ -712,30 +779,14 @@ export class DocumentForm implements OnInit {
     );
 
     // Labels for relation pickers and read-only inverse sides, from the populated document.
+    const found = relationLabelsOf(type.attributes, document, (target) => {
+      const targetType = this.schema.type(target);
+      return targetType ? this.schema.titleField(targetType) : null;
+    });
     const relationLabels = { ...this.relationLabels() };
-    const inverse = { ...this.inverse() };
-    for (const [name, attribute] of Object.entries(type.attributes)) {
-      if (attribute.type !== 'relation' || !document) continue;
-      const target = this.schema.type(attribute.target ?? '');
-      const titleField = target ? this.schema.titleField(target) : null;
-      const related = document[name];
-      const items = (Array.isArray(related) ? related : related ? [related] : []) as Record<
-        string,
-        unknown
-      >[];
-      const labelled = items.map((item) => ({
-        id: String(item['documentId']),
-        label: documentLabel(item, titleField),
-      }));
-      if (attribute.mappedBy) {
-        inverse[name] = labelled;
-      } else {
-        relationLabels[name] = {
-          ...relationLabels[name],
-          ...Object.fromEntries(labelled.map((item) => [item.id, item.label])),
-        };
-      }
-    }
+    for (const [name, labels] of Object.entries(found.labels))
+      relationLabels[name] = { ...relationLabels[name], ...labels };
+    const inverse = { ...this.inverse(), ...found.inverse };
     this.relationLabels.set(relationLabels);
     this.inverse.set(inverse);
   }
@@ -851,9 +902,12 @@ export class DocumentForm implements OnInit {
         } else if (!type.draftAndPublish) {
           this.published.set(true);
         }
+        // Passwords are never read back: the field empties again ("keep the current one").
+        this.model.set(withoutPasswords(type.attributes, this.model()));
         toast.success(
           this.t(publish ? 'content.edit.toast.published' : 'content.edit.toast.saved'),
         );
+        if (this.sideBySide()) void this.refreshPreview();
         void this.refreshVersions();
         this.unseen.refresh();
         const path = this.router.url.split('?')[0];
@@ -918,25 +972,100 @@ export class DocumentForm implements OnInit {
     }
   }
 
-  /** Opens the draft on the site, with a fresh preview token, in a new tab. */
-  protected async openPreview(): Promise<void> {
+  /** A fresh preview URL of the draft (a new token each time); `null` after a toast. */
+  private async previewLink(): Promise<string | null> {
     const id = this.documentId();
-    if (!id || this.previewing()) return;
-    this.previewing.set(true);
+    if (!id) return null;
     try {
       const preview = await this.api.get<{ url: string }>(
         `/content/${this.type().uid}/${id}/preview`,
         withLocale('', this.locale()) || undefined,
       );
-      window.open(preview.url, '_blank', 'noopener,noreferrer');
+      const url = frameableUrl(preview.url);
+      if (!url)
+        toast.error(this.t('content.preview.error'), {
+          description: this.t('content.preview.notHttp'),
+        });
+      return url;
     } catch (error) {
       const failure = ApiFailure.from(error);
       toast.error(this.t('content.preview.error'), {
         description:
           failure.status === 404 ? this.t('content.preview.notConfigured') : failure.message,
       });
+      return null;
+    }
+  }
+
+  /** Opens the draft on the site, with a fresh preview token, in a new tab. */
+  protected async openPreview(): Promise<void> {
+    if (this.previewing()) return;
+    this.previewing.set(true);
+    try {
+      const url = await this.previewLink();
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } finally {
       this.previewing.set(false);
+    }
+  }
+
+  protected async toggleSideBySide(): Promise<void> {
+    if (this.sideBySide()) {
+      this.sideBySide.set(false);
+      return;
+    }
+    if (await this.refreshPreview()) this.sideBySide.set(true);
+  }
+
+  /** Loads the preview frame again, with a fresh URL. */
+  protected async refreshPreview(): Promise<boolean> {
+    if (this.previewLoading()) return false;
+    this.previewLoading.set(true);
+    try {
+      const url = await this.previewLink();
+      if (!url) return false;
+      this.previewUrl.set(url);
+      this.previewVersion.update((version) => version + 1);
+      return true;
+    } finally {
+      this.previewLoading.set(false);
+    }
+  }
+
+  protected startResize(event: PointerEvent, container: HTMLElement): void {
+    if (event.button !== 0) return;
+    this.resizing = true;
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+    this.resize(event, container);
+  }
+
+  protected resize(event: PointerEvent, container: HTMLElement): void {
+    if (!this.resizing) return;
+    const rect = container.getBoundingClientRect();
+    this.split.set(splitAt(event.clientX, rect.left, rect.right, this.i18n.direction() === 'rtl'));
+  }
+
+  protected stopResize(event: PointerEvent): void {
+    this.resizing = false;
+    (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
+  }
+
+  protected resizeKey(event: KeyboardEvent): void {
+    const next = splitAfterKey(this.split(), event.key, this.i18n.direction() === 'rtl');
+    if (next === null) return;
+    event.preventDefault();
+    this.split.set(next);
+  }
+
+  protected async duplicate(): Promise<void> {
+    const id = this.documentId();
+    if (!id || this.busy()) return;
+    this.busy.set(true);
+    try {
+      await this.duplicates.duplicate(this.type().uid, id, this.locale(), humanize);
+    } finally {
+      this.busy.set(false);
     }
   }
 

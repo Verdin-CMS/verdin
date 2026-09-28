@@ -18,6 +18,7 @@ import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmCalendar } from '@spartan-ng/helm/calendar';
 import { HlmPopoverImports } from '@spartan-ng/helm/popover';
 import { HlmInputImports } from '@spartan-ng/helm/input';
+import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmSwitchImports } from '@spartan-ng/helm/switch';
 import { HlmTextareaImports } from '@spartan-ng/helm/textarea';
@@ -374,4 +375,59 @@ export class JsonControl implements FormValueControl<unknown> {
     this.lastEmitted = value;
     this.value.set(value);
   }
+}
+
+/**
+ * A password, never read back from the API: it starts empty and an empty value keeps the
+ * stored one. The eye button shows what is typed.
+ */
+@Component({
+  selector: 'vd-password-control',
+  imports: [NgIcon, HlmInputGroupImports],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div hlmInputGroup>
+      <input
+        hlmInputGroupInput
+        dir="ltr"
+        autocomplete="new-password"
+        spellcheck="false"
+        [id]="inputId()"
+        [type]="visible() ? 'text' : 'password'"
+        [value]="value() ?? ''"
+        [disabled]="disabled()"
+        [attr.aria-invalid]="invalid() || null"
+        [attr.aria-describedby]="describedBy() || null"
+        [attr.placeholder]="placeholder() || null"
+        (input)="value.set($any($event.target).value)"
+        (blur)="touch.emit()"
+      />
+      <div hlmInputGroupAddon align="inline-end">
+        <button
+          hlmInputGroupButton
+          type="button"
+          size="icon-xs"
+          [disabled]="disabled()"
+          [attr.aria-label]="i18n.t(visible() ? 'content.password.hide' : 'content.password.show')"
+          [attr.aria-pressed]="visible()"
+          [attr.aria-controls]="inputId() || null"
+          (click)="visible.set(!visible())"
+        >
+          <ng-icon [name]="visible() ? 'lucideEyeOff' : 'lucideEye'" />
+        </button>
+      </div>
+    </div>
+  `,
+})
+export class PasswordControl implements FormValueControl<string | null> {
+  protected readonly i18n = inject(I18n);
+  readonly value = model<string | null>('');
+  readonly disabled = input(false);
+  readonly invalid = input(false);
+  readonly touch = output<void>();
+  readonly inputId = input<string>('');
+  readonly describedBy = input<string>('');
+  readonly placeholder = input<string>('');
+
+  protected readonly visible = signal(false);
 }

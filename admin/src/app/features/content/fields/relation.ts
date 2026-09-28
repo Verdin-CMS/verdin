@@ -1,4 +1,11 @@
 import {
+  CdkDrag,
+  CdkDragDrop,
+  CdkDragHandle,
+  CdkDropList,
+  moveItemInArray,
+} from '@angular/cdk/drag-drop';
+import {
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -16,37 +23,84 @@ import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmInputImports } from '@spartan-ng/helm/input';
 
 import { Api, toQuery } from '../../../core/api';
+import { Auth } from '../../../core/auth';
+import { isLocalized } from '../../../core/content-locales';
 import { I18n } from '../../../core/i18n/i18n';
 import { Schema } from '../../../core/schema';
 import { Document } from '../../../core/types';
 import { documentLabel } from './model';
+import { RelatedEditor } from './related-editor';
 
 /**
  * Picks related documents by searching the target type. The value is a documentId
- * (to-one) or a list of them (to-many), which is what the API's `set` accepts.
+ * (to-one) or a list of them (to-many), which is what the API's `set` accepts. To-many
+ * relations are reordered by dragging (or with the move buttons), and each related entry
+ * can be edited in the editor's side sheet.
  */
 @Component({
   selector: 'vd-relation-control',
-  imports: [NgIcon, HlmInputImports, HlmBadgeImports, HlmButtonImports],
+  imports: [
+    CdkDropList,
+    CdkDrag,
+    CdkDragHandle,
+    NgIcon,
+    HlmInputImports,
+    HlmBadgeImports,
+    HlmButtonImports,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-2">
       @if (selected().length) {
-        <ul class="flex flex-col gap-1">
+        <ul
+          class="flex flex-col gap-1"
+          cdkDropList
+          cdkDropListLockAxis="y"
+          [cdkDropListDisabled]="!many() || disabled() || selected().length < 2"
+          [attr.aria-label]="t('content.relation.selected', { type: targetName() })"
+          (cdkDropListDropped)="drop($event)"
+        >
           @for (id of selected(); track id; let index = $index) {
+            @let label = labels()[id] ?? id;
             <li
-              class="bg-muted/50 flex items-center gap-2 rounded-md border py-1 ps-3 pe-1 text-sm"
+              cdkDrag
+              [cdkDragData]="id"
+              class="bg-muted/50 flex items-center gap-2 rounded-md border py-1 ps-1 pe-1 text-sm"
+              [class.ps-3]="!many()"
             >
-              <span class="truncate">{{ labels()[id] ?? id }}</span>
+              @if (many()) {
+                <span
+                  cdkDragHandle
+                  class="text-muted-foreground hover:text-foreground flex cursor-grab items-center rounded-sm p-0.5 active:cursor-grabbing"
+                  [attr.aria-hidden]="true"
+                  [title]="t('content.relation.dragHint')"
+                >
+                  <ng-icon name="lucideGripVertical" size="14" />
+                </span>
+              }
+              <span class="truncate" data-relation-label>{{ label }}</span>
               <span class="ms-auto flex items-center">
+                @if (editor && canOpen()) {
+                  <button
+                    hlmBtn
+                    size="icon-xs"
+                    variant="ghost"
+                    type="button"
+                    [attr.aria-label]="t('content.relation.edit', { title: label })"
+                    [title]="t('content.relation.edit', { title: label })"
+                    (click)="edit(id)"
+                  >
+                    <ng-icon name="lucidePencil" />
+                  </button>
+                }
                 @if (many()) {
                   <button
                     hlmBtn
                     size="icon-xs"
                     variant="ghost"
                     type="button"
-                    [attr.aria-label]="t('content.fields.moveUp')"
-                    [disabled]="index === 0"
+                    [attr.aria-label]="t('content.relation.moveUp', { title: label })"
+                    [disabled]="index === 0 || disabled()"
                     (click)="move(index, -1)"
                   >
                     <ng-icon name="lucideArrowUp" />
@@ -56,8 +110,8 @@ import { documentLabel } from './model';
                     size="icon-xs"
                     variant="ghost"
                     type="button"
-                    [attr.aria-label]="t('content.fields.moveDown')"
-                    [disabled]="index === selected().length - 1"
+                    [attr.aria-label]="t('content.relation.moveDown', { title: label })"
+                    [disabled]="index === selected().length - 1 || disabled()"
                     (click)="move(index, 1)"
                   >
                     <ng-icon name="lucideArrowDown" />
@@ -68,7 +122,7 @@ import { documentLabel } from './model';
                   size="icon-xs"
                   variant="ghost"
                   type="button"
-                  [attr.aria-label]="t('content.fields.remove')"
+                  [attr.aria-label]="t('content.relation.remove', { title: label })"
                   [disabled]="disabled()"
                   (click)="remove(id)"
                 >
@@ -78,6 +132,7 @@ import { documentLabel } from './model';
             </li>
           }
         </ul>
+        <p class="sr-only" aria-live="polite">{{ announcement() }}</p>
       }
       @if (many() || selected().length === 0) {
         <div class="relative">
@@ -129,9 +184,12 @@ import { documentLabel } from './model';
 })
 export class RelationControl implements FormValueControl<string | string[] | null> {
   private readonly api = inject(Api);
+  private readonly auth = inject(Auth);
   private readonly schema = inject(Schema);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
+  /** The editor's side sheet (absent inside the sheet itself). */
+  protected readonly editor = inject(RelatedEditor, { optional: true });
 
   readonly value = model<string | string[] | null>(null);
   readonly disabled = input(false);
@@ -141,6 +199,8 @@ export class RelationControl implements FormValueControl<string | string[] | nul
   readonly many = input(false);
   /** Labels for the initial value, from the populated document. */
   readonly initialLabels = input<Record<string, string>>({});
+  /** The edited document's locale: related entries of a localized type open in it. */
+  readonly locale = input<string | null>(null);
 
   protected readonly search = signal('');
   protected readonly open = signal(false);
@@ -148,8 +208,14 @@ export class RelationControl implements FormValueControl<string | string[] | nul
   /** Whether a search has answered since the picker opened. */
   protected readonly searched = signal(false);
   private readonly picked = signal<Record<string, string>>({});
+  /** Read by screen readers after a reorder. */
+  protected readonly announcement = signal('');
 
-  protected readonly labels = computed(() => ({ ...this.initialLabels(), ...this.picked() }));
+  protected readonly labels = computed(() => ({
+    ...this.initialLabels(),
+    ...this.picked(),
+    ...(this.editor?.labels() ?? {}),
+  }));
   protected readonly selected = computed(() => {
     const value = this.value();
     return Array.isArray(value) ? value : value ? [value] : [];
@@ -157,6 +223,7 @@ export class RelationControl implements FormValueControl<string | string[] | nul
   protected readonly targetName = computed(
     () => this.schema.type(this.target())?.displayName ?? this.t('content.relation.documents'),
   );
+  protected readonly canOpen = computed(() => this.auth.canContent('content.read', this.target()));
   private readonly titleField = computed(() => {
     const type = this.schema.type(this.target());
     return type ? this.schema.titleField(type) : null;
@@ -204,10 +271,37 @@ export class RelationControl implements FormValueControl<string | string[] | nul
   }
 
   protected move(index: number, delta: number): void {
+    this.reorder(index, index + delta);
+  }
+
+  protected drop(event: CdkDragDrop<unknown>): void {
+    this.reorder(event.previousIndex, event.currentIndex);
+  }
+
+  private reorder(from: number, to: number): void {
     const list = [...this.selected()];
-    const [item] = list.splice(index, 1);
-    list.splice(index + delta, 0, item);
+    if (from === to || to < 0 || to >= list.length) return;
+    moveItemInArray(list, from, to);
     this.value.set(list);
+    this.touch.emit();
+    const id = list[to];
+    this.announcement.set(
+      this.t('content.relation.moved', {
+        title: this.labels()[id] ?? id,
+        position: to + 1,
+        count: list.length,
+      }),
+    );
+  }
+
+  /** Opens the related entry in the editor's side sheet. */
+  protected edit(id: string): void {
+    const type = this.schema.type(this.target());
+    this.editor?.open({
+      uid: this.target(),
+      documentId: id,
+      locale: isLocalized(type) ? this.locale() : null,
+    });
   }
 
   protected closeSoon(): void {

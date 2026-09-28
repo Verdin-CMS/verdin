@@ -263,6 +263,10 @@ export function toPayload(
         // An empty editor is "no value".
         payload[name] = Array.isArray(value) && value.length ? value : null;
         break;
+      case 'password':
+        // Never read back: an empty field keeps the stored value, so the key is left out.
+        if (typeof value === 'string' && value !== '') payload[name] = value;
+        break;
       default:
         // Empty strings are "no value" (and must not collide on unique attributes).
         payload[name] = TEXT_TYPES.has(attribute.type) && value === '' ? null : value;
@@ -289,4 +293,43 @@ export function documentLabel(
   return title === null || title === undefined || title === ''
     ? String(document['documentId'])
     : String(title);
+}
+
+/** The model with its top-level password fields emptied (after a save: never kept around). */
+export function withoutPasswords(attributes: Attributes, model: FormModel): FormModel {
+  const names = Object.entries(attributes)
+    .filter(([, attribute]) => attribute.type === 'password')
+    .map(([name]) => name);
+  if (!names.some((name) => model[name])) return model;
+  return { ...model, ...Object.fromEntries(names.map((name) => [name, ''])) };
+}
+
+/** Labels of a populated document's relations: pickers (owning side) and read-only inverse sides. */
+export function relationLabelsOf(
+  attributes: Attributes,
+  document: Record<string, unknown> | null,
+  titleFieldOf: (target: string) => string | null,
+): {
+  labels: Record<string, Record<string, string>>;
+  inverse: Record<string, { id: string; label: string }[]>;
+} {
+  const labels: Record<string, Record<string, string>> = {};
+  const inverse: Record<string, { id: string; label: string }[]> = {};
+  if (!document) return { labels, inverse };
+  for (const [name, attribute] of Object.entries(attributes)) {
+    if (attribute.type !== 'relation') continue;
+    const titleField = titleFieldOf(attribute.target ?? '');
+    const related = document[name];
+    const items = (Array.isArray(related) ? related : related ? [related] : []) as Record<
+      string,
+      unknown
+    >[];
+    const labelled = items.map((item) => ({
+      id: String(item['documentId']),
+      label: documentLabel(item, titleField),
+    }));
+    if (attribute.mappedBy) inverse[name] = labelled;
+    else labels[name] = Object.fromEntries(labelled.map((item) => [item.id, item.label]));
+  }
+  return { labels, inverse };
 }

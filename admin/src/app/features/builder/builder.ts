@@ -102,6 +102,12 @@ const TYPE_INFO: TypeInfo[] = [
     description: 'builder.types.email.description',
   },
   {
+    type: 'password',
+    icon: 'lucideKeyRound',
+    label: 'builder.types.password',
+    description: 'builder.types.password.description',
+  },
+  {
     type: 'uid',
     icon: 'lucideFingerprint',
     label: 'builder.types.uid',
@@ -222,7 +228,7 @@ const INVERSE: Partial<Record<RelationKind, RelationKind>> = {
   manyToMany: 'manyToMany',
   oneToOne: 'oneToOne',
 };
-const LENGTH_TYPES = new Set(['string', 'text', 'richtext', 'email', 'uid']);
+const LENGTH_TYPES = new Set(['string', 'text', 'richtext', 'email', 'password', 'uid']);
 const NUMBER_TYPES = new Set(['integer', 'biginteger', 'float', 'decimal']);
 const UNIQUE_TYPES = new Set([
   'string',
@@ -1064,7 +1070,12 @@ interface AttributeDraft {
                     </div>
                   </div>
                 }
-                @if (!isComponent()) {
+                @if (attr.type === 'password') {
+                  <p class="text-muted-foreground flex items-center gap-1.5 text-sm">
+                    <ng-icon name="lucideLock" size="14" aria-hidden="true" />
+                    {{ t('builder.field.passwordPrivate') }}
+                  </p>
+                } @else if (!isComponent()) {
                   <div hlmField orientation="horizontal" class="w-auto">
                     <hlm-switch
                       inputId="field-private"

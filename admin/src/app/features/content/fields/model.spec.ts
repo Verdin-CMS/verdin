@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { Component } from '../../../core/types';
-import { mediaFilesOf, referencesOf, toModel, toPayload } from './model';
+import {
+  mediaFilesOf,
+  referencesOf,
+  relationLabelsOf,
+  toModel,
+  toPayload,
+  withoutPasswords,
+} from './model';
 
 const seo: Component = {
   uid: 'shared.seo',
@@ -250,5 +257,45 @@ describe('form model', () => {
       expect(refs.files.map((item) => item.id)).toEqual([3, 4, 5, 6, 7]);
       expect(referencesOf(nested, null, lookup, () => null)).toEqual({ labels: {}, files: [] });
     });
+  });
+});
+
+describe('password fields', () => {
+  const account = {
+    email: { type: 'email' as const },
+    secret: { type: 'password' as const, private: true, minLength: 8 },
+  };
+
+  it('start empty and are left out of the payload while empty', () => {
+    const model = toModel(account, { email: 'a@b.c' }, components);
+    expect(model).toEqual({ email: 'a@b.c', secret: '' });
+    expect(toPayload(account, model, components)).toEqual({ email: 'a@b.c' });
+    expect(toPayload(account, { ...model, secret: null }, components)).toEqual({ email: 'a@b.c' });
+  });
+
+  it('send a new value, and empty again after a save', () => {
+    const model = { email: 'a@b.c', secret: 'correct horse' };
+    expect(toPayload(account, model, components)).toEqual(model);
+    expect(withoutPasswords(account, model)).toEqual({ email: 'a@b.c', secret: '' });
+    const untouched = { email: 'a@b.c', secret: '' };
+    expect(withoutPasswords(account, untouched)).toBe(untouched);
+  });
+});
+
+describe('relationLabelsOf', () => {
+  it('labels pickers and read-only inverse sides', () => {
+    const found = relationLabelsOf(
+      attributes,
+      {
+        category: { documentId: 'c1', name: 'News' },
+        tags: [{ documentId: 't1', name: '' }],
+        articles: [{ documentId: 'a1', name: 'First' }],
+      },
+      () => 'name',
+    );
+    expect(found.labels['category']).toEqual({ c1: 'News' });
+    expect(found.labels['tags']).toEqual({ t1: 't1' });
+    expect(found.inverse['articles']).toEqual([{ id: 'a1', label: 'First' }]);
+    expect(relationLabelsOf(attributes, null, () => null)).toEqual({ labels: {}, inverse: {} });
   });
 });

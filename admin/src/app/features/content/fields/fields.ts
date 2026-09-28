@@ -24,6 +24,7 @@ import {
   EnumControl,
   JsonControl,
   NumberControl,
+  PasswordControl,
   SwitchControl,
 } from './controls';
 import { BlocksControl } from './blocks-control';
@@ -71,6 +72,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
     DateControl,
     DateTimeControl,
     JsonControl,
+    PasswordControl,
     RelationControl,
     MediaControl,
     BlocksControl,
@@ -367,6 +369,18 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                   @case ('blocks') {
                     <vd-blocks-control [inputId]="id" [formField]="child(name)" />
                   }
+                  @case ('password') {
+                    <vd-password-control
+                      [inputId]="id"
+                      [describedBy]="context().documentId ? id + '-hint' : ''"
+                      [formField]="child(name)"
+                    />
+                    @if (context().documentId) {
+                      <p hlmFieldDescription [id]="id + '-hint'">
+                        {{ t('content.password.keepHint') }}
+                      </p>
+                    }
+                  }
                   @case ('email') {
                     <input dir="ltr" hlmInput [id]="id" type="email" [formField]="child(name)" />
                   }
@@ -457,6 +471,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                         [target]="attribute.target ?? ''"
                         [many]="isToMany(attribute)"
                         [initialLabels]="relationLabels()[name] ?? refs().labels"
+                        [locale]="context().locale ?? null"
                         [formField]="child(name)"
                       />
                     }

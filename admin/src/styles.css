@@ -95,3 +95,17 @@
     @apply bg-primary/20;
   }
 }
+
+/* Drag and drop (Angular CDK): the lifted item and the gap it leaves. */
+@layer components {
+  .cdk-drag-preview {
+    @apply bg-background rounded-md shadow-lg;
+  }
+  .cdk-drag-placeholder {
+    @apply opacity-40;
+  }
+  .cdk-drag-animating,
+  .cdk-drop-list-dragging .cdk-drag:not(.cdk-drag-placeholder) {
+    transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+  }
+}

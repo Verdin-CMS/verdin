@@ -99,6 +99,22 @@ export class Api {
     }
   }
 
+  /** A POST whose answer keeps its `meta` (e.g. `{ data, meta: { leftOut } }`). */
+  async postWithMeta<T, M>(
+    path: string,
+    body?: unknown,
+    query?: string,
+  ): Promise<{ data: T; meta: M }> {
+    const url = `${this.config.apiBase}${path}${query ? `?${query}` : ''}`;
+    try {
+      return await firstValueFrom(
+        this.http.post<{ data: T; meta: M }>(url, body ?? {}, { withCredentials: true }),
+      );
+    } catch (error) {
+      throw ApiFailure.from(error);
+    }
+  }
+
   get<T>(path: string, query?: string): Promise<T> {
     return this.request<T>('GET', path, undefined, query);
   }
