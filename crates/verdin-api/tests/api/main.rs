@@ -5,6 +5,7 @@ mod common;
 
 mod accounts;
 mod admin;
+mod ai;
 mod audit;
 mod clone;
 mod comments;

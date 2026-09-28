@@ -42,6 +42,9 @@ All notable changes to Verdin are documented here. The format follows
 - **Visual editing**: source maps hidden in the text of authenticated reads that send
   `X-Verdin-Stega: true`, and an overlay script (`/admin/api/visual-editing.js`) that
   jumps from the site to the field. See [docs/visual-editing.md](docs/visual-editing.md).
+- **AI actions** (the `ai` feature, off by default, and `[ai]`): translate an entry to
+  another locale, alt text for images, summaries and SEO suggestions, with Anthropic,
+  OpenAI or any OpenAI-compatible server.
 
 ## [0.8.0] - 2026-09-28
 

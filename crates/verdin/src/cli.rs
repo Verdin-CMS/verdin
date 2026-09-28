@@ -550,6 +550,8 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     if let Some(cdn) = &cdn {
         cdn.spawn();
     }
+    let ai = verdin_api::ai::Ai::new(&project.config.ai, std::env::var("VERDIN_AI_KEY").ok())
+        .map_err(|message| anyhow::anyhow!("[ai]: {message}"))?;
     let deploys = verdin_api::deploy::Deploys::new(
         db.clone(),
         project.config.webhooks.allow_private_networks.unwrap_or(mode == Mode::Development),
@@ -583,6 +585,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         comments,
         deploys,
         cdn,
+        ai,
         digest,
         review,
         metrics,

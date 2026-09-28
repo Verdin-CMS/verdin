@@ -106,23 +106,53 @@ impl App {
 
     /// Like [`App::with_users`], with OAuth client secrets `(provider, secret)`.
     pub async fn build(schema: Schema, settings: Value, oauth_secrets: &[(&str, &str)]) -> Self {
-        Self::build_with(schema, settings, oauth_secrets, Default::default(), None, None).await
+        Self::build_with(schema, settings, oauth_secrets, Default::default(), None, None, None)
+            .await
     }
 
     /// With the plugins installed in `dir` (all disabled until switched on).
     pub async fn with_plugins(schema: Schema, dir: &std::path::Path) -> Self {
-        Self::build_with(schema, serde_json::json!({}), &[], Default::default(), Some(dir), None)
-            .await
+        Self::build_with(
+            schema,
+            serde_json::json!({}),
+            &[],
+            Default::default(),
+            Some(dir),
+            None,
+            None,
+        )
+        .await
     }
 
     /// With rate limits and the anonymous reads cache.
     pub async fn with_traffic(schema: Schema, traffic: verdin_api::cache::TrafficConfig) -> Self {
-        Self::build_with(schema, serde_json::json!({}), &[], traffic, None, None).await
+        Self::build_with(schema, serde_json::json!({}), &[], traffic, None, None, None).await
     }
 
     /// With the full-text search index in `dir` (built before this returns).
     pub async fn with_search(schema: Schema, dir: &std::path::Path) -> Self {
-        Self::build_with(schema, serde_json::json!({}), &[], Default::default(), None, Some(dir))
+        Self::build_with(
+            schema,
+            serde_json::json!({}),
+            &[],
+            Default::default(),
+            None,
+            Some(dir),
+            None,
+        )
+        .await
+    }
+
+    /// With AI actions answered by an OpenAI-compatible server at `base_url`.
+    pub async fn with_ai(schema: Schema, base_url: &str) -> Self {
+        let config = verdin_api::ai::AiConfig {
+            provider: verdin_api::ai::AiProvider::OpenaiCompatible,
+            model: Some("test-model".into()),
+            base_url: Some(base_url.into()),
+            max_tokens: None,
+        };
+        let ai = verdin_api::ai::Ai::new(&config, None).unwrap();
+        Self::build_with(schema, serde_json::json!({}), &[], Default::default(), None, None, ai)
             .await
     }
 
@@ -133,6 +163,7 @@ impl App {
         traffic: verdin_api::cache::TrafficConfig,
         plugins_dir: Option<&std::path::Path>,
         search_dir: Option<&std::path::Path>,
+        ai: Option<verdin_api::ai::Ai>,
     ) -> Self {
         let cache =
             verdin_api::cache::ResponseCache::new(traffic.cache_ttl, traffic.cache_entries.max(1));
@@ -252,6 +283,7 @@ impl App {
             realtime: Some(realtime.clone()),
             comments: Some(comments.clone()),
             deploys: Some(verdin_api::deploy::Deploys::new(test.db.clone(), true)),
+            ai,
             ..AdminConfig::default()
         };
         let router = Router::new()

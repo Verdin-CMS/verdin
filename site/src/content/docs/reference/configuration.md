@@ -231,6 +231,28 @@ See [Plugins](/guides/plugins/).
 | `enabled` | `false` | Serve Prometheus metrics at `/_metrics`: HTTP requests by area (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), method and status class with latency histograms, pending webhook deliveries, open realtime streams and uptime. |
 | `token` | unset | Scrapes need `Authorization: Bearer <token>`. `VERDIN_METRICS_TOKEN` wins over it. Without a token, anyone who reaches the port can read the metrics. |
 
+## `[ai]`
+
+AI actions in the admin (with the **AI** feature on in Settings → Features): translate an
+entry to another locale, write alt text for images, summarize text, suggest SEO
+metadata. They return suggestions; nothing is saved without the editor. The key is read
+from `VERDIN_AI_KEY` (local servers need none).
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `provider` | `"none"` | `anthropic`, `openai` or `openai-compatible` (Ollama, LM Studio, vLLM…). |
+| `model` | `claude-sonnet-5` for `anthropic` | The model; required for the other providers. |
+| `base_url` | the provider's | Another endpoint, e.g. `http://localhost:11434/v1`. |
+| `max_tokens` | `2048` | Longest answer. |
+
+```toml
+[ai]
+provider = "anthropic"
+```
+
+Each admin may make 30 AI requests a minute. Content and images are sent to the
+provider: choose one your organization allows.
+
 ## `[cdn]`
 
 Purges CDN caches when content changes publicly. Content API responses are tagged
@@ -272,6 +294,7 @@ Besides the `VERDIN_<SECTION>__<KEY>` overrides, Verdin reads these variables:
 | `VERDIN_EMAIL_API_KEY` | API key of the Resend and Postmark providers. |
 | `VERDIN_SSO_<ID>_SECRET` | Client secret of an SSO provider (see [Single sign-on](/guides/sso/)). |
 | `VERDIN_OAUTH_<PROVIDER>_SECRET` | Client secret of an end-user OAuth provider (see [End users](/guides/end-users/)). |
+| `VERDIN_AI_KEY` | API key of the `[ai]` provider. |
 | `VERDIN_CDN_TOKEN` | API token of the `[cdn]` provider. |
 | `VERDIN_IMAGE_SECRET` | Signs image transformation URLs (see [`[upload.transforms]`](#uploadtransforms)). |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Credentials of the S3 upload provider. |

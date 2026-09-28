@@ -618,6 +618,7 @@ GET|POST /comments  PUT|DELETE /comments/:id  POST /comments/:id/resolve|reopen 
 GET|POST /tasks  PUT|DELETE /tasks/:id                                      tasks on entries (`?mine=true`)
 GET|POST /deploy/targets  PUT|DELETE /deploy/targets/:id  POST /deploy/targets/:id/trigger   deploys
 GET  /deploy/deployments  POST /deploy/callback/:id/:secret (public)  GET /deploy/cdn  POST /deploy/cdn/purge
+GET  /ai  POST /ai/translate|alt-text|summarize|seo                         AI suggestions (`ai` feature + `[ai]`)
 
 CRUD /users, /roles, /api-tokens, /public-permissions
 GET|PUT /users/me/preferences          the caller's admin preferences (dashboard layout), any admin

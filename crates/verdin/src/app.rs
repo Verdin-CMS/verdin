@@ -67,6 +67,8 @@ pub struct AppContext {
     pub deploys: verdin_api::deploy::Deploys,
     /// `[cdn]`: purges on public changes.
     pub cdn: Option<verdin_api::cdn::Cdn>,
+    /// `[ai]`: used when the `ai` feature is on.
+    pub ai: Option<verdin_api::ai::Ai>,
     /// The daily digest of unseen changes (`[digest]`), sent while serving.
     pub digest: verdin_api::digest::Digest,
     /// Review workflows; the `review` feature switches stages and the publish gate.
@@ -283,6 +285,7 @@ pub fn build_app(
                 .then(|| context.comments.clone()),
             deploys: Some(context.deploys.clone()),
             cdn: context.cdn.clone(),
+            ai: states.enabled(verdin_api::features::AI).then(|| context.ai.clone()).flatten(),
             review: states.enabled(REVIEW).then(|| context.review.clone()),
             realtime: Some(context.realtime.clone()),
             digest: Some(context.digest.clone()),
@@ -1123,6 +1126,7 @@ mod tests {
             comments: verdin_api::comments::Comments::new(db_for_releases.clone()),
             deploys: verdin_api::deploy::Deploys::new(db_for_releases.clone(), true),
             cdn: None,
+            ai: None,
             releases: verdin_api::releases::Releases::new(db_for_releases),
             review: verdin_api::review::Review::new(db_for_review),
             realtime: verdin_api::realtime::Realtime::new(),

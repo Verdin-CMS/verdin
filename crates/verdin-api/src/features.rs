@@ -36,6 +36,7 @@ pub const REVIEW: &str = "review";
 pub const MCP: &str = "mcp";
 pub const REALTIME: &str = "realtime";
 pub const COMMENTS: &str = "comments";
+pub const AI: &str = "ai";
 
 /// Every feature, in display order.
 pub const CATALOG: &[FeatureSpec] = &[

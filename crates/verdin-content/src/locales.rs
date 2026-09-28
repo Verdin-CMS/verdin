@@ -47,6 +47,12 @@ impl Locales {
         self.0.read().expect("locales lock").default.clone()
     }
 
+    /// The locale's name (`Español`), when it exists.
+    pub fn name_of(&self, code: &str) -> Option<String> {
+        let set = self.0.read().expect("locales lock");
+        set.locales.iter().find(|locale| locale.code == code).map(|locale| locale.name.clone())
+    }
+
     pub fn contains(&self, code: &str) -> bool {
         self.0.read().expect("locales lock").locales.iter().any(|locale| locale.code == code)
     }

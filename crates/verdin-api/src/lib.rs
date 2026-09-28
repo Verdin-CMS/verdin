@@ -2,6 +2,7 @@
 //! (docs/architecture.md §12–§14).
 
 mod admin;
+pub mod ai;
 pub mod audit;
 pub mod cache;
 pub mod cdn;

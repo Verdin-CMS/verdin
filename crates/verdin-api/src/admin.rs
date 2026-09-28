@@ -34,6 +34,8 @@ use crate::limiter::RateLimiter;
 
 #[path = "account_admin.rs"]
 mod account_admin;
+#[path = "ai_admin.rs"]
+mod ai_admin;
 #[path = "audit_admin.rs"]
 mod audit_admin;
 #[path = "comments_admin.rs"]
@@ -141,6 +143,8 @@ pub struct AdminConfig {
     pub deploys: Option<crate::deploy::Deploys>,
     /// CDN purges (`[cdn]`).
     pub cdn: Option<crate::cdn::Cdn>,
+    /// AI actions (the `ai` feature and `[ai]`).
+    pub ai: Option<crate::ai::Ai>,
     /// The daily digest of unseen changes, which reads with this router's Document Service.
     pub digest: Option<crate::digest::Digest>,
     /// Present when the `review` feature is on: workflows and entry stages.
@@ -183,6 +187,7 @@ impl Default for AdminConfig {
             comments: None,
             deploys: None,
             cdn: None,
+            ai: None,
             digest: None,
             review: None,
             listeners: Vec::new(),
@@ -286,6 +291,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(transfer_admin::routes())
         .merge(comments_admin::routes())
         .merge(deploy_admin::routes())
+        .merge(ai_admin::routes())
         .merge(review_admin::routes())
         .merge(account_admin::routes())
         .merge(views_admin::routes())

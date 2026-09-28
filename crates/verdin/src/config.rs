@@ -29,6 +29,7 @@ pub struct Config {
     pub metrics: MetricsConfig,
     pub search: verdin_search::SearchConfig,
     pub cdn: verdin_api::cdn::CdnConfig,
+    pub ai: verdin_api::ai::AiConfig,
 }
 
 /// `[metrics]`: Prometheus metrics at `/_metrics`.
