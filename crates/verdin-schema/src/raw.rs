@@ -88,6 +88,8 @@ pub struct RawAttribute {
     pub target: Option<String>,
     pub inversed_by: Option<String>,
     pub mapped_by: Option<String>,
+    /// Polymorphic inverse sides (`morphOne`/`morphMany`): the owner's attribute.
+    pub morph_by: Option<String>,
     pub component: Option<String>,
     pub repeatable: Option<bool>,
     pub components: Option<Vec<String>>,
@@ -113,6 +115,7 @@ impl RawAttribute {
             ("target", self.target.is_some()),
             ("inversedBy", self.inversed_by.is_some()),
             ("mappedBy", self.mapped_by.is_some()),
+            ("morphBy", self.morph_by.is_some()),
             ("component", self.component.is_some()),
             ("repeatable", self.repeatable.is_some()),
             ("components", self.components.is_some()),

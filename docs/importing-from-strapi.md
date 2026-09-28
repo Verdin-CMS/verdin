@@ -56,10 +56,13 @@ The command runs these steps in order:
 Each of these is reported as a warning:
 
 - relations to admin users, end users (`plugin::users-permissions`) or other plugins
-- morph relations
 - custom fields, which are imported as their underlying type
 - `unique` on text fields
 - relation halves whose `inversedBy` / `mappedBy` does not match the other side
+
+Polymorphic relations (`morphToOne`, `morphToMany`, `morphOne`, `morphMany`) are imported with
+their links to imported content types; links to plugin types (admin users, end users…) are
+left out.
 
 Conditional fields (`conditions`, Strapi 5.17) are imported and kept in the schema, but the
 admin does not hide fields by their conditions yet.

@@ -12,7 +12,7 @@ use std::fmt;
 
 pub use ast::*;
 pub use fields::{
-    Catalog, Field, FieldCategory, MediaInfo, RelationInfo, TypeFields, attribute_kind,
+    Catalog, Field, FieldCategory, MediaInfo, MorphInfo, RelationInfo, TypeFields, attribute_kind,
 };
 pub use params::{Node, parse_query_string};
 pub use parse::{Limits, parse, scalar_value};

@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde_json::Value;
 
-use crate::model::{Attribute, AttributeKind, MediaType, RelationKind};
+use crate::model::{Attribute, AttributeKind, MediaType, MorphKind, RelationKind};
 use crate::raw::RawAttribute;
 
 /// Every `varchar` column is `varchar(255)`: MySQL counts `varchar` bytes against its
@@ -32,7 +32,7 @@ fn allowed_options(ty: &str) -> Option<&'static [&'static str]> {
         "blocks" => &[],
         "date" | "time" | "datetime" => &["default", "unique"],
         "enumeration" => &["default", "enum"],
-        "relation" => &["relation", "target", "inversedBy", "mappedBy"],
+        "relation" => &["relation", "target", "inversedBy", "mappedBy", "morphBy"],
         "component" => &["component", "repeatable", "min", "max"],
         "dynamiczone" => &["components", "min", "max"],
         "media" => &["multiple", "allowedTypes"],
@@ -156,6 +156,44 @@ pub fn convert_attribute(raw: RawAttribute) -> Result<Attribute, Issues> {
                 }
             }
             AttributeKind::Enumeration { values }
+        }
+        "relation" if raw.relation.as_deref().and_then(MorphKind::parse).is_some() => {
+            let relation = raw.relation.as_deref().and_then(MorphKind::parse).expect("checked");
+            if raw.inversed_by.is_some() || raw.mapped_by.is_some() {
+                issues.push((
+                    "relation".into(),
+                    "polymorphic relations take no inversedBy/mappedBy (inverse sides use morphBy)"
+                        .into(),
+                ));
+            }
+            let (target, morph_by) = if relation.is_owner() {
+                if raw.target.is_some() || raw.morph_by.is_some() {
+                    issues.push((
+                        "target".into(),
+                        format!(
+                            "`{}` links any content type: remove target/morphBy",
+                            relation.as_str()
+                        ),
+                    ));
+                }
+                (None, None)
+            } else {
+                let target = match raw.target.as_deref().map(normalize_content_type_uid) {
+                    Some(Some(uid)) => Some(uid),
+                    _ => {
+                        issues.push(("target".into(), "the owner content type is required".into()));
+                        None
+                    }
+                };
+                if raw.morph_by.is_none() {
+                    issues.push((
+                        "morphBy".into(),
+                        "the owner's morphToOne/morphToMany attribute is required".into(),
+                    ));
+                }
+                (target, raw.morph_by.clone())
+            };
+            AttributeKind::Morph { relation, target, morph_by }
         }
         "relation" => {
             let relation = match raw.relation.as_deref() {
@@ -423,6 +461,7 @@ fn check_default(kind: &AttributeKind, default: &Value, issues: &mut Issues) {
             unreachable!("default rejected by allowed_options")
         }
         AttributeKind::Relation { .. }
+        | AttributeKind::Morph { .. }
         | AttributeKind::Media { .. }
         | AttributeKind::Component { .. }
         | AttributeKind::DynamicZone { .. } => unreachable!("default rejected by allowed_options"),

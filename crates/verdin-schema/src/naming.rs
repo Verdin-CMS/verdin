@@ -31,6 +31,11 @@ pub fn link_table_name(table: &str, attribute: &str) -> String {
     bounded(&format!("{table}_{}_lnk", snake_case(attribute)))
 }
 
+/// Links of a polymorphic owner attribute: `{table}_{column}_mph`, bounded.
+pub fn morph_table_name(table: &str, attribute: &str) -> String {
+    bounded(&format!("{table}_{}_mph", snake_case(attribute)))
+}
+
 /// Media links of an attribute: `{table}_{column}_mda`, bounded.
 pub fn media_table_name(table: &str, attribute: &str) -> String {
     bounded(&format!("{table}_{}_mda", snake_case(attribute)))

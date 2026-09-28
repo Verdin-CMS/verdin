@@ -176,13 +176,14 @@ pub fn diff(old: &DbModel, new: &DbModel, renames: &Renames) -> Result<Diff, Mig
     let mut renamed = old.clone();
     let mut rename_changes = Vec::new();
 
-    // Renaming a content table renames its link tables (`{table}_{field}_lnk`) with it.
+    // Renaming a content table renames its link tables (`{table}_{field}_lnk`, media
+    // `_mda` and polymorphic `_mph`) with it.
     let mut table_renames = renames.tables.clone();
     for (from, to) in &renames.tables {
         let prefix = format!("{from}_");
         for name in old.tables.keys() {
             if let Some(rest) = name.strip_prefix(&prefix)
-                && name.ends_with("_lnk")
+                && ["_lnk", "_mda", "_mph"].iter().any(|suffix| name.ends_with(suffix))
             {
                 let candidate = format!("{to}_{rest}");
                 if new.tables.contains_key(&candidate) && !old.tables.contains_key(&candidate) {

@@ -488,6 +488,20 @@ pub async fn import(
                 .collect();
             service.import_links(uid, field, *row, &targets).await?;
         }
+        for (field, items) in &version.morph {
+            let targets: Vec<(String, String)> = items
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|item| {
+                    Some((
+                        item["__type"].as_str()?.to_owned(),
+                        item["documentId"].as_str()?.to_owned(),
+                    ))
+                })
+                .collect();
+            service.import_morph_links(uid, field, *row, &targets).await?;
+        }
         for (field, files) in &version.media {
             let files: Vec<i64> = files
                 .as_array()
@@ -543,7 +557,7 @@ mod tests {
             filters: None,
             sort: vec![verdin_query::Sort::by("title", false)],
             fields: None,
-            populate: ["tags", "cover", "seo"]
+            populate: ["tags", "cover", "seo", "refs"]
                 .iter()
                 .map(|field| Populate { field: (*field).into(), query: None })
                 .collect(),
@@ -577,7 +591,8 @@ mod tests {
                     "pin": { "type": "password" },
                     "tags": { "type": "relation", "relation": "manyToMany", "target": "api::tag.tag" },
                     "cover": { "type": "media" },
-                    "seo": { "type": "component", "component": "shared.seo" }
+                    "seo": { "type": "component", "component": "shared.seo" },
+                    "refs": { "type": "relation", "relation": "morphToMany" }
                 }
             }),
         );
@@ -641,7 +656,8 @@ mod tests {
         let publish = WriteOptions { publish: true, actor: None };
         let tag = service.create("api::tag", &json!({ "label": "rust" }), publish).await.unwrap();
         let data = json!({ "title": "Hello", "pin": "1234", "tags": [tag], "cover": photo.id,
-                           "seo": { "image": other.id, "related": tag } });
+                           "seo": { "image": other.id, "related": tag },
+                           "refs": [{ "__type": "api::tag", "documentId": tag }] });
         let hello = service.create("api::article", &data, publish).await.unwrap();
         service
             .update(

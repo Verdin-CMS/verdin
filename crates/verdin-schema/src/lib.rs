@@ -19,7 +19,9 @@ mod validate;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-pub use convert::{DEFAULT_DECIMAL_PRECISION, DEFAULT_DECIMAL_SCALE, VARCHAR_LENGTH};
+pub use convert::{
+    DEFAULT_DECIMAL_PRECISION, DEFAULT_DECIMAL_SCALE, VARCHAR_LENGTH, normalize_content_type_uid,
+};
 pub use model::*;
 
 /// One problem found while loading the schema.

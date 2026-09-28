@@ -957,6 +957,11 @@ pub(crate) fn attribute_json(attribute: &Attribute) -> Value {
             set("inversedBy", json!(inversed_by));
             set("mappedBy", json!(mapped_by));
         }
+        A::Morph { relation, target, morph_by } => {
+            set("relation", json!(relation.as_str()));
+            set("target", json!(target));
+            set("morphBy", json!(morph_by));
+        }
         A::Component { component, repeatable, min, max } => {
             set("component", json!(component));
             set("repeatable", json!(repeatable));

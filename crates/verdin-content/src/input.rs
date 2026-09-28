@@ -73,6 +73,53 @@ pub struct Prepared {
     pub columns: Vec<(String, SqlValue)>,
     pub relations: Vec<RelationWrite>,
     pub media: Vec<MediaWrite>,
+    pub morphs: Vec<MorphWrite>,
+}
+
+/// New links of a polymorphic owner attribute, in order: `(content type uid, documentId)`.
+#[derive(Debug, Clone)]
+pub struct MorphWrite {
+    pub field: String,
+    pub info: verdin_query::MorphInfo,
+    pub targets: Vec<(String, String)>,
+}
+
+/// `{ "__type": "api::article", "documentId": "…" }` items (Strapi's `api::article.article`
+/// form is accepted); `null`, one item, a list or `{ set: [...] }`.
+pub(crate) fn morph_targets(value: &Json, to_many: bool) -> Result<Vec<(String, String)>, String> {
+    const SHAPE: &str =
+        "polymorphic relations take `{ \"__type\": uid, \"documentId\": id }` items";
+    let item = |value: &Json| -> Result<(String, String), String> {
+        let object = value.as_object().ok_or(SHAPE)?;
+        let uid = object.get("__type").and_then(Json::as_str).ok_or(SHAPE)?;
+        let uid = verdin_schema::normalize_content_type_uid(uid)
+            .ok_or_else(|| format!("`{uid}` is not a content type"))?;
+        let id = object
+            .get("documentId")
+            .and_then(Json::as_str)
+            .filter(|id| !id.is_empty())
+            .ok_or(SHAPE)?;
+        Ok((uid, id.to_owned()))
+    };
+    let items: Vec<(String, String)> = match value {
+        Json::Null => Vec::new(),
+        Json::Array(items) => items.iter().map(item).collect::<Result<_, _>>()?,
+        Json::Object(object) if object.contains_key("set") => match &object["set"] {
+            Json::Array(items) => items.iter().map(item).collect::<Result<_, _>>()?,
+            _ => return Err("`set` takes a list".into()),
+        },
+        other => vec![item(other)?],
+    };
+    let mut unique: Vec<(String, String)> = Vec::with_capacity(items.len());
+    for pair in items {
+        if !unique.contains(&pair) {
+            unique.push(pair);
+        }
+    }
+    if !to_many && unique.len() > 1 {
+        return Err("this relation holds a single entry".into());
+    }
+    Ok(unique)
 }
 
 /// Validates `data` for a create (`is_create`) or a partial update. On create, attribute
@@ -118,6 +165,7 @@ fn prepare_as(
     let mut columns = Vec::new();
     let mut relations = Vec::new();
     let mut media = Vec::new();
+    let mut morphs = Vec::new();
 
     for (key, value) in object {
         match model.content_type.attributes.get(key) {
@@ -141,6 +189,30 @@ fn prepare_as(
                     Err(message) => issues.push(Issue::new(vec![key.clone().into()], message)),
                 }
             }
+            Some(Attribute {
+                kind: AttributeKind::Morph { relation, target, morph_by }, ..
+            }) => {
+                if !relation.is_owner() {
+                    issues.push(Issue::new(
+                        vec![key.clone().into()],
+                        format!(
+                            "`{key}` is the inverse side of {}.{}; write the relation there",
+                            target.as_deref().unwrap_or("?"),
+                            morph_by.as_deref().unwrap_or("?")
+                        ),
+                    ));
+                    continue;
+                }
+                let info = model
+                    .fields
+                    .get(key)
+                    .and_then(|field| field.morph.clone())
+                    .expect("morph info");
+                match morph_targets(value, info.to_many) {
+                    Ok(targets) => morphs.push(MorphWrite { field: key.clone(), info, targets }),
+                    Err(message) => issues.push(Issue::new(vec![key.clone().into()], message)),
+                }
+            }
             Some(Attribute { kind: AttributeKind::Media { .. }, .. }) => {
                 let field = model.fields.get(key).expect("attribute field");
                 let info = field.media.clone().expect("media info");
@@ -154,7 +226,12 @@ fn prepare_as(
     }
 
     for (name, attribute) in &model.content_type.attributes {
-        if matches!(attribute.kind, AttributeKind::Relation { .. } | AttributeKind::Media { .. }) {
+        if matches!(
+            attribute.kind,
+            AttributeKind::Relation { .. }
+                | AttributeKind::Morph { .. }
+                | AttributeKind::Media { .. }
+        ) {
             continue;
         }
         let value = match object.get(name) {
@@ -185,7 +262,7 @@ fn prepare_as(
         }
     }
 
-    if issues.is_empty() { Ok(Prepared { columns, relations, media }) } else { Err(issues) }
+    if issues.is_empty() { Ok(Prepared { columns, relations, media, morphs }) } else { Err(issues) }
 }
 
 /// Media input (Strapi v5): a file id, `{ "id": … }`, a list of them, or `null`.
@@ -528,7 +605,7 @@ fn convert(
             }
             return Ok(Converted::Json(Json::Array(out)));
         }
-        AttributeKind::Relation { .. } => {
+        AttributeKind::Relation { .. } | AttributeKind::Morph { .. } => {
             return Err(fail("writing relations is not supported yet".into()));
         }
         AttributeKind::Media { .. } => {
@@ -726,7 +803,9 @@ pub fn check_required(
             && missing
             && !matches!(
                 attribute.kind,
-                AttributeKind::Relation { .. } | AttributeKind::Media { .. }
+                AttributeKind::Relation { .. }
+                    | AttributeKind::Morph { .. }
+                    | AttributeKind::Media { .. }
             )
         {
             issues.push(Issue::new(attribute_path.clone(), format!("{name} is a required field")));

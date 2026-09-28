@@ -39,6 +39,8 @@ const PUBLISHED: i16 = 1;
 
 #[path = "import.rs"]
 pub mod import;
+#[path = "morph.rs"]
+pub(crate) mod morph;
 /// Base table alias in reads.
 const BASE: &str = "t0";
 /// Largest `IN (…)` list per statement.
@@ -392,6 +394,12 @@ impl DocumentService {
             }
             for item in populate {
                 let Some(field) = model.fields.get(&item.field) else { continue };
+                if field.morph.is_some() {
+                    let default = SubQuery::default();
+                    let sub = item.query.as_ref().unwrap_or(&default);
+                    self.populate_morph(model, field, docs, sub, status).await?;
+                    continue;
+                }
                 if field.category == FieldCategory::Nested
                     && let Some(attribute) = &field.attribute
                 {
@@ -653,6 +661,7 @@ impl DocumentService {
             .await
             .map_err(|error| db_error(model, error))?;
         self.write_relations(&mut tx, model, id, &document_id, state, &prepared.relations).await?;
+        self.write_morphs(&mut tx, id, &prepared.morphs).await?;
         crate::media::write_media(&mut tx, id, &prepared.media).await?;
 
         if draft_and_publish {
@@ -714,6 +723,7 @@ impl DocumentService {
         write_update(&mut update, model.table(), assignments, id);
         tx.execute(&update.sql, &update.params).await.map_err(|error| db_error(model, error))?;
         self.write_relations(&mut tx, model, id, document_id, state, &prepared.relations).await?;
+        self.write_morphs(&mut tx, id, &prepared.morphs).await?;
         crate::media::write_media(&mut tx, id, &prepared.media).await?;
         if model.content_type.localized {
             let relations: Vec<RelationWrite> = prepared
@@ -724,6 +734,12 @@ impl DocumentService {
                 .collect();
             let media: Vec<crate::input::MediaWrite> = prepared
                 .media
+                .iter()
+                .filter(|write| !localized_field(model, &write.field))
+                .cloned()
+                .collect();
+            let morphs: Vec<crate::input::MorphWrite> = prepared
+                .morphs
                 .iter()
                 .filter(|write| !localized_field(model, &write.field))
                 .cloned()
@@ -739,6 +755,7 @@ impl DocumentService {
                 self.write_relations(&mut tx, model, sibling, document_id, state, &relations)
                     .await?;
                 crate::media::write_media(&mut tx, sibling, &media).await?;
+                self.write_morphs(&mut tx, sibling, &morphs).await?;
             }
         }
 
@@ -781,6 +798,15 @@ impl DocumentService {
                 let mut delete = SqlBuilder::new(self.db.flavor());
                 delete.push("DELETE FROM ").ident(link_table).push(" WHERE ");
                 delete.ident("target_document_id").push(" = ");
+                delete.param(SqlValue::Text(document_id.into()));
+                tx.execute(&delete.sql, &delete.params).await?;
+            }
+            // Polymorphic links may point at any type.
+            for link_table in morph::owner_tables(&self.registry) {
+                let mut delete = SqlBuilder::new(self.db.flavor());
+                delete.push("DELETE FROM ").ident(&link_table).push(" WHERE ");
+                delete.ident("target_type").push(" = ").param(SqlValue::Text(uid.into()));
+                delete.push(" AND ").ident("target_document_id").push(" = ");
                 delete.param(SqlValue::Text(document_id.into()));
                 tx.execute(&delete.sql, &delete.params).await?;
             }
@@ -1247,6 +1273,7 @@ impl DocumentService {
     ) -> Result<()> {
         let media = model.fields.iter().filter_map(|field| field.media.as_ref());
         crate::media::copy_media(tx, media, from_row, to_row).await?;
+        self.copy_morphs(tx, model, from_row, to_row, &|_| true).await?;
         let owned = model
             .fields
             .iter()
@@ -1441,6 +1468,7 @@ impl DocumentService {
             |field: &&Field| field.attribute.as_ref().is_some_and(|attribute| !attribute.localized);
         let media = model.fields.iter().filter(shared).filter_map(|field| field.media.as_ref());
         crate::media::copy_media(tx, media, source_id, id).await?;
+        self.copy_morphs(tx, model, source_id, id, &|field| shared(&field)).await?;
         for relation in model
             .fields
             .iter()
@@ -1675,7 +1703,7 @@ fn public_fields<'a>(
                     selected.is_none_or(|selected| selected.contains(&field.api))
                 }
                 FieldCategory::Nested => populate.iter().any(|item| item.field == field.api),
-                FieldCategory::Relation | FieldCategory::Media => false,
+                FieldCategory::Relation | FieldCategory::Media | FieldCategory::Morph => false,
             },
         })
         .collect()
@@ -1686,7 +1714,12 @@ fn internal_fields(model: &TypeModel) -> Vec<&Field> {
     model
         .fields
         .iter()
-        .filter(|field| !matches!(field.category, FieldCategory::Relation | FieldCategory::Media))
+        .filter(|field| {
+            !matches!(
+                field.category,
+                FieldCategory::Relation | FieldCategory::Media | FieldCategory::Morph
+            )
+        })
         .collect()
 }
 

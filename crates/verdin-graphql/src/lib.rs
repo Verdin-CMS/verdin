@@ -570,6 +570,8 @@ fn output_type(
             (TypeRef::named_nn_list_nn("UploadFile"), Shape::List)
         }
         AttributeKind::Media { .. } => (TypeRef::named("UploadFile"), Shape::Object),
+        // Documents of any type, as JSON with their `__type`.
+        AttributeKind::Morph { .. } => (TypeRef::named("JSON"), Shape::Scalar),
         AttributeKind::Component { component, repeatable: true, .. } => {
             (TypeRef::named_nn_list_nn(names::component(component)), Shape::List)
         }
@@ -608,6 +610,7 @@ fn input_type(
         }
         // Items carry `__component`: typed as JSON like Strapi's dynamic zone inputs.
         AttributeKind::DynamicZone { .. } => TypeRef::named_nn_list("JSON"),
+        AttributeKind::Morph { relation, .. } if relation.is_owner() => TypeRef::named("JSON"),
         _ => return None,
     })
 }

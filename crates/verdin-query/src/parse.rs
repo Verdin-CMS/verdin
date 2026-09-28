@@ -163,6 +163,11 @@ impl Parser<'_> {
                     "filtering on media fields (`{name}`) is not supported yet"
                 )));
             }
+            FieldCategory::Morph => {
+                return Err(QueryError::new(format!(
+                    "filtering on polymorphic relations (`{name}`) is not supported"
+                )));
+            }
             FieldCategory::Nested => {
                 return match field.attribute.as_ref().map(|attribute| &attribute.kind) {
                     Some(AttributeKind::Component { component, repeatable: false, .. }) => {
@@ -228,6 +233,7 @@ impl Parser<'_> {
                         attribute: Some(attribute.clone()),
                         relation: None,
                         media: None,
+                        morph: None,
                     };
                     self.operator_filters(&field, child_path, value)?
                 }
@@ -258,6 +264,7 @@ impl Parser<'_> {
                 attribute: None,
                 relation: None,
                 media: None,
+                morph: None,
             };
             filters.push(self.operator_filters(&field, vec!["__component".into()], value)?);
         }
@@ -424,6 +431,24 @@ impl Parser<'_> {
                         )));
                     }
                     Some(query)
+                }
+                // Polymorphic targets have different fields: `count` only (`on` is accepted
+                // and ignored, like for dynamic zones).
+                (FieldCategory::Morph, Some(options)) => {
+                    let map = options.as_map().expect("maps");
+                    if let Some(key) =
+                        map.keys().find(|key| !matches!(key.as_str(), "count" | "on"))
+                    {
+                        return Err(QueryError::new(format!(
+                            "invalid key `{key}` in populate options of `{name}` (polymorphic)"
+                        )));
+                    }
+                    let count = match map.get("count").map(|node| node.as_leaf()) {
+                        None | Some(Some("false")) => false,
+                        Some(Some("true")) => true,
+                        Some(_) => return Err(QueryError::new("`count` is `true` or `false`")),
+                    };
+                    Some(SubQuery { count, ..Default::default() })
                 }
                 // Components are stored whole; their populate options are accepted and ignored.
                 _ => None,

@@ -323,6 +323,8 @@ INDEX  (target_document_id)
 - No FK on `target_document_id` (it is not unique in the target table). Integrity is enforced by the Document Service, which also rejects links to documents that do not exist.
 - Migrations run with SQLite's `foreign_keys` off, so table rebuilds do not cascade into link tables. Renaming a table renames its link tables with it.
 
+**Polymorphic relations** (since 0.8). `morphToOne` and `morphToMany` link documents of any content type. Their links live in `{table}_{field}_mph`: `source_id`, `target_type` (the target's uid), `target_document_id` and `position`, with a unique `(source_id, target_type, target_document_id)` and, for `morphToOne`, a unique `source_id`. Writes take `{ "__type": uid, "documentId": id }` items. Populated items are the target documents with their `__type`, each read in the request's status and locale like other relations. The inverse sides `morphOne` and `morphMany` name the owner type (`target`) and its attribute (`morphBy`). They read the owner's links that point at them, and they are read-only. Deleting a document removes the polymorphic links to it. Polymorphic relations cannot be filtered or sorted on, and cannot be inside components.
+
 ### 8.5 Components and dynamic zones: a JSON column
 
 A component is a reusable group of fields (e.g. `shared.seo` = metaTitle + metaDescription) embedded inside a document. A dynamic zone is a list mixing several component kinds (e.g. a page body made of hero, quote and gallery blocks).

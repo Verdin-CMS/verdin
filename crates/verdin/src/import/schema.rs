@@ -1,6 +1,7 @@
 //! Strapi content types and components (`schemas/` lines) as Verdin schema files.
 //! Only `api::` content types are brought over; relations to admin users, end users or
-//! plugins, morph relations and custom fields are dropped with a warning.
+//! plugins and custom fields are dropped with a warning; polymorphic relations keep only
+//! their links to imported content types.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -215,13 +216,33 @@ fn attributes(
             ty if SCALARS.contains(&ty) || matches!(ty, "media" | "component" | "dynamiczone") => {
                 converted.insert("type".into(), json!(ty));
             }
+            "relation"
+                if attribute["relation"].as_str().is_some_and(|kind| kind.starts_with("morph")) =>
+            {
+                let relation = attribute["relation"].as_str().unwrap_or_default();
+                let target = attribute["target"].as_str().unwrap_or_default();
+                if in_component {
+                    warn(format!("`{relation}` inside a component is not supported; skipped"));
+                    continue;
+                }
+                converted.insert("type".into(), json!("relation"));
+                converted.insert("relation".into(), json!(relation));
+                if matches!(relation, "morphOne" | "morphMany") {
+                    let Some(target_name) = targets.get(target) else {
+                        warn(format!(
+                            "`{relation}` to `{target}` skipped (only api:: types are imported)"
+                        ));
+                        continue;
+                    };
+                    converted.insert("target".into(), json!(target_name));
+                    if let Some(by) = attribute.get("morphBy") {
+                        converted.insert("morphBy".into(), by.clone());
+                    }
+                }
+            }
             "relation" => {
                 let relation = attribute["relation"].as_str().unwrap_or_default();
                 let target = attribute["target"].as_str().unwrap_or_default();
-                if relation.starts_with("morph") {
-                    warn(format!("`{relation}` relations are not supported; skipped"));
-                    continue;
-                }
                 let Some(target_name) = targets.get(target) else {
                     warn(format!("relation to `{target}` skipped (only api:: types are imported)"));
                     continue;

@@ -34,6 +34,7 @@ fn populated(attribute: &Attribute) -> bool {
     matches!(
         attribute.kind,
         AttributeKind::Relation { .. }
+            | AttributeKind::Morph { .. }
             | AttributeKind::Media { .. }
             | AttributeKind::Component { .. }
             | AttributeKind::DynamicZone { .. }
@@ -122,6 +123,23 @@ impl DocumentService {
             let Some(value) = source.get(name) else { continue };
             let value = match &attribute.kind {
                 AttributeKind::Relation { mapped_by: Some(_), .. } => continue,
+                AttributeKind::Morph { relation, .. } if !relation.is_owner() => continue,
+                AttributeKind::Morph { .. } => {
+                    let value = crate::service::morph::write_form(value);
+                    let items = match &value {
+                        Json::Array(items) => items.clone(),
+                        Json::Null => Vec::new(),
+                        single => vec![single.clone()],
+                    };
+                    for item in items {
+                        if let (Some(uid), Some(id)) =
+                            (item["__type"].as_str(), item["documentId"].as_str())
+                        {
+                            documents.entry(uid.to_owned()).or_default().insert(id.to_owned());
+                        }
+                    }
+                    value
+                }
                 AttributeKind::Relation { relation, target, .. } => {
                     let ids = document_ids(value);
                     documents.entry(target.clone()).or_default().extend(ids.iter().cloned());
@@ -201,6 +219,11 @@ impl DocumentService {
                 AttributeKind::Relation { target, .. } => {
                     prune(value, |id| keep_document(target, id))
                 }
+                AttributeKind::Morph { .. } => prune(value, |item| {
+                    item["__type"]
+                        .as_str()
+                        .is_none_or(|uid| keep_document(uid, &item["documentId"]))
+                }),
                 AttributeKind::Media { .. } => prune(value, |id| {
                     let gone = id.as_i64().is_some_and(|id| !existing_files.contains_key(&id));
                     count.set(count.get() + usize::from(gone));

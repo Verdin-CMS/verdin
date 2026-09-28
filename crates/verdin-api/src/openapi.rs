@@ -316,6 +316,20 @@ fn attribute_schema(schema: &Schema, kind: &AttributeKind) -> Value {
             json!({ "type": "array", "items": { "oneOf": variants } })
         }
         AttributeKind::Relation { .. } | AttributeKind::Media { .. } => json!({}),
+        // `{ "__type": uid, "documentId": id }`, alone or in a list (with the target's
+        // fields when populated).
+        AttributeKind::Morph { relation, .. } => {
+            let item = json!({
+                "type": "object",
+                "required": ["__type", "documentId"],
+                "properties": { "__type": { "type": "string" }, "documentId": { "type": "string" } },
+            });
+            if relation.is_to_many() {
+                json!({ "type": "array", "items": item })
+            } else {
+                json!({ "oneOf": [item, { "type": "null" }] })
+            }
+        }
     }
 }
 

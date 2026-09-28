@@ -79,7 +79,7 @@ to move to Verdin without losing features.
 |---|---|---|
 | **Conditional fields** ✅ | M | `conditions.visible` on attributes (Strapi 5.17 JSON Logic format), evaluated in the editor and on write; 0.7 loads and keeps them without applying them |
 | `password` attribute type ✅ | S | Hashed on write, always private; kept by `verdin import strapi` |
-| Morph relations | L | `morphToOne`/`morphToMany`/`morphOne`/`morphMany`, API and populate only (Strapi has no admin UI for them either) |
+| Morph relations ✅ | L | `morphToOne`/`morphToMany`/`morphOne`/`morphMany`, API and populate only (Strapi has no admin UI for them either) |
 | Populate gaps ✅ | S | Dynamic zone `on` fragments, `count: true`, filters on repeatable components and dynamic zones, sort by a relation's field, `hasPublishedVersion` |
 | Edit view layout ✅ | M | Field order, width, label, description, placeholder, editable, main field of relations; honour `configurable: false` in the builder |
 | Duplicate entry ✅ | S | Clone from the list and the editor (`POST …/actions/clone`), relations and media copied, unique fields cleared |

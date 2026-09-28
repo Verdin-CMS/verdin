@@ -75,6 +75,15 @@ fn output(schema: &Schema, attribute: &Attribute) -> (String, bool) {
                 true,
             )
         }
+        // Any populated document, with `__type` telling its content type.
+        A::Morph { relation, .. } => (
+            if relation.is_to_many() {
+                "Array<{ __type: string; documentId: string; [field: string]: unknown }>".into()
+            } else {
+                "{ __type: string; documentId: string; [field: string]: unknown } | null".into()
+            },
+            true,
+        ),
         A::Media { multiple, .. } => {
             (if *multiple { "Media[]".into() } else { "Media | null".into() }, true)
         }
@@ -101,6 +110,11 @@ fn input(schema: &Schema, attribute: &Attribute) -> Option<String> {
             "string[] | { connect?: Array<string | { documentId: string; position?: unknown }>; disconnect?: string[]; set?: string[] }".into()
         }
         A::Relation { .. } => "string | null".into(),
+        A::Morph { relation, .. } if !relation.is_owner() => return None,
+        A::Morph { relation, .. } if relation.is_to_many() => {
+            "Array<{ __type: string; documentId: string }>".into()
+        }
+        A::Morph { .. } => "{ __type: string; documentId: string } | null".into(),
         A::Media { multiple: true, .. } => "number[]".into(),
         A::Media { .. } => "number | null".into(),
         A::Component { component, repeatable, .. } => {

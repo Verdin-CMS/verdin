@@ -52,6 +52,12 @@ pub fn derive_content_model(schema: &Schema) -> DbModel {
                 let link = media_table(&table.name, name, *multiple);
                 tables.insert(link.name.clone(), link);
             }
+            if let AttributeKind::Morph { relation, .. } = &attribute.kind
+                && relation.is_owner()
+            {
+                let link = morph_table(&table.name, name, relation.is_to_many());
+                tables.insert(link.name.clone(), link);
+            }
         }
         tables.insert(table.name.clone(), table);
     }
@@ -84,6 +90,47 @@ fn link_table(source_table: &str, attribute: &str, to_many: bool) -> Table {
         columns: vec![
             Column::new("id", ColumnType::Id).not_null(),
             Column::new("source_id", ColumnType::BigInt).not_null(),
+            Column::new("target_document_id", ColumnType::Char { length: DOCUMENT_ID_LENGTH })
+                .not_null(),
+            Column::new("position", ColumnType::Double).not_null(),
+        ],
+        indexes,
+        foreign_keys: vec![ForeignKey {
+            columns: vec!["source_id".into()],
+            table: source_table.to_owned(),
+            references: vec!["id".into()],
+        }],
+        name,
+    }
+}
+
+/// Links of one polymorphic owner attribute: source row → (content type, document).
+fn morph_table(source_table: &str, attribute: &str, to_many: bool) -> Table {
+    let name = verdin_schema::naming::morph_table_name(source_table, attribute);
+    let mut indexes = vec![
+        Index {
+            name: index_name(&name, "pair", "uq"),
+            columns: vec!["source_id".into(), "target_type".into(), "target_document_id".into()],
+            unique: true,
+        },
+        Index {
+            name: index_name(&name, "target", "idx"),
+            columns: vec!["target_type".into(), "target_document_id".into()],
+            unique: false,
+        },
+    ];
+    if !to_many {
+        indexes.push(Index {
+            name: index_name(&name, "source", "uq"),
+            columns: vec!["source_id".into()],
+            unique: true,
+        });
+    }
+    Table {
+        columns: vec![
+            Column::new("id", ColumnType::Id).not_null(),
+            Column::new("source_id", ColumnType::BigInt).not_null(),
+            Column::new("target_type", ColumnType::Varchar { length: 255 }).not_null(),
             Column::new("target_document_id", ColumnType::Char { length: DOCUMENT_ID_LENGTH })
                 .not_null(),
             Column::new("position", ColumnType::Double).not_null(),
@@ -202,7 +249,11 @@ fn column_type(attribute: &Attribute) -> Option<ColumnType> {
         | AttributeKind::Blocks
         | AttributeKind::Component { .. }
         | AttributeKind::DynamicZone { .. } => ColumnType::Json,
-        AttributeKind::Relation { .. } | AttributeKind::Media { .. } => return None,
+        AttributeKind::Relation { .. }
+        | AttributeKind::Morph { .. }
+        | AttributeKind::Media { .. } => {
+            return None;
+        }
     })
 }
 

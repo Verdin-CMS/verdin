@@ -136,7 +136,7 @@ pub fn populate<'a>(
         let Some(field) = fields.get(name) else { continue };
         match field.category {
             FieldCategory::Scalar => {}
-            FieldCategory::Nested | FieldCategory::Media => {
+            FieldCategory::Nested | FieldCategory::Media | FieldCategory::Morph => {
                 map.insert(name.to_owned(), Node::Leaf("true".into()));
             }
             FieldCategory::Relation => {

@@ -278,7 +278,31 @@ pub async fn import(context: &Context<'_>) -> Result<Report> {
     // Relations of content types.
     let mut relations: HashMap<(String, i64, String), Vec<(f64, String)>> = HashMap::new();
     let mut media: HashMap<(String, i64, String), Vec<(f64, i64)>> = HashMap::new();
+    // (Strapi uid, row, field) → (position, (target uid, target documentId)).
+    type MorphLinks = HashMap<(String, i64, String), Vec<(f64, (String, String))>>;
+    let mut morphs: MorphLinks = HashMap::new();
     for link in &export.links {
+        // Polymorphic owners of content types: links to documents of imported types.
+        if link.kind == "relation.morph"
+            && let Some(uid) = context.types.get(&link.left.uid)
+            && let (Some(row), Some(field)) = (link.left.row(), link.left.field.as_ref())
+            && context
+                .schema
+                .content_type(uid)
+                .and_then(|content_type| content_type.attributes.get(field))
+                .is_some_and(|attribute| matches!(&attribute.kind, AttributeKind::Morph { relation, .. } if relation.is_owner()))
+        {
+            if let (Some(target_uid), Some(document)) = (
+                context.types.get(&link.right.uid),
+                link.right.row().and_then(|id| documents.get(&(link.right.uid.clone(), id))),
+            ) {
+                morphs
+                    .entry((link.left.uid.clone(), row, field.clone()))
+                    .or_default()
+                    .push((link.left.pos.unwrap_or_default(), (target_uid.clone(), document.clone())));
+            }
+            continue;
+        }
         if link.kind == "relation.morph" && link.left.uid == FILE {
             if let (Some(file), Some(row), Some(field)) = (
                 link.left.row().and_then(|id| files.get(&id)),
@@ -324,6 +348,24 @@ pub async fn import(context: &Context<'_>) -> Result<Report> {
         for id in inserted.get(&(strapi_uid.clone(), row)).into_iter().flatten() {
             let uid = &context.types[&strapi_uid];
             match context.service.import_links(uid, &field, *id, &targets).await {
+                Ok(()) => report.links += targets.len(),
+                Err(error) => {
+                    report.warnings.push(format!("{uid}.{field}: links not imported ({error})"))
+                }
+            }
+        }
+    }
+    for ((strapi_uid, row, field), mut targets) in morphs {
+        targets.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut seen = HashSet::new();
+        let targets: Vec<(String, String)> = targets
+            .into_iter()
+            .map(|(_, target)| target)
+            .filter(|target| seen.insert(target.clone()))
+            .collect();
+        for id in inserted.get(&(strapi_uid.clone(), row)).into_iter().flatten() {
+            let uid = &context.types[&strapi_uid];
+            match context.service.import_morph_links(uid, &field, *id, &targets).await {
                 Ok(()) => report.links += targets.len(),
                 Err(error) => {
                     report.warnings.push(format!("{uid}.{field}: links not imported ({error})"))

@@ -17,6 +17,8 @@ pub enum FieldCategory {
     Relation,
     /// Media library files: stored in a media link table, returned only when populated.
     Media,
+    /// Polymorphic relations: links to documents of any type, returned only when populated.
+    Morph,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +35,20 @@ pub struct Field {
     pub relation: Option<RelationInfo>,
     /// Set for media fields.
     pub media: Option<MediaInfo>,
+    /// Set for polymorphic relations.
+    pub morph: Option<MorphInfo>,
+}
+
+/// How a polymorphic relation is stored: owners hold `(target_type, target_document_id)`
+/// links; inverse sides read the links of `owner_uid`'s attribute that point at them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MorphInfo {
+    pub kind: verdin_schema::MorphKind,
+    pub owner: bool,
+    pub to_many: bool,
+    pub link_table: String,
+    /// Inverse sides: the owner content type.
+    pub owner_uid: Option<String>,
 }
 
 /// How a media field is stored (docs/architecture.md §8.7).
@@ -107,6 +123,7 @@ impl TypeFields {
             attribute: None,
             relation: None,
             media: None,
+            morph: None,
         };
         let mut fields = IndexMap::new();
         for field in [
@@ -117,7 +134,10 @@ impl TypeFields {
         }
         for (name, attribute) in &content_type.attributes {
             let (kind, category) = attribute_kind(&attribute.kind);
-            let column = if matches!(category, FieldCategory::Relation | FieldCategory::Media) {
+            let column = if matches!(
+                category,
+                FieldCategory::Relation | FieldCategory::Media | FieldCategory::Morph
+            ) {
                 String::new()
             } else {
                 Attribute::column_name(name)
@@ -141,6 +161,7 @@ impl TypeFields {
                     attribute: Some(attribute.clone()),
                     relation,
                     media,
+                    morph: morph_info(content_type, name, &attribute.kind, schema),
                 },
             );
         }
@@ -225,6 +246,38 @@ fn relation_info(
     })
 }
 
+fn morph_info(
+    content_type: &ContentType,
+    name: &str,
+    kind: &AttributeKind,
+    schema: &Schema,
+) -> Option<MorphInfo> {
+    let AttributeKind::Morph { relation, target, morph_by } = kind else { return None };
+    if relation.is_owner() {
+        return Some(MorphInfo {
+            kind: *relation,
+            owner: true,
+            to_many: relation.is_to_many(),
+            link_table: verdin_schema::naming::morph_table_name(
+                &content_type.collection_name,
+                name,
+            ),
+            owner_uid: None,
+        });
+    }
+    let owner = schema.content_type(target.as_deref()?)?;
+    Some(MorphInfo {
+        kind: *relation,
+        owner: false,
+        to_many: relation.is_to_many(),
+        link_table: verdin_schema::naming::morph_table_name(
+            &owner.collection_name,
+            morph_by.as_deref()?,
+        ),
+        owner_uid: Some(owner.uid.clone()),
+    })
+}
+
 /// Fields of every content type, by uid.
 #[derive(Debug, Clone, Default)]
 pub struct Catalog {
@@ -280,6 +333,7 @@ pub fn attribute_kind(kind: &AttributeKind) -> (ColumnKind, FieldCategory) {
         A::Json | A::Blocks => scalar(ColumnKind::Json),
         A::Component { .. } | A::DynamicZone { .. } => (ColumnKind::Json, FieldCategory::Nested),
         A::Relation { .. } => (ColumnKind::Json, FieldCategory::Relation),
+        A::Morph { .. } => (ColumnKind::Json, FieldCategory::Morph),
         A::Media { .. } => (ColumnKind::Json, FieldCategory::Media),
     }
 }

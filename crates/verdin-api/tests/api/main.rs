@@ -17,6 +17,7 @@ mod history;
 mod i18n;
 mod mcp;
 mod media;
+mod morph;
 mod password;
 mod plugins;
 mod populate;

@@ -395,6 +395,30 @@ fn check_attributes(
                     }
                 }
             }
+            AttributeKind::Morph { .. } if in_component => {
+                report.push(
+                    file,
+                    at("relation"),
+                    "polymorphic relations cannot be inside components",
+                );
+            }
+            AttributeKind::Morph { target: Some(target), morph_by: Some(by), .. } => {
+                let Some(owner) = schema.content_type(target) else {
+                    report.push(file, at("target"), format!("unknown content type `{target}`"));
+                    continue;
+                };
+                let pairs = matches!(
+                    owner.attributes.get(by).map(|attribute| &attribute.kind),
+                    Some(AttributeKind::Morph { relation: owned, .. }) if owned.is_owner()
+                );
+                if !pairs {
+                    report.push(
+                        file,
+                        at("morphBy"),
+                        format!("`{target}.{by}` must be a morphToOne or morphToMany attribute"),
+                    );
+                }
+            }
             AttributeKind::Component { component, .. } => {
                 if schema.component(component).is_none() {
                     report.push(file, at("component"), format!("unknown component `{component}`"));

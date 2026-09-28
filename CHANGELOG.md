@@ -51,6 +51,10 @@ All notable changes to Verdin are documented here. The format follows
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.
+- **Polymorphic relations**: `morphToOne` and `morphToMany` link documents of any content
+  type (`{ "__type": uid, "documentId": id }`), and `morphOne` / `morphMany` read them from
+  the other side. They are populated in REST and GraphQL (as JSON), copied on publish,
+  kept by history, duplicates and `verdin export`, and imported from Strapi.
 - **Admin panel**: a filter builder in the content lists, drag-and-drop relations with
   editing in a side sheet, a side-by-side live preview with device widths, duplicate
   from the list and the editor, the edit view configurator, conditional fields in the

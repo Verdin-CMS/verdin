@@ -125,6 +125,9 @@ pub struct ExportedVersion {
     /// Media fields: file ids (of the export) in order.
     #[serde(default)]
     pub media: serde_json::Map<String, Json>,
+    /// Polymorphic owner attributes: `{ __type, documentId }` items in order.
+    #[serde(default)]
+    pub morph: serde_json::Map<String, Json>,
 }
 
 impl DocumentService {
@@ -203,10 +206,14 @@ impl DocumentService {
                 data,
                 relations: Default::default(),
                 media: Default::default(),
+                morph: Default::default(),
             });
         }
         let index: std::collections::HashMap<i64, usize> =
             ids.iter().enumerate().map(|(position, id)| (*id, position)).collect();
+        for (row, links) in self.morph_exports(model, &ids).await? {
+            versions[index[&row]].morph = links;
+        }
         for field in model.fields.attributes() {
             if let Some(relation) = field.relation.as_ref().filter(|relation| relation.owner) {
                 for (source, target) in self.links_of_sources(&relation.link_table, &ids).await? {

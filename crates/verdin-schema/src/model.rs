@@ -147,6 +147,16 @@ pub enum AttributeKind {
         inversed_by: Option<String>,
         mapped_by: Option<String>,
     },
+    /// Polymorphic relations: owners (`morphToOne`, `morphToMany`) link documents of any
+    /// content type; inverse sides (`morphOne`, `morphMany`) read those links from the
+    /// owner type `target`'s attribute `morph_by`. Schema type `relation`.
+    Morph {
+        relation: MorphKind,
+        /// Inverse sides only.
+        target: Option<String>,
+        /// Inverse sides only.
+        morph_by: Option<String>,
+    },
     Component {
         component: String,
         repeatable: bool,
@@ -227,7 +237,7 @@ impl AttributeKind {
             AttributeKind::Enumeration { .. } => "enumeration",
             AttributeKind::Json => "json",
             AttributeKind::Blocks => "blocks",
-            AttributeKind::Relation { .. } => "relation",
+            AttributeKind::Relation { .. } | AttributeKind::Morph { .. } => "relation",
             AttributeKind::Component { .. } => "component",
             AttributeKind::DynamicZone { .. } => "dynamiczone",
             AttributeKind::Media { .. } => "media",
@@ -259,7 +269,50 @@ impl AttributeKind {
     /// Whether the attribute is stored as a column on the owning row.
     /// Relations live in link tables instead.
     pub fn has_column(&self) -> bool {
-        !matches!(self, AttributeKind::Relation { .. } | AttributeKind::Media { .. })
+        !matches!(
+            self,
+            AttributeKind::Relation { .. }
+                | AttributeKind::Morph { .. }
+                | AttributeKind::Media { .. }
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MorphKind {
+    ToOne,
+    ToMany,
+    One,
+    Many,
+}
+
+impl MorphKind {
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "morphToOne" => MorphKind::ToOne,
+            "morphToMany" => MorphKind::ToMany,
+            "morphOne" => MorphKind::One,
+            "morphMany" => MorphKind::Many,
+            _ => return None,
+        })
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MorphKind::ToOne => "morphToOne",
+            MorphKind::ToMany => "morphToMany",
+            MorphKind::One => "morphOne",
+            MorphKind::Many => "morphMany",
+        }
+    }
+
+    /// `morphToOne` / `morphToMany` store the links.
+    pub fn is_owner(self) -> bool {
+        matches!(self, MorphKind::ToOne | MorphKind::ToMany)
+    }
+
+    pub fn is_to_many(self) -> bool {
+        matches!(self, MorphKind::ToMany | MorphKind::Many)
     }
 }
 
