@@ -47,9 +47,12 @@ import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { Schema } from '../../core/schema';
 import { ContentType, Document, MediaFile } from '../../core/types';
+import { UsageProbe, Usages } from '../../core/usage';
 import { PageHeader } from '../../shared/components/page-header';
+import { UsageWarning } from '../../shared/components/usage';
 import { VoteControl } from '../../shared/components/vote-control';
 import { EntryReleases } from './entry-releases';
+import { EntryUsage } from './entry-usage';
 import { EntryReview } from './entry-review';
 import { FieldsComponent, humanize } from './fields/fields';
 import {
@@ -109,6 +112,8 @@ function withLocale(query: string, locale: string | null): string {
     VoteControl,
     EntryReleases,
     EntryReview,
+    EntryUsage,
+    UsageWarning,
     FormRoot,
     RouterLink,
     NgIcon,
@@ -541,6 +546,12 @@ function withLocale(query: string, locale: string | null): string {
               }
             }
 
+            @if (!missing()) {
+              @if (documentId(); as id) {
+                <vd-entry-usage [uid]="type().uid" [documentId]="id" [locale]="locale()" />
+              }
+            }
+
             @if (documentId() && !missing() && canDelete()) {
               <section hlmCard size="sm" class="ring-destructive/30">
                 <div hlmCardHeader>
@@ -562,6 +573,7 @@ function withLocale(query: string, locale: string | null): string {
                       size="sm"
                       type="button"
                       class="w-full"
+                      (click)="checkUsage()"
                     >
                       <ng-icon name="lucideTrash2" /> {{ t('common.delete') }}
                     </button>
@@ -570,6 +582,7 @@ function withLocale(query: string, locale: string | null): string {
                         <h2 hlmAlertDialogTitle>{{ t('content.edit.deleteTitle') }}</h2>
                         <p hlmAlertDialogDescription>{{ t('content.edit.deleteHint') }}</p>
                       </hlm-alert-dialog-header>
+                      <vd-usage-warning [state]="deleteUsage.state()" />
                       <hlm-alert-dialog-footer>
                         <button hlmAlertDialogCancel (click)="ctx.close()">
                           {{ t('common.cancel') }}
@@ -1312,6 +1325,24 @@ export class DocumentForm implements OnInit {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  /** Where the entry is used, for the delete confirmation. */
+  protected readonly deleteUsage = new UsageProbe();
+  private readonly usages = inject(Usages);
+
+  protected checkUsage(): void {
+    const uid = this.type().uid;
+    const documentId = this.documentId();
+    if (!documentId) return;
+    // References from the entry itself go with it.
+    void this.deleteUsage.start(async () => {
+      const result = await this.usages.forEntry(uid, documentId, this.locale());
+      return {
+        ...result,
+        data: result.data.filter((usage) => usage.uid !== uid || usage.documentId !== documentId),
+      };
+    });
   }
 
   protected async remove(): Promise<void> {

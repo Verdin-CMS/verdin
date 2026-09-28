@@ -151,3 +151,45 @@ export function moveColumn(columns: readonly string[], index: number, offset: nu
   if (moved !== undefined) next.splice(target, 0, moved);
   return next;
 }
+
+/** Attribute types the full-text search (`_q`) looks into when the server has no index. */
+export const SEARCHABLE_TYPES: ReadonlySet<string> = new Set([
+  'string',
+  'text',
+  'richtext',
+  'email',
+  'uid',
+  'enumeration',
+]);
+
+/** Whether `_q` can find anything in the type: it has a text field that is not private. */
+export function isSearchable(type: ContentType): boolean {
+  return Object.values(type.attributes).some(
+    (attribute) => SEARCHABLE_TYPES.has(attribute.type) && !attribute.private,
+  );
+}
+
+/** What a list shows, as request parameters: the export takes the same ones. */
+export interface ListState {
+  locale: string | null;
+  /** Full-text search. */
+  search: string;
+  /** `null`: the server's order (by rank when searching). */
+  sort: ListSort | null;
+}
+
+/**
+ * The query of a list (without pagination), for `toQuery`: `filters` as built by the
+ * filter builder, `_q` for the search, and `sort` only when one applies.
+ */
+export function listQuery(
+  state: ListState,
+  filters: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    sort: state.sort ? `${state.sort.field}:${state.sort.descending ? 'desc' : 'asc'}` : undefined,
+    locale: state.locale,
+    _q: state.search.trim() || undefined,
+    filters,
+  };
+}

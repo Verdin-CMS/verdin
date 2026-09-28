@@ -5,6 +5,8 @@ import {
   availableColumns,
   defaultView,
   isDefaultView,
+  isSearchable,
+  listQuery,
   mainColumn,
   moveColumn,
   resolveView,
@@ -150,5 +152,36 @@ describe('helpers', () => {
     expect(moveColumn(['a', 'b', 'c'], 1, 1)).toEqual(['a', 'c', 'b']);
     expect(moveColumn(['a', 'b', 'c'], 0, -1)).toEqual(['a', 'b', 'c']);
     expect(moveColumn(['a', 'b', 'c'], 2, 1)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('listQuery', () => {
+  it('sends the search as _q and the sort only when one applies', () => {
+    const filters = { $and: { 0: { title: { $eq: 'x' } } } };
+    expect(
+      listQuery(
+        { locale: 'fr', search: ' news ', sort: { field: 'title', descending: true } },
+        filters,
+      ),
+    ).toEqual({ sort: 'title:desc', locale: 'fr', _q: 'news', filters });
+    expect(listQuery({ locale: null, search: 'news', sort: null }, {})).toEqual({
+      sort: undefined,
+      locale: null,
+      _q: 'news',
+      filters: {},
+    });
+    expect(listQuery({ locale: null, search: '  ', sort: null }, {})['_q']).toBeUndefined();
+  });
+});
+
+describe('isSearchable', () => {
+  it('needs a text field that is not private', () => {
+    expect(isSearchable(article)).toBe(true);
+    expect(
+      isSearchable({
+        ...article,
+        attributes: { count: { type: 'integer' }, note: { type: 'text', private: true } },
+      }),
+    ).toBe(false);
   });
 });

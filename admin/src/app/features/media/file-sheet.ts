@@ -2,11 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   linkedSignal,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { NgIcon } from '@ng-icons/core';
@@ -27,6 +29,8 @@ import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
 import { Media } from '../../core/media';
 import { MediaFile, MediaFolder } from '../../core/types';
+import { UsageProbe, Usages } from '../../core/usage';
+import { UsageSection, UsageWarning } from '../../shared/components/usage';
 import { MediaCropDialog } from './crop-dialog';
 import { croppable } from './crop';
 import {
@@ -58,6 +62,8 @@ type FocalPoint = { x: number; y: number };
     HlmTextareaImports,
     HlmSpinnerImports,
     MediaCropDialog,
+    UsageSection,
+    UsageWarning,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -353,6 +359,10 @@ type FocalPoint = { x: number; y: number };
                 }
               </dl>
 
+              <div class="rounded-xl border p-4">
+                <vd-usage-section [state]="usage.state()" [level]="3" (retry)="loadUsage()" />
+              </div>
+
               <div class="flex flex-wrap items-center gap-2 border-t pt-4">
                 @if (canDelete()) {
                   <hlm-alert-dialog>
@@ -363,6 +373,7 @@ type FocalPoint = { x: number; y: number };
                       size="sm"
                       type="button"
                       class="text-destructive hover:text-destructive"
+                      (click)="checkUsage(file)"
                     >
                       <ng-icon name="lucideTrash2" /> {{ t('common.delete') }}
                     </button>
@@ -373,6 +384,7 @@ type FocalPoint = { x: number; y: number };
                           {{ t('media.file.deleteHint', { name: file.name }) }}
                         </p>
                       </hlm-alert-dialog-header>
+                      <vd-usage-warning [state]="deleteUsage.state()" />
                       <hlm-alert-dialog-footer>
                         <button hlmAlertDialogCancel (click)="dialog.close()">
                           {{ t('common.cancel') }}
@@ -475,8 +487,29 @@ export class MediaFileSheet {
     return point ? `${Math.round(point.x * 100)}% × ${Math.round(point.y * 100)}%` : '';
   });
 
+  private readonly usages = inject(Usages);
+  /** Where the shown file is used. */
+  protected readonly usage = new UsageProbe();
+  /** The same, looked up again when a delete is confirmed. */
+  protected readonly deleteUsage = new UsageProbe();
+  /** The file whose usage is shown (by id: saving the file keeps it). */
+  private readonly usageId = computed(() => this.file()?.id ?? null);
+
   constructor() {
     void this.ai.load();
+    effect(() => {
+      // Closing keeps the last answer while the sheet animates out.
+      if (this.usageId() !== null) untracked(() => this.loadUsage());
+    });
+  }
+
+  protected loadUsage(): void {
+    const id = this.usageId();
+    if (id !== null) void this.usage.start(() => this.usages.forFile(id));
+  }
+
+  protected checkUsage(file: MediaFile): void {
+    void this.deleteUsage.start(() => this.usages.forFile(file.id));
   }
 
   protected kind = fileKind;
