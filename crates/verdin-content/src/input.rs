@@ -717,6 +717,10 @@ pub fn check_required(
             Json::Array(items) => items.is_empty(),
             _ => false,
         };
+        // Hidden by Strapi's conditional fields: not required.
+        if !crate::logic::visible(attribute.conditions.as_ref(), document) {
+            continue;
+        }
         // Links are checked by the document service (they are not in the row).
         if attribute.required
             && missing

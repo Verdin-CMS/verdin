@@ -6,6 +6,7 @@ pub mod events;
 mod history;
 mod input;
 pub mod locales;
+pub mod logic;
 pub mod media;
 mod output;
 mod refs;
