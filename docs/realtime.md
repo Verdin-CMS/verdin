@@ -27,6 +27,8 @@ data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","loca
 | Other `entry.*` events | Callers with `find` or `findOne` on the type |
 | `media.create`, `media.update`, `media.delete` | Callers with `find` or `findOne` on the media library |
 
+The admin's stream also names the admin who made a change (`actorId`).
+
 Events carry ids, not content: fetch the entry to read it, with the caller's usual
 permissions. A stream ends after an hour. Reconnect then (`EventSource` does it
 automatically), which also checks the token again. An event named `lagged` means the

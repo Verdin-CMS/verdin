@@ -25,6 +25,8 @@ export interface RealtimeMessage {
   locale?: string;
   /** Media events. */
   fileId?: number;
+  /** Entry events from the admin: who made the change. */
+  actorId?: number;
   /** Presence events: who is on the entry now. */
   presence?: Viewer[];
 }
@@ -204,11 +206,12 @@ export class Realtime {
   }
 
   /**
-   * Whether an entry event most likely comes from this tab's own write. Events do not say
-   * who made the change, so writes this tab sent a moment ago are taken as the cause.
+   * Whether an entry event comes from this tab's own write: made by this admin (events
+   * from the admin name their `actorId`) and to an entry this tab wrote a moment ago.
    */
   isOwn(message: RealtimeMessage, now = Date.now()): boolean {
     if (!message.documentId) return false;
+    if (message.actorId !== undefined && message.actorId !== this.auth.user()?.id) return false;
     const at = this.writes.get(`${message.uid}|${message.documentId}`);
     return at !== undefined && now - at <= OWN_WRITE_WINDOW;
   }

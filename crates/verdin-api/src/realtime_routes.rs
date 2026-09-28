@@ -60,5 +60,5 @@ async fn events(
         types.as_ref().is_none_or(|types| types.contains(&message.uid))
             && content_allows(&actor, message)
     };
-    Ok(state.realtime.stream(crate::realtime::STREAM_LIFETIME, allow).into_response())
+    Ok(state.realtime.stream(crate::realtime::STREAM_LIFETIME, false, allow).into_response())
 }

@@ -46,7 +46,7 @@ async fn events(
         }
         permissions.content(actions::CONTENT_READ, &message.uid) != Grant::None
     };
-    Ok(realtime.stream(crate::realtime::ADMIN_STREAM_LIFETIME, allow).into_response())
+    Ok(realtime.stream(crate::realtime::ADMIN_STREAM_LIFETIME, true, allow).into_response())
 }
 
 #[derive(Deserialize)]

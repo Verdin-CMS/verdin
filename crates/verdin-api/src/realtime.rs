@@ -40,6 +40,9 @@ pub struct Message {
     /// Media events: the file id.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_id: Option<i64>,
+    /// The admin who made the change (content events from the admin).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor_id: Option<i64>,
     /// Presence events: who is on the entry now.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presence: Option<Vec<Viewer>>,
@@ -168,6 +171,7 @@ impl Realtime {
                 document_id: Some(document_id),
                 locale: (!locale.is_empty()).then_some(locale),
                 file_id: None,
+                actor_id: None,
                 presence: Some(viewers.clone()),
                 drafts_only: false,
                 admin_only: true,
@@ -184,6 +188,7 @@ impl Realtime {
             document_id: Some(document_id.into()),
             locale: (!locale.is_empty()).then(|| locale.into()),
             file_id: None,
+            actor_id: None,
             presence: None,
             drafts_only: false,
             admin_only: true,
@@ -198,10 +203,12 @@ impl Realtime {
         viewers(entry)
     }
 
-    /// An SSE response of the messages `allow` lets through.
+    /// An SSE response of the messages `allow` lets through; only `admin` streams say who
+    /// made a change.
     pub fn stream<A>(
         &self,
         lifetime: Duration,
+        admin: bool,
         allow: A,
     ) -> Sse<impl Stream<Item = Result<Event, Infallible>> + use<A>>
     where
@@ -215,7 +222,10 @@ impl Realtime {
                 let next = tokio::time::timeout_at(deadline, receiver.recv()).await;
                 match next {
                     Err(_) => return None,
-                    Ok(Ok(message)) if allow(&message) => {
+                    Ok(Ok(mut message)) if allow(&message) => {
+                        if !admin {
+                            message.actor_id = None;
+                        }
                         let data = serde_json::to_string(&message).expect("messages serialize");
                         let event = Event::default().event(message.event.clone()).data(data);
                         return Some((Ok(event), (receiver, allow)));
@@ -278,6 +288,7 @@ impl DocumentListener for Realtime {
                 document_id: Some(event.document_id.clone()),
                 locale: event.locale.clone(),
                 file_id: None,
+                actor_id: event.actor,
                 presence: None,
                 drafts_only,
                 admin_only: false,
@@ -299,6 +310,7 @@ impl FileListener for Realtime {
                 document_id: Some(file.document_id.clone()),
                 locale: None,
                 file_id: Some(file.id),
+                actor_id: None,
                 presence: None,
                 drafts_only: false,
                 admin_only: false,
