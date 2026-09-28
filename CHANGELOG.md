@@ -6,6 +6,8 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-28
+
 ### Added
 
 - **`password` attributes**: hashed with Argon2id on write and never returned, filtered
@@ -49,11 +51,22 @@ All notable changes to Verdin are documented here. The format follows
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.
+- **Admin panel**: a filter builder in the content lists, drag-and-drop relations with
+  editing in a side sheet, a side-by-side live preview with device widths, duplicate
+  from the list and the editor, the edit view configurator, conditional fields in the
+  editor and the builder, crop, replace, upload from URL and PDF preview in the media
+  library, the profile page with sessions, invitations and password resets, and
+  settings for the MCP server and GraphQL's disabled operations.
 
 ### Changed
 
 - The HTTP API tests of `verdin-api` build into one binary, which saves about 2.7 GB in
   `target/` per build.
+
+### Fixed
+
+- Tables with foreign keys are created (and dropped) in dependency order at any depth,
+  which PostgreSQL, MySQL and MariaDB need.
 
 ## [0.7.1] - 2026-09-28
 

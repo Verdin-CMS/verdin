@@ -3,7 +3,7 @@
 Open source headless CMS written in Rust. Inspired by Strapi, shipped as a single binary,
 running on PostgreSQL, MySQL, MariaDB and SQLite. 100% free — there is no enterprise edition.
 
-> **Status:** 0.7 — review workflows, right-to-left admin, several instances, docs site. See the [changelog](CHANGELOG.md), the
+> **Status:** 0.8 — Strapi parity: accounts, per-locale roles, conditional fields, MCP server, backups. See the [changelog](CHANGELOG.md), the
 > [architecture](docs/architecture.md) and the [roadmap](docs/roadmap.md).
 
 ## Quick start
