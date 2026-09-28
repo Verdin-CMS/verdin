@@ -623,7 +623,10 @@ pub fn system_tables() -> Vec<Table> {
                 index(DOCUMENT_STAGES, "stage", &["stage_id"]),
                 index(DOCUMENT_STAGES, "assignee", &["assignee_id"]),
             ],
-            foreign_keys: vec![references("stage_id", WORKFLOW_STAGES)],
+            // No foreign key: tables with foreign keys are created in name order, before
+            // `vd_workflow_stages`. Review workflows move or delete these rows themselves
+            // when stages go.
+            foreign_keys: Vec::new(),
         },
     ]
 }

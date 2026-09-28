@@ -29,10 +29,13 @@ import { Auth } from '../../core/auth';
 import { ContentLocales, isLocalized } from '../../core/content-locales';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { EntryStage, ReviewWorkflows, Workflow, stageOf } from '../../core/review';
+import { Features } from '../../core/features';
 import { Schema } from '../../core/schema';
 import { Document, PageMeta } from '../../core/types';
 import { UserPreferences, asObject } from '../../core/user-preferences';
 import { PageHeader } from '../../shared/components/page-header';
+import { StageBadge } from '../../shared/components/stage-badge';
 import { humanize } from './fields/fields';
 import { BULK_CONCURRENCY, BulkAction, failureReason, runLimited, summarize } from './list-bulk';
 import { ListSettings } from './list-settings';
@@ -99,6 +102,7 @@ interface LiveVersion {
     RouterLink,
     NgIcon,
     PageHeader,
+    StageBadge,
     ListSettings,
     HlmTableImports,
     HlmButtonImports,
@@ -227,6 +231,13 @@ interface LiveVersion {
                       }
                     </th>
                   }
+                  @if (workflow()) {
+                    <th hlmTh class="px-4">
+                      <span class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                        {{ t('review.list.stage') }}
+                      </span>
+                    </th>
+                  }
                 </tr>
               </thead>
               <tbody hlmTBody>
@@ -243,6 +254,11 @@ interface LiveVersion {
                           } @else {
                             <hlm-skeleton class="h-4" [class.w-40]="first" [class.w-24]="!first" />
                           }
+                        </td>
+                      }
+                      @if (workflow()) {
+                        <td hlmTd class="px-4 py-3">
+                          <hlm-skeleton class="h-5 w-20 rounded-full" />
                         </td>
                       }
                     </tr>
@@ -309,6 +325,13 @@ interface LiveVersion {
                             {{ cell(document, column) }}
                           </td>
                         }
+                      }
+                      @if (workflow(); as flow) {
+                        <td hlmTd class="px-4 py-3">
+                          @if (stageOfRow(flow, document.documentId); as stage) {
+                            <vd-stage-badge [name]="stage.name" [color]="stage.color" />
+                          }
+                        </td>
                       }
                     </tr>
                   } @empty {
@@ -462,6 +485,13 @@ export class ContentList {
   protected readonly schema = inject(Schema);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
+  private readonly features = inject(Features);
+  private readonly review = inject(ReviewWorkflows);
+
+  /** The type's review workflow (feature on and a workflow set), for the Stage column. */
+  protected readonly workflow = signal<Workflow | null>(null);
+  /** Stored stages of the listed entries (others are at the first stage). */
+  protected readonly rowStages = signal<Map<string, EntryStage>>(new Map());
   protected readonly humanize = humanize;
   protected readonly STATUS_LABELS = STATUS_LABELS;
   protected readonly BULK_MESSAGES = BULK_MESSAGES;
@@ -515,7 +545,9 @@ export class ContentList {
       this.type()?.draftAndPublish === true && this.auth.canContent('content.publish', this.uid()),
   );
   protected readonly selectable = computed(() => this.canDelete() || this.canPublish());
-  protected readonly colspan = computed(() => this.columns().length + (this.selectable() ? 1 : 0));
+  protected readonly colspan = computed(
+    () => this.columns().length + (this.selectable() ? 1 : 0) + (this.workflow() ? 1 : 0),
+  );
 
   /** Bumped to reload the current page. */
   private readonly reloads = signal(0);
@@ -642,11 +674,45 @@ export class ContentList {
       if (current !== this.requests) return;
       this.documents.set(response.data);
       this.meta.set(meta);
+      void this.loadStages(current, request.uid, request.locale, response.data);
     } catch (error) {
       if (current === this.requests) this.error.set(ApiFailure.from(error).message);
     } finally {
       if (current === this.requests) this.loading.set(false);
     }
+  }
+
+  /** The review stages of the listed entries: one bulk call, plus the workflow itself. */
+  private async loadStages(
+    current: number,
+    uid: string,
+    locale: string | null,
+    documents: Document[],
+  ): Promise<void> {
+    if (!this.features.enabled('review') || !documents.length) {
+      this.workflow.set(null);
+      this.rowStages.set(new Map());
+      return;
+    }
+    const ids = documents.map((document) => document.documentId);
+    try {
+      const [review, rows] = await Promise.all([
+        this.review.entry(uid, ids[0], locale),
+        this.review.entries(uid, ids, locale),
+      ]);
+      if (current !== this.requests) return;
+      this.workflow.set(review?.workflow ?? null);
+      this.rowStages.set(new Map(rows.map((row) => [row.documentId, row])));
+    } catch {
+      if (current !== this.requests) return;
+      this.workflow.set(null);
+      this.rowStages.set(new Map());
+    }
+  }
+
+  protected stageOfRow(workflow: Workflow, documentId: string) {
+    const row = this.rowStages().get(documentId);
+    return row ? stageOf(workflow, row.stageId) : (workflow.stages[0] ?? null);
   }
 
   /** The published versions of the listed drafts. */

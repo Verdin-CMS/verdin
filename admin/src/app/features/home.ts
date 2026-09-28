@@ -11,6 +11,7 @@ import { I18n } from '../core/i18n/i18n';
 import { PluginExtensions } from '../core/plugin-extensions';
 import { Schema } from '../core/schema';
 import { PageHeader } from '../shared/components/page-header';
+import { AssignedReview } from './dashboard/assigned-review';
 import { WIDGET_KINDS, WidgetDialog } from './dashboard/widget-dialog';
 import {
   ChartWidget,
@@ -40,6 +41,7 @@ const SPAN: Record<number, string> = {
     HlmEmptyImports,
     HlmSkeletonImports,
     PageHeader,
+    AssignedReview,
     WidgetDialog,
     CountWidget,
     EntriesWidget,
@@ -72,6 +74,10 @@ const SPAN: Record<number, string> = {
           }
         </div>
       </vd-page-header>
+
+      @if (!editing()) {
+        <vd-assigned-review />
+      }
 
       @if (schema.contentTypes().length === 0 && !editing()) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">

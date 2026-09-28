@@ -37,6 +37,7 @@ import {
 import { Engagement } from '../../core/engagement';
 import { Unseen } from '../../core/unseen';
 import { previewTemplate } from '../../core/feature-settings';
+import { EntryReview as EntryReviewState, pendingPublishStage } from '../../core/review';
 import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { Schema } from '../../core/schema';
@@ -44,6 +45,7 @@ import { Attributes, ContentType, Document, MediaFile } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 import { VoteControl } from '../../shared/components/vote-control';
 import { EntryReleases } from './entry-releases';
+import { EntryReview } from './entry-review';
 import { FieldsComponent } from './fields/fields';
 import {
   FormModel,
@@ -132,6 +134,7 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
   imports: [
     VoteControl,
     EntryReleases,
+    EntryReview,
     FormRoot,
     RouterLink,
     NgIcon,
@@ -253,7 +256,15 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
             {{ type().draftAndPublish ? t('content.edit.saveDraft') : t('common.save') }}
           </button>
           @if (type().draftAndPublish && canPublish()) {
-            <button hlmBtn type="button" [disabled]="busy() || !canSave()" (click)="save(true)">
+            <button
+              hlmBtn
+              type="button"
+              [disabled]="busy() || !canSave()"
+              [attr.title]="
+                publishHold() ? t('review.entry.publishRequires', { stage: publishHold()!.name }) : null
+              "
+              (click)="save(true)"
+            >
               <ng-icon name="lucideSend" /> {{ t('content.edit.publish') }}
             </button>
           }
@@ -402,6 +413,17 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
               </div>
             }
           </section>
+
+          @if (reviewOn() && !missing()) {
+            @if (documentId(); as id) {
+              <vd-entry-review
+                [uid]="type().uid"
+                [documentId]="id"
+                [locale]="locale()"
+                (changed)="review.set($event)"
+              />
+            }
+          }
 
           @if (releasesOn() && type().draftAndPublish && !missing()) {
             @if (documentId(); as id) {
@@ -601,6 +623,13 @@ export class DocumentForm implements OnInit {
   /** Releases (optional feature): the editor's panel needs `releases.manage`. */
   protected readonly releasesOn = computed(
     () => this.features.enabled('releases') && this.auth.can('releases.manage'),
+  );
+  /** Review workflows (optional feature): the entry's stage, when its type has a workflow. */
+  protected readonly reviewOn = computed(() => this.features.enabled('review'));
+  protected readonly review = signal<EntryReviewState | null>(null);
+  /** The stage the entry must reach before it can be published (`null`: none). */
+  protected readonly publishHold = computed(() =>
+    this.reviewOn() && this.type().draftAndPublish ? pendingPublishStage(this.review()) : null,
   );
   /** Preview (optional feature): only for types with a URL template. */
   protected readonly previewOn = computed(
