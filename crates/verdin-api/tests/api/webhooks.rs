@@ -1,6 +1,5 @@
 //! Webhooks: subscriptions, signed deliveries, retries, the delivery log and media events.
 
-mod common;
 
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
@@ -9,7 +8,7 @@ use axum::Router;
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::routing::post;
 use bytes::Bytes;
-use common::{App, As, Part};
+use crate::common::{App, As, Part};
 use serde_json::{Value, json};
 use verdin_schema::{Schema, Source};
 

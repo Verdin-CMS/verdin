@@ -315,6 +315,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo deny check
 ```
 
+The HTTP API tests of `verdin-api` build into one binary (`crates/verdin-api/tests/api/`):
+add a module to its `main.rs` rather than a new file under `tests/`, since each test file
+links a binary of its own. Build artifacts pile up in `target/` as dependencies and
+toolchains change; `cargo sweep --installed && cargo sweep --time 14`
+([cargo-sweep](https://github.com/holmgr/cargo-sweep)) removes the stale ones.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or

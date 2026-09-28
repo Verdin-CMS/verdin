@@ -1,12 +1,11 @@
 //! End users on the content API: accounts, JWTs, roles, confirmation, password reset and
 //! OAuth (against a local fake provider).
 
-mod common;
 
 use axum::Router;
 use axum::http::{Method, StatusCode};
 use axum::routing::{get, post};
-use common::{App, As};
+use crate::common::{App, As};
 use serde_json::{Value, json};
 use verdin_auth::ContentAction;
 use verdin_schema::{Schema, Source};

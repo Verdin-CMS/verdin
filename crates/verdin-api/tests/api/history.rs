@@ -1,9 +1,8 @@
 //! Content history: versions recorded from every API, reading them and restoring one.
 
-mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{App, As};
+use crate::common::{App, As};
 use serde_json::{Value, json};
 use verdin_schema::{Schema, Source};
 

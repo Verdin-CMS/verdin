@@ -1,9 +1,8 @@
 //! Preview: the admin builds a link to the site with a token that reads one draft.
 
-mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{App, As};
+use crate::common::{App, As};
 use serde_json::json;
 use verdin_schema::{Schema, Source};
 

@@ -1,9 +1,8 @@
 //! Admin API over HTTP: sessions, RBAC on content, users, roles, tokens, public grants.
 
-mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{App, As};
+use crate::common::{App, As};
 use serde_json::{Value, json};
 use verdin_schema::{Schema, Source};
 
@@ -50,7 +49,7 @@ async fn login(app: &App, email: &str) -> String {
     body["data"]["accessToken"].as_str().unwrap().to_owned()
 }
 
-fn refresh_cookie(response: &common::Response) -> String {
+fn refresh_cookie(response: &crate::common::Response) -> String {
     let cookie = response.headers["set-cookie"].to_str().unwrap().to_owned();
     cookie.split(';').next().unwrap().to_owned()
 }

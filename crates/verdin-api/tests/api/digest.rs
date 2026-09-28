@@ -1,9 +1,8 @@
 //! The daily digest: admins who opted in get their unseen changes by email.
 
-mod common;
 
 use axum::http::Method;
-use common::{App, As};
+use crate::common::{App, As};
 use serde_json::json;
 use verdin_schema::{Schema, Source};
 

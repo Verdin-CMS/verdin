@@ -1,6 +1,5 @@
 //! Admin SSO against a local OpenID Connect provider.
 
-mod common;
 
 use std::sync::{Arc, Mutex};
 
@@ -10,7 +9,7 @@ use axum::routing::{get, post};
 use axum::{Form, Json, Router};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use common::{App, As};
+use crate::common::{App, As};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use verdin_schema::{Schema, Source};
@@ -86,12 +85,12 @@ fn query_param(url: &str, name: &str) -> String {
     url::Url::parse(url).unwrap().query_pairs().find(|(key, _)| key == name).unwrap().1.into_owned()
 }
 
-fn set_cookie(response: &common::Response) -> String {
+fn set_cookie(response: &crate::common::Response) -> String {
     response.headers["set-cookie"].to_str().unwrap().split(';').next().unwrap().to_owned()
 }
 
 /// Starts a sign-in and follows the provider back; returns the callback answer.
-async fn sign_in(app: &App, provider: &Shared, id: &str, code: &str) -> common::Response {
+async fn sign_in(app: &App, provider: &Shared, id: &str, code: &str) -> crate::common::Response {
     let start = app
         .request(Method::GET, &format!("/admin/api/auth/sso/{id}"), None, As::Anonymous, &[])
         .await;

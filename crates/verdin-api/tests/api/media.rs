@@ -1,9 +1,8 @@
 //! Media library: uploads, formats, media fields in content, folders and permissions.
 
-mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{App, As, Part};
+use crate::common::{App, As, Part};
 use serde_json::{Value, json};
 use verdin_schema::{Schema, Source};
 
