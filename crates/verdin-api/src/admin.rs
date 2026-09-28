@@ -1207,6 +1207,16 @@ pub(crate) fn query_for(
     {
         query.fields = Some(view.visible_scalars());
     }
+    // The index covers every field: with hidden fields, search the visible ones only.
+    if let Some(view) = &restricted
+        && let Some(text) = query.search.take()
+    {
+        let search = verdin_query::search_filter(view, &text).unwrap_or(Filter::Or(Vec::new()));
+        query.filters = Some(match query.filters.take() {
+            Some(filter) => Filter::And(vec![filter, search]),
+            None => search,
+        });
+    }
     let explicit_status =
         raw.is_some_and(|raw| raw.split('&').any(|pair| pair.starts_with("status=")));
     if !explicit_status {

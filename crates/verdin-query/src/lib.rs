@@ -15,7 +15,7 @@ pub use fields::{
     Catalog, Field, FieldCategory, MediaInfo, MorphInfo, RelationInfo, TypeFields, attribute_kind,
 };
 pub use params::{Node, parse_query_string};
-pub use parse::{Limits, parse, scalar_value};
+pub use parse::{Limits, parse, scalar_value, search_filter};
 
 /// An invalid query. Messages are safe to return to API clients.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -50,6 +50,11 @@ pub trait DocumentListener: Send + Sync {
         event: &'a DocumentEvent,
         service: &'a crate::DocumentService,
     ) -> BoxFuture<'a, ()>;
+
+    /// A listener that is also the search index ranks `_q` for the services it is on.
+    fn search_index(&self) -> Option<std::sync::Arc<dyn crate::SearchIndex>> {
+        None
+    }
 }
 
 /// Media library changes, announced after they are stored.

@@ -69,3 +69,12 @@ cache_ttl_secs = 5
 Each instance opens up to `[database].pool_max` connections (10 by default). Keep
 `instances × pool_max` below the server's limit, with room for migrations and
 maintenance. PostgreSQL's default is 100.
+
+## Search and image caches
+
+- The `[search]` index is local to each instance and follows only the writes that
+  instance makes. With several instances, enable it on one of them (routing `_q` there)
+  or accept that the others fall behind until restarted with an empty index directory.
+- `[upload.transforms]` renderings are cached per instance under `cache_dir`; put a CDN in
+  front of `/uploads` to share them.
+

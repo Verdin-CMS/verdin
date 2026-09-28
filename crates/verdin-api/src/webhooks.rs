@@ -650,6 +650,7 @@ impl DocumentListener for Webhooks {
                             with_count: false,
                         },
                         status,
+                        search: None,
                     };
                     match service.find_one(&event.uid, &event.document_id, &query).await {
                         Ok(Some(entry)) => entry,

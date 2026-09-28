@@ -553,6 +553,9 @@ Write semantics (Strapi v5):
 | `pagination` | `pagination[page]=2&pagination[pageSize]=25` or `pagination[start]=0&pagination[limit]=25`, `pagination[withCount]=false` |
 | `status` | `published` (default) \| `draft` |
 | `locale` | reserved (post-MVP i18n) |
+| `_q` | `_q=rust ownership` — full-text search (at most 200 characters), see below |
+
+**Full-text search** (`_q`). Without an index, as in Strapi: documents where any text field (`string`, `text`, `richtext`, `email`, `uid`, `enumeration`; not private) contains the text, ignoring case. With `[search] enabled = true`, a [Tantivy](https://github.com/quickwit-oss/tantivy) index inside the binary ranks the results: words are lowercased and stripped of accents (`cafe` finds `Café`), every word must match, the last one also as a prefix, and the type's first text attribute weighs double; blocks and components are indexed too. Results come in rank order unless `sort` is given; other filters and pagination apply. The index follows the Document Service's events and is rebuilt in the background when the schema changes (plain `$containsi` answers meanwhile). Admins with field-level restrictions always get the `$containsi` search over the fields they may read.
 
 Operators: `$eq $eqi $ne $nei $lt $lte $gt $gte $in $notIn $contains $notContains $containsi $notContainsi $startsWith $startsWithi $endsWith $endsWithi $null $notNull $between $and $or $not`.
 

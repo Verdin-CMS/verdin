@@ -12,6 +12,8 @@ pub struct Query {
     pub populate: Vec<Populate>,
     pub pagination: Pagination,
     pub status: Status,
+    /// `_q`: full-text search (the search index, or `$containsi` on the text fields).
+    pub search: Option<String>,
 }
 
 /// One populated field. `query` shapes populated relations; components and dynamic

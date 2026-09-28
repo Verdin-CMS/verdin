@@ -68,6 +68,7 @@ impl DocumentService {
                 with_count: false,
             },
             status,
+            search: None,
         };
         self.find_one(uid, document_id, &query).await
     }

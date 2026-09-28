@@ -500,6 +500,13 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         api.cache_entries,
     );
     let realtime = verdin_api::realtime::Realtime::new();
+    let search = match &project.config.search {
+        config if config.enabled => Some(
+            verdin_search::Search::open(&project.root.join(&config.dir), config.memory_mb)
+                .context("opening the [search] index")?,
+        ),
+        _ => None,
+    };
     let metrics = project.config.metrics.enabled.then(|| {
         crate::metrics::Metrics::new(
             db.clone(),
@@ -562,6 +569,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         digest,
         review,
         metrics,
+        search,
         realtime,
         plugins,
         audit,

@@ -26,6 +26,9 @@ All notable changes to Verdin are documented here. The format follows
   `?w=&h=&fit=&format=&q=&s=` (`[upload.transforms]`, `VERDIN_IMAGE_SECRET`): cover
   crops around the focal point, JPEG/PNG/WebP output, a disk cache dropped when the
   file changes.
+- **Full-text search** with `_q` on the content and admin APIs: `$containsi` over the
+  text fields (Strapi's behaviour), or, with `[search] enabled = true`, a Tantivy index
+  that ranks results, ignores accents and matches the last word as a prefix.
 
 ## [0.8.0] - 2026-09-28
 

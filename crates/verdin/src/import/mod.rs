@@ -154,6 +154,7 @@ mod tests {
                 with_count: false,
             },
             status,
+            search: None,
         }
     }
 

@@ -25,7 +25,10 @@ pub use history::Dropped;
 pub use output::OutputOptions;
 pub use service::import::{ExportedVersion, ImportedVersion, remap_component_files};
 pub use service::{
-    DocumentService, LocaleVersion, Page, PageMeta, Timeline, WriteOptions, slugify, usage::Usage,
+    DocumentService, LocaleVersion, Page, PageMeta, Timeline, WriteOptions,
+    search::{SearchIndex, SearchText},
+    slugify,
+    usage::Usage,
 };
 
 /// One validation problem, in Strapi's `details.errors[]` format.

@@ -71,6 +71,8 @@ pub struct AppContext {
     pub realtime: verdin_api::realtime::Realtime,
     /// `[metrics]`: kept across rebuilds.
     pub metrics: Option<crate::metrics::Metrics>,
+    /// `[search]`: the full-text index, kept across rebuilds.
+    pub search: Option<verdin_search::Search>,
 }
 
 impl AppContext {
@@ -166,7 +168,7 @@ pub fn build_app(
         ..Default::default()
     };
     let output = verdin_content::OutputOptions { decimal_as_string: api.decimal_as_string };
-    let listeners: verdin_api::Listeners = vec![
+    let mut listeners: verdin_api::Listeners = vec![
         context.webhooks.listener(),
         context.history.listener(),
         context.cache.listener(),
@@ -174,6 +176,14 @@ pub fn build_app(
         context.audit.listener(),
         context.realtime.listener(),
     ];
+    if let Some(search) = &context.search {
+        listeners.push(search.listener());
+        // Rebuilt in the background when the schema changed.
+        search.start(
+            verdin_content::DocumentService::new(context.db.clone(), registry.clone(), output)
+                .with_locales(context.locales.clone()),
+        );
+    }
     let http = verdin_api::HttpLimits {
         body_limit: context.config.server.body_limit,
         request_timeout: context.config.server.request_timeout(),
@@ -1100,6 +1110,7 @@ mod tests {
             review: verdin_api::review::Review::new(db_for_review),
             realtime: verdin_api::realtime::Realtime::new(),
             metrics: None,
+            search: None,
             digest: verdin_api::digest::Digest::new(
                 auth_for_digest,
                 verdin_email::Mailer::memory().0,

@@ -56,6 +56,7 @@ pub struct App {
     pub digest: verdin_api::digest::Digest,
     pub review: verdin_api::review::Review,
     pub realtime: verdin_api::realtime::Realtime,
+    pub search: Option<verdin_search::Search>,
 }
 
 /// Who a request authenticates as.
@@ -105,17 +106,24 @@ impl App {
 
     /// Like [`App::with_users`], with OAuth client secrets `(provider, secret)`.
     pub async fn build(schema: Schema, settings: Value, oauth_secrets: &[(&str, &str)]) -> Self {
-        Self::build_with(schema, settings, oauth_secrets, Default::default(), None).await
+        Self::build_with(schema, settings, oauth_secrets, Default::default(), None, None).await
     }
 
     /// With the plugins installed in `dir` (all disabled until switched on).
     pub async fn with_plugins(schema: Schema, dir: &std::path::Path) -> Self {
-        Self::build_with(schema, serde_json::json!({}), &[], Default::default(), Some(dir)).await
+        Self::build_with(schema, serde_json::json!({}), &[], Default::default(), Some(dir), None)
+            .await
     }
 
     /// With rate limits and the anonymous reads cache.
     pub async fn with_traffic(schema: Schema, traffic: verdin_api::cache::TrafficConfig) -> Self {
-        Self::build_with(schema, serde_json::json!({}), &[], traffic, None).await
+        Self::build_with(schema, serde_json::json!({}), &[], traffic, None, None).await
+    }
+
+    /// With the full-text search index in `dir` (built before this returns).
+    pub async fn with_search(schema: Schema, dir: &std::path::Path) -> Self {
+        Self::build_with(schema, serde_json::json!({}), &[], Default::default(), None, Some(dir))
+            .await
     }
 
     async fn build_with(
@@ -124,6 +132,7 @@ impl App {
         oauth_secrets: &[(&str, &str)],
         traffic: verdin_api::cache::TrafficConfig,
         plugins_dir: Option<&std::path::Path>,
+        search_dir: Option<&std::path::Path>,
     ) -> Self {
         let cache =
             verdin_api::cache::ResponseCache::new(traffic.cache_ttl, traffic.cache_entries.max(1));
@@ -204,9 +213,24 @@ impl App {
         if let Some(plugins) = &plugins {
             listeners.push(std::sync::Arc::new(plugins.clone()));
         }
+        let search = search_dir.map(|dir| verdin_search::Search::open(dir, 20).unwrap());
+        if let Some(search) = &search {
+            listeners.push(search.listener());
+        }
         let locales = verdin_content::locales::Locales::new(
             verdin_api::i18n::load_locales(&test.db).await.unwrap(),
         );
+        if let Some(search) = &search {
+            search.start(
+                verdin_content::DocumentService::new(
+                    test.db.clone(),
+                    registry.clone(),
+                    Default::default(),
+                )
+                .with_locales(locales.clone()),
+            );
+            search.wait_ready().await;
+        }
         let admin = AdminConfig {
             secure_cookies: false,
             auth_rate_limit: 1000,
@@ -274,6 +298,7 @@ impl App {
             digest,
             review,
             realtime,
+            search,
         }
     }
 

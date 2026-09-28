@@ -231,6 +231,17 @@ See [Plugins](/guides/plugins/).
 | `enabled` | `false` | Serve Prometheus metrics at `/_metrics`: HTTP requests by area (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), method and status class with latency histograms, pending webhook deliveries, open realtime streams and uptime. |
 | `token` | unset | Scrapes need `Authorization: Bearer <token>`. `VERDIN_METRICS_TOKEN` wins over it. Without a token, anyone who reaches the port can read the metrics. |
 
+## `[search]`
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `enabled` | `false` | Rank `_q` with a full-text index (Tantivy) instead of `$containsi`. |
+| `dir` | `"data/search"` | Index directory, relative to the project. Deleting it rebuilds the index on the next start. |
+| `memory_mb` | `50` | Indexing memory budget. |
+
+The index lives on the instance's disk and follows that instance's writes: with several
+instances, keep the search on one (or rebuild after a deploy).
+
 ## Environment variables
 
 Besides the `VERDIN_<SECTION>__<KEY>` overrides, Verdin reads these variables:
@@ -246,5 +257,6 @@ Besides the `VERDIN_<SECTION>__<KEY>` overrides, Verdin reads these variables:
 | `VERDIN_EMAIL_API_KEY` | API key of the Resend and Postmark providers. |
 | `VERDIN_SSO_<ID>_SECRET` | Client secret of an SSO provider (see [Single sign-on](/guides/sso/)). |
 | `VERDIN_OAUTH_<PROVIDER>_SECRET` | Client secret of an end-user OAuth provider (see [End users](/guides/end-users/)). |
+| `VERDIN_IMAGE_SECRET` | Signs image transformation URLs (see [`[upload.transforms]`](#uploadtransforms)). |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Credentials of the S3 upload provider. |
 | `RUST_LOG` | Log filter; takes precedence over `[log].level`. |

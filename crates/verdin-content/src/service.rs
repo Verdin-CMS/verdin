@@ -41,6 +41,8 @@ const PUBLISHED: i16 = 1;
 pub mod import;
 #[path = "morph.rs"]
 pub(crate) mod morph;
+#[path = "search.rs"]
+pub mod search;
 #[path = "usage.rs"]
 pub mod usage;
 /// Base table alias in reads.
@@ -108,6 +110,8 @@ pub struct DocumentService {
     locales: Locales,
     /// The locale requested for localized types (`None`: the default locale).
     locale: Option<String>,
+    /// Ranks `_q` (the `search` feature).
+    search: Option<Arc<dyn search::SearchIndex>>,
 }
 
 impl DocumentService {
@@ -120,6 +124,7 @@ impl DocumentService {
             hooks: Vec::new(),
             locales: Locales::default(),
             locale: None,
+            search: None,
         }
     }
 
@@ -207,6 +212,9 @@ impl DocumentService {
 
     /// Announces writes to `listener` (see [`DocumentEvent`]).
     pub fn with_listener(mut self, listener: Arc<dyn DocumentListener>) -> Self {
+        if let Some(index) = listener.search_index() {
+            self.search = Some(index);
+        }
         self.listeners.push(listener);
         self
     }
@@ -244,6 +252,9 @@ impl DocumentService {
     // ---------------------------------------------------------------- reads
 
     pub async fn find_many(&self, uid: &str, query: &Query) -> Result<Page> {
+        if let Some(text) = query.search.as_deref() {
+            return self.search_many(uid, query, text).await;
+        }
         let model = self.registry.get(uid)?;
         let fields = public_fields(model, query.fields.as_deref(), &query.populate);
         let state = state_for(model, query.status);

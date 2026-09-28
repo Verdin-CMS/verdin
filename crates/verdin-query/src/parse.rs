@@ -39,7 +39,11 @@ const KNOWN_PARAMETERS: &[&str] = &[
     "status",
     "locale",
     "hasPublishedVersion",
+    "_q",
 ];
+
+/// Longest `_q`, in characters.
+const MAX_SEARCH: usize = 200;
 const SUB_QUERY_PARAMETERS: &[&str] = &["fields", "populate", "filters", "sort", "count"];
 
 struct Parser<'a> {
@@ -97,7 +101,40 @@ pub fn parse(
             Some(Some("draft")) => Status::Draft,
             Some(_) => return Err(QueryError::new("`status` must be `published` or `draft`")),
         },
+        search: match root.get("_q").map(|node| node.as_leaf()) {
+            None => None,
+            Some(Some(text)) if text.chars().count() > MAX_SEARCH => {
+                return Err(QueryError::new(format!("`_q` is at most {MAX_SEARCH} characters")));
+            }
+            Some(Some(text)) => Some(text.trim().to_owned()).filter(|text| !text.is_empty()),
+            Some(None) => return Err(QueryError::new("`_q` must be a string")),
+        },
     })
+}
+
+/// Strapi's `_q` without a search index: documents where a text field (not private)
+/// contains `text`, ignoring case.
+pub fn search_filter(fields: &TypeFields, text: &str) -> Option<Filter> {
+    let conditions: Vec<Filter> = fields
+        .iter()
+        .filter(|field| {
+            field.category == FieldCategory::Scalar
+                && field.attribute.as_ref().is_some_and(|attribute| {
+                    !attribute.private && !matches!(attribute.kind, AttributeKind::Password { .. })
+                })
+                && field.is_text()
+        })
+        .map(|field| {
+            Filter::Condition(Condition {
+                column: field.column.clone(),
+                path: Vec::new(),
+                kind: field.kind,
+                op: Op::Containsi,
+                operand: Operand::Value(SqlValue::Text(text.to_owned())),
+            })
+        })
+        .collect();
+    (!conditions.is_empty()).then_some(Filter::Or(conditions))
 }
 
 impl Parser<'_> {
