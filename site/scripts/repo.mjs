@@ -1,0 +1,21 @@
+// The repository's GitHub URL, from Cargo.toml's `repository` (or the `origin` remote).
+
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+/** Branch the edit and source links point at. */
+export const branch = 'main';
+
+export function repositoryUrl() {
+  const cargo = readFileSync(join(repoRoot, 'Cargo.toml'), 'utf8');
+  const url =
+    cargo.match(/^\s*repository\s*=\s*"([^"]+)"/m)?.[1] ??
+    execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: repoRoot, encoding: 'utf8' })
+      .trim()
+      .replace(/^git@([^:]+):/, 'https://$1/');
+  return url.replace(/\.git$/, '').replace(/\/$/, '');
+}

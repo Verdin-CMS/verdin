@@ -301,6 +301,12 @@ format = "pretty" # or "json"
 level = "info"    # RUST_LOG takes precedence
 ```
 
+### Documentation site
+
+Astro Starlight in `site/`, built from the Markdown in `docs/` (edit the docs there):
+`cd site && npm ci && npm run dev`. `npm run openapi` regenerates the API reference
+from the example project (needs `cargo build -p verdin`).
+
 ### Checks
 
 ```sh

@@ -1,0 +1,2834 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Verdin content API",
+    "version": "0.6.0"
+  },
+  "paths": {
+    "/api/articles": {
+      "get": {
+        "tags": [
+          "Article"
+        ],
+        "summary": "List articles",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/filters"
+          },
+          {
+            "$ref": "#/components/parameters/sort"
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/paginationPage"
+          },
+          {
+            "$ref": "#/components/parameters/paginationPageSize"
+          },
+          {
+            "$ref": "#/components/parameters/paginationStart"
+          },
+          {
+            "$ref": "#/components/parameters/paginationLimit"
+          },
+          {
+            "$ref": "#/components/parameters/paginationWithCount"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Article"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Article"
+        ],
+        "summary": "Create an article",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/ArticleInput"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/articles/{documentId}": {
+      "get": {
+        "tags": [
+          "Article"
+        ],
+        "summary": "Get an article",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/documentId"
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Article"
+        ],
+        "summary": "Update an article",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/documentId"
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/ArticleInput"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Article"
+        ],
+        "summary": "Delete an article",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/documentId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/articles/{documentId}/actions/{action}": {
+      "post": {
+        "tags": [
+          "Article"
+        ],
+        "summary": "Publish, unpublish or discard the draft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/documentId"
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "publish",
+                "unpublish",
+                "discard-draft"
+              ]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": [
+          "Category"
+        ],
+        "summary": "List categories",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/filters"
+          },
+          {
+            "$ref": "#/components/parameters/sort"
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/paginationPage"
+          },
+          {
+            "$ref": "#/components/parameters/paginationPageSize"
+          },
+          {
+            "$ref": "#/components/parameters/paginationStart"
+          },
+          {
+            "$ref": "#/components/parameters/paginationLimit"
+          },
+          {
+            "$ref": "#/components/parameters/paginationWithCount"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Category"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Category"
+        ],
+        "summary": "Create a category",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Category"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/CategoryInput"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/categories/{documentId}": {
+      "get": {
+        "tags": [
+          "Category"
+        ],
+        "summary": "Get a category",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/documentId"
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Category"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Category"
+        ],
+        "summary": "Update a category",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/documentId"
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Category"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/CategoryInput"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Category"
+        ],
+        "summary": "Delete a category",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/documentId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/homepage": {
+      "get": {
+        "tags": [
+          "Homepage"
+        ],
+        "summary": "Get the Homepage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Homepage"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Homepage"
+        ],
+        "summary": "Create or update the Homepage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Homepage"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/HomepageInput"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Homepage"
+        ],
+        "summary": "Delete the Homepage",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "List tags",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/filters"
+          },
+          {
+            "$ref": "#/components/parameters/sort"
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/paginationPage"
+          },
+          {
+            "$ref": "#/components/parameters/paginationPageSize"
+          },
+          {
+            "$ref": "#/components/parameters/paginationStart"
+          },
+          {
+            "$ref": "#/components/parameters/paginationLimit"
+          },
+          {
+            "$ref": "#/components/parameters/paginationWithCount"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Tag"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Create a tag",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Tag"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/TagInput"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tags/{documentId}": {
+      "get": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Get a tag",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/documentId"
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Tag"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Update a tag",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/documentId"
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "$ref": "#/components/parameters/populate"
+          },
+          {
+            "$ref": "#/components/parameters/status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Tag"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/TagInput"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Delete a tag",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/documentId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "null"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "UploadFile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "alternativeText": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "caption": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "focalPoint": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "formats": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "hash": {
+            "type": "string"
+          },
+          "ext": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "size": {
+            "type": "number",
+            "description": "kilobytes"
+          },
+          "url": {
+            "type": "string"
+          },
+          "previewUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_metadata": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BlocksHeroComponent": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "BlocksQuoteComponent": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SharedSeoComponent": {
+        "type": "object",
+        "properties": {
+          "metaTitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 60
+          },
+          "metaDescription": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 160
+          }
+        }
+      },
+      "Article": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "excerpt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readingTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "featured": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": false
+          },
+          "category": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Category"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Returned when populated."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            },
+            "description": "Returned when populated."
+          },
+          "seo": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SharedSeoComponent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/BlocksHeroComponent"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "__component"
+                      ],
+                      "properties": {
+                        "__component": {
+                          "const": "blocks.hero"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/BlocksQuoteComponent"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "__component"
+                      ],
+                      "properties": {
+                        "__component": {
+                          "const": "blocks.quote"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "documentId"
+        ]
+      },
+      "ArticleInput": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "excerpt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readingTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "featured": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": false
+          },
+          "category": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "oneOf": [
+                  {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "documentId"
+                        ],
+                        "properties": {
+                          "documentId": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "object",
+                            "properties": {
+                              "before": {
+                                "type": "string"
+                              },
+                              "after": {
+                                "type": "string"
+                              },
+                              "start": {
+                                "type": "boolean"
+                              },
+                              "end": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "documentId"
+                          ],
+                          "properties": {
+                            "documentId": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "object",
+                              "properties": {
+                                "before": {
+                                  "type": "string"
+                                },
+                                "after": {
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "type": "boolean"
+                                },
+                                "end": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "connect": {
+                    "oneOf": [
+                      {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "documentId"
+                            ],
+                            "properties": {
+                              "documentId": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "before": {
+                                    "type": "string"
+                                  },
+                                  "after": {
+                                    "type": "string"
+                                  },
+                                  "start": {
+                                    "type": "boolean"
+                                  },
+                                  "end": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "documentId"
+                              ],
+                              "properties": {
+                                "documentId": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "object",
+                                  "properties": {
+                                    "before": {
+                                      "type": "string"
+                                    },
+                                    "after": {
+                                      "type": "string"
+                                    },
+                                    "start": {
+                                      "type": "boolean"
+                                    },
+                                    "end": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "disconnect": {
+                    "oneOf": [
+                      {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "documentId"
+                            ],
+                            "properties": {
+                              "documentId": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "before": {
+                                    "type": "string"
+                                  },
+                                  "after": {
+                                    "type": "string"
+                                  },
+                                  "start": {
+                                    "type": "boolean"
+                                  },
+                                  "end": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "documentId"
+                              ],
+                              "properties": {
+                                "documentId": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "object",
+                                  "properties": {
+                                    "before": {
+                                      "type": "string"
+                                    },
+                                    "after": {
+                                      "type": "string"
+                                    },
+                                    "start": {
+                                      "type": "boolean"
+                                    },
+                                    "end": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "set": {
+                    "oneOf": [
+                      {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "documentId"
+                            ],
+                            "properties": {
+                              "documentId": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "before": {
+                                    "type": "string"
+                                  },
+                                  "after": {
+                                    "type": "string"
+                                  },
+                                  "start": {
+                                    "type": "boolean"
+                                  },
+                                  "end": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "documentId"
+                              ],
+                              "properties": {
+                                "documentId": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "object",
+                                  "properties": {
+                                    "before": {
+                                      "type": "string"
+                                    },
+                                    "after": {
+                                      "type": "string"
+                                    },
+                                    "start": {
+                                      "type": "boolean"
+                                    },
+                                    "end": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "tags": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "oneOf": [
+                  {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "documentId"
+                        ],
+                        "properties": {
+                          "documentId": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "object",
+                            "properties": {
+                              "before": {
+                                "type": "string"
+                              },
+                              "after": {
+                                "type": "string"
+                              },
+                              "start": {
+                                "type": "boolean"
+                              },
+                              "end": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "documentId"
+                          ],
+                          "properties": {
+                            "documentId": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "object",
+                              "properties": {
+                                "before": {
+                                  "type": "string"
+                                },
+                                "after": {
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "type": "boolean"
+                                },
+                                "end": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "connect": {
+                    "oneOf": [
+                      {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "documentId"
+                            ],
+                            "properties": {
+                              "documentId": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "before": {
+                                    "type": "string"
+                                  },
+                                  "after": {
+                                    "type": "string"
+                                  },
+                                  "start": {
+                                    "type": "boolean"
+                                  },
+                                  "end": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "documentId"
+                              ],
+                              "properties": {
+                                "documentId": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "object",
+                                  "properties": {
+                                    "before": {
+                                      "type": "string"
+                                    },
+                                    "after": {
+                                      "type": "string"
+                                    },
+                                    "start": {
+                                      "type": "boolean"
+                                    },
+                                    "end": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "disconnect": {
+                    "oneOf": [
+                      {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "documentId"
+                            ],
+                            "properties": {
+                              "documentId": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "before": {
+                                    "type": "string"
+                                  },
+                                  "after": {
+                                    "type": "string"
+                                  },
+                                  "start": {
+                                    "type": "boolean"
+                                  },
+                                  "end": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "documentId"
+                              ],
+                              "properties": {
+                                "documentId": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "object",
+                                  "properties": {
+                                    "before": {
+                                      "type": "string"
+                                    },
+                                    "after": {
+                                      "type": "string"
+                                    },
+                                    "start": {
+                                      "type": "boolean"
+                                    },
+                                    "end": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "set": {
+                    "oneOf": [
+                      {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "documentId"
+                            ],
+                            "properties": {
+                              "documentId": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "before": {
+                                    "type": "string"
+                                  },
+                                  "after": {
+                                    "type": "string"
+                                  },
+                                  "start": {
+                                    "type": "boolean"
+                                  },
+                                  "end": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "documentId"
+                              ],
+                              "properties": {
+                                "documentId": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "object",
+                                  "properties": {
+                                    "before": {
+                                      "type": "string"
+                                    },
+                                    "after": {
+                                      "type": "string"
+                                    },
+                                    "start": {
+                                      "type": "boolean"
+                                    },
+                                    "end": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "seo": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SharedSeoComponent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/BlocksHeroComponent"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "__component"
+                      ],
+                      "properties": {
+                        "__component": {
+                          "const": "blocks.hero"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/BlocksQuoteComponent"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "__component"
+                      ],
+                      "properties": {
+                        "__component": {
+                          "const": "blocks.quote"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "articles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Article"
+            },
+            "description": "Returned when populated."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "documentId"
+        ]
+      },
+      "CategoryInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Homepage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "headline": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seo": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SharedSeoComponent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "documentId"
+        ]
+      },
+      "HomepageInput": {
+        "type": "object",
+        "properties": {
+          "headline": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seo": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SharedSeoComponent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "Tag": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "documentId"
+        ]
+      },
+      "TagInput": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "pageCount": {
+            "type": "integer"
+          },
+          "start": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "documentId": {
+        "name": "documentId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "filters": {
+        "name": "filters",
+        "in": "query",
+        "required": false,
+        "style": "deepObject",
+        "explode": true,
+        "description": "Filters, e.g. `filters[title][$containsi]=rust`.",
+        "schema": {
+          "type": "object"
+        }
+      },
+      "sort": {
+        "name": "sort",
+        "in": "query",
+        "required": false,
+        "description": "Sort, e.g. `title:asc,createdAt:desc`.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "fields": {
+        "name": "fields",
+        "in": "query",
+        "required": false,
+        "description": "Comma-separated fields to return.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "populate": {
+        "name": "populate",
+        "in": "query",
+        "required": false,
+        "description": "Components / dynamic zones to include, or `*`.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "paginationPage": {
+        "name": "pagination[page]",
+        "in": "query",
+        "required": false,
+        "description": "Page number (from 1).",
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "paginationPageSize": {
+        "name": "pagination[pageSize]",
+        "in": "query",
+        "required": false,
+        "description": "Page size.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "paginationStart": {
+        "name": "pagination[start]",
+        "in": "query",
+        "required": false,
+        "description": "Offset.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "paginationLimit": {
+        "name": "pagination[limit]",
+        "in": "query",
+        "required": false,
+        "description": "Limit (-1 for the maximum).",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "paginationWithCount": {
+        "name": "pagination[withCount]",
+        "in": "query",
+        "required": false,
+        "description": "Include the total count.",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "status": {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "description": "Version to read or write.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "published",
+            "draft"
+          ]
+        }
+      }
+    },
+    "securitySchemes": {
+      "apiToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An API token (Settings → API tokens) or an end-user JWT. Without one, requests act with the public permissions."
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:1337",
+      "description": "Local server"
+    }
+  ],
+  "security": [
+    {
+      "apiToken": []
+    },
+    {}
+  ]
+}
