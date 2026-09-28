@@ -315,15 +315,21 @@ pub fn diff(old: &DbModel, new: &DbModel, renames: &Renames) -> Result<Diff, Mig
         }
     }
 
-    // Referenced tables are created before, and dropped after, the tables referencing them.
-    let has_foreign_keys = |change: &Change| match change {
-        Change::CreateTable { table } | Change::DropTable { table } => {
-            !table.foreign_keys.is_empty()
+    // Referenced tables are created before, and dropped after, the tables referencing them
+    // (at any depth: a table's level is one more than the deepest table it references).
+    let by_level = |changes: Vec<Change>, deepest_first: bool| -> Vec<Change> {
+        let levels: Vec<usize> =
+            changes.iter().map(|change| dependency_level(change, &changes)).collect();
+        let mut indexed: Vec<(usize, Change)> = levels.into_iter().zip(changes).collect();
+        if deepest_first {
+            indexed.sort_by_key(|(level, _)| std::cmp::Reverse(*level));
+        } else {
+            indexed.sort_by_key(|(level, _)| *level);
         }
-        _ => false,
+        indexed.into_iter().map(|(_, change)| change).collect()
     };
-    create_tables.sort_by_key(|change| has_foreign_keys(change));
-    drop_tables.sort_by_key(|change| !has_foreign_keys(change));
+    let create_tables = by_level(create_tables, false);
+    let drop_tables = by_level(drop_tables, true);
 
     let hints = rename_hints(&add_columns, &drop_columns, &create_tables, &drop_tables);
 
@@ -373,6 +379,40 @@ fn rename_hints(
     hints
 }
 
+fn table_of(change: &Change) -> Option<&Table> {
+    match change {
+        Change::CreateTable { table } | Change::DropTable { table } => Some(table),
+        _ => None,
+    }
+}
+
+/// How deep `change`'s table sits in the foreign keys among `changes` (0: it references
+/// none of their tables).
+fn dependency_level(change: &Change, changes: &[Change]) -> usize {
+    fn level(name: &str, changes: &[Change], seen: &mut Vec<String>) -> usize {
+        if seen.iter().any(|visited| visited == name) {
+            return 0;
+        }
+        seen.push(name.to_owned());
+        let table = changes.iter().filter_map(table_of).find(|table| table.name == name);
+        let depth = table.map_or(0, |table| {
+            table
+                .foreign_keys
+                .iter()
+                .filter(|key| key.table != table.name)
+                .filter(|key| {
+                    changes.iter().filter_map(table_of).any(|other| other.name == key.table)
+                })
+                .map(|key| 1 + level(&key.table, changes, seen))
+                .max()
+                .unwrap_or(0)
+        });
+        seen.pop();
+        depth
+    }
+    table_of(change).map_or(0, |table| level(&table.name, changes, &mut Vec::new()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,6 +457,34 @@ mod tests {
         let diff = diff(&DbModel::default(), &new, &Renames::default()).unwrap();
         assert_eq!(described(&diff), ["create table a", "create index a_x_idx"]);
         assert!(diff.changes.iter().all(|change| change.risk() == Risk::Safe));
+    }
+
+    #[test]
+    fn tables_follow_their_foreign_keys() {
+        let references = |mut table: Table, target: &str| {
+            table.foreign_keys.push(crate::model::ForeignKey {
+                columns: vec!["parent_id".into()],
+                table: target.into(),
+                references: vec!["id".into()],
+            });
+            table
+        };
+        // Names sort the other way round: a_child → b_middle → c_root.
+        let new = model(vec![
+            references(table("a_child", &[("parent_id", INT)], &[]), "b_middle"),
+            references(table("b_middle", &[("parent_id", INT)], &[]), "c_root"),
+            table("c_root", &[("x", TEXT)], &[]),
+        ]);
+        let created = diff(&DbModel::default(), &new, &Renames::default()).unwrap();
+        assert_eq!(
+            described(&created),
+            ["create table c_root", "create table b_middle", "create table a_child"]
+        );
+        let dropped = diff(&new, &DbModel::default(), &Renames::default()).unwrap();
+        assert_eq!(
+            described(&dropped),
+            ["drop table a_child", "drop table b_middle", "drop table c_root"]
+        );
     }
 
     #[test]

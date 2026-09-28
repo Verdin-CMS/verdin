@@ -215,7 +215,7 @@ impl UploadService {
         let mut formats = Map::new();
         let written = async {
             match smaller {
-                Some(bytes) => self.storage.put_bytes(&object, bytes.into(), &mime).await?,
+                Some(bytes) => self.storage.put_bytes(&object, bytes, &mime).await?,
                 None => self.storage.put_file(&object, &file.path, &mime).await?,
             }
             for format in &generated {

@@ -393,6 +393,11 @@ impl ContentActor {
     }
 }
 
+/// Locale codes (`en`, `pt-BR`, `zh-Hans`): letters, digits and dashes.
+fn valid_locale(code: &str) -> bool {
+    (2..=35).contains(&code.len()) && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -465,9 +470,4 @@ mod tests {
                 && !custom.allows("api::article", ContentAction::Create)
         );
     }
-}
-
-/// Locale codes (`en`, `pt-BR`, `zh-Hans`): letters, digits and dashes.
-fn valid_locale(code: &str) -> bool {
-    (2..=35).contains(&code.len()) && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }

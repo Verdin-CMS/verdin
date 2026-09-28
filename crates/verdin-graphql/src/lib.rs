@@ -91,6 +91,16 @@ const ORDERED_OPS: &[&str] = &["eq", "ne", "lt", "lte", "gt", "gte"];
 const LIST_OPS: &[&str] = &["in", "notIn", "between"];
 
 /// Builds the schema for `registry`.
+/// Resolves a plugin field: `{ args, actor }` in, the field's value out.
+pub type PluginCall = std::sync::Arc<
+    dyn Fn(
+            serde_json::Value,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send>,
+        > + Send
+        + Sync,
+>;
+
 /// A root field added by a plugin: `name(args: JSON): JSON`, resolved by `call` with
 /// `{ args, actor }`.
 #[derive(Clone)]
@@ -98,14 +108,7 @@ pub struct ExtraField {
     pub name: String,
     pub mutation: bool,
     pub description: Option<String>,
-    pub call: std::sync::Arc<
-        dyn Fn(
-                serde_json::Value,
-            ) -> std::pin::Pin<
-                Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send>,
-            > + Send
-            + Sync,
-    >,
+    pub call: PluginCall,
 }
 
 pub fn schema(

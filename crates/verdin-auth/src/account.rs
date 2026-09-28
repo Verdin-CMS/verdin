@@ -229,7 +229,7 @@ impl AuthService {
             .queries()
             .fetch_all(
                 &format!(
-                    "SELECT family, user_agent, MIN(created_at), MAX(created_at), MAX(expires_at) FROM {SESSIONS} \
+                    "SELECT family, MAX(user_agent), MIN(created_at), MAX(created_at), MAX(expires_at) FROM {SESSIONS} \
                      WHERE user_id = ? GROUP BY family \
                      HAVING SUM(CASE WHEN revoked_at IS NULL AND used_at IS NULL AND expires_at > ? THEN 1 ELSE 0 END) > 0 \
                      ORDER BY MAX(created_at) DESC"
