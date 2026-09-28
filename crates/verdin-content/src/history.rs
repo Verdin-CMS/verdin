@@ -92,6 +92,10 @@ impl DocumentService {
                 if (attribute.kind.is_unique() || exclusive) && object.remove(name).is_some() {
                     left_out.push(name.clone());
                 }
+                // Never read back, so never copied.
+                if matches!(attribute.kind, AttributeKind::Password { .. }) {
+                    left_out.push(name.clone());
+                }
             }
         }
         Ok((data, left_out))

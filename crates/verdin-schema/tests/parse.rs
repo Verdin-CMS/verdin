@@ -388,3 +388,14 @@ fn keeps_strapi_conditional_fields() {
     assert_eq!(post.attributes["url"].conditions, Some(visible));
     assert_eq!(post.attributes["kind"].conditions, None);
 }
+
+#[test]
+fn passwords_stay_out_of_components() {
+    let errors = Schema::parse(&[component(
+        "shared",
+        "login",
+        json!({ "displayName": "Login", "attributes": { "secret": { "type": "password" } } }),
+    )])
+    .unwrap_err();
+    assert!(errors.to_string().contains("cannot be inside components"), "{errors}");
+}

@@ -347,6 +347,13 @@ fn check_attributes(
                     report.push(file, at("targetField"), format!("unknown attribute `{target}`"))
                 }
             },
+            AttributeKind::Password { .. } if in_component => {
+                report.push(
+                    file,
+                    at("type"),
+                    "`password` fields cannot be inside components (components are stored as JSON)",
+                );
+            }
             AttributeKind::Relation { relation, target, inversed_by, mapped_by } => {
                 let Some(target_type) = schema.content_type(target) else {
                     report.push(file, at("target"), format!("unknown content type `{target}`"));
