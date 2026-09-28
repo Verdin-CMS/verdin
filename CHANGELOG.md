@@ -6,6 +6,21 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-28
+
+### Security
+
+- The plugin runtime moves from Wasmtime 43 to Wasmtime 48 (LTS). This fixes
+  RUSTSEC-2026-0222 (stores could mix up type indices between engines) and
+  RUSTSEC-2026-0269 (filesystem sandbox escape through trailing slashes), and drops the
+  unmaintained crates that came with Wasmtime 43. No Extism release ships Wasmtime 48
+  yet, so Extism comes from its main branch, pinned to a commit. Existing plugins keep
+  working without a rebuild.
+
+### Changed
+
+- The minimum Rust version is now 1.95, which Wasmtime 48 requires.
+
 ## [0.7.0] - 2026-09-28
 
 ### Added

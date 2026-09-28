@@ -6,11 +6,13 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+# Not on crates.io: extism comes from git until a release ships Wasmtime 48.
+publish = false
 
 [dependencies]
 chrono = "0.4.45"
 croner = "4.0.0"
-extism = "1.30.0"
+extism = { git = "https://github.com/extism/extism", rev = "d5da29759bba88645f886d9e12d3f4e4376df7b3" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 thiserror = "2.0.21"
@@ -19,9 +21,9 @@ tokio = { version = "1.53.1", features = ["rt", "sync", "time", "macros"] }
 toml = "1.1.6"
 tracing = "0.1.44"
 url = "2.5.8"
-verdin-content = { version = "0.7.0", path = "../verdin-content" }
-verdin-db = { version = "0.7.0", path = "../verdin-db" }
-verdin-migrate = { version = "0.7.0", path = "../verdin-migrate" }
+verdin-content = { version = "0.7.1", path = "../verdin-content" }
+verdin-db = { version = "0.7.1", path = "../verdin-db" }
+verdin-migrate = { version = "0.7.1", path = "../verdin-migrate" }
 
 [lints]
 workspace = true

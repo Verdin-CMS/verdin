@@ -40,7 +40,7 @@ cd my-site && verdin dev      # --database postgres|mysql|mariadb for other engi
 
 ## Development
 
-Requirements: Rust (stable, ≥ 1.88) and Docker.
+Requirements: Rust (stable, ≥ 1.95) and Docker.
 
 ```sh
 # Start the database matrix (PostgreSQL 14/17, MySQL 8.4, MariaDB 10.11/11.4)
