@@ -1,6 +1,6 @@
 # Verdin roadmap
 
-What is left after 0.7, grouped by release. The order is tentative and driven by feedback;
+Releases so far and what comes next, grouped by release. The order is tentative and driven by feedback;
 everything lands in the open source edition (there is no paid tier).
 
 Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
@@ -36,7 +36,7 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 | Item | Size | Notes |
 |---|---|---|
 | End users ✅ | L | The `users-permissions` equivalent: registration, email confirmation, password reset, JWT, roles for the content API, OAuth providers (Google, GitHub, …) |
-| Email providers ✅ | M | SMTP and API providers (Resend, SES, Postmark) for end-user and admin emails |
+| Email providers ✅ | M | SMTP and API providers (Resend, Postmark; SES later) for end-user and admin emails |
 | Rate limiting & caching for the content API ✅ | M | Per-token limits, ETags, optional in-memory response cache |
 
 ## 0.5 — Extensibility
@@ -94,7 +94,7 @@ to move to Verdin without losing features.
 | Webhook events ✅ | S | `releases.publish`, `review-workflows.updateEntryStage` (after 0.7) |
 | Admin branding ✅ | S | Logo, favicon, accent colour and translation overrides in `[admin]` |
 | GraphQL ✅ | M | Disable types or actions per content type (shadow CRUD), resolvers from plugins |
-| Export / import / backup ✅ | M | `verdin export` / `verdin import` of Verdin's own format (schema, data, media), optional encryption; scheduled backups to S3; `verdin transfer` between instances with transfer tokens |
+| Export / import ✅ | M | `verdin export` / `verdin import verdin` of Verdin's own format (schema, data, media); encryption, scheduled backups to S3 and `verdin transfer` moved to Later |
 | **MCP server** ✅ | M | Content and schema tools for AI agents over Streamable HTTP, authorized with API tokens (Strapi 5.47, Sanity, Directus, Payload ship one) |
 | Plugin runtime upgrade ✅ | M | Wasmtime 48 LTS through Extism's main branch (0.7.1); move back to an Extism release once one ships it |
 
@@ -120,6 +120,65 @@ Hygraph) that fit Verdin best.
 | AI actions ✅ | M | Translate a locale, alt text, summaries and SEO suggestions, with the installation's provider (Anthropic, OpenAI, OpenAI-compatible); off by default |
 | Deploy & CDN hooks ✅ | S | "Deploy" button calling build hooks with their status; CDN purge by tag (Cloudflare, Fastly, webhook — Vercel through it) on publish |
 | Metrics ✅ | S | Prometheus `/_metrics` (requests, latency, webhook queue, realtime streams); plugin time and Sentry reporting moved to Later |
+
+## 0.9.1 — Hardening
+
+From the audit after 0.9.0 (security findings are tracked privately until they ship).
+
+| Item | Size | Notes |
+|---|---|---|
+| Security hardening | M | Authorization, sign-in and throttling fixes from the audit (details published with the release) |
+| Rate limits behind proxies | S | Trusted-proxy `X-Forwarded-For`, bounded limiter maps |
+| CORS | S | Configurable allow-list for the content API (browser frontends on other origins) |
+| Bounded work | S | Large responses, exports, populated to-many relations, the sitemap (cached) and "where used" without long locks |
+| Multi-instance correctness | M | Shared state for one-time challenges; an outbox for webhooks and events |
+| Admin safety | S | Unsaved-changes guard, confirmations for unpublish and discard, permission- and feature-aware route guards, loading and error states on every settings page |
+| `@verdin/client` 0.9.x on npm | S | The client follows the workspace version (checked in CI) |
+| Docs corrections | S | Sample `verdin.toml`, admin API and CLI references, statuses that are out of date |
+
+## 0.10 — Modern docs and admin polish
+
+| Item | Size | Notes |
+|---|---|---|
+| **Modern docs site** | L | Redesigned with the **frontend-designer**: its own visual identity (logo, colors, type), a landing page with a terminal quickstart, "Strapi to Verdin in 3 commands" and footprint numbers; code tabs (Docker / binary, REST / GraphQL / client), diagrams (Mermaid or D2), an API playground (Scalar), `llms.txt`, Open Graph images, last-updated dates, deployed with previews on a real domain |
+| Docs information architecture | M | Get started (quickstart, tutorial: a blog with Astro / Next.js) · Concepts (content model, draft & publish, relations, permissions, migrations) · Guides (content, frontend, auth, integrations) · Extending (plugins tutorial and reference) · API reference (REST, GraphQL, admin, realtime, webhooks) · Reference (configuration, CLI and permissions generated from the code) · Deploy & operate (production checklist, security, Docker, Fly, Render, Railway, Kubernetes, backups, monitoring) · Migrate & upgrade (from Strapi, compatibility matrix, upgrade guides) · Internals for contributors (split out of `architecture.md`) |
+| Docs in more languages | M | Starlight locales, starting with Getting started in es, fr, de and zh |
+| Admin modernization | M | Split the largest components (editor, builder, lists, media library), one entry picker and one content API service, `httpResource` loaders, `@defer` for the rich-text editors, route titles, focus management and a skip link, pagination on long lists, view transitions |
+| Admin test coverage | M | Component tests for the editor, builder and lists; end-to-end tests for deployments, redirects, menus, forms, webhooks, end users and multi-admin presence |
+
+## Toward 1.0
+
+What a production 1.0 needs beyond features:
+
+| Item | Size | Notes |
+|---|---|---|
+| Stability contract | S | Which surfaces are semver-stable (REST, GraphQL, admin API, schema files, `verdin.toml`, CLI, plugin ABI, export format), deprecation policy with `Deprecation`/`Sunset` headers, LTS and supported-versions policy |
+| Upgrade path | M | Upgrade guides per release, `verdin upgrade check`, rollback story |
+| Plugin SDK | M | Versioned host ABI (`abi = 1`), a PDK crate/package, Extism on a released version |
+| Benchmarks | M | Published numbers against Strapi (reads, populate, GraphQL, writes, cold start, memory), gated in CI |
+| Security program | M | `SECURITY.md` and disclosure process, fuzzing of the query parser, an external review, signed releases (cosign), SBOM and provenance |
+| Complete backups | M | Encryption, scheduled S3 backups, `verdin transfer`, admins/roles/tokens/webhooks/workflows in exports, a documented restore drill |
+| Shared event bus | M | Realtime, presence, caches and search across instances (Postgres `LISTEN/NOTIFY`, a polling table, or Redis/NATS) |
+| Observability | S | OpenTelemetry traces with DB spans, plugin call times, Sentry, Grafana dashboards |
+| Packaging | M | Helm chart, production Compose recipe, Homebrew / apt / winget / `cargo binstall` / install script, one-click deploys (Railway, Render, Fly, DigitalOcean, Coolify) |
+| Strapi import completeness | M | End users and roles, admins/RBAC/tokens, webhooks, workflows and releases, history, `unique`, and a porting guide for lifecycles and cron tasks |
+| Accessibility audit | M | WCAG 2.2 AA for the admin |
+
+## Ideas
+
+Beyond the roadmap, ranked by value for Verdin's single binary:
+
+| Idea | Size | Notes |
+|---|---|---|
+| SQLite edge mode | M | Litestream-style WAL replication to S3 and read-only replicas: cheap HA and point-in-time restore |
+| Webhooks to queues | S | SQS, NATS, Kafka, Redis Streams, Pub/Sub as delivery targets |
+| Content observability | S | Stale content, broken links, missing alt text, unused media dashboards, built on "where used" |
+| Typed SDKs 2.0 | M | Populate-aware result types; clients for Rust, Go, Python, Dart, Swift from OpenAPI |
+| AI content modeling | M | Content types from a description, URL or design; MCP schema tools; bulk AI edits with a dry-run diff |
+| Localization workflows | M | Per-locale review, "outdated translation" flags, XLIFF, translation queues |
+| A/B variants and personalization | L | Field-level variants by audience with an SDK helper |
+| Hosted playground | S | An ephemeral SQLite instance reset hourly; `llms.txt` and agent skills |
+| Developer tools | S | JSON Schema for schema files, a VS Code extension, `verdin tui` |
 
 ## Later
 
