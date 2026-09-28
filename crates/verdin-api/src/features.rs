@@ -35,6 +35,7 @@ pub const SSO: &str = "sso";
 pub const REVIEW: &str = "review";
 pub const MCP: &str = "mcp";
 pub const REALTIME: &str = "realtime";
+pub const COMMENTS: &str = "comments";
 
 /// Every feature, in display order.
 pub const CATALOG: &[FeatureSpec] = &[
@@ -99,6 +100,13 @@ pub const CATALOG: &[FeatureSpec] = &[
         available: true,
         planned: None,
         default_enabled: false,
+        core: false,
+    },
+    FeatureSpec {
+        id: COMMENTS,
+        available: true,
+        planned: None,
+        default_enabled: true,
         core: false,
     },
 ];

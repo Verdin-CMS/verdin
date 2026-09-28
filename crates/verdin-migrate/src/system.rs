@@ -39,6 +39,8 @@ pub const ADMIN_TOKENS: &str = "vd_admin_tokens";
 pub const END_USER_SESSIONS: &str = "vd_end_user_sessions";
 pub const ADMIN_TWO_FACTOR: &str = "vd_admin_two_factor";
 pub const ADMIN_PASSKEYS: &str = "vd_admin_passkeys";
+pub const COMMENTS: &str = "vd_comments";
+pub const TASKS: &str = "vd_tasks";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -639,6 +641,58 @@ pub fn system_tables() -> Vec<Table> {
                 index(ADMIN_PASSKEYS, "user", &["user_id"]),
             ],
             foreign_keys: vec![references("user_id", ADMIN_USERS)],
+        },
+        // Comments on entries (and fields of them): `parent_id` threads replies under a
+        // root, whose `resolved_at` closes the thread.
+        Table {
+            name: COMMENTS.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("content_type", 255).not_null(),
+                    Column::new("document_id", ColumnType::Char { length: 26 }).not_null(),
+                    varchar("locale", 35).not_null(),
+                    varchar("field", 255),
+                    Column::new("parent_id", ColumnType::BigInt),
+                    Column::new("body", ColumnType::Text).not_null(),
+                    Column::new("author_id", ColumnType::BigInt),
+                    Column::new("resolved_at", ColumnType::DateTime),
+                    Column::new("resolved_by_id", ColumnType::BigInt),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![
+                index(COMMENTS, "entry", &["content_type", "document_id", "locale"]),
+                index(COMMENTS, "parent", &["parent_id"]),
+            ],
+            foreign_keys: vec![references("parent_id", COMMENTS)],
+        },
+        // Tasks on entries, assigned to an admin.
+        Table {
+            name: TASKS.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("content_type", 255).not_null(),
+                    Column::new("document_id", ColumnType::Char { length: 26 }).not_null(),
+                    varchar("locale", 35).not_null(),
+                    varchar("title", 255).not_null(),
+                    Column::new("description", ColumnType::Text),
+                    Column::new("assignee_id", ColumnType::BigInt),
+                    Column::new("due_date", ColumnType::Date),
+                    varchar("status", 16).not_null(),
+                    Column::new("created_by_id", ColumnType::BigInt),
+                    Column::new("completed_at", ColumnType::DateTime),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![
+                index(TASKS, "entry", &["content_type", "document_id", "locale"]),
+                index(TASKS, "assignee", &["assignee_id", "status"]),
+            ],
+            foreign_keys: Vec::new(),
         },
         // One-time links for admins (`kind`: invite or reset), stored as SHA-256.
         Table {

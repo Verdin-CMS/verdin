@@ -4,6 +4,7 @@
 mod admin;
 pub mod audit;
 pub mod cache;
+pub mod comments;
 pub mod digest;
 mod docs;
 pub mod end_users;

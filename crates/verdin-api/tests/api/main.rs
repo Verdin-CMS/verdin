@@ -7,6 +7,7 @@ mod accounts;
 mod admin;
 mod audit;
 mod clone;
+mod comments;
 mod components;
 mod conditions;
 mod conformance;

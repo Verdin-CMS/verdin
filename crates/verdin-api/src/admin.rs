@@ -36,6 +36,8 @@ use crate::limiter::RateLimiter;
 mod account_admin;
 #[path = "audit_admin.rs"]
 mod audit_admin;
+#[path = "comments_admin.rs"]
+mod comments_admin;
 #[path = "end_users_admin.rs"]
 mod end_users_admin;
 #[path = "engagement.rs"]
@@ -131,6 +133,8 @@ pub struct AdminConfig {
     pub history: Option<crate::History>,
     /// Present when the `releases` feature is on; runs with this router's Document Service.
     pub releases: Option<crate::releases::Releases>,
+    /// Comments and tasks (the `comments` feature).
+    pub comments: Option<crate::comments::Comments>,
     /// The daily digest of unseen changes, which reads with this router's Document Service.
     pub digest: Option<crate::digest::Digest>,
     /// Present when the `review` feature is on: workflows and entry stages.
@@ -170,6 +174,7 @@ impl Default for AdminConfig {
             webhooks: None,
             history: None,
             releases: None,
+            comments: None,
             digest: None,
             review: None,
             listeners: Vec::new(),
@@ -270,6 +275,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(sso_admin::routes())
         .merge(two_factor_admin::routes())
         .merge(transfer_admin::routes())
+        .merge(comments_admin::routes())
         .merge(review_admin::routes())
         .merge(account_admin::routes())
         .merge(views_admin::routes())

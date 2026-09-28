@@ -176,6 +176,20 @@ impl Realtime {
         viewers
     }
 
+    /// Announces an admin-only event about an entry (comments, tasks).
+    pub fn announce(&self, event: &str, uid: &str, document_id: &str, locale: &str) {
+        self.send(Message {
+            event: event.into(),
+            uid: uid.into(),
+            document_id: Some(document_id.into()),
+            locale: (!locale.is_empty()).then(|| locale.into()),
+            file_id: None,
+            presence: None,
+            drafts_only: false,
+            admin_only: true,
+        });
+    }
+
     pub fn viewers(&self, key: &EntryKey) -> Vec<Viewer> {
         let now = Instant::now();
         let mut presence = self.presence.lock().expect("presence");

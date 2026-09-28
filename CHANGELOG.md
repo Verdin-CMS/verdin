@@ -34,6 +34,8 @@ All notable changes to Verdin are documented here. The format follows
   (`requireTwoFactor`).
 - **CSV/JSON import and export** per content type in the admin API, with column mapping,
   upserts by `documentId` and a dry run that validates every row without writing.
+- **Comments and tasks** on entries and fields (the `comments` feature): threads with
+  @mentions and resolution, tasks with an assignee and due date, email notifications.
 
 ## [0.8.0] - 2026-09-28
 

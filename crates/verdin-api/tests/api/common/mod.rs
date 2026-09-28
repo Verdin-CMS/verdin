@@ -196,6 +196,7 @@ impl App {
         let releases = verdin_api::releases::Releases::new(test.db.clone());
         releases.set_webhooks(webhooks.clone());
         let review = verdin_api::review::Review::new(test.db.clone());
+        let comments = verdin_api::comments::Comments::new(test.db.clone());
         let plugins = plugins_dir.map(|dir| verdin_plugins::Plugins::load(dir, test.db.clone()));
         let mut listeners: verdin_api::Listeners = vec![
             webhooks.listener(),
@@ -203,6 +204,7 @@ impl App {
             cache.listener(),
             audit.listener(),
             realtime.listener(),
+            comments.listener(),
         ];
         realtime.set_draft_types(
             registry
@@ -248,6 +250,7 @@ impl App {
             digest: Some(digest.clone()),
             review: Some(review.clone()),
             realtime: Some(realtime.clone()),
+            comments: Some(comments.clone()),
             ..AdminConfig::default()
         };
         let router = Router::new()

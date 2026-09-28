@@ -961,6 +961,17 @@ impl DocumentService {
 
     /// The admin who created a document (`None` when created through the content API).
     /// `NotFound` if the document does not exist.
+    /// Whether the document has a version (draft or published) in the current locale.
+    pub async fn exists(&self, uid: &str, document_id: &str) -> Result<bool> {
+        let model = self.registry.get(uid)?;
+        let mut select = SqlBuilder::new(self.db.flavor());
+        select.push("SELECT 1 FROM ").ident(model.table()).push(" WHERE ").ident("document_id");
+        select.push(" = ").param(SqlValue::Text(document_id.into())).push(" AND ");
+        select.ident("locale").push(" = ").param(SqlValue::Text(self.locale_of(model)?));
+        select.push(" LIMIT 1");
+        Ok(self.db.queries().has_rows(&select.sql, &select.params).await?)
+    }
+
     pub async fn created_by(&self, uid: &str, document_id: &str) -> Result<Option<i64>> {
         let model = self.registry.get(uid)?;
         let mut select = SqlBuilder::new(self.db.flavor());

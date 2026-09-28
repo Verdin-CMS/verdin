@@ -63,6 +63,7 @@ pub struct AppContext {
     pub audit: verdin_api::audit::Audit,
     /// Releases; the scheduler runs while serving.
     pub releases: verdin_api::releases::Releases,
+    pub comments: verdin_api::comments::Comments,
     /// The daily digest of unseen changes (`[digest]`), sent while serving.
     pub digest: verdin_api::digest::Digest,
     /// Review workflows; the `review` feature switches stages and the publish gate.
@@ -175,6 +176,7 @@ pub fn build_app(
         Arc::new(context.plugins.clone()),
         context.audit.listener(),
         context.realtime.listener(),
+        context.comments.listener(),
     ];
     if let Some(search) = &context.search {
         listeners.push(search.listener());
@@ -269,6 +271,9 @@ pub fn build_app(
             plugins: Some(context.plugins.clone()),
             audit: Some(context.audit.clone()),
             releases: states.enabled(RELEASES).then(|| context.releases.clone()),
+            comments: states
+                .enabled(verdin_api::features::COMMENTS)
+                .then(|| context.comments.clone()),
             review: states.enabled(REVIEW).then(|| context.review.clone()),
             realtime: Some(context.realtime.clone()),
             digest: Some(context.digest.clone()),
@@ -1106,6 +1111,7 @@ mod tests {
                 db_for_audit,
                 std::time::Duration::from_secs(86_400),
             ),
+            comments: verdin_api::comments::Comments::new(db_for_releases.clone()),
             releases: verdin_api::releases::Releases::new(db_for_releases),
             review: verdin_api::review::Review::new(db_for_review),
             realtime: verdin_api::realtime::Realtime::new(),

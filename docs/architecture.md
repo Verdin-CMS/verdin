@@ -614,6 +614,8 @@ GET  /content/:uid/:documentId/usage   where used: versions referencing the entr
 GET  /upload/files/:id/usage           where used: versions showing the file
 GET  /content/:uid/export?format=csv|json   the list (filters, sort, status, locale) as a file
 POST /content/:uid/import               { format, data, mapping, dryRun, publish }
+GET|POST /comments  PUT|DELETE /comments/:id  POST /comments/:id/resolve|reopen   threads on entries
+GET|POST /tasks  PUT|DELETE /tasks/:id                                      tasks on entries (`?mine=true`)
 
 CRUD /users, /roles, /api-tokens, /public-permissions
 GET|PUT /users/me/preferences          the caller's admin preferences (dashboard layout), any admin
@@ -631,6 +633,8 @@ Admin content routes read drafts by default and write drafts only (publishing is
 **Where used** (`…/usage`) lists every version (`uid`, `documentId`, `locale`, `status`, `field`, `title`) that references an entry — owning relations, polymorphic relations, relations inside components and dynamic zones — or a file — media fields, media inside components, `image` blocks (by id or URL) and rich text containing the file's URL. `field` is the attribute path (`sections.0.image`). Only versions the admin may read are listed; `meta.hidden` counts the others. JSON and rich text columns are scanned in pages of 500 rows, so the call costs a pass over the types that can hold such references.
 
 **Import & export** of one content type. Exports write one row per document of the list the admin sees (its filters, sort, `status` and `locale`, at most 50,000): `documentId`, then the attributes they may read in the write format — relations as `documentId`s, media as file ids, polymorphic relations as `uid:documentId`, components, dynamic zones, blocks and JSON as JSON; in CSV, lists are joined with `|` and text that starts like a spreadsheet formula gets a leading `'` (dropped again on import). Imports take the same shapes (at most 5,000 rows): `mapping` renames columns (`null` skips one; unknown columns are reported in `ignoredColumns`), a row with an existing `documentId` updates that document (`content.update`), others are created (`content.create`), and `publish` publishes each row. Rows are written one by one; failing ones are listed with their `ValidationError` details and skipped. `dryRun` checks every row in full — constraints and references included — and rolls it back, without hooks or events. Files are bounded by `server.body_limit`.
+
+**Comments and tasks** (the `comments` feature, on by default). Comments are threads on an entry version (`uid`, `documentId`, `locale`) or one of its fields; replies go under the thread's first comment, which resolves or reopens the thread. `@[Name](user:12)` mentions an admin: mentioned admins who may read the entry are emailed with a link to it. Tasks have a title, description, assignee (who must be able to read the entry, and is emailed), due date and status (`open`, `done`); `GET /tasks?mine=true` lists the caller's. Reading an entry's type is enough to comment and create tasks; comments are edited and deleted by their author (or a Super Admin), tasks updated by their creator or assignee and deleted by their creator. Deleting a document removes its comments and tasks. Changes are announced on the admin realtime stream (`comment.create`, `task.update`…).
 
 UI metadata (list columns, visible fields, form layout) lives in `schema/content-types/<name>.ui.json`, separate from the data schema. It is the equivalent of Strapi's "configure the view", but versionable.
 
