@@ -463,6 +463,10 @@ async fn call(plugin: Arc<Plugin>, function: String, input: &Value) -> Result<Va
 }
 
 impl DocumentHook for Plugins {
+    fn is_plugin(&self) -> bool {
+        true
+    }
+
     fn before<'a>(
         &'a self,
         context: HookContext<'a>,

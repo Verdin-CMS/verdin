@@ -6,6 +6,22 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Review workflows** (the `review` feature, permission `workflows.manage`). Stages
+  per content type, with the roles allowed to move entries into each stage. Entries can
+  be assigned to an admin. A workflow can also require a stage to publish, which is
+  enforced on every API. See [docs/review-workflows.md](docs/review-workflows.md).
+- **Several instances.** Each instance reads the settings changed by the others every
+  `[server].sync_interval_secs`. Set `[plugins].run_jobs = false` on all instances but
+  one. Each day's digest is claimed in the database, so it is sent once. See
+  [docs/scaling.md](docs/scaling.md).
+
+### Fixed
+
+- Plugins writing content through the host skipped every before-write hook. They now
+  skip only the plugins' own hooks.
+
 ## [0.6.0] - 2026-09-28
 
 ### Added

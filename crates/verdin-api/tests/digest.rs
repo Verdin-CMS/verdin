@@ -60,5 +60,11 @@ async fn emails_admins_who_opted_in() {
         .await;
     }
     assert_eq!(app.digest.send_all().await.unwrap(), 0);
+
+    // One run per day, whichever instance takes it first.
+    let day = time::macros::date!(2026 - 09 - 28);
+    assert!(app.digest.claim(day).await.unwrap());
+    assert!(!app.digest.claim(day).await.unwrap(), "already taken");
+    assert!(app.digest.claim(day.next_day().unwrap()).await.unwrap());
     app.done().await;
 }

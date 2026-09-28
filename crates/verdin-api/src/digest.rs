@@ -136,12 +136,71 @@ impl Digest {
         Ok(sent)
     }
 
+    /// Takes today's run: with several instances, only the first one to insert today's
+    /// marker sends the digest.
+    pub async fn claim(&self, day: time::Date) -> Result<bool, ApiError> {
+        let Some(db) = self
+            .inner
+            .context
+            .read()
+            .expect("digest context")
+            .as_ref()
+            .map(|(service, _)| service.db().clone())
+        else {
+            return Ok(false);
+        };
+        let key = if db.flavor().is_mysql_family() { "`key`" } else { "\"key\"" };
+        let at = verdin_db::value::truncate_millis(OffsetDateTime::now_utc());
+        let marker = format!("digest.sent:{day}");
+        let inserted = db
+            .queries()
+            .execute(
+                &format!(
+                    "INSERT INTO {} ({key}, value, updated_at) VALUES (?, ?, ?)",
+                    verdin_migrate::system::SETTINGS
+                ),
+                &[
+                    verdin_db::SqlValue::Text(marker),
+                    verdin_db::SqlValue::Json(Value::Bool(true)),
+                    verdin_db::SqlValue::DateTime(at),
+                ],
+            )
+            .await;
+        match inserted {
+            Ok(_) => {
+                // Markers older than a week are of no use.
+                let old = format!("digest.sent:{}", day - time::Duration::days(7));
+                let _ = db
+                    .queries()
+                    .execute(
+                        &format!(
+                            "DELETE FROM {} WHERE {key} LIKE 'digest.sent:%' AND {key} < ?",
+                            verdin_migrate::system::SETTINGS
+                        ),
+                        &[verdin_db::SqlValue::Text(old)],
+                    )
+                    .await;
+                Ok(true)
+            }
+            Err(error) if error.unique_violation().is_some() => Ok(false),
+            Err(error) => Err(ApiError::Internal(error.to_string())),
+        }
+    }
+
     pub fn spawn(&self) -> tokio::task::JoinHandle<()> {
         let digest = self.clone();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(until_next(digest.inner.hour_utc, OffsetDateTime::now_utc()))
                     .await;
+                match digest.claim(OffsetDateTime::now_utc().date()).await {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(error) => {
+                        tracing::warn!(?error, "could not take the daily digest run");
+                        continue;
+                    }
+                }
                 match digest.send_all().await {
                     Ok(sent) => tracing::info!(sent, "daily digest sent"),
                     Err(error) => tracing::warn!(?error, "daily digest failed"),

@@ -118,4 +118,11 @@ pub trait DocumentHook: Send + Sync {
         &'a self,
         context: HookContext<'a>,
     ) -> BoxFuture<'a, Result<Option<serde_json::Value>, String>>;
+
+    /// Plugin hooks are left out of the writes plugins make themselves (see
+    /// [`crate::DocumentService::without_plugin_hooks`]); platform rules such as review
+    /// stages are not.
+    fn is_plugin(&self) -> bool {
+        false
+    }
 }

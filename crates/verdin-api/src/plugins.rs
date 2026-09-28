@@ -23,8 +23,9 @@ const STATES_KEY: &str = "plugins";
 const ALLOWED_HEADERS: &[&str] =
     &["content-type", "cache-control", "location", "etag", "last-modified", "content-disposition"];
 
-/// Content operations for plugins: writes go through the Document Service without
-/// before-write hooks (a plugin must not trigger itself) but with the listeners.
+/// Content operations for plugins: writes go through the Document Service without the
+/// plugins' before-write hooks (a plugin must not trigger itself) but with the listeners
+/// and the platform's hooks (review stages).
 pub struct ContentHost {
     service: DocumentService,
     limits: Limits,
@@ -32,7 +33,7 @@ pub struct ContentHost {
 
 impl ContentHost {
     pub fn new(service: &DocumentService, limits: Limits) -> Self {
-        Self { service: service.without_hooks(), limits }
+        Self { service: service.without_plugin_hooks(), limits }
     }
 }
 

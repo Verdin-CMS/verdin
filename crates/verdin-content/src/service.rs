@@ -125,10 +125,11 @@ impl DocumentService {
         self
     }
 
-    /// The same service without before-write hooks (plugins writing through the host must
-    /// not trigger themselves).
-    pub fn without_hooks(&self) -> Self {
-        Self { hooks: Vec::new(), ..self.clone() }
+    /// The same service without the plugins' before-write hooks (plugins writing through
+    /// the host must not trigger themselves). Other hooks still apply.
+    pub fn without_plugin_hooks(&self) -> Self {
+        let hooks = self.hooks.iter().filter(|hook| !hook.is_plugin()).cloned().collect();
+        Self { hooks, ..self.clone() }
     }
 
     /// Runs the hooks; returns the data to write (possibly replaced by a hook).
@@ -1950,6 +1951,38 @@ mod tests {
 
     fn connect(id: &str, position: Option<Position>) -> Connect {
         Connect { document_id: id.into(), position }
+    }
+
+    struct Flagged(bool);
+
+    impl DocumentHook for Flagged {
+        fn before<'a>(
+            &'a self,
+            _: HookContext<'a>,
+        ) -> crate::events::BoxFuture<'a, std::result::Result<Option<Json>, String>> {
+            Box::pin(async { Ok(None) })
+        }
+
+        fn is_plugin(&self) -> bool {
+            self.0
+        }
+    }
+
+    #[tokio::test]
+    async fn plugin_writes_keep_platform_hooks() {
+        let db = Database::connect("sqlite::memory:", &verdin_db::ConnectOptions::default())
+            .await
+            .unwrap();
+        let service = DocumentService::new(
+            db,
+            Registry::new(verdin_schema::Schema::default()),
+            OutputOptions::default(),
+        )
+        .with_hook(Arc::new(Flagged(false)))
+        .with_hook(Arc::new(Flagged(true)));
+        let host = service.without_plugin_hooks();
+        assert_eq!(host.hooks.len(), 1);
+        assert!(!host.hooks[0].is_plugin());
     }
 
     #[test]
