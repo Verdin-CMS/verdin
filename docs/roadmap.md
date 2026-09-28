@@ -77,23 +77,23 @@ to move to Verdin without losing features.
 
 | Item | Size | Notes |
 |---|---|---|
-| **Conditional fields** | M | `conditions.visible` on attributes (Strapi 5.17 JSON Logic format), evaluated in the editor and on write; 0.7 loads and keeps them without applying them |
+| **Conditional fields** ✅ | M | `conditions.visible` on attributes (Strapi 5.17 JSON Logic format), evaluated in the editor and on write; 0.7 loads and keeps them without applying them |
 | `password` attribute type ✅ | S | Hashed on write, always private; kept by `verdin import strapi` |
 | Morph relations | L | `morphToOne`/`morphToMany`/`morphOne`/`morphMany`, API and populate only (Strapi has no admin UI for them either) |
 | Populate gaps ✅ | S | Dynamic zone `on` fragments, `count: true`, filters on repeatable components and dynamic zones, sort by a relation's field, `hasPublishedVersion` |
-| Edit view layout | M | Field order, width, label, description, placeholder, editable, main field of relations; honour `configurable: false` in the builder |
+| Edit view layout ✅ | M | Field order, width, label, description, placeholder, editable, main field of relations; honour `configurable: false` in the builder |
 | Duplicate entry | S | Clone from the list and the editor (`POST …/actions/clone`), relations and media copied, unique fields cleared |
 | Content list filters | M | Filter builder with several conditions on any field, relations included; locale column |
 | Relations UI | S | Drag and drop reordering, open and edit the related entry in a side sheet |
 | Side-by-side live preview | M | Preview in an iframe next to the form, refreshed on save; device widths |
 | Admin invitations & password reset ✅ | S | Invite link with a token instead of setting a password, forgot-password email, own profile page (name, email, password) |
 | Sessions & tokens | S | List and revoke own admin sessions; regenerate API tokens; scoped, owner-bound admin API tokens (Strapi 5.47) |
-| RBAC | M | Per-locale permissions; conditions beyond `is-creator` (declared by plugins); "is owner" for end users |
+| RBAC | M | Per-locale permissions ✅; conditions beyond `is-creator` (declared by plugins); "is owner" for end users |
 | End users ✅ | S | Refresh tokens, `/api/users` CRUD with permissions, more OAuth presets (Microsoft, Discord, Facebook, Apple, Keycloak, Auth0), HTML email templates |
 | Media library | M | Replace a file keeping its id, crop in the admin, upload from URL, PDF preview, signed URLs for private buckets, optimize originals |
 | Webhook events ✅ | S | `releases.publish`, `review-workflows.updateEntryStage` (after 0.7) |
 | Admin branding ✅ | S | Logo, favicon, accent colour and translation overrides in `[admin]` |
-| GraphQL | M | Disable types or actions per content type (shadow CRUD), resolvers from plugins |
+| GraphQL ✅ | M | Disable types or actions per content type (shadow CRUD), resolvers from plugins |
 | Export / import / backup | M | `verdin export` / `verdin import` of Verdin's own format (schema, data, media), optional encryption; scheduled backups to S3; `verdin transfer` between instances with transfer tokens |
 | **MCP server** | M | Content and schema tools for AI agents over Streamable HTTP, authorized with API tokens (Strapi 5.47, Sanity, Directus, Payload ship one) |
 | Plugin runtime upgrade ✅ | M | Wasmtime 48 LTS through Extism's main branch (0.7.1); move back to an Extism release once one ships it |

@@ -456,6 +456,10 @@ fn graphql_router(
         max_complexity: number("maxComplexity", defaults.max_complexity),
         introspection: flag("introspection", defaults.introspection),
         playground: flag("playground", context.mode == Mode::Development),
+        disabled: settings
+            .get("disabled")
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default(),
     };
     let service = verdin_api::document_service(
         context.db.clone(),
@@ -466,7 +470,33 @@ fn graphql_router(
         Some(&context.plugins),
         states.enabled(REVIEW).then_some(&context.review),
     );
-    match verdin_graphql::schema(service, limits, &options) {
+    let extra: Vec<verdin_graphql::ExtraField> = context
+        .plugins
+        .list()
+        .iter()
+        .flat_map(|plugin| {
+            plugin.manifest.graphql.iter().map(|field| {
+                let (plugins, name, function) =
+                    (context.plugins.clone(), plugin.manifest.name.clone(), field.function.clone());
+                verdin_graphql::ExtraField {
+                    name: field.name.clone(),
+                    mutation: field.mutation,
+                    description: field.description.clone(),
+                    call: Arc::new(move |input| {
+                        let (plugins, name, function) =
+                            (plugins.clone(), name.clone(), function.clone());
+                        Box::pin(async move {
+                            plugins
+                                .call(&name, &function, &input)
+                                .await
+                                .map_err(|error| error.to_string())
+                        })
+                    }),
+                }
+            })
+        })
+        .collect();
+    match verdin_graphql::schema_with(service, limits, &options, &extra) {
         Ok(schema) => verdin_graphql::router(schema, context.auth.clone(), options, "/graphql"),
         Err(error) => {
             tracing::error!(%error, "could not build the GraphQL schema; /graphql is off");

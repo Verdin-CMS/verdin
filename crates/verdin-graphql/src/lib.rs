@@ -25,18 +25,36 @@ use verdin_schema::{Attribute, AttributeKind, ContentTypeKind, Schema as Content
 pub use http::router;
 
 /// `graphql` feature settings.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Options {
     pub max_depth: usize,
     pub max_complexity: usize,
     pub introspection: bool,
     /// Serve GraphiQL on `GET /graphql` (loads from a CDN).
     pub playground: bool,
+    /// Strapi's shadow CRUD switches: content type uid → actions left out of the schema
+    /// (`find`, `findOne`, `create`, `update`, `delete`, or `queries`, `mutations`, `*`).
+    pub disabled: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+impl Options {
+    /// Whether the schema has `action` for `uid`.
+    pub fn allows(&self, uid: &str, action: &str) -> bool {
+        let Some(disabled) = self.disabled.get(uid) else { return true };
+        let group = if matches!(action, "find" | "findOne") { "queries" } else { "mutations" };
+        !disabled.iter().any(|item| item == "*" || item == group || item == action)
+    }
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { max_depth: 10, max_complexity: 1000, introspection: true, playground: false }
+        Self {
+            max_depth: 10,
+            max_complexity: 1000,
+            introspection: true,
+            playground: false,
+            disabled: Default::default(),
+        }
     }
 }
 
@@ -73,10 +91,37 @@ const ORDERED_OPS: &[&str] = &["eq", "ne", "lt", "lte", "gt", "gte"];
 const LIST_OPS: &[&str] = &["in", "notIn", "between"];
 
 /// Builds the schema for `registry`.
+/// A root field added by a plugin: `name(args: JSON): JSON`, resolved by `call` with
+/// `{ args, actor }`.
+#[derive(Clone)]
+pub struct ExtraField {
+    pub name: String,
+    pub mutation: bool,
+    pub description: Option<String>,
+    pub call: std::sync::Arc<
+        dyn Fn(
+                serde_json::Value,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send>,
+            > + Send
+            + Sync,
+    >,
+}
+
 pub fn schema(
     service: DocumentService,
     limits: Limits,
     options: &Options,
+) -> Result<Schema, String> {
+    schema_with(service, limits, options, &[])
+}
+
+/// [`schema`] with root fields from plugins; names already taken are skipped (logged).
+pub fn schema_with(
+    service: DocumentService,
+    limits: Limits,
+    options: &Options,
+    extra: &[ExtraField],
 ) -> Result<Schema, String> {
     let registry = service.registry().clone();
     let content = &registry.schema;
@@ -187,6 +232,7 @@ pub fn schema(
             InputValue::new("status", TypeRef::named("PublicationStatus"))
                 .default_value(Value::Enum(async_graphql::Name::new("PUBLISHED")))
         };
+        let allowed = |action: &str| options.allows(&uid, action);
         if content_type.kind == ContentTypeKind::CollectionType {
             let plural = names::camel(&content_type.plural_name);
             let collection = format!("{type_name}EntityResponseCollection");
@@ -195,40 +241,47 @@ pub fn schema(
                     .field(json_field("nodes", TypeRef::named_nn_list_nn(&type_name), Shape::List))
                     .field(json_field("pageInfo", TypeRef::named_nn("Pagination"), Shape::Object)),
             );
-            query = query
-                .field(
-                    with_list_arguments(
-                        Field::new(&plural, TypeRef::named_nn_list_nn(&type_name), {
-                            let (uid, fields) = (uid.clone(), fields.clone());
-                            move |ctx| {
+            if allowed("find") {
+                query = query
+                    .field(
+                        with_list_arguments(
+                            Field::new(&plural, TypeRef::named_nn_list_nn(&type_name), {
                                 let (uid, fields) = (uid.clone(), fields.clone());
-                                FieldFuture::new(async move {
-                                    find_many(ctx, &uid, &fields, false).await
-                                })
-                            }
-                        }),
-                        &type_name,
+                                move |ctx| {
+                                    let (uid, fields) = (uid.clone(), fields.clone());
+                                    FieldFuture::new(async move {
+                                        find_many(ctx, &uid, &fields, false).await
+                                    })
+                                }
+                            }),
+                            &type_name,
+                        )
+                        .argument(status_argument())
+                        .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
                     )
-                    .argument(status_argument())
-                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
-                )
-                .field(
-                    with_list_arguments(
-                        Field::new(format!("{plural}_connection"), TypeRef::named(&collection), {
-                            let (uid, fields) = (uid.clone(), fields.clone());
-                            move |ctx| {
-                                let (uid, fields) = (uid.clone(), fields.clone());
-                                FieldFuture::new(async move {
-                                    find_many(ctx, &uid, &fields, true).await
-                                })
-                            }
-                        }),
-                        &type_name,
-                    )
-                    .argument(status_argument())
-                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
-                )
-                .field(
+                    .field(
+                        with_list_arguments(
+                            Field::new(
+                                format!("{plural}_connection"),
+                                TypeRef::named(&collection),
+                                {
+                                    let (uid, fields) = (uid.clone(), fields.clone());
+                                    move |ctx| {
+                                        let (uid, fields) = (uid.clone(), fields.clone());
+                                        FieldFuture::new(async move {
+                                            find_many(ctx, &uid, &fields, true).await
+                                        })
+                                    }
+                                },
+                            ),
+                            &type_name,
+                        )
+                        .argument(status_argument())
+                        .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
+                    );
+            }
+            if allowed("findOne") {
+                query = query.field(
                     Field::new(&singular, TypeRef::named(&type_name), {
                         let (uid, fields) = (uid.clone(), fields.clone());
                         move |ctx| {
@@ -240,8 +293,10 @@ pub fn schema(
                     .argument(status_argument())
                     .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
                 );
-            mutation = mutation
-                .field(
+            }
+            if allowed("create") {
+                mutations += 1;
+                mutation = mutation.field(
                     Field::new(format!("create{type_name}"), TypeRef::named(&type_name), {
                         let (uid, fields) = (uid.clone(), fields.clone());
                         move |ctx| {
@@ -257,8 +312,11 @@ pub fn schema(
                     ))
                     .argument(status_argument())
                     .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
-                )
-                .field(
+                );
+            }
+            if allowed("update") {
+                mutations += 1;
+                mutation = mutation.field(
                     Field::new(format!("update{type_name}"), TypeRef::named(&type_name), {
                         let (uid, fields) = (uid.clone(), fields.clone());
                         move |ctx| {
@@ -275,8 +333,11 @@ pub fn schema(
                     ))
                     .argument(status_argument())
                     .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
-                )
-                .field(
+                );
+            }
+            if allowed("delete") {
+                mutations += 1;
+                mutation = mutation.field(
                     Field::new(
                         format!("delete{type_name}"),
                         TypeRef::named("DeleteMutationResponse"),
@@ -290,20 +351,24 @@ pub fn schema(
                     )
                     .argument(InputValue::new("documentId", TypeRef::named_nn(TypeRef::ID))),
                 );
+            }
         } else {
-            query = query.field(
-                Field::new(&singular, TypeRef::named(&type_name), {
-                    let (uid, fields) = (uid.clone(), fields.clone());
-                    move |ctx| {
+            if allowed("find") || allowed("findOne") {
+                query = query.field(
+                    Field::new(&singular, TypeRef::named(&type_name), {
                         let (uid, fields) = (uid.clone(), fields.clone());
-                        FieldFuture::new(async move { find_one(ctx, &uid, &fields).await })
-                    }
-                })
-                .argument(status_argument())
-                .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
-            );
-            mutation = mutation
-                .field(
+                        move |ctx| {
+                            let (uid, fields) = (uid.clone(), fields.clone());
+                            FieldFuture::new(async move { find_one(ctx, &uid, &fields).await })
+                        }
+                    })
+                    .argument(status_argument())
+                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
+                );
+            }
+            if allowed("update") {
+                mutations += 1;
+                mutation = mutation.field(
                     Field::new(format!("update{type_name}"), TypeRef::named(&type_name), {
                         let (uid, fields) = (uid.clone(), fields.clone());
                         move |ctx| {
@@ -319,8 +384,11 @@ pub fn schema(
                     ))
                     .argument(status_argument())
                     .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
-                )
-                .field(Field::new(
+                );
+            }
+            if allowed("delete") {
+                mutations += 1;
+                mutation = mutation.field(Field::new(
                     format!("delete{type_name}"),
                     TypeRef::named("DeleteMutationResponse"),
                     {
@@ -331,8 +399,54 @@ pub fn schema(
                         }
                     },
                 ));
+            }
         }
-        mutations += 1;
+    }
+
+    let mut taken: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for field in extra {
+        let key = format!("{}:{}", field.mutation, field.name);
+        let valid = field.name.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+            && field.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !valid || !taken.insert(key) || registry_names(&registry).contains(&field.name) {
+            tracing::warn!(name = %field.name, "plugin GraphQL field skipped: invalid or taken name");
+            continue;
+        }
+        let call = field.call.clone();
+        let mut root = Field::new(&field.name, TypeRef::named("JSON"), move |ctx| {
+            let call = call.clone();
+            FieldFuture::new(async move {
+                let args = ctx
+                    .args
+                    .get("args")
+                    .map(|value| value.deserialize::<serde_json::Value>())
+                    .transpose()?
+                    .unwrap_or(serde_json::Value::Null);
+                let actor = match ctx.data::<ContentActor>()? {
+                    ContentActor::Public(_) => serde_json::json!({ "kind": "public" }),
+                    ContentActor::Token { id, .. } => {
+                        serde_json::json!({ "kind": "token", "id": id })
+                    }
+                    ContentActor::User { id, .. } => {
+                        serde_json::json!({ "kind": "user", "id": id })
+                    }
+                };
+                let output = call(serde_json::json!({ "args": args, "actor": actor }))
+                    .await
+                    .map_err(|message| error("PLUGIN_ERROR", message))?;
+                Ok(Some(FieldValue::value(Value::from_json(output)?)))
+            })
+        })
+        .argument(InputValue::new("args", TypeRef::named("JSON")));
+        if let Some(description) = &field.description {
+            root = root.description(description);
+        }
+        if field.mutation {
+            mutations += 1;
+            mutation = mutation.field(root);
+        } else {
+            query = query.field(root);
+        }
     }
 
     if mutations == 0 {
@@ -802,4 +916,24 @@ async fn delete<'a>(
     };
     service.delete(uid, &document_id).await.map_err(content_error)?;
     Ok(Some(FieldValue::owned_any(json!({ "documentId": document_id }))))
+}
+
+/// Root field names the content types use (plugins may not take them).
+fn registry_names(registry: &verdin_content::Registry) -> std::collections::HashSet<String> {
+    let mut names = std::collections::HashSet::new();
+    for model in registry.types() {
+        let content_type = &model.content_type;
+        let type_name = names::pascal(&content_type.singular_name);
+        let singular = names::camel(&content_type.singular_name);
+        let plural = names::camel(&content_type.plural_name);
+        names.extend([
+            singular,
+            format!("{plural}_connection"),
+            plural,
+            format!("create{type_name}"),
+            format!("update{type_name}"),
+            format!("delete{type_name}"),
+        ]);
+    }
+    names
 }

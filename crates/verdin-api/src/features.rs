@@ -171,6 +171,27 @@ pub fn validate(id: &str, state: &FeatureState) -> Result<(), ApiError> {
     if id == SSO {
         crate::sso::SsoSettings::parse(&state.settings)?;
     }
+    if id == GRAPHQL
+        && let Some(disabled) = state.settings.get("disabled")
+    {
+        const ACTIONS: &[&str] =
+            &["*", "queries", "mutations", "find", "findOne", "create", "update", "delete"];
+        let valid = disabled.as_object().is_some_and(|types| {
+            types.values().all(|actions| {
+                actions.as_array().is_some_and(|actions| {
+                    actions
+                        .iter()
+                        .all(|action| action.as_str().is_some_and(|a| ACTIONS.contains(&a)))
+                })
+            })
+        });
+        if !valid {
+            return Err(ApiError::BadRequest(format!(
+                "`disabled` maps content type uids to lists of {}",
+                ACTIONS.join(", ")
+            )));
+        }
+    }
     Ok(())
 }
 

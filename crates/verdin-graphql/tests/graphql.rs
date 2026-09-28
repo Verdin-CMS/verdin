@@ -56,6 +56,13 @@ struct App {
 
 impl App {
     async fn new(options: verdin_graphql::Options) -> Self {
+        Self::with_extra(options, &[]).await
+    }
+
+    async fn with_extra(
+        options: verdin_graphql::Options,
+        extra: &[verdin_graphql::ExtraField],
+    ) -> Self {
         let test = TestDb::new().await;
         let schema = schema();
         verdin_migrate::apply(
@@ -88,7 +95,8 @@ impl App {
         let service =
             DocumentService::new(test.db.clone(), Registry::new(schema), OutputOptions::default());
         let graphql =
-            verdin_graphql::schema(service, verdin_query::Limits::default(), &options).unwrap();
+            verdin_graphql::schema_with(service, verdin_query::Limits::default(), &options, extra)
+                .unwrap();
         let router = verdin_graphql::router(graphql, auth.clone(), options, "/graphql");
         Self { router, test, auth, token }
     }
@@ -309,5 +317,57 @@ async fn errors_permissions_and_limits() {
         names.contains(&"title") && names.contains(&"category") && !names.contains(&"secret"),
         "{names:?}"
     );
+    app.done().await;
+}
+
+#[tokio::test]
+async fn shadow_crud_switches() {
+    let disabled = [
+        ("api::article".to_owned(), vec!["mutations".to_owned()]),
+        ("api::category".to_owned(), vec!["findOne".to_owned(), "delete".to_owned()]),
+    ]
+    .into_iter()
+    .collect();
+    let app = App::new(verdin_graphql::Options { disabled, ..Default::default() }).await;
+    let fields = |data: &Value, kind: &str| -> Vec<String> {
+        data["__schema"][kind]["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|field| field["name"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let data = app
+        .ok(
+            "{ __schema { queryType { fields { name } } mutationType { fields { name } } } }",
+            json!({}),
+        )
+        .await;
+    let queries = fields(&data, "queryType");
+    let mutations = fields(&data, "mutationType");
+    assert!(queries.contains(&"articles".to_owned()) && queries.contains(&"article".to_owned()));
+    assert!(!mutations.iter().any(|name| name.ends_with("Article")), "{mutations:?}");
+    assert!(queries.contains(&"categories".to_owned()));
+    assert!(!queries.contains(&"category".to_owned()), "{queries:?}");
+    assert!(mutations.contains(&"createCategory".to_owned()));
+    assert!(!mutations.contains(&"deleteCategory".to_owned()));
+    app.done().await;
+}
+
+#[tokio::test]
+async fn plugin_fields() {
+    let echo = verdin_graphql::ExtraField {
+        name: "echo".into(),
+        mutation: false,
+        description: Some("Returns its input".into()),
+        call: std::sync::Arc::new(|input| Box::pin(async move { Ok(input) })),
+    };
+    let taken = verdin_graphql::ExtraField { name: "articles".into(), ..echo.clone() };
+    let app = App::with_extra(Default::default(), &[echo, taken]).await;
+    let data = app.ok(r#"{ echo(args: { hello: "world" }) }"#, json!({})).await;
+    assert_eq!(data["echo"]["args"]["hello"], "world");
+    assert_eq!(data["echo"]["actor"]["kind"], "token");
+    let data = app.ok("{ articles { title } }", json!({})).await;
+    assert!(data["articles"].is_array(), "content type fields win over plugins");
     app.done().await;
 }

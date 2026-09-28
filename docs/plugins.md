@@ -95,12 +95,14 @@ Exported functions take JSON and return JSON.
 | After hooks | `{ event, uid, documentId, locale }` | ignored |
 | Routes | `{ method, path, query, headers, body, actor: { kind: "public" \| "token" \| "user", id? } }` | `{ status, headers?, body }` (a string, or JSON) |
 | Jobs | `{ scheduledAt }` | ignored |
+| GraphQL fields | `{ args, actor }` | the field's value (any JSON) |
 
 Some rules apply to all of them:
 
-- **Access checks.** Routes do their own checks, using `actor`. Public access and API token permissions do not apply to them.
+- **GraphQL fields.** `[[graphql]]` entries (`name`, `function`, optional `mutation = true` and `description`) add `name(args: JSON): JSON` to `Query` or `Mutation`. Names used by content types win; a disabled plugin's field answers an error.
+- **Access checks.** Routes and GraphQL fields do their own checks, using `actor`. Public access and API token permissions do not apply to them.
 - **Failures.** A failing before hook is logged and the write goes on. A failing route answers `502`.
-- **No recursion.** Writes a plugin makes through `verdin_content` do not trigger plugin hooks. Webhooks and history still see them.
+- **No recursion.** Writes a plugin makes through `verdin_content` do not trigger plugin hooks. Webhooks, history and review stages still apply to them.
 
 ## Host functions
 

@@ -30,6 +30,9 @@ pub struct Manifest {
     pub routes: Option<Routes>,
     #[serde(default)]
     pub jobs: Vec<Job>,
+    /// Root fields of the GraphQL API resolved by the plugin.
+    #[serde(default)]
+    pub graphql: Vec<GraphqlField>,
     #[serde(default)]
     pub admin: Admin,
     /// The settings form in Settings → Plugins (without it, settings are free JSON).
@@ -139,6 +142,19 @@ pub struct Job {
     /// Cron syntax (`*/5 * * * *`; seconds optional), in UTC.
     pub schedule: String,
     pub function: String,
+}
+
+/// `[[graphql]]`: `name(args: JSON): JSON` on `Query` (or `Mutation`); the function gets
+/// `{ args, actor }` and returns the field's value.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GraphqlField {
+    pub name: String,
+    pub function: String,
+    #[serde(default)]
+    pub mutation: bool,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// What the plugin adds to the admin panel (Web Components from its `admin/` directory).
@@ -302,6 +318,13 @@ impl Manifest {
                 .map_err(|error| {
                     format!("job `{}`: invalid schedule `{}`: {error}", job.function, job.schedule)
                 })?;
+        }
+        for field in &self.graphql {
+            let valid = field.name.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+                && field.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if !valid {
+                return Err(format!("graphql field `{}`: use a camelCase name", field.name));
+            }
         }
         if let Some(script) = &self.admin.script
             && (script.contains("..") || script.starts_with('/'))
