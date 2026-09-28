@@ -82,10 +82,10 @@ to move to Verdin without losing features.
 | Morph relations | L | `morphToOne`/`morphToMany`/`morphOne`/`morphMany`, API and populate only (Strapi has no admin UI for them either) |
 | Populate gaps ✅ | S | Dynamic zone `on` fragments, `count: true`, filters on repeatable components and dynamic zones, sort by a relation's field, `hasPublishedVersion` |
 | Edit view layout ✅ | M | Field order, width, label, description, placeholder, editable, main field of relations; honour `configurable: false` in the builder |
-| Duplicate entry | S | Clone from the list and the editor (`POST …/actions/clone`), relations and media copied, unique fields cleared |
-| Content list filters | M | Filter builder with several conditions on any field, relations included; locale column |
-| Relations UI | S | Drag and drop reordering, open and edit the related entry in a side sheet |
-| Side-by-side live preview | M | Preview in an iframe next to the form, refreshed on save; device widths |
+| Duplicate entry ✅ | S | Clone from the list and the editor (`POST …/actions/clone`), relations and media copied, unique fields cleared |
+| Content list filters ✅ | M | Filter builder with several conditions on any field, relations included; locale column |
+| Relations UI ✅ | S | Drag and drop reordering, open and edit the related entry in a side sheet |
+| Side-by-side live preview ✅ | M | Preview in an iframe next to the form, refreshed on save; device widths |
 | Admin invitations & password reset ✅ | S | Invite link with a token instead of setting a password, forgot-password email, own profile page (name, email, password) |
 | Sessions & tokens | S | List and revoke own admin sessions; regenerate API tokens; scoped, owner-bound admin API tokens (Strapi 5.47) |
 | RBAC | M | Per-locale permissions ✅; conditions beyond `is-creator` (declared by plugins); "is owner" for end users |
