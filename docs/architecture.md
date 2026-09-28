@@ -647,6 +647,11 @@ UI metadata (list columns, visible fields, form layout) lives in `schema/content
 - Refresh and logout require the `X-Verdin-CSRF` header (any value): a cross-site form cannot send it, and a cross-site `fetch` with it needs a CORS preflight.
 - Deactivating a user or changing their password revokes their sessions; access tokens are checked against the user on every request. The last active Super Admin cannot be deactivated, deleted or demoted.
 - The first admin is registered through `POST /admin/api/auth/register-first-admin`, which only works while no admin exists (serialized on the Super Admin role row).
+- **Two-factor authentication** (TOTP, RFC 6238: SHA-1, 6 digits, 30 s, one step of drift). An admin with a second factor signs in in two steps: `POST /auth/login` answers `{ twoFactorRequired: true, twoFactorToken, methods }` (a 5-minute token, no session), and `POST /auth/login/two-factor { twoFactorToken, code }` takes a TOTP code or a recovery code. Each TOTP step and each recovery code works once; wrong codes count towards the lockout.
+  - Setup, from the admin's profile: `POST /auth/two-factor/totp/setup { password }` (secret and `otpauth://` URL), `POST /auth/two-factor/totp/enable { code }` (returns 10 recovery codes, shown once), `POST /auth/two-factor/totp/disable { password }`, `POST /auth/two-factor/recovery-codes { password }`, `GET /auth/two-factor`.
+  - Secrets are stored in `vd_admin_two_factor`, encrypted with a keystream derived from `VERDIN_TOKEN_PEPPER` and a per-secret nonce; recovery codes as keyed hashes.
+  - Roles with `requireTwoFactor` make their members set one up: until they do, every admin route but their profile (`/auth/me`) and the two-factor routes answers `403 TwoFactorRequiredError`. SSO sign-ins are subject to it too.
+  - `DELETE /users/:id/two-factor` (`users.manage`) removes an admin's factors when they lose them; a Super Admin's only yield to another Super Admin.
 
 ### 14.2 Content API
 

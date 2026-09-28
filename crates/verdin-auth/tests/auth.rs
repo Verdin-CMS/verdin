@@ -72,7 +72,12 @@ async fn first_admin_login_refresh_logout() {
         "family revoked"
     );
 
-    let session = auth.login("ada@example.com", "correct horse 1", None).await.unwrap();
+    let session = auth
+        .login("ada@example.com", "correct horse 1", None)
+        .await
+        .unwrap()
+        .into_session()
+        .unwrap();
     auth.logout(&session.refresh_token).await.unwrap();
     assert!(matches!(
         auth.refresh(&session.refresh_token, None).await,
@@ -193,7 +198,12 @@ async fn users_roles_and_the_last_super_admin() {
     assert!(matches!(auth.delete_role(author.id).await, Err(AuthError::Validation(_))), "built-in");
 
     // Deactivated users lose their sessions and access tokens.
-    let session = auth.login("bob@example.com", "correct horse 1", None).await.unwrap();
+    let session = auth
+        .login("bob@example.com", "correct horse 1", None)
+        .await
+        .unwrap()
+        .into_session()
+        .unwrap();
     auth.update_user(bob.id, UserUpdate { is_active: Some(false), ..UserUpdate::default() })
         .await
         .unwrap();

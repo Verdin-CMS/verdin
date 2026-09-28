@@ -37,6 +37,8 @@ pub const WORKFLOW_STAGES: &str = "vd_workflow_stages";
 pub const DOCUMENT_STAGES: &str = "vd_document_stages";
 pub const ADMIN_TOKENS: &str = "vd_admin_tokens";
 pub const END_USER_SESSIONS: &str = "vd_end_user_sessions";
+pub const ADMIN_TWO_FACTOR: &str = "vd_admin_two_factor";
+pub const ADMIN_PASSKEYS: &str = "vd_admin_passkeys";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -105,6 +107,8 @@ pub fn system_tables() -> Vec<Table> {
                     varchar("name", 255).not_null(),
                     Column::new("description", ColumnType::Text),
                     Column::new("builtin", ColumnType::Boolean).not_null(),
+                    // Members must set up two-factor authentication (NULL: no).
+                    Column::new("require_2fa", ColumnType::Boolean),
                 ],
                 timestamps().to_vec(),
             ]
@@ -597,6 +601,44 @@ pub fn system_tables() -> Vec<Table> {
                 index(END_USER_SESSIONS, "family", &["family"]),
             ],
             foreign_keys: vec![references("user_id", USERS)],
+        },
+        // Admins' TOTP (secret encrypted with the token pepper; `totp_enabled_at` NULL while
+        // being set up) and recovery codes (JSON list of keyed hashes).
+        Table {
+            name: ADMIN_TWO_FACTOR.into(),
+            columns: [
+                vec![
+                    id(),
+                    Column::new("user_id", ColumnType::BigInt).not_null(),
+                    varchar("totp_secret", 255),
+                    Column::new("totp_enabled_at", ColumnType::DateTime),
+                    Column::new("totp_last_step", ColumnType::BigInt),
+                    Column::new("recovery_codes", ColumnType::Text),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![unique(ADMIN_TWO_FACTOR, "user", &["user_id"])],
+            foreign_keys: vec![references("user_id", ADMIN_USERS)],
+        },
+        // Admins' passkeys (WebAuthn): the credential id and COSE public key, base64url.
+        Table {
+            name: ADMIN_PASSKEYS.into(),
+            columns: vec![
+                id(),
+                Column::new("user_id", ColumnType::BigInt).not_null(),
+                varchar("credential_id", 255).not_null(),
+                Column::new("public_key", ColumnType::Text).not_null(),
+                Column::new("sign_count", ColumnType::BigInt).not_null(),
+                varchar("name", 255).not_null(),
+                Column::new("created_at", ColumnType::DateTime).not_null(),
+                Column::new("last_used_at", ColumnType::DateTime),
+            ],
+            indexes: vec![
+                unique(ADMIN_PASSKEYS, "credential", &["credential_id"]),
+                index(ADMIN_PASSKEYS, "user", &["user_id"]),
+            ],
+            foreign_keys: vec![references("user_id", ADMIN_USERS)],
         },
         // One-time links for admins (`kind`: invite or reset), stored as SHA-256.
         Table {

@@ -30,6 +30,7 @@ mod search;
 mod sso;
 mod stats;
 mod traffic;
+mod two_factor;
 mod usage;
 mod views;
 mod webhooks;

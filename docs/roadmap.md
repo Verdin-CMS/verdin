@@ -113,7 +113,7 @@ Hygraph) that fit Verdin best.
 | Where used (API ✅) | S | Inverse references of an entry or file (relations, components, blocks), shown in the editor and the media library; warns before delete |
 | Image transformations ✅ | M | `/uploads/…?w=&h=&fit=&format=&q=` with focal-point crops, presets, signed URLs and a disk cache (local provider; AVIF output later) |
 | Full-text search ✅ | M | Tantivy index inside the binary, `?_q=` on the REST and admin APIs (admin list UI pending); Meilisearch/Typesense sync moved to Later |
-| 2FA for admins | S | TOTP and passkeys (WebAuthn), recovery codes, enforceable per role |
+| 2FA for admins | S | TOTP ✅, recovery codes ✅, enforceable per role ✅; passkeys (WebAuthn) and the admin UI pending |
 | CSV/JSON import & export | S | Per content type from the list, with field mapping and a dry run |
 | Cross-field validation ✅ | S | Rules that compare fields (`endDate > startDate`) declared in the schema; JSON Logic, checked with `required` |
 | Official plugins | S each | SEO fields + sitemap, redirects, nested pages and menus, form builder with submissions |

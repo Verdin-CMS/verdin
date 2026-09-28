@@ -9,14 +9,18 @@ use time::{Duration, OffsetDateTime};
 use verdin_db::value::{format_datetime, truncate_millis};
 use verdin_db::{ColumnKind as K, Database, DbError, Flavor, SqlValue as V, Tx};
 use verdin_migrate::system::{
-    ADMIN_PERMISSIONS, ADMIN_ROLES, ADMIN_USER_ROLES, ADMIN_USERS, API_TOKEN_PERMISSIONS,
-    API_TOKENS, PUBLIC_PERMISSIONS, SESSIONS, SETTINGS,
+    ADMIN_PASSKEYS, ADMIN_PERMISSIONS, ADMIN_ROLES, ADMIN_TWO_FACTOR, ADMIN_USER_ROLES,
+    ADMIN_USERS, API_TOKEN_PERMISSIONS, API_TOKENS, PUBLIC_PERMISSIONS, SESSIONS, SETTINGS,
 };
+
+pub use two_factor::{Login, PasskeySummary, TotpSetup, TwoFactorStatus, totp_code};
 
 #[path = "account.rs"]
 pub mod account;
 #[path = "preview.rs"]
 pub mod preview;
+#[path = "two_factor.rs"]
+pub mod two_factor;
 #[path = "users.rs"]
 pub mod users;
 
@@ -113,6 +117,10 @@ pub struct AdminUser {
     pub lastname: Option<String>,
     pub is_active: bool,
     pub roles: Vec<RoleSummary>,
+    /// Signs in with a second factor (TOTP or a passkey).
+    pub two_factor: bool,
+    /// One of the roles requires a second factor.
+    pub two_factor_required: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -125,6 +133,8 @@ pub struct Role {
     pub name: String,
     pub description: Option<String>,
     pub builtin: bool,
+    /// Members must sign in with a second factor.
+    pub require_two_factor: bool,
     pub permissions: Vec<Permission>,
 }
 
@@ -405,7 +415,7 @@ impl AuthService {
         email: &str,
         password: &str,
         user_agent: Option<&str>,
-    ) -> Result<Session> {
+    ) -> Result<Login> {
         let email = email.trim().to_lowercase();
         let rows = self
             .db
@@ -435,22 +445,7 @@ impl AuthService {
         }
 
         if !verify_password(password, &hash) {
-            let failed = failed + 1;
-            let (failed, locked_until) = if failed >= self.config.max_failed_logins {
-                tracing::warn!(user = id, "admin account locked after repeated failed logins");
-                (0, V::DateTime(now + self.config.lockout))
-            } else {
-                (failed, V::Null(K::DateTime))
-            };
-            self.db
-                .queries()
-                .execute(
-                    &format!(
-                        "UPDATE {ADMIN_USERS} SET failed_logins = ?, locked_until = ? WHERE id = ?"
-                    ),
-                    &[V::Int(failed), locked_until, V::BigInt(id)],
-                )
-                .await?;
+            self.count_failed_login(id, failed).await?;
             return Err(AuthError::InvalidCredentials);
         }
         if !active {
@@ -466,9 +461,60 @@ impl AuthService {
         sql.push_str(" WHERE id = ?");
         params.push(V::BigInt(id));
         self.db.queries().execute(&sql, &params).await?;
+        self.after_password(id, user_agent).await
+    }
 
-        let user = self.user(id).await?;
-        self.open_session(user, user_agent).await
+    async fn count_failed_login(&self, id: i64, failed: i32) -> Result<()> {
+        let failed = failed + 1;
+        let (failed, locked_until) = if failed >= self.config.max_failed_logins {
+            tracing::warn!(user = id, "admin account locked after repeated failed logins");
+            (0, V::DateTime(now() + self.config.lockout))
+        } else {
+            (failed, V::Null(K::DateTime))
+        };
+        self.db
+            .queries()
+            .execute(
+                &format!(
+                    "UPDATE {ADMIN_USERS} SET failed_logins = ?, locked_until = ? WHERE id = ?"
+                ),
+                &[V::Int(failed), locked_until, V::BigInt(id)],
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// A wrong second factor counts like a wrong password.
+    pub(crate) async fn record_failed_login(&self, id: i64) -> Result<()> {
+        let rows = self
+            .db
+            .queries()
+            .fetch_all(
+                &format!("SELECT failed_logins FROM {ADMIN_USERS} WHERE id = ?"),
+                &[V::BigInt(id)],
+                &[K::Int],
+            )
+            .await?;
+        let failed = rows.first().and_then(|row| row[0].as_i64()).unwrap_or_default() as i32;
+        self.count_failed_login(id, failed).await
+    }
+
+    /// Locked accounts cannot finish signing in either.
+    pub(crate) async fn ensure_not_locked(&self, id: i64) -> Result<()> {
+        let rows = self
+            .db
+            .queries()
+            .fetch_all(
+                &format!("SELECT locked_until FROM {ADMIN_USERS} WHERE id = ?"),
+                &[V::BigInt(id)],
+                &[K::DateTime],
+            )
+            .await?;
+        match rows.first().map(|row| &row[0]) {
+            None => Err(AuthError::Unauthorized),
+            Some(V::DateTime(until)) if *until > now() => Err(AuthError::InvalidCredentials),
+            Some(_) => Ok(()),
+        }
     }
 
     /// Signs in an admin whose identity provider vouched for `email` (SSO). Unknown emails
@@ -681,22 +727,40 @@ impl AuthService {
             .queries()
             .fetch_all(
                 &format!(
-                    "SELECT ur.user_id, r.id, r.code, r.name FROM {ADMIN_USER_ROLES} ur \
+                    "SELECT ur.user_id, r.id, r.code, r.name, r.require_2fa FROM {ADMIN_USER_ROLES} ur \
                      JOIN {ADMIN_ROLES} r ON r.id = ur.role_id ORDER BY r.id"
                 ),
                 &[],
-                &[K::BigInt, K::BigInt, K::Text, K::Text],
+                &[K::BigInt, K::BigInt, K::Text, K::Text, K::Bool],
             )
             .await?;
         let mut roles: HashMap<i64, Vec<RoleSummary>> = HashMap::new();
+        let mut required = std::collections::HashSet::new();
         for row in role_rows {
             let mut row = row.into_iter();
             let user = int(&row.next().expect("user_id"));
             let id = int(&row.next().expect("id"));
             let code = row.next().and_then(text).unwrap_or_default();
             let name = row.next().and_then(text).unwrap_or_default();
+            if matches!(row.next(), Some(V::Bool(true))) {
+                required.insert(user);
+            }
             roles.entry(user).or_default().push(RoleSummary { id, code, name });
         }
+        let factor_rows = self
+            .db
+            .queries()
+            .fetch_all(
+                &format!(
+                    "SELECT user_id FROM {ADMIN_TWO_FACTOR} WHERE totp_enabled_at IS NOT NULL \
+                     UNION SELECT user_id FROM {ADMIN_PASSKEYS}"
+                ),
+                &[],
+                &[K::BigInt],
+            )
+            .await?;
+        let with_factor: std::collections::HashSet<i64> =
+            factor_rows.iter().map(|row| int(&row[0])).collect();
         Ok(rows
             .into_iter()
             .map(|row| {
@@ -712,6 +776,8 @@ impl AuthService {
                     created_at: row.next().as_ref().and_then(datetime).unwrap_or_default(),
                     updated_at: row.next().as_ref().and_then(datetime).unwrap_or_default(),
                     roles: roles.remove(&id).unwrap_or_default(),
+                    two_factor: with_factor.contains(&id),
+                    two_factor_required: required.contains(&id),
                 }
             })
             .collect())
@@ -902,9 +968,9 @@ impl AuthService {
             .db
             .queries()
             .fetch_all(
-                &format!("SELECT id, code, name, description, builtin FROM {ADMIN_ROLES}{filter} ORDER BY id"),
+                &format!("SELECT id, code, name, description, builtin, require_2fa FROM {ADMIN_ROLES}{filter} ORDER BY id"),
                 &params,
-                &[K::BigInt, K::Text, K::Text, K::Text, K::Bool],
+                &[K::BigInt, K::Text, K::Text, K::Text, K::Bool, K::Bool],
             )
             .await?;
         let permission_rows = self
@@ -950,6 +1016,7 @@ impl AuthService {
                     name: row.next().and_then(text).unwrap_or_default(),
                     description: row.next().and_then(text),
                     builtin: matches!(row.next(), Some(V::Bool(true))),
+                    require_two_factor: matches!(row.next(), Some(V::Bool(true))),
                     permissions: permissions.remove(&id).unwrap_or_default(),
                 }
             })
@@ -1032,6 +1099,19 @@ impl AuthService {
             insert_permissions(&mut tx, id, &permissions).await?;
         }
         tx.commit().await?;
+        self.role(id).await
+    }
+
+    /// Whether members of the role must sign in with a second factor.
+    pub async fn set_role_two_factor(&self, id: i64, required: bool) -> Result<Role> {
+        self.role(id).await?;
+        self.db
+            .queries()
+            .execute(
+                &format!("UPDATE {ADMIN_ROLES} SET require_2fa = ?, updated_at = ? WHERE id = ?"),
+                &[V::Bool(required), V::DateTime(now()), V::BigInt(id)],
+            )
+            .await?;
         self.role(id).await
     }
 

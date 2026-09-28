@@ -14,6 +14,8 @@ pub enum ApiError {
     NotFound,
     Unauthorized,
     Forbidden,
+    /// The admin's role requires a second factor they have not set up.
+    TwoFactorRequired,
     MethodNotAllowed,
     TooManyRequests,
     BadRequest(String),
@@ -67,6 +69,11 @@ impl IntoResponse for ApiError {
                 simple(StatusCode::UNAUTHORIZED, "UnauthorizedError", "Unauthorized")
             }
             ApiError::Forbidden => simple(StatusCode::FORBIDDEN, "ForbiddenError", "Forbidden"),
+            ApiError::TwoFactorRequired => simple(
+                StatusCode::FORBIDDEN,
+                "TwoFactorRequiredError",
+                "Set up two-factor authentication to continue",
+            ),
             ApiError::MethodNotAllowed => simple(
                 StatusCode::METHOD_NOT_ALLOWED,
                 "MethodNotAllowedError",

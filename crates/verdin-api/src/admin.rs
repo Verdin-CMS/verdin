@@ -56,6 +56,8 @@ mod releases_admin;
 mod review_admin;
 #[path = "sso_admin.rs"]
 mod sso_admin;
+#[path = "two_factor_admin.rs"]
+mod two_factor_admin;
 #[path = "upload_admin.rs"]
 mod upload_admin;
 #[path = "views_admin.rs"]
@@ -264,6 +266,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(releases_admin::routes())
         .merge(preview_admin::routes())
         .merge(sso_admin::routes())
+        .merge(two_factor_admin::routes())
         .merge(review_admin::routes())
         .merge(account_admin::routes())
         .merge(views_admin::routes())
@@ -309,6 +312,19 @@ fn data(value: impl serde::Serialize) -> Response {
 }
 
 async fn principal(state: &AdminState, headers: &HeaderMap) -> Result<AdminPrincipal, ApiError> {
+    let principal = principal_during_setup(state, headers).await?;
+    if principal.user.two_factor_required && !principal.user.two_factor {
+        return Err(ApiError::TwoFactorRequired);
+    }
+    Ok(principal)
+}
+
+/// The admin, even while their role waits for them to set up a second factor (their
+/// profile and the two-factor routes).
+async fn principal_during_setup(
+    state: &AdminState,
+    headers: &HeaderMap,
+) -> Result<AdminPrincipal, ApiError> {
     let token = bearer(headers)?.ok_or(ApiError::Unauthorized)?;
     Ok(state.auth.authenticate(token).await?)
 }
@@ -420,8 +436,20 @@ async fn login(
 ) -> ApiResult {
     rate_limit(&state, &ip)?;
     let input: LoginBody = body(&bytes)?;
-    let session = state.auth.login(&input.email, &input.password, user_agent(&headers)).await?;
-    Ok(session_response(&state, session, StatusCode::OK))
+    match state.auth.login(&input.email, &input.password, user_agent(&headers)).await? {
+        verdin_auth::Login::Session(session) => {
+            Ok(session_response(&state, session, StatusCode::OK))
+        }
+        verdin_auth::Login::SecondFactor { token, methods } => {
+            let mut response = data(
+                json!({ "twoFactorRequired": true, "twoFactorToken": token, "methods": methods }),
+            );
+            response
+                .headers_mut()
+                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            Ok(response)
+        }
+    }
 }
 
 async fn refresh(
@@ -449,7 +477,7 @@ async fn logout(State(state): State<AdminState>, headers: HeaderMap) -> ApiResul
 }
 
 async fn me(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
-    let principal = principal(&state, &headers).await?;
+    let principal = principal_during_setup(&state, &headers).await?;
     Ok(data(json!({ "user": principal.user, "permissions": principal.permissions })))
 }
 
@@ -593,6 +621,8 @@ struct RoleBody {
     description: Option<String>,
     #[serde(default)]
     permissions: Vec<Permission>,
+    #[serde(default, rename = "requireTwoFactor")]
+    require_two_factor: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -602,6 +632,8 @@ struct RolePatch {
     #[serde(default, deserialize_with = "double_option")]
     description: Option<Option<String>>,
     permissions: Option<Vec<Permission>>,
+    #[serde(rename = "requireTwoFactor")]
+    require_two_factor: Option<bool>,
 }
 
 fn check_subjects(state: &AdminState, permissions: &[Permission]) -> Result<(), ApiError> {
@@ -654,10 +686,13 @@ async fn create_role(
     require(&state, &headers, actions::ROLES_MANAGE).await?;
     let input: RoleBody = body(&bytes)?;
     check_subjects(&state, &input.permissions)?;
-    let role = state
+    let mut role = state
         .auth
         .create_role(&input.code, &input.name, input.description, input.permissions)
         .await?;
+    if input.require_two_factor {
+        role = state.auth.set_role_two_factor(role.id, true).await?;
+    }
     Ok((StatusCode::CREATED, data(role)).into_response())
 }
 
@@ -672,7 +707,11 @@ async fn update_role(
     if let Some(permissions) = &input.permissions {
         check_subjects(&state, permissions)?;
     }
-    Ok(data(state.auth.update_role(id, input.name, input.description, input.permissions).await?))
+    let role = state.auth.update_role(id, input.name, input.description, input.permissions).await?;
+    match input.require_two_factor {
+        Some(required) => Ok(data(state.auth.set_role_two_factor(role.id, required).await?)),
+        None => Ok(data(role)),
+    }
 }
 
 async fn delete_role(
