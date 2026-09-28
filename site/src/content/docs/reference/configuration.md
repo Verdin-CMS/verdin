@@ -102,6 +102,44 @@ Files under `dir` (relative to the project), served by Verdin at `/uploads`.
 provider = { name = "local", dir = "public/uploads" }
 ```
 
+### `[upload.transforms]`
+
+Image transformations of local files: `/uploads/<file>?preset=thumb`, or
+`?w=&h=&fit=&format=&q=` with a signature. Renderings are cached on disk and dropped
+when the file changes (its focal point included). Cover crops keep the file's focal
+point in view; images are never enlarged. JPEG, PNG, WebP, TIFF and BMP can be
+transformed (not GIFs, which may be animated).
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `enabled` | `true` | Serve transformations. |
+| `presets` | `{}` | Named transformations, always allowed: `{ w, h, fit, format, q }`. |
+| `allow_arbitrary` | `false` | Accept any parameters without a signature. Each distinct URL is rendered and cached, so only for trusted networks. |
+| `max_size` | `4096` | Largest `w` or `h`, in pixels. |
+| `cache_dir` | `".cache/transforms"` | Where renderings are kept (relative to the project; safe to delete). |
+
+Parameters: `w`, `h` (pixels), `fit` (`cover`, the default, crops to the box; `inside`
+fits within it; `fill` stretches), `format` (`jpeg`, `png`, `webp`; WebP output is
+lossless) and `q` (JPEG quality, 1–100, default 80).
+
+```toml
+[upload.transforms.presets]
+thumb = { w = 300, h = 300 }
+hero = { w = 1600, h = 600, format = "webp" }
+```
+
+**Signed URLs.** With `VERDIN_IMAGE_SECRET` set, `s` is the hex HMAC-SHA256 of
+`<file>?<canonical query>`, where the canonical query lists the non-default parameters
+sorted by name (`fit`, `format`, `h`, `q`, `w`; `fit=cover` omitted):
+
+```js
+import { createHmac } from 'node:crypto';
+const s = createHmac('sha256', process.env.VERDIN_IMAGE_SECRET)
+  .update('photo_1a2b.jpg?format=webp&w=800')
+  .digest('hex');
+const url = `/uploads/photo_1a2b.jpg?format=webp&w=800&s=${s}`;
+```
+
 ### S3 provider
 
 Any S3-compatible service (AWS, Cloudflare R2, MinIO, Backblaze B2…). Credentials come

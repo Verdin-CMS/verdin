@@ -111,7 +111,7 @@ Hygraph) that fit Verdin best.
 | Comments & tasks | M | Threads on entries and fields, @mentions, assignable tasks; notifications and the digest; pairs with review workflows |
 | Polymorphic relations in the admin | M | Editable, not only shown: in the editor, a picker that searches entries across content types (choose the type, then the entry) to add, remove and reorder `morphToOne`/`morphToMany` links; in the builder, create and edit `morph*` attributes (inverse sides with `target` and `morphBy`, validated against the owner); inverse sides stay read-only, as in the API. Strapi has no admin UI for them |
 | Where used (API ✅) | S | Inverse references of an entry or file (relations, components, blocks), shown in the editor and the media library; warns before delete |
-| Image transformations | M | `/uploads/…?w=&h=&fit=&format=&q=` with focal-point crops, signed presets and a disk cache |
+| Image transformations ✅ | M | `/uploads/…?w=&h=&fit=&format=&q=` with focal-point crops, presets, signed URLs and a disk cache (local provider; AVIF output later) |
 | Full-text search | M | Tantivy index inside the binary, `?_q=` on the REST API and in the admin list; optional Meilisearch/Typesense sync plugin |
 | 2FA for admins | S | TOTP and passkeys (WebAuthn), recovery codes, enforceable per role |
 | CSV/JSON import & export | S | Per content type from the list, with field mapping and a dry run |

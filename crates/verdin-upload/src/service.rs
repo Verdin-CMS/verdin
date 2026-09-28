@@ -369,6 +369,20 @@ impl UploadService {
         }
     }
 
+    /// The focal point of the file whose hash is `hash`, as `(x, y)` fractions.
+    pub async fn focal_point(&self, hash: &str) -> Result<Option<(f64, f64)>> {
+        let mut select = SqlBuilder::new(self.db.flavor());
+        select.push("SELECT ").ident("focal_point").push(" FROM ").ident(FILES);
+        select.push(" WHERE ").ident("hash").push(" = ").param(SqlValue::Text(hash.into()));
+        let rows =
+            self.db.queries().fetch_all(&select.sql, &select.params, &[ColumnKind::Json]).await?;
+        let point = rows.into_iter().next().and_then(|row| match row.into_iter().next() {
+            Some(SqlValue::Json(point)) => Some(point),
+            _ => None,
+        });
+        Ok(point.and_then(|point| Some((point.get("x")?.as_f64()?, point.get("y")?.as_f64()?))))
+    }
+
     pub async fn find(&self, id: i64) -> Result<Option<FileRecord>> {
         let list = self
             .list(&FileQuery { ids: Some(vec![id]), page: 1, page_size: 1, ..Default::default() })

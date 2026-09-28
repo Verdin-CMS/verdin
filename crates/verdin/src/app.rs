@@ -299,7 +299,8 @@ pub fn build_app(
         ));
     }
     if let Some(dir) = context.upload.storage().local_dir() {
-        app = app.nest_service("/uploads", uploads::service(dir.to_owned()));
+        let transforms = uploads::Transforms::new(&context.upload, &context.root);
+        app = app.nest_service("/uploads", uploads::service(dir.to_owned(), transforms));
     }
     app = app.merge(plugin_assets(&admin.path, context.plugins.clone()));
     let assets_dir = admin.assets_dir.as_ref().map(|dir| context.root.join(dir));

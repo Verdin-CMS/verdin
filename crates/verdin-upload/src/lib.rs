@@ -7,6 +7,7 @@ mod image;
 mod mime;
 mod service;
 mod storage;
+pub mod transform;
 
 pub use config::{Breakpoint, ProviderConfig, UploadConfig};
 pub use mime::{detect_mime, is_inline_safe};

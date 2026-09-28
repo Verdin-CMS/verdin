@@ -22,6 +22,10 @@ All notable changes to Verdin are documented here. The format follows
   `GET /admin/api/upload/files/:id/usage` list the versions referencing an entry
   (relations, polymorphic relations, relations in components) or a file (media fields
   and components, image blocks, rich text URLs), filtered by the admin's permissions.
+- **Image transformations** at `/uploads/<file>?preset=…` or signed
+  `?w=&h=&fit=&format=&q=&s=` (`[upload.transforms]`, `VERDIN_IMAGE_SECRET`): cover
+  crops around the focal point, JPEG/PNG/WebP output, a disk cache dropped when the
+  file changes.
 
 ## [0.8.0] - 2026-09-28
 

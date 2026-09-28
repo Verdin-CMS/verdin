@@ -516,7 +516,10 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
             .with_listener(Arc::new(webhooks.clone()))
             .with_listener(Arc::new(cache.clone()))
             .with_listener(Arc::new(audit.clone()))
-            .with_listener(realtime.file_listener());
+            .with_listener(realtime.file_listener())
+            .with_listener(crate::uploads::cache_cleaner(
+                project.root.join(&project.config.upload.transforms.cache_dir),
+            ));
     let history = verdin_api::History::new(db.clone(), project.config.history.max_versions);
     let plugins =
         verdin_plugins::Plugins::load(&project.root.join(&project.config.plugins.path), db.clone());

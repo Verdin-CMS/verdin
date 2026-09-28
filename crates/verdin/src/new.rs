@@ -45,7 +45,7 @@ path = "/admin"
 # secure_cookies = true
 "#;
 
-const GITIGNORE: &str = ".env\ndata/\n*.db\n*.db-*\n";
+const GITIGNORE: &str = ".env\ndata/\n*.db\n*.db-*\n.cache/\n";
 
 /// Creates the project in `dir`, which must not exist or be empty.
 pub fn scaffold(dir: &Path, engine: Engine) -> Result<()> {

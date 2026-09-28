@@ -18,6 +18,8 @@ pub struct UploadConfig {
     /// Raster originals larger than this (either side, in pixels) are scaled down on
     /// upload, which also drops their metadata (EXIF, GPS). `None` keeps originals as sent.
     pub max_original_size: Option<u32>,
+    /// On-the-fly image transformations at `/uploads` (local provider).
+    pub transforms: crate::transform::TransformConfig,
 }
 
 impl Default for UploadConfig {
@@ -33,6 +35,7 @@ impl Default for UploadConfig {
             ],
             max_image_megapixels: 100,
             max_original_size: None,
+            transforms: Default::default(),
         }
     }
 }
