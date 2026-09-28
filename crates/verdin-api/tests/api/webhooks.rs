@@ -412,3 +412,85 @@ async fn validation_and_permissions() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     app.done().await;
 }
+
+#[tokio::test]
+async fn release_and_review_stage_events() {
+    let app = App::new(schema()).await;
+    let admin = register(&app).await;
+    let receiver = Receiver::start().await;
+    create_hook(
+        &app,
+        &admin,
+        json!({ "name": "Ops", "url": receiver.url,
+                "events": ["releases.publish", "review-workflows.updateEntryStage"] }),
+    )
+    .await;
+    let (_, entry) = app
+        .call(
+            Method::POST,
+            "/api/articles?status=draft",
+            Some(json!({ "data": { "title": "Hi" } })),
+        )
+        .await;
+    let document_id = entry["data"]["documentId"].as_str().unwrap().to_owned();
+
+    // A release published now.
+    let (_, release) = app
+        .call_as(
+            Method::POST,
+            "/admin/api/releases",
+            Some(json!({ "name": "Launch" })),
+            As::Bearer(&admin),
+        )
+        .await;
+    let id = release["data"]["id"].as_i64().unwrap();
+    let action = json!({ "uid": "api::article", "documentId": document_id, "action": "publish" });
+    let (status, body) = app
+        .call_as(
+            Method::POST,
+            &format!("/admin/api/releases/{id}/actions"),
+            Some(action),
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    app.call_as(
+        Method::POST,
+        &format!("/admin/api/releases/{id}/publish"),
+        None,
+        As::Bearer(&admin),
+    )
+    .await;
+
+    // An entry moved to the next review stage.
+    let workflow = json!({ "name": "Editorial", "contentTypes": ["api::article"],
+                           "stages": [{ "name": "To do" }, { "name": "Done" }] });
+    let (_, workflow) = app
+        .call_as(Method::POST, "/admin/api/review-workflows", Some(workflow), As::Bearer(&admin))
+        .await;
+    let done = workflow["data"]["stages"][1]["id"].clone();
+    let (status, _) = app
+        .call_as(
+            Method::PUT,
+            &format!("/admin/api/content/api::article/{document_id}/review"),
+            Some(json!({ "stageId": done })),
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert_eq!(app.webhooks.deliver_due().await.unwrap(), 2);
+    let requests = receiver.take();
+    let body = |event: &str| {
+        requests.iter().find(|(h, ..)| h["x-verdin-event"] == event).unwrap().2.clone()
+    };
+    let released = body("releases.publish");
+    assert_eq!(released["release"]["name"], "Launch");
+    assert_eq!(released["release"]["status"], "done");
+    let moved = body("review-workflows.updateEntryStage");
+    assert_eq!(moved["model"], "api::article");
+    assert_eq!(moved["entry"]["documentId"], document_id.as_str());
+    assert_eq!(moved["stages"]["from"]["name"], "To do");
+    assert_eq!(moved["stages"]["to"]["name"], "Done");
+    app.done().await;
+}

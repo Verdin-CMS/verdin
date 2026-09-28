@@ -16,6 +16,8 @@ can be switched off in **Settings → Features**.
 | `entry.discard-draft` | A document's draft is discarded. |
 | `entry.delete` | A document is deleted. |
 | `media.create` / `media.update` / `media.delete` | A media library file is uploaded, edited or deleted. Deleting a folder also sends `media.delete` for each file in it. |
+| `releases.publish` | A release ran (now or at its date). The payload has the `release` with the result of each action. |
+| `review-workflows.updateEntryStage` | An entry moved to another review stage. The payload has `model`, `entry` (`documentId`, `locale`), `workflow` and `stages.from` / `stages.to`. |
 
 A webhook can be limited to some content types. Media events are not tied to a content type.
 

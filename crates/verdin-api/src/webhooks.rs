@@ -31,6 +31,8 @@ pub const EVENTS: &[&str] = &[
     "media.create",
     "media.update",
     "media.delete",
+    "releases.publish",
+    "review-workflows.updateEntryStage",
 ];
 
 /// The event of test deliveries (`POST /webhooks/{id}/trigger`).
@@ -270,6 +272,18 @@ impl Webhooks {
     }
 
     // -------------------------------------------------------------- queue
+
+    /// Queues a platform event (releases, review stages): `data` goes next to `event` and
+    /// `createdAt`. Failures are logged; the change itself already happened.
+    pub async fn emit(&self, event: &str, uid: Option<&str>, data: Value) {
+        let mut payload = json!({ "event": event, "createdAt": format_datetime(now()) });
+        if let (Some(payload), Value::Object(data)) = (payload.as_object_mut(), data) {
+            payload.extend(data);
+        }
+        if let Err(error) = self.enqueue(event, uid, payload).await {
+            tracing::warn!(%error, event, "could not queue the webhook deliveries");
+        }
+    }
 
     /// Queues `event` for every webhook that wants it.
     pub async fn enqueue(&self, event: &str, uid: Option<&str>, payload: Value) -> Result<usize> {

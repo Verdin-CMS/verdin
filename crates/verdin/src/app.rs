@@ -346,6 +346,7 @@ pub async fn serve(
         &verdin_api::plugins::load_states(&context.db).await.context("reading plugin switches")?,
     );
     context.review.reload().await.context("reading review workflows")?;
+    context.releases.set_webhooks(context.webhooks.clone());
     context.review.set_enabled(states.enabled(REVIEW));
     let host = AppHost::new(context.clone(), schema, states);
     let deliveries = context.webhooks.spawn();

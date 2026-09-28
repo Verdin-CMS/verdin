@@ -200,6 +200,20 @@ async fn update_entry(
             Some(principal.user.id),
         )
         .await?;
+    let from = before.as_ref().map_or(workflow.stages[0].id, |entry| entry.stage_id);
+    if let Some(webhooks) = &state.config.webhooks
+        && from != updated.stage_id
+    {
+        let stage =
+            |id: i64| workflow.stage(id).map(|stage| json!({ "id": stage.id, "name": stage.name }));
+        let data = json!({
+            "model": uid,
+            "entry": { "documentId": document_id, "locale": (!locale.is_empty()).then_some(&locale) },
+            "workflow": { "id": workflow.id, "name": workflow.name },
+            "stages": { "from": stage(from), "to": stage(updated.stage_id) },
+        });
+        webhooks.emit("review-workflows.updateEntryStage", Some(&uid), data).await;
+    }
     if let Some(audit) = &state.config.audit {
         let record = |action: &str, details: Value| {
             let entry = crate::audit::AuditEntry {

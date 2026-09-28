@@ -182,6 +182,7 @@ impl App {
         // 10 versions per document, to exercise pruning.
         let history = verdin_api::History::new(test.db.clone(), 10);
         let releases = verdin_api::releases::Releases::new(test.db.clone());
+        releases.set_webhooks(webhooks.clone());
         let review = verdin_api::review::Review::new(test.db.clone());
         let plugins = plugins_dir.map(|dir| verdin_plugins::Plugins::load(dir, test.db.clone()));
         let mut listeners: verdin_api::Listeners =

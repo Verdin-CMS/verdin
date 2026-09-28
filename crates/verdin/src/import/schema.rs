@@ -196,11 +196,6 @@ fn attributes(
             continue;
         }
         let mut warn = |message: String| warnings.push(format!("{owner}.{name}: {message}"));
-        if ty == "password" {
-            for key in ["unique", "default", "private"] {
-                converted.remove(key);
-            }
-        }
         if let Some(custom) = attribute["customField"].as_str() {
             warn(format!(
                 "custom field `{custom}` kept: a plugin must provide it (else it is edited as a plain `{}`)",
@@ -266,6 +261,11 @@ fn attributes(
                     }
                     converted.insert((*key).into(), value.clone());
                 }
+            }
+        }
+        if ty == "password" {
+            for key in ["unique", "default", "private"] {
+                converted.remove(key);
             }
         }
         if matches!(ty, "text" | "richtext" | "blocks" | "json")

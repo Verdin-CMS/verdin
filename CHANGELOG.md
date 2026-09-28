@@ -6,6 +6,17 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`password` attributes**: hashed with Argon2id on write and never returned, filtered
+  or sorted. `verdin import strapi` imports them, keeping Strapi's bcrypt hashes.
+- Webhook events `releases.publish` and `review-workflows.updateEntryStage`.
+
+### Changed
+
+- The HTTP API tests of `verdin-api` build into one binary, which saves about 2.7 GB in
+  `target/` per build.
+
 ## [0.7.1] - 2026-09-28
 
 ### Security

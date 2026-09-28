@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use serde::Serialize;
+use serde_json::json;
 use time::OffsetDateTime;
 use verdin_content::DocumentService;
 use verdin_db::value::{format_datetime, truncate_millis};
@@ -54,6 +55,8 @@ struct Inner {
     /// The `releases` feature switch: scheduled releases wait while it is off.
     enabled: AtomicBool,
     running: tokio::sync::Mutex<()>,
+    /// `releases.publish` deliveries.
+    webhooks: RwLock<Option<crate::Webhooks>>,
 }
 
 fn now() -> OffsetDateTime {
@@ -76,8 +79,13 @@ impl Releases {
                 wake: tokio::sync::Notify::new(),
                 enabled: AtomicBool::new(true),
                 running: tokio::sync::Mutex::new(()),
+                webhooks: RwLock::new(None),
             }),
         }
+    }
+
+    pub fn set_webhooks(&self, webhooks: crate::Webhooks) {
+        *self.inner.webhooks.write().expect("release webhooks") = Some(webhooks);
     }
 
     pub fn set_service(&self, service: DocumentService) {
@@ -360,7 +368,12 @@ impl Releases {
                 &[V::from(status), error, V::DateTime(now()), V::DateTime(now()), V::BigInt(id)],
             )
             .await?;
-        self.get(id).await
+        let release = self.get(id).await?;
+        let webhooks = self.inner.webhooks.read().expect("release webhooks").clone();
+        if let (Some(webhooks), Some(release)) = (webhooks, &release) {
+            webhooks.emit("releases.publish", None, json!({ "release": release })).await;
+        }
+        Ok(release)
     }
 
     /// Runs every pending release whose date has come; returns how many ran.
