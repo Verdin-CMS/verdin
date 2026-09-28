@@ -19,6 +19,7 @@ import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { Api, ApiFailure } from '../../core/api';
+import { ContentLocales, isLocalized } from '../../core/content-locales';
 import { Schema } from '../../core/schema';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
@@ -30,6 +31,12 @@ import {
   Role,
 } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
+import {
+  LocaleRestriction,
+  inheritedLocales,
+  setSubjectLocales,
+  subjectLocales,
+} from './role-locales';
 
 type Level = 'none' | 'own' | 'all';
 type MediaAction = (typeof MEDIA_ACTIONS)[number];
@@ -49,6 +56,15 @@ interface FieldsEditor {
   attributes: string[];
   /** `null` means every field. */
   selection: Record<FieldAction, string[] | null>;
+}
+
+/** The locales dialog: one subject's pending selection (`null`: every locale). */
+interface LocalesEditor {
+  uid: string;
+  name: string;
+  selection: string[] | null;
+  /** The permissions of the subject had different locales. */
+  mixed: boolean;
 }
 
 /** Media actions that can be limited to the files the user uploaded. */
@@ -213,9 +229,18 @@ const ACTION_LABELS: Record<
                               {{ t(actionLabels[action]) }}
                             </th>
                           }
-                          <th hlmTh class="bg-muted sticky top-0 z-10 pe-4">
+                          <th
+                            hlmTh
+                            class="bg-muted sticky top-0 z-10"
+                            [class.pe-4]="!localesShown()"
+                          >
                             {{ t('settings.roles.fields') }}
                           </th>
+                          @if (localesShown()) {
+                            <th hlmTh class="bg-muted sticky top-0 z-10 pe-4">
+                              {{ t('settings.roles.locales') }}
+                            </th>
+                          }
                         </tr>
                       </thead>
                       <tbody hlmTBody>
@@ -257,7 +282,7 @@ const ACTION_LABELS: Record<
                                 }
                               </td>
                             }
-                            <td hlmTd class="pe-4">
+                            <td hlmTd [class.pe-4]="!localesShown()">
                               @if (subject.uid === '*') {
                                 <span class="text-muted-foreground/60 text-sm">—</span>
                               } @else {
@@ -276,6 +301,32 @@ const ACTION_LABELS: Record<
                                 </button>
                               }
                             </td>
+                            @if (localesShown()) {
+                              <td hlmTd class="pe-4">
+                                @if (subject.localized) {
+                                  @let restriction = localeRestriction(subject.uid);
+                                  <button
+                                    hlmBtn
+                                    variant="outline"
+                                    size="sm"
+                                    class="max-w-48"
+                                    [disabled]="!hasContent(subject.uid)"
+                                    [attr.aria-label]="
+                                      t('settings.roles.localesFor', {
+                                        type: subject.name,
+                                        locales: localeSummary(restriction),
+                                      })
+                                    "
+                                    (click)="openLocales(subject.uid, subject.name)"
+                                  >
+                                    <ng-icon name="lucideLanguages" />
+                                    <span class="truncate">{{ localeSummary(restriction) }}</span>
+                                  </button>
+                                } @else {
+                                  <span class="text-muted-foreground/60 text-sm">—</span>
+                                }
+                              </td>
+                            }
                           </tr>
                         }
                       </tbody>
@@ -373,6 +424,94 @@ const ACTION_LABELS: Record<
         }
       </div>
     </div>
+
+    <hlm-dialog [state]="localesEditor() ? 'open' : 'closed'" (closed)="localesEditor.set(null)">
+      <hlm-dialog-content
+        *hlmDialogPortal="let ctx"
+        class="sm:max-w-md"
+        [closeLabel]="t('common.close')"
+      >
+        @if (localesEditor(); as editor) {
+          <hlm-dialog-header>
+            <h2 hlmDialogTitle>{{ t('settings.roles.localesTitle', { type: editor.name }) }}</h2>
+            <p hlmDialogDescription>{{ t('settings.roles.localesDescription') }}</p>
+          </hlm-dialog-header>
+          <div class="flex flex-col gap-4">
+            @if (editor.mixed) {
+              <div hlmAlert>
+                <ng-icon name="lucideInfo" />
+                <p hlmAlertDescription>{{ t('settings.roles.localesMixed') }}</p>
+              </div>
+            }
+            <div
+              class="flex flex-col gap-2"
+              role="radiogroup"
+              [attr.aria-label]="t('settings.roles.locales')"
+            >
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="role-locales"
+                  class="accent-primary size-4"
+                  [checked]="editor.selection === null"
+                  (change)="setLocaleMode(null)"
+                />
+                {{ t('settings.roles.localesAll') }}
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="role-locales"
+                  class="accent-primary size-4"
+                  [checked]="editor.selection !== null"
+                  (change)="setLocaleMode([])"
+                />
+                {{ t('settings.roles.localesSome') }}
+              </label>
+            </div>
+            @if (editor.selection !== null) {
+              <fieldset hlmFieldSet>
+                <legend hlmFieldLegend class="sr-only">
+                  {{ t('settings.roles.localesSome') }}
+                </legend>
+                <div hlmFieldGroup class="gap-3 ps-6">
+                  @for (locale of locales.list() ?? []; track locale.code) {
+                    <div hlmField orientation="horizontal">
+                      <hlm-checkbox
+                        [inputId]="'role-locale-' + locale.code"
+                        [checked]="editor.selection.includes(locale.code)"
+                        (checkedChange)="toggleLocale(locale.code, $event === true)"
+                      />
+                      <label hlmFieldLabel [for]="'role-locale-' + locale.code">
+                        <span [attr.lang]="locale.code">{{ locale.name }}</span>
+                        <span class="text-muted-foreground font-mono text-xs font-normal">{{
+                          locale.code
+                        }}</span>
+                      </label>
+                    </div>
+                  }
+                </div>
+              </fieldset>
+              @if (!editor.selection.length) {
+                <p class="text-destructive text-sm">{{ t('settings.roles.localesNone') }}</p>
+              }
+            }
+          </div>
+          <hlm-dialog-footer>
+            <button hlmBtn variant="outline" (click)="localesEditor.set(null)">
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              hlmBtn
+              [disabled]="editor.selection !== null && !editor.selection.length"
+              (click)="applyLocales()"
+            >
+              <ng-icon name="lucideCheck" /> {{ t('settings.roles.fieldsApply') }}
+            </button>
+          </hlm-dialog-footer>
+        }
+      </hlm-dialog-content>
+    </hlm-dialog>
 
     <hlm-dialog [state]="fieldsEditor() ? 'open' : 'closed'" (closed)="fieldsEditor.set(null)">
       <hlm-dialog-content
@@ -495,12 +634,26 @@ export class RolesPage implements OnInit {
   protected readonly permissions = signal<Permission[]>([]);
   protected readonly newName = signal('');
   protected readonly superAdmin = computed(() => this.selected()?.code === 'super-admin');
-  protected readonly subjects = computed(() => [
-    { uid: '*', name: this.t('settings.roles.allTypes') },
-    ...this.schema.contentTypes().map((type) => ({ uid: type.uid, name: type.displayName })),
-  ]);
+  protected readonly locales = inject(ContentLocales);
+  protected readonly localesEditor = signal<LocalesEditor | null>(null);
+  protected readonly subjects = computed(() => {
+    const types = this.schema.contentTypes();
+    return [
+      { uid: '*', name: this.t('settings.roles.allTypes'), localized: types.some(isLocalized) },
+      ...types.map((type) => ({
+        uid: type.uid,
+        name: type.displayName,
+        localized: isLocalized(type),
+      })),
+    ];
+  });
+  /** The locales column shows when some type is localized and there are locales. */
+  protected readonly localesShown = computed(
+    () => (this.locales.list()?.length ?? 0) > 0 && this.subjects().some((item) => item.localized),
+  );
 
   async ngOnInit(): Promise<void> {
+    this.locales.load().catch(() => undefined);
     await this.reload();
   }
 
@@ -533,6 +686,7 @@ export class RolesPage implements OnInit {
     const rest = this.permissions().filter(
       (item) => !(item.action === action && item.subject === subject),
     );
+    const locales = inheritedLocales(this.permissions(), subject);
     if (level === 'none') this.permissions.set(rest);
     else
       this.permissions.set([
@@ -542,8 +696,62 @@ export class RolesPage implements OnInit {
           subject,
           conditions: level === 'own' ? ['is-creator'] : [],
           ...(fields ? { fields } : {}),
+          ...(locales ? { locales } : {}),
         },
       ]);
+  }
+
+  protected hasContent(subject: string): boolean {
+    return this.contentActions.some((action) => !!this.contentPermission(action, subject));
+  }
+
+  protected localeRestriction(subject: string): LocaleRestriction {
+    return subjectLocales(this.permissions(), subject);
+  }
+
+  protected localeSummary(restriction: LocaleRestriction): string {
+    switch (restriction.kind) {
+      case 'all':
+        return this.t('settings.roles.localesAll');
+      case 'mixed':
+        return this.t('settings.roles.localesMixedShort');
+      case 'some':
+        return this.i18n.formatList(restriction.locales);
+    }
+  }
+
+  protected openLocales(uid: string, name: string): void {
+    const restriction = this.localeRestriction(uid);
+    this.localesEditor.set({
+      uid,
+      name,
+      selection: restriction.kind === 'some' ? restriction.locales : null,
+      mixed: restriction.kind === 'mixed',
+    });
+  }
+
+  protected setLocaleMode(selection: string[] | null): void {
+    this.localesEditor.update((editor) => (editor ? { ...editor, selection } : editor));
+  }
+
+  protected toggleLocale(code: string, checked: boolean): void {
+    this.localesEditor.update((editor) => {
+      if (!editor) return editor;
+      const current = editor.selection ?? [];
+      const codes = (this.locales.list() ?? []).map((locale) => locale.code);
+      const selection = codes.filter((item) => (item === code ? checked : current.includes(item)));
+      return { ...editor, selection };
+    });
+  }
+
+  /** Writes the selection into the role's permissions (saved with the role). */
+  protected applyLocales(): void {
+    const editor = this.localesEditor();
+    if (!editor || (editor.selection && !editor.selection.length)) return;
+    this.permissions.update((permissions) =>
+      setSubjectLocales(permissions, editor.uid, editor.selection),
+    );
+    this.localesEditor.set(null);
   }
 
   private contentPermission(action: string, subject: string): Permission | undefined {
@@ -619,6 +827,7 @@ export class RolesPage implements OnInit {
         action,
         subject: type.uid,
         conditions: [...(wildcard.conditions ?? [])],
+        ...(wildcard.locales ? { locales: [...wildcard.locales] } : {}),
       }));
     this.permissions.set([...rest, ...additions]);
   }

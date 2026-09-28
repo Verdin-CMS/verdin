@@ -46,6 +46,7 @@ import {
   setTypeLocalized,
   typeLocalized,
 } from './i18n-options';
+import { offeredTypes } from './type-options';
 
 type SchemaFile = Record<string, unknown> & { attributes: Record<string, Attribute> };
 
@@ -706,7 +707,7 @@ interface AttributeDraft {
                   {{ t('builder.field.chooseKind') }}
                 </h3>
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  @for (info of availableTypes; track info.type) {
+                  @for (info of availableTypes(); track info.type) {
                     <button
                       type="button"
                       class="hover:bg-muted/60 focus-visible:ring-ring/50 flex items-start gap-2.5 rounded-lg border p-2.5 text-start transition-colors outline-none focus-visible:ring-[3px]"
@@ -806,7 +807,7 @@ interface AttributeDraft {
                     [value]="attr.type"
                     (valueChange)="setType($any($event))"
                   >
-                    @for (info of availableTypes; track info.type) {
+                    @for (info of availableTypes(); track info.type) {
                       <option hlmNativeSelectOption [value]="info.type">
                         {{ t(info.label) }}
                       </option>
@@ -1287,8 +1288,15 @@ export class Builder {
     const name = this.name() ?? '';
     return name === 'new-component' || name.startsWith('component:');
   });
-  /** The attribute types offered in the picker. */
-  protected readonly availableTypes = TYPE_INFO;
+  /** The type of the field being edited (an existing one keeps it listed). */
+  private readonly editedType = computed(() => {
+    const draft = this.attributeDraft();
+    return draft?.originalName ? draft.attribute.type : null;
+  });
+  /** The attribute types offered in the picker (no `password` inside components). */
+  protected readonly availableTypes = computed(() =>
+    offeredTypes(TYPE_INFO, this.isComponent(), this.editedType()),
+  );
   /** The relation kinds offered (components only hold one-way relations). */
   protected readonly availableRelations = computed(() =>
     this.isComponent() ? COMPONENT_RELATIONS : RELATIONS,

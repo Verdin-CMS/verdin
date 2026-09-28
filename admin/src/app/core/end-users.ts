@@ -77,7 +77,17 @@ export interface ProviderSettings {
 export interface EmailTemplate {
   subject: string;
   text: string;
+  /** Optional HTML body; the server HTML-escapes its `{{placeholders}}`. */
+  html?: string;
 }
+
+/**
+ * `legacy-support`: one long-lived JWT (`jwtExpiresInDays`). `refresh`: short-lived JWTs
+ * (`accessTokenMinutes`) with rotating refresh tokens (`refreshTokenDays`).
+ */
+export type JwtManagement = 'legacy-support' | 'refresh';
+
+export const JWT_MANAGEMENT: readonly JwtManagement[] = ['legacy-support', 'refresh'];
 
 /** The settings object of the `users` feature. */
 export interface UsersSettings {
@@ -86,6 +96,9 @@ export interface UsersSettings {
   /** A role `type`. */
   defaultRole: string;
   jwtExpiresInDays: number;
+  jwtManagement: JwtManagement;
+  accessTokenMinutes: number;
+  refreshTokenDays: number;
   emailConfirmationRedirection?: string;
   resetPasswordUrl?: string;
   providers: Record<string, ProviderSettings>;
@@ -95,7 +108,28 @@ export interface UsersSettings {
 export type TemplateName = keyof UsersSettings['templates'];
 
 /** Providers Verdin knows the endpoints of; any other name is a generic OAuth 2 provider. */
-export const PRESET_PROVIDERS = ['github', 'google'] as const;
+export const PRESET_PROVIDERS = [
+  'github',
+  'google',
+  'microsoft',
+  'discord',
+  'facebook',
+  'gitlab',
+  'linkedin',
+] as const;
+
+export type PresetProvider = (typeof PRESET_PROVIDERS)[number];
+
+/** Display names and default scopes of the presets (the server's defaults). */
+export const PRESET_INFO: Record<PresetProvider, { name: string; scope: string }> = {
+  github: { name: 'GitHub', scope: 'user:email' },
+  google: { name: 'Google', scope: 'openid email profile' },
+  microsoft: { name: 'Microsoft', scope: 'openid email profile' },
+  discord: { name: 'Discord', scope: 'identify email' },
+  facebook: { name: 'Facebook', scope: 'email' },
+  gitlab: { name: 'GitLab', scope: 'read_user' },
+  linkedin: { name: 'LinkedIn', scope: 'openid profile email' },
+};
 
 /** Placeholders the email templates understand. */
 export const TEMPLATE_PLACEHOLDERS = ['{{username}}', '{{email}}', '{{url}}'] as const;
@@ -113,6 +147,8 @@ export const DEFAULT_TEMPLATES: UsersSettings['templates'] = {
 };
 
 export const DEFAULT_JWT_DAYS = 30;
+export const DEFAULT_ACCESS_MINUTES = 30;
+export const DEFAULT_REFRESH_DAYS = 30;
 
 /** Provider names as the server accepts them in URLs and env variable names. */
 const PROVIDER_NAME = /^[a-z][a-z0-9_-]*$/;
@@ -150,19 +186,37 @@ function flag(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
 }
 
-function days(value: unknown): number {
+/** A whole number of at least 1, else `fallback`. */
+function count(value: unknown, fallback: number): number {
   const number = typeof value === 'string' ? Number(value) : value;
   return typeof number === 'number' && Number.isFinite(number) && number >= 1
     ? Math.round(number)
-    : DEFAULT_JWT_DAYS;
+    : fallback;
+}
+
+function days(value: unknown): number {
+  return count(value, DEFAULT_JWT_DAYS);
+}
+
+function jwtManagement(value: unknown): JwtManagement {
+  return value === 'refresh' ? 'refresh' : 'legacy-support';
 }
 
 function template(value: unknown, fallback: EmailTemplate): EmailTemplate {
   const source = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
-  return {
+  const result: EmailTemplate = {
     subject: typeof source['subject'] === 'string' ? source['subject'] : fallback.subject,
     text: typeof source['text'] === 'string' ? source['text'] : fallback.text,
   };
+  const html = source['html'];
+  if (typeof html === 'string' && html.trim()) result.html = html;
+  return result;
+}
+
+/** A template to store: an empty HTML body is left out (the text one is sent alone). */
+function storedTemplate(value: EmailTemplate): EmailTemplate {
+  const { html, ...rest } = value;
+  return html?.trim() ? { ...rest, html } : rest;
 }
 
 function provider(value: unknown): ProviderSettings {
@@ -192,6 +246,9 @@ export function usersSettings(raw: Record<string, unknown> | null | undefined): 
     emailConfirmation: flag(source['emailConfirmation'], false),
     defaultRole: text(source['defaultRole']) ?? AUTHENTICATED_ROLE,
     jwtExpiresInDays: days(source['jwtExpiresInDays']),
+    jwtManagement: jwtManagement(source['jwtManagement']),
+    accessTokenMinutes: count(source['accessTokenMinutes'], DEFAULT_ACCESS_MINUTES),
+    refreshTokenDays: count(source['refreshTokenDays'], DEFAULT_REFRESH_DAYS),
     providers: Object.fromEntries(
       Object.entries(providers && typeof providers === 'object' ? providers : {}).map(
         ([name, value]) => [name, provider(value)],
@@ -227,6 +284,9 @@ export interface UsersSettingsForm {
   emailConfirmation: boolean;
   defaultRole: string;
   jwtExpiresInDays: number;
+  jwtManagement: JwtManagement;
+  accessTokenMinutes: number;
+  refreshTokenDays: number;
   emailConfirmationRedirection: string;
   resetPasswordUrl: string;
   providers: ProviderRow[];
@@ -256,6 +316,9 @@ export function settingsForm(settings: UsersSettings): UsersSettingsForm {
     emailConfirmation: settings.emailConfirmation,
     defaultRole: settings.defaultRole,
     jwtExpiresInDays: settings.jwtExpiresInDays,
+    jwtManagement: settings.jwtManagement,
+    accessTokenMinutes: settings.accessTokenMinutes,
+    refreshTokenDays: settings.refreshTokenDays,
     emailConfirmationRedirection: settings.emailConfirmationRedirection ?? '',
     resetPasswordUrl: settings.resetPasswordUrl ?? '',
     providers: Object.entries(settings.providers)
@@ -301,10 +364,13 @@ export function settingsFromForm(
     emailConfirmation: form.emailConfirmation,
     defaultRole: form.defaultRole || AUTHENTICATED_ROLE,
     jwtExpiresInDays: days(form.jwtExpiresInDays),
+    jwtManagement: jwtManagement(form.jwtManagement),
+    accessTokenMinutes: count(form.accessTokenMinutes, DEFAULT_ACCESS_MINUTES),
+    refreshTokenDays: count(form.refreshTokenDays, DEFAULT_REFRESH_DAYS),
     providers,
     templates: {
-      confirmation: { ...form.templates.confirmation },
-      resetPassword: { ...form.templates.resetPassword },
+      confirmation: storedTemplate(form.templates.confirmation),
+      resetPassword: storedTemplate(form.templates.resetPassword),
     },
   };
   for (const key of ['emailConfirmationRedirection', 'resetPasswordUrl'] as const) {

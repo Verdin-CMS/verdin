@@ -363,7 +363,9 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                   }}</span>
                 </hlm-avatar>
                 <span class="flex min-w-0 flex-col text-start leading-tight">
-                  <span class="truncate text-sm font-medium">{{ displayName() }}</span>
+                  <span class="truncate text-sm font-medium" data-testid="account-name">{{
+                    displayName()
+                  }}</span>
                   <span class="text-muted-foreground truncate text-xs">{{
                     auth.user()?.email
                   }}</span>
@@ -376,6 +378,11 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                     class="text-muted-foreground truncate text-xs font-normal"
                     >{{ auth.user()?.email }}</hlm-dropdown-menu-label
                   >
+                  <hlm-dropdown-menu-separator />
+                  <button hlmDropdownMenuItem (click)="openProfile()">
+                    <ng-icon name="lucideUserRound" />
+                    {{ t('account.menu') }}
+                  </button>
                   <hlm-dropdown-menu-separator />
                   <button hlmDropdownMenuItem (click)="auth.logout()">
                     <ng-icon name="lucideLogOut" />
@@ -459,6 +466,10 @@ export class Shell implements OnInit {
     const letters = parts.length ? parts.map((part) => part[0]) : [user?.email?.[0] ?? '?'];
     return letters.join('').slice(0, 2).toUpperCase();
   });
+
+  protected openProfile(): void {
+    void this.router.navigateByUrl('/profile');
+  }
 
   /** The unseen badge of a type, or `null` (none, or badges turned off). */
   protected badge(uid: string): string | null {

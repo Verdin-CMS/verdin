@@ -30,6 +30,7 @@ import { Api, ApiFailure, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { EntryDuplicates } from '../../core/duplicate';
 import { ContentLocales, isLocalized } from '../../core/content-locales';
+import { allowedLocale } from '../../core/permissions';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { EntryStage, ReviewWorkflows, Workflow, stageOf } from '../../core/review';
@@ -184,8 +185,15 @@ interface LiveVersion {
                   (valueChange)="setLocale($event)"
                 >
                   @for (option of locales.list() ?? []; track option.code) {
-                    <option hlmNativeSelectOption [value]="option.code">
-                      {{ option.name }} ({{ option.code }})
+                    @let readable = auth.canInLocale('content.read', uid(), option.code);
+                    <option hlmNativeSelectOption [value]="option.code" [disabled]="!readable">
+                      {{
+                        readable
+                          ? option.name + ' (' + option.code + ')'
+                          : t('content.locale.notAllowed', {
+                              locale: option.name + ' (' + option.code + ')',
+                            })
+                      }}
                     </option>
                   }
                 </hlm-native-select>
@@ -657,7 +665,10 @@ export class ContentList {
   protected readonly locale = computed(() => {
     if (!this.localized()) return null;
     const saved = asObject(this.preferences.value()['listLocales'])[this.uid()];
-    return this.locales.resolve(typeof saved === 'string' ? saved : null);
+    const preferred = this.locales.resolve(typeof saved === 'string' ? saved : null);
+    // An admin limited to some locales lists one of them.
+    const codes = (this.locales.list() ?? []).map((locale) => locale.code);
+    return allowedLocale(this.auth.permissions(), 'content.read', this.uid(), codes, preferred);
   });
   protected readonly localeQuery = computed(() => {
     const locale = this.locale();
@@ -681,11 +692,17 @@ export class ContentList {
     return view.columns.flatMap((name) => byName.get(name) ?? []);
   });
 
-  protected readonly canCreate = computed(() => this.auth.canContent('content.create', this.uid()));
-  protected readonly canDelete = computed(() => this.auth.canContent('content.delete', this.uid()));
+  /** Actions in the listed locale (permissions may be limited to some locales). */
+  protected readonly canCreate = computed(() =>
+    this.auth.canInLocale('content.create', this.uid(), this.locale()),
+  );
+  protected readonly canDelete = computed(() =>
+    this.auth.canInLocale('content.delete', this.uid(), this.locale()),
+  );
   protected readonly canPublish = computed(
     () =>
-      this.type()?.draftAndPublish === true && this.auth.canContent('content.publish', this.uid()),
+      this.type()?.draftAndPublish === true &&
+      this.auth.canInLocale('content.publish', this.uid(), this.locale()),
   );
   protected readonly selectable = computed(() => this.canDelete() || this.canPublish());
   protected readonly colspan = computed(

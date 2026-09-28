@@ -23,6 +23,9 @@ describe('usersSettings', () => {
       emailConfirmation: false,
       defaultRole: 'authenticated',
       jwtExpiresInDays: DEFAULT_JWT_DAYS,
+      jwtManagement: 'legacy-support',
+      accessTokenMinutes: 30,
+      refreshTokenDays: 30,
       providers: {},
       templates: DEFAULT_TEMPLATES,
     });
@@ -82,6 +85,9 @@ describe('settings form', () => {
       emailConfirmation: false,
       defaultRole: 'authenticated',
       jwtExpiresInDays: 30,
+      jwtManagement: 'refresh',
+      accessTokenMinutes: 15,
+      refreshTokenDays: 60,
       providers: {
         google: { enabled: true, clientId: 'g', redirectUri: 'https://app/cb' },
         github: { enabled: false, clientId: 'h', redirectUri: '', scope: ['user:email'] },
@@ -115,6 +121,47 @@ describe('settings form', () => {
       },
       acme: { enabled: true, clientId: '', redirectUri: '', authorizeUrl: 'https://a' },
     });
+  });
+});
+
+describe('token lifetimes and HTML templates', () => {
+  it('reads the JWT management mode and its durations', () => {
+    const settings = usersSettings({
+      jwtManagement: 'refresh',
+      accessTokenMinutes: '5',
+      refreshTokenDays: 0,
+    });
+    expect(settings.jwtManagement).toBe('refresh');
+    expect(settings.accessTokenMinutes).toBe(5);
+    expect(settings.refreshTokenDays).toBe(30);
+    expect(usersSettings({ jwtManagement: 'other' }).jwtManagement).toBe('legacy-support');
+  });
+
+  it('stores an HTML body only when there is one', () => {
+    const form = settingsForm(
+      usersSettings({
+        templates: { confirmation: { subject: 'S', text: 'T', html: '<p>{{url}}</p>' } },
+      }),
+    );
+    expect(form.templates.confirmation.html).toBe('<p>{{url}}</p>');
+    form.templates.resetPassword = { ...form.templates.resetPassword, html: '  ' };
+    const templates = settingsFromForm(form)['templates'] as Record<string, unknown>;
+    expect(templates['confirmation']).toEqual({ subject: 'S', text: 'T', html: '<p>{{url}}</p>' });
+    expect(templates['resetPassword']).toEqual(DEFAULT_TEMPLATES.resetPassword);
+  });
+
+  it('knows the preset providers', () => {
+    for (const name of [
+      'github',
+      'google',
+      'microsoft',
+      'discord',
+      'facebook',
+      'gitlab',
+      'linkedin',
+    ])
+      expect(isPresetProvider(name)).toBe(true);
+    expect(isPresetProvider('keycloak')).toBe(false);
   });
 });
 

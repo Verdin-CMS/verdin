@@ -24,9 +24,12 @@ import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { Auth } from '../../core/auth';
 import {
   AUTHENTICATED_ROLE,
+  EmailTemplate,
   EndUserRole,
   EndUsers,
+  PRESET_INFO,
   PRESET_PROVIDERS,
+  PresetProvider,
   ProviderRow,
   TEMPLATE_PLACEHOLDERS,
   TemplateName,
@@ -197,21 +200,80 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                       }
                     </hlm-native-select>
                   </div>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
                   <div hlmField>
-                    <label hlmFieldLabel for="users-jwt-days">{{
-                      t('endUsers.settings.jwtDays')
+                    <label hlmFieldLabel for="users-jwt-management">{{
+                      t('endUsers.settings.jwtManagement')
                     }}</label>
-                    <input
-                      hlmInput
-                      id="users-jwt-days"
-                      type="number"
-                      min="1"
-                      step="1"
-                      [value]="form.jwtExpiresInDays"
-                      (input)="patch({ jwtExpiresInDays: $any($event.target).valueAsNumber })"
-                    />
-                    <p hlmFieldDescription>{{ t('endUsers.settings.jwtDaysHint') }}</p>
+                    <hlm-native-select
+                      selectId="users-jwt-management"
+                      [value]="form.jwtManagement"
+                      (valueChange)="patch({ jwtManagement: $any($event) || 'legacy-support' })"
+                    >
+                      <option hlmNativeSelectOption value="legacy-support">
+                        {{ t('endUsers.settings.jwtManagement.legacy') }}
+                      </option>
+                      <option hlmNativeSelectOption value="refresh">
+                        {{ t('endUsers.settings.jwtManagement.refresh') }}
+                      </option>
+                    </hlm-native-select>
+                    <p hlmFieldDescription>
+                      {{
+                        form.jwtManagement === 'refresh'
+                          ? t('endUsers.settings.jwtManagement.refreshHint')
+                          : t('endUsers.settings.jwtManagement.legacyHint')
+                      }}
+                    </p>
                   </div>
+                  @if (form.jwtManagement === 'refresh') {
+                    <div class="grid gap-4 sm:grid-cols-2">
+                      <div hlmField>
+                        <label hlmFieldLabel for="users-access-minutes">{{
+                          t('endUsers.settings.accessTokenMinutes')
+                        }}</label>
+                        <input
+                          hlmInput
+                          id="users-access-minutes"
+                          type="number"
+                          min="1"
+                          step="1"
+                          [value]="form.accessTokenMinutes"
+                          (input)="patch({ accessTokenMinutes: $any($event.target).valueAsNumber })"
+                        />
+                      </div>
+                      <div hlmField>
+                        <label hlmFieldLabel for="users-refresh-days">{{
+                          t('endUsers.settings.refreshTokenDays')
+                        }}</label>
+                        <input
+                          hlmInput
+                          id="users-refresh-days"
+                          type="number"
+                          min="1"
+                          step="1"
+                          [value]="form.refreshTokenDays"
+                          (input)="patch({ refreshTokenDays: $any($event.target).valueAsNumber })"
+                        />
+                      </div>
+                    </div>
+                  } @else {
+                    <div hlmField>
+                      <label hlmFieldLabel for="users-jwt-days">{{
+                        t('endUsers.settings.jwtDays')
+                      }}</label>
+                      <input
+                        hlmInput
+                        id="users-jwt-days"
+                        type="number"
+                        min="1"
+                        step="1"
+                        [value]="form.jwtExpiresInDays"
+                        (input)="patch({ jwtExpiresInDays: $any($event.target).valueAsNumber })"
+                      />
+                      <p hlmFieldDescription>{{ t('endUsers.settings.jwtDaysHint') }}</p>
+                    </div>
+                  }
                 </div>
               </div>
             </section>
@@ -260,7 +322,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
             <section hlmCard class="lg:col-span-2">
               <div hlmCardHeader>
                 <h2 hlmCardTitle>{{ t('endUsers.settings.providers') }}</h2>
-                <p hlmCardDescription>{{ t('endUsers.settings.providersHint') }}</p>
+                <p hlmCardDescription>{{ t('endUsers.settings.providersHintMore') }}</p>
               </div>
               <div hlmCardContent class="flex flex-col gap-4">
                 @for (row of form.providers; track $index; let index = $index) {
@@ -358,6 +420,9 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                         </p>
                       </div>
                       @if (!isPreset(row.name)) {
+                        <p class="text-muted-foreground text-xs md:col-span-2">
+                          {{ t('endUsers.settings.provider.genericHint') }}
+                        </p>
                         @for (field of urlFields; track field.key) {
                           <div hlmField>
                             <label hlmFieldLabel [for]="'provider-' + field.key + '-' + index">{{
@@ -437,7 +502,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
               <div hlmCardHeader>
                 <h2 hlmCardTitle>{{ t('endUsers.settings.templates') }}</h2>
                 <p hlmCardDescription>
-                  {{ t('endUsers.settings.templatesHint') }}
+                  {{ t('endUsers.settings.templatesHintHtml') }}
                 </p>
                 <div class="flex flex-wrap gap-1 pt-1">
                   @for (placeholder of placeholders; track placeholder) {
@@ -477,6 +542,25 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                         (input)="setTemplate(section.name, { text: $any($event.target).value })"
                       ></textarea>
                     </div>
+                    <div hlmField>
+                      <label hlmFieldLabel [for]="'template-html-' + section.name">{{
+                        t('endUsers.settings.template.html')
+                      }}</label>
+                      <textarea
+                        dir="ltr"
+                        hlmTextarea
+                        rows="7"
+                        class="font-mono text-xs"
+                        [placeholder]="htmlPlaceholder"
+                        [id]="'template-html-' + section.name"
+                        [attr.aria-describedby]="'template-html-hint-' + section.name"
+                        [value]="form.templates[section.name].html ?? ''"
+                        (input)="setTemplate(section.name, { html: $any($event.target).value })"
+                      ></textarea>
+                      <p hlmFieldDescription [id]="'template-html-hint-' + section.name">
+                        {{ t('endUsers.settings.template.htmlHint') }}
+                      </p>
+                    </div>
                   </div>
                 }
               </div>
@@ -499,6 +583,7 @@ export class EndUsersSettingsPage implements OnInit {
   protected readonly placeholders = TEMPLATE_PLACEHOLDERS;
   protected readonly templates = TEMPLATES;
   protected readonly urlFields = URL_FIELDS;
+  protected readonly htmlPlaceholder = '<p>Hello {{username}},</p>\n<p><a href="{{url}}">…</a></p>';
 
   protected readonly form = signal<UsersSettingsForm | null>(null);
   protected readonly enabled = signal(false);
@@ -581,7 +666,7 @@ export class EndUsersSettingsPage implements OnInit {
     return (this.form()?.providers ?? []).some((row) => row.name.trim().toLowerCase() === name);
   }
 
-  protected setTemplate(name: TemplateName, changes: Partial<{ subject: string; text: string }>) {
+  protected setTemplate(name: TemplateName, changes: Partial<EmailTemplate>) {
     const form = this.form();
     if (!form) return;
     this.patch({
@@ -594,14 +679,14 @@ export class EndUsersSettingsPage implements OnInit {
   }
 
   protected presetName(preset: string): string {
-    return preset === 'github' ? 'GitHub' : preset === 'google' ? 'Google' : preset;
+    return PRESET_INFO[preset as PresetProvider]?.name ?? preset;
   }
 
   protected scopePlaceholder(name: string): string {
     const preset = name.trim().toLowerCase();
-    if (preset === 'github') return 'user:email';
-    if (preset === 'google') return 'openid email profile';
-    return 'openid email';
+    return isPresetProvider(preset)
+      ? PRESET_INFO[preset as PresetProvider].scope
+      : 'openid email profile';
   }
 
   protected callback(name: string): string {

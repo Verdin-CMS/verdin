@@ -179,12 +179,12 @@ test('create a type, write content, publish it and read it over the API', async 
     .first()
     .setInputFiles({ name: 'sunset.png', mimeType: 'image/png', buffer: PNG });
   await expect(page.getByText('sunset.png').first()).toBeVisible();
-  const files = await (
-    await request.get('/admin/api/upload/files', {
-      headers: { authorization: `Bearer ${await token(page)}` },
-    })
-  ).json();
-  const uploaded = files.data[0];
+  // The name shows while the upload is still running: wait for the file to be stored.
+  const bearer = { authorization: `Bearer ${await token(page)}` };
+  const listFiles = async () =>
+    (await (await request.get('/admin/api/upload/files', { headers: bearer })).json()).data ?? [];
+  await expect.poll(async () => (await listFiles()).length).toBeGreaterThan(0);
+  const uploaded = (await listFiles())[0];
   expect(uploaded).toMatchObject({ name: 'sunset.png', mime: 'image/png', width: 1, height: 1 });
   const served = await request.get(uploaded.url);
   expect(served.status()).toBe(200);

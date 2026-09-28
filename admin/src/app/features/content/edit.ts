@@ -27,6 +27,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
 import { Api, ApiFailure, Issue, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { allowedLocale } from '../../core/permissions';
 import { EntryDuplicates } from '../../core/duplicate';
 import {
   ContentLocales,
@@ -157,9 +158,11 @@ function withLocale(query: string, locale: string | null): string {
                 <hlm-dropdown-menu-group>
                   @for (option of locales.list() ?? []; track option.code) {
                     @let state = stateOf(option.code);
+                    @let readable = auth.canInLocale('content.read', type().uid, option.code);
                     <button
                       hlmDropdownMenuRadio
                       [checked]="option.code === current"
+                      [disabled]="!readable"
                       (triggered)="switchLocale(option.code)"
                     >
                       <span
@@ -451,7 +454,7 @@ function withLocale(query: string, locale: string | null): string {
               }
             }
 
-            @if (documentId() && !missing() && auth.canContent('content.delete', type().uid)) {
+            @if (documentId() && !missing() && canDelete()) {
               <section hlmCard size="sm" class="ring-destructive/30">
                 <div hlmCardHeader>
                   <h2 hlmCardTitle>{{ t('content.edit.dangerZone') }}</h2>
@@ -617,6 +620,7 @@ export class DocumentForm implements OnInit {
     this.localeVersions()
       .filter((version) => version.locale !== this.locale())
       .filter((version) => localeState(this.localeVersions(), version.locale) !== 'missing')
+      .filter((version) => this.auth.canInLocale('content.read', this.type().uid, version.locale))
       .map((version) => version.locale),
   );
 
@@ -668,8 +672,12 @@ export class DocumentForm implements OnInit {
   private readonly features = inject(Features);
   /** Content history is an optional feature; its entry point hides while it is off. */
   protected readonly historyOn = computed(() => this.features.enabled('history'));
+  /** Actions in the edited locale (permissions may be limited to some locales). */
   protected readonly canPublish = computed(() =>
-    this.auth.canContent('content.publish', this.type().uid),
+    this.auth.canInLocale('content.publish', this.type().uid, this.locale()),
+  );
+  protected readonly canDelete = computed(() =>
+    this.auth.canInLocale('content.delete', this.type().uid, this.locale()),
   );
   /** Releases (optional feature): the editor's panel needs `releases.manage`. */
   protected readonly releasesOn = computed(
@@ -707,7 +715,7 @@ export class DocumentForm implements OnInit {
       this.type().kind === 'collectionType' &&
       !!this.documentId() &&
       !this.missing() &&
-      this.auth.canContent('content.create', this.type().uid),
+      this.auth.canInLocale('content.create', this.type().uid, this.locale()),
   );
   protected readonly heading = computed(() => {
     const type = this.type();
@@ -720,9 +728,10 @@ export class DocumentForm implements OnInit {
 
   protected canSave(): boolean {
     const uid = this.type().uid;
+    // A missing locale version is created with an update of the document.
     return this.documentId()
-      ? this.auth.canContent('content.update', uid)
-      : this.auth.canContent('content.create', uid);
+      ? this.auth.canInLocale('content.update', uid, this.locale())
+      : this.auth.canInLocale('content.create', uid, this.locale());
   }
 
   ngOnInit(): void {
@@ -811,7 +820,10 @@ export class DocumentForm implements OnInit {
     if (!this.locale() || !id) return;
     try {
       this.localeVersions.set(
-        await this.api.get<LocaleVersion[]>(`/content/${this.type().uid}/${id}/locales`),
+        await this.api.get<LocaleVersion[]>(
+          `/content/${this.type().uid}/${id}/locales`,
+          withLocale('', this.locale()) || undefined,
+        ),
       );
     } catch {
       // The switcher keeps the previous states.
@@ -1131,6 +1143,7 @@ export class ContentEdit {
   private readonly unseen = inject(Unseen);
   private readonly schema = inject(Schema);
   private readonly locales = inject(ContentLocales);
+  private readonly auth = inject(Auth);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
@@ -1182,28 +1195,47 @@ export class ContentEdit {
       if (isLocalized(type)) {
         await this.locales.load();
         locale = this.locales.resolve(this.locale());
+        // Without `?locale=`, an admin limited to some locales opens one of them.
+        if (!this.locale()) {
+          const codes = (this.locales.list() ?? []).map((item) => item.code);
+          locale = allowedLocale(this.auth.permissions(), 'content.read', uid, codes, locale);
+        }
       }
       if (request !== this.requests) return;
       this.activeLocale.set(locale);
       let documentId = this.documentId() ?? null;
       if (type.kind === 'singleType') documentId = await this.singleDocument(uid, locale);
       if (documentId && locale) {
-        const versions = await this.api.get<LocaleVersion[]>(
-          `/content/${uid}/${documentId}/locales`,
-        );
-        this.versions.set(versions);
-        if (localeState(versions, locale) === 'missing') {
+        // An admin limited to some locales may not list the versions: the document is then
+        // loaded in `locale` directly (a 404 there means it has no such version).
+        const versions = await this.api
+          .get<LocaleVersion[]>(
+            `/content/${uid}/${documentId}/locales`,
+            withLocale('', locale) || undefined,
+          )
+          .catch((error: unknown) => {
+            if (ApiFailure.from(error).status === 403) return null;
+            throw error;
+          });
+        this.versions.set(versions ?? []);
+        if (versions && localeState(versions, locale) === 'missing') {
           // A new locale of an existing document: its shared fields come from another one.
-          const source =
-            versions.find((version) => version.locale === this.locales.defaultCode()) ??
-            versions[0];
-          if (!source) throw new ApiFailure(404, 'NotFoundError', 'Not Found');
-          this.sharedSource.set(
-            await this.api.get<Document>(
-              `/content/${uid}/${documentId}`,
-              withLocale(source.draft ? 'populate=*&status=draft' : 'populate=*', source.locale),
-            ),
+          if (!versions.length) throw new ApiFailure(404, 'NotFoundError', 'Not Found');
+          // Only versions the admin may read (permissions may be limited to some locales).
+          const readable = versions.filter((version) =>
+            this.auth.canInLocale('content.read', uid, version.locale),
           );
+          const source =
+            readable.find((version) => version.locale === this.locales.defaultCode()) ??
+            readable[0];
+          if (source) {
+            this.sharedSource.set(
+              await this.api.get<Document>(
+                `/content/${uid}/${documentId}`,
+                withLocale(source.draft ? 'populate=*&status=draft' : 'populate=*', source.locale),
+              ),
+            );
+          }
           this.existingId.set(documentId);
           documentId = null;
         }
@@ -1258,7 +1290,8 @@ export class ContentEdit {
     const found = await first(locale);
     if (found || !locale) return found;
     for (const other of this.locales.list() ?? []) {
-      if (other.code === locale) continue;
+      if (other.code === locale || !this.auth.canInLocale('content.read', uid, other.code))
+        continue;
       const id = await first(other.code);
       if (id) return id;
     }

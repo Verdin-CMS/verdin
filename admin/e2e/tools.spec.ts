@@ -172,8 +172,8 @@ test('an entry is duplicated from the list', async ({ page }) => {
   await page.getByRole('button', { name: `Actions for ${name}` }).click();
   await page.getByRole('menuitem', { name: 'Duplicate' }).click();
   await expect(page.getByText('Entry duplicated: you are editing the copy')).toBeVisible();
-  // The uid field is unique: not copied, and the toast says so.
-  await expect(page.getByText('Not copied: Slug.')).toBeVisible();
+  // The uid field is unique and the password is never read back: neither is copied.
+  await expect(page.getByText(/Not copied: (Slug and Pin|Pin and Slug)\./)).toBeVisible();
   await expect(page).not.toHaveURL(new RegExp(original));
   await expect(page).toHaveURL(/\/content\/api::gadget\/[a-z0-9]+/);
   await expect(page.getByLabel('Name')).toHaveValue(name);

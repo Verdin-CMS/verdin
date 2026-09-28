@@ -164,6 +164,8 @@ export interface Permission {
   conditions?: string[];
   /** Content read/create/update limited to these attributes of `subject` (absent: all). */
   fields?: string[];
+  /** Content actions on localized types limited to these locales (absent: all of them). */
+  locales?: string[];
 }
 
 export interface PermissionSet {
@@ -266,6 +268,8 @@ export const MEDIA_ACTIONS = [
 
 /** Content API subject of the media library (grants and tokens). */
 export const UPLOAD_SUBJECT = 'plugin::upload';
+/** Content API subject of `/api/users` (end users, as Strapi's users-permissions plugin). */
+export const USERS_SUBJECT = 'plugin::users-permissions.user';
 
 export const ADMIN_SETTINGS_ACTIONS = [
   'users.manage',

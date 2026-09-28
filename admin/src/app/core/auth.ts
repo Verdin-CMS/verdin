@@ -6,12 +6,14 @@ import {
 } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import { catchError, firstValueFrom, from, switchMap, throwError } from 'rxjs';
+import { Observable, catchError, firstValueFrom, from, switchMap, throwError } from 'rxjs';
 
 import { ApiFailure, RUNTIME_CONFIG } from './api';
+import { grantsInLocale } from './permissions';
 import { AdminUser, PermissionSet } from './types';
 
-interface SessionResponse {
+/** What login, accepting an invitation and changing the password answer. */
+export interface SessionResponse {
   data: { user: AdminUser; accessToken: string; accessTokenExpiresAt: string };
 }
 
@@ -88,6 +90,28 @@ export class Auth {
     );
   }
 
+  /** Accepts an invitation: sets the password and signs in, as `login` does. */
+  async acceptInvitation(input: {
+    token: string;
+    password: string;
+    firstname: string | null;
+    lastname: string | null;
+  }): Promise<void> {
+    await this.open(
+      this.http.post<SessionResponse>(this.url('/accept-invitation'), input, {
+        withCredentials: true,
+      }),
+    );
+  }
+
+  /**
+   * Sends a request answered with a new session (`PUT /users/me` with a new password ends
+   * every session, this one included) and signs in with it.
+   */
+  async adopt(request: Observable<SessionResponse>): Promise<void> {
+    await this.open(request);
+  }
+
   /** Rotates the refresh cookie for a new access token. Concurrent callers share one call. */
   refresh(): Promise<boolean> {
     this.refreshing ??= (async () => {
@@ -133,7 +157,6 @@ export class Auth {
     return set.superAdmin || set.permissions.some((permission) => permission.action === action);
   }
 
-  /** Whether the admin holds a content action on `uid` (possibly restricted to own entries). */
   /** Media library actions: `own` limits updates/deletes to files the user uploaded. */
   mediaGrant(action: string): 'none' | 'own' | 'all' {
     const set = this.permissions();
@@ -143,6 +166,15 @@ export class Auth {
     return matching.some((permission) => !permission.conditions?.length) ? 'all' : 'own';
   }
 
+  /**
+   * Whether the admin holds a content action on `uid` in `locale` (`null`: in some
+   * locale). Permissions may be limited to some locales; the server answers 403 otherwise.
+   */
+  canInLocale(action: string, uid: string, locale: string | null | undefined): boolean {
+    return grantsInLocale(this.permissions(), action, uid, locale);
+  }
+
+  /** Whether the admin holds a content action on `uid` (possibly restricted to own entries). */
   canContent(action: string, uid: string): boolean {
     const set = this.permissions();
     return (
@@ -178,7 +210,7 @@ export class Auth {
     return (await this.refresh()) ? send(this.accessToken()) : response;
   }
 
-  private async open(request: ReturnType<HttpClient['post']>): Promise<void> {
+  private async open(request: Observable<unknown>): Promise<void> {
     try {
       const response = (await firstValueFrom(request)) as SessionResponse;
       this.accessToken.set(response.data.accessToken);
@@ -196,7 +228,7 @@ export class Auth {
 }
 
 function isAuthRoute(request: HttpRequest<unknown>): boolean {
-  return /\/auth\/(login|refresh|logout|register-first-admin|status|me|sso)$/.test(
+  return /\/auth\/(login|refresh|logout|register-first-admin|status|me|sso|invitation|accept-invitation|forgot-password|reset-password)$/.test(
     request.url.split('?')[0],
   );
 }

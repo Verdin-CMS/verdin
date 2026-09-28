@@ -12,6 +12,7 @@ import { provideTransloco, provideTranslocoTranspiler } from '@jsverse/transloco
 
 import { routes } from './app.routes';
 import { authInterceptor } from './core/auth';
+import { BrandingService } from './core/branding';
 import { I18n } from './core/i18n/i18n';
 import { JsonLoader } from './core/i18n/loader';
 import { IcuTranspiler } from './core/i18n/transpiler';
@@ -39,6 +40,7 @@ export const appConfig: ApplicationConfig = {
     provideTranslocoTranspiler(IcuTranspiler),
     provideAppInitializer(() => {
       inject(Theme);
+      inject(BrandingService).apply();
       return inject(I18n).init();
     }),
   ],

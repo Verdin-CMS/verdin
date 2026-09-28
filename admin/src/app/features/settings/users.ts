@@ -13,6 +13,7 @@ import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmSwitchImports } from '@spartan-ng/helm/switch';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
+import { Account, Invitation } from '../../core/account';
 import { Api, ApiFailure } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
@@ -22,6 +23,8 @@ import { PageHeader } from '../../shared/components/page-header';
 interface Draft {
   id: number | null;
   email: string;
+  /** New users: set a password now instead of inviting them by email. */
+  setPassword: boolean;
   password: string;
   firstname: string;
   lastname: string;
@@ -132,6 +135,22 @@ interface Draft {
                     </td>
                     <td hlmTd class="pe-4 text-end">
                       <div class="flex justify-end gap-1">
+                        @if (user.id !== auth.user()?.id) {
+                          <button
+                            hlmBtn
+                            size="icon-sm"
+                            variant="ghost"
+                            class="text-muted-foreground"
+                            [attr.aria-label]="
+                              t('settings.users.reinviteLabel', { email: user.email })
+                            "
+                            [attr.title]="t('settings.users.reinvite')"
+                            [disabled]="inviting() === user.id"
+                            (click)="reinvite(user)"
+                          >
+                            <ng-icon name="lucideSend" class="rtl:-scale-x-100" />
+                          </button>
+                        }
                         <button
                           hlmBtn
                           size="icon-sm"
@@ -179,7 +198,9 @@ interface Draft {
             </h2>
             <p hlmDialogDescription>
               {{
-                draft.id ? t('settings.users.editDescription') : t('settings.users.addDescription')
+                draft.id
+                  ? t('settings.users.editDescription')
+                  : t('settings.users.addInviteDescription')
               }}
             </p>
           </hlm-dialog-header>
@@ -215,17 +236,34 @@ interface Draft {
                 (input)="patch({ email: $any($event.target).value })"
               />
             </div>
-            <div hlmField>
-              <label hlmFieldLabel for="user-password">{{ t('common.password') }}</label
-              ><input
-                hlmInput
-                id="user-password"
-                type="password"
-                autocomplete="new-password"
-                [value]="draft.password"
-                (input)="patch({ password: $any($event.target).value })"
-              />
-            </div>
+            @if (!draft.id) {
+              <div hlmField orientation="horizontal">
+                <hlm-switch
+                  inputId="user-set-password"
+                  [checked]="draft.setPassword"
+                  (checkedChange)="patch({ setPassword: $event, password: '' })"
+                />
+                <div class="flex flex-col gap-0.5">
+                  <label hlmFieldLabel for="user-set-password">{{
+                    t('settings.users.setPassword')
+                  }}</label>
+                  <p hlmFieldDescription>{{ t('settings.users.setPasswordHint') }}</p>
+                </div>
+              </div>
+            }
+            @if (draft.id || draft.setPassword) {
+              <div hlmField>
+                <label hlmFieldLabel for="user-password">{{ t('common.password') }}</label
+                ><input
+                  hlmInput
+                  id="user-password"
+                  type="password"
+                  autocomplete="new-password"
+                  [value]="draft.password"
+                  (input)="patch({ password: $any($event.target).value })"
+                />
+              </div>
+            }
             <fieldset hlmFieldSet>
               <legend hlmFieldLegend>{{ t('settings.users.roles') }}</legend>
               <div hlmFieldGroup>
@@ -260,10 +298,79 @@ interface Draft {
             }
           </div>
           <hlm-dialog-footer>
+            @if (draft.id && draft.id !== auth.user()?.id) {
+              <button
+                hlmBtn
+                variant="ghost"
+                class="sm:me-auto"
+                [disabled]="inviting() === draft.id"
+                (click)="reinviteDraft(draft)"
+              >
+                <ng-icon name="lucideSend" class="rtl:-scale-x-100" />
+                {{ t('settings.users.reinvite') }}
+              </button>
+            }
             <button hlmBtn variant="outline" (click)="closeDraft()">
               {{ t('common.cancel') }}
             </button>
-            <button hlmBtn (click)="save()">{{ t('common.save') }}</button>
+            <button hlmBtn [disabled]="saving()" (click)="save()">
+              @if (!draft.id && !draft.setPassword) {
+                <ng-icon name="lucideSend" class="rtl:-scale-x-100" />
+                {{ t('settings.users.invite') }}
+              } @else {
+                {{ t('common.save') }}
+              }
+            </button>
+          </hlm-dialog-footer>
+        }
+      </hlm-dialog-content>
+    </hlm-dialog>
+
+    <hlm-dialog [state]="invitation() ? 'open' : 'closed'" (closed)="invitation.set(null)">
+      <hlm-dialog-content *hlmDialogPortal="let ctx" class="sm:max-w-lg">
+        @if (invitation(); as sent) {
+          <hlm-dialog-header>
+            <h2 hlmDialogTitle>{{ t('settings.users.inviteTitle') }}</h2>
+            <p hlmDialogDescription>
+              {{ t('settings.users.inviteDescription', { email: sent.email }) }}
+            </p>
+          </hlm-dialog-header>
+          <div class="flex flex-col gap-4">
+            @if (sent.invitation.emailed) {
+              <div hlmAlert role="status">
+                <ng-icon name="lucideMailCheck" />
+                <p hlmAlertDescription>
+                  {{ t('settings.users.inviteEmailed', { email: sent.email }) }}
+                </p>
+              </div>
+            } @else {
+              <div hlmAlert role="status">
+                <ng-icon name="lucideInfo" />
+                <p hlmAlertDescription>{{ t('settings.users.inviteNotEmailed') }}</p>
+              </div>
+            }
+            <div hlmField>
+              <label hlmFieldLabel for="invite-url">{{ t('settings.users.inviteLink') }}</label>
+              <div class="flex items-center gap-2">
+                <input
+                  dir="ltr"
+                  hlmInput
+                  readonly
+                  id="invite-url"
+                  class="font-mono text-xs"
+                  data-testid="invite-url"
+                  [value]="sent.invitation.inviteUrl"
+                  (focus)="$any($event.target).select()"
+                />
+                <button hlmBtn variant="outline" (click)="copy(sent.invitation.inviteUrl)">
+                  <ng-icon name="lucideCopy" /> {{ t('common.copy') }}
+                </button>
+              </div>
+              <p hlmFieldDescription>{{ t('settings.users.inviteExpiry') }}</p>
+            </div>
+          </div>
+          <hlm-dialog-footer>
+            <button hlmBtn (click)="invitation.set(null)">{{ t('settings.tokens.done') }}</button>
           </hlm-dialog-footer>
         }
       </hlm-dialog-content>
@@ -272,6 +379,7 @@ interface Draft {
 })
 export class UsersPage implements OnInit {
   private readonly api = inject(Api);
+  private readonly account = inject(Account);
   protected readonly auth = inject(Auth);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
@@ -279,6 +387,11 @@ export class UsersPage implements OnInit {
   protected readonly roles = signal<Role[]>([]);
   protected readonly draft = signal<Draft | null>(null);
   protected readonly error = signal<string | null>(null);
+  protected readonly saving = signal(false);
+  /** The invitation link just created, shown once with its delivery. */
+  protected readonly invitation = signal<{ email: string; invitation: Invitation } | null>(null);
+  /** The user a new invitation link is being made for. */
+  protected readonly inviting = signal<number | null>(null);
 
   async ngOnInit(): Promise<void> {
     const [users, roles] = await Promise.all([
@@ -297,6 +410,7 @@ export class UsersPage implements OnInit {
         ? {
             id: user.id,
             email: user.email,
+            setPassword: true,
             password: '',
             firstname: user.firstname ?? '',
             lastname: user.lastname ?? '',
@@ -306,6 +420,7 @@ export class UsersPage implements OnInit {
         : {
             id: null,
             email: '',
+            setPassword: false,
             password: '',
             firstname: '',
             lastname: '',
@@ -360,16 +475,48 @@ export class UsersPage implements OnInit {
       roles: draft.roles,
       isActive: draft.isActive,
     };
-    if (draft.password || !draft.id) body['password'] = draft.password;
+    // New users without a password get an invitation link.
+    if (draft.password || (!draft.id && draft.setPassword)) body['password'] = draft.password;
+    this.saving.set(true);
     try {
-      if (draft.id) await this.api.put(`/users/${draft.id}`, body);
-      else await this.api.post('/users', body);
+      if (draft.id) {
+        await this.api.put(`/users/${draft.id}`, body);
+        toast.success(this.t('settings.users.saved'));
+      } else {
+        const { invitation } = await this.account.createUser(body);
+        if (invitation) this.invitation.set({ email: draft.email, invitation });
+        else toast.success(this.t('settings.users.saved'));
+      }
       this.users.set(await this.api.get<AdminUser[]>('/users'));
       this.draft.set(null);
-      toast.success(this.t('settings.users.saved'));
     } catch (error) {
       this.error.set(ApiFailure.from(error).message);
+    } finally {
+      this.saving.set(false);
     }
+  }
+
+  /** A new invitation link (earlier ones stop working), shown like on creation. */
+  protected async reinvite(user: Pick<AdminUser, 'id' | 'email'>): Promise<void> {
+    this.inviting.set(user.id);
+    try {
+      const invitation = await this.account.reinvite(user.id);
+      this.draft.set(null);
+      this.invitation.set({ email: user.email, invitation });
+    } catch (error) {
+      toast.error(ApiFailure.from(error).message);
+    } finally {
+      this.inviting.set(null);
+    }
+  }
+
+  protected reinviteDraft(draft: Draft): void {
+    if (draft.id) void this.reinvite({ id: draft.id, email: draft.email });
+  }
+
+  protected async copy(value: string): Promise<void> {
+    await navigator.clipboard.writeText(value);
+    toast.success(this.t('common.copied'));
   }
 
   protected async remove(user: AdminUser): Promise<void> {

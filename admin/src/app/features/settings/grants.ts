@@ -7,12 +7,12 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { Schema } from '../../core/schema';
-import { CONTENT_ACTIONS, Grant, UPLOAD_SUBJECT } from '../../core/types';
+import { CONTENT_ACTIONS, Grant, UPLOAD_SUBJECT, USERS_SUBJECT } from '../../core/types';
 
 type ContentAction = (typeof CONTENT_ACTIONS)[number];
 type Coverage = 'none' | 'some' | 'all';
 
-/** A matrix row: a content type or the media library. */
+/** A matrix row: a content type, the media library or the end users. */
 interface Row {
   subject: string;
   label: string;
@@ -21,7 +21,7 @@ interface Row {
   actions: readonly ContentAction[];
 }
 
-/** Drafts and publishing do not apply to media files. */
+/** Drafts and publishing do not apply to media files and end users. */
 const UPLOAD_ACTIONS: readonly ContentAction[] = ['find', 'findOne', 'create', 'update', 'delete'];
 
 const ACTION_LABELS: Record<ContentAction, MessageKey> = {
@@ -144,7 +144,7 @@ export class GrantsMatrix {
   protected readonly types = computed(() =>
     [...this.schema.contentTypes()].sort((a, b) => a.displayName.localeCompare(b.displayName)),
   );
-  /** Content types, then the media library. */
+  /** Content types, then the media library and the end users (`/api/users`). */
   protected readonly rows = computed<Row[]>(() => [
     ...this.types().map((type) => ({
       subject: type.uid,
@@ -156,6 +156,12 @@ export class GrantsMatrix {
       subject: UPLOAD_SUBJECT,
       label: this.t('settings.grants.mediaLibrary'),
       icon: 'lucideImage',
+      actions: UPLOAD_ACTIONS,
+    },
+    {
+      subject: USERS_SUBJECT,
+      label: this.t('settings.grants.users'),
+      icon: 'lucideContactRound',
       actions: UPLOAD_ACTIONS,
     },
   ]);

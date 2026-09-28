@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
+import { HlmAlertDialogImports } from '@spartan-ng/helm/alert-dialog';
 import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmDialogImports } from '@spartan-ng/helm/dialog';
@@ -12,6 +13,7 @@ import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 import { HlmToggleGroupImports } from '@spartan-ng/helm/toggle-group';
 
+import { Account } from '../../core/account';
 import { Api, ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
@@ -46,6 +48,7 @@ const KINDS: Record<
     HlmNativeSelectImports,
     HlmToggleGroupImports,
     HlmAlertImports,
+    HlmAlertDialogImports,
     HlmEmptyImports,
     PageHeader,
   ],
@@ -152,7 +155,20 @@ const KINDS: Record<
                         }}</span>
                       }
                     </td>
-                    <td hlmTd class="pe-4 text-end">
+                    <td hlmTd class="pe-4 text-end whitespace-nowrap">
+                      <button
+                        hlmBtn
+                        size="icon-sm"
+                        variant="ghost"
+                        class="text-muted-foreground"
+                        [attr.aria-label]="
+                          t('settings.tokens.regenerateLabel', { name: token.name })
+                        "
+                        [attr.title]="t('settings.tokens.regenerate')"
+                        (click)="regenerating.set(token)"
+                      >
+                        <ng-icon name="lucideRefreshCw" />
+                      </button>
                       <button
                         hlmBtn
                         size="icon-sm"
@@ -172,6 +188,35 @@ const KINDS: Record<
         </div>
       }
     </div>
+
+    <hlm-alert-dialog
+      [state]="regenerating() ? 'open' : 'closed'"
+      (closed)="regenerating.set(null)"
+    >
+      <hlm-alert-dialog-content *hlmAlertDialogPortal="let ctx">
+        @if (regenerating(); as token) {
+          <hlm-alert-dialog-header>
+            <div hlmAlertDialogMedia class="bg-destructive/10 text-destructive">
+              <ng-icon name="lucideTriangleAlert" />
+            </div>
+            <h2 hlmAlertDialogTitle>
+              {{ t('settings.tokens.regenerateTitle', { name: token.name }) }}
+            </h2>
+            <p hlmAlertDialogDescription>{{ t('settings.tokens.regenerateWarning') }}</p>
+          </hlm-alert-dialog-header>
+          <hlm-alert-dialog-footer>
+            <button hlmAlertDialogCancel (click)="ctx.close()">{{ t('common.cancel') }}</button>
+            <button
+              hlmAlertDialogAction
+              variant="destructive"
+              (click)="ctx.close(); regenerate(token)"
+            >
+              {{ t('settings.tokens.regenerate') }}
+            </button>
+          </hlm-alert-dialog-footer>
+        }
+      </hlm-alert-dialog-content>
+    </hlm-alert-dialog>
 
     <hlm-dialog [state]="dialogOpen() ? 'open' : 'closed'" (closed)="closeDialog()">
       <hlm-dialog-content *hlmDialogPortal="let ctx" class="sm:max-w-3xl">
@@ -287,6 +332,7 @@ const KINDS: Record<
 })
 export class TokensPage implements OnInit {
   private readonly api = inject(Api);
+  private readonly account = inject(Account);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
   protected readonly kinds = Object.keys(KINDS) as TokenKind[];
@@ -300,6 +346,8 @@ export class TokensPage implements OnInit {
   protected readonly expiry = signal('');
   protected readonly grants = signal<Grant[]>([]);
   protected readonly error = signal<string | null>(null);
+  /** The token whose regeneration awaits confirmation. */
+  protected readonly regenerating = signal<ApiToken | null>(null);
 
   async ngOnInit(): Promise<void> {
     await this.reload();
@@ -355,6 +403,20 @@ export class TokensPage implements OnInit {
       await this.reload();
     } catch (error) {
       this.error.set(ApiFailure.from(error).message);
+    }
+  }
+
+  /** A new secret; the current one stops working at once. Shown once, as on creation. */
+  protected async regenerate(token: ApiToken): Promise<void> {
+    try {
+      const updated = await this.account.regenerateToken(token.id);
+      this.error.set(null);
+      this.created.set(updated.accessKey ?? null);
+      this.dialogOpen.set(true);
+      await this.reload();
+      toast.success(this.t('settings.tokens.regenerated'));
+    } catch (error) {
+      toast.error(ApiFailure.from(error).message);
     }
   }
 

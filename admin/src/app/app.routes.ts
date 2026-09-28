@@ -14,6 +14,21 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/register').then((m) => m.RegisterPage),
   },
   {
+    path: 'auth/forgot-password',
+    canActivate: [guestGuard],
+    loadComponent: () =>
+      import('./features/auth/forgot-password').then((m) => m.ForgotPasswordPage),
+  },
+  {
+    path: 'auth/reset-password',
+    loadComponent: () => import('./features/auth/reset-password').then((m) => m.ResetPasswordPage),
+  },
+  {
+    path: 'auth/accept-invitation',
+    loadComponent: () =>
+      import('./features/auth/accept-invitation').then((m) => m.AcceptInvitationPage),
+  },
+  {
     path: '',
     canActivate: [authGuard],
     loadComponent: () => import('./layout/shell').then((m) => m.Shell),
@@ -59,6 +74,10 @@ export const routes: Routes = [
       {
         path: 'builder/:name',
         loadComponent: () => import('./features/builder/builder').then((m) => m.Builder),
+      },
+      {
+        path: 'profile',
+        loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage),
       },
       {
         path: 'settings/users',

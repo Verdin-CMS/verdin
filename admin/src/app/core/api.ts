@@ -6,6 +6,8 @@ import { firstValueFrom } from 'rxjs';
 export interface RuntimeConfig {
   apiBase: string;
   contentApiBase: string;
+  /** `[admin.branding]`: read with `readBranding` (see `core/branding.ts`). */
+  branding?: unknown;
 }
 
 export const RUNTIME_CONFIG = new InjectionToken<RuntimeConfig>('RUNTIME_CONFIG', {
