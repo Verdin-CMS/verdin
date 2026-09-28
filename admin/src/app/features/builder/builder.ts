@@ -48,6 +48,18 @@ import {
   setTypeLocalized,
   typeLocalized,
 } from './i18n-options';
+import {
+  MORPH_RELATIONS,
+  SchemaFiles,
+  compatibleOwnerFields,
+  isInverseKind,
+  isOwnerKind,
+  morphIssue,
+  morphOwnerOptions,
+  ownerKindOf,
+  typeKey,
+  withRelationKind,
+} from './morph-options';
 import { offeredTypes } from './type-options';
 
 type SchemaFile = Record<string, unknown> & { attributes: Record<string, Attribute> };
@@ -661,11 +673,6 @@ interface AttributeDraft {
                               t('builder.fields.lockedHint')
                             }}</span>
                           }
-                          @if (isMorph(entry.attribute)) {
-                            <span class="text-muted-foreground text-xs">{{
-                              t('builder.fields.polymorphicHint')
-                            }}</span>
-                          }
                         </div>
                         <div class="flex shrink-0 items-center gap-0.5">
                           <button
@@ -690,9 +697,7 @@ interface AttributeDraft {
                           >
                             <ng-icon name="lucideArrowDown" />
                           </button>
-                          @if (
-                            entry.attribute.configurable !== false && !isMorph(entry.attribute)
-                          ) {
+                          @if (entry.attribute.configurable !== false) {
                             <button
                               hlmBtn
                               size="icon-xs"
@@ -874,38 +879,115 @@ interface AttributeDraft {
                     <hlm-native-select
                       selectId="relation-kind"
                       [value]="attr.relation ?? defaultRelation()"
-                      (valueChange)="patchAttribute({ relation: $any($event) })"
+                      (valueChange)="setRelationKind($any($event))"
                     >
-                      @for (relation of availableRelations(); track relation.kind) {
-                        <option hlmNativeSelectOption [value]="relation.kind">
-                          {{ t(relation.label) }}
-                        </option>
+                      @if (isComponent()) {
+                        @for (relation of availableRelations(); track relation.kind) {
+                          <option hlmNativeSelectOption [value]="relation.kind">
+                            {{ t(relation.label) }}
+                          </option>
+                        }
+                      } @else {
+                        <optgroup hlmNativeSelectOptGroup [label]="t('builder.morph.group.plain')">
+                          @for (relation of availableRelations(); track relation.kind) {
+                            <option hlmNativeSelectOption [value]="relation.kind">
+                              {{ t(relation.label) }}
+                            </option>
+                          }
+                        </optgroup>
+                        <optgroup
+                          hlmNativeSelectOptGroup
+                          [label]="t('builder.morph.group.polymorphic')"
+                        >
+                          @for (relation of morphRelations; track relation.kind) {
+                            <option hlmNativeSelectOption [value]="relation.kind">
+                              {{ t(relation.label) }}
+                            </option>
+                          }
+                        </optgroup>
                       }
                     </hlm-native-select>
                     @if (isComponent()) {
                       <p hlmFieldDescription>{{ t('builder.field.relationInComponent') }}</p>
                     }
                   </div>
+                  @if (isOwnerKind(attr.relation)) {
+                    <div hlmField>
+                      <span hlmFieldTitle>{{ t('builder.field.target') }}</span>
+                      <p hlmFieldDescription data-morph-owner-hint>
+                        {{ t('builder.morph.ownerHint') }}
+                      </p>
+                    </div>
+                  } @else if (isInverseKind(attr.relation)) {
+                    <div hlmField>
+                      <label hlmFieldLabel for="morph-target">{{ t('builder.morph.owner') }}</label>
+                      <hlm-native-select
+                        selectId="morph-target"
+                        [value]="attr.target ?? ''"
+                        (valueChange)="setMorphTarget($any($event))"
+                      >
+                        <option hlmNativeSelectOption value="">
+                          {{ t('builder.field.choose') }}
+                        </option>
+                        @for (owner of morphOwners(); track owner.uid) {
+                          <option hlmNativeSelectOption [value]="owner.uid">
+                            {{ owner.label }}
+                          </option>
+                        }
+                      </hlm-native-select>
+                      <p hlmFieldDescription id="morph-target-hint">
+                        {{
+                          morphOwners().length
+                            ? t('builder.morph.ownerTypeHint', { kind: ownerKindOf(attr.relation) })
+                            : t('builder.morph.noOwners', { kind: ownerKindOf(attr.relation) })
+                        }}
+                      </p>
+                    </div>
+                  } @else {
+                    <div hlmField>
+                      <label hlmFieldLabel for="relation-target">{{
+                        t('builder.field.target')
+                      }}</label>
+                      <hlm-native-select
+                        selectId="relation-target"
+                        [value]="attr.target ?? ''"
+                        (valueChange)="patchAttribute({ target: $any($event) })"
+                      >
+                        <option hlmNativeSelectOption value="">
+                          {{ t('builder.field.choose') }}
+                        </option>
+                        @for (entry of typeEntries(); track entry.key) {
+                          <option hlmNativeSelectOption [value]="'api::' + entry.key">
+                            {{ entry.label }}
+                          </option>
+                        }
+                      </hlm-native-select>
+                    </div>
+                  }
+                </div>
+                @if (isInverseKind(attr.relation) && attr.target) {
                   <div hlmField>
-                    <label hlmFieldLabel for="relation-target">{{
-                      t('builder.field.target')
-                    }}</label>
+                    <label hlmFieldLabel for="morph-by">{{ t('builder.morph.by') }}</label>
                     <hlm-native-select
-                      selectId="relation-target"
-                      [value]="attr.target ?? ''"
-                      (valueChange)="patchAttribute({ target: $any($event) })"
+                      selectId="morph-by"
+                      [value]="attr.morphBy ?? ''"
+                      (valueChange)="patchAttribute({ morphBy: $any($event) || undefined })"
                     >
                       <option hlmNativeSelectOption value="">
                         {{ t('builder.field.choose') }}
                       </option>
-                      @for (entry of typeEntries(); track entry.key) {
-                        <option hlmNativeSelectOption [value]="'api::' + entry.key">
-                          {{ entry.label }}
-                        </option>
+                      @for (name of morphByOptions(); track name) {
+                        <option hlmNativeSelectOption [value]="name">{{ name }}</option>
                       }
                     </hlm-native-select>
+                    <p hlmFieldDescription>
+                      {{ t('builder.morph.byHint', { kind: ownerKindOf(attr.relation) }) }}
+                    </p>
                   </div>
-                </div>
+                }
+                @if (isInverseKind(attr.relation)) {
+                  <p class="text-muted-foreground text-xs">{{ t('builder.morph.inverseHint') }}</p>
+                }
                 @if (isBidirectional(attr) && !attr.mappedBy) {
                   <div hlmField>
                     <label hlmFieldLabel for="inverse-name">{{
@@ -1274,10 +1356,19 @@ interface AttributeDraft {
             </div>
           </div>
           <hlm-dialog-footer>
+            @if (fieldIssue(); as issue) {
+              <p
+                class="text-destructive me-auto self-center text-sm"
+                aria-live="polite"
+                data-field-issue
+              >
+                {{ t(issue) }}
+              </p>
+            }
             <button hlmBtn variant="outline" (click)="attributeDraft.set(null)">
               {{ t('common.cancel') }}
             </button>
-            <button hlmBtn [disabled]="!field.name" (click)="commitAttribute()">
+            <button hlmBtn [disabled]="!field.name || !!fieldIssue()" (click)="commitAttribute()">
               <ng-icon name="lucideCheck" /> {{ t('builder.field.done') }}
             </button>
           </hlm-dialog-footer>
@@ -1456,6 +1547,10 @@ export class Builder {
   protected readonly camel = camel;
   protected readonly attributeLocalized = attributeLocalized;
   protected readonly isMorph = isMorph;
+  protected readonly morphRelations = MORPH_RELATIONS;
+  protected readonly isOwnerKind = isOwnerKind;
+  protected readonly isInverseKind = isInverseKind;
+  protected readonly ownerKindOf = ownerKindOf;
 
   protected readonly sources = signal<Sources | null>(null);
   protected readonly draft = signal<SchemaFile | null>(null);
@@ -1488,6 +1583,31 @@ export class Builder {
     this.isComponent() ? 'oneWay' : 'manyToOne',
   );
   protected readonly isNew = computed(() => ['new', 'new-component'].includes(this.name() ?? ''));
+  /** Content types as they will be saved: the sources, with the edited type as drafted. */
+  private readonly morphTypes = computed<SchemaFiles>(() => {
+    const types: SchemaFiles = { ...(this.sources()?.contentTypes ?? {}) };
+    const file = this.draft();
+    const self = String(file?.['singularName'] ?? '');
+    if (file && self && !this.isComponent()) types[self] = file;
+    return types;
+  });
+  /** Types an inverse polymorphic side can read from (with an owner field of its kind). */
+  protected readonly morphOwners = computed(() => {
+    const kind = this.attributeDraft()?.attribute.relation;
+    return isInverseKind(kind) ? morphOwnerOptions(this.morphTypes(), kind) : [];
+  });
+  /** The chosen owner's fields an inverse side can name in `morphBy`. */
+  protected readonly morphByOptions = computed(() => {
+    const attribute = this.attributeDraft()?.attribute;
+    const kind = attribute?.relation;
+    if (!isInverseKind(kind)) return [];
+    return compatibleOwnerFields(this.morphTypes()[typeKey(attribute?.target)], kind);
+  });
+  /** Why the field would be rejected on save (polymorphic relations), else `null`. */
+  protected readonly fieldIssue = computed(() => {
+    const attribute = this.attributeDraft()?.attribute;
+    return attribute ? morphIssue(attribute, this.morphTypes(), this.isComponent()) : null;
+  });
   protected readonly draftAndPublish = computed(
     () =>
       !!(this.draft()?.['options'] as { draftAndPublish?: boolean } | undefined)?.draftAndPublish,
@@ -1685,6 +1805,24 @@ export class Builder {
       for (const key of Object.keys(attribute) as (keyof Attribute)[])
         if (attribute[key] === undefined) delete attribute[key];
       return { ...field, attribute };
+    });
+  }
+
+  /** Changes the relation kind, keeping only the settings that kind takes. */
+  protected setRelationKind(kind: RelationKind): void {
+    this.attributeDraft.update((field) =>
+      field ? { ...field, attribute: withRelationKind(field.attribute, kind) } : field,
+    );
+  }
+
+  /** An inverse side's owner type; its only compatible field is chosen at once. */
+  protected setMorphTarget(target: string): void {
+    const kind = this.attributeDraft()?.attribute.relation;
+    if (!isInverseKind(kind)) return;
+    const fields = target ? compatibleOwnerFields(this.morphTypes()[typeKey(target)], kind) : [];
+    this.patchAttribute({
+      target: target || undefined,
+      morphBy: fields.length === 1 ? fields[0] : undefined,
     });
   }
 

@@ -1,9 +1,10 @@
 /**
  * Polymorphic relations (Strapi's `morphToOne`, `morphToMany` and their inverse sides
- * `morphOne`, `morphMany`): links to documents of several content types. The admin shows
- * them read-only; they are managed through the API.
+ * `morphOne`, `morphMany`): links to documents of several content types. The editor edits
+ * owners (`{ __type, documentId }` items); inverse sides are read-only, as in the API.
  */
-import { Attribute, MorphKind } from './types';
+import { isLocalized } from './content-locales';
+import { Attribute, ContentType, MorphKind } from './types';
 
 export const MORPH_KINDS: readonly MorphKind[] = [
   'morphToOne',
@@ -54,4 +55,96 @@ export function morphLinks(value: unknown, fallbackUid?: string): MorphLink[] {
     links.push({ uid, documentId: String(documentId), entry });
   }
   return links;
+}
+
+/** A polymorphic link in the write format (and the editor's form value). */
+export interface MorphRef {
+  __type: string;
+  documentId: string;
+}
+
+/** Identifies a link: the same documentId may exist in two types. */
+export function morphKey(ref: { uid?: string; __type?: string; documentId: string }): string {
+  return `${ref.__type ?? ref.uid ?? ''}:${ref.documentId}`;
+}
+
+/** A populated or form value (a list, an item or null) → its links in the write format. */
+export function morphRefs(value: unknown): MorphRef[] {
+  return morphLinks(value).map((link) => ({ __type: link.uid, documentId: link.documentId }));
+}
+
+/** Links → the form value of an owner: a list (to-many), else one link or `null`. */
+export function morphValue(refs: readonly MorphRef[], many: boolean): MorphRef[] | MorphRef | null {
+  const clean = refs.map((ref) => ({ __type: ref.__type, documentId: ref.documentId }));
+  return many ? clean : (clean[0] ?? null);
+}
+
+/**
+ * Adds picked links to the current ones: a to-one owner takes the first picked link, a
+ * to-many one appends the picked links it does not hold yet, in pick order.
+ */
+export function addMorphRefs(
+  current: readonly MorphRef[],
+  picked: readonly MorphRef[],
+  many: boolean,
+): MorphRef[] {
+  if (!many) return picked.length ? [picked[0]] : [...current];
+  const seen = new Set(current.map(morphKey));
+  const out = [...current];
+  for (const ref of picked) {
+    const key = morphKey(ref);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  return out;
+}
+
+/**
+ * The picker's selection after the user toggles `ref`. Linked entries cannot be picked
+ * again; a to-many owner toggles the entry in or out, a to-one owner keeps one choice.
+ */
+export function toggleMorphPick(
+  chosen: readonly MorphRef[],
+  ref: MorphRef,
+  many: boolean,
+  linked: readonly MorphRef[],
+): MorphRef[] {
+  const key = morphKey(ref);
+  if (linked.some((item) => morphKey(item) === key)) return [...chosen];
+  const has = chosen.some((item) => morphKey(item) === key);
+  if (!many) return has ? [] : [ref];
+  return has ? chosen.filter((item) => morphKey(item) !== key) : [...chosen, ref];
+}
+
+/** Content types a polymorphic owner can link: those the admin may read, by name. */
+export function morphTargetTypes(
+  types: readonly ContentType[],
+  canRead: (uid: string) => boolean,
+): ContentType[] {
+  return types
+    .filter((type) => canRead(type.uid))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+/**
+ * The locale to search a target type in: the editor's locale when it has one, else the
+ * default locale; `null` for types that are not localized.
+ */
+export function morphSearchLocale(
+  type: ContentType | undefined,
+  editorLocale: string | null,
+  defaultLocale: string | null,
+): string | null {
+  if (!isLocalized(type)) return null;
+  return editorLocale || defaultLocale || null;
+}
+
+/** The admin list query of the picker's search (`_q`, 10 results, latest first). */
+export function morphSearchQuery(term: string, locale: string | null): Record<string, unknown> {
+  const query: Record<string, unknown> = { pagination: { pageSize: 10 }, sort: 'updatedAt:desc' };
+  const text = term.trim();
+  if (text) query['_q'] = text;
+  if (locale) query['locale'] = locale;
+  return query;
 }

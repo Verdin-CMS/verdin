@@ -35,8 +35,9 @@ import {
 import { BlocksControl } from './blocks-control';
 import { MarkdownControl } from './markdown-control';
 import { MediaControl } from './media-control';
+import { MorphControl } from './morph-control';
 import { PluginFieldControl } from './plugin-field';
-import { isMorph } from '../../../core/morph';
+import { isMorph, isMorphOwner } from '../../../core/morph';
 import { FormModel, MorphEntry, References, isToMany, keyed, newComponentItem } from './model';
 import { RelationControl } from './relation';
 import {
@@ -93,6 +94,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
     PasswordControl,
     RelationControl,
     MediaControl,
+    MorphControl,
     BlocksControl,
     MarkdownControl,
     PluginFieldControl,
@@ -537,7 +539,16 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                   <vd-json-control [inputId]="id" [formField]="child(name)" />
                 }
                 @case ('relation') {
-                  @if (isMorph(attribute)) {
+                  @if (isMorphOwner(attribute)) {
+                    <vd-morph-control
+                      [inputId]="id"
+                      [many]="isToMany(attribute)"
+                      [label]="label(name)"
+                      [initial]="morphs()[name] ?? []"
+                      [locale]="context().locale ?? null"
+                      [formField]="child(name)"
+                    />
+                  } @else if (isMorph(attribute)) {
                     <ul
                       class="flex flex-col gap-1"
                       [id]="id"
@@ -568,7 +579,12 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                     </ul>
                     <p hlmFieldDescription class="flex items-center gap-1.5" [id]="id + '-morph'">
                       <ng-icon name="lucideInfo" size="12" aria-hidden="true" />
-                      {{ t('content.fields.morphNote') }}
+                      {{
+                        t('morph.inverse.note', {
+                          target: targetName(attribute.target),
+                          field: attribute.morphBy ?? '',
+                        })
+                      }}
                     </p>
                   } @else if (attribute.mappedBy) {
                     <p hlmFieldDescription>
@@ -711,7 +727,7 @@ export class FieldsComponent {
   readonly refs = input<References>({ labels: {}, files: [] });
   /** Read-only `mappedBy` relations, per attribute. */
   readonly inverse = input<Record<string, { id: string; label: string }[]>>({});
-  /** Linked entries of polymorphic relations (read-only), per attribute. */
+  /** Linked entries of polymorphic relations (owners: labels; inverse sides: the list). */
   readonly morphs = input<Record<string, MorphEntry[]>>({});
   /** Attributes shared by every locale (top level of a localized type), marked with a globe. */
   readonly shared = input<readonly string[]>([]);
@@ -723,6 +739,7 @@ export class FieldsComponent {
   protected readonly humanize = humanize;
   protected readonly isToMany = isToMany;
   protected readonly isMorph = isMorph;
+  protected readonly isMorphOwner = isMorphOwner;
   protected readonly zoneChoice = signal<Record<string, string>>({});
   protected readonly uidNotes = signal<Record<string, string>>({});
   private readonly ai = inject(AiActions);
