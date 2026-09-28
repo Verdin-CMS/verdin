@@ -1,12 +1,15 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  Injector,
   OnInit,
+  afterNextRender,
   computed,
   inject,
   signal,
   viewChild,
 } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
@@ -38,6 +41,7 @@ import { UserPreferences } from '../../core/user-preferences';
 import { PageHeader } from '../../shared/components/page-header';
 import { NewPassword } from '../auth/new-password';
 import { PasswordField } from '../auth/password-field';
+import { TwoFactorSettings } from './two-factor-settings';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -60,6 +64,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     NewPassword,
     PageHeader,
     PasswordField,
+    TwoFactorSettings,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -70,7 +75,21 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         </span>
       </vd-page-header>
 
+      @if (auth.twoFactorPending()) {
+        <div hlmAlert variant="destructive" role="alert" data-testid="two-factor-banner">
+          <ng-icon name="lucideShieldAlert" />
+          <p hlmAlertTitle>{{ t('twoFactor.requiredBanner.title') }}</p>
+          <p hlmAlertDescription>{{ t('twoFactor.requiredBanner.description') }}</p>
+        </div>
+      }
+
       <div class="grid items-start gap-6 lg:grid-cols-2">
+        <vd-two-factor-settings
+          class="lg:col-span-2"
+          [class.order-first]="auth.twoFactorPending()"
+          (changed)="twoFactorChanged()"
+        />
+
         <section hlmCard>
           <div hlmCardHeader>
             <h2 hlmCardTitle>{{ t('account.details') }}</h2>
@@ -364,6 +383,8 @@ export class ProfilePage implements OnInit {
   protected readonly unseen = inject(Unseen);
   protected readonly userPreferences = inject(UserPreferences);
   private readonly newPasswordInput = viewChild(NewPassword);
+  private readonly route = inject(ActivatedRoute);
+  private readonly injector = inject(Injector);
 
   protected readonly themes: {
     value: ThemeChoice;
@@ -411,9 +432,13 @@ export class ProfilePage implements OnInit {
   protected readonly digest = computed(() => this.userPreferences.value()['digest'] === 'daily');
 
   async ngOnInit(): Promise<void> {
-    void this.userPreferences.load();
     this.fill();
-    void this.loadSessions();
+    this.showTwoFactor();
+    // Until the second factor the role requires is set up, the rest is refused.
+    if (!this.auth.twoFactorPending()) {
+      void this.userPreferences.load();
+      void this.loadSessions();
+    }
     try {
       const user = await this.account.profile();
       this.auth.user.set(user);
@@ -421,6 +446,25 @@ export class ProfilePage implements OnInit {
     } catch {
       // The session's copy of the user is shown instead.
     }
+  }
+
+  /** `/profile#two-factor` (where a role requiring a second factor sends): scroll there. */
+  private showTwoFactor(): void {
+    if (this.route.snapshot.fragment !== 'two-factor' && !this.auth.twoFactorPending()) return;
+    afterNextRender(
+      () => {
+        const heading = document.getElementById('two-factor-title');
+        heading?.scrollIntoView({ block: 'start' });
+        heading?.focus({ preventScroll: true });
+      },
+      { injector: this.injector },
+    );
+  }
+
+  protected twoFactorChanged(): void {
+    if (this.auth.twoFactorPending()) return;
+    if (this.sessions() === null) void this.loadSessions();
+    if (!this.userPreferences.loaded()) void this.userPreferences.load();
   }
 
   private fill(): void {

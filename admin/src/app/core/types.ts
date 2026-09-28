@@ -165,6 +165,10 @@ export interface AdminUser {
   lastname: string | null;
   isActive: boolean;
   roles: RoleSummary[];
+  /** Signs in with a second factor (an authenticator app or a passkey). */
+  twoFactor?: boolean;
+  /** One of the roles requires a second factor. */
+  twoFactorRequired?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -187,6 +191,8 @@ export interface PermissionSet {
 export interface Role extends RoleSummary {
   description: string | null;
   builtin: boolean;
+  /** Members must sign in with a second factor. */
+  requireTwoFactor?: boolean;
   permissions: Permission[];
 }
 
