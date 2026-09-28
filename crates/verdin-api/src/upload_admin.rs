@@ -28,6 +28,7 @@ pub(super) fn routes(service: Option<&UploadService>) -> Router<AdminState> {
     );
     Router::new()
         .route("/upload/files", get(list_files))
+        .route("/upload/files/{id}/usage", get(file_usage))
         .route("/upload/files/{id}", get(get_file).put(update_file).delete(delete_file))
         .route("/upload/folders", get(list_folders).post(create_folder))
         .route("/upload/folders/all", get(all_folders))
@@ -133,6 +134,19 @@ async fn get_file(
     media(&state, &headers, actions::MEDIA_READ).await?;
     let file = service(&state)?.find(id).await?.ok_or(ApiError::NotFound)?;
     Ok(data(file_json(&file)))
+}
+
+/// Where a file is used: the entry versions showing it.
+async fn file_usage(
+    State(state): State<AdminState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let (principal, grant) = media(&state, &headers, actions::MEDIA_READ).await?;
+    let file = service(&state)?.find(id).await?.ok_or(ApiError::NotFound)?;
+    ensure_own(&file, &principal, grant)?;
+    let usages = state.service.file_usage(id).await?;
+    Ok(super::usage_response(&principal, usages))
 }
 
 /// `POST /upload` (multipart `files`, optional `fileInfo` and `folder`).

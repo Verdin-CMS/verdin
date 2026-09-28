@@ -29,5 +29,6 @@ mod review;
 mod sso;
 mod stats;
 mod traffic;
+mod usage;
 mod views;
 mod webhooks;

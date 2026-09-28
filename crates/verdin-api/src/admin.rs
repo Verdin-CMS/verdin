@@ -247,6 +247,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .route("/content/{uid}/{document_id}/clone", post(content_clone))
         .route("/content/{uid}/uid-available", get(uid_available))
         .route("/content/{uid}/{document_id}/locales", get(content_locales))
+        .route("/content/{uid}/{document_id}/usage", get(content_usage))
         .route("/schema", get(schema_sources))
         .route("/schema/plan", post(schema_plan))
         .route("/schema/apply", post(schema_apply))
@@ -1091,6 +1092,31 @@ async fn content_locales(
     }
     ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
     Ok(data(state.service.document_locales(&uid, &document_id).await?))
+}
+
+/// Where an entry is used: the versions referencing it.
+async fn content_usage(
+    State(state): State<AdminState>,
+    Path((uid, document_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_READ).await?;
+    ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
+    let usages = state.service.document_usage(&uid, &document_id).await?;
+    Ok(usage_response(&principal, usages))
+}
+
+/// Usages the admin may read, and how many others there are (`meta.hidden`).
+fn usage_response(principal: &AdminPrincipal, usages: Vec<verdin_content::Usage>) -> Response {
+    let (visible, hidden): (Vec<_>, Vec<_>) = usages.into_iter().partition(|usage| match principal
+        .permissions
+        .content_in(actions::CONTENT_READ, &usage.uid, usage.locale.as_deref())
+    {
+        Grant::All => true,
+        Grant::Own => usage.created_by == Some(principal.user.id),
+        Grant::None => false,
+    });
+    Json(json!({ "data": visible, "meta": { "hidden": hidden.len() } })).into_response()
 }
 
 async fn content_grant(

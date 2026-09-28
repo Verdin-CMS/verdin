@@ -18,6 +18,10 @@ All notable changes to Verdin are documented here. The format follows
   type, JSON Logic rules checked with `required` (`endDate >= startDate`). JSON Logic
   comparisons now also order strings (ISO dates), and arithmetic, `min`, `max` and
   `cat` are supported.
+- **Where used**: `GET /admin/api/content/:uid/:documentId/usage` and
+  `GET /admin/api/upload/files/:id/usage` list the versions referencing an entry
+  (relations, polymorphic relations, relations in components) or a file (media fields
+  and components, image blocks, rich text URLs), filtered by the admin's permissions.
 
 ## [0.8.0] - 2026-09-28
 

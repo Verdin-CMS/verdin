@@ -607,6 +607,8 @@ POST /schema/plan | /schema/apply      (dev mode only)
 GET|POST|PUT|DELETE /content/:uid[/:documentId]      Document Service with admin RBAC
 POST /content/:uid/:documentId/actions/publish|unpublish|discard-draft
 GET  /content/:uid/uid-available?field=slug&value=…  (M5)
+GET  /content/:uid/:documentId/usage   where used: versions referencing the entry
+GET  /upload/files/:id/usage           where used: versions showing the file
 
 CRUD /users, /roles, /api-tokens, /public-permissions
 GET|PUT /users/me/preferences          the caller's admin preferences (dashboard layout), any admin
@@ -620,6 +622,8 @@ GET  /features, PUT /features/:id      optional features (Settings → Features)
 ```
 
 Admin content routes read drafts by default and write drafts only (publishing is an explicit action). Writes record `created_by_id` / `updated_by_id`; `is-creator` conditions filter reads and guard writes. Bodies of the settings routes are plain JSON (no `data` wrapper); content routes use `{ "data": … }` like the content API.
+
+**Where used** (`…/usage`) lists every version (`uid`, `documentId`, `locale`, `status`, `field`, `title`) that references an entry — owning relations, polymorphic relations, relations inside components and dynamic zones — or a file — media fields, media inside components, `image` blocks (by id or URL) and rich text containing the file's URL. `field` is the attribute path (`sections.0.image`). Only versions the admin may read are listed; `meta.hidden` counts the others. JSON and rich text columns are scanned in pages of 500 rows, so the call costs a pass over the types that can hold such references.
 
 UI metadata (list columns, visible fields, form layout) lives in `schema/content-types/<name>.ui.json`, separate from the data schema. It is the equivalent of Strapi's "configure the view", but versionable.
 

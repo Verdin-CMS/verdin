@@ -41,6 +41,8 @@ const PUBLISHED: i16 = 1;
 pub mod import;
 #[path = "morph.rs"]
 pub(crate) mod morph;
+#[path = "usage.rs"]
+pub mod usage;
 /// Base table alias in reads.
 const BASE: &str = "t0";
 /// Largest `IN (…)` list per statement.
