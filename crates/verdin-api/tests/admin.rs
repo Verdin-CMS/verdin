@@ -702,16 +702,6 @@ async fn features_catalog_and_switches() {
     let openapi = body["data"].as_array().unwrap().iter().find(|f| f["id"] == "openapi").unwrap();
     assert_eq!(openapi["settings"], json!({ "public": true }));
 
-    let coming = app
-        .call_as(
-            Method::PUT,
-            "/admin/api/features/review",
-            Some(json!({ "enabled": true })),
-            As::Bearer(&admin),
-        )
-        .await;
-    assert_eq!(coming.0, StatusCode::BAD_REQUEST);
-    assert!(coming.1["error"]["message"].as_str().unwrap().contains("planned for"));
     let core = app
         .call_as(
             Method::PUT,

@@ -32,6 +32,7 @@ pub const AUDIT: &str = "audit";
 pub const RELEASES: &str = "releases";
 pub const PREVIEW: &str = "preview";
 pub const SSO: &str = "sso";
+pub const REVIEW: &str = "review";
 
 /// Every feature, in display order.
 pub const CATALOG: &[FeatureSpec] = &[
@@ -89,13 +90,7 @@ pub const CATALOG: &[FeatureSpec] = &[
         default_enabled: false,
         core: false,
     },
-    FeatureSpec {
-        id: "review",
-        available: false,
-        planned: Some("0.7"),
-        default_enabled: false,
-        core: false,
-    },
+    FeatureSpec { id: REVIEW, available: true, planned: None, default_enabled: false, core: false },
 ];
 
 pub fn spec(id: &str) -> Option<&'static FeatureSpec> {
@@ -189,16 +184,14 @@ mod tests {
         assert!(states.enabled(OPENAPI), "on by default");
         assert!(states.enabled("media"), "core");
         assert!(states.enabled(WEBHOOKS), "on by default");
-        assert!(!states.enabled("review"));
         states.0.insert(OPENAPI.into(), FeatureState { enabled: false, settings: Value::Null });
         assert!(!states.enabled(OPENAPI));
-        states.0.insert("review".into(), FeatureState { enabled: true, settings: Value::Null });
-        assert!(!states.enabled("review"), "unavailable features stay off");
 
         let on = FeatureState { enabled: true, settings: Value::Null };
         assert!(validate(OPENAPI, &on).is_ok());
-        assert!(matches!(validate("review", &on), Err(ApiError::BadRequest(_))));
         assert!(matches!(validate("media", &on), Err(ApiError::BadRequest(_))));
+        assert!(!states.enabled(REVIEW), "off by default");
+        assert!(CATALOG.iter().all(|spec| spec.available || spec.planned.is_some()));
         assert!(matches!(validate("nope", &on), Err(ApiError::NotFound)));
         let bad = FeatureState { enabled: true, settings: json!([1]) };
         assert!(matches!(validate(OPENAPI, &bad), Err(ApiError::BadRequest(_))));

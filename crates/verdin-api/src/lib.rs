@@ -17,6 +17,7 @@ mod openapi;
 pub mod plugins;
 pub mod preview;
 pub mod releases;
+pub mod review;
 pub mod sso;
 mod upload;
 pub mod webhooks;
@@ -120,13 +121,18 @@ pub fn document_service(
     listeners: &Listeners,
     locales: &verdin_content::locales::Locales,
     plugins: Option<&verdin_plugins::Plugins>,
+    review: Option<&review::Review>,
 ) -> DocumentService {
-    let service = listeners.iter().fold(
+    let mut service = listeners.iter().fold(
         DocumentService::new(db.clone(), registry, output)
             .with_locales(locales.clone())
             .with_listener(engagement_listener(db)),
         |service, listener| service.with_listener(listener.clone()),
     );
+    // Review stages first: a refused publication does not reach plugins.
+    if let Some(review) = review {
+        service = service.with_listener(review.listener()).with_hook(review.hook());
+    }
     match plugins {
         Some(plugins) => service.with_hook(Arc::new(plugins.clone())),
         None => service,
@@ -149,6 +155,8 @@ pub struct ContentServices {
     /// Plugins: before-write hooks, routes under `/plugins/{name}` and their content host
     /// (their after-write hooks must be among `listeners`).
     pub plugins: Option<verdin_plugins::Plugins>,
+    /// Review workflows: stages of new entries, and the publish stage.
+    pub review: Option<review::Review>,
 }
 
 /// Content API routes, to be nested under the API prefix (e.g. `/api`).
@@ -160,7 +168,8 @@ pub fn router(
     prefix: &str,
     services: ContentServices,
 ) -> Router {
-    let ContentServices { upload, listeners, locales, users, traffic, cache, plugins } = services;
+    let ContentServices { upload, listeners, locales, users, traffic, cache, plugins, review } =
+        services;
     let (listeners, locales) = (&listeners, &locales);
     let routes = registry
         .types()
@@ -181,6 +190,7 @@ pub fn router(
             listeners,
             locales,
             plugins.as_ref(),
+            review.as_ref(),
         ),
         auth,
         routes: Arc::new(routes),

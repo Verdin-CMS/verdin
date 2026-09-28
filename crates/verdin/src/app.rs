@@ -11,8 +11,8 @@ use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tower::ServiceExt;
 use verdin_api::features::{
-    AUDIT, FeatureHost, FeatureState, FeatureStates, GRAPHQL, HISTORY, OPENAPI, RELEASES, USERS,
-    WEBHOOKS,
+    AUDIT, FeatureHost, FeatureState, FeatureStates, GRAPHQL, HISTORY, OPENAPI, RELEASES, REVIEW,
+    USERS, WEBHOOKS,
 };
 use verdin_api::{ApiError, BoxFuture, SchemaChange, SchemaEditor};
 use verdin_auth::AuthService;
@@ -65,6 +65,8 @@ pub struct AppContext {
     pub releases: verdin_api::releases::Releases,
     /// The daily digest of unseen changes (`[digest]`), sent while serving.
     pub digest: verdin_api::digest::Digest,
+    /// Review workflows; the `review` feature switches stages and the publish gate.
+    pub review: verdin_api::review::Review,
 }
 
 impl AppContext {
@@ -191,6 +193,7 @@ pub fn build_app(
             },
             cache: Some(context.cache.clone()),
             plugins: Some(context.plugins.clone()),
+            review: states.enabled(REVIEW).then(|| context.review.clone()),
             users: states.enabled(USERS).then(|| {
                 let raw = states.settings(USERS);
                 let settings = if raw.is_null() {
@@ -234,6 +237,7 @@ pub fn build_app(
             plugins: Some(context.plugins.clone()),
             audit: Some(context.audit.clone()),
             releases: states.enabled(RELEASES).then(|| context.releases.clone()),
+            review: states.enabled(REVIEW).then(|| context.review.clone()),
             digest: Some(context.digest.clone()),
             public_url: context.origin(),
             sso_secrets: sso_secrets(states),
@@ -341,10 +345,16 @@ pub async fn serve(
     context.plugins.apply(
         &verdin_api::plugins::load_states(&context.db).await.context("reading plugin switches")?,
     );
+    context.review.reload().await.context("reading review workflows")?;
+    context.review.set_enabled(states.enabled(REVIEW));
     let host = AppHost::new(context.clone(), schema, states);
     let deliveries = context.webhooks.spawn();
-    let jobs = context.plugins.spawn_jobs();
+    let jobs =
+        if context.config.plugins.run_jobs { context.plugins.spawn_jobs() } else { Vec::new() };
     let pruning = context.audit.spawn_pruning();
+    let sync = (context.config.server.sync_interval_secs > 0).then(|| {
+        host.spawn_sync(std::time::Duration::from_secs(context.config.server.sync_interval_secs))
+    });
     let scheduler = context.releases.spawn();
     let digest = context.config.digest.enabled.then(|| context.digest.spawn());
     // Keeps the watcher alive while serving.
@@ -374,6 +384,9 @@ pub async fn serve(
     deliveries.abort();
     jobs.iter().for_each(tokio::task::JoinHandle::abort);
     pruning.abort();
+    if let Some(sync) = sync {
+        sync.abort();
+    }
     scheduler.abort();
     if let Some(digest) = digest {
         digest.abort();
@@ -413,6 +426,7 @@ fn graphql_router(
         listeners,
         &context.locales,
         Some(&context.plugins),
+        states.enabled(REVIEW).then_some(&context.review),
     );
     match verdin_graphql::schema(service, limits, &options) {
         Ok(schema) => verdin_graphql::router(schema, context.auth.clone(), options, "/graphql"),
@@ -514,12 +528,43 @@ impl AppHost {
         self.context.history.set_enabled(states.enabled(HISTORY));
         self.context.audit.set_enabled(states.enabled(AUDIT));
         self.context.releases.set_enabled(states.enabled(RELEASES));
+        self.context.review.set_enabled(states.enabled(REVIEW));
         self.current.store(Arc::new(build_app(&self.context, schema, editor, features, &states)));
     }
 
     fn set_schema(&self, schema: Schema) {
         *self.schema.lock().expect("schema lock") = schema;
         self.rebuild();
+    }
+
+    /// Picks up the settings other instances changed: feature switches (the app is
+    /// rebuilt when they differ), plugin switches, locales and review workflows.
+    async fn sync(&self) -> Result<()> {
+        let _guard = self.lock.lock().await;
+        let context = &self.context;
+        let states = load_features(&context.db).await?;
+        context.plugins.apply(&verdin_api::plugins::load_states(&context.db).await?);
+        context.locales.set(verdin_api::i18n::load_locales(&context.db).await?);
+        context.review.reload().await?;
+        if states != **self.features.load() {
+            self.features.store(Arc::new(states));
+            self.rebuild();
+            tracing::info!("feature switches changed on another instance; app reloaded");
+        }
+        Ok(())
+    }
+
+    fn spawn_sync(self: &Arc<Self>, every: std::time::Duration) -> tokio::task::JoinHandle<()> {
+        let host = Arc::downgrade(self);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(every).await;
+                let Some(host) = host.upgrade() else { break };
+                if let Err(error) = host.sync().await {
+                    tracing::warn!(%error, "could not read settings changed by other instances");
+                }
+            }
+        })
     }
 }
 
@@ -907,6 +952,7 @@ mod tests {
         let db_for_audit = db.clone();
         let db_for_releases = db.clone();
         let auth_for_digest = auth.clone();
+        let db_for_review = db.clone();
         Arc::new(AppContext {
             config,
             root: root.to_owned(),
@@ -925,6 +971,7 @@ mod tests {
                 std::time::Duration::from_secs(86_400),
             ),
             releases: verdin_api::releases::Releases::new(db_for_releases),
+            review: verdin_api::review::Review::new(db_for_review),
             digest: verdin_api::digest::Digest::new(
                 auth_for_digest,
                 verdin_email::Mailer::memory().0,
@@ -968,5 +1015,20 @@ mod tests {
         let stored = load_features(&context.db).await.unwrap();
         assert!(!stored.enabled(OPENAPI));
         assert_eq!(stored, host.states());
+    }
+
+    #[tokio::test]
+    async fn instances_pick_up_each_others_switches() {
+        let dir = tempfile::tempdir().unwrap();
+        let context = context(dir.path()).await;
+        let first = AppHost::new(context.clone(), Schema::default(), FeatureStates::default());
+        let second = AppHost::new(context.clone(), Schema::default(), FeatureStates::default());
+
+        let public = FeatureState { enabled: true, settings: json!({ "public": true }) };
+        first.update(OPENAPI.into(), public).await.unwrap();
+        assert_eq!(status(&second, "/api/docs").await, StatusCode::NOT_FOUND, "not yet");
+        second.sync().await.unwrap();
+        assert_eq!(status(&second, "/api/docs").await, StatusCode::OK);
+        assert_eq!(first.states(), second.states());
     }
 }

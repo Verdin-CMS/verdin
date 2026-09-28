@@ -54,6 +54,7 @@ pub struct App {
     pub releases: verdin_api::releases::Releases,
     /// The daily digest (not scheduled: call `send_all`).
     pub digest: verdin_api::digest::Digest,
+    pub review: verdin_api::review::Review,
 }
 
 /// Who a request authenticates as.
@@ -181,6 +182,7 @@ impl App {
         // 10 versions per document, to exercise pruning.
         let history = verdin_api::History::new(test.db.clone(), 10);
         let releases = verdin_api::releases::Releases::new(test.db.clone());
+        let review = verdin_api::review::Review::new(test.db.clone());
         let plugins = plugins_dir.map(|dir| verdin_plugins::Plugins::load(dir, test.db.clone()));
         let mut listeners: verdin_api::Listeners =
             vec![webhooks.listener(), history.listener(), cache.listener(), audit.listener()];
@@ -204,6 +206,7 @@ impl App {
             audit: Some(audit.clone()),
             releases: Some(releases.clone()),
             digest: Some(digest.clone()),
+            review: Some(review.clone()),
             ..AdminConfig::default()
         };
         let router = Router::new()
@@ -222,6 +225,7 @@ impl App {
                         traffic,
                         cache: Some(cache.clone()),
                         plugins: plugins.clone(),
+                        review: Some(review.clone()),
                         users: Some(oauth_secrets.iter().fold(
                             verdin_api::end_users::Users::new(
                                 auth.clone(),
@@ -239,7 +243,19 @@ impl App {
                 "/admin/api",
                 verdin_api::admin_router(test.db.clone(), registry, auth.clone(), admin),
             );
-        Self { router, test, auth, upload, token, webhooks, emails, cache, releases, digest }
+        Self {
+            router,
+            test,
+            auth,
+            upload,
+            token,
+            webhooks,
+            emails,
+            cache,
+            releases,
+            digest,
+            review,
+        }
     }
 
     pub async fn request(

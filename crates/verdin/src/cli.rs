@@ -452,6 +452,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         tracing::warn!("[email].provider is `log`: emails are written to the log, not sent");
     }
     let releases = verdin_api::releases::Releases::new(db.clone());
+    let review = verdin_api::review::Review::new(db.clone());
     let origin = project
         .config
         .server
@@ -478,6 +479,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         cache,
         releases,
         digest,
+        review,
         plugins,
         audit,
     };

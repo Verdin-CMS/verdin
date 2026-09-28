@@ -61,11 +61,13 @@ impl Default for AuditConfig {
 pub struct PluginsConfig {
     /// Directory of plugins (one sub-directory each), relative to the configuration file.
     pub path: PathBuf,
+    /// Run the plugins' scheduled jobs on this instance (one instance when there are several).
+    pub run_jobs: bool,
 }
 
 impl Default for PluginsConfig {
     fn default() -> Self {
-        Self { path: PathBuf::from("plugins") }
+        Self { path: PathBuf::from("plugins"), run_jobs: true }
     }
 }
 
@@ -108,6 +110,9 @@ pub struct ServerConfig {
     #[serde(deserialize_with = "deserialize_byte_size")]
     pub body_limit: usize,
     pub request_timeout_secs: u64,
+    /// How often to pick up settings changed by other instances (features, plugin
+    /// switches, locales, review workflows); 0 turns it off (a single instance).
+    pub sync_interval_secs: u64,
 }
 
 impl ServerConfig {
@@ -124,6 +129,7 @@ impl Default for ServerConfig {
             public_url: None,
             body_limit: 1024 * 1024,
             request_timeout_secs: 30,
+            sync_interval_secs: 10,
         }
     }
 }

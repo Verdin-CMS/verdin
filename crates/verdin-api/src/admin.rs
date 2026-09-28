@@ -48,6 +48,8 @@ mod plugins_admin;
 mod preview_admin;
 #[path = "releases_admin.rs"]
 mod releases_admin;
+#[path = "review_admin.rs"]
+mod review_admin;
 #[path = "sso_admin.rs"]
 mod sso_admin;
 #[path = "upload_admin.rs"]
@@ -117,6 +119,8 @@ pub struct AdminConfig {
     pub releases: Option<crate::releases::Releases>,
     /// The daily digest of unseen changes, which reads with this router's Document Service.
     pub digest: Option<crate::digest::Digest>,
+    /// Present when the `review` feature is on: workflows and entry stages.
+    pub review: Option<crate::review::Review>,
     /// Webhooks, history…: see [`crate::document_service`].
     pub listeners: crate::Listeners,
     /// The content locales, shared with the other Document Services.
@@ -151,6 +155,7 @@ impl Default for AdminConfig {
             history: None,
             releases: None,
             digest: None,
+            review: None,
             listeners: Vec::new(),
             locales: Default::default(),
             mailer: None,
@@ -191,6 +196,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
             &config.listeners,
             &config.locales,
             config.plugins.as_ref(),
+            config.review.as_ref(),
         ),
         auth,
         config: Arc::new(config),
@@ -243,7 +249,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(audit_admin::routes())
         .merge(releases_admin::routes())
         .merge(preview_admin::routes())
-        .merge(sso_admin::routes());
+        .merge(sso_admin::routes())
+        .merge(review_admin::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
     let audit = state

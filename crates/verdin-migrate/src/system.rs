@@ -32,6 +32,9 @@ pub const PLUGIN_KV: &str = "vd_plugin_kv";
 pub const AUDIT_LOGS: &str = "vd_audit_logs";
 pub const RELEASES: &str = "vd_releases";
 pub const RELEASE_ACTIONS: &str = "vd_release_actions";
+pub const WORKFLOWS: &str = "vd_workflows";
+pub const WORKFLOW_STAGES: &str = "vd_workflow_stages";
+pub const DOCUMENT_STAGES: &str = "vd_document_stages";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -569,6 +572,58 @@ pub fn system_tables() -> Vec<Table> {
                 index(RELEASE_ACTIONS, "document", &["content_type", "document_id"]),
             ],
             foreign_keys: vec![references("release_id", RELEASES)],
+        },
+        // Review workflows: stages entries of `content_types` (JSON list of uids) move
+        // through; publishing may require `publish_stage_id`.
+        Table {
+            name: WORKFLOWS.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("name", 255).not_null(),
+                    Column::new("content_types", ColumnType::Json).not_null(),
+                    Column::new("publish_stage_id", ColumnType::BigInt),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+        },
+        // `roles`: codes of the roles that may move entries into the stage (empty: anyone
+        // who may update the entry).
+        Table {
+            name: WORKFLOW_STAGES.into(),
+            columns: vec![
+                id(),
+                Column::new("workflow_id", ColumnType::BigInt).not_null(),
+                varchar("name", 255).not_null(),
+                varchar("color", 16).not_null(),
+                Column::new("position", ColumnType::Integer).not_null(),
+                Column::new("roles", ColumnType::Json).not_null(),
+            ],
+            indexes: vec![index(WORKFLOW_STAGES, "workflow", &["workflow_id", "position"])],
+            foreign_keys: vec![references("workflow_id", WORKFLOWS)],
+        },
+        // The stage and assignee of each document (and locale).
+        Table {
+            name: DOCUMENT_STAGES.into(),
+            columns: vec![
+                id(),
+                varchar("content_type", 255).not_null(),
+                varchar("document_id", 26).not_null(),
+                varchar("locale", 35).not_null(),
+                Column::new("stage_id", ColumnType::BigInt).not_null(),
+                Column::new("assignee_id", ColumnType::BigInt),
+                Column::new("updated_at", ColumnType::DateTime).not_null(),
+                Column::new("updated_by", ColumnType::BigInt),
+            ],
+            indexes: vec![
+                unique(DOCUMENT_STAGES, "entry", &["content_type", "document_id", "locale"]),
+                index(DOCUMENT_STAGES, "stage", &["stage_id"]),
+                index(DOCUMENT_STAGES, "assignee", &["assignee_id"]),
+            ],
+            foreign_keys: vec![references("stage_id", WORKFLOW_STAGES)],
         },
     ]
 }
