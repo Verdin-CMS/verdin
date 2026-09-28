@@ -17,6 +17,7 @@ import { I18n } from './core/i18n/i18n';
 import { JsonLoader } from './core/i18n/loader';
 import { IcuTranspiler } from './core/i18n/transpiler';
 import { DEFAULT_LOCALE, LOCALES } from './core/i18n/locales';
+import { ownWritesInterceptor } from './core/realtime';
 import { Theme } from './core/theme';
 import { ICONS } from './icons';
 
@@ -24,7 +25,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes, withComponentInputBinding()),
-    provideHttpClient(withInterceptors([authInterceptor])),
+    provideHttpClient(withInterceptors([authInterceptor, ownWritesInterceptor])),
     provideIcons(ICONS),
     provideTransloco({
       config: {

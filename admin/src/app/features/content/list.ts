@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -9,7 +10,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Params, Router, RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -35,6 +36,7 @@ import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { EntryStage, ReviewWorkflows, Workflow, stageOf } from '../../core/review';
 import { Features } from '../../core/features';
+import { Realtime } from '../../core/realtime';
 import { Schema } from '../../core/schema';
 import { Document, PageMeta } from '../../core/types';
 import { UserPreferences, asObject } from '../../core/user-preferences';
@@ -43,6 +45,7 @@ import { StageBadge } from '../../shared/components/stage-badge';
 import { humanize } from './fields/fields';
 import { BULK_CONCURRENCY, BulkAction, failureReason, runLimited, summarize } from './list-bulk';
 import { ListFilterBuilder, operatorLabel } from './list-filter-builder';
+import { listChange } from './list-live';
 import {
   FilterCondition,
   FilterField,
@@ -154,6 +157,34 @@ interface LiveVersion {
             <p hlmAlertTitle>{{ error() }}</p>
           </div>
         }
+
+        <div class="contents" aria-live="polite">
+          @if (outdated()) {
+            <div hlmAlert>
+              <ng-icon hlmAlertIcon name="lucideRefreshCw" />
+              <p hlmAlertTitle>{{ t('presence.list.changed') }}</p>
+              <p hlmAlertDescription>
+                {{
+                  changedRows().size
+                    ? t('presence.list.changedRows', { count: changedRows().size })
+                    : t('presence.list.changedHint')
+                }}
+              </p>
+              <div class="col-start-2 mt-2">
+                <button
+                  hlmBtn
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  [disabled]="running()"
+                  (click)="refresh()"
+                >
+                  <ng-icon name="lucideRefreshCw" /> {{ t('presence.list.refresh') }}
+                </button>
+              </div>
+            </div>
+          }
+        </div>
 
         <div class="bg-card overflow-hidden rounded-xl border shadow-xs">
           <div class="flex flex-wrap items-center gap-3 border-b px-4 py-3">
@@ -407,6 +438,13 @@ interface LiveVersion {
                             [class.text-muted-foreground]="column.name !== main()"
                             [class.tabular-nums]="column.name === 'id'"
                           >
+                            @if (column.name === main() && changedRows().has(document.documentId)) {
+                              <span
+                                class="me-1.5 inline-block size-2 rounded-full bg-amber-500 align-middle"
+                                [title]="t('presence.list.rowChanged')"
+                              ></span>
+                              <span class="sr-only">{{ t('presence.list.rowChanged') }}</span>
+                            }
                             {{ cell(document, column) }}
                           </td>
                         }
@@ -638,6 +676,11 @@ export class ContentList {
   private readonly review = inject(ReviewWorkflows);
   private readonly route = inject(ActivatedRoute);
   private readonly duplicates = inject(EntryDuplicates);
+  private readonly realtime = inject(Realtime);
+  /** Listed entries other admins changed since the page loaded. */
+  protected readonly changedRows = signal<ReadonlySet<string>>(new Set());
+  /** The page may be outdated (other admins' changes); cleared when it reloads. */
+  protected readonly outdated = signal(false);
 
   /** The type's review workflow (feature on and a workflow set), for the Stage column. */
   protected readonly workflow = signal<Workflow | null>(null);
@@ -833,6 +876,26 @@ export class ContentList {
       this.uid();
       clearTimeout(this.searchTimer);
     });
+    this.followChanges();
+  }
+
+  /** Marks rows (and the page) that other admins change while it is shown. */
+  private followChanges(): void {
+    const destroyRef = inject(DestroyRef);
+    destroyRef.onDestroy(this.realtime.retain());
+    this.realtime.messages.pipe(takeUntilDestroyed(destroyRef)).subscribe((message) => {
+      if (this.running() || this.loading() || this.realtime.isOwn(message)) return;
+      const listed = new Set(this.documents().map((document) => document.documentId));
+      const change = listChange(message, this.uid(), this.locale(), listed);
+      if (!change) return;
+      if (change === 'row' && message.documentId)
+        this.changedRows.update((rows) => new Set([...rows, message.documentId!]));
+      this.outdated.set(true);
+    });
+  }
+
+  protected refresh(): void {
+    this.reloads.update((count) => count + 1);
   }
 
   private async load(request: {
@@ -873,6 +936,8 @@ export class ContentList {
       if (current !== this.requests) return;
       this.documents.set(response.data);
       this.meta.set(meta);
+      this.changedRows.set(new Set());
+      this.outdated.set(false);
       void this.loadStages(current, request.uid, request.locale, response.data);
     } catch (error) {
       if (current === this.requests) this.error.set(ApiFailure.from(error).message);

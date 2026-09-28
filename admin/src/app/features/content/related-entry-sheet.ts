@@ -39,6 +39,7 @@ import {
   toPayload,
   withoutPasswords,
 } from './fields/model';
+import { EntryCollab } from './collab/entry-collab';
 import { RelatedEditor } from './fields/related-editor';
 import { applyRules } from './fields/rules';
 
@@ -204,8 +205,12 @@ export class RelatedEntryForm implements OnInit {
     HlmSheetImports,
     HlmSpinnerImports,
   ],
-  // No sheet in a sheet: pickers inside this one have no "Edit" button.
-  providers: [{ provide: RelatedEditor, useValue: null }],
+  // No sheet in a sheet: pickers inside this one have no "Edit" button. The editor's
+  // comments are about its own entry: fields here have no comment button.
+  providers: [
+    { provide: RelatedEditor, useValue: null },
+    { provide: EntryCollab, useValue: null },
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <hlm-sheet

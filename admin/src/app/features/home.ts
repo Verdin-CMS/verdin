@@ -12,6 +12,7 @@ import { PluginExtensions } from '../core/plugin-extensions';
 import { Schema } from '../core/schema';
 import { PageHeader } from '../shared/components/page-header';
 import { AssignedReview } from './dashboard/assigned-review';
+import { TasksWidget } from './dashboard/tasks-widget';
 import { WIDGET_KINDS, WidgetDialog } from './dashboard/widget-dialog';
 import {
   ChartWidget,
@@ -51,6 +52,7 @@ const SPAN: Record<number, string> = {
     PollWidget,
     ChartWidget,
     PluginWidgetHost,
+    TasksWidget,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -180,6 +182,9 @@ const SPAN: Record<number, string> = {
                 }
                 @case ('chart') {
                   <vd-chart-widget [config]="widget.config" />
+                }
+                @case ('tasks') {
+                  <vd-tasks-widget [config]="widget.config" />
                 }
                 @case ('plugin') {
                   <vd-plugin-widget [config]="widget.config" />

@@ -32,6 +32,7 @@ import {
 import { BlocksControl } from './blocks-control';
 import { MarkdownControl } from './markdown-control';
 import { MediaControl } from './media-control';
+import { FieldCommentsButton } from '../collab/field-comments-button';
 import { PluginFieldControl } from './plugin-field';
 import { isMorph } from '../../../core/morph';
 import { FormModel, MorphEntry, References, isToMany, keyed, newComponentItem } from './model';
@@ -81,6 +82,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
     BlocksControl,
     MarkdownControl,
     PluginFieldControl,
+    FieldCommentsButton,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -135,6 +137,9 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                   i18n.formatNumber(count)
                 }}</span>
               }
+              <span class="-my-1 flex items-center" [class.ms-auto]="!listCount(name, attribute)">
+                <vd-field-comments-button [path]="pathOf(name)" [label]="label(name)" />
+              </span>
             </div>
             <fieldset class="flex min-w-0 flex-col gap-3 p-4" [disabled]="locked">
               @if (description(name); as text) {
@@ -192,6 +197,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                         [context]="context()"
                         [refs]="refs()"
                         [prefix]="id + '-' + index"
+                        [path]="pathOf(name) + '.' + index"
                       />
                     </div>
                   </div>
@@ -233,6 +239,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                   [context]="context()"
                   [refs]="refs()"
                   [prefix]="id"
+                  [path]="pathOf(name)"
                 />
                 <div>
                   <button
@@ -276,6 +283,9 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                   i18n.formatNumber(count)
                 }}</span>
               }
+              <span class="-my-1 flex items-center" [class.ms-auto]="!listCount(name, attribute)">
+                <vd-field-comments-button [path]="pathOf(name)" [label]="label(name)" />
+              </span>
             </div>
             <fieldset class="flex min-w-0 flex-col gap-3 p-4" [disabled]="locked">
               @if (description(name); as text) {
@@ -332,6 +342,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                       [context]="context()"
                       [refs]="refs()"
                       [prefix]="id + '-' + index"
+                      [path]="pathOf(name) + '.' + index"
                     />
                   </div>
                 </div>
@@ -368,21 +379,24 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
         }
         @default {
           <div hlmField [attr.data-invalid]="hasErrors(name) || null">
-            <label hlmFieldLabel [for]="id">
-              {{ label(name) }}
-              @if (attribute.required) {
-                <span class="text-destructive"> *</span>
-              }
-              @if (attribute.private) {
-                <span hlmBadge variant="outline">{{ t('content.fields.private') }}</span>
-              }
-              @if (isShared(name)) {
-                <ng-container *ngTemplateOutlet="sharedMark" />
-              }
-              @if (locked) {
-                <ng-container *ngTemplateOutlet="lockMark" />
-              }
-            </label>
+            <div class="flex min-w-0 items-center gap-2">
+              <label hlmFieldLabel [for]="id">
+                {{ label(name) }}
+                @if (attribute.required) {
+                  <span class="text-destructive"> *</span>
+                }
+                @if (attribute.private) {
+                  <span hlmBadge variant="outline">{{ t('content.fields.private') }}</span>
+                }
+                @if (isShared(name)) {
+                  <ng-container *ngTemplateOutlet="sharedMark" />
+                }
+                @if (locked) {
+                  <ng-container *ngTemplateOutlet="lockMark" />
+                }
+              </label>
+              <vd-field-comments-button [path]="pathOf(name)" [label]="label(name)" />
+            </div>
             @if (pluginField(attribute); as custom) {
               <vd-plugin-field
                 [inputId]="id"
@@ -641,6 +655,8 @@ export class FieldsComponent {
   readonly tree = input.required<Tree>();
   readonly context = input.required<FieldsContext>();
   readonly prefix = input('field');
+  /** Where these fields sit in the document (`seo`, `blocks.0`; empty at the top level). */
+  readonly path = input('');
   /** Labels of related documents, per relation attribute. */
   readonly relationLabels = input<Record<string, Record<string, string>>>({});
   /** Files of media attributes in the loaded document (top-level only). */
@@ -713,6 +729,11 @@ export class FieldsComponent {
 
   protected isShared(name: string): boolean {
     return this.shared().includes(name);
+  }
+
+  /** The attribute path comments are anchored to (`seo.metaTitle`). */
+  protected pathOf(name: string): string {
+    return this.path() ? `${this.path()}.${name}` : name;
   }
 
   protected idFor(name: string): string {

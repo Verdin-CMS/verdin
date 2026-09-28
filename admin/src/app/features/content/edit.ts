@@ -1,15 +1,18 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   Injector,
   OnInit,
   computed,
   effect,
   inject,
   input,
+  output,
   signal,
   untracked,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FieldTree, FormRoot, form, submit } from '@angular/forms/signals';
 import { Router, RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
@@ -41,12 +44,18 @@ import { Engagement } from '../../core/engagement';
 import { Unseen } from '../../core/unseen';
 import { previewTemplate } from '../../core/feature-settings';
 import { EntryReview as EntryReviewState, pendingPublishStage } from '../../core/review';
+import { fieldLabel } from '../../core/comments';
 import { Features } from '../../core/features';
+import { EntryPresence } from '../../core/presence';
+import { Realtime } from '../../core/realtime';
 import { I18n } from '../../core/i18n/i18n';
 import { Schema } from '../../core/schema';
 import { ContentType, Document, MediaFile } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 import { VoteControl } from '../../shared/components/vote-control';
+import { CollabSheet } from './collab/collab-sheet';
+import { EntryCollab } from './collab/entry-collab';
+import { PresenceAvatars } from './collab/presence-avatars';
 import { EntryReleases } from './entry-releases';
 import { EntryReview } from './entry-review';
 import { FieldsComponent, humanize } from './fields/fields';
@@ -106,6 +115,8 @@ function withLocale(query: string, locale: string | null): string {
     PageHeader,
     PreviewPane,
     RelatedEntrySheet,
+    CollabSheet,
+    PresenceAvatars,
     HlmButtonImports,
     HlmBadgeImports,
     HlmCardImports,
@@ -117,8 +128,9 @@ function withLocale(query: string, locale: string | null): string {
     HlmNativeSelectImports,
     HlmSpinnerImports,
   ],
-  // Relation pickers open related entries in this editor's side sheet.
-  providers: [RelatedEditor],
+  // Relation pickers open related entries in this editor's side sheet; comments, tasks and
+  // presence follow the open entry.
+  providers: [RelatedEditor, EntryCollab, EntryPresence],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-6">
@@ -135,6 +147,7 @@ function withLocale(query: string, locale: string | null): string {
           </div>
         }
         <div actions>
+          <vd-presence-avatars [viewers]="presence.others()" />
           @if (locale(); as current) {
             @let currentState = stateOf(current);
             <button
@@ -225,6 +238,27 @@ function withLocale(query: string, locale: string | null): string {
               <ng-icon name="lucideHistory" /> {{ t('content.history.open') }}
             </a>
           }
+          @if (collabOn()) {
+            <button
+              hlmBtn
+              variant="ghost"
+              type="button"
+              [attr.aria-label]="
+                collab.openThreads()
+                  ? t('comments.openButtonCount', { count: collab.openThreads() })
+                  : t('comments.openButton')
+              "
+              (click)="collab.open()"
+            >
+              <ng-icon name="lucideMessageSquare" />
+              {{ t('comments.openButton') }}
+              @if (collab.openThreads()) {
+                <span hlmBadge variant="secondary" class="tabular-nums">{{
+                  i18n.formatNumber(collab.openThreads())
+                }}</span>
+              }
+            </button>
+          }
           @if (canDuplicate() || canConfigure()) {
             <button
               hlmBtn
@@ -309,6 +343,55 @@ function withLocale(query: string, locale: string | null): string {
           }
         </div>
       }
+
+      <div class="contents" aria-live="polite">
+        @if (presence.holder(); as holder) {
+          <div hlmAlert>
+            <ng-icon hlmAlertIcon name="lucideLock" />
+            <p hlmAlertTitle>{{ t('presence.lockTitle', { name: holder.name }) }}</p>
+            <p hlmAlertDescription>{{ t('presence.lockHint') }}</p>
+          </div>
+        }
+        @if (remoteChange(); as change) {
+          <div hlmAlert>
+            <ng-icon hlmAlertIcon name="lucideRefreshCw" />
+            <p hlmAlertTitle>
+              {{
+                change === 'entry.delete'
+                  ? t('presence.remote.deleted')
+                  : change === 'entry.publish'
+                    ? t('presence.remote.published')
+                    : change === 'entry.unpublish'
+                      ? t('presence.remote.unpublished')
+                      : t('presence.remote.updated')
+              }}
+            </p>
+            <p hlmAlertDescription>
+              {{
+                change === 'entry.delete'
+                  ? t('presence.remote.deletedHint')
+                  : t('presence.remote.hint')
+              }}
+            </p>
+            <div class="col-start-2 mt-2 flex flex-wrap gap-2">
+              @if (change !== 'entry.delete') {
+                <button hlmBtn variant="outline" size="sm" type="button" (click)="reload.emit()">
+                  <ng-icon name="lucideRefreshCw" /> {{ t('presence.remote.reload') }}
+                </button>
+              }
+              <button
+                hlmBtn
+                variant="ghost"
+                size="sm"
+                type="button"
+                (click)="remoteChange.set(null)"
+              >
+                {{ t('presence.remote.dismiss') }}
+              </button>
+            </div>
+          </div>
+        }
+      </div>
 
       @if (problem()) {
         <div hlmAlert variant="destructive">
@@ -551,6 +634,9 @@ function withLocale(query: string, locale: string | null): string {
     </div>
 
     <vd-related-entry-sheet />
+    @if (collabOn()) {
+      <vd-collab-sheet [heading]="heading()" />
+    }
 
     <hlm-dialog [state]="filling() ? 'open' : 'closed'" (closed)="filling.set(false)">
       <hlm-dialog-content
@@ -600,6 +686,7 @@ export class DocumentForm implements OnInit {
   protected readonly auth = inject(Auth);
   private readonly schema = inject(Schema);
   private readonly injector = inject(Injector);
+  private readonly destroyRef = inject(DestroyRef);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
@@ -617,6 +704,18 @@ export class DocumentForm implements OnInit {
   readonly sharedSource = input<Document | null>(null);
   /** The type's edit view (`null`: the default layout). */
   readonly view = input<EditView | null>(null);
+  /** Asks the page to load the entry again (after another admin changed it). */
+  readonly reload = output<void>();
+
+  protected readonly collab = inject(EntryCollab);
+  protected readonly presence = inject(EntryPresence);
+  private readonly realtime = inject(Realtime);
+  /** Another admin's change to the open entry (the event's name), until reloaded. */
+  protected readonly remoteChange = signal<string | null>(null);
+  /** Comments and tasks (optional feature), once the entry exists in this locale. */
+  protected readonly collabOn = computed(
+    () => this.collab.on() && !!this.documentId() && !this.missing(),
+  );
 
   protected readonly locales = inject(ContentLocales);
   protected readonly localeStateLabels = LOCALE_STATE_LABELS;
@@ -782,6 +881,52 @@ export class DocumentForm implements OnInit {
     // A missing locale shows the shared relations and media of the other version.
     this.absorb(missing ? this.sharedSource() : document);
     this.showMorphs(document);
+    this.followCollaboration();
+  }
+
+  /**
+   * Presence (heartbeats, `editing` once the form has unsaved changes), comments and
+   * tasks of the open entry, and other admins' changes to it.
+   */
+  private followCollaboration(): void {
+    const key = computed(() => {
+      const documentId = this.documentId();
+      if (!documentId || this.missing()) return null;
+      return { uid: this.type().uid, documentId, locale: this.locale() };
+    });
+    effect(
+      () => {
+        const entry = key();
+        const comments = this.collab.on();
+        untracked(() => {
+          this.presence.track(entry);
+          this.collab.bind(comments ? entry : null);
+        });
+      },
+      { injector: this.injector },
+    );
+    effect(() => this.presence.setEditing(this.documentForm().dirty()), {
+      injector: this.injector,
+    });
+    effect(() => this.collab.setViewers(this.presence.viewers()), { injector: this.injector });
+    this.collab.labeler.set((path) => this.fieldLabel(path));
+    const remote = ['entry.update', 'entry.publish', 'entry.unpublish', 'entry.discard-draft'];
+    this.realtime.messages.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((message) => {
+      const entry = key();
+      if (!entry || message.uid !== entry.uid || message.documentId !== entry.documentId) return;
+      if (this.realtime.isOwn(message)) return;
+      // Deleting removes every locale; the other changes concern this locale only.
+      if (message.event === 'entry.delete') this.remoteChange.set(message.event);
+      else if (remote.includes(message.event) && (message.locale ?? '') === (entry.locale ?? ''))
+        this.remoteChange.set(message.event);
+    });
+  }
+
+  /** A field path as it reads in the comments panel (`SEO › Meta title`). */
+  private fieldLabel(path: string): string {
+    return fieldLabel(path, (name, depth) =>
+      depth === 0 ? this.view()?.fields[name]?.label || humanize(name) : humanize(name),
+    );
   }
 
   /** The polymorphic links of the loaded version (populated by `populate=*`). */
@@ -955,6 +1100,10 @@ export class DocumentForm implements OnInit {
         }
         // Passwords are never read back: the field empties again ("keep the current one").
         this.model.set(withoutPasswords(type.attributes, this.model()));
+        // Saved: no unsaved changes any more (presence stops saying "editing"), and this
+        // version is the latest.
+        this.documentForm().reset();
+        this.remoteChange.set(null);
         toast.success(
           this.t(publish ? 'content.edit.toast.published' : 'content.edit.toast.saved'),
         );
@@ -1179,6 +1328,7 @@ export class DocumentForm implements OnInit {
           [existingId]="existingId()"
           [sharedSource]="sharedSource()"
           [view]="view()"
+          (reload)="reload()"
         />
       }
     }
@@ -1219,6 +1369,14 @@ export class ContentEdit {
       untracked(() => void this.load(key));
     });
   }
+
+  /** Loads the entry again, with a fresh form (another admin changed it). */
+  protected reload(): void {
+    const key = `${this.uid()}|${this.documentId() ?? ''}|${this.locale() ?? ''}`;
+    void this.load(`${key}|${++this.reloads}`);
+  }
+
+  private reloads = 0;
 
   /** Identifies the latest load; an older one stops once it notices. */
   private requests = 0;

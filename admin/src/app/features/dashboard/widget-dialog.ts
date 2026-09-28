@@ -35,6 +35,7 @@ import {
   newWidgetId,
 } from '../../core/dashboard';
 import { Engagement, Poll } from '../../core/engagement';
+import { Features } from '../../core/features';
 import { PluginExtensions, PluginWidget } from '../../core/plugin-extensions';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
@@ -73,6 +74,12 @@ export const WIDGET_KINDS: Kind[] = [
     icon: 'lucideChartLine',
     label: 'dashboard.kind.chart',
     hint: 'dashboard.kind.chartHint',
+  },
+  {
+    type: 'tasks',
+    icon: 'lucideListTodo',
+    label: 'dashboard.kind.tasks',
+    hint: 'dashboard.kind.tasksHint',
   },
   {
     type: 'poll',
@@ -176,7 +183,7 @@ function operatorsFor(attribute: Attribute | undefined): ConditionOp[] {
 
         @if (!type()) {
           <div class="grid gap-3 sm:grid-cols-2">
-            @for (kind of pickable; track kind.type) {
+            @for (kind of pickable(); track kind.type) {
               <button
                 type="button"
                 class="hover:border-primary/50 hover:bg-accent/50 flex items-start gap-3 rounded-xl border p-4 text-start transition-colors"
@@ -680,10 +687,17 @@ function operatorsFor(attribute: Attribute | undefined): ConditionOp[] {
 export class WidgetDialog {
   protected readonly schema = inject(Schema);
   private readonly engagement = inject(Engagement);
+  private readonly features = inject(Features);
   protected readonly t = inject(I18n).t;
   protected readonly String = String;
   protected readonly extensions = inject(PluginExtensions);
-  protected readonly pickable = WIDGET_KINDS.filter((kind) => kind.type !== 'plugin');
+  /** Kinds offered (plugin widgets are listed one by one; tasks need the `comments` feature). */
+  protected readonly pickable = computed(() =>
+    WIDGET_KINDS.filter(
+      (kind) =>
+        kind.type !== 'plugin' && (kind.type !== 'tasks' || this.features.enabled('comments')),
+    ),
+  );
   protected readonly chartDays = CHART_DAYS;
   protected readonly chartSeries = CHART_SERIES;
   protected readonly widths = WIDTHS;

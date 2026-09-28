@@ -3,9 +3,12 @@ import { Injectable, inject, signal } from '@angular/core';
 import { ContentType } from './types';
 import { UserPreferences } from './user-preferences';
 
-/** Widget kinds; `plugin` widgets are drawn by a plugin's element (`config.plugin`, `config.widget`). */
+/**
+ * Widget kinds; `tasks` lists the viewer's open tasks (the `comments` feature); `plugin`
+ * widgets are drawn by a plugin's element (`config.plugin`, `config.widget`).
+ */
 export type WidgetType =
-  'count' | 'recent' | 'list' | 'links' | 'system' | 'note' | 'poll' | 'chart' | 'plugin';
+  'count' | 'recent' | 'list' | 'links' | 'system' | 'note' | 'poll' | 'chart' | 'tasks' | 'plugin';
 
 /** Columns a widget spans on wide screens (the grid has 4). */
 export type WidgetWidth = 1 | 2 | 3 | 4;
@@ -82,6 +85,7 @@ export const WIDGET_WIDTHS: Record<WidgetType, WidgetWidth> = {
   note: 1,
   poll: 1,
   chart: 2,
+  tasks: 2,
   plugin: 2,
 };
 
@@ -163,6 +167,7 @@ const TYPES: WidgetType[] = [
   'note',
   'poll',
   'chart',
+  'tasks',
   'plugin',
 ];
 
