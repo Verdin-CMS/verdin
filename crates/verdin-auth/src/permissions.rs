@@ -25,6 +25,10 @@ pub mod actions {
     pub const WORKFLOWS_MANAGE: &str = "workflows.manage";
     /// The entry editor's layout per content type.
     pub const VIEWS_MANAGE: &str = "views.manage";
+    /// Deploy targets and CDN purges (Settings → Deployments).
+    pub const DEPLOY_MANAGE: &str = "deploy.manage";
+    /// The "Deploy" button.
+    pub const DEPLOY_TRIGGER: &str = "deploy.trigger";
     pub const MEDIA_READ: &str = "media.read";
     pub const MEDIA_CREATE: &str = "media.create";
     pub const MEDIA_UPDATE: &str = "media.update";
@@ -46,6 +50,8 @@ pub mod actions {
         RELEASES_MANAGE,
         WORKFLOWS_MANAGE,
         VIEWS_MANAGE,
+        DEPLOY_MANAGE,
+        DEPLOY_TRIGGER,
     ];
     /// Media library actions: no subject; `is-creator` limits them to the user's files.
     pub const MEDIA: &[&str] = &[MEDIA_READ, MEDIA_CREATE, MEDIA_UPDATE, MEDIA_DELETE];
@@ -244,16 +250,21 @@ pub fn builtin_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<Per
         ),
     ];
     for (code, _, _, permissions) in &mut roles {
-        permissions.extend(
-            builtin_additions(2).into_iter().filter(|(role, _)| role == code).flat_map(|(_, p)| p),
-        );
+        for version in 2..=BUILTIN_PERMISSIONS_VERSION {
+            permissions.extend(
+                builtin_additions(version)
+                    .into_iter()
+                    .filter(|(role, _)| role == code)
+                    .flat_map(|(_, p)| p),
+            );
+        }
     }
     roles
 }
 
 /// Version of the built-in roles' permissions. Existing installations receive the
 /// permissions added since their version once (see `AuthService::bootstrap`).
-pub const BUILTIN_PERMISSIONS_VERSION: i64 = 2;
+pub const BUILTIN_PERMISSIONS_VERSION: i64 = 3;
 
 /// Permissions introduced by a version, per built-in role.
 pub fn builtin_additions(version: i64) -> Vec<(&'static str, Vec<Permission>)> {
@@ -278,6 +289,8 @@ pub fn builtin_additions(version: i64) -> Vec<(&'static str, Vec<Permission>)> {
                 ],
             ),
         ],
+        // 0.9: editors may deploy the site.
+        3 => vec![(EDITOR, vec![media(actions::DEPLOY_TRIGGER, &[])])],
         _ => Vec::new(),
     }
 }

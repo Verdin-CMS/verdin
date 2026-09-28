@@ -231,6 +231,21 @@ See [Plugins](/guides/plugins/).
 | `enabled` | `false` | Serve Prometheus metrics at `/_metrics`: HTTP requests by area (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), method and status class with latency histograms, pending webhook deliveries, open realtime streams and uptime. |
 | `token` | unset | Scrapes need `Authorization: Bearer <token>`. `VERDIN_METRICS_TOKEN` wins over it. Without a token, anyone who reaches the port can read the metrics. |
 
+## `[cdn]`
+
+Purges CDN caches when content changes publicly. Content API responses are tagged
+`vd` and `vd-<singularName>` (`Cache-Tag` and `Surrogate-Key` headers).
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `provider` | `"none"` | `cloudflare`, `fastly` or `webhook`. |
+| `zone_id` | unset | Cloudflare zone (purge by tag). |
+| `service_id` | unset | Fastly service (purge by surrogate key). |
+| `url` | unset | `webhook`: receives `POST { "tags": [...] }`. |
+| `debounce_ms` | `1000` | Changes gathered before purging. |
+
+The API token is read from `VERDIN_CDN_TOKEN` (sent as a bearer token to webhooks).
+
 ## `[search]`
 
 | Key | Default | Description |
@@ -257,6 +272,7 @@ Besides the `VERDIN_<SECTION>__<KEY>` overrides, Verdin reads these variables:
 | `VERDIN_EMAIL_API_KEY` | API key of the Resend and Postmark providers. |
 | `VERDIN_SSO_<ID>_SECRET` | Client secret of an SSO provider (see [Single sign-on](/guides/sso/)). |
 | `VERDIN_OAUTH_<PROVIDER>_SECRET` | Client secret of an end-user OAuth provider (see [End users](/guides/end-users/)). |
+| `VERDIN_CDN_TOKEN` | API token of the `[cdn]` provider. |
 | `VERDIN_IMAGE_SECRET` | Signs image transformation URLs (see [`[upload.transforms]`](#uploadtransforms)). |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Credentials of the S3 upload provider. |
 | `RUST_LOG` | Log filter; takes precedence over `[log].level`. |

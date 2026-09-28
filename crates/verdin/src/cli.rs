@@ -541,6 +541,19 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     }
     let releases = verdin_api::releases::Releases::new(db.clone());
     let comments = verdin_api::comments::Comments::new(db.clone());
+    let cdn = verdin_api::cdn::Cdn::new(
+        project.config.cdn.clone(),
+        std::env::var("VERDIN_CDN_TOKEN").ok(),
+        project.config.webhooks.allow_private_networks.unwrap_or(mode == Mode::Development),
+    )
+    .map_err(|message| anyhow::anyhow!("[cdn]: {message}"))?;
+    if let Some(cdn) = &cdn {
+        cdn.spawn();
+    }
+    let deploys = verdin_api::deploy::Deploys::new(
+        db.clone(),
+        project.config.webhooks.allow_private_networks.unwrap_or(mode == Mode::Development),
+    );
     let review = verdin_api::review::Review::new(db.clone());
     let origin = project
         .config
@@ -568,6 +581,8 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         cache,
         releases,
         comments,
+        deploys,
+        cdn,
         digest,
         review,
         metrics,

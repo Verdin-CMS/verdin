@@ -251,6 +251,7 @@ impl App {
             review: Some(review.clone()),
             realtime: Some(realtime.clone()),
             comments: Some(comments.clone()),
+            deploys: Some(verdin_api::deploy::Deploys::new(test.db.clone(), true)),
             ..AdminConfig::default()
         };
         let router = Router::new()

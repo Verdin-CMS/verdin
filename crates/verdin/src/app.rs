@@ -64,6 +64,9 @@ pub struct AppContext {
     /// Releases; the scheduler runs while serving.
     pub releases: verdin_api::releases::Releases,
     pub comments: verdin_api::comments::Comments,
+    pub deploys: verdin_api::deploy::Deploys,
+    /// `[cdn]`: purges on public changes.
+    pub cdn: Option<verdin_api::cdn::Cdn>,
     /// The daily digest of unseen changes (`[digest]`), sent while serving.
     pub digest: verdin_api::digest::Digest,
     /// Review workflows; the `review` feature switches stages and the publish gate.
@@ -178,6 +181,9 @@ pub fn build_app(
         context.realtime.listener(),
         context.comments.listener(),
     ];
+    if let Some(cdn) = &context.cdn {
+        listeners.push(cdn.listener());
+    }
     if let Some(search) = &context.search {
         listeners.push(search.listener());
         // Rebuilt in the background when the schema changed.
@@ -274,6 +280,8 @@ pub fn build_app(
             comments: states
                 .enabled(verdin_api::features::COMMENTS)
                 .then(|| context.comments.clone()),
+            deploys: Some(context.deploys.clone()),
+            cdn: context.cdn.clone(),
             review: states.enabled(REVIEW).then(|| context.review.clone()),
             realtime: Some(context.realtime.clone()),
             digest: Some(context.digest.clone()),
@@ -1112,6 +1120,8 @@ mod tests {
                 std::time::Duration::from_secs(86_400),
             ),
             comments: verdin_api::comments::Comments::new(db_for_releases.clone()),
+            deploys: verdin_api::deploy::Deploys::new(db_for_releases.clone(), true),
+            cdn: None,
             releases: verdin_api::releases::Releases::new(db_for_releases),
             review: verdin_api::review::Review::new(db_for_review),
             realtime: verdin_api::realtime::Realtime::new(),

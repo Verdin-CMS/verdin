@@ -4,7 +4,9 @@
 mod admin;
 pub mod audit;
 pub mod cache;
+pub mod cdn;
 pub mod comments;
+pub mod deploy;
 pub mod digest;
 mod docs;
 pub mod end_users;
@@ -196,6 +198,15 @@ pub fn router(
             (name.clone(), Route { uid: content_type.uid.clone(), single })
         })
         .collect();
+    let tag_names: HashMap<String, String> = registry
+        .types()
+        .map(|model| {
+            let content_type = &model.content_type;
+            let single = content_type.kind == ContentTypeKind::SingleType;
+            let name = if single { &content_type.singular_name } else { &content_type.plural_name };
+            (name.clone(), content_type.singular_name.clone())
+        })
+        .collect();
     let openapi = openapi::document(&registry, prefix);
     let auth_for_plugins = auth.clone();
     let state = ApiState {
@@ -240,7 +251,8 @@ pub fn router(
                 .put(handlers::document_put)
                 .delete(handlers::document_delete),
         )
-        .route("/{name}/{document_id}/actions/{action}", post(handlers::document_action));
+        .route("/{name}/{document_id}/actions/{action}", post(handlers::document_action))
+        .layer(axum::middleware::from_fn_with_state(Arc::new(tag_names), cdn::tag_responses));
     let router =
         config.http.apply(regular).merge(uploads).fallback(handlers::not_found).with_state(state);
     let router = match users {

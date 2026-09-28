@@ -699,7 +699,7 @@ pub fn signature(secret: &str, timestamp: i64, body: &[u8]) -> String {
     format!("t={timestamp},v1={hex}")
 }
 
-fn describe(error: &reqwest::Error) -> String {
+pub(crate) fn describe(error: &reqwest::Error) -> String {
     use std::error::Error as _;
     let mut message = if error.is_timeout() {
         "timed out".to_owned()

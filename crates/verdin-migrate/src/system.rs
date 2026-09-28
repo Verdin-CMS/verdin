@@ -41,6 +41,8 @@ pub const ADMIN_TWO_FACTOR: &str = "vd_admin_two_factor";
 pub const ADMIN_PASSKEYS: &str = "vd_admin_passkeys";
 pub const COMMENTS: &str = "vd_comments";
 pub const TASKS: &str = "vd_tasks";
+pub const DEPLOY_TARGETS: &str = "vd_deploy_targets";
+pub const DEPLOYMENTS: &str = "vd_deployments";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -693,6 +695,41 @@ pub fn system_tables() -> Vec<Table> {
                 index(TASKS, "assignee", &["assignee_id", "status"]),
             ],
             foreign_keys: Vec::new(),
+        },
+        // Build hooks the "Deploy" button calls; `secret` signs status callbacks.
+        Table {
+            name: DEPLOY_TARGETS.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("name", 255).not_null(),
+                    Column::new("url", ColumnType::Text).not_null(),
+                    Column::new("secret", ColumnType::Char { length: 64 }).not_null(),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+        },
+        // Deploys requested from the admin, with the state providers report back.
+        Table {
+            name: DEPLOYMENTS.into(),
+            columns: [
+                vec![
+                    id(),
+                    Column::new("target_id", ColumnType::BigInt).not_null(),
+                    varchar("status", 16).not_null(),
+                    Column::new("http_status", ColumnType::Integer),
+                    Column::new("message", ColumnType::Text),
+                    Column::new("url", ColumnType::Text),
+                    Column::new("triggered_by_id", ColumnType::BigInt),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![index(DEPLOYMENTS, "target", &["target_id", "id"])],
+            foreign_keys: vec![references("target_id", DEPLOY_TARGETS)],
         },
         // One-time links for admins (`kind`: invite or reset), stored as SHA-256.
         Table {

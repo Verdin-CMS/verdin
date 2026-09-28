@@ -38,6 +38,8 @@ mod account_admin;
 mod audit_admin;
 #[path = "comments_admin.rs"]
 mod comments_admin;
+#[path = "deploy_admin.rs"]
+mod deploy_admin;
 #[path = "end_users_admin.rs"]
 mod end_users_admin;
 #[path = "engagement.rs"]
@@ -135,6 +137,10 @@ pub struct AdminConfig {
     pub releases: Option<crate::releases::Releases>,
     /// Comments and tasks (the `comments` feature).
     pub comments: Option<crate::comments::Comments>,
+    /// Deploy targets and their history.
+    pub deploys: Option<crate::deploy::Deploys>,
+    /// CDN purges (`[cdn]`).
+    pub cdn: Option<crate::cdn::Cdn>,
     /// The daily digest of unseen changes, which reads with this router's Document Service.
     pub digest: Option<crate::digest::Digest>,
     /// Present when the `review` feature is on: workflows and entry stages.
@@ -175,6 +181,8 @@ impl Default for AdminConfig {
             history: None,
             releases: None,
             comments: None,
+            deploys: None,
+            cdn: None,
             digest: None,
             review: None,
             listeners: Vec::new(),
@@ -276,6 +284,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(two_factor_admin::routes())
         .merge(transfer_admin::routes())
         .merge(comments_admin::routes())
+        .merge(deploy_admin::routes())
         .merge(review_admin::routes())
         .merge(account_admin::routes())
         .merge(views_admin::routes())

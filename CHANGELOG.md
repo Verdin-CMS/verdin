@@ -36,6 +36,9 @@ All notable changes to Verdin are documented here. The format follows
   upserts by `documentId` and a dry run that validates every row without writing.
 - **Comments and tasks** on entries and fields (the `comments` feature): threads with
   @mentions and resolution, tasks with an assignee and due date, email notifications.
+- **Deploys and CDN purges**: build hook targets behind a "Deploy" button with a
+  provider status callback (`deploy.manage`, `deploy.trigger`), and `[cdn]` purges by
+  cache tag on Cloudflare, Fastly or a webhook when content changes publicly.
 
 ## [0.8.0] - 2026-09-28
 
