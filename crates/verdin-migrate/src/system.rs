@@ -35,6 +35,7 @@ pub const RELEASE_ACTIONS: &str = "vd_release_actions";
 pub const WORKFLOWS: &str = "vd_workflows";
 pub const WORKFLOW_STAGES: &str = "vd_workflow_stages";
 pub const DOCUMENT_STAGES: &str = "vd_document_stages";
+pub const ADMIN_TOKENS: &str = "vd_admin_tokens";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -572,6 +573,24 @@ pub fn system_tables() -> Vec<Table> {
                 index(RELEASE_ACTIONS, "document", &["content_type", "document_id"]),
             ],
             foreign_keys: vec![references("release_id", RELEASES)],
+        },
+        // One-time links for admins (`kind`: invite or reset), stored as SHA-256.
+        Table {
+            name: ADMIN_TOKENS.into(),
+            columns: vec![
+                id(),
+                Column::new("user_id", ColumnType::BigInt).not_null(),
+                varchar("kind", 16).not_null(),
+                Column::new("token_hash", ColumnType::Char { length: 64 }).not_null(),
+                Column::new("expires_at", ColumnType::DateTime).not_null(),
+                Column::new("used_at", ColumnType::DateTime),
+                Column::new("created_at", ColumnType::DateTime).not_null(),
+            ],
+            indexes: vec![
+                unique(ADMIN_TOKENS, "token", &["token_hash"]),
+                index(ADMIN_TOKENS, "user", &["user_id", "kind"]),
+            ],
+            foreign_keys: vec![references("user_id", ADMIN_USERS)],
         },
         // Review workflows: stages entries of `content_types` (JSON list of uids) move
         // through; publishing may require `publish_stage_id`.

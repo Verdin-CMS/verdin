@@ -15,6 +15,11 @@ All notable changes to Verdin are documented here. The format follows
   `hasPublishedVersion=true|false`, sorting by a to-one relation's field
   (`sort=author.name:asc`), filters on repeatable components
   (`filters[links][url][$contains]=…`) and on dynamic zones by `__component`.
+- **Admin accounts**: invite admins without setting a password (`POST /users` without
+  `password` returns `meta.inviteUrl` and emails it), accept the invitation, reset a
+  forgotten password by email, edit one's own profile (`/users/me`), list and sign out
+  one's sessions (`/users/me/sessions`), and regenerate API tokens
+  (`POST /api-tokens/{id}/regenerate`).
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.

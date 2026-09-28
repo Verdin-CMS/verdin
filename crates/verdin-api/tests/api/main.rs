@@ -3,6 +3,7 @@
 
 mod common;
 
+mod accounts;
 mod admin;
 mod audit;
 mod clone;

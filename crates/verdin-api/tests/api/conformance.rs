@@ -708,8 +708,8 @@ async fn filters_on_component_fields() {
     );
     assert_eq!(
         app.get("/api/articles?filters[links][url][$eq]=x").await.0,
-        StatusCode::BAD_REQUEST,
-        "repeatable"
+        StatusCode::OK,
+        "repeatable components are filterable since 0.8"
     );
     assert_eq!(
         app.get("/api/articles?filters[blocks][title][$eq]=x").await.0,

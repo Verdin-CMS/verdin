@@ -13,6 +13,8 @@ use verdin_migrate::system::{
     API_TOKENS, PUBLIC_PERMISSIONS, SESSIONS, SETTINGS,
 };
 
+#[path = "account.rs"]
+pub mod account;
 #[path = "preview.rs"]
 pub mod preview;
 #[path = "users.rs"]

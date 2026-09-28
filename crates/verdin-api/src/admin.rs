@@ -32,6 +32,8 @@ use crate::error::ApiError;
 use crate::handlers::{bearer, parse_data};
 use crate::limiter::RateLimiter;
 
+#[path = "account_admin.rs"]
+mod account_admin;
 #[path = "audit_admin.rs"]
 mod audit_admin;
 #[path = "end_users_admin.rs"]
@@ -251,7 +253,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(releases_admin::routes())
         .merge(preview_admin::routes())
         .merge(sso_admin::routes())
-        .merge(review_admin::routes());
+        .merge(review_admin::routes())
+        .merge(account_admin::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
     let audit = state
@@ -461,7 +464,8 @@ async fn put_preferences(
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct UserBody {
     email: String,
-    password: String,
+    /// Without one, the admin is invited: they choose it from a link.
+    password: Option<String>,
     firstname: Option<String>,
     lastname: Option<String>,
     roles: Vec<i64>,
@@ -514,17 +518,26 @@ async fn create_user(
 ) -> ApiResult {
     require(&state, &headers, actions::USERS_MANAGE).await?;
     let input: UserBody = body(&bytes)?;
+    let invited = input.password.is_none();
+    // Invited admins get a password nobody knows until they choose theirs.
+    let password =
+        input.password.unwrap_or_else(|| format!("{}Aa1!", verdin_auth::crypto::random_token()));
     let user = state
         .auth
         .create_user(NewUser {
             email: input.email,
-            password: input.password,
+            password,
             firstname: input.firstname,
             lastname: input.lastname,
             roles: input.roles,
             is_active: input.is_active,
         })
         .await?;
+    if invited {
+        let meta = account_admin::invite(&state, &user).await?;
+        let body = Json(json!({ "data": user, "meta": meta }));
+        return Ok((StatusCode::CREATED, body).into_response());
+    }
     Ok((StatusCode::CREATED, data(user)).into_response())
 }
 
