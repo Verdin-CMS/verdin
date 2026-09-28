@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { Component } from '../../../core/types';
+import { Component, ContentType } from '../../../core/types';
 import {
+  isEditable,
+  isToMany,
   mediaFilesOf,
+  morphEntriesOf,
   referencesOf,
   relationLabelsOf,
   toModel,
@@ -297,5 +300,116 @@ describe('relationLabelsOf', () => {
     expect(found.labels['tags']).toEqual({ t1: 't1' });
     expect(found.inverse['articles']).toEqual([{ id: 'a1', label: 'First' }]);
     expect(relationLabelsOf(attributes, null, () => null)).toEqual({ labels: {}, inverse: {} });
+  });
+});
+
+describe('polymorphic relations', () => {
+  const morphs = {
+    title: { type: 'string' as const },
+    related: { type: 'relation' as const, relation: 'morphToMany' as const },
+    main: { type: 'relation' as const, relation: 'morphToOne' as const },
+    comments: {
+      type: 'relation' as const,
+      relation: 'morphMany' as const,
+      target: 'api::comment.comment',
+      morphBy: 'related',
+    },
+  };
+  const types: ContentType[] = [
+    {
+      uid: 'api::article.article',
+      kind: 'collectionType',
+      singularName: 'article',
+      pluralName: 'articles',
+      displayName: 'Article',
+      draftAndPublish: true,
+      attributes: { title: { type: 'string' } },
+    },
+    {
+      uid: 'api::home.home',
+      kind: 'singleType',
+      singularName: 'home',
+      pluralName: 'homes',
+      displayName: 'Home',
+      draftAndPublish: false,
+      attributes: { heading: { type: 'string' } },
+    },
+  ];
+  const typeOf = (uid: string) => types.find((type) => type.uid === uid);
+  const titleFieldOf = (type: ContentType) => Object.keys(type.attributes)[0] ?? null;
+
+  it('are read-only: never sent back in the payload', () => {
+    expect(isEditable(morphs.related)).toBe(false);
+    expect(isEditable(morphs.comments)).toBe(false);
+    expect(isToMany(morphs.related)).toBe(true);
+    expect(isToMany(morphs.main)).toBe(false);
+    const document = {
+      title: 'Hi',
+      related: [{ __type: 'api::article.article', documentId: 'a1', title: 'A' }],
+      main: null,
+      comments: [{ __type: 'api::comment.comment', documentId: 'c1' }],
+    };
+    const model = toModel(morphs, document, components);
+    expect(toPayload(morphs, model, components)).toEqual({ title: 'Hi' });
+  });
+
+  it('are left out of picker labels and nested references', () => {
+    const document = { related: [{ __type: 'api::article.article', documentId: 'a1' }] };
+    expect(relationLabelsOf(morphs, document, () => 'title')).toEqual({ labels: {}, inverse: {} });
+    expect(referencesOf(morphs, document, components, () => 'title').labels).toEqual({});
+  });
+
+  it('describe linked entries with their type, label and editor link', () => {
+    const found = morphEntriesOf(
+      morphs,
+      {
+        related: [
+          { __type: 'api::article.article', documentId: 'a1', title: 'First' },
+          { __type: 'api::home.home', documentId: 'h1', heading: '' },
+          { __type: 'api::secret.secret', documentId: 's1', name: 'Hidden' },
+        ],
+        main: { __type: 'api::article.article', documentId: 'a2' },
+        comments: [{ documentId: 'c1' }],
+      },
+      typeOf,
+      titleFieldOf,
+    );
+    expect(found['related']).toEqual([
+      {
+        uid: 'api::article.article',
+        documentId: 'a1',
+        typeName: 'Article',
+        label: 'First',
+        link: ['/content', 'api::article.article', 'a1'],
+      },
+      {
+        uid: 'api::home.home',
+        documentId: 'h1',
+        typeName: 'Home',
+        label: 'h1',
+        link: ['/single', 'api::home.home'],
+      },
+      // A type the admin cannot read: named by uid, not linked.
+      {
+        uid: 'api::secret.secret',
+        documentId: 's1',
+        typeName: 'api::secret.secret',
+        label: 's1',
+        link: null,
+      },
+    ]);
+    expect(found['main'].map((entry) => entry.label)).toEqual(['a2']);
+    // Inverse sides: items of the owner type (`target`).
+    expect(found['comments']).toEqual([
+      {
+        uid: 'api::comment.comment',
+        documentId: 'c1',
+        typeName: 'api::comment.comment',
+        label: 'c1',
+        link: null,
+      },
+    ]);
+    expect(Object.keys(found)).not.toContain('title');
+    expect(morphEntriesOf(morphs, null, typeOf, titleFieldOf)).toEqual({});
   });
 });

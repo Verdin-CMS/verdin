@@ -24,7 +24,14 @@ export type AttributeType =
   | 'media';
 
 export type RelationKind =
-  'oneToOne' | 'oneToMany' | 'manyToOne' | 'manyToMany' | 'oneWay' | 'manyWay';
+  'oneToOne' | 'oneToMany' | 'manyToOne' | 'manyToMany' | 'oneWay' | 'manyWay' | MorphKind;
+
+/**
+ * Polymorphic relations: owners (`morphToOne`, `morphToMany`) have no `target`; inverse
+ * sides (`morphOne`, `morphMany`) name the owner type in `target` and its attribute in
+ * `morphBy`. Read-only in the admin (see `core/morph.ts`).
+ */
+export type MorphKind = 'morphToOne' | 'morphToMany' | 'morphOne' | 'morphMany';
 
 /** An attribute in the schema file format. */
 export interface Attribute {
@@ -47,6 +54,8 @@ export interface Attribute {
   target?: string;
   inversedBy?: string;
   mappedBy?: string;
+  /** Inverse polymorphic sides: the owner's attribute. */
+  morphBy?: string;
   component?: string;
   repeatable?: boolean;
   components?: string[];

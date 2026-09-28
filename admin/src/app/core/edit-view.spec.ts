@@ -118,6 +118,13 @@ describe('edit view layout', () => {
         age: { type: 'integer' },
       },
     } as unknown as ContentType;
+    // Polymorphic relations have no main field.
+    expect(
+      cleanSettings(
+        { related: { type: 'relation', relation: 'morphToMany' } },
+        { related: { mainField: 'title', label: 'Related' } },
+      ),
+    ).toEqual({ related: { label: 'Related' } });
     expect(mainFieldOptions(person)).toEqual(['name', 'age', 'id', 'documentId']);
     expect(
       viewPayload(

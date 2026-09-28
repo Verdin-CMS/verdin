@@ -20,7 +20,8 @@ import { MediaThumb } from '../media/media-thumb';
 import { Block } from './fields/blocks-convert';
 import { humanize } from './fields/fields';
 import { renderMarkdown } from './fields/markdown-control';
-import { documentLabel } from './fields/model';
+import { isMorph, morphLinks } from '../../core/morph';
+import { MorphEntry, documentLabel, morphEntry } from './fields/model';
 import { blocksToHtml } from './history-model';
 
 type Entry = { name: string; attribute: Attribute; value: unknown };
@@ -191,24 +192,42 @@ function asList(value: unknown): Item[] {
                         >{{ json(value) }}</pre>
                     }
                     @case ('relation') {
-                      <ul class="flex flex-wrap gap-1">
-                        @for (item of list(value); track $index) {
-                          <li>
-                            @if (item['documentId']) {
-                              <a
-                                hlmBadge
-                                variant="secondary"
-                                [routerLink]="['/content', attribute.target, item['documentId']]"
-                                >{{ relationLabel(attribute, item) }}</a
-                              >
-                            } @else {
-                              <span hlmBadge variant="secondary">{{
-                                relationLabel(attribute, item)
-                              }}</span>
-                            }
-                          </li>
-                        }
-                      </ul>
+                      @if (isMorph(attribute)) {
+                        <ul class="flex flex-wrap gap-1" data-morph-list>
+                          @for (item of morphItems(attribute, value); track $index) {
+                            <li>
+                              @if (item.link) {
+                                <a hlmBadge variant="secondary" [routerLink]="item.link"
+                                  >{{ item.typeName }} · {{ item.label }}</a
+                                >
+                              } @else {
+                                <span hlmBadge variant="secondary"
+                                  >{{ item.typeName }} · {{ item.label }}</span
+                                >
+                              }
+                            </li>
+                          }
+                        </ul>
+                      } @else {
+                        <ul class="flex flex-wrap gap-1">
+                          @for (item of list(value); track $index) {
+                            <li>
+                              @if (item['documentId']) {
+                                <a
+                                  hlmBadge
+                                  variant="secondary"
+                                  [routerLink]="['/content', attribute.target, item['documentId']]"
+                                  >{{ relationLabel(attribute, item) }}</a
+                                >
+                              } @else {
+                                <span hlmBadge variant="secondary">{{
+                                  relationLabel(attribute, item)
+                                }}</span>
+                              }
+                            </li>
+                          }
+                        </ul>
+                      }
                     }
                     @case ('media') {
                       <ul class="flex flex-wrap gap-2">
@@ -276,6 +295,19 @@ export class DocumentView {
 
   protected componentName(uid: unknown): string {
     return this.schema.component(String(uid ?? ''))?.displayName ?? String(uid ?? '');
+  }
+
+  protected readonly isMorph = isMorph;
+
+  /** A polymorphic value's linked entries (`{ __type, documentId, ... }` items). */
+  protected morphItems(attribute: Attribute, value: unknown): MorphEntry[] {
+    return morphLinks(value, attribute.target).map((link) =>
+      morphEntry(
+        link,
+        (uid) => this.schema.type(uid),
+        (type) => this.schema.titleField(type),
+      ),
+    );
   }
 
   protected relationLabel(attribute: Attribute, item: Item): string {

@@ -3,6 +3,7 @@
  * written in the API's bracket syntax (`filters[$and][0][title][$contains]=x`) both to the
  * admin list endpoint and to the page URL, so that reloading or going back keeps them.
  */
+import { isMorph } from '../../core/morph';
 import { Attribute, ContentType } from '../../core/types';
 
 export type FilterOperator =
@@ -127,7 +128,8 @@ export function filterableFields(
 ): FilterField[] {
   const fields: FilterField[] = [];
   for (const [name, attribute] of Object.entries(type.attributes)) {
-    if (attribute.private) continue;
+    // The API does not filter on polymorphic relations.
+    if (attribute.private || isMorph(attribute)) continue;
     if (attribute.type === 'relation') {
       const main = mainFieldOf(attribute.target ?? '');
       if (main && main !== 'documentId')

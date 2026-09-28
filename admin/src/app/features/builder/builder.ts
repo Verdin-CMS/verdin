@@ -31,6 +31,7 @@ import { SimpleCondition, conditionsOf, simpleCondition } from '../../core/logic
 import { MessageKey } from '../../core/i18n/keys';
 import { PluginExtensions, PluginField } from '../../core/plugin-extensions';
 import { customFieldId, parseCustomField } from '../../core/plugins';
+import { isMorph } from '../../core/morph';
 import { Schema } from '../../core/schema';
 import {
   Attribute,
@@ -633,6 +634,12 @@ interface AttributeDraft {
                                 {{ t('builder.fields.locked') }}
                               </span>
                             }
+                            @if (isMorph(entry.attribute)) {
+                              <span hlmBadge variant="outline" data-morph-badge>
+                                <ng-icon name="lucideWaypoints" />
+                                {{ t('builder.fields.polymorphic') }}
+                              </span>
+                            }
                             @if (entry.attribute.conditions) {
                               <span hlmBadge variant="outline">
                                 <ng-icon name="lucideSplit" />
@@ -652,6 +659,11 @@ interface AttributeDraft {
                           @if (entry.attribute.configurable === false) {
                             <span class="text-muted-foreground text-xs">{{
                               t('builder.fields.lockedHint')
+                            }}</span>
+                          }
+                          @if (isMorph(entry.attribute)) {
+                            <span class="text-muted-foreground text-xs">{{
+                              t('builder.fields.polymorphicHint')
                             }}</span>
                           }
                         </div>
@@ -678,7 +690,9 @@ interface AttributeDraft {
                           >
                             <ng-icon name="lucideArrowDown" />
                           </button>
-                          @if (entry.attribute.configurable !== false) {
+                          @if (
+                            entry.attribute.configurable !== false && !isMorph(entry.attribute)
+                          ) {
                             <button
                               hlmBtn
                               size="icon-xs"
@@ -1441,6 +1455,7 @@ export class Builder {
   protected readonly kebab = kebab;
   protected readonly camel = camel;
   protected readonly attributeLocalized = attributeLocalized;
+  protected readonly isMorph = isMorph;
 
   protected readonly sources = signal<Sources | null>(null);
   protected readonly draft = signal<SchemaFile | null>(null);
@@ -1622,10 +1637,12 @@ export class Builder {
   protected summary(attribute: Attribute): string {
     const parts: string[] = [];
     if (attribute.relation) {
-      const via = attribute.mappedBy
-        ? ` ${this.t('builder.summary.via', { field: attribute.mappedBy })}`
-        : '';
-      parts.push(`${attribute.relation} → ${attribute.target}${via}`);
+      const by = attribute.mappedBy ?? attribute.morphBy;
+      const via = by ? ` ${this.t('builder.summary.via', { field: by })}` : '';
+      // Polymorphic owners have no target: they link entries of any type.
+      parts.push(
+        attribute.target ? `${attribute.relation} → ${attribute.target}${via}` : attribute.relation,
+      );
     }
     if (attribute.component) parts.push(attribute.component);
     if (attribute.components) parts.push(attribute.components.join(', '));

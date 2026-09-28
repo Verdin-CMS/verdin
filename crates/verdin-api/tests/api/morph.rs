@@ -74,6 +74,7 @@ async fn owners_and_inverse_sides() {
     // Inverse sides.
     let (_, article_read) = app.get(&format!("/api/articles/{article}?populate=notes")).await;
     assert_eq!(article_read["data"]["notes"][0]["text"], "hi", "{article_read}");
+    assert_eq!(article_read["data"]["notes"][0]["__type"], "api::note");
     let (_, page_read) = app.get(&format!("/api/pages/{page}?populate=*")).await;
     assert_eq!(page_read["data"]["note"]["documentId"], note.as_str());
     let (_, counted) = app.get(&format!("/api/notes/{note}?populate[refs][count]=true")).await;

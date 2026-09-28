@@ -38,6 +38,7 @@ import {
   viewPayload,
 } from '../../core/edit-view';
 import { I18n } from '../../core/i18n/i18n';
+import { isMorph } from '../../core/morph';
 import { Schema } from '../../core/schema';
 import { Attribute } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
@@ -310,7 +311,7 @@ function internalPath(path: string | undefined): string | null {
                 />
               </div>
             }
-            @if (attribute?.type === 'relation') {
+            @if (attribute?.type === 'relation' && !isMorph(attribute)) {
               <div hlmField>
                 <label hlmFieldLabel for="view-field-main">{{ t('content.view.mainField') }}</label>
                 <hlm-native-select
@@ -363,6 +364,7 @@ export class EditViewConfigPage {
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
   protected readonly humanize = humanize;
+  protected readonly isMorph = isMorph;
   protected readonly String = String;
   protected readonly Number = Number;
 

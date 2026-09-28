@@ -197,8 +197,14 @@ impl DocumentService {
             let fields = public_fields(owner, sub.fields.as_deref(), &[]);
             let rows =
                 self.fetch_rows(owner, &fields, &owner_rows, state_for(owner, status)).await?;
-            let by_row: HashMap<i64, Json> =
-                rows.into_iter().map(|doc| (doc.id, Json::Object(doc.json))).collect();
+            let by_row: HashMap<i64, Json> = rows
+                .into_iter()
+                .map(|doc| {
+                    let mut json = doc.json;
+                    json.insert("__type".into(), Json::String(owner_uid.to_owned()));
+                    (doc.id, Json::Object(json))
+                })
+                .collect();
             let by_document: HashMap<&str, i64> =
                 docs.iter().map(|doc| (doc.document_id.as_str(), doc.id)).collect();
             for (source, _, document_id) in &links {

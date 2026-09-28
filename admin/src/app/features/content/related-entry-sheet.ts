@@ -28,9 +28,11 @@ import { ContentType, Document } from '../../core/types';
 import { FieldsComponent } from './fields/fields';
 import {
   FormModel,
+  MorphEntry,
   References,
   documentLabel,
   mediaFilesOf,
+  morphEntriesOf,
   referencesOf,
   relationLabelsOf,
   toModel,
@@ -76,6 +78,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
         [mediaFiles]="mediaFiles"
         [refs]="refs"
         [inverse]="inverse"
+        [morphs]="morphs"
         prefix="related"
       />
     </form>
@@ -112,6 +115,7 @@ export class RelatedEntryForm implements OnInit {
   protected entryForm!: Tree;
   protected relationLabels: Record<string, Record<string, string>> = {};
   protected inverse: Record<string, { id: string; label: string }[]> = {};
+  protected morphs: Record<string, MorphEntry[]> = {};
   protected mediaFiles = {};
   protected refs: References = { labels: {}, files: [] };
   protected readonly busy = signal(false);
@@ -136,6 +140,12 @@ export class RelatedEntryForm implements OnInit {
     const { labels, inverse } = relationLabelsOf(type.attributes, document, this.titleFieldOf);
     this.relationLabels = labels;
     this.inverse = inverse;
+    this.morphs = morphEntriesOf(
+      type.attributes,
+      document,
+      (uid) => this.schema.type(uid),
+      (target) => this.schema.titleField(target),
+    );
     this.mediaFiles = mediaFilesOf(type.attributes, document);
     this.refs = referencesOf(type.attributes, document, this.components, this.titleFieldOf);
   }

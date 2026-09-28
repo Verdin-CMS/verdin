@@ -1,4 +1,5 @@
-import { Attribute, Attributes, Component, MediaFile } from '../../../core/types';
+import { isMorph, morphLinks } from '../../../core/morph';
+import { Attribute, Attributes, Component, ContentType, MediaFile } from '../../../core/types';
 
 /** Looks up component schemas by uid. */
 export type ComponentLookup = (uid: string) => Component | undefined;
@@ -14,9 +15,12 @@ export function keyed(item: FormModel): FormModel {
 
 const TEXT_TYPES = new Set(['string', 'email', 'text', 'richtext', 'uid', 'date', 'time']);
 
-/** Whether the admin edits this attribute (the `mappedBy` side of relations is read-only). */
+/**
+ * Whether the admin edits this attribute: the `mappedBy` side of relations and polymorphic
+ * relations (managed through the API) are read-only and never sent back.
+ */
 export function isEditable(attribute: Attribute): boolean {
-  return !(attribute.type === 'relation' && attribute.mappedBy);
+  return !(attribute.type === 'relation' && (attribute.mappedBy || isMorph(attribute)));
 }
 
 /** The form value of an empty attribute, honouring schema defaults. */
@@ -51,7 +55,9 @@ export function emptyValue(attribute: Attribute, _components?: ComponentLookup):
 }
 
 export function isToMany(attribute: Attribute): boolean {
-  return ['oneToMany', 'manyToMany', 'manyWay'].includes(attribute.relation ?? '');
+  return ['oneToMany', 'manyToMany', 'manyWay', 'morphToMany', 'morphMany'].includes(
+    attribute.relation ?? '',
+  );
 }
 
 /** A new component item with its defaults. */
@@ -181,6 +187,8 @@ export function referencesOf(
     );
     switch (attribute.type) {
       case 'relation': {
+        // Polymorphic links are shown apart (`morphEntriesOf`), not by the pickers.
+        if (isMorph(attribute)) break;
         const titleField = titleFieldOf(attribute.target ?? '');
         for (const item of list) {
           if (item['documentId'] !== undefined)
@@ -317,7 +325,7 @@ export function relationLabelsOf(
   const inverse: Record<string, { id: string; label: string }[]> = {};
   if (!document) return { labels, inverse };
   for (const [name, attribute] of Object.entries(attributes)) {
-    if (attribute.type !== 'relation') continue;
+    if (attribute.type !== 'relation' || isMorph(attribute)) continue;
     const titleField = titleFieldOf(attribute.target ?? '', name);
     const related = document[name];
     const items = (Array.isArray(related) ? related : related ? [related] : []) as Record<
@@ -332,4 +340,60 @@ export function relationLabelsOf(
     else labels[name] = Object.fromEntries(labelled.map((item) => [item.id, item.label]));
   }
   return { labels, inverse };
+}
+
+/** A linked entry of a polymorphic relation, ready to show. */
+export interface MorphEntry {
+  uid: string;
+  documentId: string;
+  /** The content type's display name (its uid when the admin cannot read it). */
+  typeName: string;
+  /** The entry's main field, else its documentId. */
+  label: string;
+  /** The entry's editor; `null` when the admin cannot read the type. */
+  link: string[] | null;
+}
+
+/**
+ * The linked entries of a populated document's polymorphic relations, per attribute.
+ * `typeOf` gives the types the admin can read, `titleFieldOf` their main field.
+ */
+export function morphEntriesOf(
+  attributes: Attributes,
+  document: Record<string, unknown> | null,
+  typeOf: (uid: string) => ContentType | undefined,
+  titleFieldOf: (type: ContentType) => string | null,
+): Record<string, MorphEntry[]> {
+  const out: Record<string, MorphEntry[]> = {};
+  if (!document) return out;
+  for (const [name, attribute] of Object.entries(attributes)) {
+    if (!isMorph(attribute)) continue;
+    out[name] = morphLinks(document[name], attribute.target).map((link) =>
+      morphEntry(link, typeOf, titleFieldOf),
+    );
+  }
+  return out;
+}
+
+/** One populated polymorphic link → what the admin shows for it. */
+export function morphEntry(
+  link: { uid: string; documentId: string; entry: Record<string, unknown> },
+  typeOf: (uid: string) => ContentType | undefined,
+  titleFieldOf: (type: ContentType) => string | null,
+): MorphEntry {
+  const type = typeOf(link.uid);
+  return {
+    uid: link.uid,
+    documentId: link.documentId,
+    typeName: type?.displayName ?? link.uid,
+    label: documentLabel(
+      { ...link.entry, documentId: link.documentId },
+      type ? titleFieldOf(type) : null,
+    ),
+    link: !type
+      ? null
+      : type.kind === 'singleType'
+        ? ['/single', type.uid]
+        : ['/content', type.uid, link.documentId],
+  };
 }

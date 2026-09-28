@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { Api } from './api';
+import { isMorph } from './morph';
 import { Attribute, Attributes, ContentType } from './types';
 
 /** A row is 12 columns wide. */
@@ -154,7 +155,8 @@ export function cleanSettings(
       if (text) clean[key] = text;
     }
     if (settings.editable === false) clean.editable = false;
-    if (attribute.type === 'relation' && settings.mainField) clean.mainField = settings.mainField;
+    if (attribute.type === 'relation' && !isMorph(attribute) && settings.mainField)
+      clean.mainField = settings.mainField;
     if (Object.keys(clean).length) out[name] = clean;
   }
   return out;

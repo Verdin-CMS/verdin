@@ -34,6 +34,9 @@ const article: ContentType = {
     body: { type: 'blocks' },
     author: { type: 'relation', relation: 'manyToOne', target: 'api::author' },
     tags: { type: 'relation', relation: 'manyToMany', target: 'api::tag' },
+    // Polymorphic relations: the API rejects filters on them.
+    related: { type: 'relation', relation: 'morphToMany' },
+    comments: { type: 'relation', relation: 'morphMany', target: 'api::comment', morphBy: 'on' },
   },
 };
 
@@ -61,6 +64,13 @@ describe('filterableFields', () => {
       'createdAt',
       'updatedAt',
     ]);
+  });
+
+  it('leaves out polymorphic relations, even from the URL', () => {
+    expect(fields.some((field) => field.field === 'related' || field.field === 'comments')).toBe(
+      false,
+    );
+    expect(parseFilterParams({ 'filters[$and][0][related][$null]': 'true' }, fields)).toEqual([]);
   });
 
   it('picks operators by kind', () => {

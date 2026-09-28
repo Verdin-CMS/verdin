@@ -53,7 +53,9 @@ import { FieldsComponent, humanize } from './fields/fields';
 import {
   FormModel,
   References,
+  MorphEntry,
   mediaFilesOf,
+  morphEntriesOf,
   referencesOf,
   relationLabelsOf,
   toModel,
@@ -347,6 +349,7 @@ function withLocale(query: string, locale: string | null): string {
                   [mediaFiles]="mediaFiles()"
                   [refs]="refs()"
                   [inverse]="inverse()"
+                  [morphs]="morphs()"
                   [shared]="shared()"
                   [view]="view()"
                   prefix="doc"
@@ -649,6 +652,8 @@ export class DocumentForm implements OnInit {
   protected tree!: Tree;
   protected readonly relationLabels = signal<Record<string, Record<string, string>>>({});
   protected readonly inverse = signal<Record<string, { id: string; label: string }[]>>({});
+  /** Linked entries of the loaded version's polymorphic relations (read-only). */
+  protected readonly morphs = signal<Record<string, MorphEntry[]>>({});
   protected readonly mediaFiles = signal<Record<string, MediaFile[]>>({});
   protected readonly refs = signal<References>({ labels: {}, files: [] });
 
@@ -776,6 +781,19 @@ export class DocumentForm implements OnInit {
     this.publishedUpdatedAt.set(this.publishedAt());
     // A missing locale shows the shared relations and media of the other version.
     this.absorb(missing ? this.sharedSource() : document);
+    this.showMorphs(document);
+  }
+
+  /** The polymorphic links of the loaded version (populated by `populate=*`). */
+  private showMorphs(document: Document | null): void {
+    this.morphs.set(
+      morphEntriesOf(
+        this.type().attributes,
+        document,
+        (uid) => this.schema.type(uid),
+        (type) => this.schema.titleField(type),
+      ),
+    );
   }
 
   /** Adds the labels and previews of a populated document's references. */
@@ -981,6 +999,7 @@ export class DocumentForm implements OnInit {
           withLocale('populate=*', locale),
         );
         this.model.set(toModel(type.attributes, draft, (uid) => this.schema.component(uid)));
+        this.showMorphs(draft);
         this.draftUpdatedAt.set(this.publishedUpdatedAt());
         toast.success(this.t('content.edit.toast.discarded'));
       }

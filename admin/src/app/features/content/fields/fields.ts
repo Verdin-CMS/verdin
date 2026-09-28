@@ -33,7 +33,8 @@ import { BlocksControl } from './blocks-control';
 import { MarkdownControl } from './markdown-control';
 import { MediaControl } from './media-control';
 import { PluginFieldControl } from './plugin-field';
-import { FormModel, References, isToMany, keyed, newComponentItem } from './model';
+import { isMorph } from '../../../core/morph';
+import { FormModel, MorphEntry, References, isToMany, keyed, newComponentItem } from './model';
 import { RelationControl } from './relation';
 
 /** Where the fields live, for uid checks and element ids. */
@@ -494,7 +495,40 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                   <vd-json-control [inputId]="id" [formField]="child(name)" />
                 }
                 @case ('relation') {
-                  @if (attribute.mappedBy) {
+                  @if (isMorph(attribute)) {
+                    <ul
+                      class="flex flex-col gap-1"
+                      [id]="id"
+                      [attr.aria-label]="label(name)"
+                      [attr.aria-describedby]="id + '-morph'"
+                      data-morph-list
+                    >
+                      @for (item of morphs()[name] ?? []; track item.uid + ':' + item.documentId) {
+                        <li class="flex min-w-0 items-center gap-2 text-sm">
+                          <span hlmBadge variant="outline" class="shrink-0">{{
+                            item.typeName
+                          }}</span>
+                          @if (item.link) {
+                            <a
+                              class="truncate underline-offset-4 hover:underline"
+                              [routerLink]="item.link"
+                              >{{ item.label }}</a
+                            >
+                          } @else {
+                            <span class="truncate">{{ item.label }}</span>
+                          }
+                        </li>
+                      } @empty {
+                        <li class="text-muted-foreground text-sm">
+                          {{ t('content.fields.morphEmpty') }}
+                        </li>
+                      }
+                    </ul>
+                    <p hlmFieldDescription class="flex items-center gap-1.5" [id]="id + '-morph'">
+                      <ng-icon name="lucideInfo" size="12" aria-hidden="true" />
+                      {{ t('content.fields.morphNote') }}
+                    </p>
+                  } @else if (attribute.mappedBy) {
                     <p hlmFieldDescription>
                       {{
                         t('content.fields.managedFrom', {
@@ -615,6 +649,8 @@ export class FieldsComponent {
   readonly refs = input<References>({ labels: {}, files: [] });
   /** Read-only `mappedBy` relations, per attribute. */
   readonly inverse = input<Record<string, { id: string; label: string }[]>>({});
+  /** Linked entries of polymorphic relations (read-only), per attribute. */
+  readonly morphs = input<Record<string, MorphEntry[]>>({});
   /** Attributes shared by every locale (top level of a localized type), marked with a globe. */
   readonly shared = input<readonly string[]>([]);
   /** The type's edit view (top level only): layout, labels, read-only fields. */
@@ -622,6 +658,7 @@ export class FieldsComponent {
 
   protected readonly humanize = humanize;
   protected readonly isToMany = isToMany;
+  protected readonly isMorph = isMorph;
   protected readonly zoneChoice = signal<Record<string, string>>({});
   protected readonly uidNotes = signal<Record<string, string>>({});
 
