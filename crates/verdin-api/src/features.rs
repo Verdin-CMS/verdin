@@ -37,6 +37,10 @@ pub const MCP: &str = "mcp";
 pub const REALTIME: &str = "realtime";
 pub const COMMENTS: &str = "comments";
 pub const AI: &str = "ai";
+pub const SEO: &str = "seo";
+pub const REDIRECTS: &str = "redirects";
+pub const MENUS: &str = "menus";
+pub const FORMS: &str = "forms";
 
 /// Every feature, in display order.
 pub const CATALOG: &[FeatureSpec] = &[

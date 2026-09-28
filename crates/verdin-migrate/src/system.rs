@@ -43,6 +43,10 @@ pub const COMMENTS: &str = "vd_comments";
 pub const TASKS: &str = "vd_tasks";
 pub const DEPLOY_TARGETS: &str = "vd_deploy_targets";
 pub const DEPLOYMENTS: &str = "vd_deployments";
+pub const REDIRECTS: &str = "vd_redirects";
+pub const MENUS: &str = "vd_menus";
+pub const FORMS: &str = "vd_forms";
+pub const FORM_SUBMISSIONS: &str = "vd_form_submissions";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -730,6 +734,67 @@ pub fn system_tables() -> Vec<Table> {
             .concat(),
             indexes: vec![index(DEPLOYMENTS, "target", &["target_id", "id"])],
             foreign_keys: vec![references("target_id", DEPLOY_TARGETS)],
+        },
+        // Redirects frontends apply (`GET /api/_redirects`).
+        Table {
+            name: REDIRECTS.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("source", 2048).not_null(),
+                    Column::new("destination", ColumnType::Text).not_null(),
+                    Column::new("status", ColumnType::Integer).not_null(),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+        },
+        // Navigation menus: `items` is the JSON tree.
+        Table {
+            name: MENUS.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("slug", 128).not_null(),
+                    varchar("name", 255).not_null(),
+                    Column::new("items", ColumnType::Json).not_null(),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![unique(MENUS, "slug", &["slug"])],
+            foreign_keys: Vec::new(),
+        },
+        // Forms: `fields` and `settings` are JSON.
+        Table {
+            name: FORMS.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("slug", 128).not_null(),
+                    varchar("name", 255).not_null(),
+                    Column::new("fields", ColumnType::Json).not_null(),
+                    Column::new("settings", ColumnType::Json).not_null(),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![unique(FORMS, "slug", &["slug"])],
+            foreign_keys: Vec::new(),
+        },
+        Table {
+            name: FORM_SUBMISSIONS.into(),
+            columns: vec![
+                id(),
+                Column::new("form_id", ColumnType::BigInt).not_null(),
+                Column::new("data", ColumnType::Json).not_null(),
+                Column::new("meta", ColumnType::Json),
+                Column::new("created_at", ColumnType::DateTime).not_null(),
+            ],
+            indexes: vec![index(FORM_SUBMISSIONS, "form", &["form_id", "id"])],
+            foreign_keys: vec![references("form_id", FORMS)],
         },
         // One-time links for admins (`kind`: invite or reset), stored as SHA-256.
         Table {

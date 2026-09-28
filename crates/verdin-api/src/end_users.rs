@@ -194,7 +194,7 @@ pub(crate) fn routes(users: Users) -> Router {
 }
 
 /// The client address when the server records it (`into_make_service_with_connect_info`).
-pub(crate) struct ClientIp(String);
+pub(crate) struct ClientIp(pub(crate) String);
 
 impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
     type Rejection = std::convert::Infallible;

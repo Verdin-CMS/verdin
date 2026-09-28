@@ -60,6 +60,8 @@ mod realtime_admin;
 mod releases_admin;
 #[path = "review_admin.rs"]
 mod review_admin;
+#[path = "site_admin.rs"]
+mod site_admin;
 #[path = "sso_admin.rs"]
 mod sso_admin;
 #[path = "transfer_admin.rs"]
@@ -145,6 +147,8 @@ pub struct AdminConfig {
     pub cdn: Option<crate::cdn::Cdn>,
     /// AI actions (the `ai` feature and `[ai]`).
     pub ai: Option<crate::ai::Ai>,
+    /// Redirects, menus and forms.
+    pub site: Option<crate::site::Site>,
     /// The daily digest of unseen changes, which reads with this router's Document Service.
     pub digest: Option<crate::digest::Digest>,
     /// Present when the `review` feature is on: workflows and entry stages.
@@ -188,6 +192,7 @@ impl Default for AdminConfig {
             deploys: None,
             cdn: None,
             ai: None,
+            site: None,
             digest: None,
             review: None,
             listeners: Vec::new(),
@@ -292,6 +297,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(comments_admin::routes())
         .merge(deploy_admin::routes())
         .merge(ai_admin::routes())
+        .merge(site_admin::routes())
         .merge(review_admin::routes())
         .merge(account_admin::routes())
         .merge(views_admin::routes())
@@ -949,6 +955,9 @@ async fn update_feature(
     let feature =
         crate::features::FeatureState { enabled: input.enabled, settings: input.settings };
     crate::features::validate(&id, &feature)?;
+    if id == crate::features::SEO {
+        crate::site::SeoSettings::parse(&feature.settings, &state.service)?;
+    }
     let host = feature_host(&state)?;
     host.update(id, feature).await?;
     Ok(data(host.states().catalog_json()))

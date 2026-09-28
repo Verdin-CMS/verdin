@@ -318,7 +318,7 @@ fn unguard_formula(text: &str) -> &str {
     }
 }
 
-fn write_record<'a>(out: &mut String, cells: impl Iterator<Item = &'a str>) {
+pub(super) fn write_record<'a>(out: &mut String, cells: impl Iterator<Item = &'a str>) {
     for (index, cell) in cells.enumerate() {
         if index > 0 {
             out.push(',');

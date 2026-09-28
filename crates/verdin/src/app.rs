@@ -69,6 +69,8 @@ pub struct AppContext {
     pub cdn: Option<verdin_api::cdn::Cdn>,
     /// `[ai]`: used when the `ai` feature is on.
     pub ai: Option<verdin_api::ai::Ai>,
+    /// Redirects, menus and forms.
+    pub site: verdin_api::site::Site,
     /// The daily digest of unseen changes (`[digest]`), sent while serving.
     pub digest: verdin_api::digest::Digest,
     /// Review workflows; the `review` feature switches stages and the publish gate.
@@ -168,6 +170,7 @@ pub fn build_app(
     let registry = verdin_content::Registry::new(schema);
     let registry_for_graphql = registry.clone();
     let registry_for_mcp = registry.clone();
+    let registry_for_sitemap = registry.clone();
     let limits = verdin_query::Limits {
         default_page_size: api.default_page_size,
         max_page_size: api.max_page_size,
@@ -194,6 +197,20 @@ pub fn build_app(
                 .with_locales(context.locales.clone()),
         );
     }
+    // The `seo` feature: sitemap patterns (checked against this schema).
+    let seo = states.enabled(verdin_api::features::SEO).then(|| {
+        let service =
+            verdin_content::DocumentService::new(context.db.clone(), registry.clone(), output)
+                .with_locales(context.locales.clone());
+        verdin_api::site::SeoSettings::parse(states.settings(verdin_api::features::SEO), &service)
+            .unwrap_or_else(|error| {
+                tracing::warn!(
+                    ?error,
+                    "the SEO settings do not fit the schema; the sitemap is empty"
+                );
+                Default::default()
+            })
+    });
     let http = verdin_api::HttpLimits {
         body_limit: context.config.server.body_limit,
         request_timeout: context.config.server.request_timeout(),
@@ -215,6 +232,19 @@ pub fn build_app(
         },
         &api.prefix,
         verdin_api::ContentServices {
+            site: Some(verdin_api::SiteServices {
+                site: context.site.clone(),
+                seo: seo.clone(),
+                redirects: states.enabled(verdin_api::features::REDIRECTS),
+                menus: states.enabled(verdin_api::features::MENUS),
+                forms: states.enabled(verdin_api::features::FORMS),
+                mailer: Some(context.mailer.clone()),
+                admin_url: Some(format!(
+                    "{}{}",
+                    context.origin().trim_end_matches('/'),
+                    admin.path
+                )),
+            }),
             admin_url: Some(format!("{}{}", context.origin().trim_end_matches('/'), admin.path)),
             upload: Some(context.upload.clone()),
             listeners: listeners.clone(),
@@ -285,6 +315,7 @@ pub fn build_app(
                 .then(|| context.comments.clone()),
             deploys: Some(context.deploys.clone()),
             cdn: context.cdn.clone(),
+            site: Some(context.site.clone()),
             ai: states.enabled(verdin_api::features::AI).then(|| context.ai.clone()).flatten(),
             review: states.enabled(REVIEW).then(|| context.review.clone()),
             realtime: Some(context.realtime.clone()),
@@ -328,6 +359,12 @@ pub fn build_app(
     if let Some(dir) = context.upload.storage().local_dir() {
         let transforms = uploads::Transforms::new(&context.upload, &context.root);
         app = app.nest_service("/uploads", uploads::service(dir.to_owned(), transforms));
+    }
+    if let Some(seo) = seo.filter(|seo| !seo.base_url.is_empty()) {
+        let service =
+            verdin_content::DocumentService::new(context.db.clone(), registry_for_sitemap, output)
+                .with_locales(context.locales.clone());
+        app = app.merge(verdin_api::sitemap_router(service, seo));
     }
     app = app.merge(plugin_assets(&admin.path, context.plugins.clone()));
     let assets_dir = admin.assets_dir.as_ref().map(|dir| context.root.join(dir));
@@ -1127,6 +1164,7 @@ mod tests {
             deploys: verdin_api::deploy::Deploys::new(db_for_releases.clone(), true),
             cdn: None,
             ai: None,
+            site: verdin_api::site::Site::new(db_for_releases.clone()),
             releases: verdin_api::releases::Releases::new(db_for_releases),
             review: verdin_api::review::Review::new(db_for_review),
             realtime: verdin_api::realtime::Realtime::new(),

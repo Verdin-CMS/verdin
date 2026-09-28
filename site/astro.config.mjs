@@ -56,6 +56,7 @@ export default defineConfig({
             'guides/backups',
             'guides/realtime',
             'guides/visual-editing',
+            'guides/site-features',
           ],
         },
         {

@@ -541,6 +541,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     }
     let releases = verdin_api::releases::Releases::new(db.clone());
     let comments = verdin_api::comments::Comments::new(db.clone());
+    let site = verdin_api::site::Site::new(db.clone());
     let cdn = verdin_api::cdn::Cdn::new(
         project.config.cdn.clone(),
         std::env::var("VERDIN_CDN_TOKEN").ok(),
@@ -586,6 +587,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         deploys,
         cdn,
         ai,
+        site,
         digest,
         review,
         metrics,

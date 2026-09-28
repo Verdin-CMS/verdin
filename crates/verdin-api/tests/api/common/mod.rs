@@ -284,6 +284,7 @@ impl App {
             comments: Some(comments.clone()),
             deploys: Some(verdin_api::deploy::Deploys::new(test.db.clone(), true)),
             ai,
+            site: Some(verdin_api::site::Site::new(test.db.clone())),
             ..AdminConfig::default()
         };
         let router = Router::new()
@@ -296,6 +297,21 @@ impl App {
                     ApiConfig::default(),
                     "/api",
                     verdin_api::ContentServices {
+                        site: Some(verdin_api::SiteServices {
+                            site: verdin_api::site::Site::new(test.db.clone()),
+                            seo: Some(verdin_api::site::SeoSettings {
+                                base_url: "https://www.example.com".into(),
+                                types: serde_json::from_value(serde_json::json!({
+                                    "api::page": { "pattern": "/{locale}/{slug}" }
+                                }))
+                                .unwrap(),
+                            }),
+                            redirects: true,
+                            menus: true,
+                            forms: true,
+                            mailer: Some(mailer.clone()),
+                            admin_url: Some("https://cms.test/admin".into()),
+                        }),
                         admin_url: Some("https://cms.test/admin".into()),
                         upload: Some(upload.clone()),
                         listeners: listeners.clone(),

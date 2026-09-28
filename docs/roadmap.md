@@ -116,7 +116,7 @@ Hygraph) that fit Verdin best.
 | 2FA for admins (API ✅) | S | TOTP, passkeys (WebAuthn), recovery codes, enforceable per role; admin UI pending |
 | CSV/JSON import & export (API ✅) | S | Per content type from the list, with field mapping and a dry run; admin UI pending |
 | Cross-field validation ✅ | S | Rules that compare fields (`endDate > startDate`) declared in the schema; JSON Logic, checked with `required` |
-| Official plugins | S each | SEO fields + sitemap, redirects, nested pages and menus, form builder with submissions |
+| Official plugins (API ✅) | S each | SEO fields + sitemap, redirects, menus, form builder with submissions, as built-in features; admin UI pending |
 | AI actions (API ✅) | M | Translate a locale, alt text, summaries and SEO suggestions, with the key of the user's provider (Anthropic, OpenAI, local); off by default; admin UI pending |
 | Deploy & CDN hooks (API ✅) | S | "Deploy" button calling a build hook with its status; CDN purge by tag (Cloudflare, Fastly, webhook) on publish; admin UI pending, Vercel through the webhook |
 | Metrics ✅ | S | Prometheus `/_metrics` (requests, latency, webhook queue, realtime streams); plugin time and Sentry reporting moved to Later |

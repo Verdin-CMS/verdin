@@ -25,6 +25,9 @@ pub mod realtime;
 mod realtime_routes;
 pub mod releases;
 pub mod review;
+pub mod site;
+mod site_routes;
+pub use site_routes::{SiteServices, sitemap_router};
 pub mod sso;
 pub mod stega;
 mod upload;
@@ -170,6 +173,8 @@ pub struct ContentServices {
     /// The admin panel's URL (`https://cms.example.com/admin`), for visual editing's
     /// source maps; `None` turns them off.
     pub admin_url: Option<String>,
+    /// Redirects, menus and forms for sites (`/_redirects`, `/_menus`, `/_forms`).
+    pub site: Option<SiteServices>,
 }
 
 /// Content API routes, to be nested under the API prefix (e.g. `/api`).
@@ -192,6 +197,7 @@ pub fn router(
         review,
         realtime,
         admin_url,
+        site,
     } = services;
     let auth_for_events = auth.clone();
     let (listeners, locales) = (&listeners, &locales);
@@ -273,8 +279,13 @@ pub fn router(
             Arc::new(StegaState { schema: registry_schema, routes: stega_routes, admin_url }),
             mark_text,
         ));
+    let site_service = state.service.clone();
     let router =
         config.http.apply(regular).merge(uploads).fallback(handlers::not_found).with_state(state);
+    let router = match site {
+        Some(site) => router.merge(config.http.apply(site_routes::routes(site, site_service))),
+        None => router,
+    };
     let router = match users {
         Some(users) => router.merge(config.http.apply(end_users::routes(users))),
         None => router,

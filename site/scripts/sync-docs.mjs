@@ -34,6 +34,7 @@ const ROUTES = {
   'docs/backups.md': 'guides/backups',
   'docs/realtime.md': 'guides/realtime',
   'docs/visual-editing.md': 'guides/visual-editing',
+  'docs/site-features.md': 'guides/site-features',
   'docs/architecture.md': 'reference/architecture',
   'docs/roadmap.md': 'project/roadmap',
   'docs/translating.md': 'project/translating',

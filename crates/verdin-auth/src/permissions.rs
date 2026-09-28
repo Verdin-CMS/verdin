@@ -29,6 +29,8 @@ pub mod actions {
     pub const DEPLOY_MANAGE: &str = "deploy.manage";
     /// The "Deploy" button.
     pub const DEPLOY_TRIGGER: &str = "deploy.trigger";
+    /// SEO and sitemap settings, redirects, menus, forms and their submissions.
+    pub const SITE_MANAGE: &str = "site.manage";
     pub const MEDIA_READ: &str = "media.read";
     pub const MEDIA_CREATE: &str = "media.create";
     pub const MEDIA_UPDATE: &str = "media.update";
@@ -52,6 +54,7 @@ pub mod actions {
         VIEWS_MANAGE,
         DEPLOY_MANAGE,
         DEPLOY_TRIGGER,
+        SITE_MANAGE,
     ];
     /// Media library actions: no subject; `is-creator` limits them to the user's files.
     pub const MEDIA: &[&str] = &[MEDIA_READ, MEDIA_CREATE, MEDIA_UPDATE, MEDIA_DELETE];
@@ -289,8 +292,11 @@ pub fn builtin_additions(version: i64) -> Vec<(&'static str, Vec<Permission>)> {
                 ],
             ),
         ],
-        // 0.9: editors may deploy the site.
-        3 => vec![(EDITOR, vec![media(actions::DEPLOY_TRIGGER, &[])])],
+        // 0.9: editors may deploy the site and manage its menus, redirects and forms.
+        3 => vec![(
+            EDITOR,
+            vec![media(actions::DEPLOY_TRIGGER, &[]), media(actions::SITE_MANAGE, &[])],
+        )],
         _ => Vec::new(),
     }
 }

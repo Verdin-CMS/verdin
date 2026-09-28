@@ -31,6 +31,7 @@ mod relations;
 mod releases;
 mod review;
 mod search;
+mod site;
 mod sso;
 mod stats;
 mod traffic;

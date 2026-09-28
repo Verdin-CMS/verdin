@@ -45,6 +45,11 @@ All notable changes to Verdin are documented here. The format follows
 - **AI actions** (the `ai` feature, off by default, and `[ai]`): translate an entry to
   another locale, alt text for images, summaries and SEO suggestions, with Anthropic,
   OpenAI or any OpenAI-compatible server.
+- **Site features** (see [docs/site-features.md](docs/site-features.md)): SEO settings
+  with `/sitemap.xml` and a suggested `shared.seo` component, redirects for frontends
+  (`/api/_redirects`), navigation menus with resolved entry links (`/api/_menus/{slug}`)
+  and forms with validated, rate-limited submissions and email notifications
+  (`/api/_forms/{slug}`). New admin permission `site.manage`.
 
 ## [0.8.0] - 2026-09-28
 
