@@ -35,8 +35,10 @@ import {
   readPreviewSettings,
   ssoFormsFrom,
 } from '../../core/feature-settings';
+import { readSeoSettings } from '../../core/seo';
 import { GraphqlSettingsDialog } from './graphql-settings';
 import { PreviewSettingsDialog } from './preview-settings';
+import { SeoSettingsDialog } from './seo-settings';
 import { SsoSettingsDialog } from './sso-settings';
 
 const ICONS: Record<string, string> = {
@@ -56,7 +58,20 @@ const ICONS: Record<string, string> = {
   releases: 'lucideCalendarClock',
   preview: 'lucideEye',
   mcp: 'lucideBot',
+  realtime: 'lucideRadio',
+  comments: 'lucideMessageSquare',
   ai: 'lucideSparkles',
+  seo: 'lucideSearch',
+  redirects: 'lucideSignpost',
+  menus: 'lucideListTree',
+  forms: 'lucideClipboardList',
+};
+
+/** Site features with their own settings page (`site.manage`). */
+const SITE_PAGES: Record<string, { path: string; open: MessageKey }> = {
+  redirects: { path: '/settings/redirects', open: 'features.redirects.open' },
+  menus: { path: '/settings/menus', open: 'features.menus.open' },
+  forms: { path: '/settings/forms', open: 'features.forms.open' },
 };
 
 /** Settings → Features: switch optional parts of Verdin on and off, live. */
@@ -78,6 +93,7 @@ const ICONS: Record<string, string> = {
     PreviewSettingsDialog,
     SsoSettingsDialog,
     GraphqlSettingsDialog,
+    SeoSettingsDialog,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -463,6 +479,47 @@ const ICONS: Record<string, string> = {
                   </div>
                 }
 
+                @if (feature.id === 'seo' && canManage()) {
+                  <div class="flex flex-col gap-3 border-t pt-4">
+                    <p class="text-muted-foreground text-xs">
+                      {{ t('features.seo.summary', { count: seoCount(feature) }) }}
+                    </p>
+                    <div class="flex flex-wrap gap-2">
+                      <button hlmBtn size="sm" variant="outline" (click)="seoOpen.set(true)">
+                        <ng-icon name="lucideSettings" /> {{ t('features.seo.configure') }}
+                      </button>
+                      @if (feature.enabled) {
+                        <a
+                          hlmBtn
+                          size="sm"
+                          variant="ghost"
+                          href="/sitemap.xml"
+                          target="_blank"
+                          rel="noopener"
+                        >
+                          <ng-icon name="lucideExternalLink" /> {{ t('features.seo.sitemap') }}
+                        </a>
+                      }
+                    </div>
+                  </div>
+                }
+
+                @if (sitePage(feature.id); as page) {
+                  @if (feature.enabled && canManageSite()) {
+                    <div class="flex flex-col gap-3 border-t pt-4">
+                      <a
+                        hlmBtn
+                        size="sm"
+                        variant="outline"
+                        class="self-start"
+                        [routerLink]="page.path"
+                      >
+                        <ng-icon [name]="icon(feature.id)" /> {{ t(page.open) }}
+                      </a>
+                    </div>
+                  }
+                }
+
                 @if (feature.id === 'releases' && feature.enabled && canManageReleases()) {
                   <div class="flex flex-col gap-3 border-t pt-4">
                     <a hlmBtn size="sm" variant="outline" class="self-start" routerLink="/releases">
@@ -559,6 +616,9 @@ const ICONS: Record<string, string> = {
         (closed)="graphqlOpen.set(false)"
       />
     }
+    @if (featureById('seo'); as seo) {
+      <vd-seo-settings [open]="seoOpen()" [feature]="seo" (closed)="seoOpen.set(false)" />
+    }
     @if (featureById('sso'); as sso) {
       <vd-sso-settings [open]="ssoOpen()" [feature]="sso" (closed)="ssoOpen.set(false)" />
     }
@@ -645,6 +705,8 @@ export class FeaturesPage implements OnInit {
   protected readonly previewOpen = signal(false);
   protected readonly ssoOpen = signal(false);
   protected readonly graphqlOpen = signal(false);
+  protected readonly seoOpen = signal(false);
+  protected readonly canManageSite = computed(() => this.auth.can('site.manage'));
   protected readonly canManageTokens = computed(() => this.auth.can('tokens.manage'));
   protected readonly originDraft = signal('');
   protected readonly originError = signal<string | null>(null);
@@ -781,6 +843,14 @@ export class FeaturesPage implements OnInit {
 
   protected previewCount(feature: Feature): number {
     return Object.keys(readPreviewSettings(feature.settings).urls).length;
+  }
+
+  protected seoCount(feature: Feature): number {
+    return Object.keys(readSeoSettings(feature.settings).types).length;
+  }
+
+  protected sitePage(id: string): { path: string; open: MessageKey } | null {
+    return SITE_PAGES[id] ?? null;
   }
 
   protected ssoCount(feature: Feature): number {

@@ -134,6 +134,17 @@ import {
   lucideCrop,
   lucideReplace,
   lucideSplit,
+  lucideCloud,
+  lucideClipboardList,
+  lucideIndentIncrease,
+  lucideIndentDecrease,
+  lucideRadio,
+  lucideSignpost,
+  lucideListTree,
+  lucideCircleX,
+  lucideLoaderCircle,
+  lucideCircleDashed,
+  lucideCornerDownRight,
 } from '@ng-icons/lucide';
 
 /** Every icon the admin uses, registered once at bootstrap. */
@@ -273,4 +284,15 @@ export const ICONS = {
   lucideCrop,
   lucideReplace,
   lucideSplit,
+  lucideCloud,
+  lucideClipboardList,
+  lucideIndentIncrease,
+  lucideIndentDecrease,
+  lucideRadio,
+  lucideSignpost,
+  lucideListTree,
+  lucideCircleX,
+  lucideLoaderCircle,
+  lucideCircleDashed,
+  lucideCornerDownRight,
 };

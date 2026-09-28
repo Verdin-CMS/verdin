@@ -30,6 +30,7 @@ import { Schema } from '../core/schema';
 import { Unseen, formatBadge } from '../core/unseen';
 import { Logo } from '../shared/components/logo';
 import { PreferencesMenu } from '../shared/components/preferences-menu';
+import { DeployButton } from './deploy-button';
 
 @Component({
   selector: 'vd-shell',
@@ -47,6 +48,7 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
     HlmBadgeImports,
     Logo,
     PreferencesMenu,
+    DeployButton,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -291,6 +293,62 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                     </a>
                   </li>
                 }
+                @if (auth.can('deploy.manage')) {
+                  <li hlmSidebarMenuItem>
+                    <a
+                      hlmSidebarMenuButton
+                      routerLink="/settings/deployments"
+                      routerLinkActive
+                      #deployLink="routerLinkActive"
+                      [isActive]="deployLink.isActive"
+                    >
+                      <ng-icon name="lucideRocket" />
+                      <span>{{ t('shell.deployments') }}</span>
+                    </a>
+                  </li>
+                }
+                @if (auth.can('site.manage') && features.enabled('redirects')) {
+                  <li hlmSidebarMenuItem>
+                    <a
+                      hlmSidebarMenuButton
+                      routerLink="/settings/redirects"
+                      routerLinkActive
+                      #redirectsLink="routerLinkActive"
+                      [isActive]="redirectsLink.isActive"
+                    >
+                      <ng-icon name="lucideSignpost" />
+                      <span>{{ t('shell.redirects') }}</span>
+                    </a>
+                  </li>
+                }
+                @if (auth.can('site.manage') && features.enabled('menus')) {
+                  <li hlmSidebarMenuItem>
+                    <a
+                      hlmSidebarMenuButton
+                      routerLink="/settings/menus"
+                      routerLinkActive
+                      #menusLink="routerLinkActive"
+                      [isActive]="menusLink.isActive"
+                    >
+                      <ng-icon name="lucideListTree" />
+                      <span>{{ t('shell.menus') }}</span>
+                    </a>
+                  </li>
+                }
+                @if (auth.can('site.manage') && features.enabled('forms')) {
+                  <li hlmSidebarMenuItem>
+                    <a
+                      hlmSidebarMenuButton
+                      routerLink="/settings/forms"
+                      routerLinkActive
+                      #formsLink="routerLinkActive"
+                      [isActive]="formsLink.isActive"
+                    >
+                      <ng-icon name="lucideClipboardList" />
+                      <span>{{ t('shell.forms') }}</span>
+                    </a>
+                  </li>
+                }
                 @if (auth.can('audit.read')) {
                   <li hlmSidebarMenuItem>
                     <a
@@ -422,6 +480,7 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                 · v{{ info.version }}
               </span>
             }
+            <vd-deploy-button />
             <vd-preferences-menu />
           </div>
         </header>

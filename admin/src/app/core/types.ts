@@ -302,4 +302,7 @@ export const ADMIN_SETTINGS_ACTIONS = [
   'releases.manage',
   'workflows.manage',
   'views.manage',
+  'deploy.manage',
+  'deploy.trigger',
+  'site.manage',
 ] as const;
