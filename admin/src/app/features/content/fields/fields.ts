@@ -3,15 +3,18 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, signal } f
 import { FieldTree, FormField } from '@angular/forms/signals';
 import { RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
+import { toast } from '@spartan-ng/brain/sonner';
 import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmFieldImports } from '@spartan-ng/helm/field';
 import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
+import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmTextareaImports } from '@spartan-ng/helm/textarea';
 import { HlmTooltipImports } from '@spartan-ng/helm/tooltip';
 
+import { AiActions, aiErrorMessage } from '../../../core/ai';
 import { Api, ApiFailure, toQuery } from '../../../core/api';
 import { EditView, FieldSettings, LayoutItem, layoutRows } from '../../../core/edit-view';
 import { I18n } from '../../../core/i18n/i18n';
@@ -36,6 +39,15 @@ import { PluginFieldControl } from './plugin-field';
 import { isMorph } from '../../../core/morph';
 import { FormModel, MorphEntry, References, isToMany, keyed, newComponentItem } from './model';
 import { RelationControl } from './relation';
+import {
+  applySeo,
+  isSeoComponent,
+  isSummaryField,
+  sourceText,
+  summarySource,
+  summaryWords,
+} from '../ai-model';
+import { flash } from '../visual-editing';
 
 /** Where the fields live, for uid checks and element ids. */
 export interface FieldsContext {
@@ -43,6 +55,8 @@ export interface FieldsContext {
   documentId: string | null;
   /** The document's locale, for localized types. */
   locale?: string | null;
+  /** `false` while the document has no saved version in `locale` yet. */
+  saved?: boolean;
 }
 
 /** `metaTitle` → `Meta title`. */
@@ -69,6 +83,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
     HlmButtonImports,
     HlmBadgeImports,
     HlmTooltipImports,
+    HlmSpinnerImports,
     NumberControl,
     SwitchControl,
     EnumControl,
@@ -92,7 +107,14 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
               class="col-span-12 min-w-0 md:col-span-(--span)"
               [style.--span]="cell.size"
               [attr.data-field]="cell.name"
+              [attr.data-ai-changed]="changed().includes(cell.name) || null"
             >
+              @if (changed().includes(cell.name)) {
+                <span hlmBadge variant="secondary" class="mb-2">
+                  <ng-icon name="lucideSparkles" aria-hidden="true" />
+                  {{ t('ai.changed') }}
+                </span>
+              }
               <ng-container
                 *ngTemplateOutlet="
                   field;
@@ -134,6 +156,26 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                 <span hlmBadge variant="outline" class="ms-auto tabular-nums">{{
                   i18n.formatNumber(count)
                 }}</span>
+              }
+              @if (canSuggestSeo(attribute) && !locked) {
+                <button
+                  hlmBtn
+                  variant="ghost"
+                  size="xs"
+                  type="button"
+                  class="ms-auto"
+                  [disabled]="aiBusy() === name"
+                  [attr.aria-label]="t('ai.seo.suggestLabel', { name: label(name) })"
+                  [title]="t('ai.seo.hint')"
+                  (click)="suggestSeo(name, attribute)"
+                >
+                  @if (aiBusy() === name) {
+                    <hlm-spinner class="size-3" />
+                  } @else {
+                    <ng-icon name="lucideSparkles" />
+                  }
+                  {{ t('ai.seo.suggest') }}
+                </button>
               }
             </div>
             <fieldset class="flex min-w-0 flex-col gap-3 p-4" [disabled]="locked">
@@ -581,6 +623,26 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                   />
                 }
               }
+              @if (summaryFrom(name, attribute); as source) {
+                <div>
+                  <button
+                    hlmBtn
+                    variant="outline"
+                    size="xs"
+                    type="button"
+                    [disabled]="locked || aiBusy() === name"
+                    [title]="t('ai.summarize.hint', { field: label(source) })"
+                    (click)="summarize(name, attribute, source)"
+                  >
+                    @if (aiBusy() === name) {
+                      <hlm-spinner class="size-3" />
+                    } @else {
+                      <ng-icon name="lucideSparkles" />
+                    }
+                    {{ t('ai.summarize.action', { field: label(source) }) }}
+                  </button>
+                </div>
+              }
               @if (missingPlugin(attribute); as plugin) {
                 <p hlmFieldDescription class="flex items-center gap-1.5">
                   <ng-icon name="lucidePlug" size="12" aria-hidden="true" />
@@ -655,12 +717,17 @@ export class FieldsComponent {
   readonly shared = input<readonly string[]>([]);
   /** The type's edit view (top level only): layout, labels, read-only fields. */
   readonly view = input<EditView | null>(null);
+  /** Attributes just filled with AI suggestions (top level), marked until reviewed. */
+  readonly changed = input<readonly string[]>([]);
 
   protected readonly humanize = humanize;
   protected readonly isToMany = isToMany;
   protected readonly isMorph = isMorph;
   protected readonly zoneChoice = signal<Record<string, string>>({});
   protected readonly uidNotes = signal<Record<string, string>>({});
+  private readonly ai = inject(AiActions);
+  /** The attribute an AI request is running for. */
+  protected readonly aiBusy = signal<string | null>(null);
 
   /**
    * Rows of visible fields: the edit view's layout (top level of a configured type), else
@@ -826,5 +893,95 @@ export class FieldsComponent {
     } catch (error) {
       this.uidNotes.update((notes) => ({ ...notes, [name]: ApiFailure.from(error).message }));
     }
+  }
+
+  /** An SEO component of a saved entry: the AI can suggest its metadata. */
+  protected canSuggestSeo(attribute: Attribute): boolean {
+    return (
+      this.ai.enabled() &&
+      !attribute.repeatable &&
+      !!this.context().documentId &&
+      this.context().saved !== false &&
+      isSeoComponent(this.schema.component(attribute.component ?? ''))
+    );
+  }
+
+  /** Fills an SEO component with suggestions from the saved draft (undo in the toast). */
+  protected async suggestSeo(name: string, attribute: Attribute): Promise<void> {
+    const component = this.schema.component(attribute.component ?? '');
+    const { uid, documentId, locale } = this.context();
+    if (!component || !documentId || this.aiBusy()) return;
+    this.aiBusy.set(name);
+    try {
+      const suggestion = await this.ai.seo(uid, documentId, locale);
+      const previous = this.value(name);
+      if (previous === null) this.setComponent(name, component.uid);
+      const { item, changed } = applySeo(component, this.value(name) as FormModel, suggestion);
+      if (!changed.length) {
+        if (previous === null) this.setValue(name, null);
+        toast.info(this.t('ai.seo.nothing'));
+        return;
+      }
+      this.setValue(name, item);
+      this.flashFields(changed.map((field) => `${this.idFor(name)}-${field}`));
+      toast.success(this.t('ai.seo.done'), {
+        description: this.t('ai.reviewHint'),
+        action: { label: this.t('ai.undo'), onClick: () => this.setValue(name, previous) },
+      });
+    } catch (error) {
+      toast.error(this.t('ai.seo.error'), { description: aiErrorMessage(error, this.t) });
+    } finally {
+      this.aiBusy.set(null);
+    }
+  }
+
+  /** The attribute a summary field is written from, when the AI can write it. */
+  protected summaryFrom(name: string, attribute: Attribute): string | null {
+    if (!this.ai.enabled() || !isSummaryField(name, attribute)) return null;
+    return summarySource(this.attributes(), name);
+  }
+
+  /** Writes a summary of `source` into `name` (undo in the toast). */
+  protected async summarize(name: string, attribute: Attribute, source: string): Promise<void> {
+    if (this.aiBusy()) return;
+    const text = sourceText(this.attributes()[source], this.value(source));
+    if (!text) {
+      toast.info(this.t('ai.summarize.empty', { field: this.label(source) }));
+      return;
+    }
+    this.aiBusy.set(name);
+    try {
+      const { summary } = await this.ai.summarize(
+        text.slice(0, 40_000),
+        this.context().locale,
+        summaryWords(attribute),
+      );
+      if (!summary.trim()) {
+        toast.info(this.t('ai.summarize.nothing'));
+        return;
+      }
+      const previous = this.value(name);
+      const limit = attribute.maxLength;
+      this.setValue(name, limit ? summary.trim().slice(0, limit) : summary.trim());
+      this.flashFields([this.idFor(name)]);
+      toast.success(this.t('ai.summarize.done', { field: this.label(name) }), {
+        description: this.t('ai.reviewHint'),
+        action: { label: this.t('ai.undo'), onClick: () => this.setValue(name, previous) },
+      });
+    } catch (error) {
+      toast.error(this.t('ai.summarize.error'), { description: aiErrorMessage(error, this.t) });
+    } finally {
+      this.aiBusy.set(null);
+    }
+  }
+
+  /** Highlights the controls with these ids once they are rendered. */
+  private flashFields(ids: string[]): void {
+    requestAnimationFrame(() => {
+      for (const id of ids) {
+        const element = document.getElementById(id);
+        if (element) flash(element.closest<HTMLElement>('[data-field]') ?? element);
+      }
+    });
   }
 }

@@ -3,6 +3,7 @@ import {
   Component,
   Injector,
   OnInit,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -25,6 +26,7 @@ import { HlmFieldImports } from '@spartan-ng/helm/field';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
+import { AiActions, aiErrorMessage } from '../../core/ai';
 import { Api, ApiFailure, Issue, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { allowedLocale } from '../../core/permissions';
@@ -67,6 +69,14 @@ import { applyRules } from './fields/rules';
 import { fillFromLocale, prefillShared, sharedFields } from './locale-model';
 import { PreviewPane, SPLIT_DEFAULT, frameableUrl, splitAfterKey, splitAt } from './preview-pane';
 import { RelatedEntrySheet } from './related-entry-sheet';
+import { mergeTranslation, translatableFields } from './ai-model';
+import {
+  EditTarget,
+  findFieldElement,
+  resolveFieldPath,
+  revealField,
+  validFieldPath,
+} from './visual-editing';
 
 type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -225,7 +235,7 @@ function withLocale(query: string, locale: string | null): string {
               <ng-icon name="lucideHistory" /> {{ t('content.history.open') }}
             </a>
           }
-          @if (canDuplicate() || canConfigure()) {
+          @if (canDuplicate() || canConfigure() || (canTranslate() && !missing())) {
             <button
               hlmBtn
               variant="ghost"
@@ -240,7 +250,13 @@ function withLocale(query: string, locale: string | null): string {
               <ng-icon name="lucideEllipsis" />
             </button>
             <ng-template #moreMenu>
-              <hlm-dropdown-menu class="w-56">
+              <hlm-dropdown-menu class="w-64">
+                @if (canTranslate() && !missing()) {
+                  <button hlmDropdownMenuItem (triggered)="openTranslate()">
+                    <ng-icon name="lucideSparkles" />
+                    {{ t('ai.translate.action', { locale: locales.name(translateDefault()) }) }}
+                  </button>
+                }
                 @if (canDuplicate()) {
                   <button hlmDropdownMenuItem (triggered)="duplicate()">
                     <ng-icon name="lucideCopyPlus" /> {{ t('content.duplicate.action') }}
@@ -294,7 +310,7 @@ function withLocale(query: string, locale: string | null): string {
           </p>
           <p hlmAlertDescription>{{ t('content.locale.missingHint') }}</p>
           @if (fillSources().length) {
-            <div class="col-start-2 mt-2">
+            <div class="col-start-2 mt-2 flex flex-wrap gap-2">
               <button
                 hlmBtn
                 variant="outline"
@@ -305,8 +321,61 @@ function withLocale(query: string, locale: string | null): string {
               >
                 <ng-icon name="lucideCopy" /> {{ t('content.locale.fill') }}
               </button>
+              @if (canTranslate()) {
+                <button
+                  hlmBtn
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  [disabled]="busy() || translating()"
+                  (click)="openTranslate()"
+                >
+                  <ng-icon name="lucideSparkles" />
+                  {{ t('ai.translate.action', { locale: locales.name(translateDefault()) }) }}
+                </button>
+              }
             </div>
           }
+        </div>
+      }
+
+      @if (aiChanges(); as changes) {
+        <div hlmAlert role="status">
+          <ng-icon hlmAlertIcon name="lucideSparkles" />
+          <p hlmAlertTitle>
+            {{
+              t('ai.translate.reviewTitle', {
+                count: changes.fields.length,
+                locale: locales.name(changes.source),
+              })
+            }}
+          </p>
+          <div hlmAlertDescription class="flex flex-col gap-2">
+            <p>{{ t('ai.translate.reviewHint') }}</p>
+            <ul class="flex flex-wrap gap-1" [attr.aria-label]="t('ai.translate.changedFields')">
+              @for (name of changes.fields; track name) {
+                <li>
+                  <button
+                    hlmBtn
+                    variant="secondary"
+                    size="xs"
+                    type="button"
+                    (click)="focusField(name)"
+                  >
+                    {{ fieldLabel(name) }}
+                  </button>
+                </li>
+              }
+            </ul>
+          </div>
+          <div class="col-start-2 mt-2 flex flex-wrap gap-2">
+            <button hlmBtn variant="outline" size="sm" type="button" (click)="undoTranslation()">
+              <ng-icon name="lucideUndo2" /> {{ t('ai.translate.undo') }}
+            </button>
+            <button hlmBtn variant="ghost" size="sm" type="button" (click)="aiChanges.set(null)">
+              <ng-icon name="lucideCheck" /> {{ t('ai.translate.keep') }}
+            </button>
+          </div>
         </div>
       }
 
@@ -344,7 +413,12 @@ function withLocale(query: string, locale: string | null): string {
                 <vd-fields
                   [attributes]="type().attributes"
                   [tree]="tree"
-                  [context]="{ uid: type().uid, documentId: documentId(), locale: locale() }"
+                  [context]="{
+                    uid: type().uid,
+                    documentId: documentId(),
+                    locale: locale(),
+                    saved: !missing(),
+                  }"
                   [relationLabels]="relationLabels()"
                   [mediaFiles]="mediaFiles()"
                   [refs]="refs()"
@@ -352,6 +426,7 @@ function withLocale(query: string, locale: string | null): string {
                   [morphs]="morphs()"
                   [shared]="shared()"
                   [view]="view()"
+                  [changed]="aiChanges()?.fields ?? []"
                   prefix="doc"
                 />
               </div>
@@ -545,6 +620,7 @@ function withLocale(query: string, locale: string | null): string {
             (reload)="refreshPreview()"
             (openTab)="openPreview()"
             (closed)="sideBySide.set(false)"
+            (edit)="openFromPreview($event)"
           />
         }
       </div>
@@ -591,6 +667,61 @@ function withLocale(query: string, locale: string | null): string {
         </hlm-dialog-footer>
       </hlm-dialog-content>
     </hlm-dialog>
+
+    <hlm-dialog [state]="translateOpen() ? 'open' : 'closed'" (closed)="translateOpen.set(false)">
+      <hlm-dialog-content
+        *hlmDialogPortal="let ctx"
+        class="sm:max-w-md"
+        [closeLabel]="t('common.close')"
+      >
+        <hlm-dialog-header>
+          <h2 hlmDialogTitle>{{ t('ai.translate.title') }}</h2>
+          <p hlmDialogDescription>
+            {{ t('ai.translate.description', { locale: locales.name(locale()) }) }}
+          </p>
+        </hlm-dialog-header>
+        <div hlmField>
+          <label hlmFieldLabel for="translate-source">{{ t('ai.translate.source') }}</label>
+          <hlm-native-select
+            selectId="translate-source"
+            [value]="translateSource()"
+            (valueChange)="translateSource.set($event ?? '')"
+          >
+            @for (code of fillSources(); track code) {
+              <option hlmNativeSelectOption [value]="code">
+                {{ locales.name(code) }} ({{ code }})
+              </option>
+            }
+          </hlm-native-select>
+          <p hlmFieldDescription>{{ t('ai.translate.sourceHint') }}</p>
+        </div>
+        @if (ai.status(); as status) {
+          @if (status.model) {
+            <p class="text-muted-foreground text-xs">
+              {{ t('ai.poweredBy', { provider: status.provider ?? '', model: status.model }) }}
+            </p>
+          }
+        }
+        <hlm-dialog-footer>
+          <button hlmBtn variant="outline" type="button" (click)="translateOpen.set(false)">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            hlmBtn
+            type="button"
+            [disabled]="!translateSource() || translating()"
+            (click)="translate()"
+          >
+            @if (translating()) {
+              <hlm-spinner />
+            } @else {
+              <ng-icon name="lucideLanguages" />
+            }
+            {{ translating() ? t('ai.translate.running') : t('ai.translate.run') }}
+          </button>
+        </hlm-dialog-footer>
+      </hlm-dialog-content>
+    </hlm-dialog>
   `,
 })
 export class DocumentForm implements OnInit {
@@ -617,6 +748,20 @@ export class DocumentForm implements OnInit {
   readonly sharedSource = input<Document | null>(null);
   /** The type's edit view (`null`: the default layout). */
   readonly view = input<EditView | null>(null);
+  /** A field path to scroll to and focus once shown (`?field=`, from visual editing). */
+  readonly focus = input<string | null>(null);
+
+  protected readonly ai = inject(AiActions);
+  /** "Translate from…": the dialog, its source locale and the running request. */
+  protected readonly translateOpen = signal(false);
+  protected readonly translateSource = signal('');
+  protected readonly translating = signal(false);
+  /** The last translation applied to the form, until kept, undone or saved. */
+  protected readonly aiChanges = signal<{
+    source: string;
+    fields: string[];
+    previous: FormModel;
+  } | null>(null);
 
   protected readonly locales = inject(ContentLocales);
   protected readonly localeStateLabels = LOCALE_STATE_LABELS;
@@ -636,6 +781,23 @@ export class DocumentForm implements OnInit {
       .filter((version) => localeState(this.localeVersions(), version.locale) !== 'missing')
       .filter((version) => this.auth.canInLocale('content.read', this.type().uid, version.locale))
       .map((version) => version.locale),
+  );
+
+  /** The translation's preferred source: the default locale, else the first other one. */
+  protected readonly translateDefault = computed(() => {
+    const sources = this.fillSources();
+    const preferred = this.locales.defaultCode();
+    return preferred && sources.includes(preferred) ? preferred : (sources[0] ?? '');
+  });
+  /** AI translation: a localized entry, another readable locale, and rights to edit this one. */
+  protected readonly canTranslate = computed(
+    () =>
+      this.ai.enabled() &&
+      !!this.locale() &&
+      !!this.documentId() &&
+      this.fillSources().length > 0 &&
+      this.canSave() &&
+      translatableFields(this.type().attributes).length > 0,
   );
 
   protected readonly documentId = signal<string | null>(null);
@@ -752,7 +914,17 @@ export class DocumentForm implements OnInit {
       : this.auth.canInLocale('content.create', uid, this.locale());
   }
 
+  constructor() {
+    // Scrolls to `?field=` once the form shows (again when it changes on the same entry).
+    effect(() => {
+      const path = validFieldPath(this.focus());
+      if (!path) return;
+      untracked(() => afterNextRender(() => this.focusField(path), { injector: this.injector }));
+    });
+  }
+
   ngOnInit(): void {
+    void this.ai.load();
     const type = this.type();
     const document = this.document();
     const components = (uid: string) => this.schema.component(uid);
@@ -899,6 +1071,7 @@ export class DocumentForm implements OnInit {
         ),
       );
       this.filling.set(false);
+      this.aiChanges.set(null);
       toast.success(this.t('content.locale.filled', { locale: this.locales.name(source) }));
     } catch (error) {
       toast.error(this.t('content.locale.fillError', { locale: this.locales.name(source) }), {
@@ -907,6 +1080,135 @@ export class DocumentForm implements OnInit {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  protected openTranslate(): void {
+    this.translateSource.set(this.translateDefault());
+    this.translateOpen.set(true);
+  }
+
+  /**
+   * Translates the localized text fields of another locale's draft into the form, as
+   * unsaved changes: the changed fields are marked and the banner can undo them.
+   */
+  protected async translate(): Promise<void> {
+    const source = this.translateSource();
+    const id = this.documentId();
+    const target = this.locale();
+    if (!source || !id || !target || this.translating()) return;
+    const type = this.type();
+    const components = (uid: string) => this.schema.component(uid);
+    this.translating.set(true);
+    try {
+      const { fields } = await this.ai.translate({
+        uid: type.uid,
+        documentId: id,
+        from: source,
+        to: target,
+        fields: translatableFields(type.attributes),
+      });
+      const previous = this.aiChanges()?.previous ?? this.model();
+      const { model, changed } = mergeTranslation(
+        type.attributes,
+        this.model(),
+        fields ?? {},
+        components,
+      );
+      this.translateOpen.set(false);
+      if (!changed.length) {
+        toast.info(this.t('ai.translate.nothing'));
+        return;
+      }
+      // Labels of relations and files inside translated components.
+      this.absorb(fields as Document);
+      this.model.set(model);
+      this.aiChanges.set({ source, fields: changed, previous });
+      toast.success(
+        this.t('ai.translate.done', { count: changed.length, locale: this.locales.name(source) }),
+      );
+      afterNextRender(() => this.focusField(changed[0], false), { injector: this.injector });
+    } catch (error) {
+      toast.error(this.t('ai.translate.error'), { description: aiErrorMessage(error, this.t) });
+    } finally {
+      this.translating.set(false);
+    }
+  }
+
+  protected undoTranslation(): void {
+    const changes = this.aiChanges();
+    if (!changes) return;
+    this.model.set(changes.previous);
+    this.aiChanges.set(null);
+    toast.success(this.t('ai.translate.undone'));
+  }
+
+  protected fieldLabel(name: string): string {
+    return this.view()?.fields[name]?.label || humanize(name);
+  }
+
+  /**
+   * Scrolls to a field (a dotted path like `seo.metaTitle` or `sections.2.title`), focuses
+   * it and highlights it. Controls that render late (editors) get a few frames.
+   */
+  focusField(path: string, focus = true): void {
+    const type = this.type();
+    const segments = resolveFieldPath(type.attributes, this.model(), path, (uid) =>
+      this.schema.component(uid),
+    );
+    if (!segments.length) {
+      toast.info(this.t('visualEditing.fieldNotFound', { field: path }));
+      return;
+    }
+    let attempts = 0;
+    const attempt = () => {
+      const element = findFieldElement(document, 'doc', segments);
+      if (element) {
+        if (focus) revealField(element);
+        else element.closest<HTMLElement>('[data-field]')?.scrollIntoView({ block: 'center' });
+        return;
+      }
+      if (++attempts < 20) requestAnimationFrame(attempt);
+      else toast.info(this.t('visualEditing.fieldHidden', { field: path }));
+    };
+    attempt();
+  }
+
+  /** The preview's overlay asked to edit a field: here, or in another entry. */
+  protected openFromPreview(target: EditTarget): void {
+    const type = this.type();
+    const locale = target.locale ?? this.locale();
+    const here =
+      target.uid === type.uid &&
+      target.documentId === this.documentId() &&
+      (!this.locale() || locale === this.locale());
+    if (here) {
+      if (target.field) this.focusField(target.field);
+      return;
+    }
+    const other = this.schema.type(target.uid);
+    if (!other || !this.auth.canInLocale('content.read', other.uid, target.locale)) {
+      toast.error(this.t('visualEditing.cannotOpen'));
+      return;
+    }
+    const open = () =>
+      void this.router.navigate(
+        other.kind === 'singleType'
+          ? ['/single', other.uid]
+          : ['/content', other.uid, target.documentId],
+        {
+          queryParams: {
+            ...(target.locale ? { locale: target.locale } : {}),
+            ...(target.field ? { field: target.field } : {}),
+          },
+        },
+      );
+    if (this.documentForm().dirty() || this.aiChanges()) {
+      toast.warning(this.t('visualEditing.unsaved'), {
+        action: { label: this.t('visualEditing.openAnyway'), onClick: open },
+      });
+      return;
+    }
+    open();
   }
 
   /** Saves the draft; `publish` then publishes it. */
@@ -955,6 +1257,7 @@ export class DocumentForm implements OnInit {
         }
         // Passwords are never read back: the field empties again ("keep the current one").
         this.model.set(withoutPasswords(type.attributes, this.model()));
+        this.aiChanges.set(null);
         toast.success(
           this.t(publish ? 'content.edit.toast.published' : 'content.edit.toast.saved'),
         );
@@ -1000,6 +1303,7 @@ export class DocumentForm implements OnInit {
         );
         this.model.set(toModel(type.attributes, draft, (uid) => this.schema.component(uid)));
         this.showMorphs(draft);
+        this.aiChanges.set(null);
         this.draftUpdatedAt.set(this.publishedUpdatedAt());
         toast.success(this.t('content.edit.toast.discarded'));
       }
@@ -1179,6 +1483,7 @@ export class DocumentForm implements OnInit {
           [existingId]="existingId()"
           [sharedSource]="sharedSource()"
           [view]="view()"
+          [focus]="field() ?? null"
         />
       }
     }
@@ -1199,6 +1504,8 @@ export class ContentEdit {
   readonly documentId = input<string>();
   /** `?locale=` (localized types; the default locale otherwise). */
   readonly locale = input<string>();
+  /** `?field=`: a field to scroll to (links from the visual editing overlay). */
+  readonly field = input<string>();
 
   protected readonly type = computed(() => this.schema.type(this.uid()));
   protected readonly document = signal<Document | null>(null);
