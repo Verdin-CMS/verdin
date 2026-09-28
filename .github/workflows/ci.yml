@@ -178,6 +178,12 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: packages/client/package-lock.json
+      - name: Same version as the workspace
+        run: |
+          crate=$(sed -n 's/^version = "\(.*\)"$/\1/p' ../../Cargo.toml | head -1)
+          client=$(node -p 'require("./package.json").version')
+          test "$client" = "$crate" \
+            || { echo "packages/client is $client, the workspace $crate: bump both"; exit 1; }
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
