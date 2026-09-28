@@ -343,7 +343,7 @@ Strapi stores each component in its own table with polymorphic link tables, whic
 - Strict validation against the component schema on every write.
 - Publish and discard copy the JSON as-is (free).
 - **Relations inside components** (planned) will be stored as `document_id`s inside the JSON and resolved by the populate engine with batched queries. Until then writing them is a validation error.
-- **Trade-off**: filtering on component fields needs dialect-specific JSON functions (`->>` on PG, `JSON_EXTRACT`/`JSON_VALUE` on MySQL/MariaDB, `json_extract` on SQLite). In the MVP only scalar fields of **non-repeatable** components are filterable. Repeatable components and dynamic zones are not filterable in v0.1 (in practice, filtering by them is rare).
+- **Trade-off**: filtering on component fields needs dialect-specific JSON functions (`->>` on PG, `JSON_EXTRACT`/`JSON_VALUE` on MySQL/MariaDB, `json_extract` on SQLite). Scalar fields of non-repeatable components are filtered through JSON paths. Since 0.8, repeatable components use `EXISTS` over the JSON array items (`jsonb_array_elements` on PG, `JSON_TABLE` on MySQL/MariaDB, `json_each` on SQLite), and dynamic zones are filtered by `__component` only.
 
 ### 8.6 MVP system tables
 
@@ -777,7 +777,7 @@ Astro Starlight documentation site.
 | 25 | Builder apply order | Migrate, then write files, then hot-swap the app | A failed migration leaves files and running app untouched |
 | 26 | Admin writes | Save drafts only; publishing is an explicit action | Matches editors' expectations; the content API keeps Strapi's publish-by-default |
 | 27 | Admin runtime config | `<meta>` tag, not inline script | Keeps the CSP free of `unsafe-inline` scripts |
-| 28 | Filters on component fields | JSON path operators per dialect (`#>>`, `JSON_VALUE`, `json_extract`), non-repeatable components only | Repeatable components and dynamic zones need `EXISTS` over JSON arrays; rare, deferred |
+| 28 | Filters on component fields | JSON path operators per dialect (`#>>`, `JSON_VALUE`, `json_extract`); `EXISTS` over array items for repeatable components and dynamic zones (0.8) | Dynamic zones only by `__component`: their items have different fields |
 | 29 | Admin i18n | Transloco with flat JSON catalogs (`admin/public/i18n`) and ICU MessageFormat through FormatJS (a custom transpiler), behind a small `I18n` facade; not Angular's compile-time i18n | Runtime language switch; standard files for Weblate/Crowdin; FormatJS interprets messages, so the strict CSP needs no `unsafe-eval` (`@messageformat/core` compiles with `new Function`); keys typed from `en.json`, completeness checked by `npm run i18n:check` |
 | 30 | Week start | `Intl.Locale#getWeekInfo` of the browser's regional tag (en-GB ≠ en-US), region table fallback, user override | Follows each user's region even when the UI language is shared |
 | 31 | Dashboard layout storage | Per-user JSON `preferences` column on `vd_admin_users` (≤ 64 KiB) | Follows the user across browsers; theme and language stay in `localStorage` because they apply before login |
