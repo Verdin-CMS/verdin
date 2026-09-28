@@ -77,6 +77,10 @@ export const routes: Routes = [
           import('./features/settings/webhook-edit').then((m) => m.WebhookEditPage),
       },
       {
+        path: 'settings/plugins',
+        loadComponent: () => import('./features/settings/plugins').then((m) => m.PluginsPage),
+      },
+      {
         path: 'settings/internationalization',
         loadComponent: () => import('./features/settings/locales').then((m) => m.LocalesPage),
       },

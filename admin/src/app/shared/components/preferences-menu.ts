@@ -3,11 +3,13 @@ import { NgIcon } from '@ng-icons/core';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmDropdownMenuImports } from '@spartan-ng/helm/dropdown-menu';
 
+import { Auth } from '../../core/auth';
 import { I18n, WeekStartPreference } from '../../core/i18n/i18n';
 import { Weekday } from '../../core/i18n/week';
 import { Theme, ThemeChoice } from '../../core/theme';
+import { Unseen } from '../../core/unseen';
 
-/** Theme, language and first day of the week. */
+/** Theme, language, first day of the week and the sidebar's unseen badges. */
 @Component({
   selector: 'vd-preferences-menu',
   imports: [NgIcon, HlmButtonImports, HlmDropdownMenuImports],
@@ -54,6 +56,18 @@ import { Theme, ThemeChoice } from '../../core/theme';
           {{ i18n.t('prefs.weekStart') }}
           <hlm-dropdown-menu-item-sub-indicator />
         </button>
+        @if (auth.loggedIn()) {
+          <hlm-dropdown-menu-separator />
+          <button
+            hlmDropdownMenuCheckbox
+            [checked]="unseen.enabled()"
+            (triggered)="unseen.setEnabled(!unseen.enabled())"
+          >
+            <ng-icon name="lucideBell" />
+            {{ i18n.t('prefs.unseenBadges') }}
+            <hlm-dropdown-menu-checkbox-indicator />
+          </button>
+        }
       </hlm-dropdown-menu>
     </ng-template>
 
@@ -92,6 +106,8 @@ import { Theme, ThemeChoice } from '../../core/theme';
 export class PreferencesMenu {
   protected readonly i18n = inject(I18n);
   protected readonly theme = inject(Theme);
+  protected readonly unseen = inject(Unseen);
+  protected readonly auth = inject(Auth);
   /** Icon-only trigger. */
   readonly compact = input(false);
 

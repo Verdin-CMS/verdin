@@ -1,12 +1,15 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   OnInit,
   computed,
   inject,
   signal,
 } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 import { NgIcon } from '@ng-icons/core';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmDropdownMenuImports } from '@spartan-ng/helm/dropdown-menu';
@@ -20,7 +23,9 @@ import { ApiFailure } from '../core/api';
 import { Auth } from '../core/auth';
 import { Features } from '../core/features';
 import { I18n } from '../core/i18n/i18n';
+import { PluginExtensions } from '../core/plugin-extensions';
 import { Schema } from '../core/schema';
+import { Unseen, formatBadge } from '../core/unseen';
 import { Logo } from '../shared/components/logo';
 import { PreferencesMenu } from '../shared/components/preferences-menu';
 
@@ -73,7 +78,7 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
             <div hlmSidebarGroupContent>
               <ul hlmSidebarMenu>
                 @for (type of schema.collections(); track type.uid) {
-                  <li hlmSidebarMenuItem>
+                  <li hlmSidebarMenuItem class="[&:has(>[data-sidebar=menu-badge])>a]:pe-8">
                     <a
                       hlmSidebarMenuButton
                       [routerLink]="['/content', type.uid]"
@@ -84,6 +89,15 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                       <ng-icon name="lucideFileText" />
                       <span>{{ type.displayName }}</span>
                     </a>
+                    @if (badge(type.uid); as text) {
+                      <span
+                        hlmSidebarMenuBadge
+                        role="img"
+                        class="bg-primary/10 text-primary"
+                        [attr.aria-label]="t('shell.unseen', { count: unseen.counts()[type.uid] })"
+                        >{{ text }}</span
+                      >
+                    }
                   </li>
                 } @empty {
                   <li class="text-muted-foreground px-2 text-sm">{{ t('shell.noTypes') }}</li>
@@ -97,7 +111,7 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
               <div hlmSidebarGroupContent>
                 <ul hlmSidebarMenu>
                   @for (type of schema.singles(); track type.uid) {
-                    <li hlmSidebarMenuItem>
+                    <li hlmSidebarMenuItem class="[&:has(>[data-sidebar=menu-badge])>a]:pe-8">
                       <a
                         hlmSidebarMenuButton
                         [routerLink]="['/single', type.uid]"
@@ -108,6 +122,17 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                         <ng-icon name="lucideFile" />
                         <span>{{ type.displayName }}</span>
                       </a>
+                      @if (badge(type.uid); as text) {
+                        <span
+                          hlmSidebarMenuBadge
+                          role="img"
+                          class="bg-primary/10 text-primary"
+                          [attr.aria-label]="
+                            t('shell.unseen', { count: unseen.counts()[type.uid] })
+                          "
+                          >{{ text }}</span
+                        >
+                      }
                     </li>
                   }
                 </ul>
@@ -232,6 +257,20 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                     </a>
                   </li>
                 }
+                @if (auth.can('plugins.manage')) {
+                  <li hlmSidebarMenuItem>
+                    <a
+                      hlmSidebarMenuButton
+                      routerLink="/settings/plugins"
+                      routerLinkActive
+                      #plugins="routerLinkActive"
+                      [isActive]="plugins.isActive"
+                    >
+                      <ng-icon name="lucidePlug" />
+                      <span>{{ t('shell.plugins') }}</span>
+                    </a>
+                  </li>
+                }
                 <li hlmSidebarMenuItem>
                   <a
                     hlmSidebarMenuButton
@@ -353,6 +392,10 @@ export class Shell implements OnInit {
   protected readonly auth = inject(Auth);
   protected readonly schema = inject(Schema);
   protected readonly features = inject(Features);
+  protected readonly unseen = inject(Unseen);
+  private readonly extensions = inject(PluginExtensions);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
   protected readonly t = inject(I18n).t;
   protected readonly error = signal<string | null>(null);
 
@@ -368,9 +411,23 @@ export class Shell implements OnInit {
     return letters.join('').slice(0, 2).toUpperCase();
   });
 
+  /** The unseen badge of a type, or `null` (none, or badges turned off). */
+  protected badge(uid: string): string | null {
+    return this.unseen.enabled() ? formatBadge(this.unseen.counts()[uid]) : null;
+  }
+
   async ngOnInit(): Promise<void> {
     // Optional parts of the navigation; without the catalog they stay hidden.
     this.features.load().catch(() => undefined);
+    // Plugin widgets and fields; failures leave them out.
+    void this.extensions.load();
+    this.unseen.start(this.destroyRef);
+    this.router.events
+      .pipe(
+        filter((event) => event instanceof NavigationEnd),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => this.unseen.refresh());
     try {
       await this.schema.load();
     } catch (error) {

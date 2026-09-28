@@ -35,6 +35,7 @@ import {
   localeState,
 } from '../../core/content-locales';
 import { Engagement } from '../../core/engagement';
+import { Unseen } from '../../core/unseen';
 import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { Schema } from '../../core/schema';
@@ -475,6 +476,7 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
 })
 export class DocumentForm implements OnInit {
   private readonly api = inject(Api);
+  private readonly unseen = inject(Unseen);
   private readonly router = inject(Router);
   protected readonly auth = inject(Auth);
   private readonly schema = inject(Schema);
@@ -778,6 +780,7 @@ export class DocumentForm implements OnInit {
           this.t(publish ? 'content.edit.toast.published' : 'content.edit.toast.saved'),
         );
         void this.refreshVersions();
+        this.unseen.refresh();
         const path = this.router.url.split('?')[0];
         if (type.kind === 'collectionType' && !path.endsWith(document.documentId)) {
           await this.router.navigate(['/content', type.uid, document.documentId], {
@@ -899,6 +902,7 @@ export class DocumentForm implements OnInit {
 export class ContentEdit {
   private readonly api = inject(Api);
   private readonly engagement = inject(Engagement);
+  private readonly unseen = inject(Unseen);
   private readonly schema = inject(Schema);
   private readonly locales = inject(ContentLocales);
   protected readonly i18n = inject(I18n);
@@ -986,7 +990,10 @@ export class ContentEdit {
           ),
         );
         // Opening a document marks it seen (it leaves "unseen" dashboard widgets).
-        this.engagement.view(uid, documentId).catch(() => undefined);
+        this.engagement
+          .view(uid, documentId)
+          .then(() => this.unseen.refresh())
+          .catch(() => undefined);
         if (type.draftAndPublish) {
           try {
             const live = await this.api.get<Document>(

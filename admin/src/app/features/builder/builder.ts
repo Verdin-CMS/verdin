@@ -28,6 +28,8 @@ import { HlmToggleGroupImports } from '@spartan-ng/helm/toggle-group';
 import { Api, ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { PluginExtensions, PluginField } from '../../core/plugin-extensions';
+import { customFieldId, parseCustomField } from '../../core/plugins';
 import { Schema } from '../../core/schema';
 import {
   Attribute,
@@ -566,6 +568,12 @@ interface AttributeDraft {
                             <span hlmBadge variant="secondary">{{
                               info ? t(info.label) : entry.attribute.type
                             }}</span>
+                            @if (entry.attribute.customField) {
+                              <span hlmBadge variant="outline">
+                                <ng-icon name="lucidePlug" />
+                                {{ customFieldName(entry.attribute.customField) }}
+                              </span>
+                            }
                             @if (entry.attribute.required) {
                               <span hlmBadge variant="outline">{{
                                 t('builder.fields.required')
@@ -693,9 +701,9 @@ interface AttributeDraft {
                     <button
                       type="button"
                       class="hover:bg-muted/60 focus-visible:ring-ring/50 flex items-start gap-2.5 rounded-lg border p-2.5 text-start transition-colors outline-none focus-visible:ring-[3px]"
-                      [class.border-primary]="attr.type === info.type"
-                      [class.bg-primary/5]="attr.type === info.type"
-                      [attr.aria-pressed]="attr.type === info.type"
+                      [class.border-primary]="attr.type === info.type && !attr.customField"
+                      [class.bg-primary/5]="attr.type === info.type && !attr.customField"
+                      [attr.aria-pressed]="attr.type === info.type && !attr.customField"
                       (click)="setType(info.type)"
                     >
                       <span
@@ -713,12 +721,63 @@ interface AttributeDraft {
                   }
                 </div>
               </div>
+              @if (extensions.fields().length) {
+                <div class="flex flex-col gap-2">
+                  <h3 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                    {{ t('builder.field.customFields') }}
+                  </h3>
+                  <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    @for (custom of extensions.fields(); track custom.plugin + '.' + custom.id) {
+                      @let selected = attr.customField === customFieldId(custom.plugin, custom.id);
+                      <button
+                        type="button"
+                        class="hover:bg-muted/60 focus-visible:ring-ring/50 flex items-start gap-2.5 rounded-lg border p-2.5 text-start transition-colors outline-none focus-visible:ring-[3px]"
+                        [class.border-primary]="selected"
+                        [class.bg-primary/5]="selected"
+                        [attr.aria-pressed]="selected"
+                        (click)="setCustomField(custom)"
+                      >
+                        <span
+                          class="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-md"
+                        >
+                          <ng-icon name="lucidePlug" size="16" />
+                        </span>
+                        <span class="flex min-w-0 flex-col">
+                          <span class="text-sm font-medium">{{ custom.title }}</span>
+                          <span class="text-muted-foreground text-xs leading-snug">{{
+                            custom.description ||
+                              t('builder.field.customFieldBy', { plugin: custom.plugin })
+                          }}</span>
+                        </span>
+                      </button>
+                    }
+                  </div>
+                </div>
+              }
             }
 
             <div class="flex flex-col gap-4">
               <h3 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 {{ t('builder.field.configure') }}
               </h3>
+              @if (attr.customField) {
+                <div class="bg-muted/40 flex items-start gap-2.5 rounded-lg border p-3 text-sm">
+                  <ng-icon name="lucidePlug" class="text-primary mt-0.5 shrink-0" />
+                  <div class="flex min-w-0 flex-col gap-0.5">
+                    <span class="font-medium">{{
+                      t('builder.field.customField', { name: customFieldName(attr.customField) })
+                    }}</span>
+                    <span class="text-muted-foreground font-mono text-xs break-all">{{
+                      attr.customField
+                    }}</span>
+                    @if (!extensions.field(attr.customField)) {
+                      <span class="text-muted-foreground text-xs">{{
+                        t('builder.field.customFieldUnavailable')
+                      }}</span>
+                    }
+                  </div>
+                </div>
+              }
               <div class="grid gap-4 sm:grid-cols-2">
                 <div hlmField>
                   <label hlmFieldLabel for="field-name">{{ t('builder.field.name') }}</label>
@@ -1179,6 +1238,8 @@ export class Builder {
   private readonly api = inject(Api);
   private readonly router = inject(Router);
   protected readonly schema = inject(Schema);
+  protected readonly extensions = inject(PluginExtensions);
+  protected readonly customFieldId = customFieldId;
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
@@ -1419,6 +1480,31 @@ export class Builder {
           }
         : field,
     );
+  }
+
+  /** A plugin's custom field: stored as the field's type, rendered by the plugin. */
+  protected setCustomField(field: PluginField): void {
+    this.attributeDraft.update((draft) =>
+      draft
+        ? {
+            ...draft,
+            attribute: {
+              type: field.type as AttributeType,
+              customField: customFieldId(field.plugin, field.id),
+              required: draft.attribute.required,
+              pluginOptions: draft.attribute.pluginOptions,
+            },
+          }
+        : draft,
+    );
+  }
+
+  /** "Color (colors)" for a loaded field, else the plugin and id of `customField`. */
+  protected customFieldName(customField: string): string {
+    const field = this.extensions.field(customField);
+    if (field) return `${field.title} (${field.plugin})`;
+    const parsed = parseCustomField(customField);
+    return parsed ? `${parsed.field} (${parsed.plugin})` : customField;
   }
 
   protected setEnum(text: string): void {

@@ -14,6 +14,8 @@ import { HlmTooltipImports } from '@spartan-ng/helm/tooltip';
 
 import { Api, ApiFailure, toQuery } from '../../../core/api';
 import { I18n } from '../../../core/i18n/i18n';
+import { PluginExtensions, PluginField } from '../../../core/plugin-extensions';
+import { parseCustomField } from '../../../core/plugins';
 import { Schema } from '../../../core/schema';
 import { Attribute, Attributes, MediaFile } from '../../../core/types';
 import {
@@ -27,6 +29,7 @@ import {
 import { BlocksControl } from './blocks-control';
 import { MarkdownControl } from './markdown-control';
 import { MediaControl } from './media-control';
+import { PluginFieldControl } from './plugin-field';
 import { FormModel, References, isToMany, keyed, newComponentItem } from './model';
 import { RelationControl } from './relation';
 
@@ -72,6 +75,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
     MediaControl,
     BlocksControl,
     MarkdownControl,
+    PluginFieldControl,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -344,121 +348,137 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                   <ng-container *ngTemplateOutlet="sharedMark" />
                 }
               </label>
-              @switch (attribute.type) {
-                @case ('text') {
-                  <textarea hlmTextarea [id]="id" rows="3" [formField]="child(name)"></textarea>
-                }
-                @case ('richtext') {
-                  <vd-markdown-control [inputId]="id" [formField]="child(name)" />
-                }
-                @case ('blocks') {
-                  <vd-blocks-control [inputId]="id" [formField]="child(name)" />
-                }
-                @case ('email') {
-                  <input hlmInput [id]="id" type="email" [formField]="child(name)" />
-                }
-                @case ('uid') {
-                  <div hlmInputGroup>
-                    <input hlmInputGroupInput [id]="id" [formField]="child(name)" />
-                    <div hlmInputGroupAddon align="inline-end">
-                      <button
-                        hlmInputGroupButton
-                        type="button"
-                        size="xs"
-                        (click)="generateUid(name, attribute)"
-                      >
-                        {{ t('content.fields.generate') }}
-                      </button>
-                    </div>
-                  </div>
-                  @if (uidNotes()[name]; as note) {
-                    <p hlmFieldDescription>{{ note }}</p>
+              @if (pluginField(attribute); as custom) {
+                <vd-plugin-field
+                  [inputId]="id"
+                  [element]="custom.element"
+                  [attribute]="attribute"
+                  [locale]="context().locale ?? null"
+                  [formField]="child(name)"
+                />
+              } @else {
+                @switch (attribute.type) {
+                  @case ('text') {
+                    <textarea hlmTextarea [id]="id" rows="3" [formField]="child(name)"></textarea>
                   }
-                }
-                @case ('integer') {
-                  <vd-number-control [inputId]="id" [integer]="true" [formField]="child(name)" />
-                }
-                @case ('biginteger') {
-                  <vd-number-control
-                    [inputId]="id"
-                    [integer]="true"
-                    [bigint]="true"
-                    [formField]="child(name)"
-                  />
-                }
-                @case ('float') {
-                  <vd-number-control [inputId]="id" [formField]="child(name)" />
-                }
-                @case ('decimal') {
-                  <vd-number-control [inputId]="id" [formField]="child(name)" />
-                }
-                @case ('boolean') {
-                  <vd-switch-control [inputId]="id" [formField]="child(name)" />
-                }
-                @case ('enumeration') {
-                  <vd-enum-control
-                    [inputId]="id"
-                    [options]="attribute.enum ?? []"
-                    [formField]="child(name)"
-                  />
-                }
-                @case ('date') {
-                  <vd-date-control [inputId]="id" [formField]="child(name)" />
-                }
-                @case ('time') {
-                  <input hlmInput [id]="id" type="time" step="1" [formField]="child(name)" />
-                }
-                @case ('datetime') {
-                  <vd-datetime-control [inputId]="id" [formField]="child(name)" />
-                }
-                @case ('json') {
-                  <vd-json-control [inputId]="id" [formField]="child(name)" />
-                }
-                @case ('relation') {
-                  @if (attribute.mappedBy) {
-                    <p hlmFieldDescription>
-                      {{
-                        t('content.fields.managedFrom', {
-                          target: targetName(attribute.target),
-                          field: attribute.mappedBy,
-                        })
-                      }}
-                    </p>
-                    <ul class="flex flex-wrap gap-1">
-                      @for (item of inverse()[name] ?? []; track item.id) {
-                        <li>
-                          <a
-                            hlmBadge
-                            variant="secondary"
-                            [routerLink]="['/content', attribute.target, item.id]"
-                            >{{ item.label }}</a
-                          >
-                        </li>
-                      } @empty {
-                        <li class="text-muted-foreground text-sm">{{ t('common.none') }}</li>
-                      }
-                    </ul>
-                  } @else {
-                    <vd-relation-control
+                  @case ('richtext') {
+                    <vd-markdown-control [inputId]="id" [formField]="child(name)" />
+                  }
+                  @case ('blocks') {
+                    <vd-blocks-control [inputId]="id" [formField]="child(name)" />
+                  }
+                  @case ('email') {
+                    <input hlmInput [id]="id" type="email" [formField]="child(name)" />
+                  }
+                  @case ('uid') {
+                    <div hlmInputGroup>
+                      <input hlmInputGroupInput [id]="id" [formField]="child(name)" />
+                      <div hlmInputGroupAddon align="inline-end">
+                        <button
+                          hlmInputGroupButton
+                          type="button"
+                          size="xs"
+                          (click)="generateUid(name, attribute)"
+                        >
+                          {{ t('content.fields.generate') }}
+                        </button>
+                      </div>
+                    </div>
+                    @if (uidNotes()[name]; as note) {
+                      <p hlmFieldDescription>{{ note }}</p>
+                    }
+                  }
+                  @case ('integer') {
+                    <vd-number-control [inputId]="id" [integer]="true" [formField]="child(name)" />
+                  }
+                  @case ('biginteger') {
+                    <vd-number-control
                       [inputId]="id"
-                      [target]="attribute.target ?? ''"
-                      [many]="isToMany(attribute)"
-                      [initialLabels]="relationLabels()[name] ?? refs().labels"
+                      [integer]="true"
+                      [bigint]="true"
                       [formField]="child(name)"
                     />
                   }
+                  @case ('float') {
+                    <vd-number-control [inputId]="id" [formField]="child(name)" />
+                  }
+                  @case ('decimal') {
+                    <vd-number-control [inputId]="id" [formField]="child(name)" />
+                  }
+                  @case ('boolean') {
+                    <vd-switch-control [inputId]="id" [formField]="child(name)" />
+                  }
+                  @case ('enumeration') {
+                    <vd-enum-control
+                      [inputId]="id"
+                      [options]="attribute.enum ?? []"
+                      [formField]="child(name)"
+                    />
+                  }
+                  @case ('date') {
+                    <vd-date-control [inputId]="id" [formField]="child(name)" />
+                  }
+                  @case ('time') {
+                    <input hlmInput [id]="id" type="time" step="1" [formField]="child(name)" />
+                  }
+                  @case ('datetime') {
+                    <vd-datetime-control [inputId]="id" [formField]="child(name)" />
+                  }
+                  @case ('json') {
+                    <vd-json-control [inputId]="id" [formField]="child(name)" />
+                  }
+                  @case ('relation') {
+                    @if (attribute.mappedBy) {
+                      <p hlmFieldDescription>
+                        {{
+                          t('content.fields.managedFrom', {
+                            target: targetName(attribute.target),
+                            field: attribute.mappedBy,
+                          })
+                        }}
+                      </p>
+                      <ul class="flex flex-wrap gap-1">
+                        @for (item of inverse()[name] ?? []; track item.id) {
+                          <li>
+                            <a
+                              hlmBadge
+                              variant="secondary"
+                              [routerLink]="['/content', attribute.target, item.id]"
+                              >{{ item.label }}</a
+                            >
+                          </li>
+                        } @empty {
+                          <li class="text-muted-foreground text-sm">{{ t('common.none') }}</li>
+                        }
+                      </ul>
+                    } @else {
+                      <vd-relation-control
+                        [inputId]="id"
+                        [target]="attribute.target ?? ''"
+                        [many]="isToMany(attribute)"
+                        [initialLabels]="relationLabels()[name] ?? refs().labels"
+                        [formField]="child(name)"
+                      />
+                    }
+                  }
+                  @case ('media') {
+                    <vd-media-control
+                      [inputId]="id"
+                      [multiple]="!!attribute.multiple"
+                      [allowedTypes]="attribute.allowedTypes ?? []"
+                      [initialFiles]="mediaFiles()[name] ?? refs().files"
+                      [formField]="child(name)"
+                    />
+                  }
+                  @default {
+                    <input hlmInput [id]="id" [formField]="child(name)" />
+                  }
                 }
-                @case ('media') {
-                  <vd-media-control
-                    [inputId]="id"
-                    [multiple]="!!attribute.multiple"
-                    [allowedTypes]="attribute.allowedTypes ?? []"
-                    [initialFiles]="mediaFiles()[name] ?? refs().files"
-                    [formField]="child(name)"
-                  />
-                }
-                @default {
-                  <input hlmInput [id]="id" [formField]="child(name)" />
+                @if (missingPlugin(attribute); as plugin) {
+                  <p hlmFieldDescription class="flex items-center gap-1.5">
+                    <ng-icon name="lucidePlug" size="12" aria-hidden="true" />
+                    {{ t('content.fields.customFieldMissing', { plugin }) }}
+                  </p>
                 }
               }
               <ng-container *ngTemplateOutlet="errors; context: { $implicit: name }" />
@@ -492,6 +512,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
 export class FieldsComponent {
   private readonly api = inject(Api);
   private readonly schema = inject(Schema);
+  private readonly extensions = inject(PluginExtensions);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
@@ -518,6 +539,17 @@ export class FieldsComponent {
   protected readonly entries = computed(() =>
     Object.entries(this.attributes()).map(([name, attribute]) => ({ name, attribute })),
   );
+
+  /** The loaded plugin field rendering a `customField` attribute, if any. */
+  protected pluginField(attribute: Attribute): PluginField | undefined {
+    return attribute.customField ? this.extensions.field(attribute.customField) : undefined;
+  }
+
+  /** The plugin of a `customField` attribute whose field is not available (hint shown). */
+  protected missingPlugin(attribute: Attribute): string | null {
+    if (!attribute.customField || !this.extensions.loaded()) return null;
+    return parseCustomField(attribute.customField)?.plugin ?? attribute.customField;
+  }
 
   protected isShared(name: string): boolean {
     return this.shared().includes(name);

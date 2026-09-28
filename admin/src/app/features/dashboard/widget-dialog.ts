@@ -21,6 +21,9 @@ import { HlmToggleGroupImports } from '@spartan-ng/helm/toggle-group';
 
 import { ApiFailure } from '../../core/api';
 import {
+  CHART_DAYS,
+  CHART_SERIES,
+  ChartSeries,
   ConditionOp,
   ListSort,
   WIDGET_WIDTHS,
@@ -32,6 +35,7 @@ import {
   newWidgetId,
 } from '../../core/dashboard';
 import { Engagement, Poll } from '../../core/engagement';
+import { PluginExtensions, PluginWidget } from '../../core/plugin-extensions';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { Schema } from '../../core/schema';
@@ -65,6 +69,12 @@ export const WIDGET_KINDS: Kind[] = [
     hint: 'dashboard.kind.recentHint',
   },
   {
+    type: 'chart',
+    icon: 'lucideChartLine',
+    label: 'dashboard.kind.chart',
+    hint: 'dashboard.kind.chartHint',
+  },
+  {
     type: 'poll',
     icon: 'lucideVote',
     label: 'dashboard.kind.poll',
@@ -87,6 +97,13 @@ export const WIDGET_KINDS: Kind[] = [
     icon: 'lucideDatabase',
     label: 'dashboard.kind.system',
     hint: 'dashboard.kind.systemHint',
+  },
+  // Listed per plugin widget in the picker, not as one kind.
+  {
+    type: 'plugin',
+    icon: 'lucidePlug',
+    label: 'dashboard.kind.plugin',
+    hint: 'dashboard.kind.pluginHint',
   },
 ];
 
@@ -159,7 +176,7 @@ function operatorsFor(attribute: Attribute | undefined): ConditionOp[] {
 
         @if (!type()) {
           <div class="grid gap-3 sm:grid-cols-2">
-            @for (kind of kinds; track kind.type) {
+            @for (kind of pickable; track kind.type) {
               <button
                 type="button"
                 class="hover:border-primary/50 hover:bg-accent/50 flex items-start gap-3 rounded-xl border p-4 text-start transition-colors"
@@ -177,6 +194,32 @@ function operatorsFor(attribute: Attribute | undefined): ConditionOp[] {
               </button>
             }
           </div>
+          @if (extensions.widgets().length) {
+            <h3 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              {{ t('dashboard.pluginWidgets') }}
+            </h3>
+            <div class="grid gap-3 sm:grid-cols-2">
+              @for (item of extensions.widgets(); track item.plugin + '.' + item.id) {
+                <button
+                  type="button"
+                  class="hover:border-primary/50 hover:bg-accent/50 flex items-start gap-3 rounded-xl border p-4 text-start transition-colors"
+                  (click)="choosePlugin(item)"
+                >
+                  <span
+                    class="bg-primary/10 text-primary inline-flex size-9 shrink-0 items-center justify-center rounded-lg"
+                  >
+                    <ng-icon name="lucidePlug" />
+                  </span>
+                  <span class="flex flex-col gap-0.5">
+                    <span class="text-sm font-medium">{{ item.title }}</span>
+                    <span class="text-muted-foreground text-xs">{{
+                      item.description || t('dashboard.pluginBy', { plugin: item.plugin })
+                    }}</span>
+                  </span>
+                </button>
+              }
+            </div>
+          }
         } @else {
           <form class="grid gap-4 sm:grid-cols-2" (submit)="$event.preventDefault(); save()">
             <div hlmField class="sm:col-span-2">
@@ -385,6 +428,104 @@ function operatorsFor(attribute: Attribute | undefined): ConditionOp[] {
               </div>
             }
 
+            @if (type() === 'chart') {
+              <div hlmField>
+                <label hlmFieldLabel for="widget-chart-type">{{
+                  t('dashboard.field.contentType')
+                }}</label>
+                <hlm-native-select
+                  selectId="widget-chart-type"
+                  [value]="config().uid ?? ''"
+                  (valueChange)="patch({ uid: $event || undefined })"
+                >
+                  @for (item of schema.contentTypes(); track item.uid) {
+                    <option hlmNativeSelectOption [value]="item.uid">{{ item.displayName }}</option>
+                  }
+                </hlm-native-select>
+              </div>
+              <div hlmField>
+                <label hlmFieldLabel for="widget-days">{{ t('dashboard.field.days') }}</label>
+                <hlm-native-select
+                  selectId="widget-days"
+                  [value]="String(config().days ?? 30)"
+                  (valueChange)="setDays($event)"
+                >
+                  @for (days of chartDays; track days) {
+                    <option hlmNativeSelectOption [value]="String(days)">
+                      {{ t('dashboard.field.lastDays', { count: days }) }}
+                    </option>
+                  }
+                </hlm-native-select>
+              </div>
+              <div hlmField>
+                <span hlmFieldLabel id="widget-interval-label">{{
+                  t('dashboard.field.interval')
+                }}</span>
+                <hlm-toggle-group
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  aria-labelledby="widget-interval-label"
+                  [value]="config().interval ?? 'day'"
+                  (valueChange)="$event && patch({ interval: $any($event) })"
+                >
+                  <button hlmToggleGroupItem value="day">{{ t('dashboard.interval.day') }}</button>
+                  <button hlmToggleGroupItem value="week">
+                    {{ t('dashboard.interval.week') }}
+                  </button>
+                </hlm-toggle-group>
+              </div>
+              <div hlmField>
+                <span hlmFieldLabel id="widget-style-label">{{ t('dashboard.field.chart') }}</span>
+                <hlm-toggle-group
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  aria-labelledby="widget-style-label"
+                  [value]="config().chart ?? 'line'"
+                  (valueChange)="$event && patch({ chart: $any($event) })"
+                >
+                  <button hlmToggleGroupItem value="line">
+                    <ng-icon name="lucideChartLine" /> {{ t('dashboard.chartStyle.line') }}
+                  </button>
+                  <button hlmToggleGroupItem value="bar">
+                    <ng-icon name="lucideChartColumn" /> {{ t('dashboard.chartStyle.bar') }}
+                  </button>
+                </hlm-toggle-group>
+              </div>
+              <fieldset class="flex flex-col gap-2 sm:col-span-2">
+                <legend class="mb-2 text-sm font-medium">{{ t('dashboard.field.series') }}</legend>
+                <div class="flex flex-wrap gap-x-6 gap-y-2">
+                  @for (key of chartSeries; track key) {
+                    <label class="flex items-center gap-2 text-sm">
+                      <hlm-switch
+                        [checked]="hasSeries(key)"
+                        [disabled]="hasSeries(key) && selectedSeries().length === 1"
+                        (checkedChange)="toggleSeries(key, $event)"
+                      />
+                      {{
+                        t(
+                          key === 'created'
+                            ? 'dashboard.chart.created'
+                            : 'dashboard.chart.published'
+                        )
+                      }}
+                    </label>
+                  }
+                </div>
+              </fieldset>
+            }
+
+            @if (type() === 'plugin') {
+              <p class="text-muted-foreground text-sm sm:col-span-2">
+                @if (pluginWidget(); as item) {
+                  {{ item.title }} · {{ t('dashboard.pluginBy', { plugin: item.plugin }) }}
+                } @else {
+                  {{ t('dashboard.pluginMissing', { plugin: config().plugin ?? '?' }) }}
+                }
+              </p>
+            }
+
             @if (type() === 'note') {
               <div hlmField class="sm:col-span-2">
                 <label hlmFieldLabel for="widget-text">{{ t('dashboard.field.text') }}</label>
@@ -541,7 +682,10 @@ export class WidgetDialog {
   private readonly engagement = inject(Engagement);
   protected readonly t = inject(I18n).t;
   protected readonly String = String;
-  protected readonly kinds = WIDGET_KINDS;
+  protected readonly extensions = inject(PluginExtensions);
+  protected readonly pickable = WIDGET_KINDS.filter((kind) => kind.type !== 'plugin');
+  protected readonly chartDays = CHART_DAYS;
+  protected readonly chartSeries = CHART_SERIES;
   protected readonly widths = WIDTHS;
   protected readonly sorts = SORTS;
   protected readonly operatorLabels = OPERATOR_LABELS;
@@ -576,6 +720,13 @@ export class WidgetDialog {
     return uid ? this.schema.type(uid) : undefined;
   });
   protected readonly conditions = computed(() => this.config().conditions ?? []);
+  protected readonly pluginWidget = computed(() =>
+    this.extensions.widget(this.config().plugin, this.config().widget),
+  );
+  protected readonly selectedSeries = computed<ChartSeries[]>(() => {
+    const series = this.config().series;
+    return series?.length ? series : [...CHART_SERIES];
+  });
   /** Attributes a condition can test (field names are schema data, shown as is). */
   protected readonly filterable = computed(() => {
     const type = this.selectedType();
@@ -591,7 +742,8 @@ export class WidgetDialog {
   protected readonly valid = computed(() => {
     const type = this.type();
     if (!type) return false;
-    if (type === 'count' || type === 'list') return !!this.config().uid;
+    if (type === 'count' || type === 'list' || type === 'chart') return !!this.config().uid;
+    if (type === 'plugin') return !!this.pluginWidget();
     if (type === 'poll') {
       if (this.pollMode() === 'existing') return !!this.config().pollId;
       const filled = this.options().filter((option) => option.trim()).length;
@@ -638,8 +790,37 @@ export class WidgetDialog {
         ? { uid: first, status: 'all', ...(type === 'list' ? { limit: 5 } : {}) }
         : type === 'recent'
           ? { limit: 8 }
-          : {},
+          : type === 'chart'
+            ? {
+                uid: first ?? this.schema.contentTypes()[0]?.uid,
+                days: 30,
+                interval: 'day',
+                chart: 'line',
+                series: [...CHART_SERIES],
+              }
+            : {},
     );
+  }
+
+  protected choosePlugin(widget: PluginWidget): void {
+    this.type.set('plugin');
+    this.width.set(WIDGET_WIDTHS.plugin);
+    this.config.set({ plugin: widget.plugin, widget: widget.id });
+  }
+
+  protected setDays(value: string | null | undefined): void {
+    const days = Number(value);
+    if (days === 7 || days === 30 || days === 90) this.patch({ days });
+  }
+
+  protected hasSeries(key: ChartSeries): boolean {
+    return this.selectedSeries().includes(key);
+  }
+
+  /** At least one series stays on. */
+  protected toggleSeries(key: ChartSeries, on: boolean): void {
+    const next = CHART_SERIES.filter((item) => (item === key ? on : this.hasSeries(item)));
+    if (next.length) this.patch({ series: next });
   }
 
   protected patch(changes: Partial<WidgetConfig>): void {

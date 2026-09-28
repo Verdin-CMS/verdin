@@ -7,6 +7,8 @@ export interface PreferenceValues {
   locale?: string;
   theme?: 'light' | 'dark' | 'system';
   weekStart?: Weekday;
+  /** `false` hides the sidebar's unseen entry counts. */
+  unseenBadges?: boolean;
 }
 
 const KEY = 'verdin.preferences';

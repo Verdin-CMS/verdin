@@ -384,6 +384,50 @@ test('create a type, write content, publish it and read it over the API', async 
   await expect(dialog.getByText('Test email sent')).toBeVisible();
   await page.keyboard.press('Escape');
 
+  // Plugins: switch the sample on, call its route, use its widget and custom field.
+  expect((await request.get('/api/plugins/sample/hello')).status()).toBe(404);
+  await page.getByRole('link', { name: 'Plugins', exact: true }).click();
+  await page.getByLabel('Enable sample').click();
+  await expect(page.getByText('sample is on')).toBeVisible();
+  const hello = await request.get('/api/plugins/sample/hello');
+  expect(hello.status()).toBe(200);
+  expect((await hello.json()).message).toBe('hello world');
+  await page.screenshot({ path: 'test-results/screens/plugins.png' });
+
+  await page.reload();
+  await page.getByRole('link', { name: 'Home' }).click();
+  await page.getByRole('button', { name: 'Customize' }).click();
+  await page.getByRole('button', { name: 'Add widget' }).first().click();
+  await dialog.getByRole('button', { name: /Hello widget/ }).click();
+  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.getByText('Hello from the sample plugin')).toBeVisible();
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  await page.goto('/admin/builder/page');
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await dialog.getByRole('button', { name: /Color/ }).click();
+  await dialog.getByLabel('Name').fill('accent');
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await dialog.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.getByText('Schema updated').first()).toBeVisible();
+  expect(
+    JSON.parse(readFileSync(join(project, 'schema', 'content-types', 'page.json'), 'utf8'))
+      .attributes.accent,
+  ).toEqual({ type: 'string', customField: 'plugin::sample.color' });
+  await page.getByRole('link', { name: 'Page', exact: true }).first().click();
+  await page.getByRole('link', { name: 'Create' }).click();
+  await page.getByLabel('Heading').fill('Colorful');
+  await page.getByLabel('Color value').fill('#16a34a');
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect(page.getByText(/saved/i).first()).toBeVisible();
+  const colorful = await (
+    await request.get('/admin/api/content/api::page?filters[heading][$eq]=Colorful', {
+      headers: { authorization: `Bearer ${await token(page)}` },
+    })
+  ).json();
+  expect(colorful.data[0].accent).toBe('#16a34a');
+
   // Optional visual tour (VERDIN_SCREENSHOTS=1): every main page in light, dark and Spanish.
   if (process.env['VERDIN_SCREENSHOTS']) {
     await page.setViewportSize({ width: 1440, height: 900 });

@@ -3,14 +3,23 @@ import { Injectable, inject, signal } from '@angular/core';
 import { ContentType } from './types';
 import { UserPreferences } from './user-preferences';
 
-/** Built-in widget kinds. Plugins will register more (see docs/roadmap.md). */
-export type WidgetType = 'count' | 'recent' | 'list' | 'links' | 'system' | 'note' | 'poll';
+/** Widget kinds; `plugin` widgets are drawn by a plugin's element (`config.plugin`, `config.widget`). */
+export type WidgetType =
+  'count' | 'recent' | 'list' | 'links' | 'system' | 'note' | 'poll' | 'chart' | 'plugin';
 
 /** Columns a widget spans on wide screens (the grid has 4). */
 export type WidgetWidth = 1 | 2 | 3 | 4;
 
 export type EntryStatus = 'all' | 'published';
 export type ListSort = 'updatedAt:desc' | 'createdAt:desc' | 'title:asc' | 'votes:desc';
+
+export type ChartDays = 7 | 30 | 90;
+export type ChartInterval = 'day' | 'week';
+export type ChartSeries = 'created' | 'published';
+export type ChartStyle = 'line' | 'bar';
+
+export const CHART_DAYS: readonly ChartDays[] = [7, 30, 90];
+export const CHART_SERIES: readonly ChartSeries[] = ['created', 'published'];
 
 /** Operators offered for widget conditions (mapped to the API's `$eq`, `$ne`…). */
 export type ConditionOp = 'eq' | 'ne' | 'containsi' | 'gt' | 'lt' | 'null' | 'notNull';
@@ -40,6 +49,14 @@ export interface WidgetConfig {
   showVotes?: boolean;
   /** Poll widgets. */
   pollId?: number;
+  /** Chart widgets (with `uid`). */
+  days?: ChartDays;
+  interval?: ChartInterval;
+  series?: ChartSeries[];
+  chart?: ChartStyle;
+  /** Plugin widgets: the plugin and its widget id. */
+  plugin?: string;
+  widget?: string;
 }
 
 export interface Widget {
@@ -64,6 +81,8 @@ export const WIDGET_WIDTHS: Record<WidgetType, WidgetWidth> = {
   system: 1,
   note: 1,
   poll: 1,
+  chart: 2,
+  plugin: 2,
 };
 
 const MAX_WIDGETS = 40;
@@ -135,7 +154,17 @@ export class Dashboard {
   }
 }
 
-const TYPES: WidgetType[] = ['count', 'recent', 'list', 'links', 'system', 'note', 'poll'];
+const TYPES: WidgetType[] = [
+  'count',
+  'recent',
+  'list',
+  'links',
+  'system',
+  'note',
+  'poll',
+  'chart',
+  'plugin',
+];
 
 /** Drops anything malformed from a stored layout (it is user-writable JSON). */
 function sanitize(raw: unknown): DashboardLayout | null {

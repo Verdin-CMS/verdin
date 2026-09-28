@@ -3,6 +3,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   computed,
   effect,
   inject,
@@ -18,14 +19,16 @@ import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 
 import { Api, ApiFailure, RUNTIME_CONFIG, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
-import { WidgetCondition, WidgetConfig } from '../../core/dashboard';
+import { ChartSeries, WidgetCondition, WidgetConfig } from '../../core/dashboard';
 import { Engagement, Poll, VoteTally } from '../../core/engagement';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { PluginExtensions } from '../../core/plugin-extensions';
 import { Schema } from '../../core/schema';
 import { ContentType, Document } from '../../core/types';
 import { VoteControl } from '../../shared/components/vote-control';
 import { documentLabel } from '../content/fields/model';
+import { ContentStats, buildChart } from './chart';
 
 interface Row {
   type: ContentType;
@@ -615,4 +618,274 @@ export class SystemWidget {
 export class NoteWidget {
   protected readonly t = inject(I18n).t;
   readonly config = input.required<WidgetConfig>();
+}
+
+const SERIES_LABELS: Record<ChartSeries, MessageKey> = {
+  created: 'dashboard.chart.created',
+  published: 'dashboard.chart.published',
+};
+
+/** Theme colors of the series (CSS variables of the palette). */
+const SERIES_COLORS: Record<ChartSeries, string> = {
+  created: 'var(--chart-1)',
+  published: 'var(--chart-3)',
+};
+
+const CHART_WIDTH = 600;
+const CHART_HEIGHT = 160;
+
+/** Entries created and published per day or week, as a line or bar chart. */
+@Component({
+  selector: 'vd-chart-widget',
+  imports: [HlmSkeletonImports],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @if (!type()) {
+      <p class="text-muted-foreground text-sm">{{ t('dashboard.missingType') }}</p>
+    } @else if (error()) {
+      <p class="text-muted-foreground text-sm">{{ error() }}</p>
+    } @else if (!stats() || !chart()) {
+      <hlm-skeleton class="h-48 w-full" />
+    } @else {
+      @let geometry = chart()!;
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          @for (line of geometry.lines; track line.key) {
+            <span class="flex items-center gap-1.5">
+              <span
+                class="size-2.5 rounded-sm"
+                [style.background]="colors[line.key]"
+                aria-hidden="true"
+              ></span>
+              <span class="text-muted-foreground">{{ t(labels[line.key]) }}</span>
+              <span class="font-medium tabular-nums">{{ i18n.formatNumber(line.sum) }}</span>
+            </span>
+          }
+          <span class="text-muted-foreground ms-auto tabular-nums">
+            {{ t('dashboard.chart.totalDocuments', { count: stats()!.totals.documents }) }} ·
+            {{ t('dashboard.chart.totalPublished', { count: stats()!.totals.published }) }}
+          </span>
+        </div>
+        <div class="flex gap-2">
+          <div
+            class="text-muted-foreground flex h-40 flex-col justify-between text-end text-[10px] leading-none tabular-nums"
+            aria-hidden="true"
+          >
+            <span>{{ i18n.formatNumber(geometry.max) }}</span>
+            <span>0</span>
+          </div>
+          <svg
+            role="img"
+            class="h-40 min-w-0 flex-1 overflow-visible"
+            preserveAspectRatio="none"
+            [attr.viewBox]="'0 0 ' + geometry.width + ' ' + geometry.height"
+            [attr.aria-label]="summary()"
+          >
+            @for (tick of geometry.tickY; track $index) {
+              <line
+                x1="0"
+                [attr.x2]="geometry.width"
+                [attr.y1]="tick"
+                [attr.y2]="tick"
+                stroke="var(--border)"
+                stroke-width="1"
+                vector-effect="non-scaling-stroke"
+              />
+            }
+            @for (line of geometry.lines; track line.key) {
+              @if (style() === 'bar') {
+                @for (bar of line.bars; track bar.date) {
+                  <rect
+                    [attr.x]="bar.x"
+                    [attr.y]="bar.y"
+                    [attr.width]="bar.width"
+                    [attr.height]="bar.height"
+                    [attr.fill]="colors[line.key]"
+                    rx="1"
+                  >
+                    <title>{{ tooltip(line.key, bar.date, bar.value) }}</title>
+                  </rect>
+                }
+              } @else {
+                <path [attr.d]="line.area" [attr.fill]="colors[line.key]" fill-opacity="0.12" />
+                <path
+                  [attr.d]="line.path"
+                  fill="none"
+                  [attr.stroke]="colors[line.key]"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                  vector-effect="non-scaling-stroke"
+                />
+              }
+            }
+          </svg>
+        </div>
+        @if (stats()!.series.length) {
+          <div
+            class="text-muted-foreground flex justify-between ps-6 text-[10px] tabular-nums"
+            aria-hidden="true"
+          >
+            <span>{{ i18n.formatDate(stats()!.series[0].date, 'date') }}</span>
+            <span>{{
+              i18n.formatDate(stats()!.series[stats()!.series.length - 1].date, 'date')
+            }}</span>
+          </div>
+        }
+        <table class="sr-only">
+          <caption>
+            {{
+              summary()
+            }}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">{{ t('dashboard.chart.date') }}</th>
+              @for (key of series(); track key) {
+                <th scope="col">{{ t(labels[key]) }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (point of stats()!.series; track point.date) {
+              <tr>
+                <th scope="row">{{ i18n.formatDate(point.date, 'date') }}</th>
+                @for (key of series(); track key) {
+                  <td>{{ i18n.formatNumber(point[key]) }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  `,
+})
+export class ChartWidget {
+  private readonly api = inject(Api);
+  private readonly schema = inject(Schema);
+  protected readonly i18n = inject(I18n);
+  protected readonly t = this.i18n.t;
+  protected readonly labels = SERIES_LABELS;
+  protected readonly colors = SERIES_COLORS;
+
+  readonly config = input.required<WidgetConfig>();
+  protected readonly type = computed(() => {
+    const uid = this.config().uid;
+    return uid ? this.schema.type(uid) : undefined;
+  });
+  protected readonly days = computed(() => this.config().days ?? 30);
+  protected readonly interval = computed(() => this.config().interval ?? 'day');
+  protected readonly style = computed(() => this.config().chart ?? 'line');
+  protected readonly series = computed<ChartSeries[]>(() => {
+    const series = (this.config().series ?? []).filter((key) => key in SERIES_LABELS);
+    return series.length ? series : ['created', 'published'];
+  });
+  protected readonly stats = signal<ContentStats | null>(null);
+  protected readonly error = signal<string | null>(null);
+
+  protected readonly chart = computed(() => {
+    const stats = this.stats();
+    return stats ? buildChart(stats.series, this.series(), CHART_WIDTH, CHART_HEIGHT) : null;
+  });
+  protected readonly summary = computed(() => {
+    const chart = this.chart();
+    const type = this.type();
+    if (!chart || !type) return '';
+    const values = chart.lines
+      .map((line) =>
+        this.t('dashboard.chart.sum', { series: this.t(SERIES_LABELS[line.key]), count: line.sum }),
+      )
+      .join('; ');
+    return this.t('dashboard.chart.summary', {
+      type: type.displayName,
+      count: this.days(),
+      values,
+    });
+  });
+
+  constructor() {
+    effect(() => {
+      const type = this.type();
+      const days = this.days();
+      const interval = this.interval();
+      untracked(() => void this.load(type?.uid, days, interval));
+    });
+  }
+
+  protected tooltip(key: ChartSeries, date: string, value: number): string {
+    return `${this.i18n.formatDate(date, 'date')} · ${this.t(SERIES_LABELS[key])}: ${this.i18n.formatNumber(value)}`;
+  }
+
+  private request = 0;
+
+  private async load(uid: string | undefined, days: number, interval: string): Promise<void> {
+    if (!uid) return;
+    const request = ++this.request;
+    this.stats.set(null);
+    this.error.set(null);
+    try {
+      const stats = await this.api.get<ContentStats>(
+        `/content/${uid}/stats`,
+        toQuery({ days, interval }),
+      );
+      if (request === this.request) this.stats.set(stats);
+    } catch (error) {
+      if (request === this.request) {
+        const failure = ApiFailure.from(error);
+        this.error.set(
+          failure.status === 403
+            ? this.t('dashboard.chart.forbidden')
+            : this.t('dashboard.chart.error'),
+        );
+      }
+    }
+  }
+}
+
+/** A plugin's widget: its custom element, given a `context` to call the API with. */
+@Component({
+  selector: 'vd-plugin-widget',
+  imports: [HlmSkeletonImports],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { class: 'block min-w-0' },
+  template: `
+    @if (!definition()) {
+      @if (extensions.loaded()) {
+        <p class="text-muted-foreground text-sm">
+          {{ t('dashboard.pluginMissing', { plugin: config().plugin ?? '?' }) }}
+        </p>
+      } @else {
+        <hlm-skeleton class="h-24 w-full" />
+      }
+    }
+  `,
+})
+export class PluginWidgetHost {
+  protected readonly extensions = inject(PluginExtensions);
+  protected readonly t = inject(I18n).t;
+
+  readonly config = input.required<WidgetConfig>();
+  protected readonly definition = computed(() =>
+    this.extensions.widget(this.config().plugin, this.config().widget),
+  );
+  /** The element goes first in the host, before Angular's own nodes. */
+  private readonly host: HTMLElement = inject(ElementRef).nativeElement;
+
+  constructor() {
+    effect((onCleanup) => {
+      const definition = this.definition();
+      if (!definition) return;
+      let node: HTMLElement & { context?: unknown };
+      try {
+        node = document.createElement(definition.element);
+      } catch (error) {
+        console.warn(`Could not create <${definition.element}>`, error);
+        return;
+      }
+      node.context = untracked(() => this.extensions.context());
+      this.host.prepend(node);
+      onCleanup(() => node.remove());
+    });
+  }
 }

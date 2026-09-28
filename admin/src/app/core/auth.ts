@@ -143,6 +143,29 @@ export class Auth {
     );
   }
 
+  /**
+   * `fetch` with the admin's access token (same-origin URLs only), refreshing it once on a
+   * 401. For code outside Angular's HttpClient, such as plugin elements.
+   */
+  async fetch(url: string, init: RequestInit = {}): Promise<Response> {
+    const target = new URL(url, document.baseURI);
+    const sameOrigin = target.origin === location.origin;
+    const send = (token: string | null) => {
+      const headers = new Headers(init.headers);
+      if (sameOrigin && token && !headers.has('Authorization')) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
+      return fetch(target.href, {
+        ...init,
+        headers,
+        credentials: sameOrigin ? 'same-origin' : (init.credentials ?? 'omit'),
+      });
+    };
+    const response = await send(this.accessToken());
+    if (response.status !== 401 || !sameOrigin) return response;
+    return (await this.refresh()) ? send(this.accessToken()) : response;
+  }
+
   private async open(request: ReturnType<HttpClient['post']>): Promise<void> {
     try {
       const response = (await firstValueFrom(request)) as SessionResponse;

@@ -75,6 +75,7 @@ const ACTION_LABELS: Record<
   'webhooks.manage': 'settings.roles.action.webhooks.manage',
   'locales.manage': 'settings.roles.action.locales.manage',
   'endusers.manage': 'settings.roles.action.endusers.manage',
+  'plugins.manage': 'settings.roles.action.plugins.manage',
 };
 
 @Component({

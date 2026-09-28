@@ -8,14 +8,17 @@ import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 import { Auth } from '../core/auth';
 import { Dashboard, DashboardLayout, Widget, defaultLayout } from '../core/dashboard';
 import { I18n } from '../core/i18n/i18n';
+import { PluginExtensions } from '../core/plugin-extensions';
 import { Schema } from '../core/schema';
 import { PageHeader } from '../shared/components/page-header';
 import { WIDGET_KINDS, WidgetDialog } from './dashboard/widget-dialog';
 import {
+  ChartWidget,
   CountWidget,
   EntriesWidget,
   LinksWidget,
   NoteWidget,
+  PluginWidgetHost,
   PollWidget,
   SystemWidget,
 } from './dashboard/widgets';
@@ -44,6 +47,8 @@ const SPAN: Record<number, string> = {
     SystemWidget,
     NoteWidget,
     PollWidget,
+    ChartWidget,
+    PluginWidgetHost,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -167,6 +172,12 @@ const SPAN: Record<number, string> = {
                 @case ('poll') {
                   <vd-poll-widget [config]="widget.config" />
                 }
+                @case ('chart') {
+                  <vd-chart-widget [config]="widget.config" />
+                }
+                @case ('plugin') {
+                  <vd-plugin-widget [config]="widget.config" />
+                }
               }
             </section>
           }
@@ -196,6 +207,7 @@ export class HomePage {
   protected readonly auth = inject(Auth);
   protected readonly schema = inject(Schema);
   protected readonly dashboard = inject(Dashboard);
+  private readonly extensions = inject(PluginExtensions);
   protected readonly t = inject(I18n).t;
 
   protected readonly editing = signal(false);
@@ -228,6 +240,13 @@ export class HomePage {
     const uid = widget.config.uid;
     const type = uid ? this.schema.type(uid) : undefined;
     if ((widget.type === 'count' || widget.type === 'list') && type) return type.displayName;
+    if (widget.type === 'chart' && type) {
+      return this.t('dashboard.chartOf', { type: type.displayName });
+    }
+    if (widget.type === 'plugin') {
+      const definition = this.extensions.widget(widget.config.plugin, widget.config.widget);
+      if (definition) return definition.title;
+    }
     if (widget.type === 'recent' && type) {
       return this.t('dashboard.recentOf', { type: type.displayName });
     }
