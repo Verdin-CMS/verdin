@@ -84,17 +84,8 @@ fn host_of(url: &str) -> String {
 
 const DEPLOYMENT_COLUMNS: &str =
     "id, target_id, status, http_status, message, url, triggered_by_id, created_at, updated_at";
-const DEPLOYMENT_KINDS: [K; 9] = [
-    K::BigInt,
-    K::BigInt,
-    K::Text,
-    K::BigInt,
-    K::Text,
-    K::Text,
-    K::BigInt,
-    K::DateTime,
-    K::DateTime,
-];
+const DEPLOYMENT_KINDS: [K; 9] =
+    [K::BigInt, K::BigInt, K::Text, K::Int, K::Text, K::Text, K::BigInt, K::DateTime, K::DateTime];
 
 fn deployment(row: Vec<V>) -> Deployment {
     let mut row = row.into_iter();

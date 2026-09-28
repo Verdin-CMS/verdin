@@ -114,6 +114,19 @@ pub const CATALOG: &[FeatureSpec] = &[
         default_enabled: true,
         core: false,
     },
+    // Also needs `[ai]` in `verdin.toml`.
+    FeatureSpec { id: AI, available: true, planned: None, default_enabled: false, core: false },
+    // The official site features.
+    FeatureSpec { id: SEO, available: true, planned: None, default_enabled: false, core: false },
+    FeatureSpec {
+        id: REDIRECTS,
+        available: true,
+        planned: None,
+        default_enabled: false,
+        core: false,
+    },
+    FeatureSpec { id: MENUS, available: true, planned: None, default_enabled: false, core: false },
+    FeatureSpec { id: FORMS, available: true, planned: None, default_enabled: false, core: false },
 ];
 
 pub fn spec(id: &str) -> Option<&'static FeatureSpec> {
@@ -221,6 +234,16 @@ pub fn validate(id: &str, state: &FeatureState) -> Result<(), ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_feature_id_is_in_the_catalog() {
+        for id in [
+            OPENAPI, GRAPHQL, WEBHOOKS, HISTORY, USERS, AUDIT, RELEASES, PREVIEW, SSO, REVIEW, MCP,
+            REALTIME, COMMENTS, AI, SEO, REDIRECTS, MENUS, FORMS,
+        ] {
+            assert!(spec(id).is_some(), "`{id}` is missing from the catalog");
+        }
+    }
 
     #[test]
     fn defaults_and_validation() {

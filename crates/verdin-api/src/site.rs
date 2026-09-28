@@ -533,7 +533,7 @@ impl Site {
             .fetch_all(
                 &format!("SELECT id, source, destination, status, created_at, updated_at FROM {REDIRECTS} ORDER BY source, id"),
                 &[],
-                &[K::BigInt, K::Text, K::Text, K::BigInt, K::DateTime, K::DateTime],
+                &[K::BigInt, K::Text, K::Text, K::Int, K::DateTime, K::DateTime],
             )
             .await
             .map_err(db)?;
