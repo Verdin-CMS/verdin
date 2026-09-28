@@ -7,7 +7,7 @@
 
 use verdin_db::{Flavor, SqlValue};
 
-use crate::ast::{Condition, Filter, Op, Operand, RelationFilter, Sort, Status};
+use crate::ast::{Condition, Filter, Op, Operand, RelationFilter, Sort, SortVia, Status};
 
 const MYSQL_BINARY_COLLATION: &str = "utf8mb4_bin";
 const LIKE_ESCAPE: char = '!';
@@ -201,6 +201,37 @@ fn write_relation(
         write_filter(out, inner, &target, inner_context);
     }
     out.push(")");
+}
+
+/// `(SELECT r.column FROM link JOIN target … WHERE link points at the row LIMIT 1)`.
+fn write_sort_via(
+    out: &mut SqlBuilder,
+    via: &SortVia,
+    column: &str,
+    alias: &str,
+    context: FilterContext,
+) {
+    let state: i16 =
+        if via.target_draft_and_publish && context.status == Status::Draft { 0 } else { 1 };
+    out.push("(SELECT ").column(Some("sr"), column).push(" FROM ");
+    out.ident(&via.link_table).push(" AS ").ident("sl").push(" JOIN ");
+    out.ident(&via.target_table).push(" AS ").ident("sr").push(" ON ");
+    if via.owner {
+        out.column(Some("sr"), "document_id").push(" = ").column(Some("sl"), "target_document_id");
+    } else {
+        out.column(Some("sr"), "id").push(" = ").column(Some("sl"), "source_id");
+    }
+    let locale = if via.target_localized { context.locale } else { "" };
+    out.push(" AND ").column(Some("sr"), "locale").push(" = ").param(SqlValue::Text(locale.into()));
+    out.push(" AND ");
+    out.column(Some("sr"), "publication_state").push(" = ").param(SqlValue::SmallInt(state));
+    out.push(" WHERE ");
+    if via.owner {
+        out.column(Some("sl"), "source_id").push(" = ").column(Some(alias), "id");
+    } else {
+        out.column(Some("sl"), "target_document_id").push(" = ").column(Some(alias), "document_id");
+    }
+    out.push(" LIMIT 1)");
 }
 
 /// The compared expression: a column, or a value inside a JSON column (component fields).
@@ -433,20 +464,35 @@ fn escape_like(text: &str) -> String {
 }
 
 /// ` ORDER BY …`, always ending with `id` so that pagination is stable.
-pub fn write_order_by(out: &mut SqlBuilder, sort: &[Sort], alias: Option<&str>) {
+/// `ORDER BY`; sorts through a relation read the target in `context`'s status and locale.
+pub fn write_order_by(
+    out: &mut SqlBuilder,
+    sort: &[Sort],
+    alias: Option<&str>,
+    context: FilterContext,
+) {
     out.push(" ORDER BY ");
     for item in sort {
         let direction = if item.descending { "DESC" } else { "ASC" };
+        let expression = |out: &mut SqlBuilder| match &item.via {
+            None => {
+                out.column(alias, &item.column);
+            }
+            Some(via) => write_sort_via(out, via, &item.column, alias.unwrap_or(""), context),
+        };
         if out.flavor.is_mysql_family() {
-            out.column(alias, &item.column).push(" IS NULL, ");
-            out.column(alias, &item.column).push(&format!(" {direction}, "));
+            expression(out);
+            out.push(" IS NULL, ");
+            expression(out);
+            out.push(&format!(" {direction}, "));
         } else {
-            out.column(alias, &item.column).push(&format!(" {direction} NULLS LAST, "));
+            expression(out);
+            out.push(&format!(" {direction} NULLS LAST, "));
         }
     }
-    let id_descending =
-        sort.iter().find(|item| item.column == "id").is_some_and(|item| item.descending);
-    if !sort.iter().any(|item| item.column == "id") || id_descending {
+    let own_id = |item: &&Sort| item.via.is_none() && item.column == "id";
+    let id_descending = sort.iter().find(own_id).is_some_and(|item| item.descending);
+    if !sort.iter().any(|item| own_id(&item)) || id_descending {
         out.column(alias, "id").push(if id_descending { " DESC" } else { " ASC" });
     } else {
         out.column(alias, "id").push(" ASC");
@@ -550,12 +596,12 @@ mod tests {
 
     #[test]
     fn order_by_puts_nulls_last_and_ends_with_id() {
-        let sort = [Sort { column: "title".into(), descending: true }];
+        let sort = [Sort::by("title", true)];
         let mut out = SqlBuilder::new(Flavor::Postgres);
-        write_order_by(&mut out, &sort, None);
+        write_order_by(&mut out, &sort, None, FilterContext::new(Status::Published));
         assert_eq!(out.sql, " ORDER BY \"title\" DESC NULLS LAST, \"id\" ASC");
         let mut out = SqlBuilder::new(Flavor::MySql);
-        write_order_by(&mut out, &sort, None);
+        write_order_by(&mut out, &sort, None, FilterContext::new(Status::Published));
         assert_eq!(out.sql, " ORDER BY `title` IS NULL, `title` DESC, `id` ASC");
     }
 }

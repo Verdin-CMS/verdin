@@ -351,7 +351,7 @@ impl DocumentService {
             write_select(&mut select, model.table(), fields);
             let filter = FilterContext::with_locale(status, &context);
             write_scope(&mut select, state, &locale, &chunk, filters, filter);
-            write_order_by(&mut select, sort, Some(BASE));
+            write_order_by(&mut select, sort, Some(BASE), filter);
             if let Some((limit, offset)) = page {
                 select.push(" LIMIT ").param(SqlValue::BigInt(to_i64(limit)));
                 select.push(" OFFSET ").param(SqlValue::BigInt(to_i64(offset)));
@@ -595,7 +595,13 @@ impl DocumentService {
                     FilterContext::with_locale(status, &context),
                 );
             }
-            write_order_by(&mut select, &sub.sort, Some(BASE));
+            let context = self.context_locale();
+            write_order_by(
+                &mut select,
+                &sub.sort,
+                Some(BASE),
+                FilterContext::with_locale(status, &context),
+            );
             let rows = self.db.queries().fetch_all(&select.sql, &select.params, &kinds).await?;
             for row in rows {
                 let mut row = row.into_iter();

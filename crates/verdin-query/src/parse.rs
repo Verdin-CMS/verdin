@@ -81,7 +81,7 @@ pub fn parse(
         filters,
         sort: root
             .get("sort")
-            .map(|node| parse_sort(node, fields))
+            .map(|node| parse_sort(node, fields, catalog))
             .transpose()?
             .unwrap_or_default(),
         fields: root.get("fields").map(|node| parse_fields(node, fields)).transpose()?,
@@ -457,7 +457,7 @@ impl Parser<'_> {
             filters: map.get("filters").map(|node| self.filters(node, target)).transpose()?,
             sort: map
                 .get("sort")
-                .map(|node| parse_sort(node, target))
+                .map(|node| parse_sort(node, target, self.catalog))
                 .transpose()?
                 .unwrap_or_default(),
             count: match map.get("count").map(|node| node.as_leaf()) {
@@ -589,7 +589,11 @@ pub fn scalar_value(field: &Field, text: &str) -> Result<SqlValue, QueryError> {
     })
 }
 
-fn parse_sort(node: &Node, fields: &TypeFields) -> Result<Vec<Sort>, QueryError> {
+fn parse_sort(
+    node: &Node,
+    fields: &TypeFields,
+    catalog: &Catalog,
+) -> Result<Vec<Sort>, QueryError> {
     let items =
         node.as_list().ok_or_else(|| QueryError::new("`sort` must be a value or a list"))?;
     let mut sort = Vec::new();
@@ -608,14 +612,44 @@ fn parse_sort(node: &Node, fields: &TypeFields) -> Result<Vec<Sort>, QueryError>
                     )));
                 }
             };
-            let field = fields
-                .get(name)
-                .filter(|field| field.is_sortable())
-                .ok_or_else(|| QueryError::new(format!("cannot sort by `{name}`")))?;
-            sort.push(Sort { column: field.column.clone(), descending });
+            let cannot = || QueryError::new(format!("cannot sort by `{name}`"));
+            if let Some((relation_name, target_name)) = name.split_once('.') {
+                sort.push(
+                    relation_sort(fields, catalog, relation_name, target_name, descending)
+                        .ok_or_else(cannot)?,
+                );
+                continue;
+            }
+            let field = fields.get(name).filter(|field| field.is_sortable()).ok_or_else(cannot)?;
+            sort.push(Sort::by(field.column.clone(), descending));
         }
     }
     Ok(sort)
+}
+
+/// `author.name`: a scalar field of the target of a to-one relation.
+fn relation_sort(
+    fields: &TypeFields,
+    catalog: &Catalog,
+    relation_name: &str,
+    target_name: &str,
+    descending: bool,
+) -> Option<Sort> {
+    let field = fields.get(relation_name).filter(|field| !field.is_private())?;
+    let relation = field.relation.as_ref().filter(|relation| !relation.to_many)?;
+    let target = catalog.get(&relation.target)?;
+    let column = target.get(target_name).filter(|field| field.is_sortable())?;
+    Some(Sort {
+        column: column.column.clone(),
+        descending,
+        via: Some(SortVia {
+            link_table: relation.link_table.clone(),
+            owner: relation.owner,
+            target_table: relation.target_table.clone(),
+            target_draft_and_publish: relation.target_draft_and_publish,
+            target_localized: relation.target_localized,
+        }),
+    })
 }
 
 fn parse_fields(node: &Node, fields: &TypeFields) -> Result<Vec<String>, QueryError> {

@@ -138,11 +138,7 @@ fn sort_fields_populate() {
     let q = query("sort=title:desc,views&sort[1]=createdAt").unwrap();
     assert_eq!(
         q.sort,
-        [
-            Sort { column: "title".into(), descending: true },
-            Sort { column: "views".into(), descending: false },
-            Sort { column: "created_at".into(), descending: false },
-        ]
+        [Sort::by("title", true), Sort::by("views", false), Sort::by("created_at", false),]
     );
     assert!(error("sort=meta").contains("cannot sort"));
     assert!(error("sort=title:up").contains("invalid sort direction"));
@@ -219,10 +215,7 @@ fn nested_populate() {
     assert_eq!(sub.fields, Some(vec!["name".into()]));
     assert!(sub.filters.is_some());
     assert_eq!(sub.populate[0].field, "articles");
-    assert_eq!(
-        sub.populate[0].query.as_ref().unwrap().sort,
-        [Sort { column: "title".into(), descending: true }]
-    );
+    assert_eq!(sub.populate[0].query.as_ref().unwrap().sort, [Sort::by("title", true)]);
 
     assert!(error("populate[category][limit]=1").contains("invalid key `limit`"));
     let deep = "populate[category][populate][articles][populate][category][populate][articles][populate][category][populate][articles]=true";

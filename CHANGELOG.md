@@ -11,6 +11,10 @@ All notable changes to Verdin are documented here. The format follows
 - **`password` attributes**: hashed with Argon2id on write and never returned, filtered
   or sorted. `verdin import strapi` imports them, keeping Strapi's bcrypt hashes.
 - Webhook events `releases.publish` and `review-workflows.updateEntryStage`.
+- REST query options from Strapi v5: `populate[tags][count]=true`,
+  `hasPublishedVersion=true|false`, sorting by a to-one relation's field
+  (`sort=author.name:asc`), filters on repeatable components
+  (`filters[links][url][$contains]=…`) and on dynamic zones by `__component`.
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.

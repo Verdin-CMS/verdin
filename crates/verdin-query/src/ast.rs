@@ -53,6 +53,24 @@ impl Status {
 pub struct Sort {
     pub column: String,
     pub descending: bool,
+    /// `sort=author.name`: `column` of the document a to-one relation points at.
+    pub via: Option<SortVia>,
+}
+
+impl Sort {
+    pub fn by(column: impl Into<String>, descending: bool) -> Self {
+        Self { column: column.into(), descending, via: None }
+    }
+}
+
+/// The to-one relation a sort goes through (see [`RelationFilter`] for the fields).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SortVia {
+    pub link_table: String,
+    pub owner: bool,
+    pub target_table: String,
+    pub target_draft_and_publish: bool,
+    pub target_localized: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
