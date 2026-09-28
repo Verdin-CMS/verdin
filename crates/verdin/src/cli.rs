@@ -58,9 +58,18 @@ pub enum Command {
         #[arg(long, short)]
         out: Option<PathBuf>,
     },
-    /// Import another CMS's project (schema and content).
+    /// Import another CMS's project (schema and content), or a Verdin export.
     #[command(subcommand)]
     Import(ImportCommand),
+    /// Write the project's schema, content and media to a `.tar.gz` (a backup, or to move
+    /// it to another instance with `verdin import verdin`).
+    Export {
+        /// The archive to write.
+        output: PathBuf,
+        /// Leave media files out.
+        #[arg(long)]
+        no_media: bool,
+    },
     /// Print freshly generated secrets for VERDIN_ADMIN_JWT_SECRET and VERDIN_TOKEN_PEPPER.
     Secrets,
     /// Print version information.
@@ -79,6 +88,14 @@ pub enum ImportCommand {
         #[arg(long)]
         schema_only: bool,
         /// Overwrite existing schema files, and import into types that have entries.
+        #[arg(long)]
+        force: bool,
+    },
+    /// An archive written by `verdin export`: schema files, locales, media and entries.
+    Verdin {
+        /// The `.tar.gz` file.
+        path: PathBuf,
+        /// Overwrite differing schema files, and import into types that have entries.
         #[arg(long)]
         force: bool,
     },
@@ -267,6 +284,12 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Import(ImportCommand::Strapi { path, schema_only, force }) => {
             import_strapi(project, &path, crate::import::Options { schema_only, force }).await
         }
+        Command::Import(ImportCommand::Verdin { path, force }) => {
+            transfer(project, TransferDirection::Import { path, force }).await
+        }
+        Command::Export { output, no_media } => {
+            transfer(project, TransferDirection::Export { output, media: !no_media }).await
+        }
         Command::Schema(SchemaCommand::Check) => {
             let schema = project.schema()?;
             println!(
@@ -292,6 +315,48 @@ pub async fn run(cli: Cli) -> Result<()> {
             result
         }
     }
+}
+
+enum TransferDirection {
+    Export { output: PathBuf, media: bool },
+    Import { path: PathBuf, force: bool },
+}
+
+async fn transfer(project: Project, direction: TransferDirection) -> Result<()> {
+    let db = project.database().await?;
+    let storage = verdin_upload::Storage::new(&project.config.upload.provider, &project.root)
+        .context("configuring [upload].provider")?;
+    let upload =
+        verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone());
+    let schema_dir = project.root.join(&project.config.schema.path);
+    let result = match &direction {
+        TransferDirection::Export { output, media } => {
+            crate::transfer::export(&schema_dir, &db, &upload, output, *media).await
+        }
+        TransferDirection::Import { path, force } => {
+            crate::transfer::import(path, &schema_dir, &db, &upload, *force).await
+        }
+    };
+    db.close().await;
+    let summary = result?;
+    let verb = match &direction {
+        TransferDirection::Export { output, .. } => format!("exported to {}", output.display()),
+        TransferDirection::Import { .. } => "imported".to_owned(),
+    };
+    println!(
+        "{verb}: {} document{} ({} version{}), {} file{}, {} folder{}, {} locale{}",
+        summary.documents,
+        plural(summary.documents),
+        summary.versions,
+        plural(summary.versions),
+        summary.files,
+        plural(summary.files),
+        summary.folders,
+        plural(summary.folders),
+        summary.locales,
+        plural(summary.locales),
+    );
+    Ok(())
 }
 
 async fn import_strapi(

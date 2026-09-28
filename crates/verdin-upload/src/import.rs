@@ -27,6 +27,8 @@ pub struct ImportedObject {
 
 #[derive(Debug, Clone)]
 pub struct ImportedFile {
+    /// Kept when given (Verdin exports); a new one otherwise.
+    pub document_id: Option<String>,
     pub name: String,
     pub alternative_text: Option<String>,
     pub caption: Option<String>,
@@ -86,7 +88,13 @@ impl UploadService {
             &mut insert,
             FILES,
             vec![
-                ("document_id", SqlValue::Text(ulid::Ulid::generate().to_string().to_lowercase())),
+                (
+                    "document_id",
+                    SqlValue::Text(
+                        file.document_id
+                            .unwrap_or_else(|| ulid::Ulid::generate().to_string().to_lowercase()),
+                    ),
+                ),
                 ("name", SqlValue::Text(file.name)),
                 ("alternative_text", optional_text(file.alternative_text)),
                 ("caption", optional_text(file.caption)),

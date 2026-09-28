@@ -104,3 +104,167 @@ impl DocumentService {
         Ok(())
     }
 }
+
+/// One stored version, as `verdin export` writes it (see [`DocumentService::export_versions`]).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportedVersion {
+    pub document_id: String,
+    /// Empty for types that are not localized.
+    pub locale: String,
+    pub published: bool,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub published_at: Option<String>,
+    /// Attribute values in the write format, private ones and password hashes included;
+    /// components and dynamic zones as stored (their references unresolved).
+    pub data: serde_json::Map<String, Json>,
+    /// Owning relations: target `documentId`s in order.
+    #[serde(default)]
+    pub relations: serde_json::Map<String, Json>,
+    /// Media fields: file ids (of the export) in order.
+    #[serde(default)]
+    pub media: serde_json::Map<String, Json>,
+}
+
+impl DocumentService {
+    /// Every version of every document of `uid` (drafts, published versions, all
+    /// locales), for backups.
+    pub async fn export_versions(&self, uid: &str) -> Result<Vec<ExportedVersion>> {
+        use verdin_query::FieldCategory;
+        let model = self.registry().get(uid)?;
+        let columns: Vec<&verdin_query::Field> = model
+            .fields
+            .attributes()
+            .filter(|field| matches!(field.category, FieldCategory::Scalar | FieldCategory::Nested))
+            .collect();
+        let mut select = SqlBuilder::new(self.db().flavor());
+        select.push("SELECT ");
+        let system = [
+            "id",
+            "document_id",
+            "locale",
+            "publication_state",
+            "created_at",
+            "updated_at",
+            "published_at",
+        ];
+        for (index, column) in system.iter().enumerate() {
+            if index > 0 {
+                select.push(", ");
+            }
+            select.ident(column);
+        }
+        for field in &columns {
+            select.push(", ").ident(&field.column);
+        }
+        select.push(" FROM ").ident(model.table()).push(" ORDER BY ").ident("id");
+        let mut kinds = vec![
+            ColumnKind::BigInt,
+            ColumnKind::Text,
+            ColumnKind::Text,
+            ColumnKind::SmallInt,
+            ColumnKind::DateTime,
+            ColumnKind::DateTime,
+            ColumnKind::DateTime,
+        ];
+        kinds.extend(columns.iter().map(|field| field.kind));
+        let rows = self.db().queries().fetch_all(&select.sql, &select.params, &kinds).await?;
+        let exact = crate::OutputOptions { decimal_as_string: true };
+        let at = |value: &SqlValue| match value {
+            SqlValue::DateTime(at) => Some(verdin_db::value::format_datetime(*at)),
+            _ => None,
+        };
+        let mut ids = Vec::with_capacity(rows.len());
+        let mut versions = Vec::with_capacity(rows.len());
+        for row in rows {
+            let mut row = row.into_iter();
+            let mut next = || row.next().unwrap_or(SqlValue::Null(ColumnKind::Text));
+            ids.push(next().as_i64().unwrap_or_default());
+            let document_id = next().as_text().unwrap_or_default().to_owned();
+            let locale = next().as_text().unwrap_or_default().to_owned();
+            let published = next().as_i64() == Some(i64::from(PUBLISHED));
+            let (created, updated, published_at) = (next(), next(), next());
+            let mut data = serde_json::Map::new();
+            for field in &columns {
+                let kind = field.attribute.as_ref().map(|attribute| &attribute.kind);
+                let value = crate::output::value_to_json(kind, next(), exact);
+                if !value.is_null() {
+                    data.insert(field.api.clone(), value);
+                }
+            }
+            versions.push(ExportedVersion {
+                document_id,
+                locale,
+                published,
+                created_at: at(&created),
+                updated_at: at(&updated),
+                published_at: at(&published_at),
+                data,
+                relations: Default::default(),
+                media: Default::default(),
+            });
+        }
+        let index: std::collections::HashMap<i64, usize> =
+            ids.iter().enumerate().map(|(position, id)| (*id, position)).collect();
+        for field in model.fields.attributes() {
+            if let Some(relation) = field.relation.as_ref().filter(|relation| relation.owner) {
+                for (source, target) in self.links_of_sources(&relation.link_table, &ids).await? {
+                    let version = &mut versions[index[&source]];
+                    let list = version
+                        .relations
+                        .entry(field.api.clone())
+                        .or_insert_with(|| Json::Array(Vec::new()));
+                    if let Json::Array(items) = list {
+                        items.push(Json::String(target));
+                    }
+                }
+            }
+            if let Some(info) = &field.media {
+                for (source, files) in crate::media::files_of_sources(self.db(), info, &ids).await?
+                {
+                    let ids: Vec<Json> = files.iter().map(|file| Json::from(file.id)).collect();
+                    versions[index[&source]].media.insert(field.api.clone(), Json::Array(ids));
+                }
+            }
+        }
+        Ok(versions)
+    }
+}
+
+/// Renumbers the file ids stored inside the components and dynamic zones of `data`
+/// (imports give files new ids); unknown ids are dropped.
+pub fn remap_component_files(
+    schema: &verdin_schema::Schema,
+    attributes: &indexmap::IndexMap<String, verdin_schema::Attribute>,
+    data: &mut serde_json::Map<String, Json>,
+    files: &std::collections::HashMap<i64, i64>,
+) {
+    for (name, attribute) in attributes {
+        if !matches!(
+            attribute.kind,
+            verdin_schema::AttributeKind::Component { .. }
+                | verdin_schema::AttributeKind::DynamicZone { .. }
+        ) {
+            continue;
+        }
+        let Some(value) = data.get_mut(name) else { continue };
+        crate::refs::rewrite(
+            schema,
+            &attribute.kind,
+            value,
+            &mut |_, target, stored| match target {
+                crate::refs::Target::Files { .. } => {
+                    let map = |value: &Json| {
+                        value.as_i64().and_then(|id| files.get(&id)).map(|id| Json::from(*id))
+                    };
+                    match stored {
+                        Json::Array(items) => Json::Array(items.iter().filter_map(map).collect()),
+                        single => map(single).unwrap_or(Json::Null),
+                    }
+                }
+                crate::refs::Target::Documents { .. } => stored.clone(),
+            },
+        );
+    }
+}

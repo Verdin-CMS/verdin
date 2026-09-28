@@ -43,6 +43,9 @@ All notable changes to Verdin are documented here. The format follows
   down large originals.
 - **MCP server** (the `mcp` feature): content tools for AI agents at `/mcp` (Streamable
   HTTP), authorized like the content API. See [docs/mcp.md](docs/mcp.md).
+- **Backups**: `verdin export <file.tar.gz>` and `verdin import verdin <file.tar.gz>`
+  move a project's schema, locales, media and every version of its entries. See
+  [docs/backups.md](docs/backups.md).
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.

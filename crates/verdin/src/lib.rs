@@ -7,5 +7,6 @@ pub mod config;
 pub mod import;
 mod new;
 pub mod server;
+pub mod transfer;
 mod typescript;
 mod uploads;

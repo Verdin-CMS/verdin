@@ -31,6 +31,7 @@ const ROUTES = {
   'docs/sso.md': 'guides/sso',
   'docs/scaling.md': 'guides/scaling',
   'docs/mcp.md': 'guides/mcp',
+  'docs/backups.md': 'guides/backups',
   'docs/architecture.md': 'reference/architecture',
   'docs/roadmap.md': 'project/roadmap',
   'docs/translating.md': 'project/translating',

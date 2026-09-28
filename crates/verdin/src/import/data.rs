@@ -699,6 +699,7 @@ async fn import_files(
             }
         }
         let imported = ImportedFile {
+            document_id: None,
             name: name.clone(),
             alternative_text: text("alternativeText"),
             caption: text("caption"),

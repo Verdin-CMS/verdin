@@ -53,6 +53,7 @@ export default defineConfig({
             'guides/sso',
             'guides/scaling',
             'guides/mcp',
+            'guides/backups',
           ],
         },
         {
