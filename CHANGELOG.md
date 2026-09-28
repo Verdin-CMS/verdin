@@ -6,12 +6,19 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-28
+
 ### Added
 
 - **Review workflows** (the `review` feature, permission `workflows.manage`). Stages
   per content type, with the roles allowed to move entries into each stage. Entries can
   be assigned to an admin. A workflow can also require a stage to publish, which is
-  enforced on every API. See [docs/review-workflows.md](docs/review-workflows.md).
+  enforced on every API. The admin shows stages in the editor and the list, and the
+  entries assigned to you on the home page. See
+  [docs/review-workflows.md](docs/review-workflows.md).
+- **Right-to-left admin languages**: Arabic, Hebrew and Persian (18 languages in all).
+- **Documentation site** in `site/` (Astro Starlight), built from `docs/`, with a
+  configuration reference and an API reference generated from OpenAPI.
 - **Several instances.** Each instance reads the settings changed by the others every
   `[server].sync_interval_secs`. Set `[plugins].run_jobs = false` on all instances but
   one. Each day's digest is claimed in the database, so it is sent once. See
