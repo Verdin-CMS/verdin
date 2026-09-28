@@ -242,7 +242,16 @@ async fn export_submissions(
 ) -> ApiResult {
     let site = site(&state, &headers).await?;
     let form = site.form_by_id(id).await?.ok_or(ApiError::NotFound)?;
-    let (list, _) = site.submissions(id, 1, 1000).await?;
+    // Every submission, a page at a time (at most 100,000).
+    let mut list = Vec::new();
+    for page in 1..=100 {
+        let (chunk, total) = site.submissions(id, page, 1000).await?;
+        let done = chunk.len() < 1000 || list.len() as u64 + chunk.len() as u64 >= total;
+        list.extend(chunk);
+        if done {
+            break;
+        }
+    }
     let mut out = String::new();
     let mut header_row = vec!["id".to_owned(), "createdAt".to_owned()];
     header_row.extend(form.fields.iter().map(|field| field.name.clone()));
