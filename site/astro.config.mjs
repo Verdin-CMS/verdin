@@ -54,6 +54,7 @@ export default defineConfig({
             'guides/scaling',
             'guides/mcp',
             'guides/backups',
+            'guides/realtime',
           ],
         },
         {

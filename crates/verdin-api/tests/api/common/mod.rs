@@ -55,6 +55,7 @@ pub struct App {
     /// The daily digest (not scheduled: call `send_all`).
     pub digest: verdin_api::digest::Digest,
     pub review: verdin_api::review::Review,
+    pub realtime: verdin_api::realtime::Realtime,
 }
 
 /// Who a request authenticates as.
@@ -171,6 +172,7 @@ impl App {
                 ..Default::default()
             },
         );
+        let realtime = verdin_api::realtime::Realtime::new();
         let upload = verdin_upload::UploadService::new(
             test.db.clone(),
             verdin_upload::Storage::with_store(store, "local", "/uploads"),
@@ -178,15 +180,27 @@ impl App {
         )
         .with_listener(std::sync::Arc::new(webhooks.clone()))
         .with_listener(std::sync::Arc::new(cache.clone()))
-        .with_listener(std::sync::Arc::new(audit.clone()));
+        .with_listener(std::sync::Arc::new(audit.clone()))
+        .with_listener(realtime.file_listener());
         // 10 versions per document, to exercise pruning.
         let history = verdin_api::History::new(test.db.clone(), 10);
         let releases = verdin_api::releases::Releases::new(test.db.clone());
         releases.set_webhooks(webhooks.clone());
         let review = verdin_api::review::Review::new(test.db.clone());
         let plugins = plugins_dir.map(|dir| verdin_plugins::Plugins::load(dir, test.db.clone()));
-        let mut listeners: verdin_api::Listeners =
-            vec![webhooks.listener(), history.listener(), cache.listener(), audit.listener()];
+        let mut listeners: verdin_api::Listeners = vec![
+            webhooks.listener(),
+            history.listener(),
+            cache.listener(),
+            audit.listener(),
+            realtime.listener(),
+        ];
+        realtime.set_draft_types(
+            registry
+                .types()
+                .filter(|model| model.draft_and_publish())
+                .map(|model| model.content_type.uid.clone()),
+        );
         if let Some(plugins) = &plugins {
             listeners.push(std::sync::Arc::new(plugins.clone()));
         }
@@ -209,6 +223,7 @@ impl App {
             releases: Some(releases.clone()),
             digest: Some(digest.clone()),
             review: Some(review.clone()),
+            realtime: Some(realtime.clone()),
             ..AdminConfig::default()
         };
         let router = Router::new()
@@ -228,6 +243,7 @@ impl App {
                         cache: Some(cache.clone()),
                         plugins: plugins.clone(),
                         review: Some(review.clone()),
+                        realtime: Some(realtime.clone()),
                         users: Some(oauth_secrets.iter().fold(
                             verdin_api::end_users::Users::new(
                                 auth.clone(),
@@ -257,6 +273,7 @@ impl App {
             releases,
             digest,
             review,
+            realtime,
         }
     }
 

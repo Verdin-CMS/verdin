@@ -499,11 +499,13 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         std::time::Duration::from_secs(api.cache_ttl_secs),
         api.cache_entries,
     );
+    let realtime = verdin_api::realtime::Realtime::new();
     let upload =
         verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone())
             .with_listener(Arc::new(webhooks.clone()))
             .with_listener(Arc::new(cache.clone()))
-            .with_listener(Arc::new(audit.clone()));
+            .with_listener(Arc::new(audit.clone()))
+            .with_listener(realtime.file_listener());
     let history = verdin_api::History::new(db.clone(), project.config.history.max_versions);
     let plugins =
         verdin_plugins::Plugins::load(&project.root.join(&project.config.plugins.path), db.clone());
@@ -545,6 +547,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         releases,
         digest,
         review,
+        realtime,
         plugins,
         audit,
     };

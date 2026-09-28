@@ -105,7 +105,7 @@ Hygraph) that fit Verdin best.
 
 | Item | Size | Notes |
 |---|---|---|
-| **Realtime API** | M | SSE (and GraphQL subscriptions) on document events, filtered by the reader's permissions; PocketBase-style, fits the event bus |
+| **Realtime API** ✅ | M | SSE (and GraphQL subscriptions) on document events, filtered by the reader's permissions; PocketBase-style, fits the event bus |
 | Document locking & presence | S | "Who is editing" avatars and a soft lock in the editor, over the realtime channel; the step before co-editing |
 | **Visual editing** | M | Content source maps (stega) in preview responses and a small overlay script: click on the site, jump to the field |
 | Comments & tasks | M | Threads on entries and fields, @mentions, assignable tasks; notifications and the digest; pairs with review workflows |

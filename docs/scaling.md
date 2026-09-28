@@ -43,6 +43,8 @@ instance, and the settings that matter.
   their entry expires. Keep the TTL short (a few seconds) when you run several
   instances, or set it to 0.
 - **Scheduled plugin jobs**: see `run_jobs` above.
+- **Realtime events and presence** ([realtime.md](realtime.md)) are those of the
+  instance a client is connected to: use sticky sessions for the event streams.
 
 ## Settings
 

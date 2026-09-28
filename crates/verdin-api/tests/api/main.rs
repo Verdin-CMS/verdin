@@ -22,6 +22,7 @@ mod password;
 mod plugins;
 mod populate;
 mod preview;
+mod realtime;
 mod relations;
 mod releases;
 mod review;

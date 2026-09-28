@@ -67,6 +67,8 @@ pub struct AppContext {
     pub digest: verdin_api::digest::Digest,
     /// Review workflows; the `review` feature switches stages and the publish gate.
     pub review: verdin_api::review::Review,
+    /// Realtime events (admin always; the content API with the `realtime` feature).
+    pub realtime: verdin_api::realtime::Realtime,
 }
 
 impl AppContext {
@@ -145,6 +147,13 @@ pub fn build_app(
     features: Option<Arc<dyn FeatureHost>>,
     states: &FeatureStates,
 ) -> Router {
+    context.realtime.set_draft_types(
+        schema
+            .content_types
+            .values()
+            .filter(|content_type| content_type.draft_and_publish)
+            .map(|content_type| content_type.uid.clone()),
+    );
     let (api, admin) = (&context.config.api, &context.config.admin);
     let registry = verdin_content::Registry::new(schema);
     let registry_for_graphql = registry.clone();
@@ -161,6 +170,7 @@ pub fn build_app(
         context.cache.listener(),
         Arc::new(context.plugins.clone()),
         context.audit.listener(),
+        context.realtime.listener(),
     ];
     let http = verdin_api::HttpLimits {
         body_limit: context.config.server.body_limit,
@@ -195,6 +205,9 @@ pub fn build_app(
             cache: Some(context.cache.clone()),
             plugins: Some(context.plugins.clone()),
             review: states.enabled(REVIEW).then(|| context.review.clone()),
+            realtime: states
+                .enabled(verdin_api::features::REALTIME)
+                .then(|| context.realtime.clone()),
             users: states.enabled(USERS).then(|| {
                 let raw = states.settings(USERS);
                 let settings = if raw.is_null() {
@@ -245,6 +258,7 @@ pub fn build_app(
             audit: Some(context.audit.clone()),
             releases: states.enabled(RELEASES).then(|| context.releases.clone()),
             review: states.enabled(REVIEW).then(|| context.review.clone()),
+            realtime: Some(context.realtime.clone()),
             digest: Some(context.digest.clone()),
             public_url: context.origin(),
             sso_secrets: sso_secrets(states),
@@ -1069,6 +1083,7 @@ mod tests {
             ),
             releases: verdin_api::releases::Releases::new(db_for_releases),
             review: verdin_api::review::Review::new(db_for_review),
+            realtime: verdin_api::realtime::Realtime::new(),
             digest: verdin_api::digest::Digest::new(
                 auth_for_digest,
                 verdin_email::Mailer::memory().0,

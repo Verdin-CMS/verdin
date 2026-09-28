@@ -6,6 +6,13 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Realtime events** over Server-Sent Events: `GET /api/_events` (the `realtime` feature)
+  and `GET /admin/api/events`, each filtered by what the subscriber may read, and
+  **presence** on entries (`/admin/api/presence`) with a soft lock for the first editor.
+  See [docs/realtime.md](docs/realtime.md).
+
 ## [0.8.0] - 2026-09-28
 
 ### Added

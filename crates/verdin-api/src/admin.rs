@@ -48,6 +48,8 @@ mod locales_admin;
 mod plugins_admin;
 #[path = "preview_admin.rs"]
 mod preview_admin;
+#[path = "realtime_admin.rs"]
+mod realtime_admin;
 #[path = "releases_admin.rs"]
 mod releases_admin;
 #[path = "review_admin.rs"]
@@ -117,6 +119,8 @@ pub struct AdminConfig {
     pub upload: Option<verdin_upload::UploadService>,
     /// "Upload from URL" may fetch private network addresses (tests, intranets).
     pub allow_private_urls: bool,
+    /// Realtime events and presence.
+    pub realtime: Option<crate::realtime::Realtime>,
     /// Present when the `webhooks` feature is on; its routes answer 404 without it.
     pub webhooks: Option<crate::Webhooks>,
     /// Present when the `history` feature is on; its routes answer 404 without it.
@@ -158,6 +162,7 @@ impl Default for AdminConfig {
             features: None,
             upload: None,
             allow_private_urls: false,
+            realtime: None,
             webhooks: None,
             history: None,
             releases: None,
@@ -260,7 +265,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(sso_admin::routes())
         .merge(review_admin::routes())
         .merge(account_admin::routes())
-        .merge(views_admin::routes());
+        .merge(views_admin::routes())
+        .merge(realtime_admin::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
     let audit = state

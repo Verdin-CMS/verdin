@@ -17,6 +17,8 @@ pub mod mcp;
 mod openapi;
 pub mod plugins;
 pub mod preview;
+pub mod realtime;
+mod realtime_routes;
 pub mod releases;
 pub mod review;
 pub mod sso;
@@ -158,6 +160,8 @@ pub struct ContentServices {
     pub plugins: Option<verdin_plugins::Plugins>,
     /// Review workflows: stages of new entries, and the publish stage.
     pub review: Option<review::Review>,
+    /// `GET /_events` (the `realtime` feature).
+    pub realtime: Option<realtime::Realtime>,
 }
 
 /// Content API routes, to be nested under the API prefix (e.g. `/api`).
@@ -169,8 +173,18 @@ pub fn router(
     prefix: &str,
     services: ContentServices,
 ) -> Router {
-    let ContentServices { upload, listeners, locales, users, traffic, cache, plugins, review } =
-        services;
+    let ContentServices {
+        upload,
+        listeners,
+        locales,
+        users,
+        traffic,
+        cache,
+        plugins,
+        review,
+        realtime,
+    } = services;
+    let auth_for_events = auth.clone();
     let (listeners, locales) = (&listeners, &locales);
     let routes = registry
         .types()
@@ -238,10 +252,15 @@ pub fn router(
         }
         None => router,
     };
-    router.layer(axum::middleware::from_fn_with_state(
+    let router = router.layer(axum::middleware::from_fn_with_state(
         cache::Traffic::new(traffic, cache),
         cache::middleware,
-    ))
+    ));
+    // Streams: no request timeout, no cache.
+    match realtime {
+        Some(realtime) => router.merge(realtime_routes::content(realtime, auth_for_events)),
+        None => router,
+    }
 }
 
 /// Admin API routes, to be nested under `{admin.path}/api` (e.g. `/admin/api`).
