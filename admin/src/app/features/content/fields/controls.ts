@@ -314,6 +314,7 @@ export function toIsoDate(date: Date): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <textarea
+      dir="ltr"
       hlmTextarea
       rows="6"
       class="font-mono text-xs"

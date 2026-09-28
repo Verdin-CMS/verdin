@@ -58,7 +58,8 @@ import { GrantsMatrix } from './grants';
           routerLink="/settings/end-users/roles"
           class="text-primary flex items-center gap-1.5 text-xs font-medium hover:underline"
         >
-          <ng-icon name="lucideArrowLeft" size="14" /> {{ t('endUsers.tab.roles') }}
+          <ng-icon name="lucideArrowLeft" size="14" class="rtl:-scale-x-100" />
+          {{ t('endUsers.tab.roles') }}
         </a>
         <div actions>
           <button hlmBtn [disabled]="saving() || !valid()" (click)="save()">

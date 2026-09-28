@@ -207,6 +207,7 @@ interface Draft {
             <div hlmField>
               <label hlmFieldLabel for="user-email">{{ t('common.email') }}</label
               ><input
+                dir="ltr"
                 hlmInput
                 id="user-email"
                 type="email"

@@ -281,6 +281,20 @@ const ICONS: Record<string, string> = {
                   </div>
                 }
 
+                @if (feature.id === 'review' && feature.enabled && canManageWorkflows()) {
+                  <div class="flex flex-col gap-3 border-t pt-4">
+                    <a
+                      hlmBtn
+                      size="sm"
+                      variant="outline"
+                      class="self-start"
+                      routerLink="/settings/review-workflows"
+                    >
+                      <ng-icon name="lucideListChecks" /> {{ t('features.review.open') }}
+                    </a>
+                  </div>
+                }
+
                 @if (feature.id === 'releases' && feature.enabled && canManageReleases()) {
                   <div class="flex flex-col gap-3 border-t pt-4">
                     <a hlmBtn size="sm" variant="outline" class="self-start" routerLink="/releases">
@@ -385,6 +399,7 @@ const ICONS: Record<string, string> = {
             <div hlmField>
               <label hlmFieldLabel for="email-test-to">{{ t('features.email.to') }}</label>
               <input
+                dir="ltr"
                 hlmInput
                 id="email-test-to"
                 type="email"
@@ -451,6 +466,7 @@ export class FeaturesPage implements OnInit {
   protected readonly canManageEndUsers = computed(() => this.auth.can('endusers.manage'));
   protected readonly canReadAudit = computed(() => this.auth.can('audit.read'));
   protected readonly canManageReleases = computed(() => this.auth.can('releases.manage'));
+  protected readonly canManageWorkflows = computed(() => this.auth.can('workflows.manage'));
   protected readonly previewOpen = signal(false);
   protected readonly ssoOpen = signal(false);
   /** The test email dialog: `null` when closed. */

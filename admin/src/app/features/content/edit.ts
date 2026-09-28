@@ -160,7 +160,9 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
             <a
               class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm transition-colors"
               [routerLink]="['/content', type().uid]"
-              ><ng-icon name="lucideArrowLeft" size="14" />{{ type().displayName }}</a
+              ><ng-icon name="lucideArrowLeft" size="14" class="rtl:-scale-x-100" />{{
+                type().displayName
+              }}</a
             >
           </div>
         }
@@ -261,7 +263,9 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
               type="button"
               [disabled]="busy() || !canSave()"
               [attr.title]="
-                publishHold() ? t('review.entry.publishRequires', { stage: publishHold()!.name }) : null
+                publishHold()
+                  ? t('review.entry.publishRequires', { stage: publishHold()!.name })
+                  : null
               "
               (click)="save(true)"
             >

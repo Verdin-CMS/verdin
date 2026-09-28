@@ -60,7 +60,9 @@ function entryKey(uid: string, documentId: string, locale: string): string {
         <a
           class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
           routerLink="/releases"
-          ><ng-icon name="lucideArrowLeft" size="14" />{{ t('releases.title') }}</a
+          ><ng-icon name="lucideArrowLeft" size="14" class="rtl:-scale-x-100" />{{
+            t('releases.title')
+          }}</a
         >
         <div hlmAlert variant="destructive" role="alert">
           <ng-icon hlmAlertIcon name="lucideCircleAlert" />
@@ -74,7 +76,9 @@ function entryKey(uid: string, documentId: string, locale: string): string {
             <a
               class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm transition-colors"
               routerLink="/releases"
-              ><ng-icon name="lucideArrowLeft" size="14" />{{ t('releases.title') }}</a
+              ><ng-icon name="lucideArrowLeft" size="14" class="rtl:-scale-x-100" />{{
+                t('releases.title')
+              }}</a
             >
           </div>
           <div actions>

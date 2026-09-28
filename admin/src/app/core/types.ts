@@ -278,4 +278,5 @@ export const ADMIN_SETTINGS_ACTIONS = [
   'plugins.manage',
   'audit.read',
   'releases.manage',
+  'workflows.manage',
 ] as const;

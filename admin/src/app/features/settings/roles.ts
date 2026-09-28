@@ -78,6 +78,7 @@ const ACTION_LABELS: Record<
   'plugins.manage': 'settings.roles.action.plugins.manage',
   'audit.read': 'settings.roles.action.audit.read',
   'releases.manage': 'settings.roles.action.releases.manage',
+  'workflows.manage': 'settings.roles.action.workflows.manage',
 };
 
 @Component({

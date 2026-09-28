@@ -233,7 +233,9 @@ interface LiveVersion {
                   }
                   @if (workflow()) {
                     <th hlmTh class="px-4">
-                      <span class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                      <span
+                        class="text-muted-foreground text-xs font-medium tracking-wide uppercase"
+                      >
                         {{ t('review.list.stage') }}
                       </span>
                     </th>
@@ -388,7 +390,8 @@ interface LiveVersion {
                 [disabled]="page() <= 1 || running()"
                 (click)="page.set(page() - 1)"
               >
-                <ng-icon name="lucideArrowLeft" /> {{ t('common.previous') }}
+                <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" />
+                {{ t('common.previous') }}
               </button>
               <button
                 hlmBtn
@@ -397,7 +400,8 @@ interface LiveVersion {
                 [disabled]="page() >= pageCount() || running()"
                 (click)="page.set(page() + 1)"
               >
-                {{ t('common.next') }} <ng-icon name="lucideChevronRight" />
+                {{ t('common.next') }}
+                <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
               </button>
             </div>
           }
@@ -682,7 +686,7 @@ export class ContentList {
     }
   }
 
-  /** The review stages of the listed entries: one bulk call, plus the workflow itself. */
+  /** The review stages of the listed entries and the type's workflow, in one call. */
   private async loadStages(
     current: number,
     uid: string,
@@ -696,13 +700,10 @@ export class ContentList {
     }
     const ids = documents.map((document) => document.documentId);
     try {
-      const [review, rows] = await Promise.all([
-        this.review.entry(uid, ids[0], locale),
-        this.review.entries(uid, ids, locale),
-      ]);
+      const { entries, workflow } = await this.review.entries(uid, ids, locale);
       if (current !== this.requests) return;
-      this.workflow.set(review?.workflow ?? null);
-      this.rowStages.set(new Map(rows.map((row) => [row.documentId, row])));
+      this.workflow.set(workflow);
+      this.rowStages.set(new Map(entries.map((row) => [row.documentId, row])));
     } catch {
       if (current !== this.requests) return;
       this.workflow.set(null);

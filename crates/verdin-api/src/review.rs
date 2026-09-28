@@ -612,7 +612,10 @@ impl DocumentHook for Review {
                 .entry(context.uid, document_id, &locale)
                 .await
                 .map_err(|error| error.to_string())?;
-            if entry.is_some_and(|entry| entry.stage_id == required) {
+            // Entries without a stored stage (created before their type joined) are at
+            // the first stage.
+            let stage = entry.map_or(workflow.stages[0].id, |entry| entry.stage_id);
+            if stage == required {
                 return Ok(None);
             }
             let name = workflow.stage(required).map_or("?", |stage| stage.name.as_str());

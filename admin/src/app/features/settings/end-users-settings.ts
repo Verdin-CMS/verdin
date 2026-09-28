@@ -227,6 +227,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                     t('endUsers.settings.confirmationRedirect')
                   }}</label>
                   <input
+                    dir="ltr"
                     hlmInput
                     id="users-confirmation-url"
                     type="url"
@@ -242,6 +243,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                     t('endUsers.settings.resetPasswordUrl')
                   }}</label>
                   <input
+                    dir="ltr"
                     hlmInput
                     id="users-reset-url"
                     type="url"
@@ -269,6 +271,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                           t('endUsers.settings.provider.name')
                         }}</label>
                         <input
+                          dir="ltr"
                           hlmInput
                           class="font-mono"
                           placeholder="github"
@@ -312,6 +315,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                           t('endUsers.settings.provider.clientId')
                         }}</label>
                         <input
+                          dir="ltr"
                           hlmInput
                           class="font-mono"
                           autocomplete="off"
@@ -325,6 +329,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                           t('endUsers.settings.provider.scope')
                         }}</label>
                         <input
+                          dir="ltr"
                           hlmInput
                           class="font-mono"
                           [id]="'provider-scope-' + index"
@@ -339,6 +344,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                           t('endUsers.settings.provider.redirectUri')
                         }}</label>
                         <input
+                          dir="ltr"
                           hlmInput
                           type="url"
                           class="font-mono"
@@ -358,6 +364,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                               t(field.label)
                             }}</label>
                             <input
+                              dir="ltr"
                               hlmInput
                               type="url"
                               class="font-mono"
@@ -461,6 +468,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
                         t('endUsers.settings.template.text')
                       }}</label>
                       <textarea
+                        dir="ltr"
                         hlmTextarea
                         rows="7"
                         class="font-mono text-xs"

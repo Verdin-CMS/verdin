@@ -440,6 +440,7 @@ interface AttributeDraft {
                       t('builder.settings.componentUid')
                     }}</label>
                     <input
+                      dir="ltr"
                       hlmInput
                       id="component-uid"
                       class="font-mono"
@@ -464,6 +465,7 @@ interface AttributeDraft {
                   <div hlmField>
                     <label hlmFieldLabel for="singular">{{ t('builder.settings.singular') }}</label>
                     <input
+                      dir="ltr"
                       hlmInput
                       id="singular"
                       class="font-mono"
@@ -478,6 +480,7 @@ interface AttributeDraft {
                   <div hlmField>
                     <label hlmFieldLabel for="plural">{{ t('builder.settings.plural') }}</label>
                     <input
+                      dir="ltr"
                       hlmInput
                       id="plural"
                       class="font-mono"
@@ -782,6 +785,7 @@ interface AttributeDraft {
                 <div hlmField>
                   <label hlmFieldLabel for="field-name">{{ t('builder.field.name') }}</label>
                   <input
+                    dir="ltr"
                     hlmInput
                     id="field-name"
                     class="font-mono"
@@ -851,6 +855,7 @@ interface AttributeDraft {
                       t('builder.field.inverseName')
                     }}</label>
                     <input
+                      dir="ltr"
                       hlmInput
                       id="inverse-name"
                       class="font-mono"
@@ -1186,11 +1191,12 @@ interface AttributeDraft {
                             <ng-icon
                               name="lucideChevronRight"
                               size="14"
-                              class="transition-transform group-open:rotate-90"
+                              class="transition-transform group-open:rotate-90 rtl:-scale-x-100 rtl:group-open:-rotate-90"
                             />
                             {{ t('builder.plan.sql') }}
                           </summary>
                           <pre
+                            dir="ltr"
                             class="bg-muted mx-3 mb-3 max-h-64 overflow-auto rounded-md p-3 font-mono text-xs leading-relaxed"
                             >{{
                               step.statements.join(

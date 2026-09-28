@@ -190,6 +190,7 @@ const KINDS: Record<
         @if (created(); as secret) {
           <div class="flex items-center gap-2">
             <input
+              dir="ltr"
               hlmInput
               readonly
               class="font-mono"

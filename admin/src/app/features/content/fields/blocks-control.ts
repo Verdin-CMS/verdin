@@ -378,6 +378,8 @@ export class BlocksControl implements FormValueControl<Block[] | null> {
         attributes: {
           id: this.inputId(),
           class: 'vd-prose',
+          // The text's own direction: content may be in another language than the interface.
+          dir: 'auto',
           role: 'textbox',
           'aria-multiline': 'true',
         },

@@ -87,7 +87,8 @@ const GROUPS: EventGroup[] = [
           routerLink="/settings/webhooks"
           class="text-primary flex items-center gap-1.5 text-xs font-medium hover:underline"
         >
-          <ng-icon name="lucideArrowLeft" size="14" /> {{ t('settings.webhooks.title') }}
+          <ng-icon name="lucideArrowLeft" size="14" class="rtl:-scale-x-100" />
+          {{ t('settings.webhooks.title') }}
         </a>
         <div actions class="flex gap-2">
           @if (webhook(); as current) {
@@ -144,6 +145,7 @@ const GROUPS: EventGroup[] = [
               <div hlmField>
                 <label hlmFieldLabel for="webhook-url">{{ t('settings.webhooks.url') }}</label>
                 <input
+                  dir="ltr"
                   hlmInput
                   id="webhook-url"
                   type="url"
@@ -264,6 +266,7 @@ const GROUPS: EventGroup[] = [
               @for (row of form().headers; track $index; let index = $index) {
                 <div class="flex items-center gap-2">
                   <input
+                    dir="ltr"
                     hlmInput
                     class="font-mono"
                     [placeholder]="t('settings.webhooks.headerName')"
@@ -272,6 +275,7 @@ const GROUPS: EventGroup[] = [
                     (input)="setHeader(index, { name: $any($event.target).value })"
                   />
                   <input
+                    dir="ltr"
                     hlmInput
                     class="font-mono"
                     [placeholder]="t('settings.webhooks.headerValue')"
@@ -408,6 +412,7 @@ const GROUPS: EventGroup[] = [
         @if (secret(); as value) {
           <div class="flex items-center gap-2">
             <input
+              dir="ltr"
               hlmInput
               readonly
               class="font-mono"

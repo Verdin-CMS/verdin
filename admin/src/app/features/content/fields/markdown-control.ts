@@ -68,6 +68,7 @@ export function renderMarkdown(markdown: string): string {
       </hlm-toggle-group>
       @if (mode() === 'edit') {
         <textarea
+          dir="auto"
           hlmTextarea
           rows="10"
           class="font-mono text-sm"
@@ -87,7 +88,7 @@ export function renderMarkdown(markdown: string): string {
           [attr.aria-label]="t('content.markdown.preview')"
         >
           @if (html(); as html) {
-            <div class="vd-prose" [innerHTML]="html"></div>
+            <div class="vd-prose" dir="auto" [innerHTML]="html"></div>
           } @else {
             <p class="text-muted-foreground text-sm">{{ t('content.markdown.empty') }}</p>
           }

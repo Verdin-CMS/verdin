@@ -115,6 +115,7 @@ export const AUTH_FEATURES: readonly { icon: string; text: MessageKey }[] = [
                 <div hlmField>
                   <label hlmFieldLabel for="email">{{ t('common.email') }}</label>
                   <input
+                    dir="ltr"
                     hlmInput
                     id="email"
                     type="email"

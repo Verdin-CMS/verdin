@@ -90,6 +90,16 @@ export const routes: Routes = [
         loadComponent: () => import('./features/settings/audit-logs').then((m) => m.AuditLogsPage),
       },
       {
+        path: 'settings/review-workflows',
+        loadComponent: () =>
+          import('./features/settings/review-workflows').then((m) => m.ReviewWorkflowsPage),
+      },
+      {
+        path: 'settings/review-workflows/:id',
+        loadComponent: () =>
+          import('./features/settings/review-workflow-edit').then((m) => m.ReviewWorkflowEditPage),
+      },
+      {
         path: 'settings/plugins',
         loadComponent: () => import('./features/settings/plugins').then((m) => m.PluginsPage),
       },

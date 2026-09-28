@@ -245,6 +245,7 @@ interface LocaleDraft {
             <div hlmField [attr.data-invalid]="codeProblem() ? true : null">
               <label hlmFieldLabel for="locale-code">{{ t('settings.locales.code') }}</label>
               <input
+                dir="ltr"
                 hlmInput
                 id="locale-code"
                 class="font-mono"
@@ -334,6 +335,7 @@ interface LocaleDraft {
               t('settings.locales.deleteConfirm', { code: locale.code })
             }}</label>
             <input
+              dir="ltr"
               hlmInput
               id="locale-confirm"
               class="font-mono"

@@ -325,9 +325,14 @@ test('create a type, write content, publish it and read it over the API', async 
   await page.getByLabel('Heading').fill('Welcome');
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
+  // Saving a new entry moves the editor to its URL (and reloads it): wait for that first.
+  await expect(page).toHaveURL(/\/content\/api::page\/(?!new\b)[^/?]+(\?|$)/);
+  await expect(page.getByRole('button', { name: /^Locale:/ })).toBeEnabled();
   await page.getByRole('button', { name: /^Locale:/ }).click();
   await page.getByRole('menuitemradio', { name: /French|Français|fr/ }).click();
-  await expect(page.getByText(/has no .* version yet/)).toBeVisible();
+  // The switch navigates, then loads the other locales' versions before the form shows.
+  await expect(page).toHaveURL(/[?&]locale=fr\b/);
+  await expect(page.getByText(/has no .* version yet/)).toBeVisible({ timeout: 15_000 });
   await page.getByLabel('Heading').fill('Bienvenue');
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();

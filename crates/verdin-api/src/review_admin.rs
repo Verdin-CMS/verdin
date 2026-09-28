@@ -25,6 +25,8 @@ pub(super) fn routes() -> Router<AdminState> {
         .route("/review-workflows", get(list).post(create))
         .route("/review-workflows/{id}", get(get_one).put(update).delete(remove))
         .route("/review/assigned", get(assigned))
+        .route("/review/assignees", get(assignees))
+        .route("/review/roles", get(roles))
         .route("/content/{uid}/review", get(entries))
         .route("/content/{uid}/{document_id}/review", get(entry).put(update_entry))
 }
@@ -254,7 +256,57 @@ async fn entries(
         .collect();
     let raw = query.locale.map(|locale| format!("locale={locale}"));
     let locale = locale_key(&state, &uid, raw.as_deref())?;
-    Ok(data(review.entries(&uid, &ids, &locale).await.map_err(internal)?))
+    let entries = review.entries(&uid, &ids, &locale).await.map_err(internal)?;
+    Ok(axum::Json(json!({ "data": entries, "meta": { "workflow": review.workflow_for(&uid) } }))
+        .into_response())
+}
+
+#[derive(Deserialize)]
+struct AssigneesQuery {
+    uid: String,
+}
+
+/// `GET /review/assignees?uid=`: active admins who can read the type, for whoever may
+/// update its entries (they need not manage users).
+async fn assignees(
+    State(state): State<AdminState>,
+    Query(query): Query<AssigneesQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    service(&state)?;
+    content_grant(&state, &headers, &query.uid, actions::CONTENT_UPDATE).await?;
+    let mut candidates = Vec::new();
+    for user in state.auth.users().await? {
+        if !user.is_active {
+            continue;
+        }
+        let permissions = state.auth.permission_set(user.id).await?;
+        if permissions.content(actions::CONTENT_READ, &query.uid) == Grant::None {
+            continue;
+        }
+        candidates.push(json!({
+            "id": user.id,
+            "email": user.email,
+            "firstname": user.firstname,
+            "lastname": user.lastname,
+        }));
+    }
+    Ok(data(candidates))
+}
+
+/// `GET /review/roles`: role codes and names for stage permissions (`workflows.manage`
+/// without `roles.manage`).
+async fn roles(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
+    service(&state)?;
+    require(&state, &headers, actions::WORKFLOWS_MANAGE).await?;
+    let roles: Vec<Value> = state
+        .auth
+        .roles()
+        .await?
+        .into_iter()
+        .map(|role| json!({ "id": role.id, "code": role.code, "name": role.name }))
+        .collect();
+    Ok(data(roles))
 }
 
 /// `GET /review/assigned`: entries assigned to the caller, among types they can read.

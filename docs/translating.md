@@ -1,6 +1,7 @@
 # Translating the admin panel
 
-The admin panel is translated into 15 languages. Catalogs are flat JSON files, one per
+The admin panel is translated into 18 languages, including three written right to left
+(Arabic, Hebrew and Persian). Catalogs are flat JSON files, one per
 language, in [`admin/public/i18n`](../admin/public/i18n): `en.json` is the source, the
 other files use the same keys.
 
@@ -45,6 +46,11 @@ missing at runtime falls back to English.
 2. Add the language to `LOCALES` in `admin/src/app/core/i18n/locales.ts` with its own name
    (`Svenska`).
 3. Run `npm run i18n:check -- <tag>`.
+
+Right-to-left languages need nothing more: `textDirection()` in `locales.ts` knows them, and
+the admin sets `<html dir="rtl">` when one is active. Layouts use logical classes (`ms-`, `pe-`,
+`start-`, `text-end`…) and flip directional icons with `rtl:-scale-x-100`; code, JSON, URLs and
+email addresses stay left to right (`dir="ltr"`).
 
 ## Weblate
 

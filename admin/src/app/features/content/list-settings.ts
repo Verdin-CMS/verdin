@@ -52,7 +52,11 @@ import {
       <span class="hidden sm:inline">{{ t('content.list.view.configure') }}</span>
     </button>
 
-    <hlm-sheet side="right" [state]="open() ? 'open' : 'closed'" (closed)="open.set(false)">
+    <hlm-sheet
+      [side]="i18n.endSide()"
+      [state]="open() ? 'open' : 'closed'"
+      (closed)="open.set(false)"
+    >
       <hlm-sheet-content *hlmSheetPortal="let ctx" class="w-full gap-0 p-0 sm:max-w-md">
         <hlm-sheet-header class="border-b p-4">
           <h2 hlmSheetTitle>{{ t('content.list.view.configure') }}</h2>
@@ -169,7 +173,8 @@ import {
   `,
 })
 export class ListSettings {
-  protected readonly t = inject(I18n).t;
+  protected readonly i18n = inject(I18n);
+  protected readonly t = this.i18n.t;
   protected readonly pageSizes = PAGE_SIZES;
 
   readonly type = input.required<ContentType>();

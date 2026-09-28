@@ -20,7 +20,7 @@ import { HlmSidebarService } from './hlm-sidebar.service';
     '(click)': '_onClick()',
   },
   template: `
-    <ng-icon name="lucidePanelLeft" />
+    <ng-icon name="lucidePanelLeft" class="rtl:-scale-x-100" />
     <span class="sr-only">{{ srOnlyText() }}</span>
   `,
 })

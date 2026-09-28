@@ -45,8 +45,10 @@ All routes are under `/admin/api`.
 | `DELETE /review-workflows/{id}` | `workflows.manage` | Entries of its types lose their stages |
 | `GET /content/{uid}/{documentId}/review?locale=` | read the entry | Stage, assignee, and the stages you can move the entry to (`canMoveTo`) |
 | `PUT /content/{uid}/{documentId}/review?locale=` | update the entry | `{ "stageId": 3, "assigneeId": 7 }`. Either field is optional, and `"assigneeId": null` removes the assignee |
-| `GET /content/{uid}/review?documentIds=a,b` | read the type | Stages of several entries (up to 200) |
+| `GET /content/{uid}/review?documentIds=a,b` | read the type | Stages of several entries (up to 200), with the workflow in `meta.workflow` |
 | `GET /review/assigned` | signed in | Entries assigned to you |
+| `GET /review/assignees?uid=` | update the type | Active admins who can read the type, to assign entries to |
+| `GET /review/roles` | `workflows.manage` | Role codes and names, for stage permissions |
 
 A workflow as sent to `POST` and `PUT`:
 

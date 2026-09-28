@@ -544,7 +544,7 @@ function readView(): View {
               [disabled]="page() <= 1"
               (click)="goToPage(page() - 1)"
             >
-              <ng-icon name="lucideArrowLeft" /> {{ t('common.previous') }}
+              <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" /> {{ t('common.previous') }}
             </button>
             <button
               hlmBtn
@@ -553,7 +553,7 @@ function readView(): View {
               [disabled]="page() >= pageCount()"
               (click)="goToPage(page() + 1)"
             >
-              {{ t('common.next') }} <ng-icon name="lucideChevronRight" />
+              {{ t('common.next') }} <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
             </button>
           </div>
         } @else if (total()) {

@@ -188,7 +188,7 @@ const PAGE_SIZE = 20;
                         [attr.aria-label]="t('settings.webhooks.details')"
                         (click)="$event.stopPropagation(); open(delivery)"
                       >
-                        <ng-icon name="lucideChevronRight" />
+                        <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
                       </button>
                     </div>
                   </td>
@@ -210,7 +210,7 @@ const PAGE_SIZE = 20;
               [disabled]="page() <= 1"
               (click)="page.set(page() - 1)"
             >
-              <ng-icon name="lucideArrowLeft" /> {{ t('common.previous') }}
+              <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" /> {{ t('common.previous') }}
             </button>
             <button
               hlmBtn
@@ -219,7 +219,7 @@ const PAGE_SIZE = 20;
               [disabled]="page() >= pageCount()"
               (click)="page.set(page() + 1)"
             >
-              {{ t('common.next') }} <ng-icon name="lucideChevronRight" />
+              {{ t('common.next') }} <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
             </button>
           </div>
         }
@@ -272,20 +272,23 @@ const PAGE_SIZE = 20;
               <div class="flex flex-col gap-1.5">
                 <span class="text-sm font-medium">{{ t('settings.webhooks.error') }}</span>
                 <pre
+                  dir="ltr"
                   class="bg-destructive/10 text-destructive rounded-lg p-3 font-mono text-xs whitespace-pre-wrap"
                   >{{ delivery.error }}</pre>
               </div>
             }
             <div class="flex flex-col gap-1.5">
               <span class="text-sm font-medium">{{ t('settings.webhooks.payload') }}</span>
-              <pre class="bg-muted max-h-72 overflow-auto rounded-lg p-3 font-mono text-xs">{{
-                json(delivery.payload)
-              }}</pre>
+              <pre
+                dir="ltr"
+                class="bg-muted max-h-72 overflow-auto rounded-lg p-3 font-mono text-xs"
+                >{{ json(delivery.payload) }}</pre>
             </div>
             <div class="flex flex-col gap-1.5">
               <span class="text-sm font-medium">{{ t('settings.webhooks.responseBody') }}</span>
               @if (delivery.responseBody) {
                 <pre
+                  dir="ltr"
                   class="bg-muted max-h-56 overflow-auto rounded-lg p-3 font-mono text-xs whitespace-pre-wrap"
                   >{{ json(delivery.responseBody) }}</pre>
               } @else {

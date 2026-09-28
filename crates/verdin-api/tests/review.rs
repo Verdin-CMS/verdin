@@ -167,6 +167,26 @@ async fn stages_gate_publication() {
         )
         .await;
     assert_eq!(rows["data"][0]["stageId"], ready);
+    assert_eq!(rows["meta"]["workflow"]["id"], workflow_id);
+
+    // Editors pick assignees and managers pick roles without managing users or roles.
+    let (status, people) = app
+        .call_as(
+            Method::GET,
+            "/admin/api/review/assignees?uid=api::article",
+            None,
+            As::Bearer(&editor),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{people}");
+    assert_eq!(people["data"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        app.call_as(Method::GET, "/admin/api/review/roles", None, As::Bearer(&editor)).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let (_, codes) =
+        app.call_as(Method::GET, "/admin/api/review/roles", None, As::Bearer(&admin)).await;
+    assert!(codes["data"].as_array().unwrap().iter().any(|role| role["code"] == "editor"));
 
     let (status, _) = app.call_as(Method::POST, &publish, None, As::Bearer(&editor)).await;
     assert_eq!(status, StatusCode::OK);
@@ -208,6 +228,20 @@ async fn stages_gate_publication() {
         .call_as(Method::GET, "/admin/api/audit-logs?action=entry.stage", None, As::Bearer(&admin))
         .await;
     assert_eq!(logs["meta"]["pagination"]["total"], 3);
+
+    // Entries without a stored stage are at the first stage, also for publishing.
+    let (_, tag) = app
+        .call(Method::POST, "/api/tags?status=draft", Some(json!({ "data": { "label": "old" } })))
+        .await;
+    let tag_id = tag["data"]["documentId"].as_str().unwrap().to_owned();
+    let tags = json!({ "name": "Tags", "contentTypes": ["api::tag"], "stages": [{ "name": "Open" }], "publishStage": "Open" });
+    let (status, _) = app
+        .call_as(Method::POST, "/admin/api/review-workflows", Some(tags), As::Bearer(&admin))
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, body) =
+        app.call(Method::POST, &format!("/api/tags/{tag_id}/actions/publish"), None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
 
     // Without the workflow, publishing is free again.
     let (status, _) = app

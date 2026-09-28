@@ -130,7 +130,11 @@ const PAGE_SIZE = 24;
             <ng-icon name="lucideHouse" size="14" /> {{ t('media.root') }}
           </button>
           @for (item of trail(); track item.id; let last = $last) {
-            <ng-icon name="lucideChevronRight" size="14" class="text-muted-foreground" />
+            <ng-icon
+              name="lucideChevronRight"
+              size="14"
+              class="text-muted-foreground rtl:-scale-x-100"
+            />
             <button
               type="button"
               class="hover:text-foreground rounded px-1 py-0.5"
@@ -260,7 +264,7 @@ const PAGE_SIZE = 24;
                 [disabled]="page() <= 1"
                 (click)="page.set(page() - 1)"
               >
-                <ng-icon name="lucideArrowLeft" />
+                <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" />
               </button>
               <span class="text-muted-foreground text-sm tabular-nums">
                 {{ t('common.page', { page: page(), count: pageCount() }) }}
@@ -274,7 +278,7 @@ const PAGE_SIZE = 24;
                 [disabled]="page() >= pageCount()"
                 (click)="page.set(page() + 1)"
               >
-                <ng-icon name="lucideChevronRight" />
+                <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
               </button>
             </div>
           }

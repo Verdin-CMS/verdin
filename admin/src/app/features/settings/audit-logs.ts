@@ -389,6 +389,7 @@ const PRESET_LABELS: Record<(typeof AUDIT_ACTION_PRESETS)[number], MessageKey> =
                             <dd class="min-w-0">
                               @if (hasDetails(entry)) {
                                 <pre
+                                  dir="ltr"
                                   class="bg-muted max-h-64 overflow-auto rounded-lg p-3 font-mono text-xs"
                                   >{{ json(entry.details) }}</pre>
                               } @else {
@@ -419,7 +420,8 @@ const PRESET_LABELS: Record<(typeof AUDIT_ACTION_PRESETS)[number], MessageKey> =
                   [disabled]="page() <= 1 || loading()"
                   (click)="page.set(page() - 1)"
                 >
-                  <ng-icon name="lucideArrowLeft" /> {{ t('common.previous') }}
+                  <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" />
+                  {{ t('common.previous') }}
                 </button>
                 <button
                   hlmBtn
@@ -428,7 +430,8 @@ const PRESET_LABELS: Record<(typeof AUDIT_ACTION_PRESETS)[number], MessageKey> =
                   [disabled]="page() >= pageCount() || loading()"
                   (click)="page.set(page() + 1)"
                 >
-                  {{ t('common.next') }} <ng-icon name="lucideChevronRight" />
+                  {{ t('common.next') }}
+                  <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
                 </button>
               </nav>
             }
@@ -458,6 +461,8 @@ export class AuditLogsPage implements OnInit {
     'entry.unpublish',
     'entry.discard-draft',
     'entry.delete',
+    'entry.stage',
+    'entry.assign',
     'media.*',
     'media.create',
     'media.update',

@@ -354,6 +354,7 @@ const GROUP_ICONS: Record<CapabilityGroup['kind'], string> = {
                   t('settings.plugins.settingsJson')
                 }}</label>
                 <textarea
+                  dir="ltr"
                   hlmTextarea
                   id="plugin-settings"
                   rows="12"

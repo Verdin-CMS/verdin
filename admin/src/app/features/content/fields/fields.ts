@@ -368,11 +368,11 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                     <vd-blocks-control [inputId]="id" [formField]="child(name)" />
                   }
                   @case ('email') {
-                    <input hlmInput [id]="id" type="email" [formField]="child(name)" />
+                    <input dir="ltr" hlmInput [id]="id" type="email" [formField]="child(name)" />
                   }
                   @case ('uid') {
                     <div hlmInputGroup>
-                      <input hlmInputGroupInput [id]="id" [formField]="child(name)" />
+                      <input hlmInputGroupInput dir="ltr" [id]="id" [formField]="child(name)" />
                       <div hlmInputGroupAddon align="inline-end">
                         <button
                           hlmInputGroupButton

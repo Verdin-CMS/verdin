@@ -49,7 +49,7 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div hlmSidebarWrapper>
-      <hlm-sidebar>
+      <hlm-sidebar [side]="sidebarSide()">
         <div hlmSidebarHeader>
           <a routerLink="/" class="flex items-center gap-2 rounded-md px-1.5 py-1.5">
             <vd-logo />
@@ -275,6 +275,20 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                     </a>
                   </li>
                 }
+                @if (auth.can('workflows.manage') && features.enabled('review')) {
+                  <li hlmSidebarMenuItem>
+                    <a
+                      hlmSidebarMenuButton
+                      routerLink="/settings/review-workflows"
+                      routerLinkActive
+                      #reviewWorkflows="routerLinkActive"
+                      [isActive]="reviewWorkflows.isActive"
+                    >
+                      <ng-icon name="lucideListChecks" />
+                      <span>{{ t('shell.reviewWorkflows') }}</span>
+                    </a>
+                  </li>
+                }
                 @if (auth.can('audit.read')) {
                   <li hlmSidebarMenuItem>
                     <a
@@ -377,9 +391,7 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
         <header
           class="bg-background/80 supports-backdrop-filter:bg-background/60 sticky top-0 z-10 flex h-14 items-center gap-2 border-b px-4 backdrop-blur"
         >
-          <button hlmSidebarTrigger>
-            <span class="sr-only">{{ t('shell.toggleSidebar') }}</span>
-          </button>
+          <button hlmSidebarTrigger [srOnlyText]="t('shell.toggleSidebar')"></button>
           <div class="ms-auto flex items-center gap-2">
             @if (schema.info(); as info) {
               <span
@@ -428,7 +440,12 @@ export class Shell implements OnInit {
   private readonly extensions = inject(PluginExtensions);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
-  protected readonly t = inject(I18n).t;
+  private readonly i18n = inject(I18n);
+  protected readonly t = this.i18n.t;
+  /** The sidebar sits at the start of the reading direction. */
+  protected readonly sidebarSide = computed(() =>
+    this.i18n.direction() === 'rtl' ? 'right' : 'left',
+  );
   protected readonly error = signal<string | null>(null);
 
   protected readonly displayName = computed(() => {

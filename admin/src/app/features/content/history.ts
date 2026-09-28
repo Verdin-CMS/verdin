@@ -74,7 +74,9 @@ type Problem = 'forbidden' | 'unavailable' | 'other';
             class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm transition-colors"
             [routerLink]="editor()"
             [queryParams]="editorQuery()"
-            ><ng-icon name="lucideArrowLeft" size="14" />{{ t('content.history.backToEditor') }}</a
+            ><ng-icon name="lucideArrowLeft" size="14" class="rtl:-scale-x-100" />{{
+              t('content.history.backToEditor')
+            }}</a
           >
         </div>
         @if (detail() && canRestore()) {
@@ -135,7 +137,8 @@ type Problem = 'forbidden' | 'unavailable' | 'other';
             </div>
             <div hlmEmptyContent>
               <a hlmBtn variant="outline" [routerLink]="editor()" [queryParams]="editorQuery()">
-                <ng-icon name="lucideArrowLeft" /> {{ t('content.history.backToEditor') }}
+                <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" />
+                {{ t('content.history.backToEditor') }}
               </a>
             </div>
           </div>
@@ -307,7 +310,7 @@ type Problem = 'forbidden' | 'unavailable' | 'other';
                   [disabled]="page() <= 1 || listLoading()"
                   (click)="page.set(page() - 1)"
                 >
-                  <ng-icon name="lucideArrowLeft" />
+                  <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" />
                 </button>
                 <button
                   hlmBtn
@@ -319,7 +322,7 @@ type Problem = 'forbidden' | 'unavailable' | 'other';
                   [disabled]="page() >= pageCount() || listLoading()"
                   (click)="page.set(page() + 1)"
                 >
-                  <ng-icon name="lucideArrowRight" />
+                  <ng-icon name="lucideArrowRight" class="rtl:-scale-x-100" />
                 </button>
               </div>
             }

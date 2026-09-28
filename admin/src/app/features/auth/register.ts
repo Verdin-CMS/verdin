@@ -98,6 +98,7 @@ import { AUTH_FEATURES } from './login';
                 <div hlmField>
                   <label hlmFieldLabel for="email">{{ t('common.email') }}</label>
                   <input
+                    dir="ltr"
                     hlmInput
                     id="email"
                     type="email"

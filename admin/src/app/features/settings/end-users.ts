@@ -321,7 +321,8 @@ interface Draft {
                 [disabled]="page() <= 1 || loading()"
                 (click)="page.set(page() - 1)"
               >
-                <ng-icon name="lucideArrowLeft" /> {{ t('common.previous') }}
+                <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" />
+                {{ t('common.previous') }}
               </button>
               <button
                 hlmBtn
@@ -330,7 +331,8 @@ interface Draft {
                 [disabled]="page() >= pageCount() || loading()"
                 (click)="page.set(page() + 1)"
               >
-                {{ t('common.next') }} <ng-icon name="lucideChevronRight" />
+                {{ t('common.next') }}
+                <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
               </button>
             }
           </div>
@@ -365,6 +367,7 @@ interface Draft {
             <div hlmField>
               <label hlmFieldLabel for="end-user-email">{{ t('common.email') }}</label
               ><input
+                dir="ltr"
                 hlmInput
                 id="end-user-email"
                 type="email"

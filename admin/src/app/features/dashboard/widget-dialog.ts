@@ -661,7 +661,7 @@ function operatorsFor(attribute: Attribute | undefined): ConditionOp[] {
                   class="me-auto"
                   (click)="type.set(null)"
                 >
-                  <ng-icon name="lucideArrowLeft" /> {{ t('common.back') }}
+                  <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" /> {{ t('common.back') }}
                 </button>
               }
               <button hlmBtn type="button" variant="outline" (click)="closed.emit()">

@@ -11,7 +11,7 @@ export class HlmAvatarGroup {
   constructor() {
     classes(
       () =>
-        '*:data-[slot=avatar]:ring-background group/avatar-group flex -space-x-2 *:data-[slot=avatar]:ring-2',
+        '*:data-[slot=avatar]:ring-background group/avatar-group flex -space-x-2 rtl:space-x-reverse *:data-[slot=avatar]:ring-2',
     );
   }
 }

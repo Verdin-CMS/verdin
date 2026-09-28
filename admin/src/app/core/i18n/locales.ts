@@ -15,11 +15,29 @@ export const LOCALES = [
   { tag: 'ja', name: '日本語' },
   { tag: 'ko', name: '한국어' },
   { tag: 'zh-Hans', name: '简体中文' },
+  { tag: 'ar', name: 'العربية' },
+  { tag: 'he', name: 'עברית' },
+  { tag: 'fa', name: 'فارسی' },
 ] as const;
 
 export type LocaleTag = (typeof LOCALES)[number]['tag'];
 
 export const DEFAULT_LOCALE: LocaleTag = 'en';
+
+/** Languages written right to left. */
+const RTL_LANGUAGES = new Set(['ar', 'he', 'fa', 'ur', 'ps', 'yi', 'dv', 'ckb', 'sd', 'ug']);
+
+/** The writing direction of a language tag. */
+export function textDirection(tag: string): 'ltr' | 'rtl' {
+  let language: string;
+  try {
+    language = new Intl.Locale(tag).language;
+  } catch {
+    language = tag.split('-')[0].toLowerCase();
+  }
+  // `iw` is the deprecated code of Hebrew.
+  return RTL_LANGUAGES.has(language) || language === 'iw' ? 'rtl' : 'ltr';
+}
 
 /** The supported locale that best matches the browser's preferences. */
 export function matchLocale(preferences: readonly string[]): LocaleTag {

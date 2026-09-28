@@ -93,6 +93,7 @@ const PROBLEMS: Record<SsoProblem, MessageKey> = {
                 <div hlmField [attr.data-invalid]="problems.id ? true : null">
                   <label hlmFieldLabel [for]="p + '-id'">{{ t('features.sso.id') }}</label>
                   <input
+                    dir="ltr"
                     hlmInput
                     autocomplete="off"
                     spellcheck="false"
@@ -145,6 +146,7 @@ const PROBLEMS: Record<SsoProblem, MessageKey> = {
                 >
                   <label hlmFieldLabel [for]="p + '-issuer'">{{ t('features.sso.issuer') }}</label>
                   <input
+                    dir="ltr"
                     hlmInput
                     type="url"
                     autocomplete="off"
@@ -174,6 +176,7 @@ const PROBLEMS: Record<SsoProblem, MessageKey> = {
                     t('features.sso.clientId')
                   }}</label>
                   <input
+                    dir="ltr"
                     hlmInput
                     autocomplete="off"
                     spellcheck="false"
@@ -194,6 +197,7 @@ const PROBLEMS: Record<SsoProblem, MessageKey> = {
                 <div hlmField [attr.data-invalid]="problems.scopes ? true : null">
                   <label hlmFieldLabel [for]="p + '-scopes'">{{ t('features.sso.scopes') }}</label>
                   <input
+                    dir="ltr"
                     hlmInput
                     autocomplete="off"
                     spellcheck="false"
@@ -277,6 +281,7 @@ const PROBLEMS: Record<SsoProblem, MessageKey> = {
                   </div>
                 } @else {
                   <input
+                    dir="ltr"
                     hlmInput
                     autocomplete="off"
                     spellcheck="false"
@@ -301,6 +306,7 @@ const PROBLEMS: Record<SsoProblem, MessageKey> = {
                     t('features.sso.roleClaim')
                   }}</label>
                   <input
+                    dir="ltr"
                     hlmInput
                     autocomplete="off"
                     spellcheck="false"
@@ -322,6 +328,7 @@ const PROBLEMS: Record<SsoProblem, MessageKey> = {
                         t('features.sso.claimValue')
                       }}</label>
                       <input
+                        dir="ltr"
                         hlmInput
                         autocomplete="off"
                         spellcheck="false"
@@ -333,7 +340,7 @@ const PROBLEMS: Record<SsoProblem, MessageKey> = {
                     </div>
                     <ng-icon
                       name="lucideArrowRight"
-                      class="text-muted-foreground mb-2.5"
+                      class="text-muted-foreground mb-2.5 rtl:-scale-x-100"
                       aria-hidden="true"
                     />
                     <div hlmField class="min-w-40 flex-1">
@@ -357,6 +364,7 @@ const PROBLEMS: Record<SsoProblem, MessageKey> = {
                         </hlm-native-select>
                       } @else {
                         <input
+                          dir="ltr"
                           hlmInput
                           autocomplete="off"
                           spellcheck="false"

@@ -1,3 +1,4 @@
+import { Directionality } from '@angular/cdk/bidi';
 import { DOCUMENT } from '@angular/common';
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
@@ -5,7 +6,7 @@ import { MonthLabels, injectBrnCalendarI18n } from '@spartan-ng/brain/calendar';
 import { firstValueFrom } from 'rxjs';
 
 import { Preferences } from '../preferences';
-import { DEFAULT_LOCALE, LOCALES, LocaleTag, matchLocale } from './locales';
+import { DEFAULT_LOCALE, LOCALES, LocaleTag, matchLocale, textDirection } from './locales';
 import { MessageKey, Params } from './keys';
 import { Weekday, firstDayOfWeek } from './week';
 
@@ -22,6 +23,7 @@ export class I18n {
   private readonly preferences = inject(Preferences);
   private readonly calendar = injectBrnCalendarI18n();
   private readonly transloco = inject(TranslocoService);
+  private readonly directionality = inject(Directionality);
 
   readonly locales = LOCALES;
   private readonly browserLocales: readonly string[] =
@@ -29,6 +31,11 @@ export class I18n {
 
   /** The interface language. */
   readonly locale = signal<LocaleTag>(DEFAULT_LOCALE);
+
+  /** The writing direction of the interface language. */
+  readonly direction = computed(() => textDirection(this.locale()));
+  /** The physical side where lines end: where side panels open. */
+  readonly endSide = computed(() => (this.direction() === 'rtl' ? 'left' : 'right'));
 
   /**
    * The tag used for dates and numbers: the browser's own when it is a regional variant
@@ -59,7 +66,17 @@ export class I18n {
   constructor() {
     effect(() => {
       const tag = this.locale();
-      this.document.documentElement.lang = tag;
+      const direction = this.direction();
+      const root = this.document.documentElement;
+      root.lang = tag;
+      root.dir = direction;
+      // Overlays (menus, dialogs, toasts) follow the CDK's direction.
+      untracked(() => {
+        if (this.directionality.value !== direction) {
+          this.directionality.valueSignal.set(direction);
+          this.directionality.change.emit(direction);
+        }
+      });
     });
     effect(() => {
       const tag = this.formatLocale();

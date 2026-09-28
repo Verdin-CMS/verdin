@@ -54,7 +54,11 @@ type FocalPoint = { x: number; y: number };
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <hlm-sheet side="right" [state]="file() ? 'open' : 'closed'" (closed)="closed.emit()">
+    <hlm-sheet
+      [side]="i18n.endSide()"
+      [state]="file() ? 'open' : 'closed'"
+      (closed)="closed.emit()"
+    >
       <hlm-sheet-content
         *hlmSheetPortal="let ctx"
         class="gap-0 overflow-y-auto p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-lg"

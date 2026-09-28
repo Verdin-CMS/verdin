@@ -186,6 +186,7 @@ function asList(value: unknown): Item[] {
                     }
                     @case ('json') {
                       <pre
+                        dir="ltr"
                         class="bg-muted/40 max-h-72 overflow-auto rounded-md border p-3 font-mono text-xs"
                         >{{ json(value) }}</pre>
                     }

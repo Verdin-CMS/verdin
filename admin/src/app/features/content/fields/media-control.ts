@@ -70,7 +70,7 @@ import { MediaThumb } from '../../media/media-thumb';
                 [disabled]="disabled() || first"
                 (click)="move(index, -1)"
               >
-                <ng-icon name="lucideArrowLeft" />
+                <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" />
               </button>
               <button
                 hlmBtn
@@ -82,7 +82,7 @@ import { MediaThumb } from '../../media/media-thumb';
                 [disabled]="disabled() || last"
                 (click)="move(index, 1)"
               >
-                <ng-icon name="lucideArrowRight" />
+                <ng-icon name="lucideArrowRight" class="rtl:-scale-x-100" />
               </button>
             } @else {
               <button

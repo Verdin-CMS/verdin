@@ -93,6 +93,7 @@ import { Schema } from '../../core/schema';
                   }}</span>
                 </label>
                 <input
+                  dir="ltr"
                   hlmInput
                   type="url"
                   spellcheck="false"

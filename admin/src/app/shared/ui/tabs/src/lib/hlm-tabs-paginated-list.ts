@@ -43,7 +43,7 @@ import { listVariants } from './hlm-tabs-list';
       (mousedown)="_handlePaginatorPress('before', $event)"
       (touchend)="_stopInterval()"
     >
-      <ng-icon name="lucideChevronLeft" />
+      <ng-icon name="lucideChevronLeft" class="rtl:-scale-x-100" />
     </button>
 
     <div
@@ -75,7 +75,7 @@ import { listVariants } from './hlm-tabs-list';
       (mousedown)="_handlePaginatorPress('after', $event)"
       (touchend)="_stopInterval()"
     >
-      <ng-icon name="lucideChevronRight" />
+      <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
     </button>
   `,
 })
