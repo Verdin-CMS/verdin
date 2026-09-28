@@ -41,6 +41,8 @@ All notable changes to Verdin are documented here. The format follows
   as in Strapi), upload from a URL (`POST /admin/api/upload/from-url`, public addresses
   only unless private networks are allowed), and `[upload].max_original_size` to scale
   down large originals.
+- **MCP server** (the `mcp` feature): content tools for AI agents at `/mcp` (Streamable
+  HTTP), authorized like the content API. See [docs/mcp.md](docs/mcp.md).
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.

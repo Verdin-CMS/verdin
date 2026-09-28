@@ -13,6 +13,7 @@ mod handlers;
 pub mod history;
 pub mod i18n;
 mod limiter;
+pub mod mcp;
 mod openapi;
 pub mod plugins;
 pub mod preview;

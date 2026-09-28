@@ -33,6 +33,7 @@ pub const RELEASES: &str = "releases";
 pub const PREVIEW: &str = "preview";
 pub const SSO: &str = "sso";
 pub const REVIEW: &str = "review";
+pub const MCP: &str = "mcp";
 
 /// Every feature, in display order.
 pub const CATALOG: &[FeatureSpec] = &[
@@ -91,6 +92,7 @@ pub const CATALOG: &[FeatureSpec] = &[
         core: false,
     },
     FeatureSpec { id: REVIEW, available: true, planned: None, default_enabled: false, core: false },
+    FeatureSpec { id: MCP, available: true, planned: None, default_enabled: false, core: false },
 ];
 
 pub fn spec(id: &str) -> Option<&'static FeatureSpec> {

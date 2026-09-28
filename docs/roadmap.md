@@ -95,7 +95,7 @@ to move to Verdin without losing features.
 | Admin branding ✅ | S | Logo, favicon, accent colour and translation overrides in `[admin]` |
 | GraphQL ✅ | M | Disable types or actions per content type (shadow CRUD), resolvers from plugins |
 | Export / import / backup | M | `verdin export` / `verdin import` of Verdin's own format (schema, data, media), optional encryption; scheduled backups to S3; `verdin transfer` between instances with transfer tokens |
-| **MCP server** | M | Content and schema tools for AI agents over Streamable HTTP, authorized with API tokens (Strapi 5.47, Sanity, Directus, Payload ship one) |
+| **MCP server** ✅ | M | Content and schema tools for AI agents over Streamable HTTP, authorized with API tokens (Strapi 5.47, Sanity, Directus, Payload ship one) |
 | Plugin runtime upgrade ✅ | M | Wasmtime 48 LTS through Extism's main branch (0.7.1); move back to an Extism release once one ships it |
 
 ## 0.9 — Beyond Strapi

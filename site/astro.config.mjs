@@ -52,6 +52,7 @@ export default defineConfig({
             'guides/review-workflows',
             'guides/sso',
             'guides/scaling',
+            'guides/mcp',
           ],
         },
         {

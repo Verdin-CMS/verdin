@@ -148,6 +148,7 @@ pub fn build_app(
     let (api, admin) = (&context.config.api, &context.config.admin);
     let registry = verdin_content::Registry::new(schema);
     let registry_for_graphql = registry.clone();
+    let registry_for_mcp = registry.clone();
     let limits = verdin_query::Limits {
         default_page_size: api.default_page_size,
         max_page_size: api.max_page_size,
@@ -258,6 +259,28 @@ pub fn build_app(
     );
     if let Some(graphql) = graphql {
         app = app.merge(graphql);
+    }
+    if states.enabled(verdin_api::features::MCP) {
+        let service = verdin_api::document_service(
+            context.db.clone(),
+            registry_for_mcp,
+            output,
+            &listeners,
+            &context.locales,
+            Some(&context.plugins),
+            states.enabled(REVIEW).then_some(&context.review),
+        );
+        let origins = states.settings(verdin_api::features::MCP)["allowedOrigins"]
+            .as_array()
+            .map(|origins| origins.iter().filter_map(|o| o.as_str().map(str::to_owned)).collect())
+            .unwrap_or_default();
+        app = app.merge(verdin_api::mcp::router(
+            service,
+            context.auth.clone(),
+            limits,
+            "/mcp",
+            origins,
+        ));
     }
     if let Some(dir) = context.upload.storage().local_dir() {
         app = app.nest_service("/uploads", uploads::service(dir.to_owned()));

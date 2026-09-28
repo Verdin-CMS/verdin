@@ -15,6 +15,7 @@ mod end_users;
 mod filters;
 mod history;
 mod i18n;
+mod mcp;
 mod media;
 mod password;
 mod plugins;

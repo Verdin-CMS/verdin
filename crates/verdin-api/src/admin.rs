@@ -874,7 +874,7 @@ async fn update_feature(
 // ------------------------------------------------------------------ schema
 
 /// An attribute in the schema file format, for the admin's forms.
-fn attribute_json(attribute: &Attribute) -> Value {
+pub(crate) fn attribute_json(attribute: &Attribute) -> Value {
     let mut out = Map::new();
     out.insert("type".into(), json!(attribute.kind.type_name()));
     let mut set = |key: &str, value: Value| {

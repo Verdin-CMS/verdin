@@ -144,7 +144,8 @@ mod tests {
     fn generates_formats_smaller_than_the_original() {
         let file = png(1200, 800);
         let breakpoints = crate::config::UploadConfig::default().breakpoints;
-        let analysis = analyse(file.path(), ImageFormat::Png, &breakpoints, 100, true, None).unwrap();
+        let analysis =
+            analyse(file.path(), ImageFormat::Png, &breakpoints, 100, true, None).unwrap();
         assert_eq!((analysis.width, analysis.height), (1200, 800));
         let names: Vec<(&str, u32, u32)> =
             analysis.formats.iter().map(|f| (f.name.as_str(), f.width, f.height)).collect();
@@ -159,7 +160,8 @@ mod tests {
         );
 
         let small = png(300, 200);
-        let analysis = analyse(small.path(), ImageFormat::Png, &breakpoints, 100, true, None).unwrap();
+        let analysis =
+            analyse(small.path(), ImageFormat::Png, &breakpoints, 100, true, None).unwrap();
         let names: Vec<&str> = analysis.formats.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(names, ["thumbnail"]);
         assert_eq!(dimensions(small.path()), Some((300, 200)));
