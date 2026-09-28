@@ -5,6 +5,7 @@ mod common;
 
 mod admin;
 mod audit;
+mod clone;
 mod components;
 mod conformance;
 mod digest;

@@ -11,6 +11,9 @@ All notable changes to Verdin are documented here. The format follows
 - **`password` attributes**: hashed with Argon2id on write and never returned, filtered
   or sorted. `verdin import strapi` imports them, keeping Strapi's bcrypt hashes.
 - Webhook events `releases.publish` and `review-workflows.updateEntryStage`.
+- Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
+  with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
+  are left out and listed in `meta.leftOut`.
 
 ### Changed
 

@@ -71,6 +71,32 @@ impl DocumentService {
         self.find_one(uid, document_id, &query).await
     }
 
+    /// Write data for a copy of a document's draft (or only version): unique and uid
+    /// fields are left out, and so are relations whose targets may have one source only
+    /// (one-to-one, one-to-many), which a copy would take away from the original. Returns
+    /// the data and the fields left out.
+    pub async fn clone_data(&self, uid: &str, document_id: &str) -> Result<(Json, Vec<String>)> {
+        let model = self.registry().get(uid)?;
+        let status = if model.draft_and_publish() { Status::Draft } else { Status::Published };
+        let snapshot =
+            self.snapshot(uid, document_id, status).await?.ok_or(crate::ContentError::NotFound)?;
+        let (mut data, _) = self.restorable(uid, &snapshot).await?;
+        let mut left_out = Vec::new();
+        if let Some(object) = data.as_object_mut() {
+            for (name, attribute) in &model.content_type.attributes {
+                let exclusive = matches!(
+                    &attribute.kind,
+                    AttributeKind::Relation { relation, .. }
+                        if matches!(relation, verdin_schema::RelationKind::OneToOne | verdin_schema::RelationKind::OneToMany)
+                );
+                if (attribute.kind.is_unique() || exclusive) && object.remove(name).is_some() {
+                    left_out.push(name.clone());
+                }
+            }
+        }
+        Ok((data, left_out))
+    }
+
     /// Write data restoring `snapshot` with the current schema: fields that no longer
     /// exist are skipped, and references to documents or files that were deleted since are
     /// dropped (and reported). Fields written from the other side of a relation are left

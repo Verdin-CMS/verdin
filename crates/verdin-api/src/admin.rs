@@ -232,6 +232,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
             get(content_get).put(content_update).delete(content_delete),
         )
         .route("/content/{uid}/{document_id}/actions/{action}", post(content_action))
+        .route("/content/{uid}/{document_id}/clone", post(content_clone))
         .route("/content/{uid}/uid-available", get(uid_available))
         .route("/content/{uid}/{document_id}/locales", get(content_locales))
         .route("/schema", get(schema_sources))
@@ -1281,6 +1282,43 @@ async fn content_action(
         _ => return Err(ApiError::NotFound),
     }
     read_document(&state, &uid, &document_id, &query, StatusCode::OK).await
+}
+
+/// `POST /content/{uid}/{documentId}/clone`: a new draft with the entry's content (see
+/// [`DocumentService::clone_data`]), limited to the fields the admin may create. The
+/// fields left out are listed in `meta.leftOut`.
+async fn content_clone(
+    State(state): State<AdminState>,
+    Path((uid, document_id)): Path<(String, String)>,
+    RawQuery(raw): RawQuery,
+    headers: HeaderMap,
+) -> ApiResult {
+    let state = localized(state, raw.as_deref())?;
+    let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_READ).await?;
+    ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
+    content_grant(&state, &headers, &uid, actions::CONTENT_CREATE).await?;
+    let (mut data, mut left_out) = state.service.clone_data(&uid, &document_id).await?;
+    if let (Some(allowed), Some(object)) =
+        (principal.permissions.content_fields(actions::CONTENT_CREATE, &uid), data.as_object_mut())
+    {
+        object.retain(|key, _| {
+            let keep = allowed.iter().any(|field| field == key);
+            if !keep {
+                left_out.push(key.clone());
+            }
+            keep
+        });
+    }
+    let options = WriteOptions { publish: false, actor: Some(principal.user.id) };
+    let copy = state.service.create(&uid, &data, options).await?;
+    let query = admin_query(&state, &uid, raw.as_deref(), &principal, Grant::All)?;
+    let document = state.service.find_one(&uid, &copy, &query).await?.ok_or(ApiError::NotFound)?;
+    left_out.sort();
+    Ok((
+        StatusCode::CREATED,
+        axum::Json(json!({ "data": document, "meta": { "leftOut": left_out } })),
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]
