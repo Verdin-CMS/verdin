@@ -168,13 +168,13 @@ async fn profile_sessions_and_token_regeneration() {
     let cookie =
         second.headers["set-cookie"].to_str().unwrap().split(';').next().unwrap().to_owned();
     let (_, listed) =
-        app.call_as(Method::GET, "/admin/api/users/me/sessions", None, As::Bearer(&admin)).await;
+        app.call_as(Method::GET, "/admin/api/auth/sessions", None, As::Bearer(&admin)).await;
     let sessions = listed["data"].as_array().unwrap().clone();
     assert_eq!(sessions.len(), 2, "{listed}");
     let listed = app
         .request(
             Method::GET,
-            "/admin/api/users/me/sessions",
+            "/admin/api/auth/sessions",
             None,
             As::Bearer(&admin),
             &[("cookie", &cookie)],
@@ -187,7 +187,7 @@ async fn profile_sessions_and_token_regeneration() {
     let (status, _) = app
         .call_as(
             Method::DELETE,
-            &format!("/admin/api/users/me/sessions/{id}"),
+            &format!("/admin/api/auth/sessions/{id}"),
             None,
             As::Bearer(&admin),
         )

@@ -18,7 +18,7 @@ All notable changes to Verdin are documented here. The format follows
 - **Admin accounts**: invite admins without setting a password (`POST /users` without
   `password` returns `meta.inviteUrl` and emails it), accept the invitation, reset a
   forgotten password by email, edit one's own profile (`/users/me`), list and sign out
-  one's sessions (`/users/me/sessions`), and regenerate API tokens
+  one's sessions (`/auth/sessions`), and regenerate API tokens
   (`POST /api-tokens/{id}/regenerate`).
 - **End users**: refresh tokens (`jwtManagement: "refresh"`, `POST /api/auth/refresh`
   and `/api/auth/logout`), the `/api/users` routes with role permissions on

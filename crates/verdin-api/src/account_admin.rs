@@ -25,8 +25,9 @@ pub(super) fn routes() -> Router<AdminState> {
         .route("/auth/forgot-password", post(forgot_password))
         .route("/auth/reset-password", post(reset_password))
         .route("/users/me", get(profile).put(update_profile))
-        .route("/users/me/sessions", get(sessions))
-        .route("/users/me/sessions/{id}", delete(revoke_session))
+        // Under `/auth`, where the refresh cookie is sent (to mark the current session).
+        .route("/auth/sessions", get(sessions))
+        .route("/auth/sessions/{id}", delete(revoke_session))
         .route("/users/{id}/invite", post(reinvite))
         .route("/api-tokens/{id}/regenerate", post(regenerate_token))
 }

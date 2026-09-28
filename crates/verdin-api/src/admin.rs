@@ -1062,7 +1062,13 @@ async fn content_locales(
     Path((uid, document_id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> ApiResult {
-    let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_READ).await?;
+    // Which locales exist: readable by admins who may read the type in any locale.
+    state.service.registry().get(&uid)?;
+    let principal = principal(&state, &headers).await?;
+    let grant = principal.permissions.content(actions::CONTENT_READ, &uid);
+    if grant == Grant::None {
+        return Err(ApiError::Forbidden);
+    }
     ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
     Ok(data(state.service.document_locales(&uid, &document_id).await?))
 }
