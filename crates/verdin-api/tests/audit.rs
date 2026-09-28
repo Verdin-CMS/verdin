@@ -95,6 +95,16 @@ async fn records_and_filters() {
         .call_as(Method::GET, "/admin/api/audit-logs?from=not-a-date", None, As::Bearer(&admin))
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    let today = time::OffsetDateTime::now_utc().date().to_string();
+    let (_, until_today) = app
+        .call_as(
+            Method::GET,
+            &format!("/admin/api/audit-logs?to={today}"),
+            None,
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(until_today["meta"]["pagination"]["total"], 4, "a plain date includes its day");
 
     // Needs audit.read.
     assert_eq!(

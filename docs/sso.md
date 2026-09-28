@@ -13,7 +13,9 @@ next to it.
    ```
 
    `<your server>` comes from `[server].public_url`. Set it when Verdin runs behind a
-   proxy. `<id>` is the provider id you choose below.
+   proxy. `<id>` is the provider id you choose below. The settings dialog shows the URI
+   with the address you opened the admin at. If `public_url` is different, use
+   `public_url` instead.
 
 2. Put the client secret in the environment, then restart Verdin:
 

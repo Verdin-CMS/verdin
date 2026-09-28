@@ -163,7 +163,12 @@ async fn add_action(
         let service = state.service.in_locale(action.locale.clone().filter(|l| !l.is_empty()));
         // Resolves (and checks) the locale; the document must exist in it.
         service.created_by(&action.uid, &action.document_id).await?;
-        action.locale.clone().filter(|l| !l.is_empty()).unwrap_or_default()
+        // Stored resolved: a later change of the default locale does not move the action.
+        action
+            .locale
+            .clone()
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| state.config.locales.default_code())
     } else {
         state.service.created_by(&action.uid, &action.document_id).await?;
         String::new()

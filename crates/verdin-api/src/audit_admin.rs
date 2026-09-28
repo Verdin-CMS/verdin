@@ -62,11 +62,17 @@ async fn list(
         conditions.push("a.subject = ?".into());
         params.push(V::Text(subject.into()));
     }
-    for (value, operator) in [(&filters.from, ">="), (&filters.to, "<=")] {
+    for (value, upper) in [(&filters.from, false), (&filters.to, true)] {
         if let Some(value) = value.as_deref().filter(|v| !v.is_empty()) {
             let at = parse_datetime(value).ok_or_else(|| {
                 ApiError::BadRequest(format!("`{value}` is not an ISO 8601 date"))
             })?;
+            // A plain date as the upper bound includes that whole day.
+            let (operator, at) = match (upper, value.contains('T')) {
+                (false, _) => (">=", at),
+                (true, true) => ("<=", at),
+                (true, false) => ("<", at + time::Duration::days(1)),
+            };
             conditions.push(format!("a.at {operator} ?"));
             params.push(V::DateTime(at));
         }
