@@ -25,10 +25,9 @@ import { EntryCollab } from './entry-collab';
         class="text-muted-foreground hover:text-foreground h-6 gap-1 px-1.5"
         [class.text-primary]="count()"
         [attr.aria-label]="
-          count()
-            ? t('comments.field.buttonCount', { field: label(), count: count() })
-            : t('comments.field.button', { field: label() })
+          count() ? t('comments.field.shortCount', { count: count() }) : t('comments.field.short')
         "
+        [attr.aria-description]="label()"
         [title]="t('comments.field.button', { field: label() })"
         (click)="collab!.open('comments', path())"
       >

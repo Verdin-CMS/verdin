@@ -78,7 +78,7 @@ test('comments, mentions and tasks on an entry', async ({ page }) => {
   await expect(page.getByLabel('Title')).toHaveValue('Launch plan');
 
   // A thread on the Title field, with a mention picked from the @ list.
-  await page.getByRole('button', { name: 'Comment on Title' }).click();
+  await page.getByTitle('Comment on Title').click();
   const panel = page.getByRole('dialog');
   await expect(panel.getByText('About Title')).toBeVisible();
   const composer = panel.getByRole('combobox', { name: 'New comment on Title' });
@@ -102,7 +102,7 @@ test('comments, mentions and tasks on an entry', async ({ page }) => {
   // A task, assigned to me, marked done.
   await panel.getByRole('tab', { name: /Tasks/ }).click();
   await panel.getByRole('button', { name: 'New task' }).click();
-  await panel.getByLabel('Title').fill('Proofread');
+  await panel.getByRole('textbox', { name: 'Title', exact: true }).fill('Proofread');
   await panel.getByLabel('Assignee').selectOption({ label: 'Ada (you)' });
   await panel.getByRole('button', { name: 'Create task' }).click();
   await expect(page.getByText('Task created')).toBeVisible();
@@ -110,8 +110,8 @@ test('comments, mentions and tasks on an entry', async ({ page }) => {
     title: string;
   }[];
   expect(mine.map((task) => task.title)).toContain('Proofread');
-  await panel.getByLabel('Proofread').click();
-  await expect(panel.getByLabel('Proofread')).toBeChecked();
+  await panel.getByRole('checkbox', { name: 'Proofread' }).click();
+  await expect(panel.getByRole('checkbox', { name: 'Proofread' })).toBeChecked();
   await page.keyboard.press('Escape');
 
   // Another session changes the entry: the editor offers to reload.

@@ -57,6 +57,7 @@ import {
   morphIssue,
   morphOwnerOptions,
   ownerKindOf,
+  suggestedOwnerField,
   typeKey,
   withRelationKind,
 } from './morph-options';
@@ -1815,14 +1816,13 @@ export class Builder {
     );
   }
 
-  /** An inverse side's owner type; its only compatible field is chosen at once. */
+  /** An inverse side's owner type; an obvious owner field is chosen at once. */
   protected setMorphTarget(target: string): void {
     const kind = this.attributeDraft()?.attribute.relation;
     if (!isInverseKind(kind)) return;
-    const fields = target ? compatibleOwnerFields(this.morphTypes()[typeKey(target)], kind) : [];
     this.patchAttribute({
       target: target || undefined,
-      morphBy: fields.length === 1 ? fields[0] : undefined,
+      morphBy: target ? suggestedOwnerField(this.morphTypes()[typeKey(target)], kind) : undefined,
     });
   }
 

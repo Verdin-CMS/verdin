@@ -6,6 +6,7 @@ import {
   compatibleOwnerFields,
   morphIssue,
   morphOwnerOptions,
+  suggestedOwnerField,
   typeKey,
   withRelationKind,
 } from './morph-options';
@@ -39,6 +40,9 @@ describe('builder: polymorphic relations', () => {
       { uid: 'api::note', label: 'Note', fields: ['about', 'refs'] },
     ]);
     expect(compatibleOwnerFields(types['tag'], 'morphMany')).toEqual([]);
+    expect(suggestedOwnerField(types['note'], 'morphMany')).toBe('refs');
+    expect(suggestedOwnerField(types['note'], 'morphOne')).toBe('about');
+    expect(suggestedOwnerField(types['comment'], 'morphOne')).toBe('on');
     expect(compatibleOwnerFields(undefined, 'morphOne')).toEqual([]);
     expect(typeKey('api::note.note')).toBe('note');
     expect(typeKey('api::note')).toBe('note');

@@ -149,7 +149,8 @@ test('a password field is hashed, kept when left empty and never returned', asyn
     .toBe('Locker 2');
   expect(storedPin(documentId)).toBe(hash);
 
-  // Typing a new one replaces it.
+  // Typing a new one replaces it (once the editor has finished the previous save).
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
   await pin.fill('5678');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect.poll(() => storedPin(documentId)).not.toBe(hash);

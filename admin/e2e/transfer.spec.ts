@@ -94,12 +94,12 @@ test('the list searches all text fields and keeps the search in the URL', async 
   await page.goto('/admin/content/api::crate');
   await page.getByRole('searchbox', { name: 'Search' }).fill(word);
   await expect(page).toHaveURL(new RegExp(`_q=${word}`));
-  await expect(page.getByRole('cell', { name: 'Apples' })).toBeVisible();
-  await expect(page.getByRole('cell', { name: 'Pears' })).toHaveCount(0);
+  await expect(page.getByRole('cell', { name: 'Apples', exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Pears', exact: true })).toHaveCount(0);
 
   await page.reload();
   await expect(page.getByRole('searchbox', { name: 'Search' })).toHaveValue(word);
-  await expect(page.getByRole('cell', { name: 'Apples' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Apples', exact: true })).toBeVisible();
 });
 
 test('the list exports to CSV and imports a CSV file after a check', async ({ page }) => {
@@ -141,7 +141,7 @@ test('the list exports to CSV and imports a CSV file after a check', async ({ pa
   await dialog.getByRole('button', { name: 'Import', exact: true }).click();
   await expect(dialog.getByRole('heading', { name: 'Import finished' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close' }).first().click();
-  await expect(page.getByRole('cell', { name: `Imported ${stamp} A` })).toBeVisible();
+  await expect(page.getByRole('cell', { name: `Imported ${stamp} A`, exact: true })).toBeVisible();
 });
 
 test('the editor shows where an entry is used and deleting warns about it', async ({ page }) => {

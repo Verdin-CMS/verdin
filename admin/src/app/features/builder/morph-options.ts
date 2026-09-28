@@ -71,6 +71,20 @@ export function compatibleOwnerFields(
   ].map(([name]) => name);
 }
 
+/**
+ * The owner field to pick for an inverse side at once: the only one of the matching kind,
+ * or the only one at all.
+ */
+export function suggestedOwnerField(
+  file: SchemaFiles[string],
+  kind: 'morphOne' | 'morphMany',
+): string | undefined {
+  const fields = compatibleOwnerFields(file, kind);
+  const matching = fields.filter((name) => file?.attributes[name]?.relation === ownerKindOf(kind));
+  if (matching.length === 1) return matching[0];
+  return fields.length === 1 ? fields[0] : undefined;
+}
+
 /** Content types holding at least one owner attribute an inverse side of `kind` pairs with. */
 export function morphOwnerOptions(
   types: SchemaFiles,

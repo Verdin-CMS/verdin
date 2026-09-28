@@ -149,7 +149,7 @@ test('the editor edits polymorphic links: add, reorder, remove, to-one', async (
   await expect(list.getByRole('listitem').first()).toContainText(`Home ${tag}`);
 
   // Add: pick a type, search it, check entries; linked ones are not offered again.
-  await refs.getByRole('button', { name: 'Link entries' }).click();
+  await refs.getByRole('button').filter({ hasText: 'Link entries' }).click();
   const picker = page.getByRole('dialog', { name: 'Link entries' });
   await picker.getByLabel('Content type').selectOption({ label: 'Post card' });
   await picker.getByLabel('Search entries').fill(tag);
@@ -170,7 +170,7 @@ test('the editor edits polymorphic links: add, reorder, remove, to-one', async (
   await expect(list.getByRole('listitem')).toHaveCount(2);
 
   // To-one: clicking a result links it and closes the picker.
-  await about.getByRole('button', { name: 'Link an entry' }).click();
+  await about.getByRole('button').filter({ hasText: 'Link an entry' }).click();
   const one = page.getByRole('dialog', { name: 'Link an entry' });
   await one.getByLabel('Content type').selectOption({ label: 'Plain page' });
   await one.getByLabel('Search entries').fill(tag);
@@ -179,7 +179,7 @@ test('the editor edits polymorphic links: add, reorder, remove, to-one', async (
   const aboutList = about.getByRole('list', { name: 'About' });
   await expect(aboutList.getByRole('listitem')).toContainText('Plain page');
   await expect(aboutList.getByRole('listitem')).toContainText(`Home ${tag}`);
-  await expect(about.getByRole('button', { name: 'Link an entry' })).toHaveCount(0);
+  await expect(about.getByRole('button').filter({ hasText: 'Link an entry' })).toHaveCount(0);
   await page.screenshot({ path: 'test-results/screens/polymorphic-editor.png' });
 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -280,11 +280,11 @@ test('the builder edits polymorphic fields and keeps them on save', async ({ pag
   await expect(dialog.locator('[data-field-issue]')).toHaveText('Choose the owner type.');
   await expect(dialog.getByRole('button', { name: 'Done' })).toBeDisabled();
   await dialog.getByLabel('Owner type').selectOption({ label: 'Pin note' });
-  // `refs` is Pin note's only morphToMany field.
+  // `refs` is Pin note's only morphToMany field: chosen at once; `about` is offered too.
   await expect(dialog.getByLabel('Owner field')).toHaveValue('refs');
   await expect(
     dialog.getByLabel('Owner field').locator('option', { hasText: 'about' }),
-  ).toHaveCount(0);
+  ).toHaveCount(1);
   await dialog.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(dialog.getByRole('heading', { name: 'Review the migration' })).toBeVisible();
