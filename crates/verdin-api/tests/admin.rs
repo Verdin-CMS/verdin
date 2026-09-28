@@ -705,7 +705,7 @@ async fn features_catalog_and_switches() {
     let coming = app
         .call_as(
             Method::PUT,
-            "/admin/api/features/plugins",
+            "/admin/api/features/review",
             Some(json!({ "enabled": true })),
             As::Bearer(&admin),
         )

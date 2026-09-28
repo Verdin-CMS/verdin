@@ -13,6 +13,8 @@ use verdin_migrate::system::{
     API_TOKENS, PUBLIC_PERMISSIONS, SESSIONS, SETTINGS,
 };
 
+#[path = "preview.rs"]
+pub mod preview;
 #[path = "users.rs"]
 pub mod users;
 
@@ -152,6 +154,14 @@ pub struct NewUser {
     pub lastname: Option<String>,
     pub roles: Vec<i64>,
     pub is_active: bool,
+}
+
+/// The account created for a new SSO user.
+#[derive(Debug, Clone, Default)]
+pub struct SsoAccount {
+    pub firstname: Option<String>,
+    pub lastname: Option<String>,
+    pub roles: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -456,6 +466,39 @@ impl AuthService {
         self.db.queries().execute(&sql, &params).await?;
 
         let user = self.user(id).await?;
+        self.open_session(user, user_agent).await
+    }
+
+    /// Signs in an admin whose identity provider vouched for `email` (SSO). Unknown emails
+    /// get an account with `create`'s roles, or are refused without it.
+    pub async fn sso_login(
+        &self,
+        email: &str,
+        create: Option<SsoAccount>,
+        user_agent: Option<&str>,
+    ) -> Result<Session> {
+        let email = email.trim().to_lowercase();
+        let user = match self.user_by_email(&email).await {
+            Ok(user) => user,
+            Err(AuthError::NotFound) => {
+                let account = create.ok_or(AuthError::InvalidCredentials)?;
+                // Never used: the account signs in through its provider (or a reset).
+                let password = format!("{}Aa1!", crypto::random_token());
+                self.create_user(NewUser {
+                    email,
+                    password,
+                    firstname: account.firstname,
+                    lastname: account.lastname,
+                    roles: account.roles,
+                    is_active: true,
+                })
+                .await?
+            }
+            Err(error) => return Err(error),
+        };
+        if !user.is_active {
+            return Err(AuthError::InvalidCredentials);
+        }
         self.open_session(user, user_agent).await
     }
 

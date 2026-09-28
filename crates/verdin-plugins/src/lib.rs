@@ -372,11 +372,13 @@ impl Plugins {
         for plugin in &self.inner.plugins {
             let state = &states[&plugin.manifest.name];
             plugin.enabled.store(state["enabled"].as_bool().unwrap_or(false), Ordering::Relaxed);
-            *plugin.shared.settings.write().expect("plugin settings") = state
+            let stored = state
                 .get("settings")
                 .filter(|value| value.is_object())
                 .cloned()
                 .unwrap_or_else(|| json!({}));
+            *plugin.shared.settings.write().expect("plugin settings") =
+                plugin.manifest.effective_settings(&stored);
         }
     }
 

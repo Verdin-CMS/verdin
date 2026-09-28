@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::PluginError;
 
@@ -31,6 +32,9 @@ pub struct Manifest {
     pub jobs: Vec<Job>,
     #[serde(default)]
     pub admin: Admin,
+    /// The settings form in Settings → Plugins (without it, settings are free JSON).
+    #[serde(default)]
+    pub settings: Vec<Setting>,
 }
 
 fn default_wasm() -> String {
@@ -174,6 +178,77 @@ pub struct Field {
     pub description: Option<String>,
 }
 
+pub const SETTING_TYPES: &[&str] =
+    &["string", "text", "url", "number", "integer", "boolean", "select"];
+
+/// A field of the plugin's settings form.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Setting {
+    /// The key in the settings object (`verdin_config()`).
+    pub key: String,
+    pub label: String,
+    /// One of [`SETTING_TYPES`].
+    #[serde(rename = "type", default = "string_type")]
+    pub kind: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+    /// The choices of a `select`.
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub default: Option<Value>,
+    /// Bounds of numbers, lengths of text.
+    #[serde(default)]
+    pub min: Option<f64>,
+    #[serde(default)]
+    pub max: Option<f64>,
+}
+
+fn string_type() -> String {
+    "string".into()
+}
+
+impl Setting {
+    /// Whether `value` fits this field.
+    pub fn check_value(&self, value: &Value) -> Result<(), String> {
+        let key = &self.key;
+        let within = |number: f64, what: &str| {
+            if self.min.is_some_and(|min| number < min) || self.max.is_some_and(|max| number > max)
+            {
+                let bound = |bound: Option<f64>| bound.map_or("…".to_owned(), |b| b.to_string());
+                return Err(format!(
+                    "`{key}`: {what} must be between {} and {}",
+                    bound(self.min),
+                    bound(self.max)
+                ));
+            }
+            Ok(())
+        };
+        match (self.kind.as_str(), value) {
+            ("string" | "text", Value::String(text)) => {
+                within(text.chars().count() as f64, "the length")
+            }
+            ("url", Value::String(text)) => {
+                let valid = text.is_empty()
+                    || url::Url::parse(text)
+                        .is_ok_and(|url| matches!(url.scheme(), "http" | "https"));
+                if valid { Ok(()) } else { Err(format!("`{key}` must be an http(s) URL")) }
+            }
+            ("number", Value::Number(number)) => within(number.as_f64().unwrap_or_default(), "it"),
+            ("integer", Value::Number(number)) if number.is_i64() || number.is_u64() => {
+                within(number.as_f64().unwrap_or_default(), "it")
+            }
+            ("boolean", Value::Bool(_)) => Ok(()),
+            ("select", Value::String(choice)) if self.options.contains(choice) => Ok(()),
+            ("select", _) => Err(format!("`{key}` must be one of {}", self.options.join(", "))),
+            (kind, _) => Err(format!("`{key}` must be a {kind}")),
+        }
+    }
+}
+
 fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
@@ -249,7 +324,76 @@ impl Manifest {
         if self.limits.timeout_ms == 0 || self.limits.memory_mb == 0 {
             return Err("limits must be positive".into());
         }
+        for (index, setting) in self.settings.iter().enumerate() {
+            let key = &setting.key;
+            let valid_key = !key.is_empty()
+                && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !key.starts_with(|c: char| c.is_ascii_digit());
+            if !valid_key {
+                return Err(format!("setting key `{key}`: letters, digits and underscores"));
+            }
+            if self.settings[..index].iter().any(|other| other.key == *key) {
+                return Err(format!("setting `{key}` is declared twice"));
+            }
+            if !SETTING_TYPES.contains(&setting.kind.as_str()) {
+                return Err(format!(
+                    "setting `{key}`: unknown type `{}` (one of {})",
+                    setting.kind,
+                    SETTING_TYPES.join(", ")
+                ));
+            }
+            if setting.kind == "select" && setting.options.is_empty() {
+                return Err(format!("setting `{key}`: a select needs options"));
+            }
+            if let Some(default) = &setting.default {
+                setting.check_value(default).map_err(|error| format!("default of {error}"))?;
+            }
+        }
         Ok(())
+    }
+
+    /// Checks settings against the form (any object when the plugin declares none).
+    pub fn check_settings(&self, settings: &Value) -> Result<(), String> {
+        let Some(object) = settings.as_object() else {
+            return Err("settings must be an object".into());
+        };
+        if self.settings.is_empty() {
+            return Ok(());
+        }
+        if let Some(unknown) =
+            object.keys().find(|key| !self.settings.iter().any(|s| &s.key == *key))
+        {
+            return Err(format!("unknown setting `{unknown}`"));
+        }
+        for setting in &self.settings {
+            match object.get(&setting.key) {
+                Some(Value::Null) | None => {
+                    if setting.required && setting.default.is_none() {
+                        return Err(format!("`{}` is required", setting.key));
+                    }
+                }
+                Some(value) => {
+                    setting.check_value(value)?;
+                    if setting.required && value.as_str().is_some_and(str::is_empty) {
+                        return Err(format!("`{}` is required", setting.key));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Stored settings with the declared defaults filled in.
+    pub fn effective_settings(&self, stored: &Value) -> Value {
+        let mut object = stored.as_object().cloned().unwrap_or_default();
+        for setting in &self.settings {
+            if let Some(default) = &setting.default
+                && object.get(&setting.key).is_none_or(Value::is_null)
+            {
+                object.insert(setting.key.clone(), default.clone());
+            }
+        }
+        Value::Object(object)
     }
 }
 
@@ -298,5 +442,53 @@ mod tests {
         let mut bad = manifest;
         bad.name = "Bad Name".into();
         assert!(bad.check().is_err());
+    }
+
+    #[test]
+    fn settings_forms() {
+        let manifest: Manifest = toml::from_str(
+            r#"
+            name = "seo"
+            version = "1.0.0"
+            [[settings]]
+            key = "siteUrl"
+            label = "Site URL"
+            type = "url"
+            required = true
+            [[settings]]
+            key = "maxLength"
+            label = "Max length"
+            type = "integer"
+            min = 10
+            max = 300
+            default = 160
+            [[settings]]
+            key = "mode"
+            label = "Mode"
+            type = "select"
+            options = ["strict", "loose"]
+            default = "loose"
+            "#,
+        )
+        .unwrap();
+        assert!(manifest.check().is_ok());
+        let ok = serde_json::json!({ "siteUrl": "https://example.com", "maxLength": 200 });
+        assert!(manifest.check_settings(&ok).is_ok());
+        assert_eq!(manifest.effective_settings(&ok)["mode"], "loose");
+        for bad in [
+            serde_json::json!({}),
+            serde_json::json!({ "siteUrl": "" }),
+            serde_json::json!({ "siteUrl": "ftp://x" }),
+            serde_json::json!({ "siteUrl": "https://x", "maxLength": 5 }),
+            serde_json::json!({ "siteUrl": "https://x", "maxLength": 20.5 }),
+            serde_json::json!({ "siteUrl": "https://x", "mode": "other" }),
+            serde_json::json!({ "siteUrl": "https://x", "extra": 1 }),
+            serde_json::json!([1]),
+        ] {
+            assert!(manifest.check_settings(&bad).is_err(), "{bad}");
+        }
+        let mut broken = manifest;
+        broken.settings[1].default = Some(serde_json::json!(1000));
+        assert!(broken.check().is_err());
     }
 }

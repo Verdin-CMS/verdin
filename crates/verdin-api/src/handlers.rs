@@ -70,6 +70,17 @@ pub async fn root_get(
 ) -> ApiResult {
     let state = localized(state, raw.as_deref())?;
     let route = route(&state, &name)?;
+    if route.single
+        && let Some(grant) = preview(&state, &headers, route)?
+    {
+        let document_id =
+            state.service.single_document_id(&route.uid).await?.ok_or(ApiError::NotFound)?;
+        if grant.document_id != document_id {
+            return Err(ApiError::Forbidden);
+        }
+        let query = parse_query(&state, route, raw.as_deref())?;
+        return read_back(&state, route, &document_id, &query, StatusCode::OK).await;
+    }
     let query =
         authorized_query(&state, &headers, route, ContentAction::Find, raw.as_deref()).await?;
     if route.single {
@@ -153,8 +164,16 @@ pub async fn document_get(
 ) -> ApiResult {
     let state = localized(state, raw.as_deref())?;
     let route = collection(&state, &name)?;
-    let query =
-        authorized_query(&state, &headers, route, ContentAction::FindOne, raw.as_deref()).await?;
+    let query = match preview(&state, &headers, route)? {
+        Some(grant) if grant.document_id == document_id => {
+            parse_query(&state, route, raw.as_deref())?
+        }
+        Some(_) => return Err(ApiError::Forbidden),
+        None => {
+            authorized_query(&state, &headers, route, ContentAction::FindOne, raw.as_deref())
+                .await?
+        }
+    };
     read_back(&state, route, &document_id, &query, StatusCode::OK).await
 }
 
@@ -225,6 +244,25 @@ pub(crate) fn bearer(headers: &HeaderMap) -> Result<Option<&str>, ApiError> {
         .map(|token| Some(token.trim()))
         .filter(|token| token.is_some_and(|token| !token.is_empty()))
         .ok_or(ApiError::Unauthorized)
+}
+
+/// Header carrying a preview token (from the admin's preview link).
+pub const PREVIEW_HEADER: &str = "x-verdin-preview";
+
+/// A preview token for this content type: it lets its bearer read one document, drafts
+/// included, and nothing else.
+fn preview(
+    state: &ApiState,
+    headers: &HeaderMap,
+    route: &Route,
+) -> Result<Option<verdin_auth::preview::PreviewGrant>, ApiError> {
+    let Some(value) = headers.get(PREVIEW_HEADER) else { return Ok(None) };
+    let token = value.to_str().map_err(|_| ApiError::Unauthorized)?.trim();
+    let grant = state.auth.verify_preview(token).ok_or(ApiError::Unauthorized)?;
+    if grant.uid != route.uid {
+        return Err(ApiError::Forbidden);
+    }
+    Ok(Some(grant))
 }
 
 async fn authorize(

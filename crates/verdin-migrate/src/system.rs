@@ -29,6 +29,9 @@ pub const USERS: &str = "vd_users";
 pub const USER_ROLES: &str = "vd_user_roles";
 pub const USER_ROLE_PERMISSIONS: &str = "vd_user_role_permissions";
 pub const PLUGIN_KV: &str = "vd_plugin_kv";
+pub const AUDIT_LOGS: &str = "vd_audit_logs";
+pub const RELEASES: &str = "vd_releases";
+pub const RELEASE_ACTIONS: &str = "vd_release_actions";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -501,6 +504,71 @@ pub fn system_tables() -> Vec<Table> {
             ],
             indexes: vec![unique(PLUGIN_KV, "key", &["plugin", "key"])],
             foreign_keys: Vec::new(),
+        },
+        // Who did what: admin actions, content and media changes (`actor_kind` is admin,
+        // api or system).
+        Table {
+            name: AUDIT_LOGS.into(),
+            columns: vec![
+                id(),
+                Column::new("at", ColumnType::DateTime).not_null(),
+                varchar("actor_kind", 16).not_null(),
+                Column::new("actor_id", ColumnType::BigInt),
+                varchar("action", 128).not_null(),
+                varchar("subject", 255),
+                varchar("subject_id", 64),
+                Column::new("details", ColumnType::Json).not_null(),
+                varchar("ip", 64),
+            ],
+            indexes: vec![
+                index(AUDIT_LOGS, "at", &["at"]),
+                index(AUDIT_LOGS, "action", &["action"]),
+                index(AUDIT_LOGS, "actor", &["actor_id"]),
+            ],
+            foreign_keys: Vec::new(),
+        },
+        // Releases: entries published or unpublished together, now or at `scheduled_at`
+        // (`status`: pending, running, done or failed).
+        Table {
+            name: RELEASES.into(),
+            columns: [
+                vec![
+                    id(),
+                    varchar("name", 255).not_null(),
+                    Column::new("scheduled_at", ColumnType::DateTime),
+                    varchar("status", 16).not_null(),
+                    Column::new("released_at", ColumnType::DateTime),
+                    Column::new("error", ColumnType::Text),
+                    Column::new("created_by", ColumnType::BigInt),
+                ],
+                timestamps().to_vec(),
+            ]
+            .concat(),
+            indexes: vec![index(RELEASES, "due", &["status", "scheduled_at"])],
+            foreign_keys: Vec::new(),
+        },
+        Table {
+            name: RELEASE_ACTIONS.into(),
+            columns: vec![
+                id(),
+                Column::new("release_id", ColumnType::BigInt).not_null(),
+                varchar("content_type", 255).not_null(),
+                varchar("document_id", 26).not_null(),
+                varchar("locale", 35).not_null(),
+                varchar("action", 16).not_null(),
+                varchar("status", 16).not_null(),
+                Column::new("error", ColumnType::Text),
+                Column::new("created_at", ColumnType::DateTime).not_null(),
+            ],
+            indexes: vec![
+                unique(
+                    RELEASE_ACTIONS,
+                    "entry",
+                    &["release_id", "content_type", "document_id", "locale"],
+                ),
+                index(RELEASE_ACTIONS, "document", &["content_type", "document_id"]),
+            ],
+            foreign_keys: vec![references("release_id", RELEASES)],
         },
     ]
 }

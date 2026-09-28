@@ -68,6 +68,16 @@ id = "color"
 title = "Color"
 element = "sample-color"
 type = "string"
+[[settings]]
+key = "greeting"
+label = "Greeting"
+required = true
+max = 40
+[[settings]]
+key = "shout"
+label = "Shout"
+type = "boolean"
+default = false
 "#,
     )
     .unwrap();
@@ -102,6 +112,19 @@ async fn plugins_hook_route_and_extend() {
         StatusCode::NOT_FOUND
     );
 
+    // Settings follow the plugin's form.
+    assert_eq!(list["data"]["plugins"][0]["settingsForm"][0]["key"], "greeting");
+    for bad in [json!({}), json!({ "greeting": 3 }), json!({ "greeting": "x", "other": 1 })] {
+        let (status, _) = app
+            .call_as(
+                Method::PUT,
+                "/admin/api/plugins/sample",
+                Some(json!({ "enabled": true, "settings": bad })),
+                As::Bearer(&admin),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+    }
     let (status, switched) = app
         .call_as(
             Method::PUT,
@@ -111,6 +134,7 @@ async fn plugins_hook_route_and_extend() {
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{switched}");
+    assert_eq!(switched["data"]["settings"], json!({ "greeting": "Verdin", "shout": false }));
 
     // Before hooks change or refuse REST writes; after hooks run.
     let (status, created) = app.post("/api/articles", json!({ "title": "Hello Plugins" })).await;

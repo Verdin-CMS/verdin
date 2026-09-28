@@ -208,6 +208,18 @@ Turn on **Settings → Features → End users** for Strapi-compatible sign-up an
 content API. Emails go through `[email]` (SMTP, Resend, Postmark). See
 [docs/end-users.md](docs/end-users.md).
 
+### Governance
+
+- **SSO.** Admins sign in through OpenID Connect providers, with group-to-role mapping
+  ([docs/sso.md](docs/sso.md)).
+- **Audit logs.** Content, media and admin actions are recorded, and you filter them in
+  **Settings → Audit logs**.
+- **Releases.** Publish or unpublish groups of entries together, now or at a date.
+- **Preview.** A link to your site with a short-lived token that reads the draft.
+- **Unseen digest.** An opt-in daily email of what changed.
+
+Details are in [docs/governance.md](docs/governance.md).
+
 ### Content history
 
 Every change of a document is kept as a version (`[history].max_versions`, 50 by
@@ -276,6 +288,13 @@ allow_private_networks = false   # default: false in `start`, true in `dev`
 
 [history]
 max_versions = 50
+
+[audit]
+retention_days = 90
+
+[digest]
+enabled = true    # send the daily digest from this instance
+hour_utc = 8
 
 [log]
 format = "pretty" # or "json"

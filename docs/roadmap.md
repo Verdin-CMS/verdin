@@ -1,6 +1,6 @@
 # Verdin roadmap
 
-What is left after 0.5, grouped by release. The order is tentative and driven by feedback;
+What is left after 0.6, grouped by release. The order is tentative and driven by feedback;
 everything lands in the open source edition (there is no paid tier).
 
 Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
@@ -49,18 +49,26 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 | Widget notifications ✅ | S | Badge in the sidebar (an email digest can come later) |
 | Chart widgets ✅ | S | Entries created per day/week, published vs drafts (needs an aggregation endpoint) |
 
-## 0.6+ — Governance and scale
+## 0.6 — Governance
 
 | Item | Size | Notes |
 |---|---|---|
-| SSO / OIDC | M | Admin login through any OpenID Connect provider, group-to-role mapping |
-| Audit logs | M | Who did what and when, filterable in the admin, retention settings |
+| SSO / OIDC ✅ | M | Admin login through any OpenID Connect provider (PKCE, state and nonce checks), group-to-role mapping, accounts created on first sign-in |
+| Audit logs ✅ | M | Who did what and when (content, media and admin actions), filterable in the admin, retention settings |
+| Releases & scheduling ✅ | M | Group entries into a release, publish/unpublish together now or at a date |
+| Preview ✅ | M | Preview URL templates per content type, signed short-lived tokens that read one draft |
+| Plugin settings forms ✅ | S | Plugins declare their settings (`[[settings]]`): the admin shows a form, the server validates |
+| Unseen digest ✅ | S | Opt-in daily email of the changes an admin has not seen |
+
+## 0.7 — Workflows and scale
+
+| Item | Size | Notes |
+|---|---|---|
 | Review workflows | L | Configurable stages per content type, assignees, stage permissions |
-| Releases & scheduling | M | Group entries into a release, publish/unpublish at a date |
-| Preview | M | Configurable preview URLs per content type, draft tokens |
 | Documentation site | M | Astro Starlight at verdin.dev: guides, API reference generated from OpenAPI, migration guide from Strapi |
 | Admin RTL languages | S | Arabic, Hebrew, Persian (the layout already uses logical properties) |
-| Horizontal scaling notes | S | Multiple instances behind a load balancer (sessions are in the database already), health checks |
+| Horizontal scaling notes | S | Multiple instances behind a load balancer (sessions are in the database already), health checks; releases and the digest run on one instance |
+| Plugin runtime upgrade | M | Follow extism to a current wasmtime, or embed wasmtime directly |
 
 ## Continuous
 

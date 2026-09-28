@@ -2,7 +2,9 @@
 //! (docs/architecture.md §12–§14).
 
 mod admin;
+pub mod audit;
 pub mod cache;
+pub mod digest;
 mod docs;
 pub mod end_users;
 mod error;
@@ -13,6 +15,9 @@ pub mod i18n;
 mod limiter;
 mod openapi;
 pub mod plugins;
+pub mod preview;
+pub mod releases;
+pub mod sso;
 mod upload;
 pub mod webhooks;
 

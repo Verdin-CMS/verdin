@@ -39,6 +39,7 @@ fn plugin_json(state: &AdminState, plugin: &Plugin) -> Value {
         "description": manifest.description,
         "enabled": plugin.enabled(),
         "settings": plugin.settings(),
+        "settingsForm": manifest.settings,
         "capabilities": manifest.capabilities,
         "limits": manifest.limits,
         "hooks": manifest.hooks,
@@ -104,10 +105,8 @@ async fn update(
     let plugins = service(&state)?;
     let plugin = plugins.get(&name).ok_or(ApiError::NotFound)?.clone();
     let change: Change = body(&bytes)?;
-    if let Some(settings) = &change.settings
-        && !settings.is_object()
-    {
-        return Err(ApiError::BadRequest("settings must be an object".into()));
+    if let Some(settings) = &change.settings {
+        plugin.manifest.check_settings(settings).map_err(ApiError::BadRequest)?;
     }
     let db = state.service.db();
     let internal = |error: verdin_db::DbError| ApiError::Internal(error.to_string());

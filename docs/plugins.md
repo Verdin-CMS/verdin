@@ -64,7 +64,26 @@ id = "color"
 title = "Color"
 element = "slugs-color"
 type = "string"                   # how the value is stored
+
+[[settings]]                      # the form in Settings → Plugins
+key = "separator"
+label = "Separator"
+type = "select"                   # string, text, url, number, integer, boolean, select
+options = ["-", "_"]
+default = "-"
+[[settings]]
+key = "maxLength"
+label = "Maximum length"
+type = "integer"
+min = 10                          # bounds of numbers, lengths of strings
+max = 200
+required = true
+description = "Longer slugs are cut."
 ```
+
+With `[[settings]]`, the admin edits the settings with a form and the server refuses
+values that do not fit it (unknown keys, wrong types, missing required values). Defaults
+fill missing keys in what `verdin_config()` returns. Without it, settings are free JSON.
 
 ## Functions
 

@@ -28,6 +28,10 @@ pub const GRAPHQL: &str = "graphql";
 pub const WEBHOOKS: &str = "webhooks";
 pub const HISTORY: &str = "history";
 pub const USERS: &str = "users";
+pub const AUDIT: &str = "audit";
+pub const RELEASES: &str = "releases";
+pub const PREVIEW: &str = "preview";
+pub const SSO: &str = "sso";
 
 /// Every feature, in display order.
 pub const CATALOG: &[FeatureSpec] = &[
@@ -61,38 +65,34 @@ pub const CATALOG: &[FeatureSpec] = &[
     FeatureSpec { id: USERS, available: true, planned: None, default_enabled: false, core: false },
     // Configured in `[email]`.
     FeatureSpec { id: "email", available: true, planned: None, default_enabled: true, core: true },
+    // Installed and switched one by one in Settings → Plugins.
     FeatureSpec {
         id: "plugins",
-        available: false,
-        planned: Some("0.5"),
-        default_enabled: false,
+        available: true,
+        planned: None,
+        default_enabled: true,
+        core: true,
+    },
+    FeatureSpec { id: SSO, available: true, planned: None, default_enabled: false, core: false },
+    FeatureSpec { id: AUDIT, available: true, planned: None, default_enabled: true, core: false },
+    FeatureSpec {
+        id: RELEASES,
+        available: true,
+        planned: None,
+        default_enabled: true,
         core: false,
     },
     FeatureSpec {
-        id: "sso",
-        available: false,
-        planned: Some("0.6"),
-        default_enabled: false,
-        core: false,
-    },
-    FeatureSpec {
-        id: "audit",
-        available: false,
-        planned: Some("0.6"),
+        id: PREVIEW,
+        available: true,
+        planned: None,
         default_enabled: false,
         core: false,
     },
     FeatureSpec {
         id: "review",
         available: false,
-        planned: Some("0.6"),
-        default_enabled: false,
-        core: false,
-    },
-    FeatureSpec {
-        id: "releases",
-        available: false,
-        planned: Some("0.6"),
+        planned: Some("0.7"),
         default_enabled: false,
         core: false,
     },
@@ -170,6 +170,12 @@ pub fn validate(id: &str, state: &FeatureState) -> Result<(), ApiError> {
     if !state.settings.is_null() && !state.settings.is_object() {
         return Err(ApiError::BadRequest("settings must be an object".into()));
     }
+    if id == PREVIEW {
+        crate::preview::PreviewSettings::parse(&state.settings)?;
+    }
+    if id == SSO {
+        crate::sso::SsoSettings::parse(&state.settings)?;
+    }
     Ok(())
 }
 
@@ -183,15 +189,15 @@ mod tests {
         assert!(states.enabled(OPENAPI), "on by default");
         assert!(states.enabled("media"), "core");
         assert!(states.enabled(WEBHOOKS), "on by default");
-        assert!(!states.enabled("plugins"));
+        assert!(!states.enabled("review"));
         states.0.insert(OPENAPI.into(), FeatureState { enabled: false, settings: Value::Null });
         assert!(!states.enabled(OPENAPI));
-        states.0.insert("plugins".into(), FeatureState { enabled: true, settings: Value::Null });
-        assert!(!states.enabled("plugins"), "unavailable features stay off");
+        states.0.insert("review".into(), FeatureState { enabled: true, settings: Value::Null });
+        assert!(!states.enabled("review"), "unavailable features stay off");
 
         let on = FeatureState { enabled: true, settings: Value::Null };
         assert!(validate(OPENAPI, &on).is_ok());
-        assert!(matches!(validate("plugins", &on), Err(ApiError::BadRequest(_))));
+        assert!(matches!(validate("review", &on), Err(ApiError::BadRequest(_))));
         assert!(matches!(validate("media", &on), Err(ApiError::BadRequest(_))));
         assert!(matches!(validate("nope", &on), Err(ApiError::NotFound)));
         let bad = FeatureState { enabled: true, settings: json!([1]) };

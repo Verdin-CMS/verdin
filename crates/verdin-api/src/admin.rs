@@ -32,6 +32,8 @@ use crate::error::ApiError;
 use crate::handlers::{bearer, parse_data};
 use crate::limiter::RateLimiter;
 
+#[path = "audit_admin.rs"]
+mod audit_admin;
 #[path = "end_users_admin.rs"]
 mod end_users_admin;
 #[path = "engagement.rs"]
@@ -42,6 +44,12 @@ mod history_admin;
 mod locales_admin;
 #[path = "plugins_admin.rs"]
 mod plugins_admin;
+#[path = "preview_admin.rs"]
+mod preview_admin;
+#[path = "releases_admin.rs"]
+mod releases_admin;
+#[path = "sso_admin.rs"]
+mod sso_admin;
 #[path = "upload_admin.rs"]
 mod upload_admin;
 #[path = "webhooks_admin.rs"]
@@ -105,6 +113,10 @@ pub struct AdminConfig {
     pub webhooks: Option<crate::Webhooks>,
     /// Present when the `history` feature is on; its routes answer 404 without it.
     pub history: Option<crate::History>,
+    /// Present when the `releases` feature is on; runs with this router's Document Service.
+    pub releases: Option<crate::releases::Releases>,
+    /// The daily digest of unseen changes, which reads with this router's Document Service.
+    pub digest: Option<crate::digest::Digest>,
     /// Webhooks, history…: see [`crate::document_service`].
     pub listeners: crate::Listeners,
     /// The content locales, shared with the other Document Services.
@@ -113,6 +125,13 @@ pub struct AdminConfig {
     pub mailer: Option<verdin_email::Mailer>,
     /// Installed plugins (Settings → Plugins, hooks on admin writes).
     pub plugins: Option<verdin_plugins::Plugins>,
+    /// Audit logs: admin actions are recorded, and read in Settings → Audit logs.
+    pub audit: Option<crate::audit::Audit>,
+    /// Origin the browser reaches the server at (`https://cms.example.com`), for SSO
+    /// redirect URIs.
+    pub public_url: String,
+    /// `VERDIN_SSO_<ID>_SECRET` of the SSO providers (public clients have none).
+    pub sso_secrets: std::collections::HashMap<String, String>,
 }
 
 impl Default for AdminConfig {
@@ -130,10 +149,15 @@ impl Default for AdminConfig {
             upload: None,
             webhooks: None,
             history: None,
+            releases: None,
+            digest: None,
             listeners: Vec::new(),
             locales: Default::default(),
             mailer: None,
             plugins: None,
+            audit: None,
+            public_url: "http://localhost:1337".into(),
+            sso_secrets: Default::default(),
         }
     }
 }
@@ -173,6 +197,12 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         limiter,
         refresh_limiter,
     };
+    if let Some(releases) = &state.config.releases {
+        releases.set_service(state.service.clone());
+    }
+    if let Some(digest) = &state.config.digest {
+        digest.set_context(state.service.clone(), state.config.limits);
+    }
     let regular = Router::new()
         .route("/auth/status", get(auth_status))
         .route("/auth/register-first-admin", post(register_first_admin))
@@ -209,10 +239,25 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(history_admin::routes())
         .merge(locales_admin::routes())
         .merge(end_users_admin::routes())
-        .merge(plugins_admin::routes());
+        .merge(plugins_admin::routes())
+        .merge(audit_admin::routes())
+        .merge(releases_admin::routes())
+        .merge(preview_admin::routes())
+        .merge(sso_admin::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
-    http.apply(regular).merge(uploads).fallback(|| async { ApiError::NotFound }).with_state(state)
+    let audit = state
+        .config
+        .audit
+        .clone()
+        .map(|audit| crate::audit::MiddlewareState { audit, auth: state.auth.clone() });
+    let router = http.apply(regular).merge(uploads);
+    let router = match audit {
+        Some(audit) => router
+            .route_layer(axum::middleware::from_fn_with_state(audit, crate::audit::middleware)),
+        None => router,
+    };
+    router.fallback(|| async { ApiError::NotFound }).with_state(state)
 }
 
 /// The client address when the server records it (`into_make_service_with_connect_info`).
@@ -1049,14 +1094,25 @@ fn admin_query(
     principal: &AdminPrincipal,
     grant: Grant,
 ) -> Result<Query, ApiError> {
-    let registry = state.service.registry();
+    query_for(&state.service, &state.config.limits, uid, raw, principal, grant)
+}
+
+/// [`admin_query`] without a router (background jobs).
+pub(crate) fn query_for(
+    service: &DocumentService,
+    limits: &Limits,
+    uid: &str,
+    raw: Option<&str>,
+    principal: &AdminPrincipal,
+    grant: Grant,
+) -> Result<Query, ApiError> {
+    let registry = service.registry();
     let model = registry.get(uid)?;
     // Field-level permissions: hidden fields behave as private for this admin.
     let allowed = principal.permissions.content_fields(actions::CONTENT_READ, uid);
     let restricted = allowed.as_ref().map(|allowed| model.fields.restricted(allowed));
     let fields = restricted.as_ref().unwrap_or(&model.fields);
-    let mut query =
-        verdin_query::parse_request(raw, fields, registry.catalog(), &state.config.limits)?;
+    let mut query = verdin_query::parse_request(raw, fields, registry.catalog(), limits)?;
     if let Some(view) = &restricted
         && query.fields.is_none()
     {

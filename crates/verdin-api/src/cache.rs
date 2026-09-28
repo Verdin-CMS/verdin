@@ -196,9 +196,11 @@ pub(crate) async fn middleware(
     }
     let request_headers = request.headers().clone();
     // Only anonymous reads are shared: authorized answers depend on the caller.
-    let key = (token.is_none() && !request_headers.contains_key(header::COOKIE))
-        .then(|| request.uri().to_string())
-        .filter(|_| traffic.cache.is_some());
+    let key = (token.is_none()
+        && !request_headers.contains_key(header::COOKIE)
+        && !request_headers.contains_key(crate::handlers::PREVIEW_HEADER))
+    .then(|| request.uri().to_string())
+    .filter(|_| traffic.cache.is_some());
     if let (Some(cache), Some(key)) = (&traffic.cache, &key)
         && let Some((headers, body)) = cache.get(key)
     {

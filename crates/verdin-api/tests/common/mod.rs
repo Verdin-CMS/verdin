@@ -50,6 +50,10 @@ pub struct App {
     pub cache: verdin_api::cache::ResponseCache,
     /// Emails sent to end users.
     pub emails: std::sync::Arc<std::sync::Mutex<Vec<verdin_email::Message>>>,
+    /// Releases (the scheduler is not running: call `run_due`).
+    pub releases: verdin_api::releases::Releases,
+    /// The daily digest (not scheduled: call `send_all`).
+    pub digest: verdin_api::digest::Digest,
 }
 
 /// Who a request authenticates as.
@@ -122,6 +126,10 @@ impl App {
         let cache =
             verdin_api::cache::ResponseCache::new(traffic.cache_ttl, traffic.cache_entries.max(1));
         let test = TestDb::new().await;
+        let audit = verdin_api::audit::Audit::new(
+            test.db.clone(),
+            std::time::Duration::from_secs(90 * 86_400),
+        );
         let model = verdin_migrate::derive_model(&schema);
         verdin_migrate::apply(
             &test.db,
@@ -145,6 +153,12 @@ impl App {
             .unwrap();
         let registry = Registry::new(schema);
         let (mailer, emails) = verdin_email::Mailer::memory();
+        let digest = verdin_api::digest::Digest::new(
+            auth.clone(),
+            mailer.clone(),
+            "https://cms.test/admin/".into(),
+            8,
+        );
         let store = std::sync::Arc::new(object_store::memory::InMemory::new());
         // Local receivers, and retries due at once (tests call `deliver_due`).
         let webhooks = verdin_api::Webhooks::new(
@@ -162,12 +176,14 @@ impl App {
             verdin_upload::UploadConfig { max_file_size: 2 * 1024 * 1024, ..Default::default() },
         )
         .with_listener(std::sync::Arc::new(webhooks.clone()))
-        .with_listener(std::sync::Arc::new(cache.clone()));
+        .with_listener(std::sync::Arc::new(cache.clone()))
+        .with_listener(std::sync::Arc::new(audit.clone()));
         // 10 versions per document, to exercise pruning.
         let history = verdin_api::History::new(test.db.clone(), 10);
+        let releases = verdin_api::releases::Releases::new(test.db.clone());
         let plugins = plugins_dir.map(|dir| verdin_plugins::Plugins::load(dir, test.db.clone()));
         let mut listeners: verdin_api::Listeners =
-            vec![webhooks.listener(), history.listener(), cache.listener()];
+            vec![webhooks.listener(), history.listener(), cache.listener(), audit.listener()];
         if let Some(plugins) = &plugins {
             listeners.push(std::sync::Arc::new(plugins.clone()));
         }
@@ -185,6 +201,9 @@ impl App {
             locales: locales.clone(),
             mailer: Some(mailer.clone()),
             plugins: plugins.clone(),
+            audit: Some(audit.clone()),
+            releases: Some(releases.clone()),
+            digest: Some(digest.clone()),
             ..AdminConfig::default()
         };
         let router = Router::new()
@@ -220,7 +239,7 @@ impl App {
                 "/admin/api",
                 verdin_api::admin_router(test.db.clone(), registry, auth.clone(), admin),
             );
-        Self { router, test, auth, upload, token, webhooks, emails, cache }
+        Self { router, test, auth, upload, token, webhooks, emails, cache, releases, digest }
     }
 
     pub async fn request(

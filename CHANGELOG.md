@@ -6,6 +6,32 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **SSO for admins** (the `sso` feature): sign-in through OpenID Connect providers with
+  PKCE, a signed state and a nonce. Accounts can be created on first sign-in, with roles
+  mapped from a groups claim. Client secrets come from `VERDIN_SSO_<ID>_SECRET`. See
+  [docs/sso.md](docs/sso.md).
+- **Audit logs** (the `audit` feature, on by default, permission `audit.read`). They
+  record content and media changes from every API, admin actions and sign-ins, and keep
+  them for `[audit].retention_days`. Read them in `GET /admin/api/audit-logs` with
+  filters.
+- **Releases** (the `releases` feature, permission `releases.manage`): entries published
+  or unpublished together, now or at a scheduled date, with a result for each action.
+- **Preview** (the `preview` feature): URL templates per content type, and signed
+  short-lived tokens (`x-verdin-preview`) that read one draft through the content API.
+- **Plugin settings forms**: plugins declare `[[settings]]` fields (types, options,
+  defaults, bounds). The admin shows a form, and the server validates the values.
+- **Unseen digest**: an opt-in daily email of unseen changes (preference
+  `digest: "daily"`), sent at `[digest].hour_utc`.
+
+See [docs/governance.md](docs/governance.md) for audit logs, releases, preview and the
+digest.
+
+### Fixed
+
+- Settings → Features listed plugins as "planned for 0.5" although they shipped.
+
 ## [0.5.0] - 2026-09-25
 
 ### Added

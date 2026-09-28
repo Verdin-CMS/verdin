@@ -23,7 +23,37 @@ pub struct Config {
     pub history: HistoryConfig,
     pub email: verdin_email::EmailConfig,
     pub plugins: PluginsConfig,
+    pub audit: AuditConfig,
+    pub digest: DigestConfig,
     pub log: LogConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DigestConfig {
+    /// Send the daily digest from this instance (one instance when there are several).
+    pub enabled: bool,
+    /// Hour (UTC, 0–23) the daily digest of unseen changes goes out.
+    pub hour_utc: u8,
+}
+
+impl Default for DigestConfig {
+    fn default() -> Self {
+        Self { enabled: true, hour_utc: 8 }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AuditConfig {
+    /// Days audit log entries are kept.
+    pub retention_days: u64,
+}
+
+impl Default for AuditConfig {
+    fn default() -> Self {
+        Self { retention_days: 90 }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

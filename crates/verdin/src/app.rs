@@ -11,7 +11,8 @@ use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tower::ServiceExt;
 use verdin_api::features::{
-    FeatureHost, FeatureState, FeatureStates, GRAPHQL, HISTORY, OPENAPI, USERS, WEBHOOKS,
+    AUDIT, FeatureHost, FeatureState, FeatureStates, GRAPHQL, HISTORY, OPENAPI, RELEASES, USERS,
+    WEBHOOKS,
 };
 use verdin_api::{ApiError, BoxFuture, SchemaChange, SchemaEditor};
 use verdin_auth::AuthService;
@@ -58,18 +59,44 @@ pub struct AppContext {
     pub cache: verdin_api::cache::ResponseCache,
     /// Installed plugins (`[plugins].path`), loaded when serving starts.
     pub plugins: verdin_plugins::Plugins,
+    /// Audit logs (`[audit]`); the `audit` feature switches recording.
+    pub audit: verdin_api::audit::Audit,
+    /// Releases; the scheduler runs while serving.
+    pub releases: verdin_api::releases::Releases,
+    /// The daily digest of unseen changes (`[digest]`), sent while serving.
+    pub digest: verdin_api::digest::Digest,
 }
 
 impl AppContext {
-    /// Absolute URL of the content API, for links in emails and OAuth callbacks.
-    pub fn api_url(&self) -> String {
+    /// Where browsers reach the server (`[server].public_url`).
+    pub fn origin(&self) -> String {
         let server = &self.config.server;
         let origin = server
             .public_url
             .clone()
             .unwrap_or_else(|| format!("http://localhost:{}", server.port));
-        format!("{}{}", origin.trim_end_matches('/'), self.config.api.prefix)
+        origin.trim_end_matches('/').to_owned()
     }
+
+    /// Absolute URL of the content API, for links in emails and OAuth callbacks.
+    pub fn api_url(&self) -> String {
+        format!("{}{}", self.origin(), self.config.api.prefix)
+    }
+}
+
+/// `VERDIN_SSO_<ID>_SECRET` of the configured SSO providers (read on every rebuild, so a
+/// provider added in the panel picks up its secret after a restart with it set).
+fn sso_secrets(states: &FeatureStates) -> std::collections::HashMap<String, String> {
+    let settings = verdin_api::sso::SsoSettings::parse(states.settings(verdin_api::features::SSO))
+        .unwrap_or_default();
+    settings
+        .providers
+        .iter()
+        .filter_map(|provider| {
+            let secret = std::env::var(verdin_api::sso::secret_variable(&provider.id)).ok()?;
+            Some((provider.id.clone(), secret)).filter(|(_, secret)| !secret.is_empty())
+        })
+        .collect()
 }
 
 /// The webhooks service configured for `mode`.
@@ -130,6 +157,7 @@ pub fn build_app(
         context.history.listener(),
         context.cache.listener(),
         Arc::new(context.plugins.clone()),
+        context.audit.listener(),
     ];
     let http = verdin_api::HttpLimits {
         body_limit: context.config.server.body_limit,
@@ -204,6 +232,11 @@ pub fn build_app(
             locales: context.locales.clone(),
             mailer: Some(context.mailer.clone()),
             plugins: Some(context.plugins.clone()),
+            audit: Some(context.audit.clone()),
+            releases: states.enabled(RELEASES).then(|| context.releases.clone()),
+            digest: Some(context.digest.clone()),
+            public_url: context.origin(),
+            sso_secrets: sso_secrets(states),
         },
     );
     let graphql = states.enabled(GRAPHQL).then(|| {
@@ -311,6 +344,9 @@ pub async fn serve(
     let host = AppHost::new(context.clone(), schema, states);
     let deliveries = context.webhooks.spawn();
     let jobs = context.plugins.spawn_jobs();
+    let pruning = context.audit.spawn_pruning();
+    let scheduler = context.releases.spawn();
+    let digest = context.config.digest.enabled.then(|| context.digest.spawn());
     // Keeps the watcher alive while serving.
     let _watcher = match &host.editor {
         Some(editor) => match watch_schema(editor.clone()) {
@@ -337,6 +373,11 @@ pub async fn serve(
         .await?;
     deliveries.abort();
     jobs.iter().for_each(tokio::task::JoinHandle::abort);
+    pruning.abort();
+    scheduler.abort();
+    if let Some(digest) = digest {
+        digest.abort();
+    }
     context.db.close().await;
     tracing::info!("verdin stopped");
     Ok(())
@@ -471,6 +512,8 @@ impl AppHost {
         let states = self.features.load();
         self.context.webhooks.set_enabled(states.enabled(WEBHOOKS));
         self.context.history.set_enabled(states.enabled(HISTORY));
+        self.context.audit.set_enabled(states.enabled(AUDIT));
+        self.context.releases.set_enabled(states.enabled(RELEASES));
         self.current.store(Arc::new(build_app(&self.context, schema, editor, features, &states)));
     }
 
@@ -861,6 +904,9 @@ mod tests {
         let upload = verdin_upload::UploadService::new(db.clone(), storage, config.upload.clone());
         let webhooks = webhooks(&config, db.clone(), Mode::Production);
         let history = verdin_api::History::new(db.clone(), config.history.max_versions);
+        let db_for_audit = db.clone();
+        let db_for_releases = db.clone();
+        let auth_for_digest = auth.clone();
         Arc::new(AppContext {
             config,
             root: root.to_owned(),
@@ -874,6 +920,17 @@ mod tests {
             mailer: verdin_email::Mailer::memory().0,
             cache: verdin_api::cache::ResponseCache::new(std::time::Duration::ZERO, 1),
             plugins: Default::default(),
+            audit: verdin_api::audit::Audit::new(
+                db_for_audit,
+                std::time::Duration::from_secs(86_400),
+            ),
+            releases: verdin_api::releases::Releases::new(db_for_releases),
+            digest: verdin_api::digest::Digest::new(
+                auth_for_digest,
+                verdin_email::Mailer::memory().0,
+                String::new(),
+                8,
+            ),
         })
     }
 

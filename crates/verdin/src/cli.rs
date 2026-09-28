@@ -425,6 +425,10 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     let storage = verdin_upload::Storage::new(&project.config.upload.provider, &project.root)
         .context("configuring [upload].provider")?;
     let webhooks = crate::app::webhooks(&project.config, db.clone(), mode);
+    let audit = verdin_api::audit::Audit::new(
+        db.clone(),
+        std::time::Duration::from_secs(project.config.audit.retention_days.max(1) * 86_400),
+    );
     let api = &project.config.api;
     let cache = verdin_api::cache::ResponseCache::new(
         std::time::Duration::from_secs(api.cache_ttl_secs),
@@ -433,7 +437,8 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     let upload =
         verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone())
             .with_listener(Arc::new(webhooks.clone()))
-            .with_listener(Arc::new(cache.clone()));
+            .with_listener(Arc::new(cache.clone()))
+            .with_listener(Arc::new(audit.clone()));
     let history = verdin_api::History::new(db.clone(), project.config.history.max_versions);
     let plugins =
         verdin_plugins::Plugins::load(&project.root.join(&project.config.plugins.path), db.clone());
@@ -446,6 +451,19 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     if mode == Mode::Production && mailer.provider() == "log" {
         tracing::warn!("[email].provider is `log`: emails are written to the log, not sent");
     }
+    let releases = verdin_api::releases::Releases::new(db.clone());
+    let origin = project
+        .config
+        .server
+        .public_url
+        .clone()
+        .unwrap_or_else(|| format!("http://localhost:{}", project.config.server.port));
+    let digest = verdin_api::digest::Digest::new(
+        auth.clone(),
+        mailer.clone(),
+        format!("{}{}/", origin.trim_end_matches('/'), project.config.admin.path),
+        project.config.digest.hour_utc,
+    );
     let context = AppContext {
         config: project.config,
         root: project.root,
@@ -458,7 +476,10 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         locales: Default::default(),
         mailer,
         cache,
+        releases,
+        digest,
         plugins,
+        audit,
     };
     app::serve(context, schema, shutdown_signal()).await
 }

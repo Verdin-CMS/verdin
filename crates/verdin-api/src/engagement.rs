@@ -703,29 +703,38 @@ async fn vote_poll(
 /// has not seen since they changed (sidebar badges).
 async fn unseen_counts(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
     let principal = principal(&state, &headers).await?;
+    Ok(data(unseen(&state.service, &state.config.limits, &principal).await?))
+}
+
+/// Unseen entries of every content type `principal` may read.
+pub(crate) async fn unseen(
+    service: &verdin_content::DocumentService,
+    limits: &verdin_query::Limits,
+    principal: &verdin_auth::AdminPrincipal,
+) -> Result<serde_json::Map<String, Value>, ApiError> {
     let mut counts = serde_json::Map::new();
     let uids: Vec<String> =
-        state.service.registry().types().map(|model| model.content_type.uid.clone()).collect();
+        service.registry().types().map(|model| model.content_type.uid.clone()).collect();
     for uid in uids {
         let grant = principal.permissions.content(actions::CONTENT_READ, &uid);
         if grant == verdin_auth::Grant::None {
             continue;
         }
         let raw = "pagination[pageSize]=1&pagination[withCount]=true";
-        let mut query = super::admin_query(&state, &uid, Some(raw), &principal, grant)?;
+        let mut query = super::query_for(service, limits, &uid, Some(raw), principal, grant)?;
         let filter = unseen_filter(&uid, principal.user.id);
         query.filters = Some(match query.filters.take() {
             Some(existing) => Filter::And(vec![existing, filter]),
             None => filter,
         });
-        let page = state.service.find_many(&uid, &query).await?;
+        let page = service.find_many(&uid, &query).await?;
         let total = match page.meta {
             verdin_content::PageMeta::Page { total, .. }
             | verdin_content::PageMeta::Offset { total, .. } => total.unwrap_or_default(),
         };
         counts.insert(uid, json!(total));
     }
-    Ok(data(counts))
+    Ok(counts)
 }
 
 #[derive(Deserialize, Default)]
