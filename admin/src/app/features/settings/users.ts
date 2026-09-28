@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
+import { HlmAlertDialogImports } from '@spartan-ng/helm/alert-dialog';
 import { HlmAvatarImports } from '@spartan-ng/helm/avatar';
 import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
@@ -17,6 +18,7 @@ import { Account, Invitation } from '../../core/account';
 import { Api, ApiFailure } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
+import { TwoFactor } from '../../core/two-factor';
 import { AdminUser, Role } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 
@@ -45,6 +47,7 @@ interface Draft {
     HlmCheckboxImports,
     HlmSwitchImports,
     HlmAlertImports,
+    HlmAlertDialogImports,
     HlmAvatarImports,
     HlmEmptyImports,
     PageHeader,
@@ -123,15 +126,41 @@ interface Draft {
                       </div>
                     </td>
                     <td hlmTd>
-                      <span hlmBadge variant="outline" class="gap-1.5">
-                        <span
-                          class="size-1.5 rounded-full"
-                          [class]="user.isActive ? 'bg-emerald-500' : 'bg-muted-foreground/50'"
-                        ></span>
-                        {{
-                          user.isActive ? t('settings.users.active') : t('settings.users.inactive')
-                        }}
-                      </span>
+                      <div class="flex flex-wrap gap-1">
+                        <span hlmBadge variant="outline" class="gap-1.5">
+                          <span
+                            class="size-1.5 rounded-full"
+                            [class]="user.isActive ? 'bg-emerald-500' : 'bg-muted-foreground/50'"
+                          ></span>
+                          {{
+                            user.isActive
+                              ? t('settings.users.active')
+                              : t('settings.users.inactive')
+                          }}
+                        </span>
+                        @if (user.twoFactor) {
+                          <span
+                            hlmBadge
+                            variant="secondary"
+                            data-testid="user-two-factor"
+                            [attr.title]="t('twoFactor.user.onHint')"
+                          >
+                            <ng-icon name="lucideShieldCheck" aria-hidden="true" />
+                            {{ t('twoFactor.user.on') }}
+                          </span>
+                        } @else if (user.twoFactorRequired) {
+                          <span
+                            hlmBadge
+                            variant="outline"
+                            class="text-destructive"
+                            data-testid="user-two-factor-missing"
+                            [attr.title]="t('twoFactor.user.missingHint')"
+                          >
+                            <ng-icon name="lucideShieldAlert" aria-hidden="true" />
+                            {{ t('twoFactor.user.missing') }}
+                          </span>
+                        }
+                      </div>
                     </td>
                     <td hlmTd class="pe-4 text-end">
                       <div class="flex justify-end gap-1">
@@ -149,6 +178,22 @@ interface Draft {
                             (click)="reinvite(user)"
                           >
                             <ng-icon name="lucideSend" class="rtl:-scale-x-100" />
+                          </button>
+                        }
+                        @if (canResetTwoFactor(user)) {
+                          <button
+                            hlmBtn
+                            size="icon-sm"
+                            variant="ghost"
+                            class="text-muted-foreground"
+                            data-testid="reset-two-factor"
+                            [attr.aria-label]="
+                              t('twoFactor.user.resetLabel', { email: user.email })
+                            "
+                            [attr.title]="t('twoFactor.user.reset')"
+                            (click)="resetting.set(user)"
+                          >
+                            <ng-icon name="lucideShieldOff" />
                           </button>
                         }
                         <button
@@ -326,6 +371,30 @@ interface Draft {
       </hlm-dialog-content>
     </hlm-dialog>
 
+    <hlm-alert-dialog [state]="resetting() ? 'open' : 'closed'" (closed)="resetting.set(null)">
+      <hlm-alert-dialog-content *hlmAlertDialogPortal="let ctx">
+        @if (resetting(); as user) {
+          <hlm-alert-dialog-header>
+            <h2 hlmAlertDialogTitle>
+              {{ t('twoFactor.user.resetTitle', { email: user.email }) }}
+            </h2>
+            <p hlmAlertDialogDescription>{{ t('twoFactor.user.resetDescription') }}</p>
+          </hlm-alert-dialog-header>
+          <hlm-alert-dialog-footer>
+            <button hlmAlertDialogCancel (click)="ctx.close()">{{ t('common.cancel') }}</button>
+            <button
+              hlmAlertDialogAction
+              variant="destructive"
+              data-testid="reset-two-factor-confirm"
+              (click)="ctx.close(); resetTwoFactor(user)"
+            >
+              {{ t('twoFactor.user.reset') }}
+            </button>
+          </hlm-alert-dialog-footer>
+        }
+      </hlm-alert-dialog-content>
+    </hlm-alert-dialog>
+
     <hlm-dialog [state]="invitation() ? 'open' : 'closed'" (closed)="invitation.set(null)">
       <hlm-dialog-content *hlmDialogPortal="let ctx" class="sm:max-w-lg">
         @if (invitation(); as sent) {
@@ -380,6 +449,7 @@ interface Draft {
 export class UsersPage implements OnInit {
   private readonly api = inject(Api);
   private readonly account = inject(Account);
+  private readonly twoFactor = inject(TwoFactor);
   protected readonly auth = inject(Auth);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
@@ -392,6 +462,8 @@ export class UsersPage implements OnInit {
   protected readonly invitation = signal<{ email: string; invitation: Invitation } | null>(null);
   /** The user a new invitation link is being made for. */
   protected readonly inviting = signal<number | null>(null);
+  /** The user whose second factors are about to be reset (confirm dialog). */
+  protected readonly resetting = signal<AdminUser | null>(null);
 
   async ngOnInit(): Promise<void> {
     const [users, roles] = await Promise.all([
@@ -428,6 +500,26 @@ export class UsersPage implements OnInit {
             isActive: true,
           },
     );
+  }
+
+  /**
+   * Another admin with a second factor; a Super Admin's only yield to a Super Admin (the
+   * admin resets their own from their profile).
+   */
+  protected canResetTwoFactor(user: AdminUser): boolean {
+    if (!user.twoFactor || user.id === this.auth.user()?.id) return false;
+    const superAdmin = user.roles.some((role) => role.code === 'super-admin');
+    return !superAdmin || this.auth.permissions().superAdmin;
+  }
+
+  protected async resetTwoFactor(user: AdminUser): Promise<void> {
+    try {
+      await this.twoFactor.reset(user.id);
+      this.users.set(await this.api.get<AdminUser[]>('/users'));
+      toast.success(this.t('twoFactor.user.resetDone', { email: user.email }));
+    } catch (error) {
+      toast.error(ApiFailure.from(error).message);
+    }
   }
 
   protected hasName(user: AdminUser): boolean {

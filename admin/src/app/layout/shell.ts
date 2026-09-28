@@ -4,8 +4,10 @@ import {
   DestroyRef,
   OnInit,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
@@ -424,7 +426,10 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
           </div>
         </header>
         <div class="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
-          @if (error()) {
+          @if (auth.twoFactorPending()) {
+            <!-- Only the profile works until the second factor is set up. -->
+            <router-outlet />
+          } @else if (error()) {
             <div hlmAlert variant="destructive">
               <p hlmAlertTitle>{{ t('shell.schemaError') }}</p>
               <p hlmAlertDescription>{{ error() }}</p>
@@ -476,18 +481,35 @@ export class Shell implements OnInit {
     return this.unseen.enabled() ? formatBadge(this.unseen.counts()[uid]) : null;
   }
 
-  async ngOnInit(): Promise<void> {
-    // Optional parts of the navigation; without the catalog they stay hidden.
-    this.features.load().catch(() => undefined);
-    // Plugin widgets and fields; failures leave them out.
-    void this.extensions.load();
-    this.unseen.start(this.destroyRef);
+  private started = false;
+
+  constructor() {
+    // While the admin's role waits for a second factor every other route is refused: load
+    // the navigation once they have one.
+    effect(() => {
+      if (this.auth.twoFactorPending() || this.started) return;
+      this.started = true;
+      untracked(() => void this.start());
+    });
+  }
+
+  ngOnInit(): void {
     this.router.events
       .pipe(
         filter((event) => event instanceof NavigationEnd),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe(() => this.unseen.refresh());
+      .subscribe(() => {
+        if (this.started) this.unseen.refresh();
+      });
+  }
+
+  private async start(): Promise<void> {
+    // Optional parts of the navigation; without the catalog they stay hidden.
+    this.features.load().catch(() => undefined);
+    // Plugin widgets and fields; failures leave them out.
+    void this.extensions.load();
+    this.unseen.start(this.destroyRef);
     try {
       await this.schema.load();
     } catch (error) {

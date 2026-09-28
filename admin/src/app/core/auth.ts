@@ -6,16 +6,21 @@ import {
 } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import { Observable, catchError, firstValueFrom, from, switchMap, throwError } from 'rxjs';
+import { Observable, catchError, firstValueFrom, from, of, switchMap, throwError } from 'rxjs';
 
 import { ApiFailure, RUNTIME_CONFIG } from './api';
 import { grantsInLocale } from './permissions';
+import { SecondStep, isTwoFactorRequired, secondStepOf } from './two-factor';
 import { AdminUser, PermissionSet } from './types';
+import { AssertionJson, RequestOptionsJson } from './webauthn';
 
 /** What login, accepting an invitation and changing the password answer. */
 export interface SessionResponse {
   data: { user: AdminUser; accessToken: string; accessTokenExpiresAt: string };
 }
+
+/** Where an admin sets up the second factor their role requires. */
+export const TWO_FACTOR_SETUP_URL = '/profile#two-factor';
 
 /** Header the server requires on refresh/logout (anti-CSRF). */
 const CSRF_HEADER = { 'X-Verdin-CSRF': '1' };
@@ -34,6 +39,14 @@ export class Auth {
   readonly permissions = signal<PermissionSet>({ superAdmin: false, permissions: [] });
   readonly accessToken = signal<string | null>(null);
   readonly loggedIn = computed(() => this.user() !== null);
+  /**
+   * The admin's role requires a second factor they have not set up: until they do, the
+   * server answers `TwoFactorRequiredError` everywhere but their profile.
+   */
+  readonly twoFactorPending = computed(() => {
+    const user = this.user();
+    return !!user?.twoFactorRequired && !user.twoFactor;
+  });
 
   private restored: Promise<void> | null = null;
   private refreshing: Promise<boolean> | null = null;
@@ -67,13 +80,77 @@ export class Auth {
     }
   }
 
-  async login(email: string, password: string): Promise<void> {
+  /**
+   * Checks the password: signs in, or answers the second step when the account has a
+   * second factor (no session yet).
+   */
+  async login(email: string, password: string): Promise<SecondStep | null> {
+    let response: SessionResponse | { data: unknown };
+    try {
+      response = await firstValueFrom(
+        this.http.post<SessionResponse>(
+          this.url('/login'),
+          { email, password },
+          { withCredentials: true },
+        ),
+      );
+    } catch (error) {
+      throw ApiFailure.from(error);
+    }
+    const step = secondStepOf(response?.data);
+    if (step) return step;
+    await this.open(of(response));
+    return null;
+  }
+
+  /** The second step: a TOTP or recovery code, or a passkey assertion. */
+  async loginTwoFactor(
+    twoFactorToken: string,
+    proof: { code: string } | { challengeToken: string; credential: AssertionJson },
+  ): Promise<void> {
     await this.open(
       this.http.post<SessionResponse>(
-        this.url('/login'),
-        { email, password },
+        this.url('/login/two-factor'),
+        { twoFactorToken, ...proof },
         { withCredentials: true },
       ),
+    );
+  }
+
+  /** The challenge for signing in with a passkey. */
+  async passkeyLoginOptions(
+    twoFactorToken: string,
+  ): Promise<{ challengeToken: string; publicKey: RequestOptionsJson }> {
+    try {
+      const response = await firstValueFrom(
+        this.http.post<{ data: { challengeToken: string; publicKey: RequestOptionsJson } }>(
+          this.url('/login/passkey/options'),
+          { twoFactorToken },
+        ),
+      );
+      return response.data;
+    } catch (error) {
+      throw ApiFailure.from(error);
+    }
+  }
+
+  /** Reads the admin and their permissions again (after their second factors changed). */
+  async reload(): Promise<void> {
+    const token = this.accessToken();
+    if (!token) return;
+    const me = await firstValueFrom(
+      this.http.get<{ data: { user: AdminUser; permissions: PermissionSet } }>(this.url('/me'), {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    );
+    if (me.data.user) this.user.set(me.data.user);
+    this.permissions.set(me.data.permissions);
+  }
+
+  /** The server said the admin's role requires a second factor they do not have. */
+  markTwoFactorRequired(): void {
+    this.user.update((user) =>
+      user && !user.twoFactorRequired ? { ...user, twoFactorRequired: true } : user,
     );
   }
 
@@ -228,12 +305,15 @@ export class Auth {
 }
 
 function isAuthRoute(request: HttpRequest<unknown>): boolean {
-  return /\/auth\/(login|refresh|logout|register-first-admin|status|me|sso|invitation|accept-invitation|forgot-password|reset-password)$/.test(
+  return /\/auth\/(login|login\/two-factor|login\/passkey\/options|refresh|logout|register-first-admin|status|me|sso|invitation|accept-invitation|forgot-password|reset-password)$/.test(
     request.url.split('?')[0],
   );
 }
 
-/** Adds the access token; on a 401, refreshes once and retries. */
+/**
+ * Adds the access token; on a 401, refreshes once and retries. A `TwoFactorRequiredError`
+ * sends the admin to set up the second factor their role requires.
+ */
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const auth = inject(Auth);
   const router = inject(Router);
@@ -244,6 +324,11 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
 
   return next(withToken(auth.accessToken())).pipe(
     catchError((error: unknown) => {
+      if (error instanceof HttpErrorResponse && isTwoFactorRequired(error.status, error.error)) {
+        auth.markTwoFactorRequired();
+        if (!router.url.startsWith('/profile')) void router.navigateByUrl(TWO_FACTOR_SETUP_URL);
+        return throwError(() => error);
+      }
       if (!(error instanceof HttpErrorResponse) || error.status !== 401)
         return throwError(() => error);
       return from(auth.refresh()).pipe(
@@ -264,9 +349,12 @@ export const authGuard: CanActivateFn = async (_route, state) => {
   const auth = inject(Auth);
   const router = inject(Router);
   await auth.restore();
-  return auth.loggedIn()
-    ? true
-    : router.createUrlTree(['/login'], { queryParams: { next: state.url } });
+  if (!auth.loggedIn())
+    return router.createUrlTree(['/login'], { queryParams: { next: state.url } });
+  // Until the admin sets up the factor their role requires, only their profile works.
+  if (auth.twoFactorPending() && !state.url.startsWith('/profile'))
+    return router.parseUrl(TWO_FACTOR_SETUP_URL);
+  return true;
 };
 
 /** Login/registration pages: skip them when already logged in. */

@@ -16,6 +16,7 @@ import { HlmDialogImports } from '@spartan-ng/helm/dialog';
 import { HlmFieldImports } from '@spartan-ng/helm/field';
 import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
+import { HlmSwitchImports } from '@spartan-ng/helm/switch';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { Api, ApiFailure } from '../../core/api';
@@ -110,6 +111,7 @@ const ACTION_LABELS: Record<
     HlmFieldImports,
     HlmInputImports,
     HlmNativeSelectImports,
+    HlmSwitchImports,
     HlmAlertImports,
     PageHeader,
   ],
@@ -144,11 +146,19 @@ const ACTION_LABELS: Record<
                     }}</span>
                   }
                 </span>
-                @if (role.builtin) {
-                  <span hlmBadge variant="outline" class="ms-auto">{{
-                    t('settings.roles.builtin')
-                  }}</span>
-                }
+                <span class="ms-auto flex shrink-0 items-center gap-1">
+                  @if (role.requireTwoFactor) {
+                    <ng-icon
+                      name="lucideShieldCheck"
+                      class="text-primary"
+                      [attr.aria-label]="t('twoFactor.role.badge')"
+                      [attr.title]="t('twoFactor.role.badge')"
+                    />
+                  }
+                  @if (role.builtin) {
+                    <span hlmBadge variant="outline">{{ t('settings.roles.builtin') }}</span>
+                  }
+                </span>
               </button>
             }
           </nav>
@@ -199,11 +209,25 @@ const ACTION_LABELS: Record<
                     <ng-icon name="lucideTrash2" /> {{ t('common.delete') }}
                   </button>
                 }
-                @if (!superAdmin()) {
+                @if (!superAdmin() || requireTwoFactor() !== !!role.requireTwoFactor) {
                   <button hlmBtn (click)="save()">
                     <ng-icon name="lucideSave" /> {{ t('common.save') }}
                   </button>
                 }
+              </div>
+            </div>
+            <div hlmField orientation="horizontal" class="bg-card rounded-xl border p-4">
+              <hlm-switch
+                inputId="role-require-two-factor"
+                data-testid="role-require-two-factor"
+                [checked]="requireTwoFactor()"
+                (checkedChange)="requireTwoFactor.set($event)"
+              />
+              <div class="flex flex-col gap-0.5">
+                <label hlmFieldLabel for="role-require-two-factor">{{
+                  t('twoFactor.role.require')
+                }}</label>
+                <p hlmFieldDescription>{{ t('twoFactor.role.requireHint') }}</p>
               </div>
             </div>
             @if (superAdmin()) {
@@ -634,6 +658,8 @@ export class RolesPage implements OnInit {
   protected readonly selected = signal<Role | null>(null);
   protected readonly permissions = signal<Permission[]>([]);
   protected readonly newName = signal('');
+  /** The pending "Require two-factor authentication" of the selected role. */
+  protected readonly requireTwoFactor = signal(false);
   protected readonly superAdmin = computed(() => this.selected()?.code === 'super-admin');
   protected readonly locales = inject(ContentLocales);
   protected readonly localesEditor = signal<LocalesEditor | null>(null);
@@ -671,6 +697,7 @@ export class RolesPage implements OnInit {
   protected select(role: Role): void {
     this.selected.set(role);
     this.permissions.set(role.permissions.map((permission) => ({ ...permission })));
+    this.requireTwoFactor.set(!!role.requireTwoFactor);
   }
 
   protected level(action: string, subject: string): Level {
@@ -895,7 +922,10 @@ export class RolesPage implements OnInit {
     const role = this.selected();
     if (!role) return;
     try {
-      await this.api.put(`/roles/${role.id}`, { permissions: this.permissions() });
+      await this.api.put(
+        `/roles/${role.id}`,
+        roleUpdate(role, this.permissions(), this.requireTwoFactor()),
+      );
       await this.reload(role.id);
       toast.success(this.t('settings.roles.saved'));
     } catch (error) {
@@ -930,4 +960,16 @@ export class RolesPage implements OnInit {
       toast.error(ApiFailure.from(error).message);
     }
   }
+}
+
+/**
+ * The body of `PUT /roles/:id`: the permissions (the Super Admin role has them all, so
+ * never theirs) and whether members need a second factor.
+ */
+export function roleUpdate(
+  role: Role,
+  permissions: Permission[],
+  requireTwoFactor: boolean,
+): { permissions?: Permission[]; requireTwoFactor: boolean } {
+  return role.code === 'super-admin' ? { requireTwoFactor } : { permissions, requireTwoFactor };
 }
