@@ -43,7 +43,7 @@ The marks are invisible characters at the end of the text. Where a value is used
 rather than shown — a key, a URL, a comparison — strip them first:
 
 ```js
-const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+const clean = (text) => text.replace(/\u2064[\u200b-\u200d\u2060]*\u2063/g, '');
 ```
 
 ## Format

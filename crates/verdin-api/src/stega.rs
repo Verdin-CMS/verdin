@@ -205,7 +205,7 @@ fn mark_blocks(value: &mut Json, place: &Place<'_>, path: &str) {
 /// The overlay: outlines marked text on hover and opens the field in the admin (or asks
 /// the admin's preview frame to focus it).
 pub const OVERLAY: &str = r#"(() => {
-  const START = '⁤', END = '⁣', DIGITS = ['​', '‌', '‍', '⁠'];
+  const START = '\u2064', END = '\u2063', DIGITS = ['\u200b', '\u200c', '\u200d', '\u2060'];
   const decode = (text) => {
     const found = [];
     let from = 0;
