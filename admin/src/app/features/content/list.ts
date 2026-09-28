@@ -26,7 +26,7 @@ import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
-import { Api, ApiFailure, toQuery } from '../../core/api';
+import { Api, ApiFailure, saveDownload, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { EntryDuplicates } from '../../core/duplicate';
 import { ContentLocales, isLocalized } from '../../core/content-locales';
@@ -37,12 +37,15 @@ import { EntryStage, ReviewWorkflows, Workflow, stageOf } from '../../core/revie
 import { Features } from '../../core/features';
 import { Schema } from '../../core/schema';
 import { Document, PageMeta } from '../../core/types';
+import { UsageProbe, Usages } from '../../core/usage';
 import { UserPreferences, asObject } from '../../core/user-preferences';
 import { PageHeader } from '../../shared/components/page-header';
 import { StageBadge } from '../../shared/components/stage-badge';
+import { UsageWarning } from '../../shared/components/usage';
 import { humanize } from './fields/fields';
 import { BULK_CONCURRENCY, BulkAction, failureReason, runLimited, summarize } from './list-bulk';
 import { ListFilterBuilder, operatorLabel } from './list-filter-builder';
+import { ContentImport } from './list-import';
 import {
   FilterCondition,
   FilterField,
@@ -63,9 +66,12 @@ import {
   availableColumns,
   defaultView,
   isDefaultView,
+  isSearchable,
+  listQuery,
   mainColumn,
   resolveView,
 } from './list-view';
+import { TransferFormat } from './transfer';
 
 type Status = 'draft' | 'published' | 'modified';
 
@@ -121,6 +127,8 @@ interface LiveVersion {
     StageBadge,
     ListSettings,
     ListFilterBuilder,
+    ContentImport,
+    UsageWarning,
     HlmTableImports,
     HlmDropdownMenuImports,
     HlmButtonImports,
@@ -139,7 +147,30 @@ interface LiveVersion {
     @if (type(); as type) {
       <div class="flex flex-col gap-6">
         <vd-page-header [title]="type.displayName" [description]="type.description">
-          <div actions>
+          <div actions class="flex flex-wrap items-center gap-2">
+            @if (canImport()) {
+              <button hlmBtn variant="outline" type="button" (click)="importing.set(true)">
+                <ng-icon name="lucideUpload" /> {{ t('transfer.import.button') }}
+              </button>
+            }
+            @if (canExport()) {
+              <button
+                hlmBtn
+                variant="outline"
+                type="button"
+                [disabled]="exporting()"
+                [hlmDropdownMenuTrigger]="exportMenu"
+                align="end"
+              >
+                @if (exporting()) {
+                  <hlm-spinner class="size-4" />
+                } @else {
+                  <ng-icon name="lucideDownload" />
+                }
+                {{ t('transfer.export.button') }}
+                <ng-icon name="lucideChevronDown" size="14" />
+              </button>
+            }
             @if (canCreate()) {
               <a hlmBtn [routerLink]="['/content', type.uid, 'new']" [queryParams]="localeQuery()"
                 ><ng-icon name="lucidePlus" /> {{ t('common.create') }}</a
@@ -157,14 +188,14 @@ interface LiveVersion {
 
         <div class="bg-card overflow-hidden rounded-xl border shadow-xs">
           <div class="flex flex-wrap items-center gap-3 border-b px-4 py-3">
-            @if (titleField()) {
+            @if (searchable()) {
               <div hlmInputGroup class="w-full sm:max-w-xs">
                 <div hlmInputGroupAddon><ng-icon name="lucideSearch" /></div>
                 <input
                   hlmInputGroupInput
                   type="search"
                   [attr.aria-label]="t('common.search')"
-                  [placeholder]="t('content.list.searchBy', { field: humanize(titleField()!) })"
+                  [placeholder]="t('search.placeholder')"
                   [value]="search()"
                   (input)="setSearch($any($event.target).value)"
                 />
@@ -274,15 +305,17 @@ interface LiveVersion {
                         <button
                           type="button"
                           class="hover:text-foreground text-muted-foreground inline-flex items-center gap-1 text-xs font-medium tracking-wide uppercase"
-                          [class.text-foreground]="sort().field === column.name"
+                          [class.text-foreground]="activeSort()?.field === column.name"
                           (click)="toggleSort(column.name)"
                         >
                           {{ columnLabel(column.name) }}
-                          @if (sort().field === column.name) {
-                            <ng-icon
-                              [name]="sort().descending ? 'lucideArrowDown' : 'lucideArrowUp'"
-                              size="12"
-                            />
+                          @if (activeSort(); as active) {
+                            @if (active.field === column.name) {
+                              <ng-icon
+                                [name]="active.descending ? 'lucideArrowDown' : 'lucideArrowUp'"
+                                size="12"
+                              />
+                            }
                           }
                         </button>
                       } @else {
@@ -594,6 +627,29 @@ interface LiveVersion {
         </hlm-dropdown-menu>
       </ng-template>
 
+      <ng-template #exportMenu>
+        <hlm-dropdown-menu class="w-60">
+          <div hlmDropdownMenuLabel class="text-muted-foreground text-xs font-normal">
+            {{ t('transfer.export.hint') }}
+          </div>
+          <button hlmDropdownMenuItem (triggered)="export('csv')">
+            <ng-icon name="lucideFileText" /> {{ t('transfer.export.csv') }}
+          </button>
+          <button hlmDropdownMenuItem (triggered)="export('json')">
+            <ng-icon name="lucideBraces" /> {{ t('transfer.export.json') }}
+          </button>
+        </hlm-dropdown-menu>
+      </ng-template>
+
+      <vd-content-import
+        [type]="type"
+        [locale]="locale()"
+        [open]="importing()"
+        [canPublish]="canPublish()"
+        (closed)="importing.set(false)"
+        (imported)="reloads.update((count) => count + 1)"
+      />
+
       <hlm-alert-dialog [state]="confirming() ? 'open' : 'closed'" (closed)="confirming.set(null)">
         <hlm-alert-dialog-content *hlmAlertDialogPortal="let ctx">
           @if (confirming(); as action) {
@@ -603,6 +659,9 @@ interface LiveVersion {
               </h2>
               <p hlmAlertDialogDescription>{{ t(BULK_MESSAGES[action].description) }}</p>
             </hlm-alert-dialog-header>
+            @if (action === 'delete') {
+              <vd-usage-warning [state]="deleteUsage.state()" />
+            }
             <hlm-alert-dialog-footer>
               <button hlmAlertDialogCancel (click)="ctx.close()">{{ t('common.cancel') }}</button>
               <button
@@ -705,6 +764,25 @@ export class ContentList {
       this.auth.canInLocale('content.publish', this.uid(), this.locale()),
   );
   protected readonly selectable = computed(() => this.canDelete() || this.canPublish());
+  /** Importing creates rows or updates the documents they name. */
+  protected readonly canImport = computed(
+    () =>
+      this.auth.canInLocale('content.create', this.uid(), this.locale()) ||
+      this.auth.canInLocale('content.update', this.uid(), this.locale()),
+  );
+  protected readonly canExport = computed(() =>
+    this.auth.canInLocale('content.read', this.uid(), this.locale()),
+  );
+  /** Text fields `_q` searches (see `isSearchable`). */
+  protected readonly searchable = computed(() => {
+    const type = this.type();
+    return !!type && isSearchable(type);
+  });
+  protected readonly importing = signal(false);
+  protected readonly exporting = signal(false);
+  private readonly usages = inject(Usages);
+  /** Where the entries about to be deleted are used. */
+  protected readonly deleteUsage = new UsageProbe();
   protected readonly colspan = computed(
     () =>
       this.columns().length +
@@ -733,7 +811,7 @@ export class ContentList {
   );
 
   /** Bumped to reload the current page. */
-  private readonly reloads = signal(0);
+  protected readonly reloads = signal(0);
   /** A different type starts unfiltered; defaults apply once the preferences are in. */
   private readonly viewSource = computed(
     () => ({
@@ -743,11 +821,28 @@ export class ContentList {
     }),
     { equal: (a, b) => a.uid === b.uid && a.ready === b.ready },
   );
-  protected readonly search = linkedSignal({ source: this.uid, computation: () => '' });
+  /** Full-text search (`_q`), kept in the URL like the filters. */
+  protected readonly search = computed(() => {
+    const value = this.queryParams()['_q'];
+    return typeof value === 'string' ? value : '';
+  });
   protected readonly sort = linkedSignal<unknown, ListSort>({
     source: this.viewSource,
     computation: () => untracked(() => ({ ...(this.view()?.sort ?? DEFAULT_SORT) })),
   });
+  /** A sort the user picked (a column, or a saved view): searches keep it. */
+  private readonly sortChosen = linkedSignal<unknown, boolean>({
+    source: this.viewSource,
+    computation: () =>
+      untracked(() => {
+        const sort = this.view()?.sort ?? DEFAULT_SORT;
+        return sort.field !== DEFAULT_SORT.field || sort.descending !== DEFAULT_SORT.descending;
+      }),
+  });
+  /** The sort requested: none while searching without a chosen one (results come by rank). */
+  protected readonly activeSort = computed<ListSort | null>(() =>
+    this.search() && !this.sortChosen() ? null : this.sort(),
+  );
   protected readonly pageSize = linkedSignal<unknown, PageSize>({
     source: this.viewSource,
     computation: () => untracked(() => this.view()?.pageSize ?? 20),
@@ -759,7 +854,7 @@ export class ContentList {
       this.locale(),
       this.search(),
       this.conditions(),
-      this.sort(),
+      this.activeSort(),
       this.pageSize(),
     ],
     computation: () => 1,
@@ -772,7 +867,7 @@ export class ContentList {
       this.page(),
       this.search(),
       this.conditions(),
-      this.sort(),
+      this.activeSort(),
       this.pageSize(),
       this.reloads(),
     ],
@@ -823,7 +918,7 @@ export class ContentList {
         pageSize: this.pageSize(),
         search: this.search(),
         conditions: this.conditions(),
-        sort: this.sort(),
+        sort: this.activeSort(),
       };
       this.reloads();
       if (!this.viewSource().ready) return;
@@ -842,24 +937,15 @@ export class ContentList {
     pageSize: number;
     search: string;
     conditions: FilterCondition[];
-    sort: ListSort;
+    sort: ListSort | null;
   }): Promise<void> {
     const current = ++this.requests;
     this.loading.set(true);
     this.error.set(null);
-    const query: Record<string, unknown> = {
+    const query = {
+      ...listQuery(request, filterTree(request.conditions)),
       pagination: { page: request.page, pageSize: request.pageSize },
-      sort: `${request.sort.field}:${request.sort.descending ? 'desc' : 'asc'}`,
-      locale: request.locale,
     };
-    const field = this.titleField();
-    const filters = filterTree(request.conditions) as { $and?: Record<number, unknown> };
-    if (request.search && field) {
-      const search = { [field]: { $containsi: request.search } };
-      if (filters.$and) filters.$and[Object.keys(filters.$and).length] = search;
-      else Object.assign(filters, search);
-    }
-    query['filters'] = filters;
     try {
       const response = await this.api.list<Document>(`/content/${request.uid}`, toQuery(query));
       if (current !== this.requests) return;
@@ -987,19 +1073,63 @@ export class ContentList {
   }
 
   protected ariaSort(field: string): 'ascending' | 'descending' | null {
-    const sort = this.sort();
-    if (sort.field !== field) return null;
+    const sort = this.activeSort();
+    if (sort?.field !== field) return null;
     return sort.descending ? 'descending' : 'ascending';
   }
 
   protected toggleSort(field: string): void {
-    const current = this.sort();
-    this.sort.set({ field, descending: current.field === field ? !current.descending : false });
+    const current = this.activeSort();
+    this.sortChosen.set(true);
+    this.sort.set({ field, descending: current?.field === field ? !current.descending : false });
   }
 
+  /** Searches once typing pauses; the URL follows without adding history entries. */
   protected setSearch(value: string): void {
     clearTimeout(this.searchTimer);
-    this.searchTimer = setTimeout(() => this.search.set(value), 250);
+    this.searchTimer = setTimeout(() => {
+      const text = value.trim();
+      if (text === this.search()) return;
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { _q: text || null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    }, 250);
+  }
+
+  /** Downloads the list as it is filtered, searched and sorted (every page). */
+  protected async export(format: TransferFormat): Promise<void> {
+    const type = this.type();
+    if (!type || this.exporting()) return;
+    this.exporting.set(true);
+    const query = toQuery({
+      ...listQuery(
+        {
+          locale: this.locale(),
+          search: this.search(),
+          sort: this.activeSort(),
+        },
+        filterTree(this.conditions()),
+      ),
+      format,
+    });
+    try {
+      const file = await this.api.download(
+        `/content/${type.uid}/export`,
+        query,
+        `${type.pluralName}.${format}`,
+      );
+      saveDownload(file);
+      toast.success(this.t('transfer.export.done', { name: file.name }));
+    } catch (error) {
+      toast.error(this.t('transfer.export.failed'), {
+        description: ApiFailure.from(error).message,
+      });
+    } finally {
+      this.exporting.set(false);
+    }
   }
 
   /** The locale of a listed version (localized types). */
@@ -1119,10 +1249,25 @@ export class ContentList {
 
   /** Deleting always asks first; publishing and unpublishing when there are several. */
   protected request(action: BulkAction): void {
-    const count = this.targets(action).length;
-    if (!count) return;
-    if (action === 'delete' || count > 1) this.confirming.set(action);
+    const targets = this.targets(action);
+    if (!targets.length) return;
+    if (action === 'delete') this.checkUsage(targets);
+    if (action === 'delete' || targets.length > 1) this.confirming.set(action);
     else void this.run(action);
+  }
+
+  /** Where the entries about to be deleted are used (except by one another). */
+  private checkUsage(targets: Document[]): void {
+    const uid = this.uid();
+    const locale = this.locale();
+    const deleting = new Set(targets.map((document) => document.documentId));
+    void this.deleteUsage.start(() =>
+      this.usages.many(
+        targets,
+        (document) => this.usages.forEntry(uid, document.documentId, locale),
+        (usage) => usage.uid === uid && deleting.has(usage.documentId),
+      ),
+    );
   }
 
   protected async run(action: BulkAction): Promise<void> {
@@ -1168,6 +1313,7 @@ export class ContentList {
     const type = this.type();
     if (!type) return;
     this.sort.set({ ...view.sort });
+    this.sortChosen.set(true);
     this.pageSize.set(view.pageSize);
     const stored = isDefaultView(view, type, this.titleField()) ? undefined : view;
     try {
@@ -1183,6 +1329,7 @@ export class ContentList {
     if (!type) return;
     const fallback = defaultView(type, this.titleField());
     this.sort.set(fallback.sort);
+    this.sortChosen.set(false);
     this.pageSize.set(fallback.pageSize);
     try {
       await this.preferences.set(['listViews', type.uid], undefined);

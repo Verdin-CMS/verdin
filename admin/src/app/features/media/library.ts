@@ -36,7 +36,9 @@ import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { Media, MediaSort } from '../../core/media';
 import { MediaFile, MediaFolder, MediaKind, PageMeta } from '../../core/types';
+import { UsageProbe, Usages } from '../../core/usage';
 import { PageHeader } from '../../shared/components/page-header';
+import { UsageWarning } from '../../shared/components/usage';
 import { MediaFileSheet } from './file-sheet';
 import {
   KIND_LABELS,
@@ -108,6 +110,7 @@ function readView(): View {
     MediaThumb,
     MediaFileSheet,
     UploadPanel,
+    UsageWarning,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
@@ -247,7 +250,7 @@ function readView(): View {
             </button>
           }
           @if (deletableIds().length) {
-            <button hlmBtn variant="destructive" size="sm" (click)="confirmBulkDelete.set(true)">
+            <button hlmBtn variant="destructive" size="sm" (click)="requestBulkDelete()">
               <ng-icon name="lucideTrash2" />
               {{ t('media.selection.delete', { count: deletableIds().length }) }}
             </button>
@@ -752,6 +755,7 @@ function readView(): View {
           </h2>
           <p hlmAlertDialogDescription>{{ t('media.selection.deleteHint') }}</p>
         </hlm-alert-dialog-header>
+        <vd-usage-warning [state]="deleteUsage.state()" />
         <hlm-alert-dialog-footer>
           <button hlmAlertDialogCancel (click)="ctx.close()">{{ t('common.cancel') }}</button>
           <button
@@ -821,6 +825,9 @@ export class MediaLibraryPage {
   protected readonly dialog = signal<FolderDialog | null>(null);
   protected readonly deletingFolder = signal<MediaFolder | null>(null);
   protected readonly confirmBulkDelete = signal(false);
+  private readonly usages = inject(Usages);
+  /** Where the files about to be deleted are used. */
+  protected readonly deleteUsage = new UsageProbe();
 
   protected readonly canCreate = computed(() => this.auth.can('media.create'));
   protected readonly canManageFolders = computed(
@@ -1096,6 +1103,13 @@ export class MediaLibraryPage {
 
   protected clearSelection(): void {
     this.selection.set(new Set());
+  }
+
+  protected requestBulkDelete(): void {
+    const ids = this.deletableIds();
+    if (!ids.length) return;
+    this.confirmBulkDelete.set(true);
+    void this.deleteUsage.start(() => this.usages.many(ids, (id) => this.usages.forFile(id)));
   }
 
   protected async deleteSelected(): Promise<void> {
