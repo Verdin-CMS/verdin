@@ -87,10 +87,10 @@ to move to Verdin without losing features.
 | Relations UI ✅ | S | Drag and drop reordering, open and edit the related entry in a side sheet |
 | Side-by-side live preview ✅ | M | Preview in an iframe next to the form, refreshed on save; device widths |
 | Admin invitations & password reset ✅ | S | Invite link with a token instead of setting a password, forgot-password email, own profile page (name, email, password) |
-| Sessions & tokens | S | List and revoke own admin sessions; regenerate API tokens; scoped, owner-bound admin API tokens (Strapi 5.47) |
-| RBAC | M | Per-locale permissions ✅; conditions beyond `is-creator` (declared by plugins); "is owner" for end users |
+| Sessions & tokens ✅ | S | List and revoke own admin sessions; regenerate API tokens (owner-bound admin API tokens moved to Later) |
+| RBAC ✅ | M | Per-locale permissions (conditions declared by plugins and "is owner" for end users moved to Later) |
 | End users ✅ | S | Refresh tokens, `/api/users` CRUD with permissions, more OAuth presets (Microsoft, Discord, Facebook, Apple, Keycloak, Auth0), HTML email templates |
-| Media library | M | Replace a file keeping its id ✅, crop in the admin, upload from URL ✅, PDF preview, optimize originals ✅; signed URLs for private buckets moved to Later |
+| Media library ✅ | M | Replace a file keeping its id, crop in the admin, upload from URL, PDF preview, scale down large originals (signed URLs for private buckets moved to Later) |
 | Webhook events ✅ | S | `releases.publish`, `review-workflows.updateEntryStage` (after 0.7) |
 | Admin branding ✅ | S | Logo, favicon, accent colour and translation overrides in `[admin]` |
 | GraphQL ✅ | M | Disable types or actions per content type (shadow CRUD), resolvers from plugins |
@@ -137,6 +137,8 @@ Large items worth doing once 0.9 lands:
 - TMS connectors (XLIFF export/import, Crowdin, Lokalise, Phrase).
 - Guided tour for first-time admins.
 - Signed URLs for private buckets (every file URL in responses signed for a short time).
+- Scoped, owner-bound admin API tokens (Strapi 5.47).
+- RBAC conditions declared by plugins, and "is owner" for end users.
 - Encrypted exports, scheduled backups to S3, and `verdin transfer` between running
   instances with transfer tokens.
 
