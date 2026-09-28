@@ -76,7 +76,18 @@ export const ENTRY_EVENTS = [
 
 export const MEDIA_EVENTS = ['media.create', 'media.update', 'media.delete'] as const;
 
-export const EVENTS: readonly string[] = [...ENTRY_EVENTS, ...MEDIA_EVENTS];
+/** A release ran (published and unpublished its entries). */
+export const RELEASE_EVENTS = ['releases.publish'] as const;
+
+/** An entry moved to another review stage. */
+export const REVIEW_EVENTS = ['review-workflows.updateEntryStage'] as const;
+
+export const EVENTS: readonly string[] = [
+  ...ENTRY_EVENTS,
+  ...MEDIA_EVENTS,
+  ...RELEASE_EVENTS,
+  ...REVIEW_EVENTS,
+];
 
 /** Headers Verdin sets on every delivery; the server rejects them. */
 const RESERVED_HEADERS = [

@@ -8,6 +8,7 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertDialogImports } from '@spartan-ng/helm/alert-dialog';
@@ -17,6 +18,7 @@ import { HlmFieldImports } from '@spartan-ng/helm/field';
 import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmSheetImports } from '@spartan-ng/helm/sheet';
+import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmTextareaImports } from '@spartan-ng/helm/textarea';
 
 import { ApiFailure } from '../../core/api';
@@ -24,6 +26,8 @@ import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
 import { Media } from '../../core/media';
 import { MediaFile, MediaFolder } from '../../core/types';
+import { MediaCropDialog } from './crop-dialog';
+import { croppable } from './crop';
 import {
   KIND_ICONS,
   KIND_LABELS,
@@ -51,6 +55,8 @@ type FocalPoint = { x: number; y: number };
     HlmInputImports,
     HlmNativeSelectImports,
     HlmTextareaImports,
+    HlmSpinnerImports,
+    MediaCropDialog,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -133,13 +139,66 @@ type FocalPoint = { x: number; y: number };
                   </div>
                 }
                 @default {
-                  <div class="text-muted-foreground flex flex-col items-center gap-2 p-10">
-                    <ng-icon [name]="icon(file)" size="56" />
-                    <span class="font-mono text-xs">{{ ext(file) }}</span>
-                  </div>
+                  @if (pdfUrl(); as url) {
+                    <iframe
+                      class="block h-[60vh] w-full bg-white"
+                      sandbox="allow-same-origin"
+                      referrerpolicy="no-referrer"
+                      [src]="url"
+                      [title]="t('media.file.pdfPreview', { name: file.name })"
+                    ></iframe>
+                  } @else {
+                    <div class="text-muted-foreground flex flex-col items-center gap-2 p-10">
+                      <ng-icon [name]="icon(file)" size="56" />
+                      <span class="font-mono text-xs">{{ ext(file) }}</span>
+                    </div>
+                  }
                 }
               }
             </div>
+
+            @if (canEdit()) {
+              <div class="-mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  hlmBtn
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  [disabled]="replacing()"
+                  (click)="replaceInput.click()"
+                >
+                  @if (replacing()) {
+                    <hlm-spinner class="size-4" />
+                  } @else {
+                    <ng-icon name="lucideReplace" />
+                  }
+                  {{ t('media.file.replace') }}
+                </button>
+                @if (canCrop(file)) {
+                  <button
+                    hlmBtn
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    [disabled]="replacing()"
+                    (click)="cropping.set(file)"
+                  >
+                    <ng-icon name="lucideCrop" /> {{ t('media.file.crop') }}
+                  </button>
+                }
+                <input
+                  #replaceInput
+                  type="file"
+                  class="hidden"
+                  tabindex="-1"
+                  aria-hidden="true"
+                  (change)="onReplace($event, file)"
+                />
+                <span class="text-muted-foreground basis-full text-xs">{{
+                  t('media.file.replaceHint')
+                }}</span>
+              </div>
+            }
 
             @if (kind(file) === 'images' && canEdit()) {
               <div class="-mt-3 flex items-center gap-2 text-xs">
@@ -329,6 +388,13 @@ type FocalPoint = { x: number; y: number };
         }
       </hlm-sheet-content>
     </hlm-sheet>
+
+    <vd-media-crop-dialog
+      [file]="cropping()"
+      [busy]="replacing()"
+      (cropped)="onCropped($event)"
+      (closed)="cropping.set(null)"
+    />
   `,
 })
 export class MediaFileSheet {
@@ -359,6 +425,18 @@ export class MediaFileSheet {
     () => this.current()?.focalPoint ?? null,
   );
   protected readonly busy = signal(false);
+  protected readonly replacing = signal(false);
+  /** The image in the crop dialog. */
+  protected readonly cropping = signal<MediaFile | null>(null);
+  private readonly sanitizer = inject(DomSanitizer);
+  /** PDFs preview in a sandboxed frame (same-origin library files only). */
+  protected readonly pdfUrl = computed<SafeResourceUrl | null>(() => {
+    const file = this.current();
+    if (file?.mime !== 'application/pdf') return null;
+    const url = new URL(this.media.url(file.url), location.href);
+    if (url.origin !== location.origin) return null;
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url.pathname);
+  });
 
   protected readonly options = computed(() => folderOptions(this.folders()));
   protected readonly canEdit = computed(() => {
@@ -428,6 +506,40 @@ export class MediaFileSheet {
     this.focal.set({ x: clamp(point.x + step[0]), y: clamp(point.y + step[1]) });
   }
 
+  protected canCrop(file: MediaFile): boolean {
+    return croppable(file.mime);
+  }
+
+  protected onReplace(event: Event, file: MediaFile): void {
+    const input = event.target as HTMLInputElement;
+    const picked = input.files?.[0];
+    input.value = '';
+    if (picked) void this.replace(file, picked, picked.name);
+  }
+
+  protected onCropped(blob: Blob): void {
+    const file = this.cropping();
+    if (file) void this.replace(file, blob, croppedName(file.name, blob.type), true);
+  }
+
+  /** New content for the file: its id, metadata and the entries using it stay. */
+  private async replace(file: MediaFile, blob: Blob, name: string, crop = false): Promise<void> {
+    this.replacing.set(true);
+    try {
+      const replaced = await this.media.replace(file.id, blob, name);
+      this.current.set(replaced);
+      this.cropping.set(null);
+      this.saved.emit(replaced);
+      toast.success(this.t(crop ? 'media.file.cropped' : 'media.file.replaced'));
+    } catch (error) {
+      toast.error(this.t('media.file.replaceFailed'), {
+        description: ApiFailure.from(error).message,
+      });
+    } finally {
+      this.replacing.set(false);
+    }
+  }
+
   protected async copyUrl(file: MediaFile): Promise<void> {
     const url = new URL(this.media.url(file.url), location.href).href;
     try {
@@ -472,4 +584,17 @@ export class MediaFileSheet {
       });
     }
   }
+}
+
+/** The file name after a crop: the extension follows the encoded type. */
+export function croppedName(name: string, type: string): string {
+  const extensions: Record<string, string> = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/webp': '.webp',
+  };
+  const ext = extensions[type];
+  if (!ext) return name;
+  const base = name.replace(/\.[^.]+$/, '');
+  return /\.(jpe?g)$/i.test(name) && ext === '.jpg' ? name : `${base}${ext}`;
 }

@@ -24,6 +24,7 @@ import { HlmInputImports } from '@spartan-ng/helm/input';
 
 import { Api, toQuery } from '../../../core/api';
 import { Auth } from '../../../core/auth';
+import { searchable } from '../../../core/edit-view';
 import { isLocalized } from '../../../core/content-locales';
 import { I18n } from '../../../core/i18n/i18n';
 import { Schema } from '../../../core/schema';
@@ -224,9 +225,20 @@ export class RelationControl implements FormValueControl<string | string[] | nul
     () => this.schema.type(this.target())?.displayName ?? this.t('content.relation.documents'),
   );
   protected readonly canOpen = computed(() => this.auth.canContent('content.read', this.target()));
-  private readonly titleField = computed(() => {
+  /** The edit view's field naming related entries (`null`: the type's first text field). */
+  readonly mainField = input<string | null>(null);
+
+  private readonly defaultTitleField = computed(() => {
     const type = this.schema.type(this.target());
     return type ? this.schema.titleField(type) : null;
+  });
+  /** The field shown for related entries. */
+  private readonly titleField = computed(() => this.mainField() ?? this.defaultTitleField());
+  /** The field searched: the main field when it holds text, else the default one. */
+  private readonly searchField = computed(() => {
+    const main = this.mainField();
+    const type = this.schema.type(this.target());
+    return main && searchable(type?.attributes[main]) ? main : this.defaultTitleField();
   });
 
   constructor() {
@@ -244,7 +256,7 @@ export class RelationControl implements FormValueControl<string | string[] | nul
   }
 
   private async find(target: string, term: string): Promise<void> {
-    const field = this.titleField();
+    const field = this.searchField();
     const query: Record<string, unknown> = { pagination: { pageSize: 10 }, sort: 'updatedAt:desc' };
     if (term && field) query['filters'] = { [field]: { $containsi: term } };
     try {

@@ -26,7 +26,16 @@ import { Feature, Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { PageHeader } from '../../shared/components/page-header';
-import { readPreviewSettings, ssoFormsFrom } from '../../core/feature-settings';
+import {
+  mcpCommand,
+  mcpUrl,
+  normalizeOrigin,
+  readDisabled,
+  readOrigins,
+  readPreviewSettings,
+  ssoFormsFrom,
+} from '../../core/feature-settings';
+import { GraphqlSettingsDialog } from './graphql-settings';
 import { PreviewSettingsDialog } from './preview-settings';
 import { SsoSettingsDialog } from './sso-settings';
 
@@ -46,6 +55,7 @@ const ICONS: Record<string, string> = {
   review: 'lucideListChecks',
   releases: 'lucideCalendarClock',
   preview: 'lucideEye',
+  mcp: 'lucideBot',
 };
 
 /** Settings → Features: switch optional parts of Verdin on and off, live. */
@@ -66,6 +76,7 @@ const ICONS: Record<string, string> = {
     PageHeader,
     PreviewSettingsDialog,
     SsoSettingsDialog,
+    GraphqlSettingsDialog,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -142,6 +153,24 @@ const ICONS: Record<string, string> = {
                         </span>
                       </label>
                     }
+                    <div class="flex flex-col gap-2">
+                      <p class="text-muted-foreground text-xs">
+                        {{
+                          t('features.graphql.disabledSummary', { count: disabledCount(feature) })
+                        }}
+                      </p>
+                      @if (canManage()) {
+                        <button
+                          hlmBtn
+                          size="sm"
+                          variant="outline"
+                          class="self-start"
+                          (click)="graphqlOpen.set(true)"
+                        >
+                          <ng-icon name="lucideSettings" /> {{ t('features.graphql.configure') }}
+                        </button>
+                      }
+                    </div>
                     @if (setting(feature, 'playground', false)) {
                       <a
                         hlmBtn
@@ -155,6 +184,144 @@ const ICONS: Record<string, string> = {
                         <ng-icon name="lucideExternalLink" /> {{ t('features.graphql.open') }}
                       </a>
                     }
+                  </div>
+                }
+
+                @if (feature.id === 'mcp' && feature.enabled) {
+                  <div class="flex flex-col gap-4 border-t pt-4">
+                    <div class="flex flex-col gap-1.5">
+                      <span class="text-sm font-medium">{{ t('features.mcp.endpoint') }}</span>
+                      <div class="flex items-center gap-1">
+                        <code
+                          dir="ltr"
+                          class="bg-muted min-w-0 flex-1 truncate rounded px-2 py-1 font-mono text-xs"
+                          data-mcp-url
+                          >{{ mcpEndpoint }}</code
+                        >
+                        <button
+                          hlmBtn
+                          size="icon-xs"
+                          variant="ghost"
+                          type="button"
+                          [attr.aria-label]="t('features.mcp.copyUrl')"
+                          [title]="t('features.mcp.copyUrl')"
+                          (click)="copy(mcpEndpoint)"
+                        >
+                          <ng-icon name="lucideCopy" />
+                        </button>
+                      </div>
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                      <span class="text-sm font-medium">{{ t('features.mcp.claudeCode') }}</span>
+                      <div class="relative">
+                        <pre
+                          dir="ltr"
+                          class="bg-muted overflow-x-auto rounded-md p-3 pe-10 font-mono text-xs whitespace-pre-wrap break-all"
+                          >{{ mcpSnippet }}</pre>
+                        <button
+                          hlmBtn
+                          size="icon-xs"
+                          variant="ghost"
+                          type="button"
+                          class="absolute end-1.5 top-1.5"
+                          [attr.aria-label]="t('features.mcp.copyCommand')"
+                          [title]="t('features.mcp.copyCommand')"
+                          (click)="copy(mcpSnippet)"
+                        >
+                          <ng-icon name="lucideCopy" />
+                        </button>
+                      </div>
+                      <p class="text-muted-foreground text-xs">
+                        {{ t('features.mcp.tokenHint') }}
+                        @if (canManageTokens()) {
+                          <a class="text-primary hover:underline" routerLink="/settings/tokens">{{
+                            t('features.mcp.tokens')
+                          }}</a>
+                        }
+                      </p>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                      <span class="text-sm font-medium" id="mcp-origins-label">{{
+                        t('features.mcp.origins')
+                      }}</span>
+                      <p class="text-muted-foreground text-xs">
+                        {{ t('features.mcp.originsHint') }}
+                      </p>
+                      <ul class="flex flex-col gap-1" aria-labelledby="mcp-origins-label">
+                        @for (origin of mcpOrigins(feature); track origin) {
+                          <li
+                            class="bg-muted/40 flex items-center gap-2 rounded-md border py-1 ps-3 pe-1"
+                          >
+                            <span dir="ltr" class="min-w-0 flex-1 truncate font-mono text-xs">{{
+                              origin
+                            }}</span>
+                            @if (canManage()) {
+                              <button
+                                hlmBtn
+                                size="icon-xs"
+                                variant="ghost"
+                                type="button"
+                                [disabled]="busy() === feature.id"
+                                [attr.aria-label]="t('features.mcp.removeOrigin', { origin })"
+                                [title]="t('features.mcp.removeOrigin', { origin })"
+                                (click)="removeOrigin(feature, origin)"
+                              >
+                                <ng-icon name="lucideX" />
+                              </button>
+                            }
+                          </li>
+                        } @empty {
+                          <li class="text-muted-foreground text-xs">
+                            {{ t('features.mcp.noOrigins') }}
+                          </li>
+                        }
+                      </ul>
+                      @if (canManage()) {
+                        <form
+                          class="flex items-start gap-2"
+                          (submit)="$event.preventDefault(); addOrigin(feature)"
+                        >
+                          <div
+                            hlmField
+                            class="flex-1"
+                            [attr.data-invalid]="originError() ? true : null"
+                          >
+                            <label hlmFieldLabel for="mcp-origin" class="sr-only">{{
+                              t('features.mcp.origin')
+                            }}</label>
+                            <input
+                              dir="ltr"
+                              hlmInput
+                              id="mcp-origin"
+                              type="url"
+                              autocomplete="off"
+                              placeholder="https://app.example.com"
+                              class="h-8 font-mono text-xs"
+                              [attr.aria-invalid]="originError() ? true : null"
+                              [attr.aria-describedby]="originError() ? 'mcp-origin-error' : null"
+                              [value]="originDraft()"
+                              (input)="
+                                originDraft.set($any($event.target).value); originError.set(null)
+                              "
+                            />
+                            @if (originError(); as message) {
+                              <hlm-field-error forceShow id="mcp-origin-error">{{
+                                message
+                              }}</hlm-field-error>
+                            }
+                          </div>
+                          <button
+                            hlmBtn
+                            size="sm"
+                            variant="outline"
+                            type="submit"
+                            [disabled]="busy() === feature.id || !originDraft().trim()"
+                          >
+                            <ng-icon name="lucidePlus" /> {{ t('features.mcp.addOrigin') }}
+                          </button>
+                        </form>
+                      }
+                    </div>
                   </div>
                 }
 
@@ -384,6 +551,13 @@ const ICONS: Record<string, string> = {
         (closed)="previewOpen.set(false)"
       />
     }
+    @if (featureById('graphql'); as graphql) {
+      <vd-graphql-settings
+        [open]="graphqlOpen()"
+        [feature]="graphql"
+        (closed)="graphqlOpen.set(false)"
+      />
+    }
     @if (featureById('sso'); as sso) {
       <vd-sso-settings [open]="ssoOpen()" [feature]="sso" (closed)="ssoOpen.set(false)" />
     }
@@ -469,6 +643,10 @@ export class FeaturesPage implements OnInit {
   protected readonly canManageWorkflows = computed(() => this.auth.can('workflows.manage'));
   protected readonly previewOpen = signal(false);
   protected readonly ssoOpen = signal(false);
+  protected readonly graphqlOpen = signal(false);
+  protected readonly canManageTokens = computed(() => this.auth.can('tokens.manage'));
+  protected readonly originDraft = signal('');
+  protected readonly originError = signal<string | null>(null);
   /** The test email dialog: `null` when closed. */
   protected readonly emailTest = signal<{ to: string } | null>(null);
   protected readonly emailResult = signal<EmailTestResult | null>(null);
@@ -514,6 +692,53 @@ export class FeaturesPage implements OnInit {
   }
 
   protected readonly docsUrl = `${this.config.contentApiBase}/docs`;
+  protected readonly mcpEndpoint = mcpUrl(this.config.contentApiBase, location.origin);
+  protected readonly mcpSnippet = mcpCommand(this.mcpEndpoint);
+
+  protected disabledCount(feature: Feature): number {
+    return Object.keys(readDisabled(feature.settings)).length;
+  }
+
+  protected mcpOrigins(feature: Feature): string[] {
+    return readOrigins(feature.settings);
+  }
+
+  protected async addOrigin(feature: Feature): Promise<void> {
+    const origin = normalizeOrigin(this.originDraft());
+    if (!origin) {
+      this.originError.set(this.t('features.mcp.invalidOrigin'));
+      return;
+    }
+    const origins = this.mcpOrigins(feature);
+    if (origins.includes(origin)) {
+      this.originError.set(this.t('features.mcp.duplicateOrigin'));
+      return;
+    }
+    const saved = this.t('features.settingsSaved', { name: this.name(feature.id) });
+    const settings = { ...(feature.settings ?? {}), allowedOrigins: [...origins, origin] };
+    if (await this.set(feature, feature.enabled, settings, saved)) this.originDraft.set('');
+  }
+
+  protected removeOrigin(feature: Feature, origin: string): void {
+    void this.set(
+      feature,
+      feature.enabled,
+      {
+        ...(feature.settings ?? {}),
+        allowedOrigins: this.mcpOrigins(feature).filter((item) => item !== origin),
+      },
+      this.t('features.settingsSaved', { name: this.name(feature.id) }),
+    );
+  }
+
+  protected async copy(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(this.t('common.copied'));
+    } catch {
+      toast.error(this.t('features.mcp.copyFailed'));
+    }
+  }
   protected readonly documentUrl = `${this.config.contentApiBase}/_openapi.json`;
 
   async ngOnInit(): Promise<void> {
@@ -577,19 +802,22 @@ export class FeaturesPage implements OnInit {
     feature: Feature,
     enabled: boolean,
     settings: Record<string, unknown> | null,
-  ): Promise<void> {
+    saved?: string,
+  ): Promise<boolean> {
     this.busy.set(feature.id);
     try {
       await this.catalog.update(feature.id, enabled, settings);
       toast.success(
-        this.t(enabled ? 'features.on' : 'features.off', { name: this.name(feature.id) }),
+        saved ?? this.t(enabled ? 'features.on' : 'features.off', { name: this.name(feature.id) }),
       );
+      return true;
     } catch (error) {
       toast.error(this.t('features.failed', { name: this.name(feature.id) }), {
         description: ApiFailure.from(error).message,
       });
       // Put the switch back.
       this.features.update((list) => (list ? [...list] : list));
+      return false;
     } finally {
       this.busy.set(null);
     }

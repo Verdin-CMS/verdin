@@ -256,3 +256,106 @@ export function ssoRedirectUri(apiBase: string, id: string, origin: string): str
 export function ssoStartUrl(apiBase: string, id: string): string {
   return `${apiBase.replace(/\/+$/, '')}/auth/sso/${encodeURIComponent(id)}`;
 }
+
+// GraphQL: shadow CRUD switches (`settings.disabled`).
+
+/** Operations of a content type's generated GraphQL API. */
+export const GRAPHQL_OPERATIONS = ['find', 'findOne', 'create', 'update', 'delete'] as const;
+export type GraphqlOperation = (typeof GRAPHQL_OPERATIONS)[number];
+
+const QUERIES: readonly GraphqlOperation[] = ['find', 'findOne'];
+const MUTATIONS: readonly GraphqlOperation[] = ['create', 'update', 'delete'];
+
+/** The operations a stored list leaves out (`*`, `queries` and `mutations` expanded). */
+export function expandDisabled(entries: readonly string[]): Set<GraphqlOperation> {
+  const off = new Set<GraphqlOperation>();
+  for (const entry of entries) {
+    if (entry === '*') GRAPHQL_OPERATIONS.forEach((op) => off.add(op));
+    else if (entry === 'queries') QUERIES.forEach((op) => off.add(op));
+    else if (entry === 'mutations') MUTATIONS.forEach((op) => off.add(op));
+    else if ((GRAPHQL_OPERATIONS as readonly string[]).includes(entry))
+      off.add(entry as GraphqlOperation);
+  }
+  return off;
+}
+
+/** The shortest stored list for a set of operations: `*`, then whole groups, then single ones. */
+export function compactDisabled(off: ReadonlySet<GraphqlOperation>): string[] {
+  if (GRAPHQL_OPERATIONS.every((op) => off.has(op))) return ['*'];
+  const out: string[] = [];
+  if (QUERIES.every((op) => off.has(op))) out.push('queries');
+  else out.push(...QUERIES.filter((op) => off.has(op)));
+  if (MUTATIONS.every((op) => off.has(op))) out.push('mutations');
+  else out.push(...MUTATIONS.filter((op) => off.has(op)));
+  return out;
+}
+
+/** `settings.disabled` as sets per content type (unknown values dropped). */
+export function readDisabled(
+  settings: Record<string, unknown> | null | undefined,
+): Record<string, Set<GraphqlOperation>> {
+  const raw = settings?.['disabled'];
+  const out: Record<string, Set<GraphqlOperation>> = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [uid, entries] of Object.entries(raw)) {
+    if (!Array.isArray(entries)) continue;
+    const off = expandDisabled(entries.filter((entry) => typeof entry === 'string'));
+    if (off.size) out[uid] = off;
+  }
+  return out;
+}
+
+/** The `disabled` setting for the editor's state: types with nothing off are left out. */
+export function disabledSetting(
+  state: Record<string, ReadonlySet<GraphqlOperation>>,
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const uid of Object.keys(state).sort()) {
+    if (state[uid].size) out[uid] = compactDisabled(state[uid]);
+  }
+  return out;
+}
+
+/** Turns `operations` on or off in a type's set. */
+export function toggleOperations(
+  off: ReadonlySet<GraphqlOperation> | undefined,
+  operations: readonly GraphqlOperation[],
+  disabled: boolean,
+): Set<GraphqlOperation> {
+  const next = new Set(off ?? []);
+  for (const op of operations) {
+    if (disabled) next.add(op);
+    else next.delete(op);
+  }
+  return next;
+}
+
+export const GRAPHQL_GROUPS = { queries: QUERIES, mutations: MUTATIONS } as const;
+
+// MCP server.
+
+/** `settings.allowedOrigins`: browser origins allowed to call `/mcp`. */
+export function readOrigins(settings: Record<string, unknown> | null | undefined): string[] {
+  return strings(settings?.['allowedOrigins']);
+}
+
+/** An origin as the server compares it (`scheme://host[:port]`), or `null`. */
+export function normalizeOrigin(text: string): string | null {
+  try {
+    const url = new URL(text.trim());
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/** The endpoint URL: the content API's origin plus `/mcp`. */
+export function mcpUrl(contentApiBase: string, origin: string): string {
+  return `${new URL(contentApiBase, origin).origin}/mcp`;
+}
+
+/** The Claude Code command that registers the server. */
+export function mcpCommand(url: string): string {
+  return `claude mcp add --transport http verdin ${url} --header "Authorization: Bearer <token>"`;
+}

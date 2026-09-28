@@ -27,6 +27,7 @@ import { HlmToggleGroupImports } from '@spartan-ng/helm/toggle-group';
 
 import { Api, ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
+import { SimpleCondition, conditionsOf, simpleCondition } from '../../core/logic';
 import { MessageKey } from '../../core/i18n/keys';
 import { PluginExtensions, PluginField } from '../../core/plugin-extensions';
 import { customFieldId, parseCustomField } from '../../core/plugins';
@@ -229,6 +230,22 @@ const INVERSE: Partial<Record<RelationKind, RelationKind>> = {
   manyToMany: 'manyToMany',
   oneToOne: 'oneToOne',
 };
+/** Attributes a simple condition can compare. */
+const CONDITION_TYPES = new Set([
+  'string',
+  'text',
+  'email',
+  'uid',
+  'enumeration',
+  'boolean',
+  'integer',
+  'biginteger',
+  'float',
+  'decimal',
+  'date',
+  'time',
+  'datetime',
+]);
 const LENGTH_TYPES = new Set(['string', 'text', 'richtext', 'email', 'password', 'uid']);
 const NUMBER_TYPES = new Set(['integer', 'biginteger', 'float', 'decimal']);
 const UNIQUE_TYPES = new Set([
@@ -610,6 +627,18 @@ interface AttributeDraft {
                                 t('builder.fields.repeatable')
                               }}</span>
                             }
+                            @if (entry.attribute.configurable === false) {
+                              <span hlmBadge variant="outline">
+                                <ng-icon name="lucideLock" />
+                                {{ t('builder.fields.locked') }}
+                              </span>
+                            }
+                            @if (entry.attribute.conditions) {
+                              <span hlmBadge variant="outline">
+                                <ng-icon name="lucideSplit" />
+                                {{ t('builder.fields.conditional') }}
+                              </span>
+                            }
                             @if (localized() && !attributeLocalized(entry.attribute)) {
                               <span hlmBadge variant="outline">
                                 <ng-icon name="lucideGlobe" />
@@ -619,6 +648,11 @@ interface AttributeDraft {
                           </span>
                           @if (summary(entry.attribute); as text) {
                             <span class="text-muted-foreground truncate text-xs">{{ text }}</span>
+                          }
+                          @if (entry.attribute.configurable === false) {
+                            <span class="text-muted-foreground text-xs">{{
+                              t('builder.fields.lockedHint')
+                            }}</span>
                           }
                         </div>
                         <div class="flex shrink-0 items-center gap-0.5">
@@ -644,27 +678,29 @@ interface AttributeDraft {
                           >
                             <ng-icon name="lucideArrowDown" />
                           </button>
-                          <button
-                            hlmBtn
-                            size="icon-xs"
-                            variant="ghost"
-                            [attr.aria-label]="t('builder.fields.edit', { name: entry.name })"
-                            [attr.title]="t('builder.fields.edit', { name: entry.name })"
-                            (click)="editAttribute(entry.name)"
-                          >
-                            <ng-icon name="lucidePencil" />
-                          </button>
-                          <button
-                            hlmBtn
-                            size="icon-xs"
-                            variant="ghost"
-                            class="hover:text-destructive"
-                            [attr.aria-label]="t('builder.fields.remove', { name: entry.name })"
-                            [attr.title]="t('builder.fields.remove', { name: entry.name })"
-                            (click)="removeAttribute(entry.name)"
-                          >
-                            <ng-icon name="lucideTrash2" />
-                          </button>
+                          @if (entry.attribute.configurable !== false) {
+                            <button
+                              hlmBtn
+                              size="icon-xs"
+                              variant="ghost"
+                              [attr.aria-label]="t('builder.fields.edit', { name: entry.name })"
+                              [attr.title]="t('builder.fields.edit', { name: entry.name })"
+                              (click)="editAttribute(entry.name)"
+                            >
+                              <ng-icon name="lucidePencil" />
+                            </button>
+                            <button
+                              hlmBtn
+                              size="icon-xs"
+                              variant="ghost"
+                              class="hover:text-destructive"
+                              [attr.aria-label]="t('builder.fields.remove', { name: entry.name })"
+                              [attr.title]="t('builder.fields.remove', { name: entry.name })"
+                              (click)="removeAttribute(entry.name)"
+                            >
+                              <ng-icon name="lucideTrash2" />
+                            </button>
+                          }
                         </div>
                       </li>
                     }
@@ -1035,6 +1071,138 @@ interface AttributeDraft {
                   </div>
                 </div>
               }
+              <fieldset hlmFieldSet class="rounded-lg border p-3">
+                <legend hlmFieldLegend variant="label" class="px-1">
+                  {{ t('builder.condition.title') }}
+                </legend>
+                @if (!attr.conditions) {
+                  <p class="text-muted-foreground text-sm">{{ t('builder.condition.none') }}</p>
+                  <div>
+                    <button
+                      hlmBtn
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      [disabled]="!conditionFields().length"
+                      (click)="addCondition()"
+                    >
+                      <ng-icon name="lucidePlus" /> {{ t('builder.condition.add') }}
+                    </button>
+                  </div>
+                  @if (!conditionFields().length) {
+                    <p class="text-muted-foreground text-xs">
+                      {{ t('builder.condition.noFields') }}
+                    </p>
+                  }
+                } @else {
+                  @if (simpleRule(); as rule) {
+                    <div class="flex flex-wrap items-end gap-2">
+                      <span class="pb-2 text-sm">{{ t('builder.condition.showWhen') }}</span>
+                      <div hlmField class="w-44">
+                        <label hlmFieldLabel for="condition-field" class="sr-only">{{
+                          t('builder.condition.field')
+                        }}</label>
+                        <hlm-native-select
+                          selectId="condition-field"
+                          size="sm"
+                          [value]="rule.field"
+                          (valueChange)="setCondition({ field: $event ?? '' })"
+                        >
+                          @if (!isConditionField(rule.field)) {
+                            <option hlmNativeSelectOption [value]="rule.field">
+                              {{ rule.field }}
+                            </option>
+                          }
+                          @for (option of conditionFields(); track option.name) {
+                            <option hlmNativeSelectOption [value]="option.name">
+                              {{ option.name }}
+                            </option>
+                          }
+                        </hlm-native-select>
+                      </div>
+                      <div hlmField class="w-32">
+                        <label hlmFieldLabel for="condition-operator" class="sr-only">{{
+                          t('builder.condition.operator')
+                        }}</label>
+                        <hlm-native-select
+                          selectId="condition-operator"
+                          size="sm"
+                          [value]="rule.operator"
+                          (valueChange)="setCondition({ operator: $event === '!=' ? '!=' : '==' })"
+                        >
+                          <option hlmNativeSelectOption value="==">
+                            {{ t('builder.condition.is') }}
+                          </option>
+                          <option hlmNativeSelectOption value="!=">
+                            {{ t('builder.condition.isNot') }}
+                          </option>
+                        </hlm-native-select>
+                      </div>
+                      @let compared = conditionAttribute(rule.field);
+                      <div hlmField class="min-w-40 flex-1">
+                        <label hlmFieldLabel for="condition-value" class="sr-only">{{
+                          t('builder.condition.value')
+                        }}</label>
+                        @if (compared?.type === 'boolean') {
+                          <hlm-native-select
+                            selectId="condition-value"
+                            size="sm"
+                            [value]="String(rule.value)"
+                            (valueChange)="setCondition({ value: $event === 'true' })"
+                          >
+                            <option hlmNativeSelectOption value="true">
+                              {{ t('builder.condition.true') }}
+                            </option>
+                            <option hlmNativeSelectOption value="false">
+                              {{ t('builder.condition.false') }}
+                            </option>
+                          </hlm-native-select>
+                        } @else if (compared?.type === 'enumeration') {
+                          <hlm-native-select
+                            selectId="condition-value"
+                            size="sm"
+                            [value]="String(rule.value ?? '')"
+                            (valueChange)="setCondition({ value: $event ?? '' })"
+                          >
+                            @for (option of compared?.enum ?? []; track option) {
+                              <option hlmNativeSelectOption [value]="option">{{ option }}</option>
+                            }
+                          </hlm-native-select>
+                        } @else {
+                          <input
+                            hlmInput
+                            id="condition-value"
+                            class="h-8"
+                            [value]="rule.value === null ? '' : String(rule.value)"
+                            (input)="setConditionText(rule.field, $any($event.target).value)"
+                          />
+                        }
+                      </div>
+                    </div>
+                  } @else {
+                    <p class="text-muted-foreground text-sm">
+                      {{ t('builder.condition.complex') }}
+                    </p>
+                    <pre
+                      dir="ltr"
+                      class="bg-muted max-h-48 overflow-auto rounded-md p-3 font-mono text-xs"
+                      [attr.aria-label]="t('builder.condition.raw')"
+                      >{{ conditionJson(attr) }}</pre>
+                  }
+                  <div>
+                    <button
+                      hlmBtn
+                      size="sm"
+                      variant="ghost"
+                      type="button"
+                      (click)="patchAttribute({ conditions: undefined })"
+                    >
+                      <ng-icon name="lucideX" /> {{ t('builder.condition.remove') }}
+                    </button>
+                  </div>
+                }
+                <p class="text-muted-foreground text-xs">{{ t('builder.condition.hint') }}</p>
+              </fieldset>
               <div class="bg-muted/40 flex flex-wrap gap-x-6 gap-y-3 rounded-lg border p-3">
                 <div hlmField orientation="horizontal" class="w-auto">
                   <hlm-switch
@@ -1326,6 +1494,21 @@ export class Builder {
       label: `${file['displayName'] ?? uid} (${uid})`,
     })),
   );
+  protected readonly String = String;
+  /** Fields of the edited type a condition can compare (not the field being edited). */
+  protected readonly conditionFields = computed(() => {
+    const draft = this.attributeDraft();
+    return this.attributeEntries().filter(
+      (entry) =>
+        entry.name !== draft?.originalName &&
+        entry.name !== draft?.name &&
+        CONDITION_TYPES.has(entry.attribute.type),
+    );
+  });
+  /** The edited field's condition as a simple rule; `null` when absent or more complex. */
+  protected readonly simpleRule = computed(() =>
+    simpleCondition(this.attributeDraft()?.attribute.conditions),
+  );
   protected readonly attributeEntries = computed(() =>
     Object.entries(this.draft()?.attributes ?? {}).map(([name, attribute]) => ({
       name,
@@ -1501,6 +1684,7 @@ export class Builder {
               ...base,
               required: field.attribute.required,
               pluginOptions: field.attribute.pluginOptions,
+              conditions: field.attribute.conditions,
             },
           }
         : field,
@@ -1518,6 +1702,7 @@ export class Builder {
               customField: customFieldId(field.plugin, field.id),
               required: draft.attribute.required,
               pluginOptions: draft.attribute.pluginOptions,
+              conditions: draft.attribute.conditions,
             },
           }
         : draft,
@@ -1530,6 +1715,59 @@ export class Builder {
     if (field) return `${field.title} (${field.plugin})`;
     const parsed = parseCustomField(customField);
     return parsed ? `${parsed.field} (${parsed.plugin})` : customField;
+  }
+
+  protected isConditionField(name: string): boolean {
+    return this.conditionFields().some((entry) => entry.name === name);
+  }
+
+  protected conditionAttribute(name: string): Attribute | undefined {
+    return this.draft()?.attributes[name];
+  }
+
+  protected conditionJson(attribute: Attribute): string {
+    return JSON.stringify(attribute.conditions, null, 2);
+  }
+
+  /** "Show this field when <first field> is <its first value>". */
+  protected addCondition(): void {
+    const first = this.conditionFields()[0];
+    if (!first) return;
+    this.patchAttribute({
+      conditions: conditionsOf({
+        field: first.name,
+        operator: '==',
+        value: this.initialValue(first.attribute),
+      }),
+    });
+  }
+
+  private initialValue(attribute: Attribute): SimpleCondition['value'] {
+    if (attribute.type === 'boolean') return true;
+    if (attribute.type === 'enumeration') return attribute.enum?.[0] ?? '';
+    return '';
+  }
+
+  protected setCondition(changes: Partial<SimpleCondition>): void {
+    const rule = this.simpleRule();
+    if (!rule) return;
+    const next = { ...rule, ...changes };
+    // A new field starts from a value of its kind.
+    if (changes.field !== undefined && changes.field !== rule.field) {
+      const attribute = this.conditionAttribute(changes.field);
+      if (attribute) next.value = this.initialValue(attribute);
+    }
+    this.patchAttribute({ conditions: conditionsOf(next) });
+  }
+
+  /** Typed text: numbers for numeric fields, text otherwise. */
+  protected setConditionText(field: string, text: string): void {
+    const type = this.conditionAttribute(field)?.type ?? 'string';
+    const number = Number(text);
+    const numeric = ['integer', 'float', 'decimal'].includes(type);
+    this.setCondition({
+      value: numeric && text.trim() !== '' && Number.isFinite(number) ? number : text,
+    });
   }
 
   protected setEnum(text: string): void {

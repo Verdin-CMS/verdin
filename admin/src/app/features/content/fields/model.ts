@@ -308,7 +308,7 @@ export function withoutPasswords(attributes: Attributes, model: FormModel): Form
 export function relationLabelsOf(
   attributes: Attributes,
   document: Record<string, unknown> | null,
-  titleFieldOf: (target: string) => string | null,
+  titleFieldOf: (target: string, name: string) => string | null,
 ): {
   labels: Record<string, Record<string, string>>;
   inverse: Record<string, { id: string; label: string }[]>;
@@ -318,7 +318,7 @@ export function relationLabelsOf(
   if (!document) return { labels, inverse };
   for (const [name, attribute] of Object.entries(attributes)) {
     if (attribute.type !== 'relation') continue;
-    const titleField = titleFieldOf(attribute.target ?? '');
+    const titleField = titleFieldOf(attribute.target ?? '', name);
     const related = document[name];
     const items = (Array.isArray(related) ? related : related ? [related] : []) as Record<
       string,

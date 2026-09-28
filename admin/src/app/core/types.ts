@@ -57,6 +57,8 @@ export interface Attribute {
   pluginOptions?: PluginOptions;
   /** A plugin's field (`plugin::<plugin>.<field>`); `type` is how the value is stored. */
   customField?: string;
+  /** Strapi 5.17 conditional fields: `{ visible: <JSON Logic> }` (see `core/logic.ts`). */
+  conditions?: { visible?: unknown };
 }
 
 /** Strapi's `pluginOptions`; only `i18n.localized` is read. */
@@ -284,4 +286,5 @@ export const ADMIN_SETTINGS_ACTIONS = [
   'audit.read',
   'releases.manage',
   'workflows.manage',
+  'views.manage',
 ] as const;

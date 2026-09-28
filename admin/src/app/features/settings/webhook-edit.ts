@@ -32,6 +32,8 @@ import { Schema } from '../../core/schema';
 import {
   ENTRY_EVENTS,
   MEDIA_EVENTS,
+  RELEASE_EVENTS,
+  REVIEW_EVENTS,
   Webhook,
   WebhookForm,
   Webhooks,
@@ -52,7 +54,21 @@ interface EventGroup {
 const GROUPS: EventGroup[] = [
   { id: 'entries', label: 'settings.webhooks.group.entries', events: ENTRY_EVENTS },
   { id: 'media', label: 'settings.webhooks.group.media', events: MEDIA_EVENTS },
+  { id: 'releases', label: 'settings.webhooks.group.releases', events: RELEASE_EVENTS },
+  { id: 'review', label: 'settings.webhooks.group.review', events: REVIEW_EVENTS },
 ];
+
+/** Events shown with a name and a description (the others read well as they are). */
+const EVENT_TEXTS: Record<string, { label: MessageKey; description: MessageKey }> = {
+  'releases.publish': {
+    label: 'settings.webhooks.event.releasesPublish',
+    description: 'settings.webhooks.event.releasesPublishHint',
+  },
+  'review-workflows.updateEntryStage': {
+    label: 'settings.webhooks.event.updateEntryStage',
+    description: 'settings.webhooks.event.updateEntryStageHint',
+  },
+};
 
 /** Settings → Webhooks → one webhook (or `new`): its settings, signing and delivery log. */
 @Component({
@@ -192,19 +208,41 @@ const GROUPS: EventGroup[] = [
                   </div>
                   <div class="grid gap-2 ps-6 sm:grid-cols-2">
                     @for (event of group.events; track event) {
-                      <div hlmField orientation="horizontal">
-                        <hlm-checkbox
-                          [inputId]="'event-' + event"
-                          [checked]="form().events.includes(event)"
-                          (checkedChange)="toggleEvent(event, $event === true)"
-                        />
-                        <label
-                          hlmFieldLabel
-                          [for]="'event-' + event"
-                          class="font-mono text-xs font-normal"
-                          >{{ event }}</label
-                        >
-                      </div>
+                      @if (eventTexts[event]; as text) {
+                        <div hlmField orientation="horizontal" class="sm:col-span-2">
+                          <hlm-checkbox
+                            [inputId]="'event-' + event"
+                            [checked]="form().events.includes(event)"
+                            [aria-describedby]="'event-' + event + '-hint'"
+                            (checkedChange)="toggleEvent(event, $event === true)"
+                          />
+                          <div hlmFieldContent>
+                            <label hlmFieldLabel [for]="'event-' + event" class="font-normal">
+                              {{ t(text.label) }}
+                              <code class="text-muted-foreground font-mono text-xs">{{
+                                event
+                              }}</code>
+                            </label>
+                            <p hlmFieldDescription [id]="'event-' + event + '-hint'">
+                              {{ t(text.description) }}
+                            </p>
+                          </div>
+                        </div>
+                      } @else {
+                        <div hlmField orientation="horizontal">
+                          <hlm-checkbox
+                            [inputId]="'event-' + event"
+                            [checked]="form().events.includes(event)"
+                            (checkedChange)="toggleEvent(event, $event === true)"
+                          />
+                          <label
+                            hlmFieldLabel
+                            [for]="'event-' + event"
+                            class="font-mono text-xs font-normal"
+                            >{{ event }}</label
+                          >
+                        </div>
+                      }
                     }
                   </div>
                 </div>
@@ -445,6 +483,7 @@ export class WebhookEditPage {
   readonly id = input.required<string>();
 
   protected readonly groups = GROUPS;
+  protected readonly eventTexts = EVENT_TEXTS;
   /** What `v1` signs. */
   protected readonly signedPayload = '<t>.<body>';
   protected readonly creating = computed(() => this.id() === 'new');

@@ -43,6 +43,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/content/edit').then((m) => m.ContentEdit),
       },
       {
+        path: 'content/:uid/configure-view',
+        loadComponent: () =>
+          import('./features/content/edit-view-config').then((m) => m.EditViewConfigPage),
+      },
+      {
         path: 'content/:uid/:documentId',
         loadComponent: () => import('./features/content/edit').then((m) => m.ContentEdit),
       },

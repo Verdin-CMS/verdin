@@ -26,6 +26,7 @@ import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
+import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 import { HlmToggleGroupImports } from '@spartan-ng/helm/toggle-group';
 
@@ -101,6 +102,7 @@ function readView(): View {
     HlmInputGroupImports,
     HlmNativeSelectImports,
     HlmSkeletonImports,
+    HlmSpinnerImports,
     HlmTableImports,
     HlmToggleGroupImports,
     MediaThumb,
@@ -121,6 +123,9 @@ function readView(): View {
           @if (canCreate()) {
             <button hlmBtn variant="outline" (click)="openCreateFolder()">
               <ng-icon name="lucideFolderPlus" /> {{ t('media.folder.new') }}
+            </button>
+            <button hlmBtn variant="outline" (click)="openFromUrl()">
+              <ng-icon name="lucideLink" /> {{ t('media.fromUrl.button') }}
             </button>
             <button hlmBtn (click)="fileInput.click()">
               <ng-icon name="lucideUpload" /> {{ t('media.upload.button') }}
@@ -581,6 +586,77 @@ function readView(): View {
     }
 
     <vd-upload-panel [queue]="queue" [floating]="true" />
+
+    <hlm-dialog [state]="fromUrl() ? 'open' : 'closed'" (closed)="fromUrl.set(null)">
+      <hlm-dialog-content
+        *hlmDialogPortal="let ctx"
+        class="sm:max-w-md"
+        [closeLabel]="t('common.close')"
+      >
+        @if (fromUrl(); as form) {
+          <form class="flex flex-col gap-4" (submit)="$event.preventDefault(); addFromUrl()">
+            <hlm-dialog-header>
+              <h2 hlmDialogTitle>{{ t('media.fromUrl.title') }}</h2>
+              <p hlmDialogDescription>
+                {{ t('media.fromUrl.description', { folder: currentName() }) }}
+              </p>
+            </hlm-dialog-header>
+            <div hlmField [attr.data-invalid]="fromUrlError() ? true : null">
+              <label hlmFieldLabel for="media-from-url">{{ t('media.fromUrl.url') }}</label>
+              <input
+                dir="ltr"
+                hlmInput
+                id="media-from-url"
+                type="url"
+                inputmode="url"
+                autocomplete="off"
+                placeholder="https://"
+                required
+                [attr.aria-invalid]="fromUrlError() ? true : null"
+                [attr.aria-describedby]="fromUrlError() ? 'media-from-url-error' : null"
+                [value]="form.url"
+                (input)="patchFromUrl({ url: $any($event.target).value })"
+              />
+              @if (fromUrlError(); as message) {
+                <hlm-field-error forceShow id="media-from-url-error">{{ message }}</hlm-field-error>
+              }
+            </div>
+            <div hlmField>
+              <label hlmFieldLabel for="media-from-url-name">{{ t('media.fromUrl.name') }}</label>
+              <input
+                hlmInput
+                id="media-from-url-name"
+                [value]="form.name"
+                (input)="patchFromUrl({ name: $any($event.target).value })"
+              />
+              <p hlmFieldDescription>{{ t('media.fromUrl.nameHint') }}</p>
+            </div>
+            <div hlmField>
+              <label hlmFieldLabel for="media-from-url-alt">{{ t('media.file.alt') }}</label>
+              <input
+                hlmInput
+                id="media-from-url-alt"
+                [value]="form.alternativeText"
+                (input)="patchFromUrl({ alternativeText: $any($event.target).value })"
+              />
+            </div>
+            <hlm-dialog-footer>
+              <button hlmBtn variant="outline" type="button" (click)="fromUrl.set(null)">
+                {{ t('common.cancel') }}
+              </button>
+              <button hlmBtn type="submit" [disabled]="fetching() || !form.url.trim()">
+                @if (fetching()) {
+                  <hlm-spinner />
+                } @else {
+                  <ng-icon name="lucideDownload" />
+                }
+                {{ t('media.fromUrl.add') }}
+              </button>
+            </hlm-dialog-footer>
+          </form>
+        }
+      </hlm-dialog-content>
+    </hlm-dialog>
 
     <vd-media-file-sheet
       [file]="openedFile()"
@@ -1125,6 +1201,49 @@ export class MediaLibraryPage {
 
   // Uploads
 
+  protected readonly fromUrl = signal<{
+    url: string;
+    name: string;
+    alternativeText: string;
+  } | null>(null);
+  protected readonly fromUrlError = signal<string | null>(null);
+  protected readonly fetching = signal(false);
+
+  protected openFromUrl(): void {
+    this.fromUrlError.set(null);
+    this.fromUrl.set({ url: '', name: '', alternativeText: '' });
+  }
+
+  protected patchFromUrl(
+    changes: Partial<{ url: string; name: string; alternativeText: string }>,
+  ): void {
+    this.fromUrl.update((form) => (form ? { ...form, ...changes } : form));
+    if (changes.url !== undefined) this.fromUrlError.set(null);
+  }
+
+  /** The server downloads the file into the current folder. */
+  protected async addFromUrl(): Promise<void> {
+    const form = this.fromUrl();
+    if (!form || !form.url.trim() || this.fetching()) return;
+    this.fetching.set(true);
+    this.fromUrlError.set(null);
+    try {
+      const file = await this.media.fromUrl({
+        url: form.url.trim(),
+        folder: this.folderId(),
+        ...(form.name.trim() ? { name: form.name.trim() } : {}),
+        ...(form.alternativeText.trim() ? { alternativeText: form.alternativeText.trim() } : {}),
+      });
+      this.fromUrl.set(null);
+      toast.success(this.t('media.fromUrl.done', { name: file.name }));
+      await this.reload();
+    } catch (error) {
+      this.fromUrlError.set(ApiFailure.from(error).message);
+    } finally {
+      this.fetching.set(false);
+    }
+  }
+
   protected onPick(event: Event): void {
     const input = event.target as HTMLInputElement;
     const files = Array.from(input.files ?? []);
@@ -1147,6 +1266,7 @@ export class MediaLibraryPage {
       this.canCreate() &&
       !!event.dataTransfer?.types.includes('Files') &&
       !this.dialog() &&
+      !this.fromUrl() &&
       !this.openedFile()
     );
   }

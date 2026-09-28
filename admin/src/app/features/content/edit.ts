@@ -29,6 +29,7 @@ import { Api, ApiFailure, Issue, toQuery } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { allowedLocale } from '../../core/permissions';
 import { EntryDuplicates } from '../../core/duplicate';
+import { EditView, EditViews } from '../../core/edit-view';
 import {
   ContentLocales,
   LocaleState,
@@ -222,7 +223,7 @@ function withLocale(query: string, locale: string | null): string {
               <ng-icon name="lucideHistory" /> {{ t('content.history.open') }}
             </a>
           }
-          @if (canDuplicate()) {
+          @if (canDuplicate() || canConfigure()) {
             <button
               hlmBtn
               variant="ghost"
@@ -237,10 +238,17 @@ function withLocale(query: string, locale: string | null): string {
               <ng-icon name="lucideEllipsis" />
             </button>
             <ng-template #moreMenu>
-              <hlm-dropdown-menu class="w-48">
-                <button hlmDropdownMenuItem (triggered)="duplicate()">
-                  <ng-icon name="lucideCopyPlus" /> {{ t('content.duplicate.action') }}
-                </button>
+              <hlm-dropdown-menu class="w-56">
+                @if (canDuplicate()) {
+                  <button hlmDropdownMenuItem (triggered)="duplicate()">
+                    <ng-icon name="lucideCopyPlus" /> {{ t('content.duplicate.action') }}
+                  </button>
+                }
+                @if (canConfigure()) {
+                  <button hlmDropdownMenuItem (triggered)="configureView()">
+                    <ng-icon name="lucideLayoutDashboard" /> {{ t('content.view.configure') }}
+                  </button>
+                }
               </hlm-dropdown-menu>
             </ng-template>
           }
@@ -340,6 +348,7 @@ function withLocale(query: string, locale: string | null): string {
                   [refs]="refs()"
                   [inverse]="inverse()"
                   [shared]="shared()"
+                  [view]="view()"
                   prefix="doc"
                 />
               </div>
@@ -603,6 +612,8 @@ export class DocumentForm implements OnInit {
   readonly existingId = input<string | null>(null);
   /** Another locale's version, whose shared fields prefill a missing locale. */
   readonly sharedSource = input<Document | null>(null);
+  /** The type's edit view (`null`: the default layout). */
+  readonly view = input<EditView | null>(null);
 
   protected readonly locales = inject(ContentLocales);
   protected readonly localeStateLabels = LOCALE_STATE_LABELS;
@@ -710,6 +721,8 @@ export class DocumentForm implements OnInit {
   private resizing = false;
 
   private readonly duplicates = inject(EntryDuplicates);
+  /** "Configure the view" needs `views.manage`. */
+  protected readonly canConfigure = computed(() => this.auth.can('views.manage'));
   protected readonly canDuplicate = computed(
     () =>
       this.type().kind === 'collectionType' &&
@@ -746,9 +759,15 @@ export class DocumentForm implements OnInit {
         ? prefillShared(type.attributes, this.sharedSource(), components)
         : toModel(type.attributes, document, components),
     );
-    this.documentForm = form(this.model, (path) => applyRules(path, type.attributes, this.t), {
-      injector: this.injector,
-    }) as unknown as Tree;
+    this.documentForm = form(
+      this.model,
+      (path) =>
+        applyRules(path, type.attributes, this.t, {
+          scope: this.model,
+          readOnly: (name) => this.view()?.fields[name]?.editable === false,
+        }),
+      { injector: this.injector },
+    ) as unknown as Tree;
     this.tree = this.documentForm;
     this.documentId.set(document?.documentId ?? this.existingId());
     this.published.set(!!this.publishedAt() || (!type.draftAndPublish && !!document));
@@ -788,7 +807,9 @@ export class DocumentForm implements OnInit {
     );
 
     // Labels for relation pickers and read-only inverse sides, from the populated document.
-    const found = relationLabelsOf(type.attributes, document, (target) => {
+    const found = relationLabelsOf(type.attributes, document, (target, name) => {
+      const main = this.view()?.fields[name]?.mainField;
+      if (main) return main;
       const targetType = this.schema.type(target);
       return targetType ? this.schema.titleField(targetType) : null;
     });
@@ -1070,6 +1091,12 @@ export class DocumentForm implements OnInit {
     this.split.set(next);
   }
 
+  protected configureView(): void {
+    void this.router.navigate(['/content', this.type().uid, 'configure-view'], {
+      queryParams: { from: this.router.url },
+    });
+  }
+
   protected async duplicate(): Promise<void> {
     const id = this.documentId();
     if (!id || this.busy()) return;
@@ -1132,6 +1159,7 @@ export class DocumentForm implements OnInit {
           [versions]="versions()"
           [existingId]="existingId()"
           [sharedSource]="sharedSource()"
+          [view]="view()"
         />
       }
     }
@@ -1144,6 +1172,7 @@ export class ContentEdit {
   private readonly schema = inject(Schema);
   private readonly locales = inject(ContentLocales);
   private readonly auth = inject(Auth);
+  private readonly views = inject(EditViews);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
@@ -1159,6 +1188,7 @@ export class ContentEdit {
   protected readonly versions = signal<LocaleVersion[]>([]);
   protected readonly existingId = signal<string | null>(null);
   protected readonly sharedSource = signal<Document | null>(null);
+  protected readonly view = signal<EditView | null>(null);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly loadKey = signal('');
@@ -1190,6 +1220,8 @@ export class ContentEdit {
       this.loading.set(false);
       return;
     }
+    // The edit view loads alongside; the default layout shows when there is none.
+    const view = this.views.get(uid).catch(() => null);
     try {
       let locale: string | null = null;
       if (isLocalized(type)) {
@@ -1264,6 +1296,7 @@ export class ContentEdit {
           }
         }
       }
+      this.view.set(await view);
       if (request !== this.requests) return;
       this.loadKey.set(key);
     } catch (error) {

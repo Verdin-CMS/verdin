@@ -122,6 +122,10 @@ import {
   lucideWebhook,
   lucideX,
   lucideZap,
+  lucideBot,
+  lucideCrop,
+  lucideReplace,
+  lucideSplit,
 } from '@ng-icons/lucide';
 
 /** Every icon the admin uses, registered once at bootstrap. */
@@ -249,4 +253,8 @@ export const ICONS = {
   lucideWebhook,
   lucideX,
   lucideZap,
+  lucideBot,
+  lucideCrop,
+  lucideReplace,
+  lucideSplit,
 };

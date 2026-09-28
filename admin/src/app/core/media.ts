@@ -27,6 +27,14 @@ export interface MediaInfo {
   focalPoint?: { x: number; y: number } | null;
 }
 
+/** Body of `POST /upload/from-url`. */
+export interface FromUrlInput {
+  url: string;
+  name?: string;
+  folder?: number | null;
+  alternativeText?: string;
+}
+
 /** Progress of one upload: `progress` 0–1, then `file` once stored. */
 export type UploadEvent = { progress: number; file?: undefined } | { progress: 1; file: MediaFile };
 
@@ -88,6 +96,18 @@ export class Media {
           return { progress: 0 };
         }),
       );
+  }
+
+  /** New content for a file (a pick, or a crop): its id, metadata and links stay. */
+  async replace(id: number, file: Blob, name: string): Promise<MediaFile> {
+    const form = new FormData();
+    form.append('files', file, name);
+    return this.api.post<MediaFile>(`/upload/files/${id}/replace`, form);
+  }
+
+  /** Downloads a public URL into the library (the server fetches it). */
+  fromUrl(input: FromUrlInput): Promise<MediaFile> {
+    return this.api.post<MediaFile>('/upload/from-url', input);
   }
 
   update(id: number, info: MediaInfo): Promise<MediaFile> {

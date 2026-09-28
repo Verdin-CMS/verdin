@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  compactDisabled,
+  disabledSetting,
   emptySsoForm,
+  expandDisabled,
+  mcpCommand,
+  mcpUrl,
+  normalizeOrigin,
+  readDisabled,
+  readOrigins,
+  toggleOperations,
   previewSettingsFrom,
   previewTemplate,
   previewTtlProblem,
@@ -144,5 +153,56 @@ describe('single sign-on settings', () => {
     );
     expect(ssoStartUrl('/cms/admin/api/', 'corp')).toBe('/cms/admin/api/auth/sso/corp');
     expect(splitList('a, b  c,,a')).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('GraphQL disabled operations', () => {
+  it('expands stored groups and compacts them back', () => {
+    expect([...expandDisabled(['queries', 'delete', 'nope'])]).toEqual([
+      'find',
+      'findOne',
+      'delete',
+    ]);
+    expect(expandDisabled(['*']).size).toBe(5);
+    expect(compactDisabled(new Set(['find', 'findOne', 'create', 'update', 'delete']))).toEqual([
+      '*',
+    ]);
+    expect(compactDisabled(new Set(['create', 'update', 'delete', 'find']))).toEqual([
+      'find',
+      'mutations',
+    ]);
+    expect(compactDisabled(new Set(['findOne', 'findOne']))).toEqual(['findOne']);
+    expect(compactDisabled(new Set())).toEqual([]);
+  });
+
+  it('reads and writes settings.disabled', () => {
+    const state = readDisabled({
+      disabled: { 'api::a': ['mutations'], 'api::b': [], 'api::c': 'x', 'api::d': ['find', 3] },
+    });
+    expect(Object.keys(state)).toEqual(['api::a', 'api::d']);
+    expect(readDisabled(null)).toEqual({});
+    const next = {
+      ...state,
+      'api::a': toggleOperations(state['api::a'], ['find', 'findOne'], true),
+      'api::d': toggleOperations(state['api::d'], ['find'], false),
+    };
+    expect(disabledSetting(next)).toEqual({ 'api::a': ['*'] });
+  });
+});
+
+describe('MCP settings', () => {
+  it('reads origins and builds the endpoint and command', () => {
+    expect(readOrigins({ allowedOrigins: ['https://a.example', 4] })).toEqual([
+      'https://a.example',
+    ]);
+    expect(readOrigins(null)).toEqual([]);
+    expect(normalizeOrigin(' https://App.example:8443/path ')).toBe('https://app.example:8443');
+    expect(normalizeOrigin('ftp://x')).toBeNull();
+    expect(normalizeOrigin('nope')).toBeNull();
+    expect(mcpUrl('/api', 'http://localhost:1337')).toBe('http://localhost:1337/mcp');
+    expect(mcpUrl('https://api.example/api', 'http://localhost')).toBe('https://api.example/mcp');
+    expect(mcpCommand('https://x/mcp')).toBe(
+      'claude mcp add --transport http verdin https://x/mcp --header "Authorization: Bearer <token>"',
+    );
   });
 });
