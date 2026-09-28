@@ -325,8 +325,13 @@ impl App {
         let status = response.status();
         let headers = response.headers().clone();
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
-        let body =
-            if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap() };
+        // Bodies that are not JSON (CSV, HTML) come back as text.
+        let body = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes)
+                .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()))
+        };
         Response { status, body, headers }
     }
 

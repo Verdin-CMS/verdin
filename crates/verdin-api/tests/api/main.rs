@@ -31,6 +31,7 @@ mod search;
 mod sso;
 mod stats;
 mod traffic;
+mod transfer;
 mod two_factor;
 mod usage;
 mod views;

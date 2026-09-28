@@ -612,6 +612,8 @@ POST /content/:uid/:documentId/actions/publish|unpublish|discard-draft
 GET  /content/:uid/uid-available?field=slug&value=…  (M5)
 GET  /content/:uid/:documentId/usage   where used: versions referencing the entry
 GET  /upload/files/:id/usage           where used: versions showing the file
+GET  /content/:uid/export?format=csv|json   the list (filters, sort, status, locale) as a file
+POST /content/:uid/import               { format, data, mapping, dryRun, publish }
 
 CRUD /users, /roles, /api-tokens, /public-permissions
 GET|PUT /users/me/preferences          the caller's admin preferences (dashboard layout), any admin
@@ -627,6 +629,8 @@ GET  /features, PUT /features/:id      optional features (Settings → Features)
 Admin content routes read drafts by default and write drafts only (publishing is an explicit action). Writes record `created_by_id` / `updated_by_id`; `is-creator` conditions filter reads and guard writes. Bodies of the settings routes are plain JSON (no `data` wrapper); content routes use `{ "data": … }` like the content API.
 
 **Where used** (`…/usage`) lists every version (`uid`, `documentId`, `locale`, `status`, `field`, `title`) that references an entry — owning relations, polymorphic relations, relations inside components and dynamic zones — or a file — media fields, media inside components, `image` blocks (by id or URL) and rich text containing the file's URL. `field` is the attribute path (`sections.0.image`). Only versions the admin may read are listed; `meta.hidden` counts the others. JSON and rich text columns are scanned in pages of 500 rows, so the call costs a pass over the types that can hold such references.
+
+**Import & export** of one content type. Exports write one row per document of the list the admin sees (its filters, sort, `status` and `locale`, at most 50,000): `documentId`, then the attributes they may read in the write format — relations as `documentId`s, media as file ids, polymorphic relations as `uid:documentId`, components, dynamic zones, blocks and JSON as JSON; in CSV, lists are joined with `|` and text that starts like a spreadsheet formula gets a leading `'` (dropped again on import). Imports take the same shapes (at most 5,000 rows): `mapping` renames columns (`null` skips one; unknown columns are reported in `ignoredColumns`), a row with an existing `documentId` updates that document (`content.update`), others are created (`content.create`), and `publish` publishes each row. Rows are written one by one; failing ones are listed with their `ValidationError` details and skipped. `dryRun` checks every row in full — constraints and references included — and rolls it back, without hooks or events. Files are bounded by `server.body_limit`.
 
 UI metadata (list columns, visible fields, form layout) lives in `schema/content-types/<name>.ui.json`, separate from the data schema. It is the equivalent of Strapi's "configure the view", but versionable.
 

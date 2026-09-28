@@ -114,7 +114,7 @@ Hygraph) that fit Verdin best.
 | Image transformations ✅ | M | `/uploads/…?w=&h=&fit=&format=&q=` with focal-point crops, presets, signed URLs and a disk cache (local provider; AVIF output later) |
 | Full-text search ✅ | M | Tantivy index inside the binary, `?_q=` on the REST and admin APIs (admin list UI pending); Meilisearch/Typesense sync moved to Later |
 | 2FA for admins (API ✅) | S | TOTP, passkeys (WebAuthn), recovery codes, enforceable per role; admin UI pending |
-| CSV/JSON import & export | S | Per content type from the list, with field mapping and a dry run |
+| CSV/JSON import & export (API ✅) | S | Per content type from the list, with field mapping and a dry run; admin UI pending |
 | Cross-field validation ✅ | S | Rules that compare fields (`endDate > startDate`) declared in the schema; JSON Logic, checked with `required` |
 | Official plugins | S each | SEO fields + sitemap, redirects, nested pages and menus, form builder with submissions |
 | AI actions | M | Translate a locale, alt text, summaries and SEO suggestions, with the key of the user's provider (Anthropic, OpenAI, local); off by default |

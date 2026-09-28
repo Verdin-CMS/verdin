@@ -112,6 +112,8 @@ pub struct DocumentService {
     locale: Option<String>,
     /// Ranks `_q` (the `search` feature).
     search: Option<Arc<dyn search::SearchIndex>>,
+    /// Writes are checked, then rolled back (no hooks, no events).
+    dry_run: bool,
 }
 
 impl DocumentService {
@@ -125,6 +127,7 @@ impl DocumentService {
             locales: Locales::default(),
             locale: None,
             search: None,
+            dry_run: false,
         }
     }
 
@@ -149,7 +152,7 @@ impl DocumentService {
         document_id: Option<&str>,
         data: Option<&Json>,
     ) -> Result<Option<Json>> {
-        if self.hooks.is_empty() {
+        if self.hooks.is_empty() || self.dry_run {
             return Ok(None);
         }
         let mut current = data.cloned();
@@ -184,6 +187,12 @@ impl DocumentService {
 
     pub fn locales(&self) -> &Locales {
         &self.locales
+    }
+
+    /// The same service, whose creates and updates are validated in full (constraints and
+    /// references included) and rolled back: imports' dry runs.
+    pub fn dry_run(&self) -> Self {
+        Self { dry_run: true, ..self.clone() }
     }
 
     /// The same service, reading and writing localized types in `locale`.
@@ -684,6 +693,10 @@ impl DocumentService {
         } else {
             self.ensure_required(&mut tx, model, &document_id, PUBLISHED).await?;
         }
+        if self.dry_run {
+            tx.rollback().await?;
+            return Ok(document_id);
+        }
         tx.commit().await?;
         self.emit(EventKind::Created, uid, &document_id, options.actor).await;
         if draft_and_publish && options.publish {
@@ -778,6 +791,10 @@ impl DocumentService {
             }
         } else {
             self.ensure_required(&mut tx, model, document_id, PUBLISHED).await?;
+        }
+        if self.dry_run {
+            tx.rollback().await?;
+            return Ok(());
         }
         tx.commit().await?;
         self.emit(EventKind::Updated, uid, document_id, options.actor).await;

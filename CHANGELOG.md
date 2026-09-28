@@ -32,6 +32,8 @@ All notable changes to Verdin are documented here. The format follows
 - **Two-factor authentication for admins**: TOTP and passkeys (WebAuthn: ES256, EdDSA,
   RS256) with single-use recovery codes, a two-step sign-in, and roles that require it
   (`requireTwoFactor`).
+- **CSV/JSON import and export** per content type in the admin API, with column mapping,
+  upserts by `documentId` and a dry run that validates every row without writing.
 
 ## [0.8.0] - 2026-09-28
 

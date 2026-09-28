@@ -56,6 +56,8 @@ mod releases_admin;
 mod review_admin;
 #[path = "sso_admin.rs"]
 mod sso_admin;
+#[path = "transfer_admin.rs"]
+mod transfer_admin;
 #[path = "two_factor_admin.rs"]
 mod two_factor_admin;
 #[path = "upload_admin.rs"]
@@ -267,6 +269,7 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(preview_admin::routes())
         .merge(sso_admin::routes())
         .merge(two_factor_admin::routes())
+        .merge(transfer_admin::routes())
         .merge(review_admin::routes())
         .merge(account_admin::routes())
         .merge(views_admin::routes())
