@@ -18,6 +18,8 @@ pub(crate) struct Analysis {
     pub width: u32,
     pub height: u32,
     pub formats: Vec<Generated>,
+    /// The original, scaled down (see `max_original_size`).
+    pub original: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +56,7 @@ pub(crate) fn analyse(
     breakpoints: &[Breakpoint],
     max_megapixels: u32,
     responsive: bool,
+    max_original: Option<u32>,
 ) -> Option<Analysis> {
     let mut reader = ImageReader::open(path).ok()?;
     reader.set_format(format);
@@ -72,6 +75,13 @@ pub(crate) fn analyse(
     let mut image = DynamicImage::from_decoder(decoder).ok()?;
     if let Some(orientation) = orientation {
         image.apply_orientation(orientation);
+    }
+    let mut original = None;
+    if let Some(max) = max_original
+        && (image.width() > max || image.height() > max)
+    {
+        image = image.resize(max, max, FilterType::Lanczos3);
+        original = encode(&image, format);
     }
     let (width, height) = (image.width(), image.height());
     let mut formats = Vec::new();
@@ -101,7 +111,7 @@ pub(crate) fn analyse(
             }
         }
     }
-    Some(Analysis { width, height, formats })
+    Some(Analysis { width, height, formats, original })
 }
 
 fn encode(image: &DynamicImage, format: ImageFormat) -> Option<Vec<u8>> {
@@ -134,7 +144,7 @@ mod tests {
     fn generates_formats_smaller_than_the_original() {
         let file = png(1200, 800);
         let breakpoints = crate::config::UploadConfig::default().breakpoints;
-        let analysis = analyse(file.path(), ImageFormat::Png, &breakpoints, 100, true).unwrap();
+        let analysis = analyse(file.path(), ImageFormat::Png, &breakpoints, 100, true, None).unwrap();
         assert_eq!((analysis.width, analysis.height), (1200, 800));
         let names: Vec<(&str, u32, u32)> =
             analysis.formats.iter().map(|f| (f.name.as_str(), f.width, f.height)).collect();
@@ -149,15 +159,26 @@ mod tests {
         );
 
         let small = png(300, 200);
-        let analysis = analyse(small.path(), ImageFormat::Png, &breakpoints, 100, true).unwrap();
+        let analysis = analyse(small.path(), ImageFormat::Png, &breakpoints, 100, true, None).unwrap();
         let names: Vec<&str> = analysis.formats.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(names, ["thumbnail"]);
         assert_eq!(dimensions(small.path()), Some((300, 200)));
     }
 
     #[test]
+    fn scales_large_originals_down() {
+        let file = png(1200, 600);
+        let analysis = analyse(file.path(), ImageFormat::Png, &[], 100, false, Some(800)).unwrap();
+        assert_eq!((analysis.width, analysis.height), (800, 400));
+        assert!(analysis.original.is_some());
+        let small = png(300, 200);
+        let analysis = analyse(small.path(), ImageFormat::Png, &[], 100, false, Some(800)).unwrap();
+        assert!(analysis.original.is_none(), "kept as sent");
+    }
+
+    #[test]
     fn refuses_images_over_the_pixel_budget() {
         let file = png(2000, 1000);
-        assert!(analyse(file.path(), ImageFormat::Png, &[], 1, false).is_none());
+        assert!(analyse(file.path(), ImageFormat::Png, &[], 1, false, None).is_none());
     }
 }

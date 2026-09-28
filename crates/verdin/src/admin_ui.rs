@@ -18,15 +18,15 @@ use serde_json::json;
 
 /// Content-Security-Policy of the admin panel. Angular's critical-CSS inlining is off
 /// (it needs inline event handlers), so scripts are same-origin only. `media` lists extra
-/// origins images and video may load from (a remote media library); `frames` the sites
-/// the side-by-side preview may show.
+/// origins images, video and PDF previews may load from (a remote media library);
+/// `frames` the sites the side-by-side preview may show.
 fn csp(media: &[String], frames: &[String]) -> String {
     let extra: String = media.iter().map(|origin| format!(" {origin}")).collect();
     let frames: String = frames.iter().map(|origin| format!(" {origin}")).collect();
     format!(
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
          img-src 'self' data: blob:{extra}; media-src 'self' blob:{extra}; font-src 'self' data:; \
-         connect-src 'self'; frame-src 'self'{frames}; frame-ancestors 'none'; base-uri 'self'; \
+         connect-src 'self'; frame-src 'self'{extra}{frames}; frame-ancestors 'none'; base-uri 'self'; \
          form-action 'self'; object-src 'none'"
     )
 }
@@ -355,7 +355,10 @@ mod tests {
         assert!(csp.contains("frame-ancestors 'none'"), "{csp}");
         assert!(csp.contains("img-src 'self' data: blob: https://media.example.com;"), "{csp}");
         assert!(csp.contains("media-src 'self' blob: https://media.example.com;"), "{csp}");
-        assert!(csp.contains("frame-src 'self' https://site.example;"), "{csp}");
+        assert!(
+            csp.contains("frame-src 'self' https://media.example.com https://site.example;"),
+            "{csp}"
+        );
         assert!(body.contains("&quot;accent&quot;:&quot;#ff6600&quot;"), "{body}");
         assert!(body.contains("&quot;logoUrl&quot;:&quot;/admin/_branding/logo&quot;"), "{body}");
         let (status, headers, logo) = get(&app, "/admin/_branding/logo").await;

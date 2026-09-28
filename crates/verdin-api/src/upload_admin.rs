@@ -19,7 +19,13 @@ use crate::error::ApiError;
 use crate::upload::{parse_info, read_multipart, upload_layers};
 
 pub(super) fn routes(service: Option<&UploadService>) -> Router<AdminState> {
-    let uploads = upload_layers(Router::new().route("/upload", post(upload)), service);
+    let uploads = upload_layers(
+        Router::new()
+            .route("/upload", post(upload))
+            .route("/upload/files/{id}/replace", post(replace_file))
+            .route("/upload/from-url", post(from_url)),
+        service,
+    );
     Router::new()
         .route("/upload/files", get(list_files))
         .route("/upload/files/{id}", get(get_file).put(update_file).delete(delete_file))
@@ -149,6 +155,140 @@ async fn upload(
         created.push(file_json(&record));
     }
     Ok((StatusCode::CREATED, Json(json!({ "data": created }))).into_response())
+}
+
+/// `POST /upload/files/{id}/replace`: new content for a file, keeping its id and links.
+async fn replace_file(
+    State(state): State<AdminState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    multipart: Multipart,
+) -> ApiResult {
+    let (principal, grant) = media(&state, &headers, actions::MEDIA_UPDATE).await?;
+    let service = service(&state)?;
+    let current = service.find(id).await?.ok_or(ApiError::NotFound)?;
+    ensure_own(&current, &principal, grant)?;
+    let uploads = read_multipart(multipart, service).await?;
+    let Some((file, _temp)) = uploads.files.first() else {
+        return Err(ApiError::BadRequest("send the new file in the `files` field".into()));
+    };
+    let incoming =
+        IncomingFile { path: file.path.clone(), name: file.name.clone(), size: file.size };
+    let replaced = service.replace(id, incoming, None, Some(principal.user.id)).await?;
+    Ok(data(file_json(&replaced)))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct FromUrl {
+    url: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    folder: Option<i64>,
+    #[serde(default)]
+    alternative_text: Option<String>,
+}
+
+/// `POST /upload/from-url`: downloads a public file into the library (at most
+/// `max_file_size`, three redirects, public addresses only unless configured).
+async fn from_url(State(state): State<AdminState>, headers: HeaderMap, bytes: Bytes) -> ApiResult {
+    let (principal, _) = media(&state, &headers, actions::MEDIA_CREATE).await?;
+    let service = service(&state)?;
+    let input: FromUrl = super::body(&bytes)?;
+    let allow_private = state.config.allow_private_urls;
+    crate::webhooks::check_url(&input.url, allow_private).map_err(ApiError::BadRequest)?;
+    let mut client = reqwest::Client::builder()
+        .user_agent(concat!("Verdin/", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(60))
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+            if attempt.previous().len() >= 3 {
+                attempt.error("too many redirects")
+            } else if let Err(error) =
+                crate::webhooks::check_url(attempt.url().as_str(), allow_private)
+            {
+                attempt.error(error)
+            } else {
+                attempt.follow()
+            }
+        }));
+    if !allow_private {
+        client = client.dns_resolver(std::sync::Arc::new(crate::webhooks::PublicResolver));
+    }
+    let client = client.build().map_err(|error| ApiError::Internal(error.to_string()))?;
+    let failed = |error: reqwest::Error| {
+        ApiError::BadRequest(format!("could not download the file: {error}"))
+    };
+    let mut response =
+        client.get(&input.url).send().await.map_err(failed)?.error_for_status().map_err(failed)?;
+    let max = service.config().max_file_size;
+    if response.content_length().is_some_and(|length| length > max) {
+        return Err(ApiError::BadRequest(format!(
+            "the file is larger than {} MB",
+            max / 1_000_000
+        )));
+    }
+    let name = input.name.clone().unwrap_or_else(|| {
+        response
+            .url()
+            .path_segments()
+            .and_then(|mut segments| segments.next_back().map(str::to_owned))
+            .filter(|segment| !segment.is_empty())
+            .map(|segment| percent_decode(&segment))
+            .unwrap_or_else(|| "download".into())
+    });
+    let temp =
+        tempfile::NamedTempFile::new().map_err(|error| ApiError::Internal(error.to_string()))?;
+    let mut out = tokio::fs::File::create(temp.path())
+        .await
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
+    let mut size: u64 = 0;
+    while let Some(chunk) = response.chunk().await.map_err(failed)? {
+        size += chunk.len() as u64;
+        if size > max {
+            return Err(ApiError::BadRequest(format!(
+                "the file is larger than {} MB",
+                max / 1_000_000
+            )));
+        }
+        tokio::io::AsyncWriteExt::write_all(&mut out, &chunk)
+            .await
+            .map_err(|error| ApiError::Internal(error.to_string()))?;
+    }
+    tokio::io::AsyncWriteExt::flush(&mut out)
+        .await
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
+    let incoming = IncomingFile { path: temp.path().to_owned(), name: name.clone(), size };
+    let info = verdin_upload::FileInfo {
+        name: Some(name),
+        alternative_text: input.alternative_text.map(Some),
+        folder: input.folder.map(Some),
+        ..Default::default()
+    };
+    let record = service.upload(incoming, info, Some(principal.user.id)).await?;
+    Ok((StatusCode::CREATED, Json(json!({ "data": file_json(&record) }))).into_response())
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%'
+            && index + 2 < bytes.len()
+            && bytes[index + 1].is_ascii_hexdigit()
+            && bytes[index + 2].is_ascii_hexdigit()
+            && let Ok(byte) = u8::from_str_radix(&text[index + 1..index + 3], 16)
+        {
+            out.push(byte);
+            index += 3;
+        } else {
+            out.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 async fn update_file(

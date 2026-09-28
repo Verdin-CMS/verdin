@@ -15,6 +15,9 @@ pub struct UploadConfig {
     pub breakpoints: Vec<Breakpoint>,
     /// Decoding limit against decompression bombs, in megapixels.
     pub max_image_megapixels: u32,
+    /// Raster originals larger than this (either side, in pixels) are scaled down on
+    /// upload, which also drops their metadata (EXIF, GPS). `None` keeps originals as sent.
+    pub max_original_size: Option<u32>,
 }
 
 impl Default for UploadConfig {
@@ -29,6 +32,7 @@ impl Default for UploadConfig {
                 Breakpoint { name: "small".into(), width: 500 },
             ],
             max_image_megapixels: 100,
+            max_original_size: None,
         }
     }
 }

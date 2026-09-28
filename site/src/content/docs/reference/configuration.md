@@ -86,6 +86,7 @@ Secrets are never read from `verdin.toml`; see [Environment variables](#environm
 | `responsive_formats` | `true` | Generate responsive formats for raster images. |
 | `breakpoints` | large 1000, medium 750, small 500 | Responsive formats as `{ name, width }` tables (Strapi's `breakpoints`). Formats wider than the image are skipped. |
 | `max_image_megapixels` | `100` | Decoding limit against decompression bombs, in megapixels. |
+| `max_original_size` | unset | Raster originals larger than this many pixels (either side) are scaled down on upload, which also drops their metadata (EXIF, GPS). Unset keeps originals as sent. |
 
 ```toml
 [upload]

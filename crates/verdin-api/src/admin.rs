@@ -115,6 +115,8 @@ pub struct AdminConfig {
     pub features: Option<Arc<dyn crate::features::FeatureHost>>,
     /// The media library; its routes answer 404 without it.
     pub upload: Option<verdin_upload::UploadService>,
+    /// "Upload from URL" may fetch private network addresses (tests, intranets).
+    pub allow_private_urls: bool,
     /// Present when the `webhooks` feature is on; its routes answer 404 without it.
     pub webhooks: Option<crate::Webhooks>,
     /// Present when the `history` feature is on; its routes answer 404 without it.
@@ -155,6 +157,7 @@ impl Default for AdminConfig {
             http: crate::HttpLimits::default(),
             features: None,
             upload: None,
+            allow_private_urls: false,
             webhooks: None,
             history: None,
             releases: None,

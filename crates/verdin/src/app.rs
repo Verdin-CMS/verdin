@@ -219,6 +219,12 @@ pub fn build_app(
         registry,
         context.auth.clone(),
         verdin_api::AdminConfig {
+            // Outgoing requests follow the webhooks' rule (private networks in `dev`).
+            allow_private_urls: context
+                .config
+                .webhooks
+                .allow_private_networks
+                .unwrap_or(context.mode == Mode::Development),
             path: admin.path.clone(),
             secure_cookies: admin.secure_cookies.unwrap_or(context.mode == Mode::Production),
             limits,

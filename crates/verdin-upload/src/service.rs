@@ -156,6 +156,110 @@ impl std::fmt::Debug for Listeners {
     }
 }
 
+/// A file's objects in the storage, before its row exists.
+#[derive(Debug, Clone)]
+struct StoredFile {
+    hash: String,
+    ext: String,
+    mime: String,
+    size_px: Option<(u32, u32)>,
+    formats: Map<String, Json>,
+    /// Bytes stored for the original.
+    size: u64,
+    /// Every object written (the original and its formats), to remove on failure.
+    keys: Vec<String>,
+}
+
+impl UploadService {
+    /// Detects the type, makes the image formats and writes every object.
+    async fn store(&self, file: &IncomingFile, original: &str) -> Result<StoredFile> {
+        let path = file.path.clone();
+        let file_name = file.name.clone();
+        let mime = tokio::task::spawn_blocking(move || detect_mime(&path, &file_name))
+            .await
+            .map_err(|error| UploadError::Storage(error.to_string()))?;
+        let mut ext = extension_of(original);
+        if ext.is_empty() {
+            ext = extension_of(&file.name);
+        }
+        let hash = format!("{}_{}", slug(stem(original)), random_suffix());
+
+        // Image metadata and formats (CPU bound).
+        let analysis = {
+            let path = file.path.clone();
+            let mime = mime.clone();
+            let config = self.config.clone();
+            tokio::task::spawn_blocking(move || match resizable(&mime) {
+                Some(format) => analyse(
+                    &path,
+                    format,
+                    &config.breakpoints,
+                    config.max_image_megapixels,
+                    config.responsive_formats,
+                    config.max_original_size,
+                )
+                .map(|analysis| {
+                    (Some((analysis.width, analysis.height)), analysis.formats, analysis.original)
+                }),
+                None if mime.starts_with("image/") => Some((dimensions(&path), Vec::new(), None)),
+                None => None,
+            })
+            .await
+            .map_err(|error| UploadError::Storage(error.to_string()))?
+        };
+        let (size_px, generated, smaller) = analysis.unwrap_or((None, Vec::new(), None));
+        let size = smaller.as_ref().map_or(file.size, |bytes| bytes.len() as u64);
+
+        let object = format!("{hash}{ext}");
+        let mut keys = vec![object.clone()];
+        let mut formats = Map::new();
+        let written = async {
+            match smaller {
+                Some(bytes) => self.storage.put_bytes(&object, bytes.into(), &mime).await?,
+                None => self.storage.put_file(&object, &file.path, &mime).await?,
+            }
+            for format in &generated {
+                let format_hash = format!("{}_{hash}", format.name);
+                let key = format!("{format_hash}{ext}");
+                let bytes = format.bytes.len();
+                self.storage.put_bytes(&key, format.bytes.clone(), &mime).await?;
+                keys.push(key.clone());
+                formats.insert(
+                    format.name.clone(),
+                    json!({
+                        "name": format!("{}_{original}", format.name),
+                        "hash": format_hash,
+                        "ext": ext,
+                        "mime": mime,
+                        "path": null,
+                        "width": format.width,
+                        "height": format.height,
+                        "size": kilobytes(bytes as u64),
+                        "sizeInBytes": bytes,
+                        "url": self.storage.url(&key),
+                    }),
+                );
+            }
+            Ok::<(), UploadError>(())
+        }
+        .await;
+        let stored = StoredFile { hash, ext, mime, size_px, formats, keys, size };
+        if let Err(error) = written {
+            self.delete_keys(&stored.keys).await;
+            return Err(error);
+        }
+        Ok(stored)
+    }
+
+    async fn delete_keys(&self, keys: &[String]) {
+        for key in keys {
+            if let Err(error) = self.storage.delete(key).await {
+                tracing::warn!(%key, %error, "could not remove a stored object");
+            }
+        }
+    }
+}
+
 impl UploadService {
     pub fn new(db: Database, storage: Storage, config: UploadConfig) -> Self {
         Self { db, storage, config: Arc::new(config), listeners: Listeners::default() }
@@ -201,66 +305,10 @@ impl UploadService {
             Some(id) => Some(self.folder(id).await?),
             None => None,
         };
-        let path = file.path.clone();
-        let file_name = file.name.clone();
-        let mime = tokio::task::spawn_blocking(move || detect_mime(&path, &file_name))
-            .await
-            .map_err(|error| UploadError::Storage(error.to_string()))?;
-        let mut ext = extension_of(&original);
-        if ext.is_empty() {
-            ext = extension_of(&file.name);
-        }
-        let hash = format!("{}_{}", slug(stem(&original)), random_suffix());
-
-        // Image metadata and formats (CPU bound).
-        let analysis = {
-            let path = file.path.clone();
-            let mime = mime.clone();
-            let config = self.config.clone();
-            tokio::task::spawn_blocking(move || match resizable(&mime) {
-                Some(format) => analyse(
-                    &path,
-                    format,
-                    &config.breakpoints,
-                    config.max_image_megapixels,
-                    config.responsive_formats,
-                )
-                .map(|analysis| (Some((analysis.width, analysis.height)), analysis.formats)),
-                None if mime.starts_with("image/") => Some((dimensions(&path), Vec::new())),
-                None => None,
-            })
-            .await
-            .map_err(|error| UploadError::Storage(error.to_string()))?
-        };
-        let (size_px, generated) = analysis.unwrap_or((None, Vec::new()));
-
+        let StoredFile { hash, ext, mime, size_px, formats, keys, size } =
+            self.store(&file, &original).await?;
         let object = format!("{hash}{ext}");
-        let mut stored = vec![object.clone()];
         let result = async {
-            self.storage.put_file(&object, &file.path, &mime).await?;
-            let mut formats = Map::new();
-            for format in &generated {
-                let format_hash = format!("{}_{hash}", format.name);
-                let key = format!("{format_hash}{ext}");
-                let bytes = format.bytes.len();
-                self.storage.put_bytes(&key, format.bytes.clone(), &mime).await?;
-                stored.push(key.clone());
-                formats.insert(
-                    format.name.clone(),
-                    json!({
-                        "name": format!("{}_{original}", format.name),
-                        "hash": format_hash,
-                        "ext": ext,
-                        "mime": mime,
-                        "path": null,
-                        "width": format.width,
-                        "height": format.height,
-                        "size": kilobytes(bytes as u64),
-                        "sizeInBytes": bytes,
-                        "url": self.storage.url(&key),
-                    }),
-                );
-            }
             let now = now();
             let document_id = ulid::Ulid::generate().to_string().to_lowercase();
             let mut insert = SqlBuilder::new(self.db.flavor());
@@ -286,7 +334,7 @@ impl UploadService {
                 ("hash", SqlValue::Text(hash.clone())),
                 ("ext", SqlValue::Text(ext.clone())),
                 ("mime", SqlValue::Text(mime.clone())),
-                ("size", SqlValue::Decimal(kilobytes_decimal(file.size))),
+                ("size", SqlValue::Decimal(kilobytes_decimal(size))),
                 ("url", SqlValue::Text(self.storage.url(&object))),
                 ("preview_url", SqlValue::Null(ColumnKind::Text)),
                 ("provider", SqlValue::Text(self.storage.provider().into())),
@@ -315,11 +363,7 @@ impl UploadService {
                 Ok(file)
             }
             Err(error) => {
-                for key in &stored {
-                    if let Err(cleanup) = self.storage.delete(key).await {
-                        tracing::warn!(%key, error = %cleanup, "could not remove an orphan upload");
-                    }
-                }
+                self.delete_keys(&keys).await;
                 Err(error)
             }
         }
@@ -478,6 +522,67 @@ impl UploadService {
         }
         update.push(" WHERE ").ident("id").push(" = ").param(SqlValue::BigInt(current.id));
         self.db.queries().execute(&update.sql, &update.params).await?;
+        let file = self.find(id).await?.ok_or(UploadError::NotFound)?;
+        self.emit(FileEventKind::Updated, &file).await;
+        Ok(file)
+    }
+
+    /// Replaces a file's content, keeping its id, document id and links (Strapi's
+    /// "replace media"): new objects are written, the row is updated, then the old objects
+    /// are removed. The name follows the new file unless `name` is given.
+    pub async fn replace(
+        &self,
+        id: i64,
+        file: IncomingFile,
+        name: Option<String>,
+        actor: Option<i64>,
+    ) -> Result<FileRecord> {
+        let current = self.find(id).await?.ok_or(UploadError::NotFound)?;
+        if file.size > self.config.max_file_size {
+            return Err(UploadError::TooLarge(self.config.max_file_size / 1_000_000));
+        }
+        let original = clean_name(name.as_deref().unwrap_or(&file.name));
+        if original.is_empty() {
+            return Err(UploadError::Validation("the file needs a name".into()));
+        }
+        let StoredFile { hash, ext, mime, size_px, formats, keys, size } =
+            self.store(&file, &original).await?;
+        let object = format!("{hash}{ext}");
+        let assignments: Vec<(&str, SqlValue)> = vec![
+            ("name", SqlValue::Text(original)),
+            ("hash", SqlValue::Text(hash)),
+            ("ext", SqlValue::Text(ext)),
+            ("mime", SqlValue::Text(mime)),
+            ("size", SqlValue::Decimal(kilobytes_decimal(size))),
+            ("width", optional_int(size_px.map(|(width, _)| width))),
+            ("height", optional_int(size_px.map(|(_, height)| height))),
+            (
+                "formats",
+                if formats.is_empty() {
+                    SqlValue::Null(ColumnKind::Json)
+                } else {
+                    SqlValue::Json(Json::Object(formats))
+                },
+            ),
+            ("url", SqlValue::Text(self.storage.url(&object))),
+            ("provider", SqlValue::Text(self.storage.provider().into())),
+            ("updated_at", SqlValue::DateTime(now())),
+            ("updated_by", optional_i64(actor)),
+        ];
+        let mut update = SqlBuilder::new(self.db.flavor());
+        update.push("UPDATE ").ident(FILES).push(" SET ");
+        for (index, (column, value)) in assignments.into_iter().enumerate() {
+            if index > 0 {
+                update.push(", ");
+            }
+            update.ident(column).push(" = ").param(value);
+        }
+        update.push(" WHERE ").ident("id").push(" = ").param(SqlValue::BigInt(current.id));
+        if let Err(error) = self.db.queries().execute(&update.sql, &update.params).await {
+            self.delete_keys(&keys).await;
+            return Err(error.into());
+        }
+        self.remove_objects(&current).await;
         let file = self.find(id).await?.ok_or(UploadError::NotFound)?;
         self.emit(FileEventKind::Updated, &file).await;
         Ok(file)

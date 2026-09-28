@@ -197,6 +197,7 @@ impl App {
             secure_cookies: false,
             auth_rate_limit: 1000,
             upload: Some(upload.clone()),
+            allow_private_urls: true,
             features: Some(std::sync::Arc::new(MemoryFeatures::default())),
             webhooks: Some(webhooks.clone()),
             history: Some(history.clone()),

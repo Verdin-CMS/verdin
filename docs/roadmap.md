@@ -90,7 +90,7 @@ to move to Verdin without losing features.
 | Sessions & tokens | S | List and revoke own admin sessions; regenerate API tokens; scoped, owner-bound admin API tokens (Strapi 5.47) |
 | RBAC | M | Per-locale permissions ✅; conditions beyond `is-creator` (declared by plugins); "is owner" for end users |
 | End users ✅ | S | Refresh tokens, `/api/users` CRUD with permissions, more OAuth presets (Microsoft, Discord, Facebook, Apple, Keycloak, Auth0), HTML email templates |
-| Media library | M | Replace a file keeping its id, crop in the admin, upload from URL, PDF preview, signed URLs for private buckets, optimize originals |
+| Media library | M | Replace a file keeping its id ✅, crop in the admin, upload from URL ✅, PDF preview, optimize originals ✅; signed URLs for private buckets moved to Later |
 | Webhook events ✅ | S | `releases.publish`, `review-workflows.updateEntryStage` (after 0.7) |
 | Admin branding ✅ | S | Logo, favicon, accent colour and translation overrides in `[admin]` |
 | GraphQL ✅ | M | Disable types or actions per content type (shadow CRUD), resolvers from plugins |
@@ -136,6 +136,7 @@ Large items worth doing once 0.9 lands:
   from plugins.
 - TMS connectors (XLIFF export/import, Crowdin, Lokalise, Phrase).
 - Guided tour for first-time admins.
+- Signed URLs for private buckets (every file URL in responses signed for a short time).
 
 ## Continuous
 

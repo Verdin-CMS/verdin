@@ -36,6 +36,11 @@ All notable changes to Verdin are documented here. The format follows
 - **GraphQL**: disable queries or mutations per content type (the feature's `disabled`
   setting, like Strapi's shadow CRUD), and root fields resolved by plugins
   (`[[graphql]]` in `plugin.toml`).
+- **Media library**: replace a file keeping its id and links
+  (`POST /admin/api/upload/files/{id}/replace`, and `POST /api/upload?id=` with a file,
+  as in Strapi), upload from a URL (`POST /admin/api/upload/from-url`, public addresses
+  only unless private networks are allowed), and `[upload].max_original_size` to scale
+  down large originals.
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.

@@ -196,6 +196,12 @@ async fn content_upload(
     if let Some(id) = query.id {
         allow(&state, &headers, ContentAction::Update).await?;
         let uploads = read_multipart(multipart, service).await?;
+        // With a file, Strapi replaces the content (same id); without, it edits `fileInfo`.
+        if let Some((file, _temp)) = uploads.files.first() {
+            let incoming =
+                IncomingFile { path: file.path.clone(), name: file.name.clone(), size: file.size };
+            service.replace(id, incoming, None, None).await?;
+        }
         let file = service.update(id, uploads.info(0), None).await?;
         return Ok(Json(file.to_json()).into_response());
     }

@@ -542,3 +542,69 @@ async fn existing_installations_receive_media_permissions_once() {
     assert_eq!(media_count().await, 3);
     app.done().await;
 }
+
+#[tokio::test]
+async fn replace_and_upload_from_url() {
+    let app = App::new(schema()).await;
+    let admin = register(&app).await;
+    let first = upload(&app, &admin, "photo.png", png(20, 10), &[]).await;
+    let id = first["id"].as_i64().unwrap();
+    let old_url = first["url"].as_str().unwrap().to_owned();
+
+    let response = app
+        .multipart(
+            Method::POST,
+            &format!("/admin/api/upload/files/{id}/replace"),
+            &[Part::file("files", "wide.png", png(40, 10))],
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::OK, "{}", response.body);
+    let replaced = &response.body["data"];
+    assert_eq!(replaced["id"], id, "same file");
+    assert_eq!(replaced["documentId"], first["documentId"]);
+    assert_eq!(replaced["width"], 40);
+    assert_eq!(replaced["name"], "wide.png");
+    assert_ne!(replaced["url"].as_str().unwrap(), old_url, "new object");
+    let key = old_url.trim_start_matches("/uploads/");
+    assert!(app.upload.storage().get(key).await.is_err(), "the old object is gone");
+
+    // A local server stands in for the internet (private addresses are allowed in tests).
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let image = png(8, 8);
+    let served = image.clone();
+    tokio::spawn(async move {
+        let app = axum::Router::new()
+            .route("/img/logo%20v2.png", axum::routing::get(move || async move { served.clone() }))
+            .route(
+                "/moved",
+                axum::routing::get(|| async {
+                    axum::response::Redirect::temporary("/img/logo%20v2.png")
+                }),
+            );
+        axum::serve(listener, app).await.unwrap();
+    });
+    let body = json!({ "url": format!("http://{address}/moved"), "alternativeText": "Logo" });
+    let (status, created) = app
+        .call_as(Method::POST, "/admin/api/upload/from-url", Some(body), As::Bearer(&admin))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["data"]["name"], "logo v2.png", "named after the final URL");
+    assert_eq!(created["data"]["mime"], "image/png");
+    assert_eq!(created["data"]["alternativeText"], "Logo");
+    for (url, why) in
+        [("ftp://x.example/a", "scheme"), ("http://user:pw@x.example/a", "credentials")]
+    {
+        let (status, _) = app
+            .call_as(
+                Method::POST,
+                "/admin/api/upload/from-url",
+                Some(json!({ "url": url })),
+                As::Bearer(&admin),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{why}");
+    }
+    app.done().await;
+}

@@ -786,7 +786,7 @@ pub fn is_public(ip: IpAddr) -> bool {
 
 /// Resolves host names and keeps public addresses only, so that a public name pointing at
 /// an internal address (DNS rebinding) is refused at connection time.
-struct PublicResolver;
+pub(crate) struct PublicResolver;
 
 impl reqwest::dns::Resolve for PublicResolver {
     fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
