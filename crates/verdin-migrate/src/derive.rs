@@ -186,6 +186,8 @@ fn column_type(attribute: &Attribute) -> Option<ColumnType> {
         | AttributeKind::Uid { .. }
         | AttributeKind::Enumeration { .. } => varchar,
         AttributeKind::Text { .. } | AttributeKind::RichText { .. } => ColumnType::Text,
+        // Argon2 PHC strings are about 100 characters.
+        AttributeKind::Password { .. } => varchar,
         AttributeKind::Integer { .. } => ColumnType::Integer,
         AttributeKind::BigInteger { .. } => ColumnType::BigInt,
         AttributeKind::Float { .. } => ColumnType::Double,

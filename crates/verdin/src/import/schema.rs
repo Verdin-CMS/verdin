@@ -196,6 +196,11 @@ fn attributes(
             continue;
         }
         let mut warn = |message: String| warnings.push(format!("{owner}.{name}: {message}"));
+        if ty == "password" {
+            for key in ["unique", "default", "private"] {
+                converted.remove(key);
+            }
+        }
         if let Some(custom) = attribute["customField"].as_str() {
             warn(format!(
                 "custom field `{custom}` kept: a plugin must provide it (else it is edited as a plain `{}`)",
@@ -209,8 +214,8 @@ fn attributes(
                 converted.insert("type".into(), json!("datetime"));
             }
             "password" => {
-                warn("password fields are not imported".into());
-                continue;
+                // Strapi's bcrypt hashes are imported as they are.
+                converted.insert("type".into(), json!("password"));
             }
             ty if SCALARS.contains(&ty) || matches!(ty, "media" | "component" | "dynamiczone") => {
                 converted.insert("type".into(), json!(ty));

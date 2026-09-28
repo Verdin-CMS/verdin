@@ -1,8 +1,7 @@
 //! The daily digest: admins who opted in get their unseen changes by email.
 
-
-use axum::http::Method;
 use crate::common::{App, As};
+use axum::http::Method;
 use serde_json::json;
 use verdin_schema::{Schema, Source};
 

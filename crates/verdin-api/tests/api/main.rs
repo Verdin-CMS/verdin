@@ -12,6 +12,7 @@ mod end_users;
 mod history;
 mod i18n;
 mod media;
+mod password;
 mod plugins;
 mod preview;
 mod relations;

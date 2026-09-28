@@ -88,6 +88,11 @@ pub enum AttributeKind {
         min_length: Option<u32>,
         max_length: Option<u32>,
     },
+    /// Hashed on write (Argon2id) and always private: never returned, filtered or sorted.
+    Password {
+        min_length: Option<u32>,
+        max_length: Option<u32>,
+    },
     RichText {
         min_length: Option<u32>,
         max_length: Option<u32>,
@@ -208,6 +213,7 @@ impl AttributeKind {
             AttributeKind::String { .. } => "string",
             AttributeKind::Email { .. } => "email",
             AttributeKind::Text { .. } => "text",
+            AttributeKind::Password { .. } => "password",
             AttributeKind::RichText { .. } => "richtext",
             AttributeKind::Uid { .. } => "uid",
             AttributeKind::Integer { .. } => "integer",

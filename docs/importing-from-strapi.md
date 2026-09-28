@@ -57,7 +57,6 @@ Each of these is reported as a warning:
 
 - relations to admin users, end users (`plugin::users-permissions`) or other plugins
 - morph relations
-- `password` fields
 - custom fields, which are imported as their underlying type
 - `unique` on text fields
 - relation halves whose `inversedBy` / `mappedBy` does not match the other side

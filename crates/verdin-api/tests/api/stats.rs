@@ -1,8 +1,7 @@
 //! Chart statistics and unseen counts for the dashboard.
 
-
-use axum::http::{Method, StatusCode};
 use crate::common::{App, As};
+use axum::http::{Method, StatusCode};
 use serde_json::json;
 use verdin_schema::{Schema, Source};
 

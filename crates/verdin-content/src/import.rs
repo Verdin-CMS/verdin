@@ -9,7 +9,7 @@ use verdin_db::{ColumnKind, SqlValue};
 use super::{
     DRAFT, PUBLISHED, SqlBuilder, actor_value, db_error, now, replace_links, write_insert,
 };
-use crate::input::prepare;
+use crate::input::prepare_imported;
 use crate::{ContentError, DocumentService, Result};
 
 /// One stored version of a document.
@@ -33,7 +33,7 @@ impl DocumentService {
     /// Inserts one version and returns its row id.
     pub async fn import_version(&self, uid: &str, version: &ImportedVersion<'_>) -> Result<i64> {
         let model = self.registry().get(uid)?;
-        let prepared = prepare(model, &self.registry().schema, version.data, true)
+        let prepared = prepare_imported(model, &self.registry().schema, version.data)
             .map_err(ContentError::Validation)?;
         let state = if version.published || !model.draft_and_publish() { PUBLISHED } else { DRAFT };
         let created = version.created_at.unwrap_or_else(now);

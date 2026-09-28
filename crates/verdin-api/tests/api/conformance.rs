@@ -1,9 +1,8 @@
 //! Content API conformance suite: the same HTTP requests against every database engine
 //! (`VERDIN_TEST_DATABASE_URL`, in-memory SQLite by default).
 
-
-use axum::http::{Method, StatusCode};
 use crate::common::{App, As, error_paths};
+use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use verdin_auth::{ContentAction, NewApiToken, TokenKind};
 use verdin_schema::{Schema, Source};

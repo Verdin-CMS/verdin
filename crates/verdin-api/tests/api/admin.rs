@@ -1,8 +1,7 @@
 //! Admin API over HTTP: sessions, RBAC on content, users, roles, tokens, public grants.
 
-
-use axum::http::{Method, StatusCode};
 use crate::common::{App, As};
+use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use verdin_schema::{Schema, Source};
 

@@ -1,9 +1,8 @@
 //! Relations over HTTP: writes, populate, draft & publish visibility, filters, cleanup.
 //! Runs against `VERDIN_TEST_DATABASE_URL` (in-memory SQLite by default).
 
-
-use axum::http::{Method, StatusCode};
 use crate::common::{App, error_paths};
+use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use verdin_schema::{Schema, Source};
 

@@ -1,8 +1,7 @@
 //! Blocks rich text, and relations and media inside components and dynamic zones.
 
-
-use axum::http::{Method, StatusCode};
 use crate::common::{App, As, Part};
+use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use verdin_schema::{Schema, Source};
 

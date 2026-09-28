@@ -1,9 +1,8 @@
 //! Plugins through the APIs: switching, hooks on REST writes, routes with the real content
 //! host, capabilities and admin extensions.
 
-
-use axum::http::{Method, StatusCode};
 use crate::common::{App, As};
+use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use verdin_auth::ContentAction;
 use verdin_schema::{Schema, Source};

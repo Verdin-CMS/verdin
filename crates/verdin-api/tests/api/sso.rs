@@ -1,15 +1,14 @@
 //! Admin SSO against a local OpenID Connect provider.
 
-
 use std::sync::{Arc, Mutex};
 
+use crate::common::{App, As};
 use axum::extract::State;
 use axum::http::{Method, StatusCode};
 use axum::routing::{get, post};
 use axum::{Form, Json, Router};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use crate::common::{App, As};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use verdin_schema::{Schema, Source};

@@ -405,6 +405,7 @@ fn scalar_type(kind: &AttributeKind) -> Option<&'static str> {
         A::String { .. }
         | A::Email { .. }
         | A::Text { .. }
+        | A::Password { .. }
         | A::RichText { .. }
         | A::Uid { .. }
         | A::Enumeration { .. } => TypeRef::STRING,

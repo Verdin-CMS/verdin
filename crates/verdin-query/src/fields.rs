@@ -267,6 +267,7 @@ pub fn attribute_kind(kind: &AttributeKind) -> (ColumnKind, FieldCategory) {
         | A::Uid { .. }
         | A::Enumeration { .. }
         | A::Text { .. }
+        | A::Password { .. }
         | A::RichText { .. } => scalar(ColumnKind::Text),
         A::Integer { .. } => scalar(ColumnKind::Int),
         A::BigInteger { .. } => scalar(ColumnKind::BigInt),

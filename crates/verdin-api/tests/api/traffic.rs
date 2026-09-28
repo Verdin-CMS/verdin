@@ -1,10 +1,9 @@
 //! Content API traffic controls: ETags, the anonymous reads cache and rate limits.
 
-
 use std::time::Duration;
 
-use axum::http::{Method, StatusCode};
 use crate::common::{App, As};
+use axum::http::{Method, StatusCode};
 use serde_json::json;
 use verdin_api::cache::TrafficConfig;
 use verdin_auth::ContentAction;

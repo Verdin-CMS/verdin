@@ -268,6 +268,9 @@ fn attribute_schema(schema: &Schema, kind: &AttributeKind) -> Value {
             value
         }
         AttributeKind::Email { .. } => json!({ "type": nullable("string"), "format": "email" }),
+        AttributeKind::Password { .. } => {
+            json!({ "type": nullable("string"), "format": "password", "writeOnly": true })
+        }
         AttributeKind::Uid { .. } => json!({ "type": nullable("string") }),
         AttributeKind::Enumeration { values } => {
             json!({ "type": nullable("string"), "enum": values })

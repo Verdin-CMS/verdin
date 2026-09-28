@@ -83,6 +83,34 @@ pub fn prepare(
     data: &Json,
     is_create: bool,
 ) -> Result<Prepared, Vec<Issue>> {
+    prepare_as(model, schema, data, is_create, false)
+}
+
+/// How values are converted inside one write.
+#[derive(Debug, Clone, Copy)]
+struct Mode {
+    /// Component items without an id get their attributes' defaults.
+    new_items_get_defaults: bool,
+    /// Imports keep password hashes as they are (Strapi's bcrypt, Verdin's Argon2).
+    keep_hashes: bool,
+}
+
+/// [`prepare`] for importers: password values are hashes already.
+pub fn prepare_imported(
+    model: &TypeModel,
+    schema: &Schema,
+    data: &Json,
+) -> Result<Prepared, Vec<Issue>> {
+    prepare_as(model, schema, data, true, true)
+}
+
+fn prepare_as(
+    model: &TypeModel,
+    schema: &Schema,
+    data: &Json,
+    is_create: bool,
+    keep_hashes: bool,
+) -> Result<Prepared, Vec<Issue>> {
     let Some(object) = data.as_object() else {
         return Err(vec![Issue::new(Vec::new(), "data must be an object")]);
     };
@@ -138,7 +166,8 @@ pub fn prepare(
             None => continue,
         };
         let path = vec![Json::from(name.as_str())];
-        match convert(schema, &attribute.kind, &value, &path, true) {
+        let mode = Mode { new_items_get_defaults: true, keep_hashes };
+        match convert(schema, &attribute.kind, &value, &path, mode) {
             Ok(converted) => {
                 let column = Attribute::column_name(name);
                 let (kind, _) = verdin_query::attribute_kind(&attribute.kind);
@@ -308,7 +337,7 @@ fn convert(
     kind: &AttributeKind,
     value: &Json,
     path: &[Json],
-    new_items_get_defaults: bool,
+    mode: Mode,
 ) -> Result<Converted, Vec<Issue>> {
     let fail = |message: String| vec![Issue::new(path.to_vec(), message)];
     let (column_kind, _) = verdin_query::attribute_kind(kind);
@@ -340,6 +369,14 @@ fn convert(
                 return Err(fail("must be a valid email".into()));
             }
             SqlValue::Text(text.to_owned())
+        }
+        AttributeKind::Password { min_length, max_length } => {
+            let text = expect_str(value).ok_or_else(|| fail("must be a string".into()))?;
+            if mode.keep_hashes && is_password_hash(text) {
+                return Ok(Converted::Sql(SqlValue::Text(text.to_owned())));
+            }
+            check_length(text, *min_length, *max_length).map_err(fail)?;
+            SqlValue::Text(hash_password(text).map_err(fail)?)
         }
         AttributeKind::Text { min_length, max_length }
         | AttributeKind::RichText { min_length, max_length } => {
@@ -450,14 +487,7 @@ fn convert(
                 let mut issues = Vec::new();
                 for (index, item) in items.iter().enumerate() {
                     let item_path = child_path(path, index);
-                    match component_item(
-                        schema,
-                        component,
-                        item,
-                        &item_path,
-                        None,
-                        new_items_get_defaults,
-                    ) {
+                    match component_item(schema, component, item, &item_path, None, mode) {
                         Ok(item) => out.push(item),
                         Err(mut found) => issues.append(&mut found),
                     }
@@ -467,7 +497,7 @@ fn convert(
                 }
                 Json::Array(out)
             } else {
-                component_item(schema, component, value, path, None, new_items_get_defaults)?
+                component_item(schema, component, value, path, None, mode)?
             };
             return Ok(Converted::Json(normalized));
         }
@@ -488,14 +518,7 @@ fn convert(
                     ));
                     continue;
                 };
-                match component_item(
-                    schema,
-                    uid,
-                    item,
-                    &item_path,
-                    Some(uid),
-                    new_items_get_defaults,
-                ) {
+                match component_item(schema, uid, item, &item_path, Some(uid), mode) {
                     Ok(item) => out.push(item),
                     Err(mut found) => issues.append(&mut found),
                 }
@@ -523,7 +546,7 @@ fn component_item(
     value: &Json,
     path: &[Json],
     dynamic_zone_uid: Option<&str>,
-    new_items_get_defaults: bool,
+    mode: Mode,
 ) -> Result<Json, Vec<Issue>> {
     let Some(object) = value.as_object() else {
         return Err(vec![Issue::new(path.to_vec(), "must be an object")]);
@@ -559,7 +582,7 @@ fn component_item(
     for (name, attribute) in &component.attributes {
         let value = match object.get(name) {
             Some(value) => value.clone(),
-            None if id.is_none() && new_items_get_defaults => match &attribute.default {
+            None if id.is_none() && mode.new_items_get_defaults => match &attribute.default {
                 Some(default) => default.clone(),
                 None => continue,
             },
@@ -587,7 +610,7 @@ fn component_item(
             }
             _ => {}
         }
-        match convert(schema, &attribute.kind, &value, &attribute_path, new_items_get_defaults) {
+        match convert(schema, &attribute.kind, &value, &attribute_path, mode) {
             Ok(Converted::Sql(value)) => {
                 out.insert(
                     name.clone(),
@@ -810,4 +833,23 @@ fn check_count(count: usize, min: Option<u32>, max: Option<u32>) -> Result<(), S
         return Err(format!("must contain at most {max} items"));
     }
     Ok(())
+}
+
+/// Argon2id PHC string of a password attribute's value (OWASP parameters, as for admins).
+pub fn hash_password(password: &str) -> Result<String, String> {
+    use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version};
+    let params = Params::new(19 * 1024, 2, 1, None).expect("valid argon2 parameters");
+    let mut salt = [0u8; 16];
+    getrandom::fill(&mut salt).map_err(|error| format!("no randomness: {error}"))?;
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+        .hash_password_with_salt(password.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|error| format!("could not hash the password: {error}"))
+}
+
+/// Strapi's bcrypt hashes and Verdin's Argon2 ones, kept as they are by imports.
+fn is_password_hash(value: &str) -> bool {
+    let bcrypt = ["$2a$", "$2b$", "$2y$"].iter().any(|prefix| value.starts_with(prefix))
+        && value.len() == 60;
+    bcrypt || value.starts_with("$argon2")
 }

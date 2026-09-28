@@ -24,6 +24,7 @@ fn allowed_options(ty: &str) -> Option<&'static [&'static str]> {
         "string" => &["default", "unique", "minLength", "maxLength", "regex"],
         "email" => &["default", "unique", "minLength", "maxLength"],
         "text" | "richtext" => &["default", "minLength", "maxLength"],
+        "password" => &["minLength", "maxLength"],
         "uid" => &["default", "targetField", "minLength", "maxLength", "regex"],
         "integer" | "biginteger" | "float" => &["default", "unique", "min", "max"],
         "decimal" => &["default", "unique", "min", "max", "precision", "scale"],
@@ -70,6 +71,10 @@ pub fn convert_attribute(raw: RawAttribute) -> Result<Attribute, Issues> {
         "email" => {
             check_lengths(&raw, true, &mut issues);
             AttributeKind::Email { min_length: raw.min_length, max_length: raw.max_length, unique }
+        }
+        "password" => {
+            check_lengths(&raw, false, &mut issues);
+            AttributeKind::Password { min_length: raw.min_length, max_length: raw.max_length }
         }
         "text" => {
             check_lengths(&raw, false, &mut issues);
@@ -260,7 +265,7 @@ pub fn convert_attribute(raw: RawAttribute) -> Result<Attribute, Issues> {
     if issues.is_empty() {
         Ok(Attribute {
             required: raw.required.unwrap_or(false),
-            private: raw.private.unwrap_or(false),
+            private: raw.private.unwrap_or(false) || matches!(kind, AttributeKind::Password { .. }),
             configurable: raw.configurable.unwrap_or(true),
             localized: crate::raw::RawPluginOptions::localized(&raw.plugin_options).unwrap_or(true),
             custom_field: raw.custom_field.clone(),
@@ -414,7 +419,9 @@ fn check_default(kind: &AttributeKind, default: &Value, issues: &mut Issues) {
             }
         }
         AttributeKind::Json => {}
-        AttributeKind::Blocks => unreachable!("default rejected by allowed_options"),
+        AttributeKind::Blocks | AttributeKind::Password { .. } => {
+            unreachable!("default rejected by allowed_options")
+        }
         AttributeKind::Relation { .. }
         | AttributeKind::Media { .. }
         | AttributeKind::Component { .. }

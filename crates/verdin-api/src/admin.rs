@@ -894,7 +894,9 @@ fn attribute_json(attribute: &Attribute) -> Value {
             set("maxLength", json!(max_length));
             set("unique", json!(unique));
         }
-        A::Text { min_length, max_length } | A::RichText { min_length, max_length } => {
+        A::Text { min_length, max_length }
+        | A::RichText { min_length, max_length }
+        | A::Password { min_length, max_length } => {
             set("minLength", json!(min_length));
             set("maxLength", json!(max_length));
         }

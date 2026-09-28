@@ -49,6 +49,7 @@ fn output(schema: &Schema, attribute: &Attribute) -> (String, bool) {
         A::String { .. }
         | A::Email { .. }
         | A::Text { .. }
+        | A::Password { .. }
         | A::RichText { .. }
         | A::Uid { .. } => (nullable("string"), false),
         // Big integers exceed JavaScript numbers: the API sends strings.
