@@ -30,6 +30,9 @@ All notable changes to Verdin are documented here. The format follows
   (`{ "action": "content.update", "subject": "api::article", "locales": ["fr"] }`).
 - **Conditional fields** (Strapi 5.17's `conditions.visible`, JSON Logic): hidden fields
   are not required.
+- **Edit view layout** per content type (`/admin/api/content-types/{uid}/edit-view`,
+  permission `views.manage`): field order and widths, labels, descriptions, placeholders,
+  read-only fields and the field that names related entries.
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.

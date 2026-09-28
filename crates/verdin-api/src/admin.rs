@@ -56,6 +56,8 @@ mod review_admin;
 mod sso_admin;
 #[path = "upload_admin.rs"]
 mod upload_admin;
+#[path = "views_admin.rs"]
+mod views_admin;
 #[path = "webhooks_admin.rs"]
 mod webhooks_admin;
 
@@ -254,7 +256,8 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         .merge(preview_admin::routes())
         .merge(sso_admin::routes())
         .merge(review_admin::routes())
-        .merge(account_admin::routes());
+        .merge(account_admin::routes())
+        .merge(views_admin::routes());
     let http = state.config.http;
     let uploads = upload_admin::routes(state.config.upload.as_ref());
     let audit = state

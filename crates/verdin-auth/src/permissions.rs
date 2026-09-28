@@ -23,6 +23,8 @@ pub mod actions {
     pub const AUDIT_READ: &str = "audit.read";
     pub const RELEASES_MANAGE: &str = "releases.manage";
     pub const WORKFLOWS_MANAGE: &str = "workflows.manage";
+    /// The entry editor's layout per content type.
+    pub const VIEWS_MANAGE: &str = "views.manage";
     pub const MEDIA_READ: &str = "media.read";
     pub const MEDIA_CREATE: &str = "media.create";
     pub const MEDIA_UPDATE: &str = "media.update";
@@ -43,6 +45,7 @@ pub mod actions {
         AUDIT_READ,
         RELEASES_MANAGE,
         WORKFLOWS_MANAGE,
+        VIEWS_MANAGE,
     ];
     /// Media library actions: no subject; `is-creator` limits them to the user's files.
     pub const MEDIA: &[&str] = &[MEDIA_READ, MEDIA_CREATE, MEDIA_UPDATE, MEDIA_DELETE];
