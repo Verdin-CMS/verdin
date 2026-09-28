@@ -21,6 +21,7 @@ import { HlmSheetImports } from '@spartan-ng/helm/sheet';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmTextareaImports } from '@spartan-ng/helm/textarea';
 
+import { ALT_TEXT_MIMES, AiActions, aiErrorMessage } from '../../core/ai';
 import { ApiFailure } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
@@ -244,6 +245,26 @@ type FocalPoint = { x: number; y: number };
                   (input)="alternativeText.set($any($event.target).value)"
                 />
                 <p hlmFieldDescription>{{ t('media.file.altHint') }}</p>
+                @if (canDescribe(file)) {
+                  <div>
+                    <button
+                      hlmBtn
+                      variant="outline"
+                      size="xs"
+                      type="button"
+                      [disabled]="describing()"
+                      [title]="t('ai.altText.hint')"
+                      (click)="describe(file)"
+                    >
+                      @if (describing()) {
+                        <hlm-spinner class="size-3" />
+                      } @else {
+                        <ng-icon name="lucideSparkles" />
+                      }
+                      {{ describing() ? t('ai.altText.running') : t('ai.altText.action') }}
+                    </button>
+                  </div>
+                }
               </div>
               <div hlmField>
                 <label hlmFieldLabel for="media-file-caption">{{ t('media.file.caption') }}</label>
@@ -426,6 +447,8 @@ export class MediaFileSheet {
   );
   protected readonly busy = signal(false);
   protected readonly replacing = signal(false);
+  private readonly ai = inject(AiActions);
+  protected readonly describing = signal(false);
   /** The image in the crop dialog. */
   protected readonly cropping = signal<MediaFile | null>(null);
   private readonly sanitizer = inject(DomSanitizer);
@@ -451,6 +474,10 @@ export class MediaFileSheet {
     const point = this.focal();
     return point ? `${Math.round(point.x * 100)}% × ${Math.round(point.y * 100)}%` : '';
   });
+
+  constructor() {
+    void this.ai.load();
+  }
 
   protected kind = fileKind;
   protected ext = extension;
@@ -504,6 +531,41 @@ export class MediaFileSheet {
     const point = this.focal() ?? { x: 0.5, y: 0.5 };
     const clamp = (value: number) => Math.min(1, Math.max(0, Math.round(value * 100) / 100));
     this.focal.set({ x: clamp(point.x + step[0]), y: clamp(point.y + step[1]) });
+  }
+
+  /** Alt text by AI: images the provider reads, for admins who may edit the file. */
+  protected canDescribe(file: MediaFile): boolean {
+    return this.ai.enabled() && this.canEdit() && ALT_TEXT_MIMES.has(file.mime);
+  }
+
+  /** Fills the alternative text (and the caption when empty) with a suggestion; not saved. */
+  protected async describe(file: MediaFile): Promise<void> {
+    if (this.describing()) return;
+    this.describing.set(true);
+    try {
+      const result = await this.ai.altText(file.id);
+      if (this.current()?.id !== file.id) return;
+      const previous = { alternativeText: this.alternativeText(), caption: this.caption() };
+      if (result.alternativeText.trim()) this.alternativeText.set(result.alternativeText.trim());
+      if (!previous.caption.trim() && result.caption.trim())
+        this.caption.set(result.caption.trim());
+      document.getElementById('media-file-alt')?.focus();
+      toast.success(this.t('ai.altText.done'), {
+        description: this.t('ai.reviewHint'),
+        action: {
+          label: this.t('ai.undo'),
+          onClick: () => {
+            if (this.current()?.id !== file.id) return;
+            this.alternativeText.set(previous.alternativeText);
+            this.caption.set(previous.caption);
+          },
+        },
+      });
+    } catch (error) {
+      toast.error(this.t('ai.altText.error'), { description: aiErrorMessage(error, this.t) });
+    } finally {
+      this.describing.set(false);
+    }
   }
 
   protected canCrop(file: MediaFile): boolean {

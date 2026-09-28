@@ -18,7 +18,7 @@ import { HlmFieldImports } from '@spartan-ng/helm/field';
 import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
-import { ApiFailure } from '../../core/api';
+import { Api, ApiFailure } from '../../core/api';
 import {
   PREVIEW_MAX_TTL,
   previewSettingsFrom,
@@ -139,6 +139,43 @@ import { Schema } from '../../core/schema';
             </p>
           </div>
 
+          <section
+            class="flex flex-col gap-2 rounded-lg border p-3 text-xs"
+            aria-labelledby="visual-editing-title"
+          >
+            <h3 id="visual-editing-title" class="flex items-center gap-1.5 text-sm font-medium">
+              <ng-icon name="lucideCrosshair" aria-hidden="true" />
+              {{ t('visualEditing.settings.title') }}
+            </h3>
+            <p class="text-muted-foreground">{{ t('visualEditing.settings.hint') }}</p>
+            <p id="visual-editing-script">{{ t('visualEditing.settings.script') }}</p>
+            <div class="flex items-start gap-1">
+              <pre
+                dir="ltr"
+                class="bg-muted min-w-0 flex-1 overflow-x-auto rounded p-2 font-mono"
+                aria-labelledby="visual-editing-script"
+              ><code>{{ scriptTag }}</code></pre>
+              <button
+                hlmBtn
+                variant="ghost"
+                size="icon-xs"
+                type="button"
+                [attr.aria-label]="t('visualEditing.settings.copyScript')"
+                [title]="t('visualEditing.settings.copyScript')"
+                (click)="copy(scriptTag)"
+              >
+                <ng-icon name="lucideCopy" />
+              </button>
+            </div>
+            <p id="visual-editing-header">{{ t('visualEditing.settings.header') }}</p>
+            <pre
+              dir="ltr"
+              class="bg-muted overflow-x-auto rounded p-2 font-mono"
+              aria-labelledby="visual-editing-header"
+            ><code>{{ stegaHeader }}</code></pre>
+            <p class="text-muted-foreground">{{ t('visualEditing.settings.privacy') }}</p>
+          </section>
+
           @if (error()) {
             <div hlmAlert variant="destructive" role="alert">
               <ng-icon hlmAlertIcon name="lucideCircleAlert" />
@@ -195,6 +232,11 @@ export class PreviewSettingsDialog {
       this.rows().some((row) => row.template.trim() && !validPreviewTemplate(row.template)),
   );
   protected readonly valid = validPreviewTemplate;
+  /** Visual editing: the overlay script to load on preview pages, and the header to send. */
+  protected readonly scriptTag = `<script src="${
+    new URL(`${inject(Api).base}/visual-editing.js`, location.href).href
+  }" defer></script>`;
+  protected readonly stegaHeader = 'x-verdin-stega: true';
 
   constructor() {
     effect(() => {
@@ -225,6 +267,15 @@ export class PreviewSettingsDialog {
     const type = this.schema.type(uid);
     const name = type?.singularName ?? 'entry';
     return `https://example.com/${name}/{documentId}`;
+  }
+
+  protected async copy(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(this.t('common.copied'));
+    } catch {
+      toast.error(this.t('visualEditing.settings.copyFailed'));
+    }
   }
 
   protected setTemplate(index: number, template: string): void {

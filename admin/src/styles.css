@@ -109,3 +109,34 @@
     transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
   }
 }
+
+/* Fields: a brief highlight when opened from the preview (visual editing) or filled by AI,
+   and a mark on fields holding unreviewed AI suggestions. */
+@layer components {
+  [data-flash] {
+    border-radius: var(--radius);
+    animation: vd-flash 2.4s ease-out;
+  }
+  [data-ai-changed] {
+    border-radius: var(--radius);
+    outline: 2px dashed color-mix(in oklab, var(--primary) 55%, transparent);
+    outline-offset: 6px;
+  }
+  @keyframes vd-flash {
+    0%,
+    40% {
+      box-shadow: 0 0 0 4px color-mix(in oklab, var(--ring) 70%, transparent);
+      background-color: color-mix(in oklab, var(--primary) 8%, transparent);
+    }
+    100% {
+      box-shadow: 0 0 0 4px transparent;
+      background-color: transparent;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-flash] {
+      animation: none;
+      box-shadow: 0 0 0 4px color-mix(in oklab, var(--ring) 70%, transparent);
+    }
+  }
+}

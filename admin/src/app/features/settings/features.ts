@@ -56,6 +56,7 @@ const ICONS: Record<string, string> = {
   releases: 'lucideCalendarClock',
   preview: 'lucideEye',
   mcp: 'lucideBot',
+  ai: 'lucideSparkles',
 };
 
 /** Settings → Features: switch optional parts of Verdin on and off, live. */

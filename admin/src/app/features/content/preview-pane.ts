@@ -1,11 +1,14 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  ElementRef,
   computed,
   inject,
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { NgIcon } from '@ng-icons/core';
@@ -15,6 +18,7 @@ import { HlmToggleGroupImports } from '@spartan-ng/helm/toggle-group';
 
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { EditTarget, editMessage } from './visual-editing';
 
 /** Width presets of the side-by-side preview. */
 export type PreviewDevice = 'desktop' | 'tablet' | 'mobile';
@@ -77,7 +81,10 @@ export function splitAfterKey(split: number, key: string, rtl: boolean): number 
   }
 }
 
-/** The side-by-side preview: the site in a sandboxed frame, with device widths. */
+/**
+ * The side-by-side preview: the site in a sandboxed frame, with device widths. A site that
+ * loads the visual editing overlay asks, with a `verdin:edit` message, to open a field.
+ */
 @Component({
   selector: 'vd-preview-pane',
   imports: [NgIcon, HlmButtonImports, HlmSpinnerImports, HlmToggleGroupImports],
@@ -148,6 +155,7 @@ export function splitAfterKey(split: number, key: string, rtl: boolean): number 
       @if (frameUrl(); as src) {
         @for (key of [version()]; track key) {
           <iframe
+            #frame
             class="bg-background h-full max-w-full border-x"
             [style.width]="width()"
             [src]="src"
@@ -182,6 +190,10 @@ export class PreviewPane {
   readonly reload = output<void>();
   readonly openTab = output<void>();
   readonly closed = output<void>();
+  /** The overlay's "Edit" was clicked on a marked text of the framed site. */
+  readonly edit = output<EditTarget>();
+
+  private readonly frame = viewChild<ElementRef<HTMLIFrameElement>>('frame');
 
   protected readonly device = signal<PreviewDevice>('desktop');
   protected readonly width = computed(
@@ -193,6 +205,18 @@ export class PreviewPane {
     // Only http(s) URLs reach the frame; the sandbox limits what the page may do.
     return checked ? this.sanitizer.bypassSecurityTrustResourceUrl(checked) : null;
   });
+
+  constructor() {
+    const listener = (event: MessageEvent) => {
+      // Only the framed page may ask (not another window or frame of the same site).
+      const frame = this.frame()?.nativeElement;
+      if (!frame || event.source !== frame.contentWindow) return;
+      const target = editMessage(event, this.url(), document.baseURI);
+      if (target) this.edit.emit(target);
+    };
+    window.addEventListener('message', listener);
+    inject(DestroyRef).onDestroy(() => window.removeEventListener('message', listener));
+  }
 
   protected setDevice(value: unknown): void {
     if (PREVIEW_DEVICES.some((preset) => preset.device === value))
