@@ -157,6 +157,24 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
               </ul>
             </div>
           }
+          @if (auth.can('releases.manage') && features.enabled('releases')) {
+            <div hlmSidebarGroup>
+              <ul hlmSidebarMenu>
+                <li hlmSidebarMenuItem>
+                  <a
+                    hlmSidebarMenuButton
+                    routerLink="/releases"
+                    routerLinkActive
+                    #releases="routerLinkActive"
+                    [isActive]="releases.isActive"
+                  >
+                    <ng-icon name="lucideCalendarClock" />
+                    <span>{{ t('shell.releases') }}</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+          }
           <div hlmSidebarGroup>
             <div hlmSidebarGroupLabel>{{ t('shell.settings') }}</div>
             <div hlmSidebarGroupContent>
@@ -254,6 +272,20 @@ import { PreferencesMenu } from '../shared/components/preferences-menu';
                     >
                       <ng-icon name="lucideWebhook" />
                       <span>{{ t('shell.webhooks') }}</span>
+                    </a>
+                  </li>
+                }
+                @if (auth.can('audit.read')) {
+                  <li hlmSidebarMenuItem>
+                    <a
+                      hlmSidebarMenuButton
+                      routerLink="/settings/audit-logs"
+                      routerLinkActive
+                      #audit="routerLinkActive"
+                      [isActive]="audit.isActive"
+                    >
+                      <ng-icon name="lucideScrollText" />
+                      <span>{{ t('shell.auditLogs') }}</span>
                     </a>
                   </li>
                 }

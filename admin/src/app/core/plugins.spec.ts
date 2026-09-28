@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  PluginSettingField,
   capabilityGroups,
   customFieldId,
   parseCustomField,
   parseSettings,
   pluginRouteUrl,
+  settingProblem,
+  settingsFormValues,
+  settingsFromForm,
 } from './plugins';
 
 describe('custom fields', () => {
@@ -87,5 +91,63 @@ describe('capabilities', () => {
   it('is empty for a sandboxed plugin', () => {
     expect(capabilityGroups({ read: [], write: [], http: [], kv: false })).toEqual([]);
     expect(capabilityGroups(null)).toEqual([]);
+  });
+});
+
+function field(overrides: Partial<PluginSettingField>): PluginSettingField {
+  return {
+    key: 'k',
+    label: 'K',
+    type: 'string',
+    required: false,
+    options: [],
+    default: null,
+    min: null,
+    max: null,
+    ...overrides,
+  };
+}
+
+describe('plugin settings forms', () => {
+  const fields = [
+    field({ key: 'greeting', max: 5 }),
+    field({ key: 'times', type: 'integer', min: 1, max: 5, default: 1 }),
+    field({ key: 'loud', type: 'boolean' }),
+    field({ key: 'mode', type: 'select', options: ['a', 'b'], default: 'a' }),
+    field({ key: 'site', type: 'url' }),
+  ];
+
+  it('starts from the stored settings, then the defaults', () => {
+    expect(settingsFormValues(fields, { greeting: 'hi', loud: true })).toEqual({
+      greeting: 'hi',
+      times: '1',
+      loud: true,
+      mode: 'a',
+      site: '',
+    });
+  });
+
+  it('saves typed values and leaves empty ones to their defaults', () => {
+    expect(
+      settingsFromForm(fields, { greeting: '', times: ' 3 ', loud: false, mode: 'b', site: '' }),
+    ).toEqual({ times: 3, loud: false, mode: 'b' });
+  });
+
+  it('checks values like the server', () => {
+    const [greeting, times, , mode, site] = fields;
+    expect(settingProblem(greeting, 'hello')).toBeNull();
+    expect(settingProblem(greeting, 'hello!')).toEqual({ kind: 'max', bound: 5, length: true });
+    expect(settingProblem(times, '0')).toEqual({ kind: 'min', bound: 1, length: false });
+    expect(settingProblem(times, '2.5')).toEqual({ kind: 'integer' });
+    expect(settingProblem(times, 'x')).toEqual({ kind: 'number' });
+    expect(settingProblem(mode, 'c')).toEqual({ kind: 'option' });
+    expect(settingProblem(site, 'ftp://x')).toEqual({ kind: 'url' });
+    expect(settingProblem(site, 'https://x.example')).toBeNull();
+  });
+
+  it('requires values without a default', () => {
+    expect(settingProblem(field({ required: true }), ' ')).toEqual({ kind: 'required' });
+    expect(settingProblem(field({ required: true, default: 'x' }), '')).toBeNull();
+    expect(settingProblem(field({}), '')).toBeNull();
   });
 });

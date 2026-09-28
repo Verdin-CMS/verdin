@@ -26,6 +26,9 @@ import { Feature, Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { PageHeader } from '../../shared/components/page-header';
+import { readPreviewSettings, ssoFormsFrom } from '../../core/feature-settings';
+import { PreviewSettingsDialog } from './preview-settings';
+import { SsoSettingsDialog } from './sso-settings';
 
 const ICONS: Record<string, string> = {
   media: 'lucideImage',
@@ -42,6 +45,7 @@ const ICONS: Record<string, string> = {
   audit: 'lucideScrollText',
   review: 'lucideListChecks',
   releases: 'lucideCalendarClock',
+  preview: 'lucideEye',
 };
 
 /** Settings → Features: switch optional parts of Verdin on and off, live. */
@@ -60,6 +64,8 @@ const ICONS: Record<string, string> = {
     HlmSpinnerImports,
     HlmSwitchImports,
     PageHeader,
+    PreviewSettingsDialog,
+    SsoSettingsDialog,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -226,6 +232,62 @@ const ICONS: Record<string, string> = {
                     }
                   </div>
                 }
+
+                @if (feature.id === 'preview' && canManage()) {
+                  <div class="flex flex-col gap-3 border-t pt-4">
+                    <p class="text-muted-foreground text-xs">
+                      {{ t('features.preview.summary', { count: previewCount(feature) }) }}
+                    </p>
+                    <button
+                      hlmBtn
+                      size="sm"
+                      variant="outline"
+                      class="self-start"
+                      (click)="previewOpen.set(true)"
+                    >
+                      <ng-icon name="lucideSettings" /> {{ t('features.preview.configure') }}
+                    </button>
+                  </div>
+                }
+
+                @if (feature.id === 'sso' && canManage()) {
+                  <div class="flex flex-col gap-3 border-t pt-4">
+                    <p class="text-muted-foreground text-xs">
+                      {{ t('features.sso.summary', { count: ssoCount(feature) }) }}
+                    </p>
+                    <button
+                      hlmBtn
+                      size="sm"
+                      variant="outline"
+                      class="self-start"
+                      (click)="ssoOpen.set(true)"
+                    >
+                      <ng-icon name="lucideSettings" /> {{ t('features.sso.configure') }}
+                    </button>
+                  </div>
+                }
+
+                @if (feature.id === 'audit' && canReadAudit()) {
+                  <div class="flex flex-col gap-3 border-t pt-4">
+                    <a
+                      hlmBtn
+                      size="sm"
+                      variant="outline"
+                      class="self-start"
+                      routerLink="/settings/audit-logs"
+                    >
+                      <ng-icon name="lucideScrollText" /> {{ t('features.audit.open') }}
+                    </a>
+                  </div>
+                }
+
+                @if (feature.id === 'releases' && feature.enabled && canManageReleases()) {
+                  <div class="flex flex-col gap-3 border-t pt-4">
+                    <a hlmBtn size="sm" variant="outline" class="self-start" routerLink="/releases">
+                      <ng-icon name="lucideCalendarClock" /> {{ t('features.releases.open') }}
+                    </a>
+                  </div>
+                }
               </article>
             }
           </div>
@@ -300,6 +362,17 @@ const ICONS: Record<string, string> = {
         </section>
       }
     </div>
+
+    @if (featureById('preview'); as preview) {
+      <vd-preview-settings
+        [open]="previewOpen()"
+        [feature]="preview"
+        (closed)="previewOpen.set(false)"
+      />
+    }
+    @if (featureById('sso'); as sso) {
+      <vd-sso-settings [open]="ssoOpen()" [feature]="sso" (closed)="ssoOpen.set(false)" />
+    }
 
     <hlm-dialog [state]="emailTest() ? 'open' : 'closed'" (closed)="emailTest.set(null)">
       <hlm-dialog-content *hlmDialogPortal="let ctx" class="sm:max-w-md">
@@ -376,6 +449,10 @@ export class FeaturesPage implements OnInit {
   protected readonly canManage = computed(() => this.auth.can('features.manage'));
   protected readonly canManageWebhooks = computed(() => this.auth.can('webhooks.manage'));
   protected readonly canManageEndUsers = computed(() => this.auth.can('endusers.manage'));
+  protected readonly canReadAudit = computed(() => this.auth.can('audit.read'));
+  protected readonly canManageReleases = computed(() => this.auth.can('releases.manage'));
+  protected readonly previewOpen = signal(false);
+  protected readonly ssoOpen = signal(false);
   /** The test email dialog: `null` when closed. */
   protected readonly emailTest = signal<{ to: string } | null>(null);
   protected readonly emailResult = signal<EmailTestResult | null>(null);
@@ -454,6 +531,18 @@ export class FeaturesPage implements OnInit {
     } finally {
       this.sending.set(false);
     }
+  }
+
+  protected featureById(id: string): Feature | null {
+    return (this.features() ?? []).find((feature) => feature.id === id) ?? null;
+  }
+
+  protected previewCount(feature: Feature): number {
+    return Object.keys(readPreviewSettings(feature.settings).urls).length;
+  }
+
+  protected ssoCount(feature: Feature): number {
+    return ssoFormsFrom(feature.settings).length;
   }
 
   protected icon(id: string): string {

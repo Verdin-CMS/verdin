@@ -10,8 +10,9 @@ import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
-import { ApiFailure } from '../../core/api';
+import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { ssoStartUrl } from '../../core/feature-settings';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { Logo } from '../../shared/components/logo';
@@ -76,7 +77,36 @@ export const AUTH_FEATURES: readonly { icon: string; text: MessageKey }[] = [
               <h1 hlmCardTitle class="text-xl">{{ t('auth.login.title') }}</h1>
               <p hlmCardDescription>{{ t('auth.login.description') }}</p>
             </div>
-            <div hlmCardContent>
+            <div hlmCardContent class="flex flex-col gap-6">
+              @if (ssoError()) {
+                <div hlmAlert variant="destructive" role="alert">
+                  <ng-icon name="lucideCircleAlert" />
+                  <p hlmAlertTitle>{{ t('auth.sso.failed') }}</p>
+                  <p hlmAlertDescription>{{ ssoError() }}</p>
+                </div>
+              }
+              @if (providers().length) {
+                <div
+                  class="flex flex-col gap-2"
+                  role="group"
+                  [attr.aria-label]="t('auth.sso.group')"
+                >
+                  @for (provider of providers(); track provider.id) {
+                    <a hlmBtn variant="outline" class="w-full" [href]="startUrl(provider.id)">
+                      <ng-icon name="lucideKeyRound" aria-hidden="true" />
+                      {{ t('auth.sso.continue', { name: provider.name }) }}
+                    </a>
+                  }
+                </div>
+                <div
+                  class="text-muted-foreground flex items-center gap-3 text-xs"
+                  aria-hidden="true"
+                >
+                  <span class="bg-border h-px flex-1"></span>
+                  {{ t('auth.sso.or') }}
+                  <span class="bg-border h-px flex-1"></span>
+                </div>
+              }
               <form
                 [formRoot]="loginForm"
                 (submit)="$event.preventDefault(); login()"
@@ -159,9 +189,21 @@ export class LoginPage implements OnInit {
   });
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
+  private readonly config = inject(RUNTIME_CONFIG);
+  /** Single sign-on providers (the `sso` feature). */
+  protected readonly providers = signal<{ id: string; name: string }[]>([]);
+  /** Why the last single sign-on failed (`?ssoError=` from the server). */
+  protected readonly ssoError = signal<string | null>(
+    this.route.snapshot.queryParamMap.get('ssoError'),
+  );
 
   async ngOnInit(): Promise<void> {
+    void this.auth.ssoProviders().then((providers) => this.providers.set(providers));
     if (!(await this.auth.hasAdmin())) await this.router.navigateByUrl('/register');
+  }
+
+  protected startUrl(id: string): string {
+    return ssoStartUrl(this.config.apiBase, id);
   }
 
   protected async login(): Promise<void> {

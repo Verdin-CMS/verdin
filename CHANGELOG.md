@@ -6,6 +6,8 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-28
+
 ### Added
 
 - **SSO for admins** (the `sso` feature): sign-in through OpenID Connect providers with

@@ -35,6 +35,24 @@ id = "color"
 title = "Color"
 element = "sample-color"
 type = "string"
+# The settings form (Settings → Plugins); the module reads `greeting`.
+[[settings]]
+key = "greeting"
+label = "Greeting"
+type = "string"
+max = 20
+description = "Who the hello route greets."
+[[settings]]
+key = "times"
+label = "Repeat"
+type = "integer"
+min = 1
+max = 5
+default = 1
+[[settings]]
+key = "loud"
+label = "Shout"
+type = "boolean"
 TOML
 cat > "$plugin/admin/index.js" <<'JS'
 customElements.define('sample-hello', class extends HTMLElement {

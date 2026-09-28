@@ -35,6 +35,7 @@ import {
 } from '../../core/plugins';
 import { Schema } from '../../core/schema';
 import { PageHeader } from '../../shared/components/page-header';
+import { PluginSettingsForm } from './plugin-settings-form';
 
 /** Splits a message on backticks: odd segments are code. */
 function segments(text: string): string[] {
@@ -65,6 +66,7 @@ const GROUP_ICONS: Record<CapabilityGroup['kind'], string> = {
     HlmSwitchImports,
     HlmTextareaImports,
     PageHeader,
+    PluginSettingsForm,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -328,40 +330,57 @@ const GROUP_ICONS: Record<CapabilityGroup['kind'], string> = {
             <h2 hlmDialogTitle>
               {{ t('settings.plugins.settingsTitle', { name: plugin.name }) }}
             </h2>
-            <p hlmDialogDescription>{{ t('settings.plugins.settingsHint') }}</p>
+            <p hlmDialogDescription>
+              {{
+                plugin.settingsForm?.length
+                  ? t('settings.plugins.form.hint')
+                  : t('settings.plugins.settingsHint')
+              }}
+            </p>
           </hlm-dialog-header>
-          <form class="flex flex-col gap-4" (submit)="$event.preventDefault(); saveSettings()">
-            <div hlmField [attr.data-invalid]="!parsed().ok || null">
-              <label hlmFieldLabel for="plugin-settings">{{
-                t('settings.plugins.settingsJson')
-              }}</label>
-              <textarea
-                hlmTextarea
-                id="plugin-settings"
-                rows="12"
-                spellcheck="false"
-                class="font-mono text-xs"
-                [attr.aria-invalid]="!parsed().ok || null"
-                [attr.aria-describedby]="parsed().ok ? null : 'plugin-settings-error'"
-                [value]="settingsText()"
-                (input)="settingsText.set($any($event.target).value)"
-              ></textarea>
-              @if (settingsError(); as message) {
-                <p hlmFieldError id="plugin-settings-error">{{ message }}</p>
-              }
-            </div>
-            <hlm-dialog-footer>
-              <button hlmBtn type="button" variant="outline" (click)="editing.set(null)">
-                {{ t('common.cancel') }}
-              </button>
-              <button hlmBtn type="submit" [disabled]="!parsed().ok || saving()">
-                @if (saving()) {
-                  <hlm-spinner class="size-4" />
+          @if (plugin.settingsForm?.length) {
+            <vd-plugin-settings-form
+              [fields]="plugin.settingsForm!"
+              [settings]="plugin.settings"
+              [saving]="saving()"
+              [serverError]="serverError()"
+              (saved)="saveSettings($event)"
+              (cancelled)="editing.set(null)"
+            />
+          } @else {
+            <form class="flex flex-col gap-4" (submit)="$event.preventDefault(); saveJson()">
+              <div hlmField [attr.data-invalid]="!parsed().ok || null">
+                <label hlmFieldLabel for="plugin-settings">{{
+                  t('settings.plugins.settingsJson')
+                }}</label>
+                <textarea
+                  hlmTextarea
+                  id="plugin-settings"
+                  rows="12"
+                  spellcheck="false"
+                  class="font-mono text-xs"
+                  [attr.aria-invalid]="!parsed().ok || null"
+                  [attr.aria-describedby]="parsed().ok ? null : 'plugin-settings-error'"
+                  [value]="settingsText()"
+                  (input)="settingsText.set($any($event.target).value)"
+                ></textarea>
+                @if (settingsError(); as message) {
+                  <p hlmFieldError id="plugin-settings-error">{{ message }}</p>
                 }
-                {{ t('common.save') }}
-              </button>
-            </hlm-dialog-footer>
-          </form>
+              </div>
+              <hlm-dialog-footer>
+                <button hlmBtn type="button" variant="outline" (click)="editing.set(null)">
+                  {{ t('common.cancel') }}
+                </button>
+                <button hlmBtn type="submit" [disabled]="!parsed().ok || saving()">
+                  @if (saving()) {
+                    <hlm-spinner class="size-4" />
+                  }
+                  {{ t('common.save') }}
+                </button>
+              </hlm-dialog-footer>
+            </form>
+          }
         }
       </hlm-dialog-content>
     </hlm-dialog>
@@ -449,6 +468,8 @@ export class PluginsPage implements OnInit {
   protected readonly editing = signal<Plugin | null>(null);
   protected readonly settingsText = signal('');
   protected readonly saving = signal(false);
+  /** The server's refusal of the settings form. */
+  protected readonly serverError = signal<string | null>(null);
   protected readonly parsed = computed(() => parseSettings(this.settingsText()));
   protected readonly settingsError = computed(() => {
     const parsed = this.parsed();
@@ -557,13 +578,19 @@ export class PluginsPage implements OnInit {
 
   protected openSettings(plugin: Plugin): void {
     this.settingsText.set(JSON.stringify(plugin.settings ?? {}, null, 2));
+    this.serverError.set(null);
     this.editing.set(plugin);
   }
 
-  protected async saveSettings(): Promise<void> {
-    const plugin = this.editing();
+  protected saveJson(): void {
     const parsed = this.parsed();
-    if (!plugin || !parsed.ok) return;
+    if (parsed.ok) void this.saveSettings(parsed.value);
+  }
+
+  protected async saveSettings(settings: Record<string, unknown>): Promise<void> {
+    const plugin = this.editing();
+    if (!plugin) return;
+    this.serverError.set(null);
     // The switch may have changed since the dialog opened.
     const current = this.plugins()?.find((item) => item.name === plugin.name) ?? plugin;
     this.saving.set(true);
@@ -571,13 +598,16 @@ export class PluginsPage implements OnInit {
       this.replace(
         await this.service.update(plugin.name, {
           enabled: current.enabled,
-          settings: parsed.value,
+          settings,
         }),
       );
       toast.success(this.t('settings.plugins.saved', { name: plugin.name }));
       this.editing.set(null);
     } catch (error) {
-      toast.error(ApiFailure.from(error).message);
+      const failure = ApiFailure.from(error);
+      if (failure.status === 400 && plugin.settingsForm?.length)
+        this.serverError.set(failure.message);
+      else toast.error(failure.message);
     } finally {
       this.saving.set(false);
     }

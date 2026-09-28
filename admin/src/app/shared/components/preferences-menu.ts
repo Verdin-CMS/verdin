@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
+import { toast } from '@spartan-ng/brain/sonner';
 import { NgIcon } from '@ng-icons/core';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmDropdownMenuImports } from '@spartan-ng/helm/dropdown-menu';
@@ -8,8 +9,9 @@ import { I18n, WeekStartPreference } from '../../core/i18n/i18n';
 import { Weekday } from '../../core/i18n/week';
 import { Theme, ThemeChoice } from '../../core/theme';
 import { Unseen } from '../../core/unseen';
+import { UserPreferences } from '../../core/user-preferences';
 
-/** Theme, language, first day of the week and the sidebar's unseen badges. */
+/** Theme, language, first day of the week, the sidebar's unseen badges and the daily digest. */
 @Component({
   selector: 'vd-preferences-menu',
   imports: [NgIcon, HlmButtonImports, HlmDropdownMenuImports],
@@ -67,6 +69,16 @@ import { Unseen } from '../../core/unseen';
             {{ i18n.t('prefs.unseenBadges') }}
             <hlm-dropdown-menu-checkbox-indicator />
           </button>
+          <button
+            hlmDropdownMenuCheckbox
+            [checked]="digest()"
+            [disabled]="!userPreferences.loaded()"
+            (triggered)="setDigest(!digest())"
+          >
+            <ng-icon name="lucideMail" />
+            {{ i18n.t('prefs.digest') }}
+            <hlm-dropdown-menu-checkbox-indicator />
+          </button>
         }
       </hlm-dropdown-menu>
     </ng-template>
@@ -108,8 +120,28 @@ export class PreferencesMenu {
   protected readonly theme = inject(Theme);
   protected readonly unseen = inject(Unseen);
   protected readonly auth = inject(Auth);
+  protected readonly userPreferences = inject(UserPreferences);
   /** Icon-only trigger. */
   readonly compact = input(false);
+  /** The daily email of unseen changes (server-side preference `digest: "daily"`). */
+  protected readonly digest = computed(() => this.userPreferences.value()['digest'] === 'daily');
+
+  constructor() {
+    effect(() => {
+      if (this.auth.loggedIn()) void this.userPreferences.load();
+    });
+  }
+
+  protected async setDigest(on: boolean): Promise<void> {
+    const before = this.userPreferences.value()['digest'];
+    try {
+      await this.userPreferences.set(['digest'], on ? 'daily' : undefined);
+      toast.success(this.i18n.t(on ? 'prefs.digestOn' : 'prefs.digestOff'));
+    } catch {
+      toast.error(this.i18n.t('prefs.digestFailed'));
+      this.userPreferences.value.update((value) => ({ ...value, digest: before }));
+    }
+  }
 
   protected readonly themes: {
     value: ThemeChoice;

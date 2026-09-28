@@ -36,12 +36,14 @@ import {
 } from '../../core/content-locales';
 import { Engagement } from '../../core/engagement';
 import { Unseen } from '../../core/unseen';
+import { previewTemplate } from '../../core/feature-settings';
 import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { Schema } from '../../core/schema';
 import { Attributes, ContentType, Document, MediaFile } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 import { VoteControl } from '../../shared/components/vote-control';
+import { EntryReleases } from './entry-releases';
 import { FieldsComponent } from './fields/fields';
 import {
   FormModel,
@@ -129,6 +131,7 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
   selector: 'vd-document-form',
   imports: [
     VoteControl,
+    EntryReleases,
     FormRoot,
     RouterLink,
     NgIcon,
@@ -207,6 +210,23 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
                 </hlm-dropdown-menu-group>
               </hlm-dropdown-menu>
             </ng-template>
+          }
+          @if (documentId() && previewOn() && !missing()) {
+            <button
+              hlmBtn
+              variant="ghost"
+              type="button"
+              [disabled]="previewing()"
+              [attr.title]="t('content.preview.hint')"
+              (click)="openPreview()"
+            >
+              @if (previewing()) {
+                <hlm-spinner />
+              } @else {
+                <ng-icon name="lucideExternalLink" />
+              }
+              {{ t('content.preview.open') }}
+            </button>
           }
           @if (documentId() && historyOn() && !missing()) {
             <a
@@ -382,6 +402,17 @@ function applyRules(path: SchemaPath<FormModel>, attributes: Attributes, t: Tran
               </div>
             }
           </section>
+
+          @if (releasesOn() && type().draftAndPublish && !missing()) {
+            @if (documentId(); as id) {
+              <vd-entry-releases
+                [uid]="type().uid"
+                [documentId]="id"
+                [locale]="locale()"
+                [canAdd]="canPublish()"
+              />
+            }
+          }
 
           @if (documentId() && !missing() && auth.canContent('content.delete', type().uid)) {
             <section hlmCard size="sm" class="ring-destructive/30">
@@ -567,6 +598,17 @@ export class DocumentForm implements OnInit {
   protected readonly canPublish = computed(() =>
     this.auth.canContent('content.publish', this.type().uid),
   );
+  /** Releases (optional feature): the editor's panel needs `releases.manage`. */
+  protected readonly releasesOn = computed(
+    () => this.features.enabled('releases') && this.auth.can('releases.manage'),
+  );
+  /** Preview (optional feature): only for types with a URL template. */
+  protected readonly previewOn = computed(
+    () =>
+      this.features.enabled('preview') &&
+      !!previewTemplate(this.features.settings('preview'), this.type().uid),
+  );
+  protected readonly previewing = signal(false);
   protected readonly heading = computed(() => {
     const type = this.type();
     if (type.kind === 'singleType') return type.displayName;
@@ -840,6 +882,28 @@ export class DocumentForm implements OnInit {
       await this.router.navigate(type.kind === 'singleType' ? ['/'] : ['/content', type.uid]);
     } catch (error) {
       this.fail(error, this.t('content.edit.error.delete'));
+    }
+  }
+
+  /** Opens the draft on the site, with a fresh preview token, in a new tab. */
+  protected async openPreview(): Promise<void> {
+    const id = this.documentId();
+    if (!id || this.previewing()) return;
+    this.previewing.set(true);
+    try {
+      const preview = await this.api.get<{ url: string }>(
+        `/content/${this.type().uid}/${id}/preview`,
+        withLocale('', this.locale()) || undefined,
+      );
+      window.open(preview.url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      const failure = ApiFailure.from(error);
+      toast.error(this.t('content.preview.error'), {
+        description:
+          failure.status === 404 ? this.t('content.preview.notConfigured') : failure.message,
+      });
+    } finally {
+      this.previewing.set(false);
     }
   }
 

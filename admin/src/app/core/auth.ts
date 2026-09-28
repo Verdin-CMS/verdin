@@ -53,6 +53,18 @@ export class Auth {
     return response.data.hasAdmin;
   }
 
+  /** Single sign-on providers for the login page (none while the feature is off). */
+  async ssoProviders(): Promise<{ id: string; name: string }[]> {
+    try {
+      const response = await firstValueFrom(
+        this.http.get<{ data: { id: string; name: string }[] }>(this.url('/sso')),
+      );
+      return Array.isArray(response?.data) ? response.data : [];
+    } catch {
+      return [];
+    }
+  }
+
   async login(email: string, password: string): Promise<void> {
     await this.open(
       this.http.post<SessionResponse>(
@@ -184,7 +196,7 @@ export class Auth {
 }
 
 function isAuthRoute(request: HttpRequest<unknown>): boolean {
-  return /\/auth\/(login|refresh|logout|register-first-admin|status|me)$/.test(
+  return /\/auth\/(login|refresh|logout|register-first-admin|status|me|sso)$/.test(
     request.url.split('?')[0],
   );
 }

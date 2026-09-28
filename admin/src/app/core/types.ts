@@ -276,4 +276,6 @@ export const ADMIN_SETTINGS_ACTIONS = [
   'locales.manage',
   'endusers.manage',
   'plugins.manage',
+  'audit.read',
+  'releases.manage',
 ] as const;

@@ -44,6 +44,15 @@ export const routes: Routes = [
         loadComponent: () => import('./features/media/library').then((m) => m.MediaLibraryPage),
       },
       {
+        path: 'releases',
+        loadComponent: () => import('./features/releases/releases').then((m) => m.ReleasesPage),
+      },
+      {
+        path: 'releases/:id',
+        loadComponent: () =>
+          import('./features/releases/release-detail').then((m) => m.ReleaseDetailPage),
+      },
+      {
         path: 'builder',
         loadComponent: () => import('./features/builder/builder').then((m) => m.Builder),
       },
@@ -75,6 +84,10 @@ export const routes: Routes = [
         path: 'settings/webhooks/:id',
         loadComponent: () =>
           import('./features/settings/webhook-edit').then((m) => m.WebhookEditPage),
+      },
+      {
+        path: 'settings/audit-logs',
+        loadComponent: () => import('./features/settings/audit-logs').then((m) => m.AuditLogsPage),
       },
       {
         path: 'settings/plugins',

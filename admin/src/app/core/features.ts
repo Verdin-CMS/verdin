@@ -36,6 +36,11 @@ export class Features {
     return features;
   }
 
+  /** The stored settings of a feature (`null` when none or not loaded). */
+  settings(id: string): Record<string, unknown> | null {
+    return (this.catalog() ?? []).find((feature) => feature.id === id)?.settings ?? null;
+  }
+
   enabled(id: string): boolean {
     return (this.catalog() ?? []).some((feature) => feature.id === id && feature.enabled);
   }

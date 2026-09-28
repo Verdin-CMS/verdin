@@ -76,6 +76,8 @@ const ACTION_LABELS: Record<
   'locales.manage': 'settings.roles.action.locales.manage',
   'endusers.manage': 'settings.roles.action.endusers.manage',
   'plugins.manage': 'settings.roles.action.plugins.manage',
+  'audit.read': 'settings.roles.action.audit.read',
+  'releases.manage': 'settings.roles.action.releases.manage',
 };
 
 @Component({
