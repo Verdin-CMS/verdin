@@ -105,20 +105,20 @@ Hygraph) that fit Verdin best.
 
 | Item | Size | Notes |
 |---|---|---|
-| **Realtime API** ✅ | M | SSE (and GraphQL subscriptions) on document events, filtered by the reader's permissions; PocketBase-style, fits the event bus |
-| Document locking & presence | S | "Who is editing" avatars and a soft lock in the editor, over the realtime channel; the step before co-editing |
-| **Visual editing** ✅ | M | Content source maps (stega) in preview responses and a small overlay script: click on the site, jump to the field (focusing the field in the admin's preview pending) |
-| Comments & tasks (API ✅) | M | Threads on entries and fields, @mentions, assignable tasks, email notifications; admin UI and the digest pending |
-| Polymorphic relations in the admin | M | Editable, not only shown: in the editor, a picker that searches entries across content types (choose the type, then the entry) to add, remove and reorder `morphToOne`/`morphToMany` links; in the builder, create and edit `morph*` attributes (inverse sides with `target` and `morphBy`, validated against the owner); inverse sides stay read-only, as in the API. Strapi has no admin UI for them |
-| Where used (API ✅) | S | Inverse references of an entry or file (relations, components, blocks), shown in the editor and the media library; warns before delete |
+| **Realtime API** ✅ | M | SSE on document and media events, filtered by the reader's permissions; the admin's stream names who made a change (GraphQL subscriptions moved to Later) |
+| Document locking & presence ✅ | S | "Who is editing" avatars and a soft lock in the editor, changes by others offered as a reload, live list updates |
+| **Visual editing** ✅ | M | Content source maps (stega) in authenticated reads and an overlay script: click on the site, jump to the field in the admin's preview or a new tab |
+| Comments & tasks ✅ | M | Threads on entries and fields, @mentions, resolution, assignable tasks with due dates, email notifications, a "My tasks" dashboard widget (tasks in the digest moved to Later) |
+| Polymorphic relations in the admin ✅ | M | Editable `morphToOne`/`morphToMany` links with a picker across content types; `morph*` attributes in the builder; inverse sides read-only, as in the API |
+| Where used ✅ | S | Inverse references of an entry or file (relations, components, blocks, rich text), in the editor and the media library; warns before deleting |
 | Image transformations ✅ | M | `/uploads/…?w=&h=&fit=&format=&q=` with focal-point crops, presets, signed URLs and a disk cache (local provider; AVIF output later) |
-| Full-text search ✅ | M | Tantivy index inside the binary, `?_q=` on the REST and admin APIs (admin list UI pending); Meilisearch/Typesense sync moved to Later |
-| 2FA for admins (API ✅) | S | TOTP, passkeys (WebAuthn), recovery codes, enforceable per role; admin UI pending |
-| CSV/JSON import & export (API ✅) | S | Per content type from the list, with field mapping and a dry run; admin UI pending |
+| Full-text search ✅ | M | Tantivy index inside the binary, `?_q=` on the REST and admin APIs and in the admin lists (Meilisearch/Typesense sync moved to Later) |
+| 2FA for admins ✅ | S | TOTP, passkeys (WebAuthn), recovery codes, enforceable per role |
+| CSV/JSON import & export ✅ | S | Per content type from the list, with column mapping, upserts and a dry run |
 | Cross-field validation ✅ | S | Rules that compare fields (`endDate > startDate`) declared in the schema; JSON Logic, checked with `required` |
-| Official plugins (API ✅) | S each | SEO fields + sitemap, redirects, menus, form builder with submissions, as built-in features; admin UI pending |
-| AI actions (API ✅) | M | Translate a locale, alt text, summaries and SEO suggestions, with the key of the user's provider (Anthropic, OpenAI, local); off by default; admin UI pending |
-| Deploy & CDN hooks (API ✅) | S | "Deploy" button calling a build hook with its status; CDN purge by tag (Cloudflare, Fastly, webhook) on publish; admin UI pending, Vercel through the webhook |
+| Official plugins ✅ | S each | SEO settings + sitemap, redirects, menus, form builder with submissions, as built-in features |
+| AI actions ✅ | M | Translate a locale, alt text, summaries and SEO suggestions, with the installation's provider (Anthropic, OpenAI, OpenAI-compatible); off by default |
+| Deploy & CDN hooks ✅ | S | "Deploy" button calling build hooks with their status; CDN purge by tag (Cloudflare, Fastly, webhook — Vercel through it) on publish |
 | Metrics ✅ | S | Prometheus `/_metrics` (requests, latency, webhook queue, realtime streams); plugin time and Sentry reporting moved to Later |
 
 ## Later
@@ -140,6 +140,9 @@ Large items worth doing once 0.9 lands:
 - Signed URLs for private buckets (every file URL in responses signed for a short time).
 - Scoped, owner-bound admin API tokens (Strapi 5.47).
 - Plugin call times in the metrics, and optional Sentry error reporting.
+- GraphQL subscriptions over the realtime events.
+- Open tasks and mentions in the daily digest.
+- Meilisearch / Typesense sync, as a plugin, for sites that already run one.
 - RBAC conditions declared by plugins, and "is owner" for end users.
 - Encrypted exports, scheduled backups to S3, and `verdin transfer` between running
   instances with transfer tokens.

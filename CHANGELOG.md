@@ -6,6 +6,8 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-29
+
 ### Added
 
 - **Realtime events** over Server-Sent Events: `GET /api/_events` (the `realtime` feature)
@@ -50,6 +52,21 @@ All notable changes to Verdin are documented here. The format follows
   (`/api/_redirects`), navigation menus with resolved entry links (`/api/_menus/{slug}`)
   and forms with validated, rate-limited submissions and email notifications
   (`/api/_forms/{slug}`). New admin permission `site.manage`.
+- **Admin panel**: two-step sign-in with codes and passkeys, and a two-factor section in
+  the profile; comments, tasks and presence in the editor, live list updates and a
+  "My tasks" widget; "Used in" in the editor and the media library with delete
+  warnings; CSV/JSON import (with a checked dry run) and export from the lists, and
+  full-text search in them; AI translation, SEO, summary and alt text suggestions;
+  visual editing from the preview; editable polymorphic relations in the editor and the
+  builder; Settings → Deployments with a Deploy button, and pages for redirects, menus,
+  forms and the SEO settings.
+- New admin permissions `deploy.manage`, `deploy.trigger` and `site.manage` (Editors get
+  `deploy.trigger` and `site.manage`).
+
+### Changed
+
+- The admin content list's search box searches every text field (`_q`) instead of the
+  title.
 
 ## [0.8.0] - 2026-09-28
 
