@@ -652,6 +652,10 @@ UI metadata (list columns, visible fields, form layout) lives in `schema/content
   - Secrets are stored in `vd_admin_two_factor`, encrypted with a keystream derived from `VERDIN_TOKEN_PEPPER` and a per-secret nonce; recovery codes as keyed hashes.
   - Roles with `requireTwoFactor` make their members set one up: until they do, every admin route but their profile (`/auth/me`) and the two-factor routes answers `403 TwoFactorRequiredError`. SSO sign-ins are subject to it too.
   - `DELETE /users/:id/two-factor` (`users.manage`) removes an admin's factors when they lose them; a Super Admin's only yield to another Super Admin.
+- **Passkeys** (WebAuthn) as a second factor, bound to the origin of `server.public_url` (its host is the relying party id). ES256, EdDSA and RS256 (≥ 2048 bits) credentials; attestation is not verified (`attestation: "none"`); a signature counter that stops growing is refused (0 means no counter).
+  - Adding one: `POST /auth/two-factor/passkeys/options { password }` gives `{ challengeToken, publicKey }` for `navigator.credentials.create`, then `POST /auth/two-factor/passkeys { challengeToken, name, credential }` with the `PublicKeyCredential` in JSON (base64url fields). The first factor of an account comes with recovery codes. `DELETE /auth/two-factor/passkeys/:id { password }` removes one.
+  - Signing in: `POST /auth/login/passkey/options { twoFactorToken }`, then `POST /auth/login/two-factor { twoFactorToken, challengeToken, credential }`.
+  - Challenges are stateless (HMAC with the JWT secret, bound to the user and the ceremony, 5 minutes) and single use on the instance that checks them.
 
 ### 14.2 Content API
 

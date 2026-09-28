@@ -29,8 +29,9 @@ All notable changes to Verdin are documented here. The format follows
 - **Full-text search** with `_q` on the content and admin APIs: `$containsi` over the
   text fields (Strapi's behaviour), or, with `[search] enabled = true`, a Tantivy index
   that ranks results, ignores accents and matches the last word as a prefix.
-- **Two-factor authentication for admins**: TOTP with single-use recovery codes, a
-  two-step sign-in, and roles that require it (`requireTwoFactor`).
+- **Two-factor authentication for admins**: TOTP and passkeys (WebAuthn: ES256, EdDSA,
+  RS256) with single-use recovery codes, a two-step sign-in, and roles that require it
+  (`requireTwoFactor`).
 
 ## [0.8.0] - 2026-09-28
 

@@ -17,6 +17,8 @@ pub use two_factor::{Login, PasskeySummary, TotpSetup, TwoFactorStatus, totp_cod
 
 #[path = "account.rs"]
 pub mod account;
+#[path = "passkeys.rs"]
+pub mod passkeys;
 #[path = "preview.rs"]
 pub mod preview;
 #[path = "two_factor.rs"]

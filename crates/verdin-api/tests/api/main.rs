@@ -18,6 +18,7 @@ mod i18n;
 mod mcp;
 mod media;
 mod morph;
+mod passkeys;
 mod password;
 mod plugins;
 mod populate;

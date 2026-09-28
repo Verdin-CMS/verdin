@@ -291,6 +291,16 @@ impl AuthService {
         Ok(codes)
     }
 
+    /// Fresh recovery codes when the account has none left (a first factor was added).
+    pub(super) async fn ensure_recovery_codes(&self, user_id: i64) -> Result<Option<Vec<String>>> {
+        if self.stored(user_id).await?.is_some_and(|stored| !stored.recovery.is_empty()) {
+            return Ok(None);
+        }
+        let codes = recovery_codes();
+        self.upsert(user_id, &[("recovery_codes", V::Text(self.hashed_codes(&codes)))]).await?;
+        Ok(Some(codes))
+    }
+
     /// Removes every second factor of an account (an admin who lost them).
     pub async fn reset_two_factor(&self, user_id: i64) -> Result<()> {
         self.user(user_id).await?;
