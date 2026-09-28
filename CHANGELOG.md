@@ -6,6 +6,8 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-25
+
 ### Added
 
 - **WASM plugins** (Extism): before/after write hooks (change or refuse data), routes under
