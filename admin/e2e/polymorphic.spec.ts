@@ -140,7 +140,7 @@ test('the editor shows polymorphic links read-only and a save keeps them', async
   // Saving another field leaves the links as they are (they are not sent back).
   await page.getByLabel('Text').fill(`Edited ${tag}`);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
   const after = await links(api, note);
   expect(after.text).toBe(`Edited ${tag}`);
   expect(after.refs).toEqual(before.refs);
@@ -154,7 +154,7 @@ test('the editor shows polymorphic links read-only and a save keeps them', async
   await expect(notes).toContainText('Pin note');
   await page.getByLabel('Title').fill(`Rust edited ${tag}`);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
   expect((await links(api, note)).refs).toEqual(before.refs);
   expect(problems).toEqual([]);
 });
