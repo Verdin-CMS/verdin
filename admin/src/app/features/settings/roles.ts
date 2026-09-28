@@ -96,6 +96,9 @@ const ACTION_LABELS: Record<
   'releases.manage': 'settings.roles.action.releases.manage',
   'workflows.manage': 'settings.roles.action.workflows.manage',
   'views.manage': 'settings.roles.action.views.manage',
+  'deploy.manage': 'settings.roles.action.deploy.manage',
+  'deploy.trigger': 'settings.roles.action.deploy.trigger',
+  'site.manage': 'settings.roles.action.site.manage',
 };
 
 @Component({

@@ -156,6 +156,31 @@ export const routes: Routes = [
           import('./features/settings/end-users-settings').then((m) => m.EndUsersSettingsPage),
       },
       {
+        path: 'settings/deployments',
+        loadComponent: () =>
+          import('./features/settings/deployments').then((m) => m.DeploymentsPage),
+      },
+      {
+        path: 'settings/redirects',
+        loadComponent: () => import('./features/settings/redirects').then((m) => m.RedirectsPage),
+      },
+      {
+        path: 'settings/menus',
+        loadComponent: () => import('./features/settings/menus').then((m) => m.MenusPage),
+      },
+      {
+        path: 'settings/menus/:id',
+        loadComponent: () => import('./features/settings/menu-edit').then((m) => m.MenuEditPage),
+      },
+      {
+        path: 'settings/forms',
+        loadComponent: () => import('./features/settings/forms').then((m) => m.FormsPage),
+      },
+      {
+        path: 'settings/forms/:id',
+        loadComponent: () => import('./features/settings/form-edit').then((m) => m.FormEditPage),
+      },
+      {
         path: 'settings/public',
         loadComponent: () => import('./features/settings/public').then((m) => m.PublicPage),
       },
