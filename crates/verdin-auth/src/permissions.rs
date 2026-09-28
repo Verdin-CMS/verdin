@@ -50,6 +50,8 @@ pub mod actions {
 
 /// Content API subject of the media library (Strapi's upload plugin).
 pub const UPLOAD_SUBJECT: &str = "plugin::upload";
+/// `/api/users` (end users managed over the content API).
+pub const USERS_SUBJECT: &str = "plugin::users-permissions.user";
 
 /// Restricts a content permission to documents the user created.
 pub const IS_CREATOR: &str = "is-creator";

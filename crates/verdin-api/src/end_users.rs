@@ -2,6 +2,9 @@
 //! users-permissions plugin: `/auth/local/register`, `/auth/local`, email confirmation,
 //! password reset and change, `/users/me`, and OAuth sign-in through `/connect/{provider}`.
 
+#[path = "end_users_crud.rs"]
+mod crud;
+
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -35,6 +38,12 @@ pub struct UsersSettings {
     pub email_confirmation: bool,
     pub default_role: String,
     pub jwt_expires_in_days: u32,
+    /// `legacy-support`: one long-lived JWT (`jwtExpiresInDays`). `refresh`: short-lived
+    /// JWTs (`accessTokenMinutes`) with rotating refresh tokens (`refreshTokenDays`), as
+    /// Strapi 5's `jwtManagement: 'refresh'`.
+    pub jwt_management: JwtManagement,
+    pub access_token_minutes: u32,
+    pub refresh_token_days: u32,
     /// Where `/auth/email-confirmation` redirects after confirming.
     pub email_confirmation_redirection: Option<String>,
     /// The frontend page that receives `?code=` to reset a password.
@@ -50,12 +59,23 @@ impl Default for UsersSettings {
             email_confirmation: false,
             default_role: AUTHENTICATED.into(),
             jwt_expires_in_days: 30,
+            jwt_management: JwtManagement::LegacySupport,
+            access_token_minutes: 30,
+            refresh_token_days: 30,
             email_confirmation_redirection: None,
             reset_password_url: None,
             providers: BTreeMap::new(),
             templates: Templates::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum JwtManagement {
+    #[default]
+    LegacySupport,
+    Refresh,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -85,10 +105,12 @@ impl Default for Templates {
             confirmation: Template {
                 subject: "Confirm your account".into(),
                 text: "Hello {{username}},\n\nConfirm your account: {{url}}\n\nIf you did not sign up, ignore this email.".into(),
+                html: None,
             },
             reset_password: Template {
                 subject: "Reset your password".into(),
                 text: "Hello {{username}},\n\nReset your password: {{url}}\n\nThe link expires in one hour. If you did not ask for it, ignore this email.".into(),
+                html: None,
             },
         }
     }
@@ -99,6 +121,8 @@ impl Default for Templates {
 pub struct Template {
     pub subject: String,
     pub text: String,
+    /// Optional HTML body; its `{{placeholders}}` are HTML-escaped.
+    pub html: Option<String>,
 }
 
 /// Everything the routes need.
@@ -157,8 +181,13 @@ pub(crate) fn routes(users: Users) -> Router {
         .route("/auth/forgot-password", post(forgot_password))
         .route("/auth/reset-password", post(reset_password))
         .route("/auth/change-password", post(change_password))
+        .route("/auth/refresh", post(refresh))
+        .route("/auth/logout", post(logout))
         .route("/auth/{provider}/callback", get(provider_callback))
         .route("/users/me", get(me))
+        .route("/users", get(crud::find).post(crud::create))
+        .route("/users/count", get(crud::count))
+        .route("/users/{id}", get(crud::find_one).put(crud::update).delete(crud::remove))
         .route("/connect/{provider}", get(connect))
         .route("/connect/{provider}/callback", get(connect_callback))
         .with_state(users)
@@ -196,9 +225,62 @@ fn account_error(error: AuthError) -> ApiError {
     }
 }
 
-fn session(users: &Users, user: &EndUser) -> Response {
-    let ttl = time::Duration::days(i64::from(users.settings.jwt_expires_in_days.max(1)));
-    Json(json!({ "jwt": users.auth.end_user_jwt(user, ttl), "user": user })).into_response()
+fn refresh_ttl(users: &Users) -> time::Duration {
+    time::Duration::days(i64::from(users.settings.refresh_token_days.max(1)))
+}
+
+fn access_ttl(users: &Users) -> time::Duration {
+    match users.settings.jwt_management {
+        JwtManagement::LegacySupport => {
+            time::Duration::days(i64::from(users.settings.jwt_expires_in_days.max(1)))
+        }
+        JwtManagement::Refresh => {
+            time::Duration::minutes(i64::from(users.settings.access_token_minutes.max(1)))
+        }
+    }
+}
+
+/// `{ jwt, user }`, plus `refreshToken` in `refresh` mode.
+async fn session(users: &Users, user: &EndUser) -> ApiResult {
+    let jwt = users.auth.end_user_jwt(user, access_ttl(users));
+    if users.settings.jwt_management == JwtManagement::Refresh {
+        let refresh = users.auth.issue_end_user_refresh(user, refresh_ttl(users)).await?;
+        return Ok(
+            Json(json!({ "jwt": jwt, "refreshToken": refresh, "user": user })).into_response()
+        );
+    }
+    Ok(Json(json!({ "jwt": jwt, "user": user })).into_response())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RefreshBody {
+    refresh_token: String,
+}
+
+/// `POST /auth/refresh`: a new JWT and refresh token (`refresh` mode).
+async fn refresh(State(users): State<Users>, ClientIp(ip): ClientIp, bytes: Bytes) -> ApiResult {
+    if users.settings.jwt_management != JwtManagement::Refresh {
+        return Err(ApiError::NotFound);
+    }
+    if !users.limiter.allow(&ip) {
+        return Err(ApiError::TooManyRequests);
+    }
+    let input: RefreshBody = body(&bytes)?;
+    let (user, token) =
+        users.auth.refresh_end_user(&input.refresh_token, refresh_ttl(&users)).await?;
+    let jwt = users.auth.end_user_jwt(&user, access_ttl(&users));
+    Ok(Json(json!({ "jwt": jwt, "refreshToken": token })).into_response())
+}
+
+/// `POST /auth/logout`: ends the refresh token's session.
+async fn logout(State(users): State<Users>, bytes: Bytes) -> ApiResult {
+    if users.settings.jwt_management != JwtManagement::Refresh {
+        return Err(ApiError::NotFound);
+    }
+    let input: RefreshBody = body(&bytes)?;
+    users.auth.revoke_end_user_refresh(&input.refresh_token).await?;
+    Ok(Json(json!({ "ok": true })).into_response())
 }
 
 async fn send(users: &Users, user: &EndUser, template: &Template, url: String) {
@@ -211,7 +293,7 @@ async fn send(users: &Users, user: &EndUser, template: &Template, url: String) {
         to: user.email.clone(),
         subject: render(&template.subject, &values, false),
         text: render(&template.text, &values, false),
-        html: None,
+        html: template.html.as_deref().map(|html| render(html, &values, true)),
     };
     if let Err(error) = users.mailer.send(&message).await {
         tracing::warn!(%error, "could not send an end user email");
@@ -257,7 +339,7 @@ async fn register(State(users): State<Users>, ClientIp(ip): ClientIp, bytes: Byt
             send_confirmation(&users, &user, &token).await;
             Ok(Json(json!({ "user": user })).into_response())
         }
-        None => Ok(session(&users, &user)),
+        None => session(&users, &user).await,
     }
 }
 
@@ -287,7 +369,7 @@ async fn login(State(users): State<Users>, ClientIp(ip): ClientIp, bytes: Bytes)
     if users.settings.email_confirmation && !user.confirmed {
         return Err(ApiError::BadRequest("Your account email is not confirmed".into()));
     }
-    Ok(session(&users, &user))
+    session(&users, &user).await
 }
 
 #[derive(Deserialize)]
@@ -364,7 +446,7 @@ async fn reset_password(
         return Err(ApiError::BadRequest("Passwords do not match".into()));
     }
     let user = users.auth.reset_end_user_password(&input.code, &input.password).await?;
-    Ok(session(&users, &user))
+    session(&users, &user).await
 }
 
 async fn signed_in(users: &Users, headers: &HeaderMap) -> Result<EndUser, ApiError> {
@@ -394,7 +476,7 @@ async fn change_password(
         .auth
         .change_end_user_password(user.id, &input.current_password, &input.password)
         .await?;
-    Ok(session(&users, &user))
+    session(&users, &user).await
 }
 
 async fn me(State(users): State<Users>, headers: HeaderMap) -> ApiResult {
@@ -425,6 +507,37 @@ fn endpoints(name: &str, provider: &ProviderSettings) -> Option<Endpoints> {
             "https://openidconnect.googleapis.com/v1/userinfo",
             vec!["openid".to_owned(), "email".to_owned(), "profile".to_owned()],
         )),
+        "microsoft" => Some((
+            "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+            "https://graph.microsoft.com/oidc/userinfo",
+            vec!["openid".to_owned(), "email".to_owned(), "profile".to_owned()],
+        )),
+        "discord" => Some((
+            "https://discord.com/oauth2/authorize",
+            "https://discord.com/api/oauth2/token",
+            "https://discord.com/api/users/@me",
+            vec!["identify".to_owned(), "email".to_owned()],
+        )),
+        "facebook" => Some((
+            "https://www.facebook.com/v19.0/dialog/oauth",
+            "https://graph.facebook.com/v19.0/oauth/access_token",
+            "https://graph.facebook.com/me?fields=id,name,email",
+            vec!["email".to_owned()],
+        )),
+        "gitlab" => Some((
+            "https://gitlab.com/oauth/authorize",
+            "https://gitlab.com/oauth/token",
+            "https://gitlab.com/api/v4/user",
+            vec!["read_user".to_owned()],
+        )),
+        "linkedin" => Some((
+            "https://www.linkedin.com/oauth/v2/authorization",
+            "https://www.linkedin.com/oauth/v2/accessToken",
+            "https://api.linkedin.com/v2/userinfo",
+            vec!["openid".to_owned(), "profile".to_owned(), "email".to_owned()],
+        )),
+        // Keycloak, Auth0, Okta…: `authorizeUrl`, `tokenUrl` and `userInfoUrl` of the tenant.
         _ => None,
     };
     let pick =
@@ -618,7 +731,10 @@ async fn provider_callback(
                 .and_then(|item| item["email"].as_str().map(str::to_owned))
         });
     }
-    if profile.get("email_verified") == Some(&Value::Bool(false)) {
+    // OpenID Connect's `email_verified`; Discord's `verified`.
+    if profile.get("email_verified") == Some(&Value::Bool(false))
+        || (name == "discord" && profile.get("verified") == Some(&Value::Bool(false)))
+    {
         return Err(ApiError::BadRequest(format!("the {name} email is not verified")));
     }
     let email =
@@ -633,7 +749,7 @@ async fn provider_callback(
         .oauth_end_user(&name, &email, &username, &users.settings.default_role)
         .await
         .map_err(account_error)?;
-    Ok(session(&users, &user))
+    session(&users, &user).await
 }
 
 #[cfg(test)]

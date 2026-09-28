@@ -490,3 +490,109 @@ async fn admin_manages_end_users_and_roles() {
     );
     app.done().await;
 }
+
+#[tokio::test]
+async fn users_crud_over_the_content_api() {
+    let app = App::with_users(schema(), json!({})).await;
+    let (_, body) = post_json(
+        &app,
+        "/api/auth/local/register",
+        json!({ "username": "ada", "email": "ada@example.com", "password": "correct horse 1" }),
+    )
+    .await;
+    let jwt = body["jwt"].as_str().unwrap().to_owned();
+    assert_eq!(
+        app.call_as(Method::GET, "/api/users", None, As::Bearer(&jwt)).await.0,
+        StatusCode::FORBIDDEN
+    );
+
+    let roles = app.auth.end_user_roles().await.unwrap();
+    let (authenticated, _, _) =
+        roles.iter().find(|(role, _, _)| role.kind == "authenticated").unwrap();
+    let grants: Vec<(String, ContentAction)> = [ContentAction::Find, ContentAction::FindOne]
+        .into_iter()
+        .map(|action| (verdin_auth::USERS_SUBJECT.to_owned(), action))
+        .collect();
+    app.auth
+        .save_end_user_role(Some(authenticated.id), "Authenticated", None, &grants)
+        .await
+        .unwrap();
+    let (status, listed) =
+        app.call_as(Method::GET, "/api/users?populate=role", None, As::Bearer(&jwt)).await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(listed[0]["username"], "ada", "a plain array, as in Strapi");
+    assert_eq!(listed[0]["role"]["type"], "authenticated");
+    assert!(listed[0].get("passwordHash").is_none());
+    let id = listed[0]["id"].as_i64().unwrap();
+    let (_, one) =
+        app.call_as(Method::GET, &format!("/api/users/{id}"), None, As::Bearer(&jwt)).await;
+    assert_eq!(one["email"], "ada@example.com");
+    assert!(one.get("role").is_none(), "not populated");
+    assert_eq!(
+        app.call_as(Method::DELETE, &format!("/api/users/{id}"), None, As::Bearer(&jwt)).await.0,
+        StatusCode::FORBIDDEN
+    );
+
+    // The full-access API token of the harness manages them.
+    let (status, created) =
+        app.call(Method::POST, "/api/users", Some(json!({ "username": "bob", "email": "bob@example.com", "password": "correct horse 2" }))).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["confirmed"], true);
+    let bob = created["id"].as_i64().unwrap();
+    let (_, count) = app.get("/api/users/count").await;
+    assert_eq!(count, 2);
+    let (status, updated) =
+        app.call(Method::PUT, &format!("/api/users/{bob}"), Some(json!({ "blocked": true }))).await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(updated["blocked"], true);
+    let (status, _) = app.call(Method::DELETE, &format!("/api/users/{bob}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, count) = app.get("/api/users/count").await;
+    assert_eq!(count, 1);
+    app.done().await;
+}
+
+#[tokio::test]
+async fn refresh_tokens_rotate() {
+    let app =
+        App::with_users(schema(), json!({ "jwtManagement": "refresh", "accessTokenMinutes": 5 }))
+            .await;
+    let (status, body) = post_json(
+        &app,
+        "/api/auth/local/register",
+        json!({ "username": "ada", "email": "ada@example.com", "password": "correct horse 1" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let first = body["refreshToken"].as_str().unwrap().to_owned();
+
+    let (status, rotated) =
+        post_json(&app, "/api/auth/refresh", json!({ "refreshToken": first })).await;
+    assert_eq!(status, StatusCode::OK, "{rotated}");
+    let second = rotated["refreshToken"].as_str().unwrap().to_owned();
+    let jwt = rotated["jwt"].as_str().unwrap().to_owned();
+    assert_eq!(
+        app.call_as(Method::GET, "/api/users/me", None, As::Bearer(&jwt)).await.0,
+        StatusCode::OK
+    );
+
+    // Replaying the first token ends the whole session.
+    let (status, _) = post_json(&app, "/api/auth/refresh", json!({ "refreshToken": first })).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = post_json(&app, "/api/auth/refresh", json!({ "refreshToken": second })).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "the family is revoked");
+
+    // Logout ends a session.
+    let (_, login) = post_json(
+        &app,
+        "/api/auth/local",
+        json!({ "identifier": "ada", "password": "correct horse 1" }),
+    )
+    .await;
+    let token = login["refreshToken"].as_str().unwrap().to_owned();
+    let (status, _) = post_json(&app, "/api/auth/logout", json!({ "refreshToken": token })).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = post_json(&app, "/api/auth/refresh", json!({ "refreshToken": token })).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    app.done().await;
+}

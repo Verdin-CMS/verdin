@@ -28,17 +28,21 @@ The routes live under the content API prefix, `/api` by default. The request and
 | `POST /auth/forgot-password` | `{ email }`: emails `resetPasswordUrl?code=…` (valid one hour). The answer is the same whether or not the account exists |
 | `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }` |
 | `POST /auth/change-password` | Signed in; `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }` |
+| `POST /auth/refresh` | `refresh` mode: `{ refreshToken }` → `{ jwt, refreshToken }` |
+| `POST /auth/logout` | `refresh` mode: `{ refreshToken }` ends that session |
 | `GET /users/me` | The signed-in user |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | Needs `find` / `findOne` on `plugin::users-permissions.user`. Plain JSON (no `data` envelope), like Strapi; `populate=role` adds the role, `_q=` searches usernames and emails, `pagination[page]` / `pagination[pageSize]` (at most 100) page through |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | Needs `create` / `update` / `delete` on `plugin::users-permissions.user`. `{ username, email, password, confirmed, blocked, role }` (`role` is a role id) |
 | `GET /connect/{provider}` | Starts an OAuth sign-in |
 | `GET /auth/{provider}/callback?access_token=` | Exchanges the provider's token for `{ jwt, user }` |
 
-- **Tokens.** JWTs last `jwtExpiresInDays` (30 by default). Changing or resetting a password revokes the user's earlier tokens, and so does blocking the user.
+- **Tokens.** By default (`jwtManagement: "legacy-support"`) JWTs last `jwtExpiresInDays` (30 by default). With `jwtManagement: "refresh"`, as in Strapi 5, JWTs last `accessTokenMinutes` (30) and sign-in answers also carry a `refreshToken` that lasts `refreshTokenDays` (30). Each refresh token works once: `POST /auth/refresh` returns a new one, and presenting a used one ends the whole session. Changing or resetting a password revokes the user's earlier tokens, and so does blocking the user.
 - **Rate limit.** Sign-in, registration and reset requests are limited to 20 per minute and IP.
 - **Passwords.** They are stored with Argon2id. Accounts imported from Strapi keep their bcrypt hash until their next sign-in, when it is re-hashed.
 
 ## OAuth
 
-Built-in presets exist for `github` and `google`. Any other provider name is a generic OAuth 2 provider and needs `authorizeUrl`, `tokenUrl` and `userInfoUrl`.
+Built-in presets exist for `github`, `google`, `microsoft`, `discord`, `facebook`, `gitlab` and `linkedin`. Any other provider name is a generic OAuth 2 provider and needs `authorizeUrl`, `tokenUrl` and `userInfoUrl`: Keycloak, Auth0 and Okta work this way with their tenant's URLs. Sign in with Apple is not supported (it needs a client secret signed per request).
 
 1. In the provider's console, register the callback URL `https://<your server>/api/connect/<provider>/callback`. Set `[server].public_url` so that Verdin knows its public URL.
 2. Put the client id and your frontend's redirect URI in the provider's settings.
@@ -75,7 +79,7 @@ Secrets come from the environment only:
 - `VERDIN_EMAIL_SMTP_PASSWORD` for SMTP
 - `VERDIN_EMAIL_API_KEY` for Resend and Postmark
 
-**Settings → Features → Email** sends a test message. The subject and text of each email are templates with `{{username}}`, `{{email}}` and `{{url}}`, edited in **Settings → End users**.
+**Settings → Features → Email** sends a test message. The subject, text and optional HTML body of each email are templates with `{{username}}`, `{{email}}` and `{{url}}`, edited in **Settings → End users** (values are HTML-escaped in the HTML body).
 
 The development compose file (`docker/compose.dev.yml`) includes Mailpit, an SMTP server on :1025 with an inbox at http://localhost:8025.
 

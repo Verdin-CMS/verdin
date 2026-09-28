@@ -5,7 +5,7 @@
 use serde::Serialize;
 use time::{Duration, OffsetDateTime};
 use verdin_db::{ColumnKind as K, SqlValue as V};
-use verdin_migrate::system::{USER_ROLE_PERMISSIONS, USER_ROLES, USERS};
+use verdin_migrate::system::{END_USER_SESSIONS, USER_ROLE_PERMISSIONS, USER_ROLES, USERS};
 
 use super::{
     AuthError, AuthService, EMAIL, Result, check_password, datetime, grants_from_rows, int, now,
@@ -869,5 +869,125 @@ impl AuthService {
             .execute(&format!("DELETE FROM {USERS} WHERE id = ?"), &[V::BigInt(id)])
             .await?;
         if deleted == 0 { Err(AuthError::NotFound) } else { Ok(()) }
+    }
+}
+
+// ------------------------------------------------------------ refresh tokens
+
+impl AuthService {
+    /// A refresh token for `user`, starting a new session family.
+    pub async fn issue_end_user_refresh(&self, user: &EndUser, ttl: Duration) -> Result<String> {
+        self.insert_end_user_refresh(user, &crypto::random_hex::<16>(), ttl).await
+    }
+
+    async fn insert_end_user_refresh(
+        &self,
+        user: &EndUser,
+        family: &str,
+        ttl: Duration,
+    ) -> Result<String> {
+        let token = random_token();
+        let now = now();
+        self.db
+            .queries()
+            .execute(
+                &format!(
+                    "INSERT INTO {END_USER_SESSIONS} (user_id, family, token_hash, token_version, expires_at, created_at) \
+                     VALUES (?, ?, ?, ?, ?, ?)"
+                ),
+                &[
+                    V::BigInt(user.id),
+                    V::from(family),
+                    V::Text(sha256_hex(&token)),
+                    V::BigInt(user.token_version),
+                    V::DateTime(now + ttl),
+                    V::DateTime(now),
+                ],
+            )
+            .await?;
+        Ok(token)
+    }
+
+    /// Rotates a refresh token: the user and a new token. A token presented twice revokes
+    /// its whole family (it was stolen or replayed); password changes and blocks end
+    /// every session through the account's token version.
+    pub async fn refresh_end_user(
+        &self,
+        refresh_token: &str,
+        ttl: Duration,
+    ) -> Result<(EndUser, String)> {
+        let hash = sha256_hex(refresh_token);
+        let rows = self
+            .db
+            .queries()
+            .fetch_all(
+                &format!(
+                    "SELECT id, user_id, family, token_version, expires_at, used_at, revoked_at FROM {END_USER_SESSIONS} WHERE token_hash = ?"
+                ),
+                &[V::Text(hash)],
+                &[K::BigInt, K::BigInt, K::Text, K::BigInt, K::DateTime, K::DateTime, K::DateTime],
+            )
+            .await?;
+        let row = rows.into_iter().next().ok_or(AuthError::Unauthorized)?;
+        let (id, user_id, version) = (int(&row[0]), int(&row[1]), int(&row[3]));
+        let family = text(row[2].clone()).unwrap_or_default();
+        let now = now();
+        if !row[6].is_null() || matches!(row[4], V::DateTime(at) if at <= now) {
+            return Err(AuthError::Unauthorized);
+        }
+        // Claim the token; a second use (or a race) finds it used.
+        let claimed = self
+            .db
+            .queries()
+            .execute(
+                &format!(
+                    "UPDATE {END_USER_SESSIONS} SET used_at = ? WHERE id = ? AND used_at IS NULL"
+                ),
+                &[V::DateTime(now), V::BigInt(id)],
+            )
+            .await?;
+        if claimed == 0 {
+            tracing::warn!(
+                user = user_id,
+                "end user refresh token reuse; revoking the session family"
+            );
+            self.revoke_end_user_family(&family).await?;
+            return Err(AuthError::Unauthorized);
+        }
+        let user = self.end_user(user_id).await.map_err(|_| AuthError::Unauthorized)?;
+        if user.blocked || user.token_version != version {
+            self.revoke_end_user_family(&family).await?;
+            return Err(AuthError::Unauthorized);
+        }
+        let token = self.insert_end_user_refresh(&user, &family, ttl).await?;
+        Ok((user, token))
+    }
+
+    /// Ends the session a refresh token belongs to (logout).
+    pub async fn revoke_end_user_refresh(&self, refresh_token: &str) -> Result<()> {
+        let rows = self
+            .db
+            .queries()
+            .fetch_all(
+                &format!("SELECT family FROM {END_USER_SESSIONS} WHERE token_hash = ?"),
+                &[V::Text(sha256_hex(refresh_token))],
+                &[K::Text],
+            )
+            .await?;
+        if let Some(family) = rows.into_iter().next().and_then(|row| text(row[0].clone())) {
+            self.revoke_end_user_family(&family).await?;
+        }
+        Ok(())
+    }
+
+    async fn revoke_end_user_family(&self, family: &str) -> Result<()> {
+        self.db
+            .queries()
+            .execute(
+                &format!("UPDATE {END_USER_SESSIONS} SET revoked_at = ? WHERE family = ? AND revoked_at IS NULL"),
+                &[V::DateTime(now()), V::from(family)],
+            )
+            .await?;
+        Ok(())
     }
 }

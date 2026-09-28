@@ -36,6 +36,7 @@ pub const WORKFLOWS: &str = "vd_workflows";
 pub const WORKFLOW_STAGES: &str = "vd_workflow_stages";
 pub const DOCUMENT_STAGES: &str = "vd_document_stages";
 pub const ADMIN_TOKENS: &str = "vd_admin_tokens";
+pub const END_USER_SESSIONS: &str = "vd_end_user_sessions";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -573,6 +574,27 @@ pub fn system_tables() -> Vec<Table> {
                 index(RELEASE_ACTIONS, "document", &["content_type", "document_id"]),
             ],
             foreign_keys: vec![references("release_id", RELEASES)],
+        },
+        // End users' refresh tokens (`jwtManagement = "refresh"`), rotated like admins';
+        // `token_version` ties them to the account's (a password change ends them).
+        Table {
+            name: END_USER_SESSIONS.into(),
+            columns: vec![
+                id(),
+                Column::new("user_id", ColumnType::BigInt).not_null(),
+                varchar("family", 64).not_null(),
+                Column::new("token_hash", ColumnType::Char { length: 64 }).not_null(),
+                Column::new("token_version", ColumnType::BigInt).not_null(),
+                Column::new("expires_at", ColumnType::DateTime).not_null(),
+                Column::new("used_at", ColumnType::DateTime),
+                Column::new("revoked_at", ColumnType::DateTime),
+                Column::new("created_at", ColumnType::DateTime).not_null(),
+            ],
+            indexes: vec![
+                unique(END_USER_SESSIONS, "token", &["token_hash"]),
+                index(END_USER_SESSIONS, "family", &["family"]),
+            ],
+            foreign_keys: vec![references("user_id", USERS)],
         },
         // One-time links for admins (`kind`: invite or reset), stored as SHA-256.
         Table {

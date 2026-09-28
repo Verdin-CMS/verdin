@@ -689,7 +689,8 @@ fn grants(
         .into_iter()
         .map(|grant| {
             let upload = grant.subject == verdin_auth::UPLOAD_SUBJECT;
-            if !upload {
+            let users = grant.subject == verdin_auth::USERS_SUBJECT;
+            if !upload && !users {
                 state.service.registry().get(&grant.subject).map_err(|_| {
                     ApiError::BadRequest(format!("unknown content type `{}`", grant.subject))
                 })?;
@@ -697,10 +698,12 @@ fn grants(
             let action = ContentAction::parse(&grant.action).ok_or_else(|| {
                 ApiError::BadRequest(format!("unknown content API action `{}`", grant.action))
             })?;
-            if upload && matches!(action, ContentAction::Publish | ContentAction::ReadDrafts) {
+            if (upload || users)
+                && matches!(action, ContentAction::Publish | ContentAction::ReadDrafts)
+            {
                 return Err(ApiError::BadRequest(format!(
-                    "`{}` does not apply to the media library",
-                    grant.action
+                    "`{}` does not apply to `{}`",
+                    grant.action, grant.subject
                 )));
             }
             Ok((grant.subject, action))

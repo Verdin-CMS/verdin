@@ -89,7 +89,7 @@ to move to Verdin without losing features.
 | Admin invitations & password reset | S | Invite link with a token instead of setting a password, forgot-password email, own profile page (name, email, password) |
 | Sessions & tokens | S | List and revoke own admin sessions; regenerate API tokens; scoped, owner-bound admin API tokens (Strapi 5.47) |
 | RBAC | M | Per-locale permissions; conditions beyond `is-creator` (declared by plugins); "is owner" for end users |
-| End users | S | Refresh tokens, `/api/users` CRUD with permissions, more OAuth presets (Microsoft, Discord, Facebook, Apple, Keycloak, Auth0), HTML email templates |
+| End users ✅ | S | Refresh tokens, `/api/users` CRUD with permissions, more OAuth presets (Microsoft, Discord, Facebook, Apple, Keycloak, Auth0), HTML email templates |
 | Media library | M | Replace a file keeping its id, crop in the admin, upload from URL, PDF preview, signed URLs for private buckets, optimize originals |
 | Webhook events ✅ | S | `releases.publish`, `review-workflows.updateEntryStage` (after 0.7) |
 | Admin branding | S | Logo, favicon, accent colour and translation overrides in `[admin]` |

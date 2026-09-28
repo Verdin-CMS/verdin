@@ -20,6 +20,10 @@ All notable changes to Verdin are documented here. The format follows
   forgotten password by email, edit one's own profile (`/users/me`), list and sign out
   one's sessions (`/users/me/sessions`), and regenerate API tokens
   (`POST /api-tokens/{id}/regenerate`).
+- **End users**: refresh tokens (`jwtManagement: "refresh"`, `POST /api/auth/refresh`
+  and `/api/auth/logout`), the `/api/users` routes with role permissions on
+  `plugin::users-permissions.user`, OAuth presets for Microsoft, Discord, Facebook,
+  GitLab and LinkedIn, and HTML email templates.
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.
