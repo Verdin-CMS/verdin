@@ -34,7 +34,24 @@ pub struct ContentType {
     /// Documents have one version per locale (`pluginOptions.i18n.localized`).
     pub localized: bool,
     pub attributes: IndexMap<String, Attribute>,
+    /// Cross-field rules, checked whenever `required` is.
+    pub validations: Vec<Validation>,
 }
+
+/// A JSON Logic `rule` over the document that must hold; otherwise `message` is reported
+/// at `field` (or the document).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Validation {
+    pub rule: Value,
+    pub message: String,
+    pub field: Option<String>,
+}
+
+/// The JSON Logic operators rules may use.
+pub const LOGIC_OPERATORS: &[&str] = &[
+    "var", "==", "!=", "===", "!==", "<", ">", "<=", ">=", "!", "!!", "and", "or", "in", "if",
+    "?:", "+", "-", "*", "/", "%", "min", "max", "cat",
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Component {

@@ -29,7 +29,7 @@ use verdin_query::{
     Field, FieldCategory, Filter, PageMode, Populate, Query, Sort, Status, SubQuery,
 };
 
-use crate::input::{Position, RelationOp, RelationWrite, check_required, prepare};
+use crate::input::{Position, RelationOp, RelationWrite, check_required, check_rules, prepare};
 use crate::locales::Locales;
 use crate::output::{OutputOptions, value_to_json};
 use crate::{ContentError, Issue, Registry, Result, TypeModel};
@@ -965,6 +965,7 @@ impl DocumentService {
         let draft_id = row_id_of(&draft);
         let mut issues =
             check_required(&self.registry.schema, &model.content_type.attributes, &document, &[]);
+        issues.extend(check_rules(&model.content_type, &document));
         issues.extend(missing_media(tx, model, draft_id).await?);
         if !issues.is_empty() {
             return Err(ContentError::Validation(issues));
@@ -1064,6 +1065,7 @@ impl DocumentService {
         let document = internal_json(&row);
         let mut issues =
             check_required(&self.registry.schema, &model.content_type.attributes, &document, &[]);
+        issues.extend(check_rules(&model.content_type, &document));
         issues.extend(missing_media(tx, model, row_id_of(&row)).await?);
         if issues.is_empty() { Ok(()) } else { Err(ContentError::Validation(issues)) }
     }

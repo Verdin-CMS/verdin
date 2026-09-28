@@ -115,7 +115,7 @@ Hygraph) that fit Verdin best.
 | Full-text search | M | Tantivy index inside the binary, `?_q=` on the REST API and in the admin list; optional Meilisearch/Typesense sync plugin |
 | 2FA for admins | S | TOTP and passkeys (WebAuthn), recovery codes, enforceable per role |
 | CSV/JSON import & export | S | Per content type from the list, with field mapping and a dry run |
-| Cross-field validation | S | Rules that compare fields (`endDate > startDate`) declared in the schema |
+| Cross-field validation ✅ | S | Rules that compare fields (`endDate > startDate`) declared in the schema; JSON Logic, checked with `required` |
 | Official plugins | S each | SEO fields + sitemap, redirects, nested pages and menus, form builder with submissions |
 | AI actions | M | Translate a locale, alt text, summaries and SEO suggestions, with the key of the user's provider (Anthropic, OpenAI, local); off by default |
 | Deploy & CDN hooks | S | "Deploy" button calling a build hook with its status; CDN purge (Cloudflare, Fastly, Vercel tags) on publish |

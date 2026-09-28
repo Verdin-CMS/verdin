@@ -255,6 +255,27 @@ Notes:
 - `decimal` is stored exactly (`rust_decimal`) and serialized as a **JSON number** by default, matching Strapi, so existing frontends keep working. Projects that need values beyond double precision (> 15 significant digits) set `api.decimal_as_string = true`.
 - `richtext` in the MVP is Markdown. The `blocks` type (structured JSON, TipTap editor) comes later.
 
+### 7.3 Cross-field validations
+
+A content type may declare rules that compare its fields, in [JSON Logic](https://jsonlogic.com):
+
+```json
+"validations": [
+  { "rule": { "or": [{ "!": { "var": "endDate" } },
+                     { "<=": [{ "var": "startDate" }, { "var": "endDate" }] }] },
+    "message": "must be after the start date", "field": "endDate" },
+  { "rule": { "<=": [{ "var": "sold" }, { "var": "seats" }] },
+    "message": "more tickets sold than seats" }
+]
+```
+
+- Rules are checked when `required` is: on publish, and on every write to types without draft & publish. Drafts may break them.
+- A rule that does not hold is a `ValidationError` with `message` at `field` (or the document, `path: []`).
+- `var` reads the document's own fields (dotted paths into components); relations and media are not part of it.
+- Operators: `var`, `==`, `!=`, `===`, `!==`, `<`, `>`, `<=`, `>=`, `!`, `!!`, `and`, `or`, `in`, `if`, `+`, `-`, `*`, `/`, `%`, `min`, `max`, `cat`. Unknown operators, unknown `field`s and empty messages are schema errors.
+- Comparisons are numeric when both sides are numbers, else textual when both are strings — so ISO dates, times and datetimes compare correctly. An empty value is `null`: guard optional fields as above.
+- The admin receives the rules with the content type (`validations`).
+
 ---
 
 ## 8. Storage

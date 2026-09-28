@@ -20,6 +20,17 @@ pub struct RawContentType {
     pub plugin_options: Option<RawPluginOptions>,
     #[serde(default)]
     pub attributes: IndexMap<String, RawAttribute>,
+    /// Cross-field rules (JSON Logic) checked with `required`.
+    #[serde(default)]
+    pub validations: Vec<RawValidation>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawValidation {
+    pub rule: Value,
+    pub message: String,
+    pub field: Option<String>,
 }
 
 /// `pluginOptions` (Strapi's format); only `i18n.localized` is read.

@@ -854,6 +854,19 @@ pub fn check_required(
     issues
 }
 
+/// Issues of the content type's cross-field `validations` for a complete document.
+pub fn check_rules(content_type: &verdin_schema::ContentType, document: &Json) -> Vec<Issue> {
+    content_type
+        .validations
+        .iter()
+        .filter(|validation| !crate::logic::holds(&validation.rule, document))
+        .map(|validation| {
+            let path = validation.field.iter().map(|field| Json::from(field.as_str())).collect();
+            Issue::new(path, validation.message.clone())
+        })
+        .collect()
+}
+
 fn child_path(path: &[Json], segment: impl Into<Json>) -> Vec<Json> {
     let mut child = path.to_vec();
     child.push(segment.into());

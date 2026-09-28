@@ -179,6 +179,28 @@ fn parse_content_type(source: &Source, report: &mut Report) -> Option<ContentTyp
     }
 
     let attributes = convert_attributes(raw.attributes, file, report);
+    let validations = raw
+        .validations
+        .into_iter()
+        .enumerate()
+        .map(|(index, rule)| {
+            let at = format!("validations.{index}");
+            if let Some(field) = &rule.field
+                && !attributes.contains_key(field)
+            {
+                report.push(file, format!("{at}.field"), format!("unknown attribute `{field}`"));
+            }
+            if rule.message.trim().is_empty() {
+                report.push(file, format!("{at}.message"), "must not be empty");
+            }
+            if !rule.rule.is_object() {
+                report.push(file, format!("{at}.rule"), "must be a JSON Logic object");
+            } else if let Err(error) = check_logic(&rule.rule) {
+                report.push(file, format!("{at}.rule"), error);
+            }
+            Validation { rule: rule.rule, message: rule.message, field: rule.field }
+        })
+        .collect();
 
     Some(ContentType {
         uid: format!("api::{}", raw.singular_name),
@@ -191,7 +213,26 @@ fn parse_content_type(source: &Source, report: &mut Report) -> Option<ContentTyp
         draft_and_publish: raw.options.draft_and_publish.unwrap_or(false),
         localized: crate::raw::RawPluginOptions::localized(&raw.plugin_options).unwrap_or(false),
         attributes,
+        validations,
     })
+}
+
+/// Rejects operators the evaluator does not know (a typo would silently pass).
+fn check_logic(rule: &serde_json::Value) -> Result<(), String> {
+    match rule {
+        serde_json::Value::Object(map) => {
+            if map.len() != 1 {
+                return Err("each JSON Logic operation has exactly one operator".into());
+            }
+            let (op, args) = map.iter().next().expect("one entry");
+            if !LOGIC_OPERATORS.contains(&op.as_str()) {
+                return Err(format!("unknown JSON Logic operator `{op}`"));
+            }
+            check_logic(args)
+        }
+        serde_json::Value::Array(items) => items.iter().try_for_each(check_logic),
+        _ => Ok(()),
+    }
 }
 
 fn parse_component(source: &Source, category: &str, report: &mut Report) -> Option<Component> {

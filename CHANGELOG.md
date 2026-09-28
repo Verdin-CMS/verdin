@@ -14,6 +14,10 @@ All notable changes to Verdin are documented here. The format follows
   See [docs/realtime.md](docs/realtime.md).
 - **Prometheus metrics** at `/_metrics` (`[metrics]`): requests and latency by area,
   webhook queue, realtime streams, uptime.
+- **Cross-field validations**: `validations: [{ rule, message, field }]` in a content
+  type, JSON Logic rules checked with `required` (`endDate >= startDate`). JSON Logic
+  comparisons now also order strings (ISO dates), and arithmetic, `min`, `max` and
+  `cat` are supported.
 
 ## [0.8.0] - 2026-09-28
 

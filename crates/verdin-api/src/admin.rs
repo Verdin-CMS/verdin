@@ -1022,6 +1022,15 @@ async fn content_types(State(state): State<AdminState>, headers: HeaderMap) -> A
                     json!({})
                 },
                 "attributes": attributes_json(&content_type.attributes),
+                "validations": content_type
+                    .validations
+                    .iter()
+                    .map(|validation| json!({
+                        "rule": validation.rule,
+                        "message": validation.message,
+                        "field": validation.field,
+                    }))
+                    .collect::<Vec<_>>(),
             })
         })
         .collect();

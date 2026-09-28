@@ -1,6 +1,8 @@
-//! The subset of [JSON Logic](https://jsonlogic.com) that Strapi's conditional fields use
-//! (`conditions.visible`): `var`, comparisons, `!`, `!!`, `and`, `or`, `in` and `if`.
-//! Unknown operators make a condition true, so a field is never hidden by mistake.
+//! The subset of [JSON Logic](https://jsonlogic.com) that Strapi's conditional fields
+//! (`conditions.visible`) and cross-field validations use: `var`, comparisons (numbers, or
+//! strings such as ISO dates), `!`, `!!`, `and`, `or`, `in`, `if`, arithmetic, `min`, `max`
+//! and `cat`. Unknown operators make a condition true, so a field is never hidden by
+//! mistake (validations reject them when the schema loads).
 
 use serde_json::Value as Json;
 
@@ -11,6 +13,11 @@ pub fn visible(conditions: Option<&Json>, scope: &Json) -> bool {
         None => true,
         Some(rule) => truthy(&apply(rule, scope)),
     }
+}
+
+/// Whether a cross-field validation `rule` holds for `document`.
+pub fn holds(rule: &Json, document: &Json) -> bool {
+    truthy(&apply(rule, document))
 }
 
 fn apply(rule: &Json, data: &Json) -> Json {
@@ -50,20 +57,59 @@ fn apply(rule: &Json, data: &Json) -> Json {
         "===" => Json::Bool(value(0) == value(1)),
         "!==" => Json::Bool(value(0) != value(1)),
         "<" | ">" | "<=" | ">=" => {
-            let numbers: Vec<Option<f64>> = (0..args.len()).map(|i| number(&value(i))).collect();
-            let compare = |a: Option<f64>, b: Option<f64>| match (a, b) {
-                (Some(a), Some(b)) => match op.as_str() {
-                    "<" => a < b,
-                    ">" => a > b,
-                    "<=" => a <= b,
-                    _ => a >= b,
-                },
-                _ => false,
+            let values: Vec<Json> = (0..args.len()).map(value).collect();
+            let compare = |a: &Json, b: &Json| {
+                let ordering = match (number(a), number(b)) {
+                    (Some(a), Some(b)) => a.partial_cmp(&b),
+                    // Both strings and not numbers: ISO dates and times order as text.
+                    _ => match (a, b) {
+                        (Json::String(a), Json::String(b)) => Some(a.cmp(b)),
+                        _ => None,
+                    },
+                };
+                ordering.is_some_and(|ordering| match op.as_str() {
+                    "<" => ordering.is_lt(),
+                    ">" => ordering.is_gt(),
+                    "<=" => ordering.is_le(),
+                    _ => ordering.is_ge(),
+                })
             };
             // `{"<": [1, x, 3]}`: between.
-            let result = numbers.windows(2).all(|pair| compare(pair[0], pair[1]));
-            Json::Bool(numbers.len() >= 2 && result)
+            let result = values.windows(2).all(|pair| compare(&pair[0], &pair[1]));
+            Json::Bool(values.len() >= 2 && result)
         }
+        "+" | "*" | "min" | "max" => {
+            let numbers: Option<Vec<f64>> = (0..args.len()).map(|i| number(&value(i))).collect();
+            let Some(numbers) = numbers.filter(|numbers| !numbers.is_empty()) else {
+                return Json::Null;
+            };
+            let result = match op.as_str() {
+                "+" => numbers.iter().sum(),
+                "*" => numbers.iter().product(),
+                "min" => numbers.iter().copied().fold(f64::INFINITY, f64::min),
+                _ => numbers.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+            };
+            to_json(result)
+        }
+        "-" | "/" | "%" => match (number(&value(0)), args.get(1).map(|_| number(&value(1)))) {
+            (Some(a), None) if op == "-" => to_json(-a),
+            (Some(a), Some(Some(b))) => match op.as_str() {
+                "-" => to_json(a - b),
+                _ if b == 0.0 => Json::Null,
+                "/" => to_json(a / b),
+                _ => to_json(a % b),
+            },
+            _ => Json::Null,
+        },
+        "cat" => Json::String(
+            (0..args.len())
+                .map(|i| match value(i) {
+                    Json::String(text) => text,
+                    Json::Null => String::new(),
+                    other => other.to_string(),
+                })
+                .collect(),
+        ),
         "!" => Json::Bool(!truthy(&value(0))),
         "!!" => Json::Bool(truthy(&value(0))),
         "and" => {
@@ -103,6 +149,10 @@ fn apply(rule: &Json, data: &Json) -> Json {
         }
         _ => Json::Bool(true),
     }
+}
+
+fn to_json(number: f64) -> Json {
+    serde_json::Number::from_f64(number).map_or(Json::Null, Json::Number)
 }
 
 fn truthy(value: &Json) -> bool {
@@ -165,6 +215,19 @@ mod tests {
         assert!(when(json!({ "!!": { "var": "tags" } })));
         assert!(when(json!({ "unknown-op": [1] })), "unknown operators never hide");
         assert!(visible(None, &data));
+        assert!(when(json!({ "==": [{ "+": [{ "var": "views" }, 3] }, 15] })));
+        assert!(when(json!({ "==": [{ "cat": ["a", 1, null] }, "a1"] })));
+        assert!(when(json!({ "==": [{ "/": [1, 0] }, null] })));
         assert!(visible(Some(&json!({})), &data));
+    }
+
+    #[test]
+    fn compares_dates_as_text() {
+        let data =
+            json!({ "start": "2026-03-01", "end": "2026-02-01", "at": "2026-03-01T10:00:00.000Z" });
+        assert!(!holds(&json!({ "<=": [{ "var": "start" }, { "var": "end" }] }), &data));
+        assert!(holds(&json!({ ">=": [{ "var": "start" }, { "var": "end" }] }), &data));
+        assert!(holds(&json!({ "<": [{ "var": "start" }, { "var": "at" }] }), &data));
+        assert!(!holds(&json!({ "<": [{ "var": "start" }, 3] }), &data), "text and number");
     }
 }
