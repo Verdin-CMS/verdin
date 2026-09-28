@@ -193,11 +193,37 @@ pub struct AdminConfig {
     /// Serve the admin panel from this directory (relative to the configuration file)
     /// instead of the copy embedded in the binary.
     pub assets_dir: Option<PathBuf>,
+    pub branding: BrandingConfig,
+}
+
+/// `[admin.branding]`: the admin panel's name, logo, favicon, accent color and text
+/// overrides.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct BrandingConfig {
+    /// Shown in the sidebar, on the sign-in page and in the browser tab.
+    pub title: Option<String>,
+    /// Image file (SVG, PNG, WebP), relative to the configuration file.
+    pub logo: Option<PathBuf>,
+    /// Icon file (ICO, PNG, SVG), relative to the configuration file.
+    pub favicon: Option<PathBuf>,
+    /// `#rrggbb`: buttons, links and focus rings.
+    pub accent: Option<String>,
+    /// Admin panel texts replaced per language: `[admin.branding.translations.en]
+    /// "auth.login.title" = "Welcome to ACME"`.
+    pub translations:
+        std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
 }
 
 impl Default for AdminConfig {
     fn default() -> Self {
-        Self { path: "/admin".into(), secure_cookies: None, auth_rate_limit: 20, assets_dir: None }
+        Self {
+            path: "/admin".into(),
+            secure_cookies: None,
+            auth_rate_limit: 20,
+            assets_dir: None,
+            branding: BrandingConfig::default(),
+        }
     }
 }
 

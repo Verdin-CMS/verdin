@@ -260,15 +260,52 @@ pub fn build_app(
     let assets_dir = admin.assets_dir.as_ref().map(|dir| context.root.join(dir));
     if let Some(assets) = admin_ui::Assets::resolve(assets_dir.as_deref()) {
         let media: Vec<String> = context.upload.storage().public_origin().into_iter().collect();
+        let frames = preview_origins(states);
         app = app.merge(admin_ui::router(
             assets,
-            &admin.path,
-            context.mode.as_str(),
-            &api.prefix,
-            &media,
+            admin_ui::UiOptions {
+                path: &admin.path,
+                mode: context.mode.as_str(),
+                api_prefix: &api.prefix,
+                media_origins: &media,
+                frame_origins: &frames,
+                branding: admin_ui::Branding::load(&admin.branding, &context.root),
+            },
         ));
     }
     app
+}
+
+/// Origins of the preview URL templates (the side-by-side preview frames them).
+fn preview_origins(states: &FeatureStates) -> Vec<String> {
+    if !states.enabled(verdin_api::features::PREVIEW) {
+        return Vec::new();
+    }
+    let mut origins: Vec<String> = states.settings(verdin_api::features::PREVIEW)["urls"]
+        .as_object()
+        .into_iter()
+        .flat_map(|urls| urls.values())
+        .filter_map(Value::as_str)
+        .filter_map(origin_of)
+        .collect();
+    origins.sort();
+    origins.dedup();
+    origins
+}
+
+/// `https://site.example:8080` of `https://site.example:8080/blog/{slug}`; only http(s)
+/// origins made of host characters (no placeholders) are kept.
+fn origin_of(url: &str) -> Option<String> {
+    let (scheme, rest) = url.split_once("://")?;
+    if scheme != "https" && scheme != "http" {
+        return None;
+    }
+    let host = rest.split(['/', '?', '#']).next()?;
+    let valid = !host.is_empty()
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'));
+    valid.then(|| format!("{scheme}://{host}"))
 }
 
 /// `{admin}/plugins/{name}/…`: the `admin/` files of enabled plugins (their Web
@@ -1016,6 +1053,21 @@ mod tests {
         let stored = load_features(&context.db).await.unwrap();
         assert!(!stored.enabled(OPENAPI));
         assert_eq!(stored, host.states());
+    }
+
+    #[test]
+    fn preview_origins_for_the_frame_policy() {
+        assert_eq!(
+            origin_of("https://site.example/blog/{slug}").as_deref(),
+            Some("https://site.example")
+        );
+        assert_eq!(
+            origin_of("http://localhost:3000?x=1").as_deref(),
+            Some("http://localhost:3000")
+        );
+        assert_eq!(origin_of("https://{tenant}.example/x"), None, "placeholders in the host");
+        assert_eq!(origin_of("javascript:alert(1)"), None);
+        assert_eq!(origin_of("ftp://files.example/x"), None);
     }
 
     #[tokio::test]

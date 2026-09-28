@@ -86,13 +86,13 @@ to move to Verdin without losing features.
 | Content list filters | M | Filter builder with several conditions on any field, relations included; locale column |
 | Relations UI | S | Drag and drop reordering, open and edit the related entry in a side sheet |
 | Side-by-side live preview | M | Preview in an iframe next to the form, refreshed on save; device widths |
-| Admin invitations & password reset | S | Invite link with a token instead of setting a password, forgot-password email, own profile page (name, email, password) |
+| Admin invitations & password reset ✅ | S | Invite link with a token instead of setting a password, forgot-password email, own profile page (name, email, password) |
 | Sessions & tokens | S | List and revoke own admin sessions; regenerate API tokens; scoped, owner-bound admin API tokens (Strapi 5.47) |
 | RBAC | M | Per-locale permissions; conditions beyond `is-creator` (declared by plugins); "is owner" for end users |
 | End users ✅ | S | Refresh tokens, `/api/users` CRUD with permissions, more OAuth presets (Microsoft, Discord, Facebook, Apple, Keycloak, Auth0), HTML email templates |
 | Media library | M | Replace a file keeping its id, crop in the admin, upload from URL, PDF preview, signed URLs for private buckets, optimize originals |
 | Webhook events ✅ | S | `releases.publish`, `review-workflows.updateEntryStage` (after 0.7) |
-| Admin branding | S | Logo, favicon, accent colour and translation overrides in `[admin]` |
+| Admin branding ✅ | S | Logo, favicon, accent colour and translation overrides in `[admin]` |
 | GraphQL | M | Disable types or actions per content type (shadow CRUD), resolvers from plugins |
 | Export / import / backup | M | `verdin export` / `verdin import` of Verdin's own format (schema, data, media), optional encryption; scheduled backups to S3; `verdin transfer` between instances with transfer tokens |
 | **MCP server** | M | Content and schema tools for AI agents over Streamable HTTP, authorized with API tokens (Strapi 5.47, Sanity, Directus, Payload ship one) |

@@ -24,6 +24,8 @@ All notable changes to Verdin are documented here. The format follows
   and `/api/auth/logout`), the `/api/users` routes with role permissions on
   `plugin::users-permissions.user`, OAuth presets for Microsoft, Discord, Facebook,
   GitLab and LinkedIn, and HTML email templates.
+- **Admin branding** in `[admin.branding]`: title, logo, favicon, accent color and text
+  overrides per language.
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.

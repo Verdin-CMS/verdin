@@ -67,6 +67,16 @@ Secrets are never read from `verdin.toml`; see [Environment variables](#environm
 | `auth_rate_limit` | `20` | Login, registration and refresh attempts per client IP per minute. |
 | `assets_dir` | unset | Serve the admin panel from this directory (relative to the configuration file) instead of the copy embedded in the binary. |
 
+### `[admin.branding]`
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `title` | `"Verdin"` | Shown in the sidebar, on the sign-in page and in the browser tab. |
+| `logo` | unset | Image file (SVG, PNG, WebP), relative to the configuration file. |
+| `favicon` | unset | Icon file (ICO, PNG, SVG), relative to the configuration file. |
+| `accent` | unset | `#rrggbb` color of buttons, links and focus rings. |
+| `translations` | `{}` | Admin texts replaced per language, for example `[admin.branding.translations.en]` with `"auth.login.title" = "Welcome to ACME"`. The keys are those of `admin/public/i18n/en.json`. |
+
 ## `[upload]`
 
 | Key | Default | Description |
