@@ -62,4 +62,7 @@ Each of these is reported as a warning:
 - `unique` on text fields
 - relation halves whose `inversedBy` / `mappedBy` does not match the other side
 
+Conditional fields (`conditions`, Strapi 5.17) are imported and kept in the schema, but the
+admin does not hide fields by their conditions yet.
+
 Admin users, roles, API tokens, webhooks, end users, releases and review workflows are not imported.

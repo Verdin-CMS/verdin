@@ -70,6 +70,8 @@ pub struct RawAttribute {
     pub plugin_options: Option<RawPluginOptions>,
     /// `plugin::{plugin}.{field}`: edited with a plugin's field in the admin.
     pub custom_field: Option<String>,
+    /// Strapi 5.17 conditional fields (`{ "visible": <JSON Logic> }`): kept, not applied yet.
+    pub conditions: Option<Value>,
     pub default: Option<Value>,
     pub unique: Option<bool>,
     pub min_length: Option<u32>,

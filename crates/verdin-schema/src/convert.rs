@@ -264,6 +264,7 @@ pub fn convert_attribute(raw: RawAttribute) -> Result<Attribute, Issues> {
             configurable: raw.configurable.unwrap_or(true),
             localized: crate::raw::RawPluginOptions::localized(&raw.plugin_options).unwrap_or(true),
             custom_field: raw.custom_field.clone(),
+            conditions: raw.conditions,
             default: raw.default,
             kind,
         })

@@ -26,6 +26,8 @@ All notable changes to Verdin are documented here. The format follows
 
 ### Fixed
 
+- Schemas from Strapi 5.17+ with conditional fields (`conditions`) failed to load. The
+  conditions are now kept, but the admin does not apply them yet.
 - Plugins writing content through the host skipped every before-write hook. They now
   skip only the plugins' own hooks.
 

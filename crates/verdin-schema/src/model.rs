@@ -57,6 +57,9 @@ pub struct Attribute {
     pub localized: bool,
     /// `plugin::{plugin}.{field}`: the admin edits it with that plugin's custom field.
     pub custom_field: Option<String>,
+    /// Strapi's conditional fields, kept as written so that schemas load and round-trip;
+    /// the admin does not apply them yet.
+    pub conditions: Option<Value>,
     pub default: Option<Value>,
     pub kind: AttributeKind,
 }

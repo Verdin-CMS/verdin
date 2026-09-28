@@ -873,6 +873,9 @@ fn attribute_json(attribute: &Attribute) -> Value {
     if let Some(custom) = &attribute.custom_field {
         out.insert("customField".into(), json!(custom));
     }
+    if let Some(conditions) = &attribute.conditions {
+        out.insert("conditions".into(), conditions.clone());
+    }
     let mut set = |key: &str, value: Value| {
         if !value.is_null() && value != json!(false) {
             out.insert(key.into(), value);

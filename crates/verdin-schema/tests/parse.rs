@@ -366,3 +366,25 @@ fn loads_directory_layout() {
 
     assert_eq!(Schema::load_dir(&root.join("missing")).unwrap(), Schema::default());
 }
+
+#[test]
+fn keeps_strapi_conditional_fields() {
+    let visible = json!({ "visible": { "==": [{ "var": "kind" }, "video"] } });
+    let schema = Schema::parse(&[ct(
+        "post",
+        json!({
+            "kind": "collectionType",
+            "singularName": "post",
+            "pluralName": "posts",
+            "displayName": "Post",
+            "attributes": {
+                "kind": { "type": "enumeration", "enum": ["text", "video"] },
+                "url": { "type": "string", "conditions": visible }
+            }
+        }),
+    )])
+    .unwrap();
+    let post = schema.content_types.values().next().unwrap();
+    assert_eq!(post.attributes["url"].conditions, Some(visible));
+    assert_eq!(post.attributes["kind"].conditions, None);
+}
