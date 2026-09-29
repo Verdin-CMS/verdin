@@ -1,0 +1,178 @@
+---
+title: SEO and sitemap
+description: Map content types to the paths of your site, serve a sitemap.xml of every published entry, and add a standard SEO component.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The **SEO and sitemap** feature tells Verdin where each entry lives on your site. From
+that it serves a `sitemap.xml` of every published entry, gives [menus](/guides/frontend/menus/)
+the paths of the entries they link to, and offers a ready-made `shared.seo` component for
+meta tags.
+
+It is one of four site features, with [redirects](/guides/frontend/redirects/),
+[menus](/guides/frontend/menus/) and [forms](/guides/frontend/forms/). Strapi covers the
+same ground with community plugins (SEO, sitemap); in Verdin it is built in.
+
+## Turn it on
+
+<Steps>
+
+1. In **Settings → Features**, turn on **SEO and sitemap**.
+2. On its card, choose **Configure SEO**.
+3. Enter the **Site URL**: the origin of your site, such as `https://www.example.com`. The
+   sitemap's URLs start with it.
+4. Under **Content types**, give each type that has pages a **Path pattern**. Types without
+   a pattern stay out of the sitemap. Optionally set a **Change frequency** and a
+   **Priority** (0 to 1) for the sitemap.
+5. Save, then choose **Open sitemap.xml** to check the result.
+
+</Steps>
+
+Changing the settings needs the **Manage features** permission (`features.manage`). See
+[Permissions](/reference/permissions/).
+
+## Path patterns
+
+A pattern is a path that starts with `/`, with placeholders in braces:
+
+| Pattern | Entry | Path |
+| --- | --- | --- |
+| `/blog/{slug}` | Article with slug `hello-world` | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | The French version of it | `/fr/blog/bonjour` |
+| `/about` | The Homepage single type | `/about` |
+
+Placeholders are the type's attributes (usually a `uid` such as `slug`) and `{locale}`.
+Values are URL-encoded. An entry whose placeholder is empty (a missing slug, say) has no
+path, and is left out of the sitemap and of menus. The dialog lists the attributes you can
+insert and refuses unknown ones.
+
+The settings are stored as the feature's settings, in this shape:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` is one of `always`, `hourly`, `daily`, `weekly`, `monthly`, `yearly` or
+`never`.
+
+## The sitemap
+
+With a **Site URL** set, Verdin serves `/sitemap.xml` at the root of its own host
+(`https://cms.example.com/sitemap.xml`, outside the API prefix), with:
+
+- every **published** entry of the configured types whose pattern fills;
+- each entry's last change (`lastmod`), and the type's `changefreq` and `priority`;
+- for localized types, one URL per locale, linked to each other with
+  `<xhtml:link rel="alternate" hreflang="…">`;
+- at most 50,000 URLs, the limit of a sitemap file.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+The sitemap is built at most every ten minutes and sent with
+`Cache-Control: public, max-age=600`, so a publish shows up within ten minutes.
+
+Search engines expect the sitemap on your site's host. Serve it from there with a rewrite
+or a small route that fetches Verdin's:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+Then list it in your `robots.txt`: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## The SEO component
+
+Verdin suggests a `shared.seo` component with the fields of Strapi's SEO plugin:
+
+| Attribute | Type |
+| --- | --- |
+| `metaTitle` | string, required, at most 60 characters |
+| `metaDescription` | text, required, at most 160 characters |
+| `metaImage` | media (images) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+In the **Configure SEO** dialog, choose **Add the SEO component**, then
+**Create the component**. Creating it changes the schema, so the button is there in
+development mode (`verdin dev`) for admins with **Manage content types**; otherwise the
+dialog lists the attributes to add in your schema files instead. Then add a component field using `shared.seo` to each content type with pages,
+in the content-type builder.
+
+<Aside type="tip">
+With [AI actions](/guides/integrations/ai-actions/) on, a component that has `metaTitle`
+and `metaDescription` text attributes gets a **Suggest** button that fills them from the
+entry.
+</Aside>
+
+## Render the meta tags
+
+Populate the component and write the tags in your page's head:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+The example blog's `shared.seo` has only `metaTitle` and `metaDescription`; the suggested
+component adds the rest. If the preview page uses [visual editing](/guides/frontend/visual-editing/),
+strip the invisible marks before measuring or comparing meta texts.

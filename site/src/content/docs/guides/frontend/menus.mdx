@@ -1,0 +1,126 @@
+---
+title: Menus
+description: Build navigation menus of links and entries in the admin panel and render them on your site.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The **Menus** feature gives editors named navigation trees (a header, a footer, a sidebar)
+that link to pages, entries or other sites. Your site fetches a menu by its slug and
+renders it; links to entries follow their published state and path.
+
+In Strapi this usually takes a navigation plugin or a hand-made menu content type; in
+Verdin it is built in.
+
+## Turn it on
+
+In **Settings → Features**, turn on **Menus**, then choose **Manage menus** (or go to
+**Settings → Menus**). Managing menus needs the **Manage SEO, redirects, menus and forms**
+permission (`site.manage`), which the built-in Editor role has. See
+[Permissions](/reference/permissions/).
+
+To link entries by path, also set up path patterns in [SEO and sitemap](/guides/frontend/seo-and-sitemap/).
+
+## Build a menu
+
+<Steps>
+
+1. In **Settings → Menus**, choose **New menu**.
+2. Give it a name (such as **Main navigation**) and a **Slug** (`main`): lowercase letters,
+   digits and dashes. Sites fetch the menu by its slug.
+3. Choose **Add an item** and fill in the item:
+   - **Label**: the text of the link, up to 255 characters.
+   - **Links to**: **A URL**, **An entry**, or **Nothing (a heading)**.
+   - **URL**: a path (`/about`), an anchor (`#team`), or an `http(s)`, `mailto:` or `tel:`
+     link.
+   - For an entry, pick the **Content type**, then search the **Entry**.
+   - **Opens in**: **The same tab** or **A new tab**.
+4. Drag items to order and nest them, or use their buttons. With the keyboard, on a drag
+   handle: Alt+↑ and Alt+↓ move an item, Alt+→ nests it under the one above, Alt+← moves it
+   out.
+5. Save.
+
+</Steps>
+
+A menu has at most 5 levels and 500 items.
+
+## Fetch a menu
+
+Sites read a menu from `GET /api/_menus/{slug}`, with no token. Add `?locale=` for
+localized content:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+How entry links resolve:
+
+- An entry that is not published, in the requested locale, is left out of the menu (with
+  its children). Menus never leak drafts.
+- `entry.path` comes from the type's pattern in [SEO and sitemap](/guides/frontend/seo-and-sitemap/),
+  filled with the entry's fields and the locale. It is `null` when the type has no pattern
+  or the entry does not fill it.
+- When the item has no `url` of its own, it gets the path as `url`, so most sites only
+  need to read `url`.
+
+Without `locale`, entries are read in the default locale. The response is sent with
+`Cache-Control: public, max-age=60`.
+
+## Render it
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+Deleting a menu makes `/api/_menus/{slug}` answer `404`, as does turning the feature off.
+Handle that on your site, for example by rendering no navigation.
+</Aside>
+
+## Admin API
+
+The admin panel uses `/admin/api/site/menus` (`GET`, `POST`) and
+`/admin/api/site/menus/{id}` (`GET`, `PUT`, `DELETE`), with an admin's access token and
+`site.manage`. See [Admin API](/api/admin/).

@@ -1,0 +1,155 @@
+---
+title: Forms
+description: Define contact and sign-up forms in the admin panel, post to them from your site, and read or export the submissions.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The **Forms** feature handles the forms of your site (contact, newsletter sign-up, event
+registration) without a form service. Editors define the fields in the admin panel, your
+site renders them and posts to Verdin, and submissions are validated, stored, emailed and
+exported as CSV.
+
+## Turn it on
+
+In **Settings → Features**, turn on **Forms**, then choose **Manage forms** (or go to
+**Settings → Forms**). Managing forms and reading submissions needs the
+**Manage SEO, redirects, menus and forms** permission (`site.manage`), which the built-in
+Editor role has. See [Permissions](/reference/permissions/).
+
+For notification emails, configure a provider in [`[email]`](/reference/configuration/);
+with the default `log` provider, emails are only written to the server log.
+
+## Create a form
+
+<Steps>
+
+1. In **Settings → Forms**, choose **New form**.
+2. Give it a name (such as **Contact**) and a **Slug** (`contact`). The slug is part of
+   the form's URL.
+3. On the **Fields** tab, choose **Add a field** for each field, with its **Label**,
+   **Name**, **Type**, **Required**, **Placeholder** and **Maximum length**.
+4. On the **Settings** tab, set:
+   - **Notify**: email addresses that receive every submission.
+   - **Success message**: returned to your site after a submission.
+   - **Spam trap**: on by default (see [Spam](#spam)).
+5. Save. The **Integration** tab shows the public endpoint and an example to copy.
+
+</Steps>
+
+| Type | Label in the admin | Accepts |
+| --- | --- | --- |
+| `text` | **Text** | Any text. |
+| `email` | **Email** | An email address. |
+| `textarea` | **Long text** | Any text. |
+| `number` | **Number** | A number, stored as a number. |
+| `select` | **Choice** | One of its **Options** (one per line). |
+| `checkbox` | **Checkbox** | `true`, `on`, `1` or `yes` is checked; anything else is not. A required checkbox must be checked. |
+| `date` | **Date** | Any text (use `<input type="date">`). |
+| `url` | **URL** | A URL. |
+| `tel` | **Phone** | Any text. |
+
+Field names start with a letter, then letters, digits or `_`, and are unique in the form.
+A form has 1 to 50 fields. Values are at most **Maximum length** characters (5,000 by
+default, 20,000 at most).
+
+## Render the form
+
+`GET /api/_forms/{slug}` returns the definition, so your site can render the fields the
+editors chose:
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+`honeypot` is `null` when the spam trap is off. The definition is cached for a minute
+(`Cache-Control: public, max-age=60`).
+
+## Submit
+
+`POST /api/_forms/{slug}` takes the values as JSON (the fields, or `{ "data": { … } }`) or
+as a plain form post (`application/x-www-form-urlencoded`). No token is needed.
+
+<Tabs syncKey="form">
+<TabItem label="HTML form">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| Answer | When |
+| --- | --- |
+| `201` with `{ "data": { "message": … } }` | Accepted. `message` is the **Success message**, or `Thank you!`. |
+| `400` `ValidationError` | A value is missing or invalid. `details.errors` lists `{ path, message }` per field. |
+| `404` | No form with that slug, or the feature is off. |
+| `413` | The submission is over 64 KB. |
+| `429` | The same visitor sent more than 10 submissions to this form in a minute. |
+
+Values are trimmed and checked against the fields. Unknown fields are dropped, so a
+visitor cannot add data you did not ask for.
+
+A plain HTML form post receives the JSON answer as the page. For a better experience,
+submit with `fetch` and show the message yourself. Posting from the browser to another
+origin needs your site's origin in [`[api].cors_origins`](/reference/configuration/).
+
+### Spam
+
+With **Spam trap** on, add a hidden, empty `_gotcha` field to the form. Bots fill every
+field; a submission with `_gotcha` filled is answered as accepted (`201`) and thrown away,
+so the bot learns nothing. Together with the rate limit, this stops most form spam without
+a CAPTCHA.
+
+## Read submissions
+
+The form's **Submissions** tab lists what visitors sent, with the time it
+was **Received**. You can delete a submission, and **Export CSV** downloads them all.
+
+Every accepted submission is also emailed to the **Notify** addresses, with a link to the
+submissions in the admin (built from [`[server].public_url`](/reference/configuration/)).
+
+<Aside type="note">
+Verdin stores each submission's values, the visitor's user agent, and a keyed hash of
+their IP address (not the address itself), enough to spot a flood without tracking people.
+Deleting a form deletes its submissions.
+</Aside>
+
+## Admin API
+
+The admin panel uses `/admin/api/site/forms` and `/admin/api/site/forms/{id}`, plus
+`/admin/api/site/forms/{id}/submissions` and `…/submissions/export` (CSV), with an admin's
+access token and `site.manage`. See [Admin API](/api/admin/).

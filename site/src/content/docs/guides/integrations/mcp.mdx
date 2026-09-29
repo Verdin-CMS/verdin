@@ -1,0 +1,147 @@
+---
+title: MCP server
+description: Let Claude and other AI agents read and edit Verdin content through the Model Context Protocol, with the permissions of an API token.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin can serve its content to AI agents through the
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP). Connect Claude Code,
+Claude Desktop, Cursor or any other MCP client, and the agent can list your content types,
+query entries with the REST API's filters, and create, update or publish entries, within
+the permissions of the token you give it.
+
+Strapi v5 has no built-in MCP server.
+
+## Turn it on
+
+<Steps>
+
+1. In **Settings → Features**, turn on **MCP server**. Its card shows the **Endpoint**,
+   `https://cms.example.com/mcp`, on the same host as the content API.
+2. In **Settings → API tokens**, choose **Create token**. Pick **Read-only** unless the
+   agent should write, or **Custom** to allow only some types and actions. Copy the token:
+   it is shown once. See [API tokens](/guides/auth/api-tokens/).
+3. Connect your client with the endpoint and the token (below).
+
+</Steps>
+
+## Connect a client
+
+The server speaks MCP's Streamable HTTP transport. Every client needs the URL and an
+`Authorization: Bearer <token>` header.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+The **MCP server** card has this command under **Add it to Claude Code** (**Copy the
+command**); replace `<token>` with your API token:
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+Claude Desktop's configuration file starts local servers, so bridge to the HTTP endpoint
+with [`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Client configuration formats change; check your client's documentation if a key is not
+recognized. Then ask the agent something like *"List the articles published this week in
+the News category"*.
+
+## Tools
+
+| Tool | Needs | What it does |
+| --- | --- | --- |
+| `list_content_types` | `find` or `findOne` | The content types the caller can read, with their kind and attributes. |
+| `get_content_type` | `find` or `findOne` | A content type's attributes: types, options and relations. |
+| `find_entries` | `find` | Entries of a type. `query` takes the REST API's parameters as JSON (`filters`, `sort`, `fields`, `populate`, `pagination`); `status: "draft"` also needs `readDrafts`. |
+| `get_entry` | `findOne` | One entry by `documentId` (single types: without it). |
+| `create_entry` | `create` | Creates an entry from `data`, as in the REST API. `status: "draft"` saves a draft. |
+| `update_entry` | `update` | Updates an entry (single types: without `documentId`). |
+| `delete_entry` | `delete` | Deletes an entry. |
+| `publish_entry`, `unpublish_entry` | `publish` | Publishes or unpublishes an entry. |
+
+Tools take `uid` (such as `api::article`) and, for localized types, `locale`. Each tool
+checks the same permission as the matching REST route, and writes go through the same
+path as the REST API: validation, plugin hooks, review stages, webhooks, content history
+and audit logs. An agent can do nothing its token cannot do over REST.
+
+See [Permissions](/reference/permissions/) for the content API actions.
+
+## Authentication
+
+The endpoint takes the same credentials as the content API:
+
+- an API token, the usual choice for agents;
+- an end user's JWT, for an agent acting as a signed-in user of your app;
+- no `Authorization` header, for the public role's permissions.
+
+An invalid token answers `401`. The server keeps no sessions and opens no streams:
+each request is a JSON-RPC `POST` answered with JSON (`GET` answers `405`).
+
+### Browser origins
+
+Requests that carry an `Origin` header, which browsers send, are refused unless the origin
+is listed under **Allowed browser origins** on the **MCP server** card. This protects
+against DNS rebinding, where a web page tricks the browser into calling a server on your
+network. Command-line and desktop clients send no `Origin`, so the list is usually empty.
+
+<Aside type="caution">
+An agent with a full-access token can delete and publish content. Give agents read-only
+or custom tokens scoped to what they need. For drafts an agent writes, a
+[review workflow](/guides/content/review-workflows/) keeps a person between the agent and
+publishing.
+</Aside>
+
+To give editors AI help inside the admin panel instead (translation, alt text, SEO
+suggestions), see [AI actions](/guides/integrations/ai-actions/).
