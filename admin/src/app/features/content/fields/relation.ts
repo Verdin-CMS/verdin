@@ -9,7 +9,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
   inject,
   input,
   model,
@@ -20,23 +19,19 @@ import { FormValueControl } from '@angular/forms/signals';
 import { NgIcon } from '@ng-icons/core';
 import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
-import { HlmInputImports } from '@spartan-ng/helm/input';
 
-import { Api, toQuery } from '../../../core/api';
 import { Auth } from '../../../core/auth';
-import { searchable } from '../../../core/edit-view';
 import { isLocalized } from '../../../core/content-locales';
 import { I18n } from '../../../core/i18n/i18n';
 import { Schema } from '../../../core/schema';
-import { Document } from '../../../core/types';
-import { documentLabel } from './model';
+import { EntryPicker, PickedEntry } from './entry-picker';
 import { RelatedEditor } from './related-editor';
 
 /**
- * Picks related documents by searching the target type. The value is a documentId
- * (to-one) or a list of them (to-many), which is what the API's `set` accepts. To-many
- * relations are reordered by dragging (or with the move buttons), and each related entry
- * can be edited in the editor's side sheet.
+ * Related documents of one target type, added with the entry picker. The value is a
+ * documentId (to-one) or a list of them (to-many), which is what the API's `set` accepts.
+ * To-many relations are reordered by dragging (or with the move buttons), and each related
+ * entry can be edited in the editor's side sheet.
  */
 @Component({
   selector: 'vd-relation-control',
@@ -45,9 +40,9 @@ import { RelatedEditor } from './related-editor';
     CdkDrag,
     CdkDragHandle,
     NgIcon,
-    HlmInputImports,
     HlmBadgeImports,
     HlmButtonImports,
+    EntryPicker,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -136,55 +131,37 @@ import { RelatedEditor } from './related-editor';
         <p class="sr-only" aria-live="polite">{{ announcement() }}</p>
       }
       @if (many() || selected().length === 0) {
-        <div class="relative">
-          <ng-icon
-            name="lucideSearch"
-            size="16"
-            class="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2"
-          />
-          <input
-            hlmInput
-            class="ps-8"
-            autocomplete="off"
+        <div>
+          <button
+            hlmBtn
+            variant="outline"
+            size="sm"
+            type="button"
             [id]="inputId()"
-            [placeholder]="t('content.relation.search', { type: targetName() })"
-            [value]="search()"
             [disabled]="disabled()"
-            (input)="search.set($any($event.target).value)"
-            (focus)="open.set(true)"
-            (blur)="touch.emit(); closeSoon()"
-          />
-          @if (open() && searched() && !results().length) {
-            <div
-              class="bg-popover text-muted-foreground absolute z-10 mt-1 w-full rounded-md border px-3 py-2 text-sm shadow-md"
-            >
-              {{ t('content.relation.noResults') }}
-            </div>
-          }
-          @if (open() && results().length) {
-            <ul
-              class="bg-popover text-popover-foreground absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border p-1 shadow-md"
-            >
-              @for (result of results(); track result.documentId) {
-                <li>
-                  <button
-                    type="button"
-                    class="hover:bg-accent w-full rounded-sm px-2 py-1.5 text-start text-sm"
-                    (mousedown)="pick(result)"
-                  >
-                    {{ label(result) }}
-                  </button>
-                </li>
-              }
-            </ul>
-          }
+            (click)="pickerOpen.set(true)"
+          >
+            <ng-icon name="lucidePlus" />
+            {{ many() ? t('morph.control.addMany') : t('morph.control.addOne') }}
+          </button>
         </div>
       }
     </div>
+
+    <vd-entry-picker
+      [open]="pickerOpen()"
+      [many]="many()"
+      [description]="t('content.relation.pickerDescription', { type: targetName() })"
+      [types]="targetTypes()"
+      [linked]="linked()"
+      [editorLocale]="locale()"
+      [mainFields]="mainFields()"
+      (picked)="pick($event)"
+      (closed)="closePicker()"
+    />
   `,
 })
 export class RelationControl implements FormValueControl<string | string[] | null> {
-  private readonly api = inject(Api);
   private readonly auth = inject(Auth);
   private readonly schema = inject(Schema);
   protected readonly i18n = inject(I18n);
@@ -203,11 +180,7 @@ export class RelationControl implements FormValueControl<string | string[] | nul
   /** The edited document's locale: related entries of a localized type open in it. */
   readonly locale = input<string | null>(null);
 
-  protected readonly search = signal('');
-  protected readonly open = signal(false);
-  protected readonly results = signal<Document[]>([]);
-  /** Whether a search has answered since the picker opened. */
-  protected readonly searched = signal(false);
+  protected readonly pickerOpen = signal(false);
   private readonly picked = signal<Record<string, string>>({});
   /** Read by screen readers after a reorder. */
   protected readonly announcement = signal('');
@@ -228,53 +201,30 @@ export class RelationControl implements FormValueControl<string | string[] | nul
   /** The edit view's field naming related entries (`null`: the type's first text field). */
   readonly mainField = input<string | null>(null);
 
-  private readonly defaultTitleField = computed(() => {
-    const type = this.schema.type(this.target());
-    return type ? this.schema.titleField(type) : null;
-  });
-  /** The field shown for related entries. */
-  private readonly titleField = computed(() => this.mainField() ?? this.defaultTitleField());
-  /** The field searched: the main field when it holds text, else the default one. */
-  private readonly searchField = computed(() => {
-    const main = this.mainField();
-    const type = this.schema.type(this.target());
-    return main && searchable(type?.attributes[main]) ? main : this.defaultTitleField();
-  });
+  /** Entries the field holds, for the picker. */
+  protected readonly linked = computed(() =>
+    this.selected().map((documentId) => ({ uid: this.target(), documentId })),
+  );
+  protected readonly targetTypes = computed(() => [this.target()]);
+  protected readonly mainFields = computed(() => ({ [this.target()]: this.mainField() }));
 
-  constructor() {
-    effect((onCleanup) => {
-      const term = this.search();
-      const target = this.target();
-      if (!this.open()) return;
-      const timer = setTimeout(() => void this.find(target, term), 200);
-      onCleanup(() => clearTimeout(timer));
-    });
+  protected pick(entries: PickedEntry[]): void {
+    this.pickerOpen.set(false);
+    if (!entries.length) return;
+    this.picked.update((labels) => ({
+      ...labels,
+      ...Object.fromEntries(entries.map((entry) => [entry.documentId, entry.label])),
+    }));
+    const ids = entries.map((entry) => entry.documentId);
+    const current = this.selected();
+    this.value.set(
+      this.many() ? [...current, ...ids.filter((id) => !current.includes(id))] : ids[0],
+    );
+    this.touch.emit();
   }
 
-  protected label(document: Document): string {
-    return documentLabel(document, this.titleField());
-  }
-
-  private async find(target: string, term: string): Promise<void> {
-    const field = this.searchField();
-    const query: Record<string, unknown> = { pagination: { pageSize: 10 }, sort: 'updatedAt:desc' };
-    if (term && field) query['filters'] = { [field]: { $containsi: term } };
-    try {
-      const response = await this.api.list<Document>(`/content/${target}`, toQuery(query));
-      this.results.set(
-        response.data.filter((document) => !this.selected().includes(document.documentId)),
-      );
-    } catch {
-      this.results.set([]);
-    }
-    this.searched.set(true);
-  }
-
-  protected pick(document: Document): void {
-    this.picked.update((labels) => ({ ...labels, [document.documentId]: this.label(document) }));
-    this.value.set(this.many() ? [...this.selected(), document.documentId] : document.documentId);
-    this.search.set('');
-    this.open.set(false);
+  protected closePicker(): void {
+    this.pickerOpen.set(false);
     this.touch.emit();
   }
 
@@ -314,12 +264,5 @@ export class RelationControl implements FormValueControl<string | string[] | nul
       documentId: id,
       locale: isLocalized(type) ? this.locale() : null,
     });
-  }
-
-  protected closeSoon(): void {
-    setTimeout(() => {
-      this.open.set(false);
-      this.searched.set(false);
-    }, 150);
   }
 }

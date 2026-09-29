@@ -9,6 +9,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { NgIcon } from '@ng-icons/core';
 import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
@@ -19,9 +20,10 @@ import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
-import { Api, ApiFailure, toQuery } from '../../../core/api';
+import { ApiFailure } from '../../../core/api';
 import { Auth } from '../../../core/auth';
 import { ContentLocales } from '../../../core/content-locales';
+import { ContentDocuments } from '../../../core/documents';
 import { I18n } from '../../../core/i18n/i18n';
 import {
   MorphRef,
@@ -32,20 +34,32 @@ import {
   toggleMorphPick,
 } from '../../../core/morph';
 import { Schema } from '../../../core/schema';
-import { Document } from '../../../core/types';
+import { ContentType } from '../../../core/types';
 import { MorphEntry, morphEntry } from './model';
+
+/** An entry chosen in the picker: its type, id, label and editor link. */
+export type PickedEntry = MorphEntry;
+
+/** An entry the field already holds: shown as linked, not offered again. */
+export interface EntryRef {
+  uid: string;
+  documentId: string;
+}
 
 let nextId = 0;
 
 /**
- * Chooses entries for a polymorphic owner: a content type (among those the admin may read),
- * then entries of it found with the list search (`_q`). A to-one owner takes the entry
- * clicked; a to-many one collects entries (from several types) and adds them together.
- * Entries already linked are shown, not offered again.
+ * The one entry picker of the admin (relations, polymorphic links, menu links): a dialog
+ * where the admin chooses a content type (when several are allowed, among those they may
+ * read), then entries of it found with the list search (`_q`, in the editor's locale for
+ * localized types). A to-one picker takes the entry clicked; a to-many one collects entries
+ * (from several types) and adds them together. Entries already linked are shown, not
+ * offered again.
  */
 @Component({
-  selector: 'vd-morph-picker',
+  selector: 'vd-entry-picker',
   imports: [
+    NgTemplateOutlet,
     NgIcon,
     HlmDialogImports,
     HlmButtonImports,
@@ -66,25 +80,34 @@ let nextId = 0;
       >
         <hlm-dialog-header>
           <h2 hlmDialogTitle>
-            {{ many() ? t('morph.picker.titleMany') : t('morph.picker.titleOne') }}
+            {{ title() || (many() ? t('morph.picker.titleMany') : t('morph.picker.titleOne')) }}
           </h2>
-          <p hlmDialogDescription>{{ t('morph.picker.description', { field: field() }) }}</p>
+          @if (description()) {
+            <p hlmDialogDescription>{{ description() }}</p>
+          }
         </hlm-dialog-header>
 
-        @if (types().length) {
-          <div class="grid gap-3 sm:grid-cols-[minmax(0,12rem)_1fr]">
-            <div hlmField>
-              <label hlmFieldLabel [for]="id + '-type'">{{ t('morph.picker.type') }}</label>
-              <hlm-native-select
-                [selectId]="id + '-type'"
-                [value]="uid()"
-                (valueChange)="chooseType($any($event))"
-              >
-                @for (type of types(); track type.uid) {
-                  <option hlmNativeSelectOption [value]="type.uid">{{ type.displayName }}</option>
-                }
-              </hlm-native-select>
+        @if (choices().length) {
+          @if (choices().length > 1) {
+            <div class="grid gap-3 sm:grid-cols-[minmax(0,12rem)_1fr]">
+              <div hlmField>
+                <label hlmFieldLabel [for]="id + '-type'">{{ t('morph.picker.type') }}</label>
+                <hlm-native-select
+                  [selectId]="id + '-type'"
+                  [value]="uid()"
+                  (valueChange)="chooseType($any($event))"
+                >
+                  @for (type of choices(); track type.uid) {
+                    <option hlmNativeSelectOption [value]="type.uid">{{ type.displayName }}</option>
+                  }
+                </hlm-native-select>
+              </div>
+              <ng-container *ngTemplateOutlet="searchField" />
             </div>
+          } @else {
+            <ng-container *ngTemplateOutlet="searchField" />
+          }
+          <ng-template #searchField>
             <div hlmField>
               <label hlmFieldLabel [for]="id + '-search'">{{ t('morph.picker.search') }}</label>
               <div hlmInputGroup>
@@ -102,7 +125,7 @@ let nextId = 0;
                 />
               </div>
             </div>
-          </div>
+          </ng-template>
           @if (locale(); as code) {
             <p class="text-muted-foreground -mt-2 text-xs">
               {{ t('morph.picker.locale', { locale: locales.name(code) }) }}
@@ -117,27 +140,27 @@ let nextId = 0;
               [attr.aria-busy]="loading()"
             >
               @for (entry of results(); track entry.documentId) {
-                @let linked = isLinked(entry);
-                @let chosen = isChosen(entry);
+                @let isLinked = linkedKeys().has(key(entry));
+                @let isChosen = chosenKeys().has(key(entry));
                 <li>
                   @if (many()) {
                     <div
                       class="hover:bg-muted/60 flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm"
-                      [class.border-primary]="chosen"
-                      [class.bg-primary/5]="chosen"
+                      [class.border-primary]="isChosen"
+                      [class.bg-primary/5]="isChosen"
                     >
                       <hlm-checkbox
                         [inputId]="id + '-' + entry.documentId"
-                        [checked]="linked || chosen"
-                        [disabled]="linked"
+                        [checked]="isLinked || isChosen"
+                        [disabled]="isLinked"
                         (checkedChange)="toggle(entry)"
                       />
                       <label
                         class="flex min-w-0 flex-1 items-center gap-2"
                         [for]="id + '-' + entry.documentId"
                       >
-                        <span class="truncate" data-morph-result>{{ entry.label }}</span>
-                        @if (linked) {
+                        <span class="truncate" data-entry-result>{{ entry.label }}</span>
+                        @if (isLinked) {
                           <span hlmBadge variant="outline" class="ms-auto shrink-0">{{
                             t('morph.picker.linked')
                           }}</span>
@@ -148,11 +171,11 @@ let nextId = 0;
                     <button
                       type="button"
                       class="hover:bg-muted/60 focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-start text-sm outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-60"
-                      [disabled]="linked"
+                      [disabled]="isLinked"
                       (click)="pickOne(entry)"
                     >
-                      <span class="truncate" data-morph-result>{{ entry.label }}</span>
-                      @if (linked) {
+                      <span class="truncate" data-entry-result>{{ entry.label }}</span>
+                      @if (isLinked) {
                         <span hlmBadge variant="outline" class="ms-auto shrink-0">{{
                           t('morph.picker.linked')
                         }}</span>
@@ -199,42 +222,52 @@ let nextId = 0;
     </hlm-dialog>
   `,
 })
-export class MorphPicker {
-  private readonly api = inject(Api);
+export class EntryPicker {
+  private readonly documents = inject(ContentDocuments);
   private readonly auth = inject(Auth);
   private readonly schema = inject(Schema);
   protected readonly locales = inject(ContentLocales);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
-  protected readonly id = `morph-picker-${++nextId}`;
+  protected readonly id = `entry-picker-${++nextId}`;
 
   readonly open = input(false);
   readonly many = input(false);
-  /** The field's label, for the description. */
-  readonly field = input('');
-  /** Links the field holds: shown as linked, not picked again. */
-  readonly linked = input<MorphRef[]>([]);
+  /** The dialog's title (default: "Link an entry" / "Link entries"). */
+  readonly title = input('');
+  readonly description = input('');
+  /** The content types to pick from (`null`: every type); only readable ones are offered. */
+  readonly types = input<readonly string[] | null>(null);
+  /** Entries the field holds: shown as linked, not picked again. */
+  readonly linked = input<readonly EntryRef[]>([]);
   /** The editor's locale: localized types are searched in it (else in the default one). */
   readonly editorLocale = input<string | null>(null);
-  readonly picked = output<MorphEntry[]>();
+  /** The field naming entries of a type (edit view's main field), else its title field. */
+  readonly mainFields = input<Readonly<Record<string, string | null>>>({});
+  readonly picked = output<PickedEntry[]>();
   readonly closed = output<void>();
 
-  /** Types the admin may read, by name. */
-  protected readonly types = computed(() =>
-    morphTargetTypes(this.schema.contentTypes(), (uid) =>
-      this.auth.canContent('content.read', uid),
-    ),
-  );
+  /** The types offered, by name. */
+  protected readonly choices = computed(() => {
+    const allowed = this.types();
+    const types = allowed
+      ? this.schema.contentTypes().filter((type) => allowed.includes(type.uid))
+      : this.schema.contentTypes();
+    return morphTargetTypes(types, (uid) => this.auth.canContent('content.read', uid));
+  });
   protected readonly uid = signal('');
   protected readonly term = signal('');
-  protected readonly results = signal<MorphEntry[]>([]);
+  protected readonly results = signal<PickedEntry[]>([]);
   protected readonly loading = signal(false);
   protected readonly failure = signal<string | null>(null);
   /** Entries chosen in this session (to-many), in pick order, across types. */
-  private readonly chosenEntries = signal<MorphEntry[]>([]);
-  protected readonly chosen = computed(() =>
-    this.chosenEntries().map((entry) => ({ __type: entry.uid, documentId: entry.documentId })),
+  private readonly chosenEntries = signal<PickedEntry[]>([]);
+  protected readonly chosen = computed(() => this.chosenEntries().map((entry) => this.ref(entry)));
+  protected readonly chosenKeys = computed(() => new Set(this.chosen().map(morphKey)));
+  private readonly linkedRefs = computed(() =>
+    this.linked().map((ref) => ({ __type: ref.uid, documentId: ref.documentId })),
   );
+  protected readonly linkedKeys = computed(() => new Set(this.linkedRefs().map(morphKey)));
 
   private readonly type = computed(() => this.schema.type(this.uid()));
   protected readonly typeName = computed(
@@ -254,7 +287,7 @@ export class MorphPicker {
     effect(() => {
       if (!this.open()) return;
       untracked(() => {
-        const types = this.types();
+        const types = this.choices();
         if (!types.some((type) => type.uid === this.uid())) this.uid.set(types[0]?.uid ?? '');
         this.term.set('');
         this.chosenEntries.set([]);
@@ -273,14 +306,18 @@ export class MorphPicker {
     });
   }
 
+  private titleField(type: ContentType): string | null {
+    return this.mainFields()[type.uid] ?? this.schema.titleField(type);
+  }
+
   private async find(request: { uid: string; term: string; locale: string | null }): Promise<void> {
     const id = ++this.requestId;
     this.loading.set(true);
     this.failure.set(null);
     try {
-      const response = await this.api.list<Document>(
-        `/content/${request.uid}`,
-        toQuery(morphSearchQuery(request.term, request.locale)),
+      const response = await this.documents.list(
+        request.uid,
+        morphSearchQuery(request.term, request.locale),
       );
       if (id !== this.requestId) return;
       this.results.set(
@@ -288,7 +325,7 @@ export class MorphPicker {
           morphEntry(
             { uid: request.uid, documentId: document.documentId, entry: document },
             (uid) => this.schema.type(uid),
-            (type) => this.schema.titleField(type),
+            (type) => this.titleField(type),
           ),
         ),
       );
@@ -306,35 +343,29 @@ export class MorphPicker {
     this.results.set([]);
   }
 
-  private ref(entry: MorphEntry): MorphRef {
+  private ref(entry: PickedEntry): MorphRef {
     return { __type: entry.uid, documentId: entry.documentId };
   }
 
-  protected isLinked(entry: MorphEntry): boolean {
-    const key = morphKey(entry);
-    return this.linked().some((ref) => morphKey(ref) === key);
-  }
-
-  protected isChosen(entry: MorphEntry): boolean {
-    const key = morphKey(entry);
-    return this.chosen().some((ref) => morphKey(ref) === key);
+  protected key(entry: PickedEntry): string {
+    return morphKey(entry);
   }
 
   /** To-many: checks or unchecks an entry. */
-  protected toggle(entry: MorphEntry): void {
-    const next = toggleMorphPick(this.chosen(), this.ref(entry), true, this.linked());
+  protected toggle(entry: PickedEntry): void {
+    const next = toggleMorphPick(this.chosen(), this.ref(entry), true, this.linkedRefs());
     const keys = new Set(next.map(morphKey));
     const known = [...this.chosenEntries(), entry];
     this.chosenEntries.set(
       next
         .map((ref) => known.find((item) => morphKey(item) === morphKey(ref)))
-        .filter((item): item is MorphEntry => !!item && keys.has(morphKey(item))),
+        .filter((item): item is PickedEntry => !!item && keys.has(morphKey(item))),
     );
   }
 
   /** To-one: the entry clicked is the choice. */
-  protected pickOne(entry: MorphEntry): void {
-    if (!toggleMorphPick([], this.ref(entry), false, this.linked()).length) return;
+  protected pickOne(entry: PickedEntry): void {
+    if (!toggleMorphPick([], this.ref(entry), false, this.linkedRefs()).length) return;
     this.picked.emit([entry]);
   }
 

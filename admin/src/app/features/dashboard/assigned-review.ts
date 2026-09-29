@@ -12,6 +12,7 @@ import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 
 import { Api, toQuery } from '../../core/api';
+import { ContentDocuments } from '../../core/documents';
 import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { EntryStage, ReviewStage, ReviewWorkflows, stageOf } from '../../core/review';
@@ -99,6 +100,7 @@ export function groupAssigned(entries: EntryStage[]): Map<string, EntryStage[]> 
 })
 export class AssignedReview {
   private readonly api = inject(Api);
+  private readonly documents = inject(ContentDocuments);
   private readonly service = inject(ReviewWorkflows);
   private readonly schema = inject(Schema);
   private readonly features = inject(Features);
@@ -142,9 +144,9 @@ export class AssignedReview {
     const locale = entries[0].locale || null;
     const titleField = this.schema.titleField(type);
     const [documents, review] = await Promise.all([
-      this.api
-        .list<Document>(
-          `/content/${type.uid}`,
+      this.documents
+        .list(
+          type.uid,
           toQuery({
             filters: {
               documentId: {

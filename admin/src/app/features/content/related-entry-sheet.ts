@@ -20,8 +20,9 @@ import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmSheetImports } from '@spartan-ng/helm/sheet';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
-import { Api, ApiFailure, toQuery } from '../../core/api';
+import { ApiFailure } from '../../core/api';
 import { Auth } from '../../core/auth';
+import { ContentDocuments } from '../../core/documents';
 import { I18n } from '../../core/i18n/i18n';
 import { Schema } from '../../core/schema';
 import { ContentType, Document } from '../../core/types';
@@ -99,7 +100,7 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
   `,
 })
 export class RelatedEntryForm implements OnInit {
-  private readonly api = inject(Api);
+  private readonly documents = inject(ContentDocuments);
   private readonly auth = inject(Auth);
   private readonly schema = inject(Schema);
   private readonly injector = inject(Injector);
@@ -159,11 +160,10 @@ export class RelatedEntryForm implements OnInit {
     await submit(this.entryForm as FieldTree<FormModel>, async () => {
       try {
         const data = toPayload(type.attributes, this.model(), this.components);
-        const document = await this.api.put<Document>(
-          `/content/${type.uid}/${this.document().documentId}`,
-          { data },
-          toQuery({ populate: '*', locale: this.locale() }),
-        );
+        const document = await this.documents.update(type.uid, this.document().documentId, data, {
+          populate: '*',
+          locale: this.locale(),
+        });
         this.model.set(withoutPasswords(type.attributes, this.model()));
         this.saved.emit(document);
         return undefined;
@@ -268,7 +268,7 @@ export class RelatedEntryForm implements OnInit {
   `,
 })
 export class RelatedEntrySheet {
-  private readonly api = inject(Api);
+  private readonly documents = inject(ContentDocuments);
   private readonly schema = inject(Schema);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
@@ -306,10 +306,11 @@ export class RelatedEntrySheet {
     if (!request) return;
     this.loading.set(true);
     try {
-      const document = await this.api.get<Document>(
-        `/content/${request.uid}/${request.documentId}`,
-        toQuery({ populate: '*', status: 'draft', locale: request.locale }),
-      );
+      const document = await this.documents.get(request.uid, request.documentId, {
+        populate: '*',
+        status: 'draft',
+        locale: request.locale,
+      });
       if (current !== this.requests) return;
       this.document.set(document);
       this.loadKey.set(`${request.uid}|${request.documentId}|${current}`);

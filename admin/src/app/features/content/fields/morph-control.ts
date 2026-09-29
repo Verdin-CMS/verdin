@@ -26,7 +26,7 @@ import { I18n } from '../../../core/i18n/i18n';
 import { MorphRef, addMorphRefs, morphKey, morphRefs, morphValue } from '../../../core/morph';
 import { Schema } from '../../../core/schema';
 import { MorphEntry } from './model';
-import { MorphPicker } from './morph-picker';
+import { EntryPicker } from './entry-picker';
 import { RelatedEditor } from './related-editor';
 
 type MorphFormValue = MorphRef | MorphRef[] | null;
@@ -46,7 +46,7 @@ type MorphFormValue = MorphRef | MorphRef[] | null;
     NgIcon,
     HlmBadgeImports,
     HlmButtonImports,
-    MorphPicker,
+    EntryPicker,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -155,11 +155,11 @@ type MorphFormValue = MorphRef | MorphRef[] | null;
       }
     </div>
 
-    <vd-morph-picker
+    <vd-entry-picker
       [open]="pickerOpen()"
       [many]="many()"
-      [field]="label()"
-      [linked]="refs()"
+      [description]="t('morph.picker.description', { field: label() })"
+      [linked]="linked()"
       [editorLocale]="locale()"
       (picked)="pick($event)"
       (closed)="closePicker()"
@@ -192,6 +192,9 @@ export class MorphControl implements FormValueControl<MorphFormValue> {
   protected readonly announcement = signal('');
 
   protected readonly refs = computed(() => morphRefs(this.value()));
+  protected readonly linked = computed(() =>
+    this.refs().map((ref) => ({ uid: ref.__type, documentId: ref.documentId })),
+  );
   private readonly known = computed<Record<string, MorphEntry>>(() => ({
     ...Object.fromEntries(this.initial().map((entry) => [morphKey(entry), entry])),
     ...this.picked(),

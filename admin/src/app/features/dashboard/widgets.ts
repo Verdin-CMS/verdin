@@ -18,6 +18,7 @@ import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 
 import { Api, ApiFailure, RUNTIME_CONFIG, toQuery } from '../../core/api';
+import { ContentDocuments } from '../../core/documents';
 import { Auth } from '../../core/auth';
 import { ChartSeries, WidgetCondition, WidgetConfig } from '../../core/dashboard';
 import { Engagement, Poll, VoteTally } from '../../core/engagement';
@@ -116,6 +117,7 @@ function listQuery(
 })
 export class CountWidget {
   private readonly api = inject(Api);
+  private readonly documents = inject(ContentDocuments);
   private readonly schema = inject(Schema);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
@@ -155,10 +157,7 @@ export class CountWidget {
     if (!type) return;
     this.total.set(null);
     try {
-      const response = await this.api.list<Document>(
-        `/content/${type.uid}`,
-        listQuery(this.schema, type, config, 1),
-      );
+      const response = await this.documents.list(type.uid, listQuery(this.schema, type, config, 1));
       this.total.set(response.meta.pagination?.total ?? 0);
     } catch {
       this.total.set(0);
@@ -221,6 +220,7 @@ export class CountWidget {
 })
 export class EntriesWidget {
   private readonly api = inject(Api);
+  private readonly documents = inject(ContentDocuments);
   private readonly auth = inject(Auth);
   private readonly schema = inject(Schema);
   private readonly engagement = inject(Engagement);
@@ -266,8 +266,8 @@ export class EntriesWidget {
       const results = await Promise.all(
         types.map(async (type) => {
           try {
-            const response = await this.api.list<Document>(
-              `/content/${type.uid}`,
+            const response = await this.documents.list(
+              type.uid,
               listQuery(this.schema, type, config, limit),
             );
             return response.data.map((document) => ({ type, document }));
@@ -296,8 +296,8 @@ export class EntriesWidget {
       if (!top.length) return [];
       const ids = top.map((item) => item.documentId);
       const inIds = { documentId: { $in: Object.fromEntries(ids.entries()) } };
-      const response = await this.api.list<Document>(
-        `/content/${type.uid}`,
+      const response = await this.documents.list(
+        type.uid,
         listQuery(this.schema, type, config, ids.length, [inIds]),
       );
       const byId = new Map(response.data.map((document) => [document.documentId, document]));
@@ -763,6 +763,7 @@ const CHART_HEIGHT = 160;
 })
 export class ChartWidget {
   private readonly api = inject(Api);
+  private readonly documents = inject(ContentDocuments);
   private readonly schema = inject(Schema);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;

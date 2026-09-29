@@ -23,7 +23,7 @@ import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
 import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
-import { Api, ApiFailure, RUNTIME_CONFIG, toQuery } from '../../core/api';
+import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { loadErrorOf } from '../../core/loading';
@@ -50,10 +50,11 @@ import {
   treeProblems,
   updateNode,
 } from '../../core/menu-tree';
+import { ContentDocuments } from '../../core/documents';
 import { Schema } from '../../core/schema';
 import { Site, slugify, validSlug } from '../../core/site';
 import { PageTitle } from '../../core/title';
-import { Document } from '../../core/types';
+import { EntryPicker, PickedEntry } from '../content/fields/entry-picker';
 import { documentLabel } from '../content/fields/model';
 import { PageHeader } from '../../shared/components/page-header';
 import { SiteAccessNotice, siteAccess } from './site-access';
@@ -67,26 +68,13 @@ const PROBLEM_LABELS: Record<ItemProblem, MessageKey> = {
 
 type EntryLink = NonNullable<MenuNode['entry']>;
 
-/** Picks an entry to link: a content type, then a search of its entries. */
+/** The entry a menu link opens: shown with a clear button, chosen with the entry picker. */
 @Component({
   selector: 'vd-menu-entry-picker',
-  imports: [NgIcon, HlmButtonImports, HlmFieldImports, HlmInputImports, HlmNativeSelectImports],
+  imports: [NgIcon, HlmButtonImports, EntryPicker],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-3">
-      <div hlmField>
-        <label hlmFieldLabel for="menu-entry-type">{{ t('menus.entry.type') }}</label>
-        <hlm-native-select
-          selectId="menu-entry-type"
-          [value]="uid()"
-          (valueChange)="chooseType($event ?? '')"
-        >
-          <option hlmNativeSelectOption value="">{{ t('menus.entry.chooseType') }}</option>
-          @for (type of schema.collections(); track type.uid) {
-            <option hlmNativeSelectOption [value]="type.uid">{{ type.displayName }}</option>
-          }
-        </hlm-native-select>
-      </div>
       @if (value(); as entry) {
         <div class="bg-muted/50 flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
           <ng-icon name="lucideLink" class="text-muted-foreground shrink-0" />
@@ -105,75 +93,41 @@ type EntryLink = NonNullable<MenuNode['entry']>;
           </button>
         </div>
       }
-      @if (uid()) {
-        <div hlmField>
-          <label hlmFieldLabel for="menu-entry-search">{{ t('menus.entry.search') }}</label>
-          <input
-            hlmInput
-            id="menu-entry-search"
-            type="search"
-            autocomplete="off"
-            role="combobox"
-            aria-controls="menu-entry-results"
-            [attr.aria-expanded]="results().length > 0"
-            [placeholder]="t('menus.entry.searchPlaceholder')"
-            [value]="term()"
-            (input)="term.set($any($event.target).value)"
-            (keydown.arrowDown)="$event.preventDefault(); focusResult(0)"
-          />
-          <ul
-            id="menu-entry-results"
-            class="flex max-h-56 flex-col gap-0.5 overflow-y-auto"
-            [attr.aria-label]="t('menus.entry.results')"
-          >
-            @for (document of results(); track document.documentId; let index = $index) {
-              <li>
-                <button
-                  type="button"
-                  class="hover:bg-accent focus-visible:bg-accent w-full rounded-sm px-2 py-1.5 text-start text-sm outline-none"
-                  [attr.data-result]="index"
-                  (click)="pick(document)"
-                  (keydown.arrowDown)="$event.preventDefault(); focusResult(index + 1)"
-                  (keydown.arrowUp)="$event.preventDefault(); focusResult(index - 1)"
-                >
-                  {{ label(document) }}
-                </button>
-              </li>
-            } @empty {
-              @if (searched()) {
-                <li class="text-muted-foreground px-2 py-1.5 text-sm">
-                  {{ t('menus.entry.noResults') }}
-                </li>
-              }
-            }
-          </ul>
-        </div>
-      }
+      <div>
+        <button hlmBtn variant="outline" size="sm" type="button" (click)="pickerOpen.set(true)">
+          <ng-icon name="lucideLink" />
+          {{ value() ? t('menus.entry.change') : t('menus.entry.choose') }}
+        </button>
+      </div>
     </div>
+
+    <vd-entry-picker
+      [open]="pickerOpen()"
+      [description]="t('menus.entry.pickerDescription')"
+      [types]="types()"
+      [linked]="linked()"
+      (picked)="pick($event)"
+      (closed)="pickerOpen.set(false)"
+    />
   `,
 })
 export class MenuEntryPicker {
-  private readonly api = inject(Api);
-  protected readonly schema = inject(Schema);
+  private readonly documents = inject(ContentDocuments);
+  private readonly schema = inject(Schema);
   protected readonly t = inject(I18n).t;
 
   readonly value = input<EntryLink | null>(null);
   readonly changed = output<EntryLink | null>();
 
-  protected readonly chosenType = signal<string | null>(null);
-  protected readonly uid = computed(() => this.chosenType() ?? this.value()?.uid ?? '');
-  protected readonly term = signal('');
-  protected readonly results = signal<Document[]>([]);
-  protected readonly searched = signal(false);
+  protected readonly pickerOpen = signal(false);
+  /** Menu links open collection entries. */
+  protected readonly types = computed(() => this.schema.collections().map((type) => type.uid));
+  protected readonly linked = computed(() => {
+    const entry = this.value();
+    return entry ? [{ uid: entry.uid, documentId: entry.documentId }] : [];
+  });
 
   constructor() {
-    effect((onCleanup) => {
-      const uid = this.uid();
-      const term = this.term();
-      if (!uid) return;
-      const timer = setTimeout(() => void this.find(uid, term), 200);
-      onCleanup(() => clearTimeout(timer));
-    });
     // Entries linked before carry no title: fetch it once.
     effect(() => {
       const entry = this.value();
@@ -187,28 +141,9 @@ export class MenuEntryPicker {
     return type ? this.schema.titleField(type) : null;
   }
 
-  protected label(document: Document): string {
-    return documentLabel(document, this.titleField(this.uid()));
-  }
-
-  private async find(uid: string, term: string): Promise<void> {
-    const query: Record<string, unknown> = {
-      pagination: { pageSize: 10 },
-      sort: 'updatedAt:desc',
-      _q: term.trim(),
-    };
-    try {
-      const response = await this.api.list<Document>(`/content/${uid}`, toQuery(query));
-      this.results.set(response.data);
-    } catch {
-      this.results.set([]);
-    }
-    this.searched.set(true);
-  }
-
   private async resolveTitle(entry: EntryLink): Promise<void> {
     try {
-      const document = await this.api.get<Document>(`/content/${entry.uid}/${entry.documentId}`);
+      const document = await this.documents.get(entry.uid, entry.documentId);
       const title = documentLabel(document, this.titleField(entry.uid));
       if (this.value()?.documentId === entry.documentId) this.changed.emit({ ...entry, title });
     } catch {
@@ -216,32 +151,15 @@ export class MenuEntryPicker {
     }
   }
 
-  protected chooseType(uid: string): void {
-    this.chosenType.set(uid);
-    this.term.set('');
-    this.results.set([]);
-    this.searched.set(false);
-  }
-
-  protected pick(document: Document): void {
-    this.changed.emit({
-      uid: this.uid(),
-      documentId: document.documentId,
-      title: this.label(document),
-    });
-    this.term.set('');
+  protected pick(entries: PickedEntry[]): void {
+    this.pickerOpen.set(false);
+    const [entry] = entries;
+    if (entry)
+      this.changed.emit({ uid: entry.uid, documentId: entry.documentId, title: entry.label });
   }
 
   protected clear(): void {
     this.changed.emit(null);
-  }
-
-  protected focusResult(index: number): void {
-    if (index < 0) {
-      document.getElementById('menu-entry-search')?.focus();
-      return;
-    }
-    document.querySelector<HTMLElement>(`#menu-entry-results [data-result="${index}"]`)?.focus();
   }
 }
 

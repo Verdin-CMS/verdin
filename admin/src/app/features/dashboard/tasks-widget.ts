@@ -18,6 +18,7 @@ import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 
 import { Api, ApiFailure, toQuery } from '../../core/api';
+import { ContentDocuments } from '../../core/documents';
 import { CommentsApi, Task, isOverdue, localToday, sortTasks } from '../../core/comments';
 import { WidgetConfig } from '../../core/dashboard';
 import { Features } from '../../core/features';
@@ -122,6 +123,7 @@ export function groupTasks(tasks: readonly Task[]): Map<string, Task[]> {
 })
 export class TasksWidget {
   private readonly api = inject(Api);
+  private readonly documents = inject(ContentDocuments);
   private readonly comments = inject(CommentsApi);
   private readonly schema = inject(Schema);
   private readonly features = inject(Features);
@@ -209,9 +211,9 @@ export class TasksWidget {
     const type = this.schema.type(tasks[0].uid)!;
     const locale = tasks[0].locale || null;
     const ids = [...new Set(tasks.map((task) => task.documentId))];
-    const documents = await this.api
-      .list<Document>(
-        `/content/${type.uid}`,
+    const documents = await this.documents
+      .list(
+        type.uid,
         toQuery({
           filters: { documentId: { $in: Object.fromEntries(ids.map((id, i) => [i, id])) } },
           pagination: { pageSize: ids.length },
