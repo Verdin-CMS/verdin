@@ -6,7 +6,7 @@ project="${VERDIN_E2E_PROJECT:?}"
 rm -rf "$project" && mkdir -p "$project/schema"
 cat > "$project/verdin.toml" <<TOML
 [server]
-port = 1393
+port = ${VERDIN_E2E_PORT:-1393}
 
 [admin]
 secure_cookies = false

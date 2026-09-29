@@ -7,11 +7,13 @@ import {
   test,
 } from '@playwright/test';
 
+import { baseURL } from '../playwright.config';
+
 /** Admin accounts: invitations, sessions, API token rotation and locale-limited roles (0.8). */
 test.describe.configure({ mode: 'serial' });
 
 const ADMIN = { email: 'ada@example.com', password: 'correct horse 1' };
-const BASE = 'http://localhost:1393';
+const BASE = baseURL;
 
 /** Signs in as the first administrator (registering it when the database is new). */
 async function signIn(page: Page): Promise<void> {
