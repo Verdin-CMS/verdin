@@ -1,0 +1,88 @@
+---
+title: Search
+description: Search entries with _q, and turn on the Tantivy full-text index for ranked, accent-insensitive results.
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The content API and the admin panel search entries with the `_q` parameter, as in Strapi.
+By default `_q` matches text fields that contain the words. Turn on the `[search]` index to
+rank results with a full-text engine (Tantivy) built into the server. This guide shows both
+and when to use the index.
+
+## Search with `_q`
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/api/articles' --data-urlencode '_q=rust cms'
+```
+
+`_q` combines with the other parameters: `filters`, `status`, `locale`, `pagination`,
+`fields` and `populate`. The search box of the admin list sends the same parameter.
+
+Which fields are searched:
+
+- Text fields: `string`, `text`, `richtext`, `email`, `uid` and `enumeration`.
+- With the index, also the text inside `blocks`, components and dynamic zones.
+- Never private fields or passwords.
+
+`_q` is a REST parameter. GraphQL and the TypeScript client's query options have no search
+argument; use a `$containsi` filter there.
+
+## Without the index
+
+Without `[search]`, `_q` matches entries where any text field contains the whole search
+text, ignoring case, like Strapi's `$containsi`. Results follow the usual sort. This needs
+no setup and works on every database, but it scans the table and does not rank.
+
+## Turn on the full-text index
+
+<Steps>
+
+1. Enable the index in `verdin.toml`:
+
+   ```toml title="verdin.toml"
+   [search]
+   enabled = true
+   ```
+
+2. Restart Verdin. It builds the index in the background from every entry; until it is
+   ready, `_q` falls back to `$containsi`.
+
+</Steps>
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `enabled` | `false` | Rank `_q` with the full-text index. |
+| `dir` | `"data/search"` | Index directory, relative to the project. |
+| `memory_mb` | `50` | Indexing memory budget, in megabytes. |
+
+See the [configuration reference](/reference/configuration/).
+
+How the index matches:
+
+- Words are split on anything that is not a letter or digit, lowercased and stripped of
+  accents, so `cafe` finds `Café`.
+- Every word must match. The last word also matches as a prefix, so results appear while
+  someone types.
+- The title (the type's first text field) weighs double.
+- Without a `sort`, results come best match first. With a `sort`, the matches are sorted
+  your way. At most 1,000 matches are considered per search.
+- Drafts and published versions, and each locale, are searched separately, following
+  `status` and `locale`.
+
+The index follows every write from any API. It is rebuilt when the schema changes the
+searchable fields, and when its directory is missing.
+
+## Several instances
+
+The index lives on the instance's disk and follows that instance's writes. When you run
+several instances, writes on one do not reach the index of the others. Keep search on a
+single instance, or rebuild after a deploy by deleting the index directory before the
+start. See [Scaling](/deploy/scaling/).
+
+<Aside type="tip">
+The index directory is safe to delete. Keep it out of backups and version control; Verdin
+rebuilds it from the database.
+</Aside>

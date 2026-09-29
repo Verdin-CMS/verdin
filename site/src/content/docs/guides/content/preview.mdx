@@ -1,0 +1,150 @@
+---
+title: Preview
+description: Open drafts on your site from the entry editor with a short-lived preview token, and make your site read the draft with it.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Preview opens the draft of an entry on your own site, before it is published. The editor
+builds a link from a URL template per content type and adds a short-lived token that lets
+your site read that one draft. This guide sets up the templates and the site side.
+
+To click text on the preview and jump to its field, add
+[Visual editing](/guides/frontend/visual-editing/) on top of this.
+
+## Before you start
+
+- Turn on **Settings → Features → Preview**. It is off by default.
+- Changing the feature's settings needs **Manage features** (`features.manage`).
+- Opening a preview needs read access to the entry. See
+  [Permissions](/reference/permissions/).
+
+## Set up the preview URLs
+
+<Steps>
+
+1. On the **Preview** card in **Settings → Features**, select **Configure preview URLs**.
+2. Under **URL templates**, enter the page of your site that shows each content type's draft.
+   Leave a type empty to give it no preview.
+3. Optionally, change **Link lifetime (minutes)**: 60 by default, at most 10080 (7 days).
+4. Save.
+
+</Steps>
+
+A template is an `http` or `https` URL with placeholders in braces:
+
+| Placeholder | Filled with |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | Any top-level field of the draft. Unknown placeholders become empty. |
+| `{documentId}`, `{uid}` | The document id and the content type uid. |
+| `{token}` | The preview token. Without this placeholder, the token is added as the `preview` query parameter. |
+
+For the example project's articles:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+gives `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+The same settings as JSON, as stored by the feature (`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## Open a preview
+
+In the entry editor, select **Open preview** to open the draft on your site in a new tab, or
+**Side by side** to show it in a panel next to the form, with **Desktop**, **Tablet** and
+**Mobile** widths. The side panel reloads after each save. If it stays blank, your site
+probably refuses to be embedded in a frame: use **Open in a new tab**.
+
+## Read the draft on your site
+
+Your preview page takes the token from the URL and sends it back to the content API in the
+`x-verdin-preview` header, asking for the draft:
+
+<Diagram
+  caption="A preview request"
+  code={`sequenceDiagram
+  participant E as Editor
+  participant V as Verdin
+  participant S as Your site
+  E->>V: Open preview
+  V-->>E: URL with preview token
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: the draft`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+The preview token is read by the REST content API. Fetch the draft over REST on your
+preview page.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+The same header works on single types (`GET /api/<singularName>?status=draft`).
+
+What the token grants:
+
+- It lets its bearer read that one document, drafts included, until it expires.
+- It cannot read other documents, list entries or write anything.
+- Responses to preview requests are never cached.
+
+<Aside type="caution">
+Anyone with the link can read the draft until the token expires. Keep the lifetime short,
+and do not share preview links in public places.
+</Aside>
+
+Your preview page usually looks up the entry by a field such as `slug`. Since the token
+reads by `documentId`, put `{documentId}` in the template too, or keep the slug-to-id lookup
+on your side.
+
+## Admin API
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` returns the link for the
+editor's button:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+It needs read access to the entry, and answers `404` when the feature is off or the type has
+no template.

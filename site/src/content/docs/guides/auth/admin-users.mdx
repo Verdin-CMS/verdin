@@ -1,0 +1,165 @@
+---
+title: Admin users and roles
+description: Create the first admin, invite others, give them roles, reset passwords from the panel or the CLI, and manage sessions.
+sidebar:
+  order: 1
+  label: Admin users
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Admins are the people who sign in to the admin panel. They are separate from the
+[end users](/guides/auth/end-users/) of your sites and apps. This guide creates the first
+admin, invites the others, gives them roles and helps them get back in when they are locked
+out.
+
+## Before you start
+
+- Verdin needs `VERDIN_ADMIN_JWT_SECRET` and `VERDIN_TOKEN_PEPPER` in the environment. Generate
+  them once with `verdin secrets`.
+- Managing admins needs **Manage users** (`users.manage`); managing roles needs **Manage
+  roles** (`roles.manage`). See [Permissions](/reference/permissions/).
+- Invitations and password resets are emailed through `[email]`. With the default `log`
+  provider, the emails, links included, are written to the server log.
+
+## Create the first admin
+
+Open the admin panel (`http://localhost:1337/admin/` by default). While no admin exists, it
+asks for the first one, who becomes a Super Admin. Passwords have 8 to 128 characters.
+
+Without a browser, use the CLI or the API:
+
+<Tabs>
+<TabItem label="CLI">
+
+```sh title="Terminal"
+verdin admin create --email you@example.com
+```
+
+The password comes from `VERDIN_ADMIN_PASSWORD`, or is read from standard input. The command
+creates a Super Admin and works at any time, not only for the first one.
+
+</TabItem>
+<TabItem label="API">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/register-first-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+```
+
+This route only works while no admin exists.
+
+</TabItem>
+</Tabs>
+
+## Invite an admin
+
+<Steps>
+
+1. Open **Settings → Users** and select **Add user**.
+2. Enter the email, and optionally the **First name** and **Last name**.
+3. Pick one or more **Roles**.
+4. Leave **Set a password now** off to send an invitation, or turn it on to set the password
+   yourself.
+5. Select **Invite** (or **Save** with a password).
+
+</Steps>
+
+The **Invitation link** dialog shows the link and says whether it was emailed. Share it
+yourself when it was not. The link works once, for 7 days; the invited admin opens it,
+chooses a password and is signed in.
+
+As long as the admin has never signed in, **New invitation link** on their row replaces the
+old link. Once they have signed in, they recover access with a password reset instead.
+
+## Roles
+
+Verdin creates three roles, like Strapi:
+
+| Role | Can |
+| --- | --- |
+| **Super Admin** | Everything. Its permissions cannot be changed. |
+| **Editor** | Create, edit, publish and delete all content; manage the media library; trigger deploys; manage SEO, redirects, menus and forms. |
+| **Author** | Create content, and edit and delete their own entries and files. Cannot publish. |
+
+Create more in **Settings → Roles** with **New role**. For each role, choose:
+
+- **Content**: per content type (or **All content types**), the level of **Read**,
+  **Create**, **Update**, **Delete** and **Publish**: **No access**, **Own** (only entries
+  the admin created) or **All**. **Fields** limits an action to some fields, and **Locales**
+  to some locales.
+- **Media library**: the file actions, for **All files** or **Own files**.
+- **Settings**: access to the administration areas, such as **Manage users** or **Read audit
+  logs**.
+- **Require two-factor authentication**: see [Two-factor authentication](/guides/auth/two-factor/).
+
+An admin with several roles gets the union of their permissions. The full list is in the
+[permissions reference](/reference/permissions/).
+
+Only a Super Admin can give the Super Admin role, or edit, delete or reset another Super
+Admin.
+
+## Deactivate or remove an admin
+
+Edit the admin in **Settings → Users** and turn off **Active**: inactive users cannot sign
+in. **Delete** removes the account for good; their comments then show as written by a
+deleted admin.
+
+## Reset a password
+
+- **The admin resets it:** **Forgot password?** on the sign-in page emails a link that works
+  for one hour. Every session of the account ends once the password changes.
+- **Another admin sets it:** edit the admin in **Settings → Users** and type a new password.
+  Leave the field empty to keep the current one.
+- **From the server:** when nobody can sign in, run
+
+  ```sh title="Terminal"
+  verdin admin reset-password --email you@example.com
+  ```
+
+  with the password in `VERDIN_ADMIN_PASSWORD` or on standard input. It sets the password,
+  unlocks the account and ends its sessions. It does not remove two-factor authentication:
+  an admin who lost their second factor needs another admin to
+  [reset it](/guides/auth/two-factor/).
+
+## Sign-in protection
+
+- After 5 wrong passwords in a row, the account is locked for 15 minutes.
+- Sign-in, registration and refresh requests are limited per client IP by
+  `[admin].auth_rate_limit` (20 a minute by default).
+- An admin session is a 15-minute access token renewed with a refresh cookie that lasts 30
+  days. The cookie is `Secure` in `verdin start`; see `[admin].secure_cookies`.
+
+Each admin sees their signed-in devices under **Sessions** in their **Profile**, and can
+**Sign out** one or all the others. Changing the password signs out every other device.
+
+## Admin API
+
+Sign in to get an access token for the admin API:
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+# → { "data": { "user": {…}, "accessToken": "…", "accessTokenExpiresAt": "…" } }
+```
+
+| Route | Permission | Does |
+| --- | --- | --- |
+| `GET /users`, `GET /users/{id}` | `users.manage` | Admins with their roles. |
+| `POST /users` | `users.manage` | `{ email, firstname?, lastname?, roles: [ids], isActive?, password? }`. Without `password`, the answer's `meta` has `inviteUrl` and `emailed`. |
+| `PUT /users/{id}`, `DELETE /users/{id}` | `users.manage` | Change or remove an admin. |
+| `POST /users/{id}/invite` | `users.manage` | A new invitation link, for admins who never signed in. |
+| `GET /roles`, `POST /roles`, `PUT /roles/{id}`, `DELETE /roles/{id}` | `roles.manage` | Roles and their permissions. |
+| `POST /auth/forgot-password` | public | `{ email }`. Always answers `204`. |
+| `GET /auth/sessions`, `DELETE /auth/sessions/{id}` | signed in | Your sessions. |
+
+All routes are under `/admin/api`. See the [admin API](/api/admin/).
+
+<Aside type="caution">
+Secrets never go in `verdin.toml`. Keep both secrets stable across restarts and instances:
+`VERDIN_ADMIN_JWT_SECRET` signs access tokens, end users' JWTs and preview links, and
+`VERDIN_TOKEN_PEPPER` protects API tokens and second factors (see
+[API tokens](/guides/auth/api-tokens/)).
+</Aside>

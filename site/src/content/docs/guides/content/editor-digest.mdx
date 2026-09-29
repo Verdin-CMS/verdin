@@ -1,0 +1,77 @@
+---
+title: Editor digest
+description: Get a daily email of the entries that changed since you last looked at them, and choose which instance sends it.
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The editor digest is a daily email that tells each admin how many entries changed since
+they last looked at them, per content type. It is off for everyone until each admin turns it
+on. This guide covers the admin side, the server settings and how it works with several
+instances.
+
+## How "unseen" works
+
+An entry becomes unseen for you when someone else changes it, from any API. It is seen again
+once you open it. The same marks drive the sidebar's **new** badges (turn them off with
+**Show unseen badges**) and the home page's **Not seen yet** widget.
+
+## Turn on the digest
+
+<Steps>
+
+1. Open your **Profile** (or the preferences menu in the top bar).
+2. Under **Preferences**, turn on **Daily email of unseen changes**.
+
+</Steps>
+
+The switch sets the preference `"digest": "daily"` on your account
+(`PUT /admin/api/users/me/preferences`). Turn it off the same way.
+
+What you get:
+
+- A message with the number of unseen entries per content type you can read, and a link to
+  the admin panel.
+- Nothing on days when there is nothing new.
+- Only while your account is active.
+
+## Server settings
+
+The digest is sent at `[digest].hour_utc`, through `[email]`:
+
+```toml title="verdin.toml"
+[email]
+provider = "smtp"
+from = "Verdin <no-reply@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+
+[digest]
+hour_utc = 7    # 0–23, UTC; 8 by default
+```
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `[digest].enabled` | `true` | Send the digest from this instance. |
+| `[digest].hour_utc` | `8` | Hour (UTC) the digest goes out. |
+
+The link in the email uses `[server].public_url`; set it when Verdin runs behind a proxy.
+With the default `log` email provider, the messages are only written to the server log. See
+the [configuration reference](/reference/configuration/).
+
+## Several instances
+
+Every instance with `[digest].enabled = true` tries to send the digest at the set hour. The
+first one to claim the day in the database sends it, and the others skip that day, so admins
+get one email. To keep the job on a known instance, set `enabled = false` on the others:
+
+```sh title="Terminal"
+VERDIN_DIGEST__ENABLED=false verdin start
+```
+
+<Aside type="note">
+The digest is a Verdin addition; Strapi has no equivalent.
+</Aside>

@@ -1,0 +1,111 @@
+---
+title: Audit logs
+description: See who changed what and when, filter the audit logs in the admin panel or the API, and set how long entries are kept.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The audit logs record who changed what, and when: content, media, sign-ins and every change
+made in the admin panel. This guide shows what is recorded, how to filter the logs, and how
+long they are kept.
+
+Audit logs are an Enterprise feature in Strapi. In Verdin they are part of the open source
+core.
+
+## Before you start
+
+- **Settings → Features → Audit logs** is on by default. Turning it off stops recording new
+  actions; the existing entries stay readable.
+- Reading the logs needs **Read audit logs** (`audit.read`). See
+  [Permissions](/reference/permissions/).
+
+## What is recorded
+
+| Area | Actions | Notes |
+| --- | --- | --- |
+| Content | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | From every API: the admin panel, REST, GraphQL and plugins. The locale is in the details. |
+| Review workflows | `entry.stage`, `entry.assign` | Stage changes and assignments. |
+| Media | `media.create`, `media.update`, `media.delete` | Uploads, changes and deletions of files. The file name is in the details. |
+| Sign-ins | `admin.login` | Password and first-admin sign-ins, and SSO sign-ins with the provider. |
+| Admin changes | `{METHOD} {route}`, for example `PUT /roles/{id}` | Every successful write on the admin API: users, roles, API tokens, settings, features, webhooks, locales, plugins, releases… The route's parameters are in the details. |
+
+Each entry has a time, an actor, an action, a subject (a content type uid, `plugin::upload.file`,
+or the admin resource such as `roles`), the subject's id, details and, for requests, the
+client's IP address.
+
+The actor is one of:
+
+- **Administrator**: a signed-in admin, named in the log.
+- **API**: a change made through the content API or GraphQL, with an API token, an end
+  user's token or public access.
+- **System**: an admin API write without a signed-in admin.
+
+Behind a reverse proxy, set `[server].trusted_proxies` so the logs show the client's address
+instead of the proxy's. See the [configuration reference](/reference/configuration/).
+
+## Filter the logs
+
+<Steps>
+
+1. Open **Settings → Audit logs**.
+2. Use a **Quick filters** preset (**Content**, **Media**, **Sign-ins**), or fill in the
+   filters:
+   - **Action**: an exact action such as `entry.publish`, or a prefix ending with `*`, such
+     as `entry.*`.
+   - **Actor**: one admin, or **Anyone**.
+   - **Subject**: a content type uid such as `api::article`.
+   - **From** and **To**: a date range. A date without a time includes that whole day.
+3. Select **Apply**. Open **Details** on a row to see everything recorded for it.
+
+</Steps>
+
+## Query the API
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+Entries come newest first, 50 per page by default and at most 200:
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` and `to` take ISO 8601 dates or date-times; anything else is a `400` error.
+
+## Set how long entries are kept
+
+Entries older than `[audit].retention_days` are deleted once a day. The default is 90 days.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+To keep audit entries longer than your database should, copy them regularly to your own
+storage with the API above.
+</Aside>

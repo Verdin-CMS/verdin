@@ -1,0 +1,122 @@
+---
+title: Import and export entries
+description: Export the entries of a list to CSV or JSON, and create or update entries from a CSV or JSON file, with a dry run first.
+sidebar:
+  order: 9
+  label: Import and export
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The admin list of each content type exports its entries to CSV or JSON, and imports them
+back from the same kind of file: to fix many entries in a spreadsheet, load a product
+catalog, or copy entries between projects. This guide covers both directions and the file
+format.
+
+This is for entries of one content type at a time. To move a whole project, see
+[`verdin export` and `verdin import verdin`](/reference/cli/). To come from Strapi, see
+[Migrate from Strapi](/migrate/from-strapi/).
+
+## Before you start
+
+- Exporting needs read access to the content type. Only the fields your role can read are
+  exported.
+- Importing needs create access, update access, or both: rows that create entries need
+  create, rows that update them need update. Publishing the imported rows also needs
+  publish. See [Permissions](/reference/permissions/).
+
+## Export entries
+
+<Steps>
+
+1. Open the content type's list and set it up the way you want the export: filters, search,
+   sort, status and locale.
+2. Select **Export**, then **Export as CSV** or **Export as JSON**.
+
+</Steps>
+
+The file holds the entries the list shows, with its filters, search and sort, across all
+pages, up to 50,000 entries. Each row starts with `documentId`, followed by the fields.
+
+## Import entries
+
+<Steps>
+
+1. Open the content type's list and select **Import**.
+2. Pick a **File**: a `.csv` file with a header row, or a `.json` file holding a list of
+   objects, up to 1 MB.
+3. Under **Columns**, choose the field each column goes into. Columns named like a field are
+   matched already. Choose **Skip** to leave a column out, and **Document ID (update)** for
+   the column that names existing entries.
+4. Optionally, turn on **Publish imported entries**. Otherwise they are saved as drafts.
+5. Select **Check**. Verdin checks every row, constraints and references included, without
+   writing anything, and reports the rows it would create, update or reject.
+6. Fix the file if needed, then select **Import**.
+
+</Steps>
+
+How rows are written:
+
+- A row with a `documentId` updates that entry; the others create new entries.
+- Rows are written one by one. A row that fails is reported with its field and the problem,
+  and skipped; the others are still written.
+- The report lists up to 100 rows with errors, and the columns that matched no field.
+- An import takes at most 5,000 rows. Split larger files.
+- Entries are written in the list's current locale.
+
+<Aside type="caution">
+An import runs your rows through the same validation as the editor, but there is no undo.
+Run **Check** first, and export the list before a large update so you can restore it. With
+[content history](/guides/content/content-history/) on, every updated entry keeps its
+previous version.
+</Aside>
+
+## File format
+
+Fields use the same shapes as the content API's write format:
+
+| Field | Value |
+| --- | --- |
+| Text, numbers, booleans, dates | As in the API (`true`/`false`, ISO 8601 dates). |
+| Relations | `documentId`s of the related entries. |
+| Media | File ids from the media library. |
+| Polymorphic relations | `uid:documentId`, for example `api::article:k3v9…`. |
+| Components, dynamic zones, blocks and JSON | JSON. |
+
+In CSV, lists (several relations or files) are joined with `|`.
+
+```csv title="articles.csv"
+documentId,title,slug,featured,tags
+,Hello world,hello-world,true,t1a2b3|t4c5d6
+k3v9x8…,Updated title,updated-title,false,
+```
+
+The same rows as JSON:
+
+```json title="articles.json"
+[
+  { "title": "Hello world", "slug": "hello-world", "featured": true, "tags": ["t1a2b3", "t4c5d6"] },
+  { "documentId": "k3v9x8…", "title": "Updated title", "slug": "updated-title", "featured": false }
+]
+```
+
+An export of a list is always a valid import file for the same content type.
+
+## Admin API
+
+- `GET /admin/api/content/{uid}/export?format=csv` (or `json`) takes the list's query
+  parameters: `filters`, `_q`, `sort`, `status` and `locale`.
+- `POST /admin/api/content/{uid}/import?locale=` takes the file's content as a string:
+
+```json
+{
+  "format": "csv",
+  "data": "title,slug\nHello world,hello-world\n",
+  "mapping": { "slug": "slug", "notes": null },
+  "dryRun": true,
+  "publish": false
+}
+```
+
+`mapping` maps a column to a field; `null` skips the column, and unmapped columns keep their
+name. The request body is limited by `[server].body_limit` (1 MB by default).
