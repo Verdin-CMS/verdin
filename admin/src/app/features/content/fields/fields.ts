@@ -460,11 +460,24 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
                     [formField]="child(name)"
                   ></textarea>
                 }
+                <!-- The rich text editors (marked, TipTap) load with the first such field. -->
                 @case ('richtext') {
-                  <vd-markdown-control [inputId]="id" [formField]="child(name)" />
+                  @defer (on immediate) {
+                    <vd-markdown-control [inputId]="id" [formField]="child(name)" />
+                  } @placeholder {
+                    <ng-container *ngTemplateOutlet="editorPlaceholder" />
+                  } @loading {
+                    <ng-container *ngTemplateOutlet="editorPlaceholder" />
+                  }
                 }
                 @case ('blocks') {
-                  <vd-blocks-control [inputId]="id" [formField]="child(name)" />
+                  @defer (on immediate) {
+                    <vd-blocks-control [inputId]="id" [formField]="child(name)" />
+                  } @placeholder {
+                    <ng-container *ngTemplateOutlet="editorPlaceholder" />
+                  } @loading {
+                    <ng-container *ngTemplateOutlet="editorPlaceholder" />
+                  }
                 }
                 @case ('password') {
                   <vd-password-control
@@ -711,6 +724,16 @@ type Tree = FieldTree<any>; // eslint-disable-line @typescript-eslint/no-explici
       >
         <ng-icon name="lucideGlobe" size="14" aria-hidden="true" />
       </span>
+    </ng-template>
+
+    <ng-template #editorPlaceholder>
+      <div
+        class="bg-muted/40 flex h-40 animate-pulse items-center justify-center rounded-md border"
+        role="status"
+        data-editor-placeholder
+      >
+        <span class="sr-only">{{ t('common.loading') }}</span>
+      </div>
     </ng-template>
 
     <ng-template #errors let-name>

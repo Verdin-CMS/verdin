@@ -20,13 +20,13 @@ import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
-import { Api, ApiFailure, toQuery } from '../../core/api';
+import { Api, ApiFailure } from '../../core/api';
+import { ContentDocuments } from '../../core/documents';
 import { Auth } from '../../core/auth';
 import { ContentLocales } from '../../core/content-locales';
 import { I18n } from '../../core/i18n/i18n';
 import { Release, ReleaseAction, Releases, isEditable } from '../../core/releases';
 import { Schema } from '../../core/schema';
-import { Document } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 import { ReleaseDialog, ReleaseStatusBadge } from './release-parts';
 
@@ -320,6 +320,7 @@ function entryKey(uid: string, documentId: string, locale: string): string {
 export class ReleaseDetailPage {
   private readonly service = inject(Releases);
   private readonly api = inject(Api);
+  private readonly documents = inject(ContentDocuments);
   private readonly router = inject(Router);
   private readonly schema = inject(Schema);
   protected readonly locales = inject(ContentLocales);
@@ -383,7 +384,7 @@ export class ReleaseDetailPage {
       };
       if (group.locale) query['locale'] = group.locale;
       try {
-        const list = await this.api.list<Document>(`/content/${group.uid}`, toQuery(query));
+        const list = await this.documents.list(group.uid, query);
         const found: Record<string, string> = {};
         for (const document of list.data ?? []) {
           const title = document[field];

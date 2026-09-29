@@ -28,6 +28,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { Api, ApiFailure, saveDownload, toQuery } from '../../core/api';
+import { ContentDocuments } from '../../core/documents';
 import { Auth } from '../../core/auth';
 import { EntryDuplicates } from '../../core/duplicate';
 import { ContentLocales, isLocalized } from '../../core/content-locales';
@@ -724,6 +725,7 @@ interface LiveVersion {
 })
 export class ContentList {
   private readonly api = inject(Api);
+  private readonly content = inject(ContentDocuments);
   private readonly router = inject(Router);
   private readonly preferences = inject(UserPreferences);
   protected readonly locales = inject(ContentLocales);
@@ -1012,7 +1014,7 @@ export class ContentList {
       pagination: { page: request.page, pageSize: request.pageSize },
     };
     try {
-      const response = await this.api.list<Document>(`/content/${request.uid}`, toQuery(query));
+      const response = await this.content.list(request.uid, query);
       if (current !== this.requests) return;
       const meta = response.meta.pagination ?? {};
       // The page emptied (e.g. its entries were deleted): show the last one instead.
@@ -1084,7 +1086,7 @@ export class ContentList {
       filters: { documentId: { $in: ids } },
       locale,
     });
-    const response = await this.api.list<Document>(`/content/${uid}`, query);
+    const response = await this.content.list(uid, query);
     this.published.set(
       new Map(
         response.data.map((document) => [
@@ -1341,12 +1343,11 @@ export class ContentList {
     const uid = this.uid();
     const targets = this.targets(action);
     if (!targets.length || this.running()) return;
-    const base = `/content/${uid}`;
-    const query = toQuery({ locale: this.locale() }) || undefined;
+    const locale = this.locale();
     const task = (document: Document): Promise<unknown> =>
       action === 'delete'
-        ? this.api.delete(`${base}/${document.documentId}`, query)
-        : this.api.post(`${base}/${document.documentId}/actions/${action}`, {}, query);
+        ? this.content.delete(uid, document.documentId, locale)
+        : this.content.action(uid, document.documentId, action, locale);
 
     this.progress.set({ done: 0, total: targets.length });
     const outcomes = await runLimited(targets, BULK_CONCURRENCY, task, (done, total) =>
