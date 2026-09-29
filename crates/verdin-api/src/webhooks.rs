@@ -774,12 +774,18 @@ pub fn is_public(ip: IpAddr) -> bool {
             if let Some(v4) = ip.to_ipv4_mapped() {
                 return is_public(IpAddr::V4(v4));
             }
-            let first = ip.segments()[0];
+            let segments = ip.segments();
+            let first = segments[0];
             !(ip.is_loopback()
                 || ip.is_unspecified()
                 || ip.is_multicast()
+                // IPv4-compatible (`::a.b.c.d`), 6to4 and Teredo embed IPv4 addresses.
+                || segments[..6].iter().all(|segment| *segment == 0)
+                || first == 0x2002
+                || (first == 0x2001 && segments[1] == 0)
                 || (first & 0xfe00) == 0xfc00
                 || (first & 0xffc0) == 0xfe80
+                || (first & 0xffc0) == 0xfec0
                 || (first == 0x2001 && ip.segments()[1] == 0x0db8)
                 || (first == 0x0064 && ip.segments()[1] == 0xff9b))
         }
@@ -824,6 +830,10 @@ mod tests {
             "http://[::1]/",
             "http://[fd00::1]/",
             "http://[::ffff:192.168.1.1]/",
+            "http://[::192.168.1.1]/",
+            "http://[2002:c0a8:101::1]/",
+            "http://[2001:0:4136:e378::1]/",
+            "http://[fec0::1]/",
             "http://100.64.0.1",
             "http://0.0.0.0",
         ] {
