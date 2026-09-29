@@ -39,12 +39,28 @@ fn provider(state: &AdminState, id: &str) -> Result<SsoProvider, ApiError> {
     settings(state)?.provider(id).cloned().ok_or(ApiError::NotFound)
 }
 
-fn http() -> Result<reqwest::Client, ApiError> {
-    reqwest::Client::builder()
+/// The client for the provider's endpoints: public addresses only (unless private
+/// networks are allowed, as in development).
+fn http(state: &AdminState) -> Result<reqwest::Client, ApiError> {
+    let mut builder = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|error| ApiError::Internal(error.to_string()))
+        .no_proxy();
+    if !state.config.allow_private_urls {
+        builder = builder.dns_resolver(std::sync::Arc::new(crate::webhooks::PublicResolver));
+    }
+    builder.build().map_err(|error| ApiError::Internal(error.to_string()))
+}
+
+/// Endpoints from discovery must be https URLs that pass the webhook address rules.
+fn check_endpoint(state: &AdminState, url: &str) -> Result<(), ApiError> {
+    let secure = url::Url::parse(url).is_ok_and(|url| {
+        url.scheme() == "https" || (state.config.allow_private_urls && url.scheme() == "http")
+    });
+    if !secure {
+        return Err(ApiError::BadRequest("the provider's endpoints must use https".into()));
+    }
+    crate::webhooks::check_url(url, state.config.allow_private_urls).map_err(ApiError::BadRequest)
 }
 
 fn callback_url(state: &AdminState, id: &str) -> String {
@@ -89,7 +105,8 @@ async fn start(
 ) -> ApiResult {
     rate_limit(&state, &ip)?;
     let provider = provider(&state, &id)?;
-    let discovery = sso::discover(&http()?, &provider.issuer).await?;
+    check_endpoint(&state, &provider.issuer)?;
+    let discovery = sso::discover(&http(&state)?, &provider.issuer).await?;
     let nonce = random_token();
     let verifier = random_token();
     let signature = state.auth.sign(&format!("sso:{id}:{nonce}"));
@@ -187,8 +204,10 @@ async fn finish(
         return Err(ApiError::Forbidden);
     }
 
-    let http = http()?;
+    let http = http(state)?;
+    check_endpoint(state, &provider.issuer)?;
     let discovery = sso::discover(&http, &provider.issuer).await?;
+    check_endpoint(state, &discovery.token_endpoint)?;
     let redirect_uri = callback_url(state, id);
     let mut form = vec![
         ("grant_type", "authorization_code"),
@@ -233,8 +252,9 @@ async fn finish(
     let email = claims["email"]
         .as_str()
         .ok_or_else(|| ApiError::BadRequest(format!("{} did not share an email", provider.name)))?;
-    if claims.get("email_verified") == Some(&serde_json::Value::Bool(false)) {
-        return Err(ApiError::BadRequest("the email is not verified".into()));
+    let verified = claims.get("email_verified") == Some(&serde_json::Value::Bool(true));
+    if !verified && !provider.trust_unverified_email {
+        return Err(ApiError::BadRequest("the provider did not verify the email".into()));
     }
     if !sso::allowed_email(&provider, email) {
         return Err(ApiError::BadRequest("this email domain may not sign in".into()));
@@ -252,12 +272,30 @@ async fn finish(
     } else {
         None
     };
-    let session = state.auth.sso_login(email, create, user_agent(headers)).await.map_err(
-        |error| match error {
+    let login = state
+        .auth
+        .sso_login(email, create, !provider.provider_mfa, user_agent(headers))
+        .await
+        .map_err(|error| match error {
             verdin_auth::AuthError::InvalidCredentials => ApiError::Unauthorized,
             other => ApiError::from(other),
-        },
-    )?;
+        })?;
+    let session = match login {
+        verdin_auth::Login::Session(session) => session,
+        // The admin finishes signing in with their second factor on the login page.
+        verdin_auth::Login::SecondFactor { token, methods } => {
+            let target = format!(
+                "{}/login?twoFactorToken={token}&methods={}",
+                state.config.path,
+                methods.join(",")
+            );
+            let mut response = Redirect::to(&target).into_response();
+            response
+                .headers_mut()
+                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            return Ok(response);
+        }
+    };
     if let Some(audit) = &state.config.audit {
         audit
             .record(crate::audit::AuditEntry {

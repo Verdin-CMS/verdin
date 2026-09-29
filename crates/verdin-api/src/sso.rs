@@ -47,6 +47,14 @@ pub struct SsoProvider {
     /// Accepted email domains (empty: any).
     #[serde(default)]
     pub allowed_domains: Vec<String>,
+    /// Accept emails the provider does not mark `email_verified` (some providers, like
+    /// Microsoft Entra ID, leave the claim out).
+    #[serde(default)]
+    pub trust_unverified_email: bool,
+    /// The provider enforces multi-factor authentication: admins with a second factor are
+    /// not asked for it again.
+    #[serde(default)]
+    pub provider_mfa: bool,
 }
 
 fn default_scopes() -> Vec<String> {
@@ -89,6 +97,12 @@ impl SsoSettings {
             }
             if !provider.scopes.iter().any(|scope| scope == "openid") {
                 return bad(format!("the scopes of `{id}` must include openid"));
+            }
+            let privileged = |code: &String| code == verdin_auth::SUPER_ADMIN;
+            if provider.default_roles.iter().any(privileged)
+                || provider.role_map.values().any(privileged)
+            {
+                return bad(format!("`{id}` may not give the Super Admin role"));
             }
             if provider.auto_create
                 && provider.default_roles.is_empty()

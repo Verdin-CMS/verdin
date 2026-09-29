@@ -339,6 +339,16 @@ export class LoginPage implements OnInit {
   async ngOnInit(): Promise<void> {
     void this.auth.ssoProviders().then((providers) => this.providers.set(providers));
     if (!(await this.auth.hasAdmin())) await this.router.navigateByUrl('/register');
+    // Single sign-on for an account with a second factor lands here to finish.
+    const params = this.route.snapshot.queryParamMap;
+    const token = params.get('twoFactorToken');
+    if (token) {
+      const known: TwoFactorMethod[] = ['totp', 'passkey', 'recovery'];
+      const methods = (params.get('methods') ?? '')
+        .split(',')
+        .filter((method): method is TwoFactorMethod => known.includes(method as TwoFactorMethod));
+      if (methods.length) this.startSecondStep({ twoFactorToken: token, methods });
+    }
   }
 
   /** The second sign-in step, once the password was accepted. */

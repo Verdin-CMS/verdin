@@ -525,8 +525,9 @@ impl AuthService {
         &self,
         email: &str,
         create: Option<SsoAccount>,
+        second_factor: bool,
         user_agent: Option<&str>,
-    ) -> Result<Session> {
+    ) -> Result<Login> {
         let email = email.trim().to_lowercase();
         let user = match self.user_by_email(&email).await {
             Ok(user) => user,
@@ -549,7 +550,10 @@ impl AuthService {
         if !user.is_active {
             return Err(AuthError::InvalidCredentials);
         }
-        self.open_session(user, user_agent).await
+        if second_factor {
+            return self.after_password(user.id, user_agent).await;
+        }
+        Ok(Login::Session(self.open_session(user, user_agent).await?))
     }
 
     /// Rotates a refresh token. Presenting a token that was already rotated is treated as

@@ -982,8 +982,12 @@ async fn update_feature(
     headers: HeaderMap,
     bytes: Bytes,
 ) -> ApiResult {
-    require(&state, &headers, actions::FEATURES_MANAGE).await?;
+    let principal = require(&state, &headers, actions::FEATURES_MANAGE).await?;
     let input: FeatureBody = body(&bytes)?;
+    // Single sign-on decides who becomes an admin: a Super Admin's call.
+    if id == crate::features::SSO && !principal.permissions.super_admin {
+        return Err(ApiError::Forbidden);
+    }
     let feature =
         crate::features::FeatureState { enabled: input.enabled, settings: input.settings };
     crate::features::validate(&id, &feature)?;

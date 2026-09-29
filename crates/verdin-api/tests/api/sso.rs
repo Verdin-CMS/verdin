@@ -32,6 +32,8 @@ struct Provider {
     email: String,
     groups: Vec<String>,
     secret: Option<String>,
+    /// Leave `email_verified` out of the ID token.
+    unverified: bool,
 }
 
 type Shared = Arc<Mutex<Provider>>;
@@ -64,6 +66,10 @@ async fn token(
         "nonce": provider.nonce, "email": provider.email, "email_verified": true,
         "given_name": "Grace", "family_name": "Hopper", "groups": provider.groups,
     });
+    let mut claims = claims;
+    if provider.unverified {
+        claims.as_object_mut().unwrap().remove("email_verified");
+    }
     let id_token = format!("e30.{}.unsigned", URL_SAFE_NO_PAD.encode(claims.to_string()));
     Json(json!({ "access_token": "at", "token_type": "Bearer", "id_token": id_token }))
 }
@@ -211,5 +217,106 @@ async fn signs_in_and_creates_accounts() {
         )
         .await;
     assert!(forged.headers["location"].to_str().unwrap().contains("ssoError="));
+
+    // Hardening: no Super Admin through SSO, verified emails, the second factor, and only
+    // Super Admins change the providers.
+    let put = |settings: Value, who: String| {
+        let app = &app;
+        async move {
+            app.call_as(
+                Method::PUT,
+                "/admin/api/features/sso",
+                Some(json!({ "enabled": true, "settings": settings })),
+                As::Bearer(&who),
+            )
+            .await
+        }
+    };
+    let (status, _) = put(
+        json!({ "providers": [{ "id": "evil", "name": "Evil", "issuer": issuer, "clientId": "verdin",
+                                 "autoCreate": true, "defaultRoles": ["super-admin"] }] }),
+        admin.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "no Super Admin role from SSO");
+    let (status, _) = put(
+        json!({ "providers": [
+            { "id": "strict", "name": "Strict", "issuer": issuer, "clientId": "verdin" },
+            { "id": "entra", "name": "Entra", "issuer": issuer, "clientId": "verdin",
+              "trustUnverifiedEmail": true, "providerMfa": true },
+        ] }),
+        admin.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    idp.lock().unwrap().unverified = true;
+    let refused = sign_in(&app, &idp, "strict", "good-code").await;
+    assert!(
+        refused.headers["location"].to_str().unwrap().contains("ssoError="),
+        "unverified email"
+    );
+    assert_eq!(sign_in(&app, &idp, "entra", "good-code").await.headers["location"], "/admin/");
+    idp.lock().unwrap().unverified = false;
+
+    // Ada sets up TOTP: SSO asks for it, unless the provider enforces MFA itself.
+    let (_, setup) = app
+        .call_as(
+            Method::POST,
+            "/admin/api/auth/two-factor/totp/setup",
+            Some(json!({ "password": "correct horse 1" })),
+            As::Bearer(&admin),
+        )
+        .await;
+    let secret = setup["data"]["secret"].as_str().unwrap().to_owned();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+        as i64;
+    app.call_as(
+        Method::POST,
+        "/admin/api/auth/two-factor/totp/enable",
+        Some(json!({ "code": verdin_auth::totp_code(&secret, now).unwrap() })),
+        As::Bearer(&admin),
+    )
+    .await;
+    let second = sign_in(&app, &idp, "strict", "good-code").await;
+    let location = second.headers["location"].to_str().unwrap();
+    assert!(location.starts_with("/admin/login?twoFactorToken="), "{location}");
+    assert!(location.ends_with("&methods=totp,recovery"), "{location}");
+    assert!(
+        !second
+            .headers
+            .get_all("set-cookie")
+            .iter()
+            .any(|v| v.to_str().unwrap().starts_with("verdin_refresh=")),
+        "no session before the second factor"
+    );
+    assert_eq!(sign_in(&app, &idp, "entra", "good-code").await.headers["location"], "/admin/");
+
+    // An admin with features.manage cannot change the providers.
+    let (_, role) = app
+        .call_as(
+            Method::POST,
+            "/admin/api/roles",
+            Some(json!({ "code": "ops", "name": "Ops", "permissions": [{ "action": "features.manage" }] })),
+            As::Bearer(&admin),
+        )
+        .await;
+    app.call_as(
+        Method::POST,
+        "/admin/api/users",
+        Some(json!({ "email": "ops@example.com", "password": "correct horse 1", "roles": [role["data"]["id"]] })),
+        As::Bearer(&admin),
+    )
+    .await;
+    let (_, ops) = app
+        .call_as(
+            Method::POST,
+            "/admin/api/auth/login",
+            Some(json!({ "email": "ops@example.com", "password": "correct horse 1" })),
+            As::Anonymous,
+        )
+        .await;
+    let ops = ops["data"]["accessToken"].as_str().unwrap().to_owned();
+    let (status, _) = put(json!({ "providers": [] }), ops).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
     app.done().await;
 }

@@ -83,6 +83,10 @@ export interface SsoProvider {
   roleClaim?: string;
   roleMap: Record<string, string>;
   allowedDomains: string[];
+  /** Accept emails the provider does not mark verified. */
+  trustUnverifiedEmail?: boolean;
+  /** The provider enforces MFA: no second factor asked again. */
+  providerMfa?: boolean;
 }
 
 /** A provider in the form: lists as text, the role map as rows. */
@@ -99,6 +103,8 @@ export interface SsoProviderForm {
   roleMap: { claim: string; role: string }[];
   /** Space or comma separated. */
   allowedDomains: string;
+  trustUnverifiedEmail: boolean;
+  providerMfa: boolean;
 }
 
 export const DEFAULT_SCOPES = ['openid', 'email', 'profile'];
@@ -154,6 +160,8 @@ export function ssoFormsFrom(
         roleClaim: text(item['roleClaim']),
         roleMap,
         allowedDomains: strings(item['allowedDomains']).join(' '),
+        trustUnverifiedEmail: item['trustUnverifiedEmail'] === true,
+        providerMfa: item['providerMfa'] === true,
       };
     });
 }
@@ -170,6 +178,8 @@ export function emptySsoForm(): SsoProviderForm {
     roleClaim: '',
     roleMap: [],
     allowedDomains: '',
+    trustUnverifiedEmail: false,
+    providerMfa: false,
   };
 }
 
@@ -197,6 +207,8 @@ export function ssoSettingsFrom(forms: SsoProviderForm[]): { providers: SsoProvi
       };
       const claim = form.roleClaim.trim();
       if (claim) provider.roleClaim = claim;
+      if (form.trustUnverifiedEmail) provider.trustUnverifiedEmail = true;
+      if (form.providerMfa) provider.providerMfa = true;
       return provider;
     }),
   };

@@ -260,6 +260,44 @@ const PROBLEMS: Record<SsoProblem, MessageKey> = {
                 </div>
               </div>
 
+              <div class="flex items-start gap-3">
+                <hlm-switch
+                  class="mt-0.5"
+                  [inputId]="p + '-verified'"
+                  [checked]="provider.trustUnverifiedEmail"
+                  [aria-label]="t('features.sso.trustUnverifiedEmail')"
+                  [aria-describedby]="p + '-verified-hint'"
+                  (checkedChange)="patch(index, { trustUnverifiedEmail: $event })"
+                />
+                <div class="flex flex-col gap-0.5">
+                  <label class="text-sm font-medium" [for]="p + '-verified'">{{
+                    t('features.sso.trustUnverifiedEmail')
+                  }}</label>
+                  <p class="text-muted-foreground text-xs" [id]="p + '-verified-hint'">
+                    {{ t('features.sso.trustUnverifiedEmailHint') }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-start gap-3">
+                <hlm-switch
+                  class="mt-0.5"
+                  [inputId]="p + '-mfa'"
+                  [checked]="provider.providerMfa"
+                  [aria-label]="t('features.sso.providerMfa')"
+                  [aria-describedby]="p + '-mfa-hint'"
+                  (checkedChange)="patch(index, { providerMfa: $event })"
+                />
+                <div class="flex flex-col gap-0.5">
+                  <label class="text-sm font-medium" [for]="p + '-mfa'">{{
+                    t('features.sso.providerMfa')
+                  }}</label>
+                  <p class="text-muted-foreground text-xs" [id]="p + '-mfa-hint'">
+                    {{ t('features.sso.providerMfaHint') }}
+                  </p>
+                </div>
+              </div>
+
               <fieldset class="flex flex-col gap-2" [attr.aria-describedby]="p + '-roles-hint'">
                 <legend class="text-sm font-medium">{{ t('features.sso.defaultRoles') }}</legend>
                 <p class="text-muted-foreground text-xs" [id]="p + '-roles-hint'">
