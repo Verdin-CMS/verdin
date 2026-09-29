@@ -5,6 +5,19 @@ import { type Api, admin, ensureType, setFeature, signIn, unique } from './suppo
 /** Settings → Menus: a nested tree of links and entries, served at `/api/_menus/{slug}` (0.9). */
 test.describe.configure({ mode: 'serial' });
 
+/** Links the edited item to a guide through the entry picker: type, search, choose. */
+async function pickEntry(page: Page, title: string): Promise<void> {
+  await page.getByRole('button', { name: /^(Choose an entry|Change the entry)$/ }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Search entries')).toBeVisible();
+  // The type list shows when several types can be linked.
+  const type = dialog.getByLabel('Content type');
+  if (await type.count()) await type.selectOption('api::guide');
+  await dialog.getByLabel('Search entries').fill(title);
+  await dialog.getByRole('button', { name: title }).click();
+  await expect(dialog).toBeHidden();
+}
+
 /** A draft-and-publish type whose entries the menus link to (created once). */
 async function ensureGuides(api: Api): Promise<void> {
   await ensureType(api, 'guide', {
@@ -85,9 +98,7 @@ test('a nested menu of links and entries is built, reordered and served', async 
   // An entry: pick the type, search, choose.
   await addItem(page, 'Add an item', 'Docs');
   await panel.getByLabel('Links to').selectOption('entry');
-  await panel.getByLabel('Content type').selectOption('api::guide');
-  await panel.getByRole('combobox', { name: 'Entry' }).fill(run);
-  await panel.getByRole('button', { name: `Getting started ${run}` }).click();
+  await pickEntry(page, `Getting started ${run}`);
   await expect(panel.locator('[data-menu-entry]')).toHaveText(`Getting started ${run}`);
   await expect(item(page, 'Docs')).toContainText(`Guide · Getting started ${run}`);
 
@@ -97,9 +108,7 @@ test('a nested menu of links and entries is built, reordered and served', async 
   await panel.getByLabel('Opens in').selectOption('_blank');
   await addItem(page, 'Add an item under Docs', 'Soon');
   await panel.getByLabel('Links to').selectOption('entry');
-  await panel.getByLabel('Content type').selectOption('api::guide');
-  await panel.getByRole('combobox', { name: 'Entry' }).fill(`Unpublished ${run}`);
-  await panel.getByRole('button', { name: `Unpublished ${run}` }).click();
+  await pickEntry(page, `Unpublished ${run}`);
 
   // A heading with a link the site cannot use: flagged, and the save is held back.
   await addItem(page, 'Add an item', 'Contact');
