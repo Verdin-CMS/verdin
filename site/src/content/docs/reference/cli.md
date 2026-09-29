@@ -347,8 +347,10 @@ verdin secrets
 Prints a fresh `VERDIN_ADMIN_JWT_SECRET` and `VERDIN_TOKEN_PEPPER`, ready for a `.env`
 file or your platform's secret store. It reads no project.
 
-Changing `VERDIN_ADMIN_JWT_SECRET` signs every admin out. Changing `VERDIN_TOKEN_PEPPER`
-invalidates stored tokens (API tokens among them), so keep it once in use.
+Changing `VERDIN_ADMIN_JWT_SECRET` voids the short-lived access tokens of admins and end
+users, open preview links and OAuth sign-ins in progress; the admin panel and clients that
+use refresh tokens get new ones by themselves. Changing `VERDIN_TOKEN_PEPPER` invalidates
+stored tokens (API tokens among them), so keep it once in use.
 
 ## `verdin version`
 

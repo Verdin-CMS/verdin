@@ -34,7 +34,9 @@ links to the page that explains it. The platform pages ([Docker](/deploy/docker/
       read from the environment only, never from `verdin.toml`.
 - [ ] **Keep them stable.** Changing `VERDIN_TOKEN_PEPPER` makes every API token stop
       working, and admins' authenticator-app codes and recovery codes too. Changing
-      `VERDIN_ADMIN_JWT_SECRET` signs end users out and voids open preview links. Every
+      `VERDIN_ADMIN_JWT_SECRET` voids the short-lived access tokens of admins and end
+      users, open preview links and OAuth sign-ins in progress (the admin panel and
+      clients with refresh tokens renew them by themselves). Every
       instance of a project needs the same values.
 - [ ] Put the other secrets you use in the environment too: `VERDIN_EMAIL_SMTP_PASSWORD`
       or `VERDIN_EMAIL_API_KEY`, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`,
