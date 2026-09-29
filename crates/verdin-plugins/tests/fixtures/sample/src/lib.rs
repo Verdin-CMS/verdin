@@ -23,7 +23,7 @@ fn slug(text: &str) -> String {
         .join("-")
 }
 
-/// `{ uid, action, documentId, data }` → `{ data }` (replace), `{ error }` or `{}`.
+/// `{ uid, event, documentId, data }` → `{ data }` (replace), `{ error }` or `{}`.
 #[plugin_fn]
 pub fn before_write(Json(input): Json<Value>) -> FnResult<Json<Value>> {
     let mut data = input["data"].clone();

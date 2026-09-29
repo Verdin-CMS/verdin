@@ -1,7 +1,7 @@
 //! Strapi content types and components (`schemas/` lines) as Verdin schema files.
 //! Only `api::` content types are brought over; relations to admin users, end users or
-//! plugins and custom fields are dropped with a warning; polymorphic relations keep only
-//! their links to imported content types.
+//! plugins are dropped with a warning; custom fields are kept (with a warning: a plugin must
+//! provide them); polymorphic relations keep only their links to imported content types.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
