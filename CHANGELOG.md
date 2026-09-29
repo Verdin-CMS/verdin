@@ -46,6 +46,11 @@ installation; its migration (one table, two columns) runs on start.
   (`["*"]` for any). There was no CORS support before.
 - `beforeDiscardDraft` plugin hook; discarding a draft runs the before hooks.
 - Expired sessions, one-time links and passkey challenges are pruned daily.
+- Admin panel: leaving an entry or the content-type builder with unsaved changes asks
+  first (also on locale switches, remote-change reloads and closing the tab);
+  unpublishing and discarding a draft ask for confirmation; pages the admin may not
+  open redirect home instead of loading forever; the users, tokens, roles and public
+  permissions pages show loading and error states with a retry.
 
 ### Fixed
 
