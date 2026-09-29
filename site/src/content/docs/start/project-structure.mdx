@@ -157,8 +157,7 @@ stays empty.
 | `plugins/`, if you use plugins | `public/uploads/` (media) |
 | `.gitignore` | `.cache/` |
 
-The generated `.gitignore` covers `.env`, `data/`, `*.db` files and `.cache/`. It does not
-cover `public/uploads/`: add it yourself.
+The generated `.gitignore` covers all of them:
 
 ```sh title=".gitignore"
 .env
@@ -166,8 +165,11 @@ data/
 *.db
 *.db-*
 .cache/
+# Local media library ([upload.provider] dir).
 public/uploads/
 ```
+
+Projects created before 0.10 lack the `public/uploads/` line: add it.
 
 <Aside>
 Content and media are data, not code. Back them up with `verdin export` or your database's

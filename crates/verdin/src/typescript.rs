@@ -277,15 +277,15 @@ pub fn generate(schema: &Schema) -> String {
         }
     }
 
-    out.push_str("\n/** Collection routes (`/api/{route}`) and their documents, for `@verdin/client`. */\nexport interface Collections {\n");
+    out.push_str("\n/** Collection routes (`/api/{route}`) and their documents, for `@verdin/client`.\n * Type aliases, not interfaces: the client's schema constraint needs their index signature. */\nexport type Collections = {\n");
     for (route, name) in &collections {
         let _ = writeln!(out, "  {}: {{ document: {name}; input: {name}Input }};", key(route));
     }
-    out.push_str("}\n\n/** Single type routes. */\nexport interface Singles {\n");
+    out.push_str("};\n\n/** Single type routes. */\nexport type Singles = {\n");
     for (route, name) in &singles {
         let _ = writeln!(out, "  {}: {{ document: {name}; input: {name}Input }};", key(route));
     }
-    out.push_str("}\n\nexport interface VerdinSchema {\n  collections: Collections;\n  singles: Singles;\n}\n");
+    out.push_str("};\n\nexport interface VerdinSchema {\n  collections: Collections;\n  singles: Singles;\n}\n");
     out
 }
 
@@ -341,5 +341,64 @@ mod tests {
         }
         assert!(!ts.contains("secret: string"), "private fields are not returned");
         assert!(ts.contains("  secret?: string | null;"), "but they can be written");
+    }
+}
+
+/// The blog example's types, committed in `packages/client/test/fixtures/` so the client's
+/// type check compiles `createClient<VerdinSchema>` against what `verdin types` emits.
+#[cfg(test)]
+mod client_fixture {
+    use std::path::Path;
+
+    use verdin_schema::Source;
+
+    use super::*;
+
+    /// Directory entries in name order, so the output does not depend on the filesystem.
+    fn sorted(dir: &Path) -> Vec<std::path::PathBuf> {
+        let mut paths: Vec<_> =
+            std::fs::read_dir(dir).unwrap().map(|entry| entry.unwrap().path()).collect();
+        paths.sort();
+        paths
+    }
+
+    fn blog_schema() -> Schema {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/blog/schema");
+        let mut sources = Vec::new();
+        for path in sorted(&root.join("content-types")) {
+            let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+            // The maintainer's local scratch type, not part of the example.
+            if name == "prueba" {
+                continue;
+            }
+            sources.push(Source::content_type(&name, std::fs::read_to_string(&path).unwrap()));
+        }
+        for category in sorted(&root.join("components")) {
+            let category_name = category.file_name().unwrap().to_string_lossy().into_owned();
+            for path in sorted(&category) {
+                let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+                sources.push(Source::component(
+                    &category_name,
+                    &name,
+                    std::fs::read_to_string(&path).unwrap(),
+                ));
+            }
+        }
+        Schema::parse(&sources).unwrap()
+    }
+
+    #[test]
+    fn matches_the_client_fixture() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packages/client/test/fixtures/blog-types.ts");
+        let generated = generate(&blog_schema());
+        if std::env::var_os("VERDIN_UPDATE_FIXTURES").is_some() {
+            std::fs::write(&fixture, &generated).unwrap();
+        }
+        let committed = std::fs::read_to_string(&fixture).unwrap_or_default();
+        assert!(
+            committed == generated,
+            "packages/client/test/fixtures/blog-types.ts is out of date: rerun with VERDIN_UPDATE_FIXTURES=1"
+        );
     }
 }
