@@ -43,8 +43,9 @@ memory_mb = 64
 
 [[hooks]]
 on = "beforeCreate"               # beforeCreate, beforeUpdate, beforeDelete, beforePublish,
-uid = "api::article"              # beforeUnpublish, afterCreate, afterUpdate, afterDelete,
-function = "before_write"         # afterPublish, afterUnpublish, afterDiscardDraft
+uid = "api::article"              # beforeUnpublish, beforeDiscardDraft, afterCreate,
+function = "before_write"         # afterUpdate, afterDelete, afterPublish, afterUnpublish,
+                                  # afterDiscardDraft
 
 [routes]
 function = "handle"               # serves /api/plugins/slugs/…

@@ -91,6 +91,7 @@ pub enum HookAction {
     Delete,
     Publish,
     Unpublish,
+    DiscardDraft,
 }
 
 impl HookAction {
@@ -102,6 +103,7 @@ impl HookAction {
             Self::Delete => "beforeDelete",
             Self::Publish => "beforePublish",
             Self::Unpublish => "beforeUnpublish",
+            Self::DiscardDraft => "beforeDiscardDraft",
         }
     }
 }

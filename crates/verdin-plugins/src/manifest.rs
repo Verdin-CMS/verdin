@@ -105,6 +105,7 @@ pub const HOOK_EVENTS: &[&str] = &[
     "beforeDelete",
     "beforePublish",
     "beforeUnpublish",
+    "beforeDiscardDraft",
     "afterCreate",
     "afterUpdate",
     "afterDelete",

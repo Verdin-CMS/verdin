@@ -901,6 +901,7 @@ impl DocumentService {
     pub async fn discard_draft(&self, uid: &str, document_id: &str) -> Result<()> {
         let model = self.draft_and_publish_model(uid)?;
         let locale = self.locale_of(model)?;
+        self.run_hooks(HookAction::DiscardDraft, uid, Some(document_id), None).await?;
         let mut tx = self.db.begin().await?;
         let draft_id = row_id(&mut tx, model, document_id, DRAFT, &locale, true)
             .await?
