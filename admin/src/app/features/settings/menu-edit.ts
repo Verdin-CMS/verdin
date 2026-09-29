@@ -7,6 +7,7 @@ import {
   inject,
   input,
   output,
+  resource,
   signal,
   untracked,
 } from '@angular/core';
@@ -25,6 +26,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { Api, ApiFailure, RUNTIME_CONFIG, toQuery } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { loadErrorOf } from '../../core/loading';
 import {
   ItemProblem,
   MAX_MENU_DEPTH,
@@ -50,6 +52,7 @@ import {
 } from '../../core/menu-tree';
 import { Schema } from '../../core/schema';
 import { Site, slugify, validSlug } from '../../core/site';
+import { PageTitle } from '../../core/title';
 import { Document } from '../../core/types';
 import { documentLabel } from '../content/fields/model';
 import { PageHeader } from '../../shared/components/page-header';
@@ -614,6 +617,7 @@ export class MenuEditPage {
   private readonly router = inject(Router);
   private readonly config = inject(RUNTIME_CONFIG);
   private readonly schema = inject(Schema);
+  private readonly pageTitle = inject(PageTitle);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
   protected readonly access = siteAccess('menus');
@@ -630,8 +634,22 @@ export class MenuEditPage {
   private slugTouched = false;
   protected readonly tree = signal<MenuNode[]>([]);
   protected readonly selectedKey = signal<string | null>(null);
+  /** The menu, fetched once the site feature is on and when `id` changes (`null` if new). */
+  private readonly menu = resource({
+    params: () => (this.access() === 'ok' ? this.id() : undefined),
+    loader: async ({ params: id }) => {
+      if (id === 'new') return null;
+      try {
+        return await this.site.menu(Number(id));
+      } catch (error) {
+        const failure = ApiFailure.from(error);
+        throw failure.status === 404 ? new Error(this.t('menus.notFound')) : failure;
+      }
+    },
+  });
+  /** The editor's signals hold the loaded menu. */
   protected readonly loaded = signal(false);
-  protected readonly loadError = signal<string | null>(null);
+  protected readonly loadError = loadErrorOf(this.menu);
   protected readonly saveError = signal<string | null>(null);
   protected readonly showErrors = signal(false);
   protected readonly saving = signal(false);
@@ -647,48 +665,31 @@ export class MenuEditPage {
     return key ? findNode(this.tree(), key) : null;
   });
 
-  private loading = false;
-
   constructor() {
+    // The editor is filled from each load (plain signals: the tree is edited in place and a
+    // save keeps it without a refetch).
     effect(() => {
-      const id = this.id();
-      if (this.access() !== 'ok') return;
-      untracked(() => void this.load(id));
+      if (!this.menu.hasValue()) {
+        this.loaded.set(false);
+        return;
+      }
+      const menu = this.menu.value();
+      untracked(() => {
+        this.showErrors.set(false);
+        this.saveError.set(null);
+        this.name.set(menu?.name ?? '');
+        this.slug.set(menu?.slug ?? '');
+        this.slugTouched = !!menu;
+        this.tree.set(menu ? fromItems(menu.items) : []);
+        this.selectedKey.set(this.tree()[0]?.key ?? null);
+        this.loaded.set(true);
+        if (menu) this.pageTitle.setDetail(menu.name);
+      });
     });
   }
 
   protected endpoint(slug: string): string {
     return `${this.config.contentApiBase}/_menus/${slug}`;
-  }
-
-  private async load(id: string): Promise<void> {
-    if (this.loading) return;
-    this.loading = true;
-    this.loaded.set(false);
-    this.loadError.set(null);
-    this.showErrors.set(false);
-    this.saveError.set(null);
-    try {
-      if (id === 'new') {
-        this.name.set('');
-        this.slug.set('');
-        this.slugTouched = false;
-        this.tree.set([]);
-      } else {
-        const menu = await this.site.menu(Number(id));
-        this.name.set(menu.name);
-        this.slug.set(menu.slug);
-        this.slugTouched = true;
-        this.tree.set(fromItems(menu.items));
-      }
-      this.selectedKey.set(this.tree()[0]?.key ?? null);
-      this.loaded.set(true);
-    } catch (error) {
-      const failure = ApiFailure.from(error);
-      this.loadError.set(failure.status === 404 ? this.t('menus.notFound') : failure.message);
-    } finally {
-      this.loading = false;
-    }
   }
 
   protected setName(name: string): void {
@@ -844,6 +845,7 @@ export class MenuEditPage {
         await this.router.navigate(['/settings/menus', menu.id], { replaceUrl: true });
       } else {
         await this.site.updateMenu(Number(this.id()), input);
+        this.pageTitle.setDetail(input.name);
         toast.success(this.t('menus.saved', { name: input.name }));
       }
       this.showErrors.set(false);

@@ -2,9 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  OnInit,
   computed,
   inject,
+  linkedSignal,
+  resource,
   signal,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
@@ -39,6 +40,7 @@ import {
   validHookUrl,
 } from '../../core/deploy';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
 import { MessageKey } from '../../core/i18n/keys';
 import { DeployStatusBadge } from '../../shared/components/deploy-status';
 import { PageHeader } from '../../shared/components/page-header';
@@ -295,7 +297,7 @@ const CALLBACK_LABELS: Record<CallbackProvider, { label: MessageKey; hint: Messa
                 variant="outline"
                 size="sm"
                 [disabled]="historyLoading()"
-                (click)="loadHistory()"
+                (click)="historyList.reload()"
               >
                 @if (historyLoading()) {
                   <hlm-spinner class="size-4" />
@@ -649,21 +651,67 @@ const CALLBACK_LABELS: Record<CallbackProvider, { label: MessageKey; hint: Messa
     </hlm-dialog>
   `,
 })
-export class DeploymentsPage implements OnInit {
+export class DeploymentsPage {
   private readonly service = inject(Deploys);
   private readonly auth = inject(Auth);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
   protected readonly canManage = computed(() => this.auth.can('deploy.manage'));
-  protected readonly targets = signal<DeployTarget[] | null>(null);
-  protected readonly error = signal<string | null>(null);
-  protected readonly history = signal<Deployment[]>([]);
+  /** The targets, loaded once; the in-progress deployments they show get polled. */
+  private readonly targetList = resource({
+    params: () => this.canManage() || undefined,
+    loader: async () => {
+      const targets = await this.service.targets();
+      for (const target of targets) this.poller.watch(target.id, target.lastDeployment);
+      return targets;
+    },
+  });
+  /** The targets shown, kept up to date by edits and polls. */
+  protected readonly targets = linkedSignal<DeployTarget[] | null>(() =>
+    this.targetList.hasValue() ? this.targetList.value() : null,
+  );
+  protected readonly error = computed(() => {
+    const error = this.targetList.error();
+    if (!error) return null;
+    const failure = ApiFailure.from(error);
+    return failure.status === 404 ? this.t('deploy.unavailable') : failure.message;
+  });
+  /** The history and the CDN status load once the targets did (or failed to). */
+  private readonly targetsSettled = computed(
+    () => this.targetList.hasValue() || !!this.targetList.error(),
+  );
   protected readonly historyTarget = signal('');
-  protected readonly historyLoading = signal(false);
-  protected readonly cdn = signal<CdnStatus | null>(null);
-  protected readonly cdnError = signal<string | null>(null);
-  protected readonly purging = signal(false);
+  /** Refetches when the target filter changes; a failure is a toast and keeps the list. */
+  protected readonly historyList = resource({
+    params: () => (this.targetsSettled() ? { target: this.historyTarget() } : undefined),
+    loader: ({ params }) =>
+      this.service
+        .deployments(params.target ? Number(params.target) : undefined, 50)
+        .catch((error: unknown) => {
+          toast.error(ApiFailure.from(error).message);
+          throw error;
+        }),
+  });
+  /** The history shown: the last list loaded, kept up to date by polls. */
+  protected readonly history = linkedSignal<Deployment[] | undefined, Deployment[]>({
+    source: () => (this.historyList.hasValue() ? this.historyList.value() : undefined),
+    computation: (list, previous) => list ?? previous?.value ?? [],
+  });
+  protected readonly historyLoading = this.historyList.isLoading;
+  private readonly cdnStatus = resource({
+    params: () => this.targetsSettled() || undefined,
+    loader: () => this.service.cdn(),
+  });
+  /** The last CDN status loaded, kept when a refresh after a purge fails. */
+  protected readonly cdn = linkedSignal<CdnStatus | undefined, CdnStatus | null>({
+    source: () => (this.cdnStatus.hasValue() ? this.cdnStatus.value() : undefined),
+    computation: (status, previous) => status ?? previous?.value ?? null,
+  });
+  protected readonly cdnError = loadErrorOf(this.cdnStatus);
+  private readonly purgeBusy = signal(false);
+  /** Covers the purge and the CDN status refresh after it. */
+  protected readonly purging = computed(() => this.purgeBusy() || this.cdnStatus.isLoading());
   protected readonly deploying = signal<number | null>(null);
 
   protected readonly form = signal<TargetForm | null>(null);
@@ -693,49 +741,8 @@ export class DeploymentsPage implements OnInit {
     inject(DestroyRef).onDestroy(() => this.poller.stop());
   }
 
-  async ngOnInit(): Promise<void> {
-    if (!this.canManage()) return;
-    await this.reload();
-    void this.loadHistory();
-    void this.loadCdn();
-  }
-
-  private async reload(): Promise<void> {
-    try {
-      const targets = await this.service.targets();
-      this.targets.set(targets);
-      this.error.set(null);
-      for (const target of targets) this.poller.watch(target.id, target.lastDeployment);
-    } catch (error) {
-      const failure = ApiFailure.from(error);
-      this.error.set(failure.status === 404 ? this.t('deploy.unavailable') : failure.message);
-    }
-  }
-
-  protected async loadHistory(): Promise<void> {
-    this.historyLoading.set(true);
-    try {
-      const id = this.historyTarget();
-      this.history.set(await this.service.deployments(id ? Number(id) : undefined, 50));
-    } catch (error) {
-      toast.error(ApiFailure.from(error).message);
-    } finally {
-      this.historyLoading.set(false);
-    }
-  }
-
   protected setHistoryTarget(id: string): void {
     this.historyTarget.set(id);
-    void this.loadHistory();
-  }
-
-  private async loadCdn(): Promise<void> {
-    try {
-      this.cdn.set(await this.service.cdn());
-      this.cdnError.set(null);
-    } catch (error) {
-      this.cdnError.set(ApiFailure.from(error).message);
-    }
   }
 
   protected targetName(id: number): string {
@@ -856,7 +863,7 @@ export class DeploymentsPage implements OnInit {
   }
 
   protected async purge(): Promise<void> {
-    this.purging.set(true);
+    this.purgeBusy.set(true);
     try {
       const result = await this.service.purgeAll();
       if (result && !result.ok) {
@@ -864,11 +871,11 @@ export class DeploymentsPage implements OnInit {
       } else {
         toast.success(this.t('deploy.cdn.purged'));
       }
-      await this.loadCdn();
+      this.cdnStatus.reload();
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
     } finally {
-      this.purging.set(false);
+      this.purgeBusy.set(false);
     }
   }
 

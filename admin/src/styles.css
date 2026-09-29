@@ -140,3 +140,23 @@
     }
   }
 }
+
+/* Route changes: a short cross-fade of the page (router view transitions), none for those
+   who ask for reduced motion (the router skips the transition too). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 120ms;
+  animation-timing-function: ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* The heading focused after a navigation: a ring only for keyboard users. */
+[data-route-focus]:focus:not(:focus-visible) {
+  outline: none;
+}

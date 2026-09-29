@@ -804,6 +804,8 @@ export class FeaturesPage implements OnInit {
   }
   protected readonly documentUrl = `${this.config.contentApiBase}/_openapi.json`;
 
+  // Not a resource: the page shows the shared `Features.catalog`, which saves here and elsewhere
+  // update in place; this only refreshes it on entry.
   async ngOnInit(): Promise<void> {
     try {
       await this.catalog.load();

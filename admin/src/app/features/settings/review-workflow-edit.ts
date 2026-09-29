@@ -8,6 +8,7 @@ import {
   inject,
   Injector,
   input,
+  resource,
   signal,
   untracked,
 } from '@angular/core';
@@ -27,6 +28,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
 import { ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
 import {
   DEFAULT_STAGE_COLOR,
   ReviewWorkflows,
@@ -40,6 +42,7 @@ import {
   typesInUse,
 } from '../../core/review';
 import { Schema } from '../../core/schema';
+import { PageTitle } from '../../core/title';
 import { PageHeader } from '../../shared/components/page-header';
 
 /** A stage being edited; `key` identifies it in the page (new stages have no `id`). */
@@ -399,7 +402,24 @@ export class ReviewWorkflowEditPage {
   protected readonly publishKey = signal('');
   /** Roles that stages can be restricted to. */
   protected readonly roles = signal<StageRole[]>([]);
-  protected readonly loadError = signal<string | null>(null);
+  /** Every workflow (the one edited among them) and the roles, fetched when `id` changes. */
+  private readonly loaded = resource({
+    params: () => this.id(),
+    loader: async ({ params: id }) => {
+      let workflows: Workflow[];
+      let roles: StageRole[];
+      try {
+        [workflows, roles] = await Promise.all([this.service.list(), this.service.roles()]);
+      } catch (error) {
+        const failure = ApiFailure.from(error);
+        throw failure.status === 404 ? new Error(this.t('settings.review.featureOff')) : failure;
+      }
+      const workflow = id === 'new' ? null : workflows.find((item) => String(item.id) === id);
+      if (workflow === undefined) throw new Error(this.t('settings.review.notFound'));
+      return { workflows, roles, workflow };
+    },
+  });
+  protected readonly loadError = loadErrorOf(this.loaded);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly announcement = signal('');
@@ -431,33 +451,30 @@ export class ReviewWorkflowEditPage {
   });
 
   constructor() {
+    const pageTitle = inject(PageTitle);
     effect(() => {
-      const id = this.id();
-      untracked(() => void this.load(id));
+      this.id();
+      untracked(() => this.error.set(null));
     });
-  }
-
-  private async load(id: string): Promise<void> {
-    this.ready.set(false);
-    this.error.set(null);
-    this.loadError.set(null);
-    try {
-      const [workflows, roles] = await Promise.all([this.service.list(), this.service.roles()]);
-      this.roles.set(roles);
-      this.others.set(workflows);
-      const workflow = id === 'new' ? null : workflows.find((item) => String(item.id) === id);
-      if (id !== 'new' && !workflow) {
-        this.loadError.set(this.t('settings.review.notFound'));
+    // The form's signals are filled from each load (they stay plain signals: a save updates
+    // them locally, and `others` with it, without a refetch).
+    effect(() => {
+      if (!this.loaded.hasValue()) {
+        this.ready.set(false);
         return;
       }
-      this.reset(workflow ?? null);
-      this.ready.set(true);
-    } catch (error) {
-      const failure = ApiFailure.from(error);
-      this.loadError.set(
-        failure.status === 404 ? this.t('settings.review.featureOff') : failure.message,
-      );
-    }
+      const { workflows, roles, workflow } = this.loaded.value();
+      untracked(() => {
+        this.roles.set(roles);
+        this.others.set(workflows);
+        this.reset(workflow);
+        this.ready.set(true);
+      });
+    });
+    effect(() => {
+      const workflow = this.workflow();
+      if (!this.creating() && workflow) pageTitle.setDetail(workflow.name);
+    });
   }
 
   private reset(workflow: Workflow | null): void {

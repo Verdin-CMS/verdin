@@ -5,7 +5,9 @@ import {
   effect,
   inject,
   input,
+  linkedSignal,
   output,
+  resource,
   signal,
   untracked,
 } from '@angular/core';
@@ -527,8 +529,19 @@ export class SsoSettingsDialog {
 
   protected readonly problemKeys = PROBLEMS;
   protected readonly providers = signal<SsoProviderForm[]>([]);
-  /** `null` when the roles cannot be listed: codes are typed instead. */
-  protected readonly roles = signal<Role[] | null>(null);
+  /** Listed again each time the dialog opens (or its feature changes while open). */
+  private readonly roleList = resource({
+    params: () => (this.open() ? this.feature() : undefined),
+    loader: () => this.api.get<Role[]>('/roles').catch(() => null),
+  });
+  /**
+   * `null` when the roles cannot be listed: codes are typed instead. The last list stays
+   * while the next one loads.
+   */
+  protected readonly roles = linkedSignal<Role[] | null | undefined, Role[] | null>({
+    source: () => (this.roleList.hasValue() ? this.roleList.value() : undefined),
+    computation: (roles, previous) => (roles === undefined ? (previous?.value ?? null) : roles),
+  });
   protected readonly touched = signal(false);
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -547,17 +560,8 @@ export class SsoSettingsDialog {
         this.providers.set(ssoFormsFrom(feature.settings));
         this.touched.set(false);
         this.error.set(null);
-        void this.loadRoles();
       });
     });
-  }
-
-  private async loadRoles(): Promise<void> {
-    try {
-      this.roles.set(await this.api.get<Role[]>('/roles'));
-    } catch {
-      this.roles.set(null);
-    }
   }
 
   protected redirectUri(id: string): string {

@@ -2,12 +2,11 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  OnInit,
   computed,
-  effect,
   inject,
+  linkedSignal,
+  resource,
   signal,
-  untracked,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
@@ -22,7 +21,7 @@ import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
-import { Api, ApiFailure } from '../../core/api';
+import { Api, ListResponse } from '../../core/api';
 import {
   AUDIT_ACTION_PRESETS,
   AuditEntry,
@@ -35,6 +34,7 @@ import { Auth } from '../../core/auth';
 import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { loadErrorOf } from '../../core/loading';
 import { Schema } from '../../core/schema';
 import { AdminUser, PageMeta } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
@@ -76,7 +76,7 @@ const PRESET_LABELS: Record<(typeof AUDIT_ACTION_PRESETS)[number], MessageKey> =
           <ng-icon name="lucideScrollText" size="14" /> {{ t('shell.settings') }}
         </span>
         <div actions>
-          <button hlmBtn variant="outline" [disabled]="loading()" (click)="load()">
+          <button hlmBtn variant="outline" [disabled]="loading()" (click)="list.reload()">
             @if (loading()) {
               <hlm-spinner class="size-4" />
             } @else {
@@ -441,7 +441,7 @@ const PRESET_LABELS: Record<(typeof AUDIT_ACTION_PRESETS)[number], MessageKey> =
     </div>
   `,
 })
-export class AuditLogsPage implements OnInit {
+export class AuditLogsPage {
   private readonly service = inject(AuditLogs);
   private readonly api = inject(Api);
   private readonly features = inject(Features);
@@ -477,13 +477,49 @@ export class AuditLogsPage implements OnInit {
   protected readonly draft = signal<AuditFilters>({ ...EMPTY_AUDIT_FILTERS });
   protected readonly filters = signal<AuditFilters>({ ...EMPTY_AUDIT_FILTERS });
   protected readonly page = signal(1);
-  protected readonly entries = signal<AuditEntry[] | null>(null);
-  protected readonly meta = signal<PageMeta>({});
+  /** Refetches whenever the applied filters or the page change; idle without `audit.read`. */
+  protected readonly list = resource({
+    params: () =>
+      this.auth.can('audit.read') ? { filters: this.filters(), page: this.page() } : undefined,
+    loader: ({ params }) => this.service.list(params.filters, params.page, PAGE_SIZE),
+  });
+  private readonly loadError = loadErrorOf(this.list);
+  /**
+   * What the table shows: the last page that loaded, kept while the next one loads (and after
+   * it fails), with the last failure kept until a load succeeds.
+   */
+  private readonly shown = linkedSignal<
+    { response: ListResponse<AuditEntry> | undefined; error: string | null; loading: boolean },
+    { entries: AuditEntry[] | null; meta: PageMeta; error: string | null }
+  >({
+    source: () => ({
+      response: this.list.hasValue() ? this.list.value() : undefined,
+      error: this.loadError(),
+      loading: this.list.isLoading(),
+    }),
+    computation: ({ response, error, loading }, previous) => {
+      const last = previous?.value ?? { entries: null, meta: {}, error: null };
+      if (response && !loading) {
+        return { entries: response.data ?? [], meta: response.meta?.pagination ?? {}, error: null };
+      }
+      if (error) return { ...last, entries: last.entries ?? [], error };
+      return last;
+    },
+  });
+  protected readonly entries = computed(() => this.shown().entries);
+  protected readonly meta = computed(() => this.shown().meta);
   protected readonly pageCount = computed(() => this.meta().pageCount ?? 1);
-  protected readonly loading = signal(false);
-  protected readonly error = signal<string | null>(null);
+  protected readonly loading = this.list.isLoading;
+  protected readonly error = computed(() => this.shown().error);
   protected readonly expanded = signal<ReadonlySet<number>>(new Set());
-  protected readonly users = signal<AdminUser[] | null>(null);
+  /** The actor filter's choices; without them (or `users.manage`) it falls back to an id. */
+  private readonly usersList = resource({
+    params: () => this.auth.can('users.manage') || undefined,
+    loader: () => this.api.get<AdminUser[]>('/users').catch(() => null),
+  });
+  protected readonly users = computed(() =>
+    this.usersList.hasValue() ? this.usersList.value() : null,
+  );
   protected readonly filtered = computed(
     () => hasAuditFilters(this.filters()) || hasAuditFilters(this.draft()),
   );
@@ -493,46 +529,11 @@ export class AuditLogsPage implements OnInit {
   });
 
   private typing: ReturnType<typeof setTimeout> | null = null;
-  private request = 0;
 
   constructor() {
-    effect(() => {
-      this.filters();
-      this.page();
-      untracked(() => void this.load());
-    });
     this.destroyRef.onDestroy(() => {
       if (this.typing) clearTimeout(this.typing);
     });
-  }
-
-  async ngOnInit(): Promise<void> {
-    if (this.auth.can('users.manage')) {
-      try {
-        this.users.set(await this.api.get<AdminUser[]>('/users'));
-      } catch {
-        // The actor filter falls back to an id.
-      }
-    }
-  }
-
-  async load(): Promise<void> {
-    if (!this.auth.can('audit.read')) return;
-    const request = ++this.request;
-    this.loading.set(true);
-    try {
-      const response = await this.service.list(this.filters(), this.page(), PAGE_SIZE);
-      if (request !== this.request) return;
-      this.entries.set(response.data ?? []);
-      this.meta.set(response.meta?.pagination ?? {});
-      this.error.set(null);
-    } catch (error) {
-      if (request !== this.request) return;
-      this.error.set(ApiFailure.from(error).message);
-      this.entries.set(this.entries() ?? []);
-    } finally {
-      if (request === this.request) this.loading.set(false);
-    }
   }
 
   /** Changes the form; text filters apply after a short pause. */

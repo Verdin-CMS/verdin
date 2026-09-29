@@ -5,6 +5,7 @@ import {
   effect,
   inject,
   input,
+  resource,
   signal,
   untracked,
 } from '@angular/core';
@@ -23,6 +24,8 @@ import { HlmTextareaImports } from '@spartan-ng/helm/textarea';
 import { ApiFailure } from '../../core/api';
 import { EndUserRole, EndUsers } from '../../core/end-users';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
+import { PageTitle } from '../../core/title';
 import { Grant } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 import { GrantsMatrix } from './grants';
@@ -142,37 +145,47 @@ export class EndUserRoleEditPage {
   protected readonly name = signal('');
   protected readonly description = signal('');
   protected readonly grants = signal<Grant[]>([]);
-  protected readonly loadError = signal<string | null>(null);
+  /**
+   * The role being edited, fetched when the `id` changes (idle for `new`, and for the role
+   * the page just created, which it already holds).
+   */
+  private readonly loaded = resource({
+    params: () => {
+      const id = this.id();
+      if (id === 'new') return undefined;
+      return untracked(this.role)?.id === Number(id) ? undefined : Number(id);
+    },
+    loader: async ({ params: id }) => {
+      const role = (await this.service.roles()).find((item) => item.id === id);
+      if (!role) throw new Error(this.t('endUsers.roles.notFound'));
+      return role;
+    },
+  });
+  protected readonly loadError = loadErrorOf(this.loaded);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly valid = computed(() => !!this.name().trim());
 
   constructor() {
+    const pageTitle = inject(PageTitle);
     effect(() => {
       const id = this.id();
-      untracked(() => void this.load(id));
+      untracked(() => {
+        this.error.set(null);
+        if (id === 'new') this.reset(null);
+      });
     });
-  }
-
-  private async load(id: string): Promise<void> {
-    this.error.set(null);
-    this.loadError.set(null);
-    if (id === 'new') {
-      this.reset(null);
-      return;
-    }
-    // Just created: the page already holds it.
-    if (this.role()?.id === Number(id)) return;
-    try {
-      const role = (await this.service.roles()).find((item) => item.id === Number(id));
-      if (!role) {
-        this.loadError.set(this.t('endUsers.roles.notFound'));
-        return;
-      }
-      this.reset(role);
-    } catch (error) {
-      this.loadError.set(ApiFailure.from(error).message);
-    }
+    // The form's signals are filled from each loaded role (they stay plain signals: a save
+    // updates `role` locally without a refetch).
+    effect(() => {
+      if (!this.loaded.hasValue()) return;
+      const role = this.loaded.value();
+      untracked(() => this.reset(role));
+    });
+    effect(() => {
+      const role = this.role();
+      if (!this.creating() && role) pageTitle.setDetail(role.name);
+    });
   }
 
   private reset(role: EndUserRole | null): void {

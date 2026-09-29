@@ -6,6 +6,7 @@ import {
   inject,
   input,
   output,
+  resource,
   signal,
   untracked,
 } from '@angular/core';
@@ -291,8 +292,20 @@ export class SeoSettingsDialog {
   protected readonly rows = signal<SeoRow[]>([]);
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
-  protected readonly component = signal<SeoComponent | null>(null);
-  protected readonly loadingComponent = signal(false);
+  /** The suggested SEO component, fetched the first time it is asked for. */
+  private readonly componentWanted = signal(false);
+  private readonly seoComponent = resource({
+    params: () => this.componentWanted() || undefined,
+    loader: () =>
+      this.site.seoComponent().catch((error: unknown) => {
+        toast.error(ApiFailure.from(error).message);
+        return null;
+      }),
+  });
+  protected readonly component = computed(() =>
+    this.seoComponent.hasValue() ? this.seoComponent.value() : null,
+  );
+  protected readonly loadingComponent = this.seoComponent.isLoading;
   protected readonly creating = signal(false);
 
   protected readonly baseUrlValid = computed(() => validBaseUrl(this.baseUrl()));
@@ -391,15 +404,10 @@ export class SeoSettingsDialog {
     return JSON.stringify(component.schema, null, 2);
   }
 
-  protected async loadComponent(): Promise<void> {
-    this.loadingComponent.set(true);
-    try {
-      this.component.set(await this.site.seoComponent());
-    } catch (error) {
-      toast.error(ApiFailure.from(error).message);
-    } finally {
-      this.loadingComponent.set(false);
-    }
+  /** Asks again after a failure. */
+  protected loadComponent(): void {
+    if (this.componentWanted()) this.seoComponent.reload();
+    else this.componentWanted.set(true);
   }
 
   /** Adds the component through the schema builder's plan and apply (development only). */

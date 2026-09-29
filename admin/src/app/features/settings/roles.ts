@@ -1,10 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  OnInit,
   computed,
+  effect,
   inject,
+  linkedSignal,
+  resource,
   signal,
+  untracked,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -25,6 +28,7 @@ import { ContentLocales, isLocalized } from '../../core/content-locales';
 import { Schema } from '../../core/schema';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { loadErrorOf } from '../../core/loading';
 import {
   ADMIN_CONTENT_ACTIONS,
   ADMIN_SETTINGS_ACTIONS,
@@ -135,8 +139,8 @@ const ACTION_LABELS: Record<
       </vd-page-header>
 
       @if (loadError(); as message) {
-        <vd-load-error [message]="message" (retry)="load()" />
-      } @else if (loading()) {
+        <vd-load-error [message]="message" (retry)="list.reload()" />
+      } @else if (!list.hasValue()) {
         <hlm-skeleton
           class="h-96 rounded-xl"
           role="status"
@@ -665,7 +669,7 @@ const ACTION_LABELS: Record<
     </hlm-dialog>
   `,
 })
-export class RolesPage implements OnInit {
+export class RolesPage {
   private readonly api = inject(Api);
   private readonly schema = inject(Schema);
   protected readonly i18n = inject(I18n);
@@ -677,7 +681,12 @@ export class RolesPage implements OnInit {
   protected readonly mediaScoped = MEDIA_SCOPED;
   protected readonly fieldActions = FIELD_ACTIONS;
   protected readonly fieldsEditor = signal<FieldsEditor | null>(null);
-  protected readonly roles = signal<Role[]>([]);
+  protected readonly list = resource({ loader: () => this.fetch() });
+  protected readonly loadError = loadErrorOf(this.list);
+  /** The loaded roles, replaced by a fresh list after each change. */
+  protected readonly roles = linkedSignal<Role[]>(() =>
+    this.list.hasValue() ? this.list.value() : [],
+  );
   protected readonly selected = signal<Role | null>(null);
   protected readonly permissions = signal<Permission[]>([]);
   protected readonly newName = signal('');
@@ -702,29 +711,33 @@ export class RolesPage implements OnInit {
     () => (this.locales.list()?.length ?? 0) > 0 && this.subjects().some((item) => item.localized),
   );
 
-  protected readonly loading = signal(true);
-  protected readonly loadError = signal<string | null>(null);
-
-  ngOnInit(): void {
+  constructor() {
     this.locales.load().catch(() => undefined);
-    void this.load();
+    // The loaded list (first load or a retry) fills the editable copies of a selected role;
+    // an effect, since `select` writes several signals from one role.
+    effect(() => {
+      if (!this.list.hasValue()) return;
+      const roles = this.list.value();
+      untracked(() => this.pick(roles));
+    });
   }
 
-  protected async load(): Promise<void> {
-    this.loading.set(true);
-    this.loadError.set(null);
-    try {
-      await this.reload();
-    } catch (error) {
-      this.loadError.set(ApiFailure.from(error).message);
-    } finally {
-      this.loading.set(false);
-    }
+  private fetch(): Promise<Role[]> {
+    return this.api.get<Role[]>('/roles');
   }
 
+  /**
+   * The list again after a change, awaited (not `list.reload()`): the saved role is selected
+   * before the toast, and a failure lands in the caller's toast rather than replacing the page.
+   */
   private async reload(select?: number): Promise<void> {
-    const roles = await this.api.get<Role[]>('/roles');
+    const roles = await this.fetch();
     this.roles.set(roles);
+    this.pick(roles, select);
+  }
+
+  /** Selects `select`, else the selected role again, else the first. */
+  private pick(roles: Role[], select?: number): void {
     const role =
       roles.find((candidate) => candidate.id === (select ?? this.selected()?.id)) ??
       roles[0] ??

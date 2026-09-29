@@ -3,10 +3,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
   inject,
+  linkedSignal,
+  resource,
   signal,
-  untracked,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -23,6 +23,7 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { loadErrorOf } from '../../core/loading';
 import {
   REDIRECT_STATUSES,
   Redirect,
@@ -385,8 +386,16 @@ export class RedirectsPage {
   protected readonly statuses = REDIRECT_STATUSES;
   protected readonly statusLabels = STATUS_LABELS;
   protected readonly problemLabels = PROBLEM_LABELS;
-  protected readonly redirects = signal<Redirect[] | null>(null);
-  protected readonly error = signal<string | null>(null);
+  /** The list loads once the feature is known to be on (idle until then). */
+  private readonly loaded = resource({
+    params: () => (this.access() === 'ok' ? true : undefined),
+    loader: () => this.site.redirects(),
+  });
+  protected readonly error = loadErrorOf(this.loaded);
+  /** The list being edited: the loaded one, then kept in step with each save locally. */
+  protected readonly redirects = linkedSignal<Redirect[] | null>(() =>
+    this.loaded.hasValue() ? this.loaded.value() : null,
+  );
   protected readonly search = signal('');
   protected readonly draft = signal<RedirectDraft | null>(null);
   protected readonly showErrors = signal(false);
@@ -407,25 +416,6 @@ export class RedirectsPage {
   protected readonly destinationInvalid = computed(
     () => this.showErrors() && this.problems().some((p) => p === 'destination' || p === 'same'),
   );
-
-  private loaded = false;
-
-  constructor() {
-    // The list loads once the feature is known to be on.
-    effect(() => {
-      if (this.access() === 'ok' && !this.loaded) untracked(() => void this.load());
-    });
-  }
-
-  private async load(): Promise<void> {
-    this.loaded = true;
-    try {
-      this.redirects.set(await this.site.redirects());
-      this.error.set(null);
-    } catch (error) {
-      this.error.set(ApiFailure.from(error).message);
-    }
-  }
 
   protected toStatus(value: string | null | undefined): RedirectStatus {
     const code = Number(value);

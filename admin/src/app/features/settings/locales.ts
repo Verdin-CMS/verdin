@@ -1,9 +1,9 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  OnInit,
   computed,
   inject,
+  resource,
   signal,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
@@ -31,6 +31,7 @@ import {
   localeDisplayName,
 } from '../../core/content-locales';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
 import { PageHeader } from '../../shared/components/page-header';
 
 /** The add/edit dialog: `original` is the edited locale's code, `null` when adding. */
@@ -88,11 +89,11 @@ interface LocaleDraft {
         </div>
       }
 
-      @if (error()) {
+      @if (error(); as message) {
         <div hlmAlert variant="destructive">
           <ng-icon hlmAlertIcon name="lucideCircleAlert" />
           <p hlmAlertTitle>{{ t('settings.locales.loadError') }}</p>
-          <p hlmAlertDescription>{{ error() }}</p>
+          <p hlmAlertDescription>{{ message }}</p>
         </div>
       } @else if (locales.list() === null) {
         <hlm-skeleton class="h-48 rounded-xl" />
@@ -361,13 +362,18 @@ interface LocaleDraft {
     </hlm-alert-dialog>
   `,
 })
-export class LocalesPage implements OnInit {
+export class LocalesPage {
   private readonly auth = inject(Auth);
   protected readonly locales = inject(ContentLocales);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
-  protected readonly error = signal<string | null>(null);
+  /**
+   * Refreshes the shared `ContentLocales` list on arrival; the page reads that list (it may
+   * already hold a cached one), so this resource only carries the load's status and error.
+   */
+  private readonly refresh = resource({ loader: () => this.locales.refresh() });
+  protected readonly error = loadErrorOf(this.refresh);
   protected readonly busy = signal<string | null>(null);
   protected readonly draft = signal<LocaleDraft | null>(null);
   protected readonly dialogError = signal<string | null>(null);
@@ -402,14 +408,6 @@ export class LocalesPage implements OnInit {
     if (!form || !form.name.trim()) return false;
     return !!form.original || (!!form.code.trim() && !this.codeProblem());
   });
-
-  async ngOnInit(): Promise<void> {
-    try {
-      await this.locales.refresh();
-    } catch (error) {
-      this.error.set(ApiFailure.from(error).message);
-    }
-  }
 
   protected openAdd(): void {
     this.dialogError.set(null);

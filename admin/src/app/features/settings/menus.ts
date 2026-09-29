@@ -1,11 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  effect,
-  inject,
-  signal,
-  untracked,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, resource } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -18,6 +11,7 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
 import { fromItems, countItems } from '../../core/menu-tree';
 import { Menu, Site } from '../../core/site';
 import { PageHeader } from '../../shared/components/page-header';
@@ -59,11 +53,11 @@ import { SiteAccessNotice, siteAccess } from './site-access';
 
       @if (access() !== 'ok') {
         <vd-site-access [access]="access()" feature="menus" />
-      } @else if (error()) {
-        <p class="text-destructive text-sm" role="alert">{{ error() }}</p>
-      } @else if (menus() === null) {
+      } @else if (error(); as message) {
+        <p class="text-destructive text-sm" role="alert">{{ message }}</p>
+      } @else if (!menus.hasValue()) {
         <hlm-skeleton class="h-48 rounded-xl" />
-      } @else if (menus()!.length === 0) {
+      } @else if (menus.value().length === 0) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">
           <div hlmEmptyHeader>
             <div hlmEmptyMedia variant="icon"><ng-icon name="lucideListTree" /></div>
@@ -91,7 +85,7 @@ import { SiteAccessNotice, siteAccess } from './site-access';
                 </tr>
               </thead>
               <tbody hlmTBody>
-                @for (menu of menus(); track menu.id) {
+                @for (menu of menus.value(); track menu.id) {
                   <tr hlmTr data-menu>
                     <td hlmTd class="ps-4">
                       <a class="group flex flex-col" [routerLink]="['/settings/menus', menu.id]">
@@ -174,24 +168,12 @@ export class MenusPage {
   protected readonly t = this.i18n.t;
   protected readonly access = siteAccess('menus');
   protected readonly endpoint = `${this.config.contentApiBase}/_menus/{slug}`;
-  protected readonly menus = signal<Menu[] | null>(null);
-  protected readonly error = signal<string | null>(null);
-  private loaded = false;
-
-  constructor() {
-    effect(() => {
-      if (this.access() === 'ok' && !this.loaded) untracked(() => void this.load());
-    });
-  }
-
-  private async load(): Promise<void> {
-    this.loaded = true;
-    try {
-      this.menus.set(await this.site.menus());
-    } catch (error) {
-      this.error.set(ApiFailure.from(error).message);
-    }
-  }
+  /** The menus, loaded once the page can be used (idle until then). */
+  protected readonly menus = resource({
+    params: () => (this.access() === 'ok' ? true : undefined),
+    loader: () => this.site.menus(),
+  });
+  protected readonly error = loadErrorOf(this.menus);
 
   protected count(menu: Menu): number {
     return countItems(fromItems(menu.items));
@@ -200,7 +182,9 @@ export class MenusPage {
   protected async remove(menu: Menu): Promise<void> {
     try {
       await this.site.deleteMenu(menu.id);
-      this.menus.update((list) => (list ?? []).filter((item) => item.id !== menu.id));
+      if (this.menus.hasValue()) {
+        this.menus.update((list) => (list ?? []).filter((item) => item.id !== menu.id));
+      }
       toast.success(this.t('menus.deleted', { name: menu.name }));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
