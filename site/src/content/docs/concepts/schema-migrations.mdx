@@ -5,6 +5,10 @@ sidebar:
   order: 7
 ---
 
+import Diagram from '../../../components/Diagram.astro';
+
+
+
 When you change a schema file, the database has to follow: a new attribute needs a column, a
 new relation a link table. Verdin computes that migration for you, shows it before running
 it, and never drops data without being told to. This page explains how.
@@ -21,6 +25,18 @@ The difference is a **plan**: a list of steps, each with its SQL for your databa
 level. Because the plan comes from the stored snapshot rather than from inspecting the
 database, it is deterministic and the same on every dialect. Changes that produce the same
 SQL on your database, such as `integer` to `biginteger` on SQLite, produce no step.
+
+<Diagram
+  caption="How a schema change becomes a migration"
+  code={`flowchart LR
+    F[schema/*.json] --> D[Desired model]
+    S[(Stored snapshot)] --> C[Current model]
+    D --> X{Diff}
+    C --> X
+    X --> P[Plan: steps, risk, SQL]
+    P --> A[apply --allow]
+    A --> B[(Database and new snapshot)]`}
+/>
 
 `verdin migrate plan` prints it. Here the blog's `excerpt` attribute was renamed to
 `summary` in `article.json`:

@@ -6,6 +6,10 @@ sidebar:
   label: "REST"
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
 Every content type gets REST routes under the content API prefix, `/api` by default
 (`[api].prefix`). Routes, parameters and response shapes follow Strapi v5, so most frontends
 written for Strapi work unchanged. This page is the reference; examples use the
@@ -15,6 +19,59 @@ categories, tags and a homepage).
 The server also describes the routes of *your* schema in an OpenAPI 3.1 document at
 `GET /api/_openapi.json`. The [example content API](/api/example/) pages render the blog's
 document, and the [API playground](/api/playground/) lets you try requests.
+
+## Example
+
+The same query in each API: the ten latest articles of a category, with their category's name.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+See [GraphQL API](/api/graphql/) and [Typed client](/guides/frontend/typed-client/).
 
 ## Authentication
 

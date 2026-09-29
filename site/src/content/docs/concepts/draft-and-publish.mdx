@@ -5,6 +5,10 @@ sidebar:
   order: 4
 ---
 
+import Diagram from '../../../components/Diagram.astro';
+
+
+
 Draft and publish lets editors work on a document without changing what your site shows,
 then publish when it is ready. This page explains the model: documents, versions, the
 actions that move content between them, and how each API treats them. It works as in
@@ -41,6 +45,17 @@ The admin panel shows each entry's state in the list and the editor:
 | **Draft** | yes | none | Nothing: the document is not visible. |
 | **Published** | same as published | yes | The published version. |
 | **Modified** | changed since the last publish | yes | The published version, without the new changes. |
+
+<Diagram
+  caption="States of a document with draft and publish, and the actions between them"
+  code={`stateDiagram-v2
+    [*] --> Draft: create
+    Draft --> Published: publish
+    Published --> Modified: save
+    Modified --> Published: publish or discard changes
+    Published --> Draft: unpublish
+    Modified --> Draft: unpublish`}
+/>
 
 The actions move a document between these states:
 
