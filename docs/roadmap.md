@@ -136,30 +136,23 @@ Released 2026-09-29, from the audit after 0.9.0 (security findings are tracked p
 | `@verdin/client` 0.9.x on npm | S | The version follows the workspace (checked in CI); publishing waits for an `NPM_TOKEN` secret in the repository |
 | Docs corrections ✅ | S | Sample `verdin.toml`, admin API and CLI references, statuses that are out of date |
 
-## 0.10 — Modern docs and admin polish (in progress)
+## 0.10 — Modern docs and admin polish ✅
+
+Released 2026-09-29.
 
 | Item | Size | Notes |
 |---|---|---|
-| **Modern docs site** | L | ✅ Own visual identity (copper and verdigris, Anybody / Atkinson Hyperlegible / Martian Mono, logo), landing page with quickstart tabs, "from Strapi in three commands" and a nameplate of facts read from the repository; code tabs; Mermaid diagrams in the site's colors; API playground (Scalar) on the example project; `llms.txt`; Open Graph cards for every page; last-updated dates; published to GitHub Pages on every push to `main`. Left: a real domain and preview deployments for pull requests |
+| **Modern docs site** ✅ | L | Own visual identity (copper and verdigris, Anybody / Atkinson Hyperlegible / Martian Mono, logo), landing page with quickstart tabs, "from Strapi in three commands" and a nameplate of facts read from the repository; code tabs; Mermaid diagrams in the site's colors; API playground (Scalar) on the example project; `llms.txt`; Open Graph cards for every page; last-updated dates; published to GitHub Pages on every push to `main` |
 | Docs information architecture ✅ | M | Get started (introduction, quickstart, Astro and Next.js tutorials, project structure) · Concepts · Guides (content, frontend, authentication, integrations) · Extending (overview, tutorial, reference) · API reference (REST, GraphQL, playground, admin, realtime, webhooks) · Reference (configuration, CLI checked in CI, permissions generated from the code, attribute types) · Deploy & operate (checklist, security, Docker, Fly, Render, Railway, Kubernetes, scaling, backups, monitoring) · Migrate & upgrade (from Strapi, compatibility matrix, upgrade notes) · Internals (split out of `architecture.md`, which moved to the site) |
-| Docs in more languages ✅ | M | Locales es, fr, de and zh-CN with translated navigation; the introduction and the quickstart are translated, other pages fall back to English with a notice |
-| Admin modernization | M | Split the largest components (editor, builder, lists, media library), one entry picker and one content API service, `httpResource` loaders, `@defer` for the rich-text editors, route titles, focus management and a skip link, pagination on long lists, view transitions |
-| Admin test coverage | M | Component tests for the editor, builder and lists; end-to-end tests for deployments, redirects, menus, forms, webhooks, end users and multi-admin presence |
-| Fixes found while writing the docs | S | ✅ `verdin types` emits type aliases so `createClient<VerdinSchema>` type-checks (a fixture keeps generator and client in sync); ✅ `verdin new` ignores `public/uploads/`. Left: the items under "Docs review findings" below |
+| Docs in more languages ✅ | L | Every page in the admin's 17 languages besides English (right-to-left for Arabic, Persian and Hebrew); the generated permissions reference and the project pages stay in English |
+| Admin modernization ✅ | M | Editor, builder, content list and media library split into components with one state service each; one entry picker and one content documents service; settings pages on Angular resources; `@defer` for the rich-text editors; route titles, focus management, a skip link and live announcements; shared pagination on long lists; view transitions |
+| Admin test coverage ✅ | M | Component tests for the editor, builder, content list and media library; end-to-end tests for deployments, redirects, menus, forms, webhooks, end users, multi-admin presence and the app shell |
+| Fixes from the docs review ✅ | S | CDN tags cover populated types; `verdin healthcheck` and an image `HEALTHCHECK`; S3 by environment variables in Docker; GraphQL `locale`; consistent webhook `model`; audited two-factor sign-ins; honest invitation emails with the `log` provider; plugin widgets' `context.fetch` on the content API; `SECURITY.md`; `verdin types` emits aliases the client accepts |
 
-### Docs review findings
-
-Behaviour the new docs had to describe as-is; each needs a decision or a fix:
-
-- CDN purge only tags the changed type, so cached responses that populate it stay stale.
-- Visual-editing marks are applied when an `Authorization` or preview header is present, before the token is checked (the request is still rejected later).
-- End-user roles: the admin says their grants add to public access; the code gives signed-in users only their role's grants.
-- A sign-in with a second factor is audited as `admin.login` without an actor.
-- The invitation dialog says the link was emailed when the email provider is `log`.
-- Webhook payloads: entry events carry the singular name in `model`, `review-workflows.updateEntryStage` the UID.
-- The Docker image cannot switch uploads to S3 through environment variables alone, and some default paths (transform cache, search index) are under the read-only `/app`; there is no `verdin healthcheck` for container health checks.
-- GraphQL has no `locale` field and `delete*` mutations take no `locale`.
-- No `SECURITY.md` yet.
+Left for later: a real domain for the docs, preview deployments for pull requests,
+pagination on the admin endpoints that still return every row (users, API tokens, roles,
+webhooks, releases, redirects, forms, menus, deploy targets) and paging deployments past
+the latest 50.
 
 ## Toward 1.0
 

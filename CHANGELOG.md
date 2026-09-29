@@ -6,6 +6,64 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-29
+
+Modern documentation and admin polish. The documentation moved from `docs/` to a site of
+its own, rewritten and checked against the code; the admin panel's largest screens were
+split up and gained accessibility and tests. No database migration.
+
+### Documentation
+
+- **A documentation site**, published to GitHub Pages on every push to `main`
+  (<https://verdin-cms.github.io/verdin/>): Get started (quickstart, Astro and Next.js
+  tutorials), Concepts, Guides, Extending, API reference, Reference, Deploy & operate,
+  Migrate & upgrade and Internals. It has its own look, code tabs, diagrams, an API
+  playground on the example project, Open Graph cards, `llms.txt`, and pages in 18
+  languages.
+- The permissions reference is generated from the code, and CI checks that the command
+  line reference covers every command and flag.
+- The user guides and the design document that were in `docs/` are pages of the site now;
+  `docs/` keeps the roadmap and the translation guide. `SECURITY.md` says how to report
+  a vulnerability.
+
+### Added
+
+- `verdin healthcheck` asks `/_health` on the loopback interface; the Docker image uses it
+  as its `HEALTHCHECK`.
+- GraphQL: localized types have a `locale` field, and `delete…` mutations take `locale`.
+- Admin panel: page titles for every screen, a "Skip to content" link, focus moved to the
+  page heading after navigation (announced to screen readers), subtle view transitions
+  (off with reduced motion), one entry picker for relations, polymorphic relations and
+  menu items, pagination controls on audit logs, webhook deliveries, end users and form
+  submissions, and the rich-text editors loaded only when a field needs them.
+
+### Changed
+
+- **CDN**: content API responses carry the cache tags of every type they can populate, so
+  purging a related type also refreshes them.
+- **Docker image**: uploads (`/app/public/uploads` links to `/data/uploads`), the image
+  transformation cache and the search index live in `/data`, so the S3 upload provider can
+  be set with environment variables alone.
+- **Webhooks**: `review-workflows.updateEntryStage` carries the singular name in `model`
+  and the uid in `uid`, like entry events (`model` held the uid).
+- Relation fields link entries through a dialog (**Link an entry**) that searches every
+  text field of the target type, in the entry's locale for localized targets.
+- `verdin types` emits `Collections` and `Singles` as type aliases, so
+  `createClient<VerdinSchema>` type-checks; regenerate your types.
+- `verdin new` adds `public/uploads/` to the project's `.gitignore`.
+- The admin panel's editor, content-type builder, content list and media library were split
+  into smaller components with one state service each, and settings pages load through
+  Angular resources; behaviour is unchanged.
+
+### Fixed
+
+- Two-factor sign-ins are audited once the second factor is accepted, with the admin (the
+  password step was recorded without one).
+- Invitations say they were not emailed when the email provider is `log`.
+- Plugin widgets' `context.fetch` sends content API requests without the admin session,
+  which the content API refused.
+- The end-user roles page says that signed-in users get only their role's permissions.
+
 ## [0.9.1] - 2026-09-29
 
 A hardening release from a full audit of 0.9.0. Upgrading is recommended for every
