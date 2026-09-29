@@ -488,7 +488,8 @@ async fn release_and_review_stage_events() {
     assert_eq!(released["release"]["name"], "Launch");
     assert_eq!(released["release"]["status"], "done");
     let moved = body("review-workflows.updateEntryStage");
-    assert_eq!(moved["model"], "api::article");
+    assert_eq!(moved["model"], "article", "the singular name, as in entry events");
+    assert_eq!(moved["uid"], "api::article");
     assert_eq!(moved["entry"]["documentId"], document_id.as_str());
     assert_eq!(moved["stages"]["from"]["name"], "To do");
     assert_eq!(moved["stages"]["to"]["name"], "Done");

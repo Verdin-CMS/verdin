@@ -75,14 +75,16 @@ Media events send the file object in `media`, with no `model`, `uid` or `entry`:
 {
   "event": "review-workflows.updateEntryStage",
   "createdAt": "2026-09-25T09:00:00.000Z",
-  "model": "api::article",
+  "model": "article",
+  "uid": "api::article",
   "entry": { "documentId": "k2m7q4…", "locale": "en" },
   "workflow": { "id": 1, "name": "Editorial" },
   "stages": { "from": { "id": 1, "name": "To do" }, "to": { "id": 2, "name": "In review" } }
 }
 ```
 
-In this event `model` is the content type's UID.
+As in entry events, `model` is the singular name and `uid` the content type's UID (before
+0.10, `model` held the UID here).
 
 The **Send test event** button sends `{ "event": "trigger-test", "createdAt": … }`.
 

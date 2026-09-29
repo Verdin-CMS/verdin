@@ -206,8 +206,10 @@ async fn update_entry(
     {
         let stage =
             |id: i64| workflow.stage(id).map(|stage| json!({ "id": stage.id, "name": stage.name }));
+        // Like entry events: `model` is the singular name, `uid` the content type uid.
         let data = json!({
-            "model": uid,
+            "model": uid.strip_prefix("api::").unwrap_or(&uid),
+            "uid": uid,
             "entry": { "documentId": document_id, "locale": (!locale.is_empty()).then_some(&locale) },
             "workflow": { "id": workflow.id, "name": workflow.name },
             "stages": { "from": stage(from), "to": stage(updated.stage_id) },
