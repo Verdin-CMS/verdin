@@ -1,0 +1,216 @@
+---
+// A machine nameplate in copper, stamped with what Verdin is, its patina growing from the
+// corners. Every value is read from the repository at build time or is a plain fact.
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+
+// Builds run from site/ (npm scripts), so the repository is one level up. Paths from
+// import.meta.url would point into dist/ once bundled.
+const repoRoot = resolve(process.cwd(), '..');
+
+const cargo = readFileSync(join(repoRoot, 'Cargo.toml'), 'utf8');
+const version = cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? '';
+const languages = readdirSync(join(repoRoot, 'admin/public/i18n')).filter((name) =>
+  name.endsWith('.json'),
+).length;
+
+const rows: [string, string][] = [
+  ['Serves', 'REST in Strapi v5 format · GraphQL · MCP'],
+  ['Runs on', 'PostgreSQL · MySQL · MariaDB · SQLite'],
+  ['Ships as', 'One binary · ghcr.io/verdin-cms/verdin'],
+  ['Admin panel', `Angular · ${languages} languages`],
+  ['License', 'MIT or Apache 2.0 · no enterprise edition'],
+];
+---
+
+<figure class="plate not-content" aria-label={`Verdin ${version} at a glance`}>
+  <svg class="patina" aria-hidden="true" focusable="false" preserveAspectRatio="none">
+    <defs>
+      <filter id="vd-patina-bloom" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.011 0.019" numOctaves="5" seed="11" />
+        <feColorMatrix
+          type="matrix"
+          values="0 0 0 0 0.29  0 0 0 0 0.64  0 0 0 0 0.56  3.4 0 0 0 -1.35"
+        />
+      </filter>
+      <filter id="vd-patina-bloom-pale" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.03 0.05" numOctaves="3" seed="4" />
+        <feColorMatrix
+          type="matrix"
+          values="0 0 0 0 0.66  0 0 0 0 0.86  0 0 0 0 0.8  4 0 0 0 -2.1"
+        />
+      </filter>
+    </defs>
+    <rect width="100%" height="100%" filter="url(#vd-patina-bloom)"></rect>
+    <rect width="100%" height="100%" filter="url(#vd-patina-bloom-pale)"></rect>
+  </svg>
+  <span class="rivet" style="top: 0.9rem; left: 0.9rem"></span>
+  <span class="rivet" style="top: 0.9rem; right: 0.9rem"></span>
+  <span class="rivet" style="bottom: 0.9rem; left: 0.9rem"></span>
+  <span class="rivet" style="bottom: 0.9rem; right: 0.9rem"></span>
+  <div class="stamp">
+    <p class="model">
+      <span class="label">Model</span>
+      <span class="name">Verdin</span>
+      <span class="version">{version}</span>
+    </p>
+    <dl>
+      {
+        rows.map(([label, value]) => (
+          <div>
+            <dt class="label">{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+</figure>
+
+<script>
+  // The patina grows once, when the plate comes into view.
+  const plate = document.querySelector<HTMLElement>('.plate');
+  if (plate) {
+    if (!('IntersectionObserver' in window)) {
+      plate.classList.add('grown');
+    } else {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            plate.classList.add('grown');
+            observer.disconnect();
+          }
+        },
+        { threshold: 0.35 },
+      );
+      observer.observe(plate);
+    }
+  }
+</script>
+
+<style>
+  .plate {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    margin: clamp(1rem, 4vw, 2.5rem) 0;
+    padding: clamp(1.75rem, 4vw, 2.75rem) clamp(1.5rem, 5vw, 3.5rem);
+    border-radius: 0.6rem;
+    color: #2a1006;
+    background:
+      linear-gradient(
+        112deg,
+        transparent 0 38%,
+        rgb(255 214 180 / 0.28) 44%,
+        transparent 52%
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgb(255 255 255 / 0.035) 0 1px,
+        transparent 1px 3px
+      ),
+      linear-gradient(160deg, #e3a472 0%, #cf7f49 40%, #c06a34 68%, #d58d58 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 225 200 / 0.5),
+      inset 0 -2px 0 rgb(70 25 5 / 0.35),
+      0 1px 2px rgb(40 20 10 / 0.25),
+      0 18px 40px -24px rgb(60 30 10 / 0.55);
+  }
+  .patina {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    pointer-events: none;
+    mask-image:
+      radial-gradient(circle at 0% 100%, #000 0, transparent var(--bloom)),
+      radial-gradient(circle at 100% 0%, #000 0, transparent calc(var(--bloom) * 0.8)),
+      radial-gradient(circle at 100% 100%, #000 0, transparent calc(var(--bloom) * 0.45));
+    --bloom: 8%;
+    transition: --bloom 1.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .plate.grown .patina {
+    --bloom: 46%;
+  }
+  @property --bloom {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 8%;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .patina {
+      transition: none;
+      --bloom: 46%;
+    }
+  }
+  .rivet {
+    position: absolute;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #f3c39c, #8a4019 70%);
+    box-shadow: 0 1px 1px rgb(40 15 0 / 0.5);
+  }
+  .stamp {
+    display: grid;
+    gap: 1.5rem;
+  }
+  @media (min-width: 50rem) {
+    .stamp {
+      grid-template-columns: minmax(12rem, 0.8fr) 2fr;
+      align-items: center;
+    }
+  }
+  .label {
+    display: block;
+    font-family: var(--sl-font-mono);
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(42 16 6 / 0.8);
+  }
+  .model {
+    margin: 0;
+  }
+  .name {
+    display: block;
+    font-family: var(--vd-font-display);
+    font-stretch: 58%;
+    font-weight: 860;
+    font-size: clamp(3rem, 8vw, 4.5rem);
+    line-height: 0.9;
+    letter-spacing: -0.02em;
+    text-shadow:
+      0 1px 0 rgb(255 220 190 / 0.45),
+      0 -1px 0 rgb(60 20 0 / 0.35);
+  }
+  .version {
+    font-family: var(--sl-font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  dl {
+    display: grid;
+    gap: 0.85rem 2rem;
+    margin: 0;
+  }
+  @media (min-width: 38rem) {
+    dl {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  dl > div {
+    border-top: 1px solid rgb(42 16 6 / 0.3);
+    box-shadow: 0 1px 0 rgb(255 220 190 / 0.2) inset;
+    padding-top: 0.5rem;
+  }
+  dd {
+    margin: 0.15rem 0 0;
+    font-size: 0.98rem;
+    font-weight: 600;
+    line-height: 1.4;
+    text-shadow: 0 1px 0 rgb(255 220 190 / 0.3);
+  }
+</style>

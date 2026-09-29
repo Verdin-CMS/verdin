@@ -1,10 +1,13 @@
 ---
-title: Verdin
+title: Verdin — the headless CMS that grows on Rust
 description: Open source headless CMS written in Rust. Strapi v5 compatible APIs, a single binary, PostgreSQL, MySQL, MariaDB and SQLite.
 template: splash
 editUrl: false
+tableOfContents: false
+lastUpdated: false
 hero:
-  tagline: An open source headless CMS written in Rust. Inspired by Strapi, shipped as a single binary, and 100% free — there is no enterprise edition.
+  title: The headless CMS that grows on <span class="metal">Rust</span>.
+  tagline: Strapi v5 compatible APIs and an admin panel for your editors, in one binary of about 25 MB. Open source and complete — there is no enterprise edition.
   actions:
     - text: Get started
       link: start/getting-started/
@@ -12,43 +15,82 @@ hero:
     - text: Coming from Strapi
       link: start/importing-from-strapi/
       variant: minimal
-    - text: View on GitHub
-      link: https://github.com/verdin-cms/verdin
-      icon: external
-      variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, Code, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Nameplate from '../../components/landing/Nameplate.astro';
+
+<Nameplate />
+
+## From Strapi in three commands
+
+Export the Strapi project, import it into a new Verdin project, start it. Content types,
+entries with their drafts and locales, relations and the media library come across; the
+content API keeps its shape, so the frontend keeps working.
+
+```sh title="Terminal"
+npx strapi export --no-encrypt -f my-export        # in the Strapi project
+verdin new my-site && cd my-site && verdin import strapi ../my-export.tar.gz
+verdin dev                                         # http://localhost:1337/admin
+```
+
+<LinkCard
+  title="Importing a Strapi project"
+  description="What is imported, the id map, and what to check afterwards."
+  href="start/importing-from-strapi/"
+/>
+
+## Read your content the way you already do
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+    ```sh
+    curl 'localhost:1337/api/articles?filters[title][$containsi]=rust&populate=category&sort=publishedAt:desc'
+    ```
+  </TabItem>
+  <TabItem label="GraphQL">
+    ```graphql
+    query {
+      articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"]) {
+        documentId
+        title
+        category { name }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```ts
+    import { createClient } from '@verdin/client';
+    import type { VerdinSchema } from './verdin-types'; // verdin types -o src/verdin-types.ts
+
+    const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+    const { data } = await verdin.collection('articles').find({
+      filters: { title: { $containsi: 'rust' } },
+      populate: { category: true },
+      sort: ['publishedAt:desc'],
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## What editors and developers get
 
 <CardGrid>
-  <Card title="Strapi-compatible APIs" icon="seti:json">
-    Strapi v5 compatible REST under `/api` — filters, sorting, pagination, `populate`,
-    draft and publish — plus an optional GraphQL endpoint shaped like Strapi's GraphQL
-    plugin, and an OpenAPI document generated from your schema.
+  <Card title="Schema in files, migrations you can read" icon="document">
+    Content types are JSON files in the Strapi format, kept in git. Every schema change
+    becomes a migration plan with a risk level and the exact SQL before it runs.
   </Card>
-  <Card title="One binary" icon="rocket">
-    The server, the migrations and the Angular admin panel ship together. Run it
-    directly or from the Docker image; `verdin new` scaffolds a project in seconds.
+  <Card title="An admin panel editors like" icon="pencil">
+    Drafts and publishing, content history, releases, review workflows, comments and
+    live presence, visual editing on your own site — in 18 languages.
   </Card>
-  <Card title="Your database" icon="setting">
-    PostgreSQL, MySQL, MariaDB and SQLite. Schema changes are planned as migrations with
-    a risk level and the exact SQL before anything is applied.
+  <Card title="Security that is not an upsell" icon="approve-check">
+    SSO, two-factor sign-in with passkeys, roles down to fields and locales, audit
+    logs and API tokens, all in the open source project.
   </Card>
-  <Card title="No enterprise split" icon="open-book">
-    SSO, audit logs, releases, review workflows and content history are part of the open
-    source project, dual-licensed under MIT or Apache 2.0.
+  <Card title="Extend it safely" icon="puzzle">
+    WebAssembly plugins hook into writes, add routes, jobs and admin widgets, and only
+    reach what they declare.
   </Card>
 </CardGrid>
-
-## What is in the box
-
-- **Content-type builder** in the admin panel (in `verdin dev`), with schemas stored as
-  versionable JSON files in the Strapi format.
-- **Media library** with responsive image formats, on local disk or any S3-compatible
-  storage.
-- **Internationalization**, **end users** (sign-up, sign-in, OAuth), **webhooks** with
-  signed payloads and a delivery log.
-- **WebAssembly plugins** that hook into writes, add routes and jobs, and bring admin
-  widgets and custom fields — sandboxed to the capabilities they declare.
-- **TypeScript types** generated from the schema (`verdin types`) and a typed client,
-  `@verdin/client`.

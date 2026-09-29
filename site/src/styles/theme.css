@@ -1,0 +1,197 @@
+/*
+ * Verdin's docs theme. "Verdín" is the green patina copper grows; Verdin grows on Rust.
+ * Tokens: mineral (paper), ink, verdigris (accent), patina (soft fills), copper (rare
+ * highlights, the nameplate). Display: Anybody (condensed, used sparingly). Body:
+ * Atkinson Hyperlegible Next. Code and labels: Martian Mono.
+ */
+
+:root {
+  --vd-mineral: #eef2ef;
+  --vd-mineral-deep: #e1e8e4;
+  --vd-ink: #13211e;
+  --vd-slate: #53645e;
+  --vd-verdigris: #2a7d70;
+  --vd-verdigris-deep: #1d5c52;
+  --vd-patina: #bfdfd3;
+  --vd-copper: #a9552a;
+  --vd-copper-bright: #c7743f;
+  --vd-rule: #cdd8d3;
+
+  --vd-font-display: 'Anybody Variable', 'Arial Narrow', sans-serif;
+  --sl-font: 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif;
+  --sl-font-mono: 'Martian Mono Variable', ui-monospace, monospace;
+  --sl-text-code: 0.8125rem;
+  --sl-line-height: 1.7;
+}
+
+/* Dark: the same metals at night. */
+:root {
+  --sl-color-white: #e3ece8;
+  --sl-color-gray-1: #c9d6d1;
+  --sl-color-gray-2: #aebdb7;
+  --sl-color-gray-3: #83958e;
+  --sl-color-gray-4: #536560;
+  --sl-color-gray-5: #2b3b37;
+  --sl-color-gray-6: #16231f;
+  --sl-color-black: #0d1715;
+
+  --sl-color-accent-low: #133a34;
+  --sl-color-accent: #54b3a1;
+  --sl-color-accent-high: #a6ddd0;
+
+  --vd-mineral: #0d1715;
+  --vd-mineral-deep: #121e1c;
+  --vd-ink: #e3ece8;
+  --vd-slate: #93a69f;
+  --vd-verdigris: #6cc8b6;
+  --vd-verdigris-deep: #54b3a1;
+  --vd-patina: #173a35;
+  --vd-copper: #e38b55;
+  --vd-copper-bright: #f0a674;
+  --vd-rule: #22322e;
+}
+
+:root[data-theme='light'] {
+  --sl-color-white: #13211e;
+  --sl-color-gray-1: #1d2d29;
+  --sl-color-gray-2: #2d3e39;
+  --sl-color-gray-3: #4b5d57;
+  --sl-color-gray-4: #7a8b85;
+  --sl-color-gray-5: #b8c5c0;
+  --sl-color-gray-6: #dde5e1;
+  --sl-color-gray-7: #e6ece9;
+  --sl-color-black: #eef2ef;
+
+  --sl-color-accent-low: #cfe7de;
+  --sl-color-accent: #2a7d70;
+  --sl-color-accent-high: #1d5c52;
+
+  --vd-mineral: #eef2ef;
+  --vd-mineral-deep: #e1e8e4;
+  --vd-ink: #13211e;
+  --vd-slate: #53645e;
+  --vd-verdigris: #2a7d70;
+  --vd-verdigris-deep: #1d5c52;
+  --vd-patina: #bfdfd3;
+  --vd-copper: #a9552a;
+  --vd-copper-bright: #c7743f;
+  --vd-rule: #cdd8d3;
+
+  --sl-color-bg-nav: #e6ece9;
+  --sl-color-bg-sidebar: #eef2ef;
+}
+
+/* Headings: condensed Anybody, tight. Body text stays in Atkinson. */
+.sl-markdown-content :is(h1, h2, h3, h4),
+h1#_top,
+.vd-display {
+  font-family: var(--vd-font-display);
+  font-stretch: 78%;
+  font-weight: 720;
+  letter-spacing: -0.012em;
+}
+h1#_top {
+  font-stretch: 72%;
+  font-weight: 780;
+  letter-spacing: -0.02em;
+}
+.sl-markdown-content h2 {
+  padding-top: 0.25em;
+}
+
+/* Links: verdigris with a patina underline that thickens on hover. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sl-color-text-accent);
+  text-decoration-color: color-mix(in srgb, var(--vd-verdigris) 45%, transparent);
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.2em;
+  transition: text-decoration-thickness 120ms ease;
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  text-decoration-thickness: 0.18em;
+}
+
+/* Inline code: a patina chip. */
+.sl-markdown-content :not(pre) > code {
+  background: color-mix(in srgb, var(--vd-patina) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vd-verdigris) 18%, transparent);
+  border-radius: 0.3em;
+  padding: 0.08em 0.35em;
+  font-size: 0.86em;
+}
+
+/* Sidebar: the current page gets a verdigris bar instead of a filled pill. */
+nav.sidebar a[aria-current='page'],
+nav.sidebar a[aria-current='page']:hover {
+  background: color-mix(in srgb, var(--vd-patina) 60%, transparent);
+  color: var(--sl-color-white);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--vd-verdigris);
+  border-radius: 0 0.25rem 0.25rem 0;
+}
+nav.sidebar .group-label .large,
+nav.sidebar summary .group-label span {
+  font-family: var(--vd-font-display);
+  font-stretch: 85%;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* Header: a copper hairline under the bar. */
+header.header {
+  border-bottom: 1px solid var(--vd-rule);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--vd-copper) 30%, transparent);
+}
+.site-title {
+  font-family: var(--vd-font-display);
+  font-stretch: 80%;
+  font-weight: 760;
+  letter-spacing: -0.01em;
+}
+
+/* Asides keep Starlight's meaning, drawn as a left rule. */
+.starlight-aside {
+  border-inline-start-width: 3px;
+  border-radius: 0 0.4rem 0.4rem 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--vd-copper);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--vd-verdigris) 30%, transparent);
+}
+
+/* Cards: one metal per card instead of Starlight's rotating rainbow. */
+.card {
+  --sl-card-border: color-mix(in srgb, var(--vd-verdigris) 45%, transparent);
+  --sl-card-bg: color-mix(in srgb, var(--vd-patina) 55%, transparent);
+  border-color: var(--vd-rule);
+  border-radius: 0.5rem;
+}
+.card .icon {
+  color: var(--vd-verdigris);
+  border-radius: 0.35rem;
+}
+.card .title {
+  font-family: var(--vd-font-display);
+  font-stretch: 82%;
+  font-weight: 700;
+}
+
+/* Martian Mono runs wide: its narrower cut keeps code lines and tables in the column. */
+code,
+kbd,
+pre,
+.expressive-code {
+  font-stretch: 87.5%;
+}
+.sl-markdown-content :is(h1, h2, h3, h4) code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 0.82em;
+  color: var(--vd-verdigris);
+}

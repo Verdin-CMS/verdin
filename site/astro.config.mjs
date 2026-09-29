@@ -2,6 +2,7 @@
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 import starlightLinksValidator from 'starlight-links-validator';
+import starlightLlmsTxt from 'starlight-llms-txt';
 import starlightOpenAPI, { createOpenAPISidebarGroup } from 'starlight-openapi';
 
 import { basePath, branch, repositoryUrl, siteUrl } from './scripts/repo.mjs';
@@ -15,13 +16,23 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Verdin',
+      logo: { src: './src/assets/verdin-mark.svg' },
+      favicon: '/favicon.svg',
+      customCss: [
+        '@fontsource-variable/anybody/wdth.css',
+        '@fontsource-variable/atkinson-hyperlegible-next',
+        '@fontsource-variable/martian-mono/wdth.css',
+        './src/styles/theme.css',
+      ],
+      components: { Hero: './src/components/Hero.astro' },
+      lastUpdated: true,
       description:
         'Open source headless CMS written in Rust, compatible with Strapi v5 content APIs.',
       social: [{ icon: 'github', label: 'GitHub', href: github }],
       // Hand-written pages; synced pages set their own `editUrl` to the file in docs/.
       editLink: { baseUrl: `${github}/edit/${branch}/site/` },
-      lastUpdated: false,
       plugins: [
+        starlightLlmsTxt(),
         starlightOpenAPI([
           {
             base: 'reference/api',

@@ -1,0 +1,107 @@
+---
+// The landing page's hero: the headline and actions from the page's `hero`
+// frontmatter, and the two ways to start Verdin, side by side.
+import { Code, LinkButton, Tabs, TabItem } from '@astrojs/starlight/components';
+
+// Starlight's skip link and table of contents point at this id.
+const PAGE_TITLE_ID = '_top';
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, actions = [] } = data.hero || {};
+
+const docker = `docker run --rm ghcr.io/verdin-cms/verdin \\
+  secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env \\
+  -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+# Admin panel: http://localhost:1337/admin`;
+const binary = `verdin new my-site    # SQLite, fresh secrets in .env
+cd my-site && verdin dev
+# Admin panel: http://localhost:1337/admin`;
+---
+
+<section class="vd-hero not-content">
+  <div class="copy">
+    <p class="eyebrow">Headless CMS · written in Rust · Strapi v5 APIs</p>
+    <h1 id={PAGE_TITLE_ID} data-page-title set:html={title} />
+    {tagline && <p class="tagline" set:html={tagline} />}
+    {
+      actions.length > 0 && (
+        <div class="actions">
+          {actions.map(({ icon, link: href, text, variant }) => (
+            <LinkButton {href} {variant} icon={icon?.name}>
+              {text}
+            </LinkButton>
+          ))}
+        </div>
+      )
+    }
+  </div>
+  <div class="start" aria-label="Start Verdin">
+    <Tabs syncKey="install">
+      <TabItem label="Docker">
+        <Code code={docker} lang="sh" frame="terminal" title="Docker" />
+      </TabItem>
+      <TabItem label="Binary">
+        <Code code={binary} lang="sh" frame="terminal" title="Binary" />
+      </TabItem>
+    </Tabs>
+  </div>
+</section>
+
+<style>
+  .vd-hero {
+    display: grid;
+    gap: clamp(2rem, 5vw, 3.5rem);
+    align-items: center;
+    padding-block: clamp(2.5rem, 7vw, 5.5rem) clamp(2rem, 5vw, 3.5rem);
+  }
+  @media (min-width: 60rem) {
+    .vd-hero {
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    }
+  }
+  .eyebrow {
+    font-family: var(--sl-font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--vd-verdigris);
+    margin: 0 0 1.25rem;
+  }
+  h1 {
+    font-family: var(--vd-font-display);
+    font-stretch: 62%;
+    font-weight: 820;
+    font-size: clamp(2.75rem, 7.2vw, 5.25rem);
+    line-height: 0.94;
+    letter-spacing: -0.025em;
+    color: var(--sl-color-white);
+    margin: 0;
+    text-wrap: balance;
+  }
+  h1 :global(.metal) {
+    color: var(--vd-copper);
+    font-stretch: 100%;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+  }
+  .tagline {
+    margin: 1.5rem 0 0;
+    max-width: 34rem;
+    font-size: clamp(1.05rem, 1.6vw, 1.2rem);
+    line-height: 1.6;
+    color: var(--sl-color-gray-2);
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    margin-top: 2rem;
+  }
+  .start {
+    min-width: 0;
+  }
+  .start :global(.tablist-wrapper) {
+    margin-bottom: 0.5rem;
+  }
+</style>
