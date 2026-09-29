@@ -226,6 +226,11 @@ pub(crate) async fn middleware(
     if response.status() != StatusCode::OK || !is_json {
         return response;
     }
+    // Large answers pass through as they are: no tag, not cached.
+    let size = axum::body::HttpBody::size_hint(response.body());
+    if size.upper().is_none_or(|upper| upper > MAX_BODY as u64) {
+        return response;
+    }
     let (mut parts, body) = response.into_parts();
     let Ok(bytes) = to_bytes(body, MAX_BODY).await else {
         return ApiError::Internal("response too large to tag".into()).into_response();
