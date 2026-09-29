@@ -8,6 +8,9 @@ const PAGE_TITLE_ID = '_top';
 
 const { data } = Astro.locals.starlightRoute.entry;
 const { title = data.title, tagline, actions = [] } = data.hero || {};
+// Frontmatter links are written without the base path (like Markdown links).
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const withBase = (href: string) => (href.startsWith('/') && !href.startsWith('//') ? base + href : href);
 
 const docker = `docker run --rm ghcr.io/verdin-cms/verdin \\
   secrets > verdin.env
@@ -28,7 +31,7 @@ cd my-site && verdin dev
       actions.length > 0 && (
         <div class="actions">
           {actions.map(({ icon, link: href, text, variant }) => (
-            <LinkButton {href} {variant} icon={icon?.name}>
+            <LinkButton href={withBase(href)} {variant} icon={icon?.name}>
               {text}
             </LinkButton>
           ))}

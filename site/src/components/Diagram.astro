@@ -1,0 +1,107 @@
+---
+// A Mermaid diagram, drawn in the browser with the site's colors and redrawn when the
+// theme changes. The source stays in the page as a readable fallback without script.
+//
+//   <Diagram caption="How a request is authorized" code={`flowchart LR
+//     A[Request] --> B{Token?}`} />
+interface Props {
+  code: string;
+  caption?: string;
+}
+const { code, caption } = Astro.props;
+---
+
+<figure class="vd-diagram not-content">
+  <div class="canvas" data-diagram={code.trim()}>
+    <pre class="source">{code.trim()}</pre>
+  </div>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<script>
+  import mermaid from 'mermaid';
+
+  const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  let generation = 0;
+  async function draw() {
+    const run = ++generation;
+    const dark = document.documentElement.dataset.theme !== 'light';
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      theme: 'base',
+      fontFamily: css('--sl-font') || 'sans-serif',
+      themeVariables: {
+        darkMode: dark,
+        background: css('--sl-color-bg'),
+        fontSize: '15px',
+        primaryColor: css('--vd-patina'),
+        primaryTextColor: css('--sl-color-white'),
+        primaryBorderColor: css('--vd-verdigris'),
+        secondaryColor: css('--vd-mineral-deep'),
+        secondaryBorderColor: css('--vd-copper'),
+        tertiaryColor: css('--vd-mineral-deep'),
+        lineColor: css('--vd-slate'),
+        textColor: css('--sl-color-white'),
+        clusterBkg: css('--vd-mineral-deep'),
+        clusterBorder: css('--vd-rule'),
+        noteBkgColor: css('--vd-mineral-deep'),
+        noteBorderColor: css('--vd-copper'),
+        actorBkg: css('--vd-patina'),
+        actorBorder: css('--vd-verdigris'),
+        signalColor: css('--sl-color-white'),
+        signalTextColor: css('--sl-color-white'),
+      },
+    });
+    const canvases = document.querySelectorAll<HTMLElement>('.vd-diagram .canvas');
+    for (const [index, canvas] of canvases.entries()) {
+      try {
+        const { svg } = await mermaid.render(`vd-diagram-${run}-${index}`, canvas.dataset.diagram ?? '');
+        if (run !== generation) return;
+        canvas.innerHTML = svg;
+        canvas.classList.add('drawn');
+      } catch (error) {
+        console.error('Diagram could not be drawn', error);
+      }
+    }
+  }
+
+  draw();
+  new MutationObserver(draw).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  });
+</script>
+
+<style>
+  .vd-diagram {
+    margin: 1.75rem 0;
+  }
+  .canvas {
+    padding: 1.25rem;
+    border: 1px solid var(--vd-rule);
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--vd-mineral-deep) 70%, transparent);
+    overflow-x: auto;
+    display: grid;
+    justify-items: center;
+  }
+  .canvas :global(svg) {
+    max-width: 100%;
+    height: auto;
+  }
+  .source {
+    margin: 0;
+    justify-self: stretch;
+    font-size: 0.8rem;
+    white-space: pre;
+    color: var(--sl-color-gray-3);
+  }
+  figcaption {
+    margin-top: 0.6rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+    text-align: center;
+  }
+</style>
