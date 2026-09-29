@@ -60,6 +60,7 @@ import {
 } from '../../core/site';
 import { PageMeta } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
+import { Pagination } from '../../shared/components/pagination';
 import { SiteAccessNotice, siteAccess } from './site-access';
 
 type Tab = 'fields' | 'settings' | 'submissions' | 'integration';
@@ -99,6 +100,7 @@ const PAGE_SIZE = 25;
 @Component({
   selector: 'vd-form-edit',
   imports: [
+    Pagination,
     NgIcon,
     RouterLink,
     CdkDropList,
@@ -689,34 +691,14 @@ const PAGE_SIZE = 25;
                   </table>
                 </div>
                 @if (pageCount() > 1) {
-                  <nav
-                    class="flex flex-wrap items-center justify-end gap-2 border-t px-4 py-3"
-                    [attr.aria-label]="t('forms.pagination')"
-                  >
-                    <span class="text-muted-foreground me-auto text-sm tabular-nums">
-                      {{ t('common.page', { page: page(), count: pageCount() }) }}
-                    </span>
-                    <button
-                      hlmBtn
-                      variant="outline"
-                      size="sm"
-                      [disabled]="page() <= 1 || submissionsLoading()"
-                      (click)="goTo(page() - 1)"
-                    >
-                      <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" />
-                      {{ t('common.previous') }}
-                    </button>
-                    <button
-                      hlmBtn
-                      variant="outline"
-                      size="sm"
-                      [disabled]="page() >= pageCount() || submissionsLoading()"
-                      (click)="goTo(page() + 1)"
-                    >
-                      {{ t('common.next') }}
-                      <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
-                    </button>
-                  </nav>
+                  <vd-pagination
+                    class="border-t px-4 py-3"
+                    [page]="page()"
+                    (pageChange)="goTo($event)"
+                    [pageCount]="pageCount()"
+                    [disabled]="submissionsLoading()"
+                    [label]="t('forms.pagination')"
+                  />
                 }
               }
             </section>
