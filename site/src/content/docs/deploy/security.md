@@ -154,8 +154,9 @@ database dumps. See [Backups](/deploy/backups/).
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a security problem. The repository has no `SECURITY.md`
-policy yet; report it privately through the **Security** tab of
-[github.com/Verdin-CMS/verdin](https://github.com/Verdin-CMS/verdin) (**Report a
+Do not open a public issue for a security problem. Follow the repository's
+[security policy](https://github.com/Verdin-CMS/verdin/blob/main/SECURITY.md): report it
+privately through the **Security** tab of
+[the repository](https://github.com/Verdin-CMS/verdin/security) (**Report a
 vulnerability**), with the version, the steps to reproduce and the impact you see.
 Security fixes are listed under **Security** in the [changelog](/project/changelog/).
