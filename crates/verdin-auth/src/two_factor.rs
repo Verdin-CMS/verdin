@@ -449,22 +449,39 @@ impl AuthService {
         Ok(())
     }
 
-    /// `v1:<nonce>:<secret XOR keystream>`, the keystream derived from the token pepper.
+    /// `v2:<nonce>:<secret XOR keystream>:<mac>`, the keystream and the MAC keyed by the
+    /// token pepper (encrypt-then-MAC).
     fn seal(&self, user_id: i64, secret: &[u8]) -> String {
         let nonce = crypto::random_hex::<16>();
         let sealed: Vec<u8> =
             secret.iter().zip(self.keystream(user_id, &nonce)).map(|(a, b)| a ^ b).collect();
-        format!("v1:{nonce}:{}", hex(&sealed))
+        let sealed = hex(&sealed);
+        let mac = self.seal_mac(user_id, &nonce, &sealed);
+        format!("v2:{nonce}:{sealed}:{mac}")
     }
 
+    /// Opens `v2` secrets, and `v1` ones sealed before 0.9.1 (no MAC).
     fn open(&self, user_id: i64, sealed: &str) -> Option<Vec<u8>> {
-        let mut parts = sealed.splitn(3, ':');
-        if parts.next()? != "v1" {
-            return None;
-        }
+        let mut parts = sealed.splitn(4, ':');
+        let version = parts.next()?;
         let nonce = parts.next()?;
-        let bytes = unhex(parts.next()?)?;
+        let body = parts.next()?;
+        match (version, parts.next()) {
+            ("v1", None) => {}
+            ("v2", Some(mac)) => {
+                let expected = self.seal_mac(user_id, nonce, body);
+                if !constant_eq(expected.as_bytes(), mac.as_bytes()) {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+        let bytes = unhex(body)?;
         Some(bytes.iter().zip(self.keystream(user_id, nonce)).map(|(a, b)| a ^ b).collect())
+    }
+
+    fn seal_mac(&self, user_id: i64, nonce: &str, sealed: &str) -> String {
+        hmac_hex(&self.config.token_pepper, &format!("totp-mac:{user_id}:{nonce}:{sealed}"))
     }
 
     fn keystream(&self, user_id: i64, nonce: &str) -> Vec<u8> {
