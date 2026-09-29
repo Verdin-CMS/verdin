@@ -237,3 +237,47 @@ async fn roles_can_require_it() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     app.done().await;
 }
+
+#[tokio::test]
+async fn wrong_codes_lock_the_account_across_sign_ins() {
+    let app = App::new(Schema::default()).await;
+    let body = json!({ "email": "ada@example.com", "password": PASSWORD, "firstname": "Ada" });
+    let (_, body) =
+        call(&app, Method::POST, "/admin/api/auth/register-first-admin", Some(body), None).await;
+    let admin = body["data"]["accessToken"].as_str().unwrap().to_owned();
+    let (secret, _, _) = enable_totp(&app, &admin).await;
+    let wrong = |token: String| {
+        let app = &app;
+        async move {
+            call(
+                app,
+                Method::POST,
+                "/admin/api/auth/login/two-factor",
+                Some(json!({ "twoFactorToken": token, "code": "000000" })),
+                None,
+            )
+            .await
+            .0
+        }
+    };
+    // A correct password between tries does not reset the count.
+    for _ in 0..2 {
+        let token =
+            login(&app, "ada@example.com").await["twoFactorToken"].as_str().unwrap().to_owned();
+        assert_eq!(wrong(token.clone()).await, StatusCode::BAD_REQUEST);
+        assert_eq!(wrong(token).await, StatusCode::BAD_REQUEST);
+    }
+    let token = login(&app, "ada@example.com").await["twoFactorToken"].as_str().unwrap().to_owned();
+    assert_eq!(wrong(token.clone()).await, StatusCode::BAD_REQUEST, "the fifth failure locks");
+    let code = verdin_auth::totp_code(&secret, now() + 30).unwrap();
+    let (status, _) = call(
+        &app,
+        Method::POST,
+        "/admin/api/auth/login/two-factor",
+        Some(json!({ "twoFactorToken": token, "code": code })),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "locked: even the right code is refused");
+    app.done().await;
+}

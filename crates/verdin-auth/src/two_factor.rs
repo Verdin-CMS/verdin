@@ -90,8 +90,7 @@ impl AuthService {
     ) -> Result<Login> {
         let methods = self.second_factors(user_id).await?;
         if methods.is_empty() {
-            let user = self.user(user_id).await?;
-            return Ok(Login::Session(self.open_session(user, user_agent).await?));
+            return Ok(Login::Session(self.finish_second_step(user_id, user_agent).await?));
         }
         let issued = OffsetDateTime::now_utc();
         let claims = Claims {
@@ -313,7 +312,19 @@ impl AuthService {
         Ok(())
     }
 
+    /// Confirms the admin's password before a sensitive change; wrong ones count towards
+    /// the lockout (a stolen session cannot guess it).
     pub(super) async fn confirm_password(&self, user_id: i64, password: &str) -> Result<()> {
+        self.ensure_not_locked(user_id).await?;
+        let confirmed = self.check_password_of(user_id, password).await?;
+        if !confirmed {
+            self.record_failed_login(user_id).await?;
+            return Err(AuthError::Validation("the password is not correct".into()));
+        }
+        Ok(())
+    }
+
+    async fn check_password_of(&self, user_id: i64, password: &str) -> Result<bool> {
         let rows = self
             .db
             .queries()
@@ -324,10 +335,7 @@ impl AuthService {
             )
             .await?;
         let hash = rows.into_iter().next().and_then(|row| row.into_iter().next()).and_then(text);
-        match hash {
-            Some(hash) if verify_password(password, &hash) => Ok(()),
-            _ => Err(AuthError::Validation("the password is not correct".into())),
-        }
+        Ok(hash.is_some_and(|hash| verify_password(password, &hash)))
     }
 
     async fn check_totp(&self, user_id: i64, code: &str) -> Result<bool> {

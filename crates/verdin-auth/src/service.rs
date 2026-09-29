@@ -437,7 +437,6 @@ impl AuthService {
         let id = int(&row[0]);
         let hash = text(std::mem::replace(&mut row[1], V::Null(K::Text))).unwrap_or_default();
         let active = matches!(row[2], V::Bool(true));
-        let failed = row[3].as_i64().unwrap_or_default() as i32;
         let now = now();
         if let V::DateTime(until) = row[4]
             && until > now
@@ -447,58 +446,55 @@ impl AuthService {
         }
 
         if !verify_password(password, &hash) {
-            self.count_failed_login(id, failed).await?;
+            self.record_failed_login(id).await?;
             return Err(AuthError::InvalidCredentials);
         }
         if !active {
             return Err(AuthError::InvalidCredentials);
         }
 
-        let mut sql = format!("UPDATE {ADMIN_USERS} SET failed_logins = 0, locked_until = NULL");
-        let mut params = Vec::new();
         if needs_rehash(&hash) {
-            sql.push_str(", password_hash = ?");
-            params.push(V::Text(hash_password(password)));
+            self.db
+                .queries()
+                .execute(
+                    &format!("UPDATE {ADMIN_USERS} SET password_hash = ? WHERE id = ?"),
+                    &[V::Text(hash_password(password)), V::BigInt(id)],
+                )
+                .await?;
         }
-        sql.push_str(" WHERE id = ?");
-        params.push(V::BigInt(id));
-        self.db.queries().execute(&sql, &params).await?;
+        // Failures are forgiven once the sign-in is complete (after the second factor).
         self.after_password(id, user_agent).await
     }
 
-    async fn count_failed_login(&self, id: i64, failed: i32) -> Result<()> {
-        let failed = failed + 1;
-        let (failed, locked_until) = if failed >= self.config.max_failed_logins {
-            tracing::warn!(user = id, "admin account locked after repeated failed logins");
-            (0, V::DateTime(now() + self.config.lockout))
-        } else {
-            (failed, V::Null(K::DateTime))
-        };
-        self.db
-            .queries()
-            .execute(
-                &format!(
-                    "UPDATE {ADMIN_USERS} SET failed_logins = ?, locked_until = ? WHERE id = ?"
-                ),
-                &[V::Int(failed), locked_until, V::BigInt(id)],
-            )
-            .await?;
-        Ok(())
-    }
-
-    /// A wrong second factor counts like a wrong password.
+    /// Counts a failed sign-in (a wrong password or second factor); locks the account at
+    /// `max_failed_logins`. The increment is atomic.
     pub(crate) async fn record_failed_login(&self, id: i64) -> Result<()> {
-        let rows = self
-            .db
-            .queries()
+        let mut tx = self.db.begin().await?;
+        tx.execute(
+            &format!("UPDATE {ADMIN_USERS} SET failed_logins = failed_logins + 1 WHERE id = ?"),
+            &[V::BigInt(id)],
+        )
+        .await?;
+        let rows = tx
             .fetch_all(
                 &format!("SELECT failed_logins FROM {ADMIN_USERS} WHERE id = ?"),
                 &[V::BigInt(id)],
                 &[K::Int],
             )
             .await?;
-        let failed = rows.first().and_then(|row| row[0].as_i64()).unwrap_or_default() as i32;
-        self.count_failed_login(id, failed).await
+        let failed = rows.first().and_then(|row| row[0].as_i64()).unwrap_or_default();
+        if failed >= i64::from(self.config.max_failed_logins) {
+            tracing::warn!(user = id, "admin account locked after repeated failed sign-ins");
+            tx.execute(
+                &format!(
+                    "UPDATE {ADMIN_USERS} SET failed_logins = 0, locked_until = ? WHERE id = ?"
+                ),
+                &[V::DateTime(now() + self.config.lockout), V::BigInt(id)],
+            )
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Locked accounts cannot finish signing in either.
