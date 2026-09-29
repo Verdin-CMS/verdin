@@ -132,6 +132,13 @@ async fn totp_and_recovery_codes() {
     assert_eq!(status, StatusCode::OK, "{session}");
     assert!(session["data"]["accessToken"].is_string());
     assert_eq!(session["data"]["user"]["twoFactor"], true);
+    // The sign-in is audited once the second factor is accepted, with who signed in.
+    let (_, logs) =
+        call(&app, Method::GET, "/admin/api/audit-logs?action=admin.login", None, Some(&admin))
+            .await;
+    let logins = logs["data"].as_array().unwrap();
+    assert!(!logins.is_empty(), "{logs}");
+    assert!(logins.iter().all(|entry| entry["actor"]["email"] == "ada@example.com"), "{logs}");
     let (status, session) = second(codes[0].to_uppercase()).await;
     assert_eq!(status, StatusCode::OK, "recovery codes work once, in any case: {session}");
     let (status, _) = second(codes[0].clone()).await;

@@ -178,6 +178,8 @@ impl FileListener for Audit {
 fn ignored(path: &str) -> bool {
     const PREFIXES: &[&str] = &[
         "/auth/refresh",
+        // The first step of a passkey sign-in; the sign-in itself is `/auth/login/two-factor`.
+        "/auth/login/passkey/options",
         "/users/me/preferences",
         "/content/",
         "/upload/",
@@ -227,7 +229,12 @@ pub(crate) async fn middleware(
         return response;
     }
     let route = route.unwrap_or_default();
-    let login = route == "/auth/login" || route == "/auth/register-first-admin";
+    // Sign-ins, recorded once the session exists: after the password, or after the second
+    // factor when the account has one (the password step then answers without a user).
+    let login = matches!(
+        route.as_str(),
+        "/auth/login" | "/auth/login/two-factor" | "/auth/register-first-admin"
+    );
     let (response, actor_id) = if login {
         // The session is created by this request: read the user from the answer.
         let (parts, body) = response.into_parts();
@@ -245,6 +252,9 @@ pub(crate) async fn middleware(
         };
         (response, id)
     };
+    if login && actor_id.is_none() {
+        return response;
+    }
     // `/roles/{id}` with `/roles/3`: the last parameter is the subject.
     let segments: Vec<&str> = route.split('/').collect();
     let values: Vec<&str> = path.split('/').collect();
