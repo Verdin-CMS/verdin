@@ -393,16 +393,19 @@ class SlugStats extends HTMLElement {
     // Admin API, with the admin's session.
     context.fetch('auth/me').then((response) => response.json())
       .then(({ data }) => { this.textContent = `Hello ${data.firstname ?? data.email}`; });
-    // The plugin's own route: a plain request (the admin's session is not a content API token).
-    fetch(`${context.apiBase}/plugins/slugs/stats`).then((response) => response.json())
+    // The plugin's own route, on the content API: sent without the admin's session.
+    context.fetch(`${context.apiBase}/plugins/slugs/stats`).then((response) => response.json())
       .then((stats) => { this.title = JSON.stringify(stats); });
   }
 }
 customElements.define('slugs-stats', SlugStats);
 ```
 
-`context.fetch` sends the admin's session token, which the content API does not accept:
-call content API paths, your plugin's routes included, with plain `fetch`.
+`context.fetch` sends the admin's session with admin API requests only. Paths under
+`context.apiBase` (the content API, your plugin's routes included) go without it, since
+the content API does not accept admin sessions; they are answered with the public role's
+permissions. Before 0.10 it sent the session there too and those requests failed; widgets
+written for 0.9 that call plain `fetch` keep working.
 
 ### Custom fields
 

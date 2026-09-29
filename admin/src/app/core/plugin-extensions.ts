@@ -21,7 +21,11 @@ export interface PluginContext {
   apiBase: string;
   /** The admin API base (e.g. `/admin/api`). */
   adminApiBase: string;
-  /** `fetch` with the admin's credentials; relative paths resolve against `adminApiBase`. */
+  /**
+   * `fetch` for the admin API with the admin's credentials; relative paths resolve against
+   * `adminApiBase`. Content API paths (under `apiBase`, plugin routes included) are sent
+   * without them: the content API does not accept admin sessions.
+   */
   fetch: (path: string, init?: RequestInit) => Promise<Response>;
 }
 
@@ -88,14 +92,16 @@ export function collectExtensions(
  */
 export function resolvePluginPath(path: string, adminApiBase: string, apiBase: string): string {
   if (/^[a-z][a-z\d+.-]*:/i.test(path)) return path;
-  const under = (base: string) => {
-    const clean = base.replace(/\/+$/, '');
-    if (!clean || !path.startsWith(clean)) return false;
-    const rest = path.slice(clean.length);
-    return rest === '' || /^[/?#]/.test(rest);
-  };
-  if (under(adminApiBase) || under(apiBase)) return path;
+  if (isUnder(path, adminApiBase) || isUnder(path, apiBase)) return path;
   return `${adminApiBase.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
+
+/** Whether `path` is `base` or below it. */
+function isUnder(path: string, base: string): boolean {
+  const clean = base.replace(/\/+$/, '');
+  if (!clean || !path.startsWith(clean)) return false;
+  const rest = path.slice(clean.length);
+  return rest === '' || /^[/?#]/.test(rest);
 }
 
 /** Waits (up to `timeout` ms) for a custom element to be defined. */
@@ -211,7 +217,12 @@ export class PluginExtensions {
     return {
       apiBase,
       adminApiBase,
-      fetch: (path, init) => this.auth.fetch(resolvePluginPath(path, adminApiBase, apiBase), init),
+      fetch: (path, init) => {
+        const url = resolvePluginPath(path, adminApiBase, apiBase);
+        return isUnder(url, apiBase) && !isUnder(url, adminApiBase)
+          ? fetch(url, init)
+          : this.auth.fetch(url, init);
+      },
     };
   }
 }
