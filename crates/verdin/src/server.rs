@@ -29,9 +29,36 @@ pub fn router(state: AppState, nested: &[(String, Router)]) -> Router {
                 .get("x-request-id")
                 .and_then(|value| value.to_str().ok())
                 .unwrap_or_default();
-            tracing::info_span!("request", method = %request.method(), uri = %request.uri(), request_id)
+            tracing::info_span!("request", method = %request.method(), uri = %loggable_uri(request.uri()), request_id)
         }))
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+}
+
+/// The URI with the values of secret-looking query parameters (tokens, codes…) hidden.
+fn loggable_uri(uri: &axum::http::Uri) -> String {
+    // Deploy callbacks carry their secret in the path.
+    let path = match uri.path().split_once("/deploy/callback/") {
+        Some((before, rest)) => {
+            let id = rest.split('/').next().unwrap_or_default();
+            format!("{before}/deploy/callback/{id}/[hidden]")
+        }
+        None => uri.path().to_owned(),
+    };
+    let Some(query) = uri.query() else { return path };
+    const SECRET: &[&str] =
+        &["token", "secret", "code", "state", "password", "key", "signature", "jwt", "ticket"];
+    let parts: Vec<String> = query
+        .split('&')
+        .map(|pair| match pair.split_once('=') {
+            Some((name, _))
+                if SECRET.iter().any(|word| name.to_ascii_lowercase().contains(word)) =>
+            {
+                format!("{name}=[hidden]")
+            }
+            _ => pair.to_owned(),
+        })
+        .collect();
+    format!("{path}?{}", parts.join("&"))
 }
 
 /// Liveness: the process is up and serving HTTP.
@@ -60,6 +87,20 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
     use verdin_db::ConnectOptions;
+
+    #[test]
+    fn hides_secrets_in_logged_uris() {
+        let uri = |text: &str| loggable_uri(&text.parse().unwrap());
+        assert_eq!(
+            uri("/api/connect/github/callback?code=abc&state=xyz&page=2"),
+            "/api/connect/github/callback?code=[hidden]&state=[hidden]&page=2"
+        );
+        assert_eq!(
+            uri("/admin/api/deploy/callback/3/s3cr3t"),
+            "/admin/api/deploy/callback/3/[hidden]"
+        );
+        assert_eq!(uri("/api/articles?sort=title"), "/api/articles?sort=title");
+    }
 
     async fn app() -> (Router, Database) {
         let db = Database::connect("sqlite::memory:", &ConnectOptions::default()).await.unwrap();
