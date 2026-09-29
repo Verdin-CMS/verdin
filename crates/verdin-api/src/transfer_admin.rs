@@ -404,8 +404,14 @@ async fn import(
 ) -> ApiResult {
     let state = localized(state, raw.as_deref())?;
     // Importing needs at least one of creating or updating.
-    let create = content_grant(&state, &headers, &uid, actions::CONTENT_CREATE).await.ok();
-    let update = content_grant(&state, &headers, &uid, actions::CONTENT_UPDATE).await.ok();
+    // Only a refusal means "not this one"; other errors (the database…) are errors.
+    let allowed = |result: Result<_, ApiError>| match result {
+        Ok(grant) => Ok(Some(grant)),
+        Err(ApiError::Forbidden) => Ok(None),
+        Err(error) => Err(error),
+    };
+    let create = allowed(content_grant(&state, &headers, &uid, actions::CONTENT_CREATE).await)?;
+    let update = allowed(content_grant(&state, &headers, &uid, actions::CONTENT_UPDATE).await)?;
     let principal = match (&create, &update) {
         (Some((principal, _)), _) | (None, Some((principal, _))) => principal.clone(),
         (None, None) => return Err(ApiError::Forbidden),
