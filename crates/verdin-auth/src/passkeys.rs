@@ -480,14 +480,15 @@ impl PublicKey {
                 let n = data(-1).ok_or_else(|| invalid("RSA modulus"))?;
                 let e = data(-2).ok_or_else(|| invalid("RSA exponent"))?;
                 let n_value = num_bigint::BigUint::from_bytes_be(n);
-                if n_value.bits() < 2048 {
-                    return Err(invalid("RSA keys need at least 2048 bits"));
+                if !(2048..=8192).contains(&n_value.bits()) {
+                    return Err(invalid("RSA keys have 2048 to 8192 bits"));
                 }
-                Ok(Self::Rs256 {
-                    bytes: n_value.bits().div_ceil(8) as usize,
-                    n: n_value,
-                    e: num_bigint::BigUint::from_bytes_be(e),
-                })
+                let e = num_bigint::BigUint::from_bytes_be(e);
+                // Odd, at least 3 and at most 32 bits (65537 in practice).
+                if e.bits() > 32 || e < num_bigint::BigUint::from(3u8) || !e.bit(0) {
+                    return Err(invalid("RSA exponent"));
+                }
+                Ok(Self::Rs256 { bytes: n_value.bits().div_ceil(8) as usize, n: n_value, e })
             }
             _ => Err(invalid("unsupported key type (ES256, EdDSA and RS256 are)")),
         }
