@@ -73,7 +73,15 @@ async fn may_read(state: &AdminState, user_id: i64, entry: &Entry) -> bool {
     }
     let Ok(permissions) = state.auth.permission_set(user_id).await else { return false };
     let locale = (!entry.locale.is_empty()).then_some(entry.locale.as_str());
-    permissions.content_in(actions::CONTENT_READ, &entry.uid, locale) != Grant::None
+    match permissions.content_in(actions::CONTENT_READ, &entry.uid, locale) {
+        Grant::None => false,
+        Grant::Own => state
+            .service
+            .created_by(&entry.uid, &entry.document_id)
+            .await
+            .is_ok_and(|creator| creator == Some(user_id)),
+        _ => true,
+    }
 }
 
 fn entry_url(state: &AdminState, entry: &Entry) -> String {
