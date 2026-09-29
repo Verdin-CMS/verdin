@@ -38,6 +38,9 @@ fn schema() -> Schema {
             "articles": { "type": "relation", "relation": "oneToMany", "target": "article", "mappedBy": "category" }
         })),
         ct("tag", "tags", false, json!({ "label": { "type": "string" } })),
+        Source::content_type("page", json!({ "kind": "collectionType", "singularName": "page", "pluralName": "pages",
+            "displayName": "Page", "pluginOptions": { "i18n": { "localized": true } },
+            "attributes": { "title": { "type": "string" } } }).to_string()),
         Source::content_type("homepage", json!({ "kind": "singleType", "singularName": "homepage", "pluralName": "homepages",
             "displayName": "Homepage", "attributes": { "headline": { "type": "string" } } }).to_string()),
         Source::component("shared", "seo", json!({ "displayName": "Seo", "attributes": { "metaTitle": { "type": "string" } } }).to_string()),
@@ -369,5 +372,39 @@ async fn plugin_fields() {
     assert_eq!(data["echo"]["actor"]["kind"], "token");
     let data = app.ok("{ articles { title } }", json!({})).await;
     assert!(data["articles"].is_array(), "content type fields win over plugins");
+    app.done().await;
+}
+
+#[tokio::test]
+async fn localized_types_expose_their_locale() {
+    let app = App::new(verdin_graphql::Options::default()).await;
+    let data = app
+        .ok(
+            r#"{ page: __type(name: "Page") { fields { name } }
+                 tag: __type(name: "Tag") { fields { name } }
+                 mutations: __type(name: "Mutation") { fields { name args { name } } } }"#,
+            json!({}),
+        )
+        .await;
+    let names = |kind: &str| -> Vec<String> {
+        data[kind]["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["name"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert!(names("page").contains(&"locale".to_owned()), "{data}");
+    assert!(!names("tag").contains(&"locale".to_owned()), "only localized types have it");
+    let delete = data["mutations"]["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|field| field["name"] == "deletePage")
+        .unwrap();
+    assert!(
+        delete["args"].as_array().unwrap().iter().any(|arg| arg["name"] == "locale"),
+        "{delete}"
+    );
     app.done().await;
 }

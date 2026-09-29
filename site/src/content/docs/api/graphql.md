@@ -62,6 +62,7 @@ PascalCase (`article` → `Article`, `blog-post` → `BlogPost`), with:
 - `documentId: ID!`
 - every attribute that is not `private`
 - `createdAt`, `updatedAt` and `publishedAt`, as `DateTime`
+- `locale: String`, on localized types
 
 | Attribute | GraphQL type |
 | --- | --- |
@@ -153,12 +154,12 @@ relations is one batched query. `pageInfo` of `articles_connection` counts every
 | --- | --- |
 | `createArticle(data: ArticleInput!, status, locale)` | `Article` |
 | `updateArticle(documentId: ID!, data: ArticleInput!, status, locale)` | `Article` |
-| `deleteArticle(documentId: ID!)` | `DeleteMutationResponse` (`{ documentId }`) |
+| `deleteArticle(documentId: ID!, locale)` | `DeleteMutationResponse` (`{ documentId }`) |
 
 | Single type `homepage` | Returns |
 | --- | --- |
 | `updateHomepage(data: HomepageInput!, status, locale)` | `Homepage`; the first update creates the document |
-| `deleteHomepage` | `DeleteMutationResponse` |
+| `deleteHomepage(locale)` | `DeleteMutationResponse` |
 
 ```graphql
 mutation {
@@ -178,7 +179,8 @@ mutation {
 - Inputs mirror the attributes: relations take `ID` or `[ID!]` (`documentId`s), media take
   file ids, components their `…Input` type, and dynamic zone items are `JSON` objects with a
   `__component`. Inverse (`mappedBy`) relations are not in the inputs.
-- `delete` mutations act on the default locale.
+- `delete` mutations remove the version in `locale` (the default locale without it), like
+  `DELETE /api/articles/{documentId}?locale=fr`.
 - The same validation runs as on REST.
 
 ## Errors
@@ -227,6 +229,6 @@ related documents per document and relation, and at most 100 filter conditions. 
 ## Compared with Strapi
 
 Type, query and mutation names, `_connection` queries with `nodes` and `pageInfo`,
-`documentId` arguments, `status` and `locale` follow Strapi v5's GraphQL plugin. Types do not
-expose `id` or `locale` fields, and there are no GraphQL subscriptions; for live updates, use
+`documentId` arguments, `status` and `locale` follow Strapi v5's GraphQL plugin, and localized types
+have a `locale` field. Types do not expose `id`, and there are no GraphQL subscriptions; for live updates, use
 the [realtime API](/api/realtime/).

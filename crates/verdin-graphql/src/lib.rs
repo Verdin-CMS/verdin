@@ -191,6 +191,11 @@ pub fn schema_with(
             TypeRef::named_nn(TypeRef::ID),
             Shape::Scalar,
         ));
+        if content_type.localized {
+            // Which version the document is, as in REST (`locale` on every localized entry).
+            object =
+                object.field(json_field("locale", TypeRef::named(TypeRef::STRING), Shape::Scalar));
+        }
         let mut input = InputObject::new(format!("{type_name}Input"));
         let mut filters = InputObject::new(format!("{type_name}FiltersInput"))
             .field(InputValue::new("documentId", TypeRef::named("IDFilterInput")));
@@ -352,7 +357,9 @@ pub fn schema_with(
                             }
                         },
                     )
-                    .argument(InputValue::new("documentId", TypeRef::named_nn(TypeRef::ID))),
+                    .argument(InputValue::new("documentId", TypeRef::named_nn(TypeRef::ID)))
+                    // One locale's version (the default locale without it), as in REST.
+                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
                 );
             }
         } else {
@@ -391,17 +398,20 @@ pub fn schema_with(
             }
             if allowed("delete") {
                 mutations += 1;
-                mutation = mutation.field(Field::new(
-                    format!("delete{type_name}"),
-                    TypeRef::named("DeleteMutationResponse"),
-                    {
-                        let uid = uid.clone();
-                        move |ctx| {
+                mutation = mutation.field(
+                    Field::new(
+                        format!("delete{type_name}"),
+                        TypeRef::named("DeleteMutationResponse"),
+                        {
                             let uid = uid.clone();
-                            FieldFuture::new(async move { delete(ctx, &uid).await })
-                        }
-                    },
-                ));
+                            move |ctx| {
+                                let uid = uid.clone();
+                                FieldFuture::new(async move { delete(ctx, &uid).await })
+                            }
+                        },
+                    )
+                    .argument(InputValue::new("locale", TypeRef::named(TypeRef::STRING))),
+                );
             }
         }
     }
