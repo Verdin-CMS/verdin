@@ -47,6 +47,8 @@ pub mod search;
 pub mod usage;
 /// Base table alias in reads.
 const BASE: &str = "t0";
+/// Most related entries populated per entry and relation (counts are exact).
+pub const MAX_POPULATED: usize = 1000;
 /// Largest `IN (…)` list per statement.
 pub(crate) const IN_CHUNK: usize = 500;
 
@@ -456,14 +458,28 @@ impl DocumentService {
                 let target = self.registry.get(&relation.target)?;
                 let default = SubQuery::default();
                 let sub = item.query.as_ref().unwrap_or(&default);
-                let target_fields = public_fields(target, sub.fields.as_deref(), &sub.populate);
+                // Counts need no fields and no nested populate.
+                let target_fields = if sub.count {
+                    public_fields(target, Some(&[]), &[])
+                } else {
+                    public_fields(target, sub.fields.as_deref(), &sub.populate)
+                };
+                let nested: &[Populate] = if sub.count { &[] } else { &sub.populate };
                 let target_state = state_for(target, status);
 
                 // Related documents per source row id.
                 let mut related: HashMap<i64, Vec<Json>> = HashMap::new();
                 if relation.owner {
                     let ids: Vec<i64> = docs.iter().map(|doc| doc.id).collect();
-                    let links = self.links_of_sources(&relation.link_table, &ids).await?;
+                    let mut links = self.links_of_sources(&relation.link_table, &ids).await?;
+                    if !sub.count {
+                        let mut per_source: HashMap<i64, usize> = HashMap::new();
+                        links.retain(|(source, _)| {
+                            let seen = per_source.entry(*source).or_default();
+                            *seen += 1;
+                            *seen <= MAX_POPULATED
+                        });
+                    }
                     let mut wanted: Vec<String> = Vec::new();
                     let mut seen = HashSet::new();
                     for (_, target_id) in &links {
@@ -485,8 +501,7 @@ impl DocumentService {
                             None,
                         )
                         .await?;
-                    self.populate_relations(target, &mut targets, &sub.populate, status, denied)
-                        .await?;
+                    self.populate_relations(target, &mut targets, nested, status, denied).await?;
                     let order: HashMap<String, usize> = targets
                         .iter()
                         .enumerate()
@@ -527,7 +542,7 @@ impl DocumentService {
                         .await?;
                     let (keys, mut owner_docs): (Vec<String>, Vec<Doc>) =
                         owners.into_iter().unzip();
-                    self.populate_relations(target, &mut owner_docs, &sub.populate, status, denied)
+                    self.populate_relations(target, &mut owner_docs, nested, status, denied)
                         .await?;
                     let mut by_target: HashMap<String, Vec<Json>> = HashMap::new();
                     for (key, doc) in keys.into_iter().zip(owner_docs) {
