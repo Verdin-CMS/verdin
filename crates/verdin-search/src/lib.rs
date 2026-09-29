@@ -29,7 +29,7 @@ use verdin_content::{DocumentService, SearchIndex, SearchText};
 
 const TOKENIZER: &str = "verdin";
 /// Bump when the index layout changes: existing indexes are rebuilt.
-const FORMAT: u32 = 1;
+const FORMAT: u32 = 2;
 const FINGERPRINT: &str = "verdin-fingerprint";
 /// Rows read per page while rebuilding.
 const PAGE: i64 = 500;
@@ -492,6 +492,16 @@ fn fingerprint(service: &DocumentService) -> String {
         })
         .collect();
     types.sort();
+    // Private component fields are left out of the words.
+    for (uid, component) in &service.registry().schema.components {
+        let private: Vec<&str> = component
+            .attributes
+            .iter()
+            .filter(|(_, attribute)| attribute.private)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        types.push(format!("{uid}|{}", private.join(",")));
+    }
     let digest = Sha256::digest(format!("{FORMAT}\n{}", types.join("\n")).as_bytes());
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
