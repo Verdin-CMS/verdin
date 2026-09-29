@@ -139,6 +139,13 @@ fn summary(row: &Row, authors: &HashMap<i64, Value>) -> Value {
     })
 }
 
+/// The admin state reading and writing in `locale` (the default without it).
+fn in_locale(state: &AdminState, locale: Option<String>) -> AdminState {
+    let mut scoped = state.clone();
+    scoped.service = state.service.in_locale(locale);
+    scoped
+}
+
 /// `GET /history/{uid}/{documentId}?page=&pageSize=`: newest first.
 async fn versions(
     State(state): State<AdminState>,
@@ -147,16 +154,18 @@ async fn versions(
     headers: HeaderMap,
 ) -> ApiResult {
     let history = service(&state)?;
-    let (principal, grant) = content_grant(&state, &headers, &uid, actions::CONTENT_READ).await?;
-    state.service.created_by(&uid, &document_id).await?;
-    ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
-    let page = query.page.unwrap_or(1).max(1);
-    let size = query.page_size.unwrap_or(20).clamp(1, 100);
     if let Some(code) =
         query.locale.as_deref().filter(|code| !verdin_content::locales::valid_code(code))
     {
         return Err(ApiError::BadRequest(format!("invalid locale `{code}`")));
     }
+    // Per-locale permissions apply to the locale listed.
+    let scoped = in_locale(&state, query.locale.clone());
+    let (principal, grant) = content_grant(&scoped, &headers, &uid, actions::CONTENT_READ).await?;
+    state.service.created_by(&uid, &document_id).await?;
+    ensure_owner(&state, &uid, &document_id, &principal, grant).await?;
+    let page = query.page.unwrap_or(1).max(1);
+    let size = query.page_size.unwrap_or(20).clamp(1, 100);
     let model = state.service.registry().get(&uid)?;
     let locale = state.service.in_locale(query.locale.clone()).locale_of(model)?;
     let params = [V::Text(uid.clone()), V::Text(document_id.clone()), V::Text(locale.clone())];
@@ -167,7 +176,7 @@ async fn versions(
             &format!(
                 "SELECT {COLUMNS} FROM {HISTORY_VERSIONS} WHERE content_type = ? AND document_id = ? \
                  AND locale = ? ORDER BY id DESC LIMIT {size} OFFSET {}",
-                (page - 1) * size
+                (page - 1).saturating_mul(size)
             ),
             &params,
             &KINDS,
@@ -243,8 +252,9 @@ async fn version(
 ) -> ApiResult {
     let history = service(&state)?;
     let mut row = load(history, &raw).await?;
+    let scoped = in_locale(&state, (!row.locale.is_empty()).then(|| row.locale.clone()));
     let (principal, grant) =
-        content_grant(&state, &headers, &row.uid, actions::CONTENT_READ).await?;
+        content_grant(&scoped, &headers, &row.uid, actions::CONTENT_READ).await?;
     state.service.created_by(&row.uid, &row.document_id).await?;
     ensure_owner(&state, &row.uid, &row.document_id, &principal, grant).await?;
     let mut snapshot = row.data.take().unwrap_or(Value::Object(Map::new()));
@@ -279,8 +289,9 @@ async fn restore(
 ) -> ApiResult {
     let history = service(&state)?;
     let row = load(history, &raw).await?;
+    let scoped = in_locale(&state, (!row.locale.is_empty()).then(|| row.locale.clone()));
     let (principal, grant) =
-        content_grant(&state, &headers, &row.uid, actions::CONTENT_UPDATE).await?;
+        content_grant(&scoped, &headers, &row.uid, actions::CONTENT_UPDATE).await?;
     ensure_owner(&state, &row.uid, &row.document_id, &principal, grant).await?;
     let snapshot = row.data.clone().unwrap_or(Value::Object(Map::new()));
     let service = state.service.in_locale((!row.locale.is_empty()).then(|| row.locale.clone()));

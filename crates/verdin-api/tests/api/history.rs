@@ -246,3 +246,97 @@ async fn permissions_and_retention() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     app.done().await;
 }
+
+#[tokio::test]
+async fn history_follows_locale_permissions() {
+    let schema = Schema::parse(&[Source::content_type(
+        "note",
+        json!({ "kind": "collectionType", "singularName": "note", "pluralName": "notes",
+                "displayName": "Note", "pluginOptions": { "i18n": { "localized": true } },
+                "attributes": { "text": { "type": "string" } } })
+        .to_string(),
+    )])
+    .unwrap();
+    let app = App::new(schema).await;
+    let admin = register(&app).await;
+    let call = |method: Method, uri: String, body: Option<Value>, who: String| {
+        let app = &app;
+        async move { app.call_as(method, &uri, body, As::Bearer(&who)).await }
+    };
+    call(
+        Method::POST,
+        "/admin/api/i18n/locales".into(),
+        Some(json!({ "code": "fr", "name": "Français" })),
+        admin.clone(),
+    )
+    .await;
+    let (_, created) = call(
+        Method::POST,
+        "/admin/api/content/api::note".into(),
+        Some(json!({ "data": { "text": "hello" } })),
+        admin.clone(),
+    )
+    .await;
+    let id = created["data"]["documentId"].as_str().unwrap().to_owned();
+    call(
+        Method::PUT,
+        format!("/admin/api/content/api::note/{id}?locale=fr"),
+        Some(json!({ "data": { "text": "bonjour" } })),
+        admin.clone(),
+    )
+    .await;
+    let (_, role) = call(
+        Method::POST,
+        "/admin/api/roles".into(),
+        Some(json!({ "code": "en-editor", "name": "English editor", "permissions": [
+            { "action": "content.read", "subject": "api::note", "locales": ["en"] },
+            { "action": "content.update", "subject": "api::note", "locales": ["en"] }
+        ] })),
+        admin.clone(),
+    )
+    .await;
+    call(
+        Method::POST,
+        "/admin/api/users".into(),
+        Some(json!({ "email": "ed@example.com", "password": "correct horse 1", "roles": [role["data"]["id"]] })),
+        admin.clone(),
+    )
+    .await;
+    let (_, login) = app
+        .call_as(
+            Method::POST,
+            "/admin/api/auth/login",
+            Some(json!({ "email": "ed@example.com", "password": "correct horse 1" })),
+            As::Anonymous,
+        )
+        .await;
+    let ed = login["data"]["accessToken"].as_str().unwrap().to_owned();
+
+    let (status, _) =
+        call(Method::GET, format!("/admin/api/history/api::note/{id}"), None, ed.clone()).await;
+    assert_eq!(status, StatusCode::OK, "English history");
+    let (status, _) =
+        call(Method::GET, format!("/admin/api/history/api::note/{id}?locale=fr"), None, ed.clone())
+            .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "French history");
+    let (_, french) = call(
+        Method::GET,
+        format!("/admin/api/history/api::note/{id}?locale=fr"),
+        None,
+        admin.clone(),
+    )
+    .await;
+    let version = french["data"][0]["id"].clone();
+    let (status, _) =
+        call(Method::GET, format!("/admin/api/history/versions/{version}"), None, ed.clone()).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = call(
+        Method::POST,
+        format!("/admin/api/history/versions/{version}/restore"),
+        None,
+        ed.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    app.done().await;
+}
