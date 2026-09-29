@@ -1,0 +1,116 @@
+---
+title: Running several instances
+description: Run several Verdin instances of one project behind a load balancer — what they share through the database, what stays per instance, and the settings to change.
+sidebar:
+  order: 8
+  label: Several instances
+---
+
+import Diagram from '../../../components/Diagram.astro';
+
+Verdin keeps its state in the database, so you can run several instances of the same
+project behind a load balancer for availability or load. This page lists what the
+instances share, what each one keeps to itself, and the settings that matter.
+
+<Diagram
+  caption="Instances share the database and the media storage; caches, rate limits and event streams stay in each instance."
+  code={`flowchart LR
+  LB[Load balancer] --> A[Instance 1]
+  LB --> B[Instance 2]
+  LB --> C[Instance 3]
+  A --> DB[(Database)]
+  B --> DB
+  C --> DB
+  A --> S3[(S3 media)]
+  B --> S3
+  C --> S3`}
+/>
+
+## Checklist
+
+- **A shared database.** PostgreSQL, MySQL or MariaDB. SQLite is a file on one machine
+  and does not work with several instances.
+- **The same configuration everywhere.** Every instance uses the same `verdin.toml`,
+  schema files and secrets (`VERDIN_ADMIN_JWT_SECRET`, `VERDIN_TOKEN_PEPPER`,
+  `VERDIN_SSO_<ID>_SECRET`…). With different secrets, sessions and API tokens made on
+  one instance are refused by the others.
+- **Production mode.** Run `verdin start`, not `verdin dev`. Change the schema in
+  development, commit it, and migrate once per deploy.
+- **Shared media storage.** Use the S3 provider (`[upload] provider = { name = "s3", … }`),
+  or mount the same volume on every instance for the local provider.
+- **Health checks.** Point the load balancer at `GET /_ready`, which answers `503` when
+  the database cannot be reached. `GET /_health` only says the process is up; use it for
+  liveness.
+- **Plugin jobs on one instance.** Set `[plugins].run_jobs = false` on every instance but
+  one; otherwise each instance runs the scheduled jobs.
+- **Metrics per instance.** With `[metrics].enabled = true`, each instance serves its own
+  `/_metrics`; scrape each one.
+
+## Migrations with several instances
+
+`verdin start --migrate` is safe to run on every instance at once. Each migration run
+holds a lock in the database (an advisory lock on PostgreSQL, `GET_LOCK` on MySQL and
+MariaDB, waiting up to 60 seconds), so the first instance applies the steps and the
+others find the database up to date.
+
+During a rolling deploy, instances of the old version keep running against the
+migrated database for a while. Safe steps create tables, add nullable or defaulted
+columns and indexes, widen text columns or add enum values, which the old version
+does not notice. Apply risky or destructive steps (`verdin migrate apply --allow
+risky|destructive`) in a separate deploy, once no instance of the old schema needs the
+data. See [Schema migrations](/concepts/schema-migrations/).
+
+## What is shared
+
+| What | How |
+| --- | --- |
+| Admin sessions, API tokens, permissions | In the database; no sticky sessions needed. |
+| Feature switches, plugin switches, locales, review workflows | In the database. Each instance reads them again every `[server].sync_interval_secs` (10 s), so a change made on one instance reaches the others within that delay. |
+| Webhook deliveries | A queue in the database. An instance claims a delivery before sending it, so each goes out once. |
+| Scheduled releases | Claimed in the database before they run, so each runs once. |
+| Daily digest | Each day's run is claimed in the database, so admins get one email. |
+| Passkey challenges | Spent challenges are recorded in the database, so each is answered once across instances. |
+| Audit log pruning | Runs on every instance; deleting old rows twice is harmless. |
+| Plugin key-value store | In the database. |
+
+## What stays on each instance
+
+- **Rate limits** are counted by each instance. With `n` instances, a client can make
+  up to `n` times `[api].public_rate_limit` requests per minute. Enforce a global limit
+  at the load balancer if you need one.
+- **The anonymous response cache** (`[api].cache_ttl_secs`). A write empties the cache
+  of the instance that made it; the others can serve the previous response until their
+  entry expires. Keep the TTL to a few seconds, or `0`.
+- **Realtime events and presence** are those of the instance a client is connected to.
+  Use sticky sessions for the event streams (see [Realtime](/guides/frontend/realtime/)).
+- **The search index** (`[search]`) lives on the instance's disk and follows only the
+  writes that instance makes. Enable it on one instance and route `_q` requests there,
+  or accept that the others fall behind until they restart with an empty index
+  directory.
+- **Image transformations** (`[upload.transforms]`) are cached per instance under
+  `cache_dir`. Put a CDN in front of `/uploads` to share them.
+- **Scheduled plugin jobs**: see `run_jobs` above.
+
+## Settings
+
+```toml title="verdin.toml"
+[server]
+# How often to read settings that other instances changed; 0 turns it off.
+sync_interval_secs = 10
+
+[plugins]
+# Run the plugins' scheduled jobs here (true on one instance only).
+run_jobs = true
+
+[api]
+# Short-lived when each instance keeps its own cache.
+cache_ttl_secs = 5
+```
+
+Set `run_jobs` per instance with `VERDIN_PLUGINS__RUN_JOBS=false`.
+
+## Database connections
+
+Each instance opens up to `[database].pool_max` connections (10 by default). Keep
+`instances × pool_max` below the server's limit, with room for migrations, backups and
+maintenance. PostgreSQL's default limit is 100 connections.
