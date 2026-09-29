@@ -1,8 +1,116 @@
 ---
 title: "Draft and publish"
-description: "Draft and publish in Verdin."
+description: "Documents, their draft and published versions, the states an entry goes through, and how each API reads and writes them."
 sidebar:
   order: 4
 ---
 
-This page is being written for 0.10.
+Draft and publish lets editors work on a document without changing what your site shows,
+then publish when it is ready. This page explains the model: documents, versions, the
+actions that move content between them, and how each API treats them. It works as in
+Strapi v5.
+
+Turn it on per content type in its schema:
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+It is off when `options.draftAndPublish` is missing.
+
+## Documents and versions
+
+A **document** is one entry, identified by its `documentId`. With draft and publish, a
+document has up to two **versions**:
+
+- a **draft**, which every edit changes, and
+- a **published** version, which the content API serves by default.
+
+On a [localized](/concepts/internationalization/) type, each locale has its own draft and
+published version, all sharing the `documentId`.
+
+Types without draft and publish have a single version per locale, which is always
+published: every write changes what readers see.
+
+## States
+
+The admin panel shows each entry's state in the list and the editor:
+
+| State | Draft | Published version | What readers of published content see |
+| --- | --- | --- | --- |
+| **Draft** | yes | none | Nothing: the document is not visible. |
+| **Published** | same as published | yes | The published version. |
+| **Modified** | changed since the last publish | yes | The published version, without the new changes. |
+
+The actions move a document between these states:
+
+| Action | Effect | From → to |
+| --- | --- | --- |
+| Save | Writes the draft. | Draft → Draft, Published → Modified |
+| **Publish** | Copies the draft onto the published version, creating it if needed. | Draft or Modified → Published |
+| **Unpublish** | Deletes the published version; the draft stays. | Published or Modified → Draft |
+| **Discard changes** | Replaces the draft with a copy of the published version. | Modified → Published |
+| Delete | Removes every version (of the requested locale, on localized types). | any → gone |
+
+Publishing runs in one transaction. It checks `required` fields and the type's
+[cross-field rules](/concepts/content-model/#cross-field-validations) on the draft; a failed
+check publishes nothing. Drafts may be incomplete and break those rules until then.
+
+`publishedAt` is `null` on drafts. The published version carries the time it was last
+published.
+
+## Relations and media follow the version
+
+Each version has its own relation and media links, and publishing copies the draft's links
+to the published version. Links point at documents, and are resolved in the version being
+read: a published article shows the published version of its category, and a draft shows the
+category's draft. If the category is unpublished, it disappears from the published article
+until it is published again, without any link being rewritten. See
+[Relations](/concepts/relations/#linked-by-document-not-by-row).
+
+Components and dynamic zones are part of the row, so publishing copies them as they are.
+
+## Reading drafts and published content
+
+| API | Reads by default | To read drafts |
+| --- | --- | --- |
+| [REST](/api/rest/#status) | Published versions | `?status=draft`, which needs the **Read drafts** permission |
+| [GraphQL](/api/graphql/) | Published versions | `status: DRAFT`, with the same permission |
+| [Admin API](/api/admin/) | Drafts | `?status=published` |
+
+Reading drafts is its own permission (`readDrafts`) so that a token that reads your site's
+content cannot read unpublished work. Read-only API tokens never read drafts.
+
+To tell documents apart by whether they were ever published, filter with
+`hasPublishedVersion`: `?status=draft&hasPublishedVersion=false` lists documents that have
+never been published.
+
+## Writing through the APIs
+
+The APIs follow Strapi v5 on writes:
+
+- **REST and GraphQL** `create` and `update` write the draft **and publish it**, unless the
+  request asks for `status=draft` (`status: DRAFT` in GraphQL). A failed publish rolls the
+  whole request back.
+- **The admin panel and admin API** save drafts only. Publishing is always an explicit
+  action.
+
+The REST API also has explicit actions, which Strapi does not offer over REST:
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+They need the **Publish** permission on the type. See [REST API](/api/rest/#actions).
+
+## Other features that publish
+
+- [Releases](/guides/content/releases/) group documents and publish or unpublish them
+  together, now or at a date.
+- [Review workflows](/guides/content/review-workflows/) can require a stage before a
+  document may be published.
+- Publishing and unpublishing send the `entry.publish` and `entry.unpublish`
+  [webhook events](/api/webhooks/) and [realtime events](/api/realtime/). Saves of a draft
+  send `entry.update`, which only callers allowed to read drafts receive over realtime.
