@@ -1,0 +1,101 @@
+---
+title: リダイレクト
+description: 管理パネルでリダイレクトの一覧を管理し、サイトのミドルウェアで適用します。
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**リダイレクト**の機能を使うと、編集者はデプロイなしで古いパスを新しいパスへ転送できます。編集者が管理パネルで一覧を管理し、サイトがそれを取得してリダイレクトで応答します。訪問者が到達するのは CMS ではなくサイトなので、Verdin 自身が訪問者をリダイレクトすることはありません。
+
+## オンにする
+
+**設定 → 機能**で**リダイレクト**をオンにし、**リダイレクトを管理**を選びます（または**設定 → リダイレクト**に移動します）。リダイレクトの管理には**SEO、リダイレクト、メニュー、フォームの管理**の権限（`site.manage`）が必要で、組み込みの Editor ロールはこれを持っています。[権限](/ja/reference/permissions/)を参照してください。
+
+## リダイレクトを追加する
+
+<Steps>
+
+1. **設定 → リダイレクト**で**リダイレクトを追加**を選びます。
+2. **転送元**: `/` で始まる古いパス（例: `/blog/2024/hello`）。
+3. **転送先**: 新しいパス、または別のサイトの完全な `http(s)` の URL。
+4. **種類**: **301・恒久的**、**302・一時的**、**307・一時的（メソッドを維持）**、<strong>308・恒久的（メソッドを維持）</strong>のいずれか。
+5. 保存します。
+
+</Steps>
+
+Verdin は、決して機能しないリダイレクトを拒否します。
+
+- 同じパスからの 2 つ目のリダイレクト。
+- 自分自身にリダイレクトするパス。
+- ループするチェーン（`/a` → `/b` → `/a`）。
+
+多くのリダイレクトを一度に扱うには、`source`、`destination`、`status` の列を持つファイルで **CSVをインポート**を使います。転送元がすでに存在する行は、そのリダイレクトを更新します。**CSVをエクスポート**は同じ形式で書き出すので、他の CMS からの移行やスプレッドシートでの見直しに便利です。
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## サイトで適用する
+
+サイトは、トークンなしで `GET /api/_redirects` から一覧を読みます。
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+レスポンスは `Cache-Control: public, max-age=60` 付きで送られるので、変更は約 1 分以内にサイトに届きます。リクエストのパスを `source` と完全一致で照合してください。
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+静的サイトの場合は、ビルド時に一覧を取得し、ホスティングのリダイレクト用ファイル（Netlify の `_redirects`、Vercel の `vercel.json`、nginx の map）を書き出します。リダイレクトを変更した後に編集者が再ビルドできるよう、[デプロイボタン](/ja/guides/integrations/deploys-and-cdn/)や [Webhook](/ja/guides/integrations/webhooks/) と組み合わせてください。
+
+<Aside type="note">
+API のプレフィックスは [`[api].prefix`](/ja/reference/configuration/) に従います。機能がオフの場合、`/api/_redirects` は `404` を返します。
+</Aside>
+
+## Admin API
+
+管理パネルは、管理者のアクセストークンと `site.manage` を使って、`/admin/api/site/redirects`（`GET`、`POST`）と `/admin/api/site/redirects/{id}`（`PUT`、`DELETE`）を利用します。[Admin API](/ja/api/admin/) を参照してください。

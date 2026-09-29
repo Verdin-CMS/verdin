@@ -1,0 +1,327 @@
+---
+title: "درس: إضافتك الأولى"
+description: ابنِ إضافة Verdin بلغة Rust تملأ وقت قراءة المقالة، وتسجّل عمليات النشر، وتقدّم مسار API صغيرًا.
+sidebar:
+  order: 2
+  label: درس الإضافات
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+في هذا الدرس تبني **reading-time**، إضافة لمثال المدونة. وهي:
+
+- تملأ `readingTime` للمقالة من `body` الخاص بها كلما كُتب الجسم (خطاف
+  before)؛
+- تكتب سطرًا في سجلها عند نشر مقالة (خطاف after)؛
+- تقدّم `GET /api/plugins/reading-time/stats` مع متوسط وقت القراءة (مسار
+  يقرأ المحتوى)؛
+- لها إعداد **Words per minute**.
+
+يستغرق الأمر نحو 20 دقيقة. لمعرفة ما هي الإضافات وكيف تعمل البيئة المعزولة، اقرأ
+[الإضافات](/ar/extending/plugins/) أولًا.
+
+## قبل أن تبدأ
+
+تحتاج إلى:
+
+- مشروع Verdin بمخطط مثال المدونة: انسخ
+  [`examples/blog/schema`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog/schema)
+  إلى مشروع أُنشئ بـ `verdin new`، أو شغّل المثال نفسه. تستخدم الإضافة
+  سمتَي `body` (`richtext`) و`readingTime` (`integer`) في النوع `article`.
+- Rust مع هدف WebAssembly:
+
+  ```sh title="Terminal"
+  rustup target add wasm32-unknown-unknown
+  ```
+
+يمكن كتابة الإضافات بأي لغة لها [Extism PDK](https://extism.org/docs/concepts/pdk)
+(JavaScript وGo وZig وC وغيرها). يستخدم هذا الدرس Rust و`extism-pdk`.
+
+## أنشئ الـ crate
+
+<Steps>
+
+1. أنشئ crate مكتبة، خارج مشروع Verdin الخاص بك:
+
+   ```sh title="Terminal"
+   cargo new --lib reading-time
+   cd reading-time
+   ```
+
+2. استبدل `Cargo.toml`. الإضافة من نوع `cdylib`؛ ويُبقي ملف الإصدار (release profile) الوحدة
+   صغيرة.
+
+   ```toml title="Cargo.toml"
+   [package]
+   name = "reading-time"
+   version = "0.1.0"
+   edition = "2024"
+   publish = false
+
+   [lib]
+   crate-type = ["cdylib"]
+
+   [dependencies]
+   extism-pdk = "1.4.1"
+   serde_json = "1"
+
+   [profile.release]
+   opt-level = "s"
+   lto = true
+   strip = true
+   ```
+
+</Steps>
+
+## اكتب الدوال
+
+كل دالة تصدّرها الإضافة تأخذ JSON وتعيد JSON. يستدعيها Verdin لـ
+الخطافات والمسارات والمهام التي يسمّيها ملف manifest؛ وتستدعي الدوال Verdin بدورها عبر
+دوال المضيف (`verdin_log`، `verdin_content`، `verdin_config`…).
+
+استبدل `src/lib.rs`:
+
+```rust title="src/lib.rs"
+use extism_pdk::*;
+use serde_json::{Value, json};
+
+// Host functions Verdin provides (namespace `extism:host/user`).
+#[host_fn]
+extern "ExtismHost" {
+    fn verdin_log(input: Json<Value>);
+    fn verdin_content(input: Json<Value>) -> Json<Value>;
+    fn verdin_config() -> Json<Value>;
+}
+
+/// Minutes needed to read `text` at `per_minute` words a minute (at least 1).
+fn minutes(text: &str, per_minute: u64) -> u64 {
+    let words = text.split_whitespace().count() as u64;
+    words.div_ceil(per_minute.max(1)).max(1)
+}
+
+/// `beforeCreate` and `beforeUpdate` on articles: fills `readingTime` from `body`.
+#[plugin_fn]
+pub fn set_reading_time(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    // An update may leave the body out: then there is nothing to recompute.
+    let Some(body) = data["body"].as_str() else {
+        return Ok(Json(json!({})));
+    };
+    let config = unsafe { verdin_config()? }.0;
+    let per_minute = config["wordsPerMinute"].as_u64().unwrap_or(200);
+    data["readingTime"] = json!(minutes(body, per_minute));
+    Ok(Json(json!({ "data": data })))
+}
+
+/// `afterPublish` on articles: writes a line to the plugin's log.
+#[plugin_fn]
+pub fn log_publish(Json(input): Json<Value>) -> FnResult<()> {
+    let message = format!("published {}", input["documentId"].as_str().unwrap_or("?"));
+    unsafe { verdin_log(Json(json!({ "level": "info", "message": message })))? };
+    Ok(())
+}
+
+/// `GET /api/plugins/reading-time/stats`: the average reading time of published articles.
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    if request["method"] != "GET" || request["path"] != "/stats" {
+        return Ok(Json(json!({ "status": 404, "body": { "error": "not found" } })));
+    }
+    let found = unsafe {
+        verdin_content(Json(json!({
+            "op": "findMany",
+            "uid": "api::article",
+            "query": { "fields": ["readingTime"], "pagination": { "pageSize": 100 } }
+        })))?
+    }
+    .0;
+    if let Some(error) = found.get("error") {
+        return Ok(Json(json!({ "status": 500, "body": { "error": error } })));
+    }
+    let times: Vec<u64> = found["documents"]
+        .as_array()
+        .map(|documents| documents.iter().filter_map(|d| d["readingTime"].as_u64()).collect())
+        .unwrap_or_default();
+    let average = if times.is_empty() { 0.0 } else { times.iter().sum::<u64>() as f64 / times.len() as f64 };
+    Ok(Json(json!({
+        "status": 200,
+        "headers": { "cache-control": "max-age=60" },
+        "body": { "articles": times.len(), "averageMinutes": average }
+    })))
+}
+```
+
+ما تعيده كل دالة:
+
+- **`set_reading_time`** خطاف before. يستبدل `{ "data": … }` البيانات التي
+  تُكتب؛ ويتركها `{}` كما هي. ويمكنه أيضًا إعادة `{ "error": "…" }` لرفض
+  الكتابة بـ 400.
+- **`log_publish`** خطاف after: يُتجاهل مخرجه.
+- **`handle`** يقدّم كل طلب تحت `/api/plugins/reading-time/`. يحصل على المسار
+  بعد تلك البادئة ويجيب بـ `{ status, headers, body }`.
+
+## ابنِ الوحدة
+
+```sh title="Terminal"
+cargo build --release --target wasm32-unknown-unknown
+```
+
+الوحدة هي `target/wasm32-unknown-unknown/release/reading_time.wasm` (يحوّل Cargo
+الشرطة إلى شرطة سفلية)، وحجمها نحو 120 KB.
+
+## اكتب ملف manifest
+
+<Steps>
+
+1. في مشروع Verdin الخاص بك، أنشئ `plugins/reading-time/` وانسخ الوحدة إليه باسم
+   `plugin.wasm`:
+
+   ```sh title="Terminal"
+   mkdir -p plugins/reading-time
+   cp ../reading-time/target/wasm32-unknown-unknown/release/reading_time.wasm plugins/reading-time/plugin.wasm
+   ```
+
+2. بجوارها، أنشئ ملف manifest. يسمّي الإضافة، ويطلب ما تحتاجه الدوال،
+   ويربطها بالخطافات والمسارات:
+
+   ```toml title="plugins/reading-time/plugin.toml"
+   name = "reading-time"
+   version = "0.1.0"
+   description = "Fills an article's reading time from its body"
+
+   [capabilities]
+   read = ["api::article"]           # for the stats route
+
+   [[hooks]]
+   on = "beforeCreate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "beforeUpdate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "afterPublish"
+   uid = "api::article"
+   function = "log_publish"
+
+   [routes]
+   function = "handle"               # serves /api/plugins/reading-time/…
+
+   [[settings]]
+   key = "wordsPerMinute"
+   label = "Words per minute"
+   type = "integer"
+   min = 50
+   max = 1000
+   default = 200
+   ```
+
+   لا تحتاج الخطافات إلى أي قدرة: فهي تغيّر البيانات التي تُعطى لها. استدعاء
+   `verdin_content` في المسار وحده يقرأ المحتوى، لذا تطلب الإضافة `read` على المقالات
+   ولا شيء غير ذلك.
+
+</Steps>
+
+يبدو المشروع الآن هكذا:
+
+<FileTree>
+- verdin.toml
+- .env
+- plugins/
+  - reading-time/
+    - plugin.toml
+    - plugin.wasm
+- schema/
+  - content-types/
+    - article.json
+    - …
+</FileTree>
+
+## فعّلها
+
+<Steps>
+
+1. شغّل الخادم (أو أعِد تشغيله):
+
+   ```sh title="Terminal"
+   verdin dev
+   ```
+
+   يعرض السجل `plugin found plugin=reading-time version=0.1.0`.
+
+2. افتح لوحة الإدارة، ثم **الإعدادات ← الإضافات**. تسرد بطاقة **reading-time**
+   وصولها (تقرأ المقالات)، وخطافاتها ومسارها. فعّلها.
+
+3. افتح **الإعدادات** على البطاقة: يعرض النموذج **Words per minute** بقيمته الافتراضية،
+   200. تُرفض القيم خارج النطاق من 50 إلى 1,000. اتركها كما هي.
+
+</Steps>
+
+## جرّبها
+
+<Steps>
+
+1. أنشئ مقالة بجسم من بضع مئات من الكلمات، في لوحة الإدارة أو عبر
+   الـ API برمز API:
+
+   ```sh title="Terminal"
+   curl -X POST http://localhost:1337/api/articles \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "data": { "title": "Hello plugins", "slug": "hello-plugins", "body": "…450 words…" } }'
+   ```
+
+   تحتوي الاستجابة على `"readingTime": 3`: 450 كلمة بمعدل 200 كلمة في الدقيقة، مقرّبة للأعلى.
+   لم ترسلها أنت؛ بل ملأها الخطاف.
+
+2. حدّث العنوان فقط. تبقى `readingTime`: بيانات التحديث لا تحتوي على `body`، لذا يعيد
+   الخطاف `{}`. حدّث الجسم، فيُعاد حسابها.
+
+3. انشر المقالة، ثم افتح **السجلات** على بطاقة الإضافة: تعرض
+   `published <documentId>`. (عبر الـ API، ينشر الإنشاء دون `?status=draft`
+   مباشرة، لذا يكون السطر موجودًا بالفعل.)
+
+4. استدعِ المسار:
+
+   ```sh title="Terminal"
+   curl -i http://localhost:1337/api/plugins/reading-time/stats
+   ```
+
+   ```text
+   HTTP/1.1 200 OK
+   content-type: application/json
+   cache-control: max-age=60
+
+   {"articles":1,"averageMinutes":3.0}
+   ```
+
+   يعدّ المقالات المنشورة: يقرأ `verdin_content` النسخ المنشورة ما لم
+   يطلب الاستعلام `status: "draft"`.
+
+</Steps>
+
+<Aside type="caution">
+يجيب المسار أي شخص: مسارات الإضافات لا يشملها **الوصول العام**. هنا لا يعيد
+إلا متوسطًا، لكن المسار الذي يعيد المحتوى أو يغيّره يجب أن يتحقق بنفسه من
+`request.actor` (`{ "kind": "public" }` أو `{ "kind": "token", "id": … }` أو
+`{ "kind": "user", "id": … }`).
+</Aside>
+
+## غيّرها
+
+- عدّل الشيفرة، وشغّل `cargo build --release --target wasm32-unknown-unknown` مرة أخرى، وانسخ
+  الوحدة وأعِد تشغيل Verdin. يُحتفظ بالمفتاح والإعدادات.
+- تحتاج التغييرات على `plugin.toml` أيضًا إلى إعادة تشغيل. أما تغييرات الإعدادات فتُطبَّق فورًا.
+- إذا فشل استدعاء، يكون الخطأ في سجل الخادم وفي **السجلات**. يؤدي الـ panic أو انتهاء المهلة
+  إلى فشل ذلك الاستدعاء فقط؛ وفي خطاف before، تستمر الكتابة دون تغيير الإضافة.
+
+## الخطوات التالية
+
+- أضف [مهمة مجدولة، أو حقل GraphQL، أو أداة للوحة الإدارة](/ar/extending/plugin-reference/).
+- خزّن الحالة بين الاستدعاءات بالقدرة `kv` و`verdin_kv_get` /
+  `verdin_kv_set`.
+- إضافة الاختبار في المستودع،
+  [`crates/verdin-plugins/tests/fixtures/sample`](https://github.com/Verdin-CMS/verdin/tree/main/crates/verdin-plugins/tests/fixtures/sample)،
+  تستخدم كل دوال المضيف.

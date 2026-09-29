@@ -1,0 +1,158 @@
+---
+title: 콘텐츠 현지화
+description: 로케일을 추가하고, 콘텐츠 타입을 로컬라이즈하고, 관리자 패널에서 항목을 번역하고, API로 각 로케일을 읽고 씁니다.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+로컬라이즈된 콘텐츠 타입은 각 항목의 버전을 로케일마다 하나씩 유지합니다. 이 가이드에서는 게시할 로케일을 추가하고,
+타입의 현지화를 켜고, 관리자 패널에서 항목을 번역하고, API로 각 로케일을 읽고 씁니다. 그 바탕이 되는 모델(공유
+필드, 로컬라이즈된 타입 사이의 관계)은 [국제화](/ko/concepts/internationalization/)를 참고하세요.
+
+현지화는 코어의 일부이므로 켜야 할 기능이 없습니다. Strapi v5의 i18n 플러그인처럼 동작하며 같은 `locale` 파라미터를
+받습니다.
+
+## 시작하기 전에
+
+- 로케일을 추가, 이름 변경, 삭제하려면 **언어 관리**(`locales.manage`)가 필요합니다.
+- 타입을 로컬라이즈하려면 **콘텐츠 타입 빌더**(`verdin dev`)나 `schema/content-types/<name>.json`에서 스키마를
+  편집합니다.
+- 편집자에게 필요한 콘텐츠 권한은 [권한](/ko/reference/permissions/)을 참고하세요.
+
+## 로케일 추가
+
+처음 시작하면 영어(`en`)가 기본 로케일로 만들어집니다. 로케일을 지정하지 않은 요청은 기본 로케일을 쓰며, 새 항목도
+기본 로케일에서 시작합니다.
+
+<Steps>
+
+1. **설정 → 국제화**를 열고 **언어 추가**를 선택합니다.
+2. **코드**를 입력합니다. 소문자 언어 코드이며 지역이나 문자 체계를 붙일 수 있습니다. 예: `fr`, `pt-BR`, `zh-Hans`.
+   이름은 자동으로 채워지며 바꿀 수 있습니다.
+3. 로케일 없는 요청이 이 로케일을 쓰게 하려면 **기본 언어로 설정**을 체크하고 저장합니다.
+
+</Steps>
+
+나중에 기본값을 바꾸려면 다른 로케일에서 **기본값으로 설정**을 선택하세요. 기본 로케일은 삭제할 수 없습니다.
+
+<Aside type="caution" title="로케일을 삭제하면 그 항목도 삭제됩니다">
+로케일을 삭제하면 모든 콘텐츠 타입에서 그 로케일로 작성된 모든 항목이 게시된 버전을 포함해 영구히 삭제됩니다.
+대화 상자에서 확인을 위해 로케일 코드를 입력해야 합니다.
+</Aside>
+
+## 콘텐츠 타입 로컬라이즈
+
+**콘텐츠 타입 빌더**에서 타입을 열고 설정에서 **현지화**를 켭니다. 그다음 필드마다 로케일별로 값이 달라지는지
+정합니다. **현지화**를 끈 필드는 모든 로케일이 공유하는 값 하나를 가집니다.
+
+예제 프로젝트의 `article` 타입에서 스키마 파일로 같은 설정을 하면 다음과 같습니다.
+
+```json title="schema/content-types/article.json" {6,9}
+{
+  "kind": "collectionType",
+  "singularName": "article",
+  "pluralName": "articles",
+  "displayName": "Article",
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "title": { "type": "string", "required": true },
+    "readingTime": { "type": "integer", "pluginOptions": { "i18n": { "localized": false } } }
+  }
+}
+```
+
+공유 필드의 동작:
+
+- 한 로케일에서 공유 필드를 저장하면 모든 로케일의 초안에 기록됩니다.
+- 한 로케일을 게시하면 그 공유 필드가 다른 로케일의 게시된 버전으로 복사됩니다.
+- 관계와 미디어 필드도 공유할 수 있습니다.
+
+`pluginOptions.i18n.localized`가 없는 타입은 로컬라이즈되지 않으며 `locale` 파라미터를 무시합니다. 타입의 현지화를
+바꾸는 것은 스키마 변경입니다. 배포하기 전에 `verdin migrate plan`으로 마이그레이션을 검토하세요.
+
+## 관리자 패널에서 항목 번역
+
+<Steps>
+
+1. 항목을 열고 편집기 상단의 **언어** 전환기에서 대상 언어를 고릅니다. 버전이 없는 로케일에는
+   **아직 생성되지 않음**이 표시됩니다.
+2. 편집기는 그 로케일에 아직 버전이 없으며 저장하면 만들어진다고 알려 줍니다. 공유 필드에는 이미 값이 보입니다.
+3. 기존 번역에서 시작하려면 그 안내에서 **다른 언어에서 채우기**를 선택합니다. **복사 출처**에서 원본을 고르고
+   **필드 복사**를 선택하세요. 관계와 미디어를 포함한 로컬라이즈된 필드가 폼에 복사됩니다. 아직 아무것도 저장되지
+   않습니다.
+4. 필드를 편집한 뒤 **초안 저장** 또는 **게시**를 선택합니다. 로케일마다 자체 초안과 게시 버전이 있습니다.
+
+</Steps>
+
+목록 보기에도 같은 **언어** 전환기가 있으며, 한 번에 한 로케일의 버전을 나열합니다. 편집기에서 삭제하면 현재 로케일의
+버전만 제거되고 다른 로케일은 유지됩니다.
+
+**AI 기능**이 켜져 있으면 편집기가 다른 로케일의 초안에서 텍스트 필드를 번역할 수도 있습니다.
+[AI 기능](/ko/guides/integrations/ai-actions/)을 참고하세요.
+
+## 편집자를 일부 로케일로 제한
+
+역할의 콘텐츠 권한은 일부 로케일에만 적용되게 할 수 있습니다. **설정 → 역할**에서 역할을 열고, 콘텐츠 타입을 찾아
+**언어**를 선택합니다. **이 언어만**을 고르고 로케일을 선택하세요. 그 역할의 관리자는 다른 로케일의 버전을 읽거나
+바꿀 수 없으며, **언어** 전환기에 그 로케일이 "(접근 불가)"로 표시됩니다.
+
+## API로 로케일 읽고 쓰기
+
+REST 요청에 `locale`을 추가하거나, GraphQL에서 인자로 넘기세요. 지정하지 않으면 기본 로케일을 씁니다. 알 수 없는
+로케일은 `400` 오류입니다.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+# 프랑스어 버전 읽기
+curl 'http://localhost:1337/api/articles?locale=fr'
+
+# 문서의 프랑스어 버전 생성 또는 수정
+curl -X PUT 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"data":{"title":"Bonjour"}}'
+
+# 프랑스어 버전만 삭제
+curl -X DELETE 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(locale: "fr") {
+    documentId
+    title
+    locale
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ locale: 'fr' });
+```
+
+</TabItem>
+</Tabs>
+
+알아 둘 점:
+
+- 문서에 아직 그 로케일의 버전이 없으면 `locale`을 담은 `PUT`이 버전을 만듭니다.
+- 로컬라이즈된 타입의 응답에는 `locale`이 포함됩니다. 모든 버전이 같은 `documentId`를 공유합니다.
+- `DELETE`는 요청한 로케일(지정하지 않으면 기본 로케일)의 버전만 삭제합니다. 문서를 가리키는 링크는 로케일이 하나도
+  남지 않으면 삭제됩니다.
+- 로컬라이즈된 타입이 다른 로컬라이즈된 타입에 연결되면, 읽기는 대상을 같은 로케일로 해석하며 관계를 통한 필터도
+  마찬가지입니다. 로컬라이즈되지 않은 대상은 모든 로케일이 공유합니다.
+- 웹훅 페이로드와 기록 버전은 로케일을 기록합니다.
+
+Strapi와 달리 콘텐츠 API에는 `/api/i18n/locales` 라우트가 없습니다. 로케일은 admin API의
+`GET /admin/api/i18n/locales`에 나열되며, `POST`, `PUT /admin/api/i18n/locales/{code}`,
+`DELETE /admin/api/i18n/locales/{code}`(`locales.manage`)로 관리합니다.

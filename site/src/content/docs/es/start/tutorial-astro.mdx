@@ -1,0 +1,387 @@
+---
+title: 'Tutorial: un blog con Astro'
+description: Construye un pequeño blog con Astro sobre el esquema de ejemplo de Verdin, con consultas tipadas, páginas de artículos por slug, categorías y una vista previa opcional de borradores.
+sidebar:
+  order: 3
+  label: Blog con Astro
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+En este tutorial construyes con [Astro](https://astro.build) un blog estático que lee su contenido
+de Verdin: una página de inicio que enumera los artículos, una página por artículo en
+`/articles/<slug>/` con su categoría y, opcionalmente, una página que muestra los borradores desde
+el enlace de vista previa del panel. Usas el cliente tipado `@verdin/client` con tipos generados a
+partir del esquema.
+
+Escrito para Astro 7.3 (`create-astro` 5.2) y Node.js 22.12 o posterior, con Verdin y
+`@verdin/client` 0.10. El [tutorial de Next.js](/es/start/tutorial-nextjs/) construye el mismo
+blog con Next.js.
+
+## Antes de empezar
+
+Necesitas el binario `verdin` en tu `PATH` (consulta el [inicio rápido](/es/start/quickstart/)),
+Node.js y Git. Acabarás con dos carpetas una junto a otra: `cms`, el proyecto de Verdin, y `blog`,
+el sitio de Astro.
+
+## 1. Prepara Verdin con el esquema del blog
+
+El proyecto [`examples/blog`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) del
+repositorio modela un blog: artículos con un título, un `slug`, un extracto, un `body` en
+Markdown, una categoría y etiquetas, además de un tipo único homepage y algunos componentes.
+
+<Steps>
+
+1. Crea un proyecto de Verdin y copia en él el esquema de ejemplo:
+
+   ```sh title="Terminal"
+   git clone --depth 1 https://github.com/Verdin-CMS/verdin.git
+   verdin new cms
+   cp verdin/examples/blog/schema/content-types/{article,category,tag,homepage}.json cms/schema/content-types/
+   cp -r verdin/examples/blog/schema/components/* cms/schema/components/
+   ```
+
+2. Arráncalo:
+
+   ```sh title="Terminal"
+   cd cms
+   verdin dev
+   ```
+
+   El primer arranque crea las tablas de los cuatro tipos de contenido.
+
+3. Abre [http://localhost:1337/admin/](http://localhost:1337/admin/) y crea el primer
+   administrador.
+
+4. En **Colecciones**, abre **Category**, selecciona **Nueva entrada**, llámala `News` y guarda.
+
+5. Abre **Article**, selecciona **Nueva entrada** y rellena un título, un extracto y un cuerpo en
+   Markdown. El `slug` se genera a partir del título. Elige `News` como categoría y selecciona
+   **Publicar**. Añade un segundo artículo de la misma forma.
+
+6. Abre **Configuración → Acceso público**, permite **Buscar** y **Buscar uno** para **Article**
+   y **Category**, y selecciona **Guardar**.
+
+</Steps>
+
+Comprueba que la API responde:
+
+```sh title="Terminal"
+curl 'localhost:1337/api/articles?populate=category'
+```
+
+<Aside>
+Popular una relación necesita acceso de lectura a su destino. Sin **Buscar** sobre **Category**,
+`populate=category` responde `400` con ``invalid key `category` in populate``.
+</Aside>
+
+## 2. Crea el proyecto de Astro
+
+En otra terminal, junto a `cms`:
+
+```sh title="Terminal"
+npm create astro@latest blog -- --template minimal --no-git --yes
+cd blog
+npm install @verdin/client marked
+```
+
+[`marked`](https://marked.js.org) convierte en HTML el Markdown del campo `body`.
+
+## 3. Genera los tipos
+
+`verdin types` lee el esquema y escribe una interfaz TypeScript por tipo de contenido y por
+componente, y un mapa de rutas `VerdinSchema` para el cliente. Ejecútalo desde `blog`, apuntando a
+la configuración del proyecto de Verdin:
+
+```sh title="Terminal"
+verdin types -c ../cms/verdin.toml -o src/verdin-types.ts
+```
+
+El archivo contiene, entre otras cosas:
+
+```ts title="src/verdin-types.ts"
+export interface Article extends DocumentBase {
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  body: string | null;
+  // …
+  category?: Category | null;
+  tags?: Tag[];
+}
+```
+
+Las relaciones, los medios y los componentes son opcionales porque la API solo los devuelve
+cuando los populas. Vuelve a ejecutar el comando cada vez que cambie el esquema.
+
+## 4. Conecta con Verdin
+
+Declara la URL del servidor, y un token de API opcional, en el entorno tipado de Astro:
+
+```js title="astro.config.mjs"
+// @ts-check
+import { defineConfig, envField } from 'astro/config';
+
+export default defineConfig({
+  env: {
+    schema: {
+      VERDIN_URL: envField.string({ context: 'server', access: 'public', default: 'http://localhost:1337' }),
+      VERDIN_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+    },
+  },
+});
+```
+
+Sin token, el cliente lee con el rol público, que es lo que abriste en el paso 1. Para leer con un
+token, crea uno de **Solo lectura** en **Configuración → Tokens de API** y ponlo en `.env` como
+`VERDIN_TOKEN=…`.
+
+Crea el cliente una vez y compártelo:
+
+```ts title="src/lib/verdin.ts"
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+```
+
+`verdin.collection('articles')` solo acepta ahora las rutas de tu esquema, y sus resultados están
+tipados como `Article`.
+
+## 5. Añade un layout
+
+Sustituye el HTML de la página inicial por un layout que compartan las páginas:
+
+```astro title="src/layouts/Layout.astro"
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header><a href="/">My blog</a></header>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>
+```
+
+## 6. Enumera los artículos
+
+```astro title="src/pages/index.astro"
+---
+import Layout from '../layouts/Layout.astro';
+import { verdin } from '../lib/verdin';
+
+const { data: articles } = await verdin.collection('articles').find({
+  fields: ['title', 'slug', 'excerpt', 'publishedAt'],
+  populate: { category: { fields: ['name'] } },
+  sort: ['publishedAt:desc'],
+});
+---
+
+<Layout title="My blog">
+  <h1>Articles</h1>
+  <ul>
+    {articles.map((article) => (
+      <li>
+        <a href={`/articles/${article.slug}/`}>{article.title}</a>
+        {article.category && <small> in {article.category.name}</small>}
+        {article.excerpt && <p>{article.excerpt}</p>}
+      </li>
+    ))}
+  </ul>
+</Layout>
+```
+
+La consulta es la llamada REST
+`GET /api/articles?fields[0]=title&…&populate[category][fields][0]=name&sort[0]=publishedAt:desc`,
+en el formato de Strapi v5. `fields` mantiene pequeña la respuesta, y `populate` añade la
+categoría solo con su nombre. El rol público solo lee los artículos publicados.
+
+## 7. Añade una página por artículo
+
+Astro construye una página por artículo. `getStaticPaths` pide los artículos con su categoría y
+pasa cada uno a su página:
+
+```astro title="src/pages/articles/[slug].astro"
+---
+import type { GetStaticPaths } from 'astro';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { verdin } from '../../lib/verdin';
+
+export const getStaticPaths = (async () => {
+  const { data: articles } = await verdin.collection('articles').find({
+    populate: { category: true },
+    pagination: { pageSize: 100 },
+  });
+  return articles.map((article) => ({
+    params: { slug: article.slug },
+    props: { article },
+  }));
+}) satisfies GetStaticPaths;
+
+const { article } = Astro.props;
+const html = await marked.parse(article.body ?? '');
+---
+
+<Layout title={article.title}>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+`pageSize` está limitado por `[api].max_page_size` (100 por defecto). Con más artículos, pide las
+páginas en un bucle usando `meta.pagination.pageCount`.
+
+<Aside type="caution">
+`marked` no sanea el HTML. No pasa nada con el Markdown que escriben tus propios editores; si el
+contenido puede venir de personas que no son de confianza, sanea el HTML antes de mostrarlo.
+</Aside>
+
+## 8. Ejecútalo
+
+```sh title="Terminal"
+npm run dev
+```
+
+Abre [http://localhost:4321](http://localhost:4321): la lista muestra tus artículos publicados, y
+cada uno enlaza con su página. `npm run build` escribe el sitio estático en `dist/`.
+
+Un build estático lee el contenido una sola vez. Para publicar los cambios, reconstruye el sitio
+cuando cambie el contenido, por ejemplo desde un webhook o un hook de despliegue; consulta
+[Despliegues y CDN](/es/guides/integrations/deploys-and-cdn/).
+
+Tu proyecto queda así:
+
+<FileTree>
+- blog/
+  - astro.config.mjs
+  - src/
+    - verdin-types.ts generado por `verdin types`
+    - lib/
+      - verdin.ts
+    - layouts/
+      - Layout.astro
+    - pages/
+      - index.astro
+      - articles/
+        - [slug].astro
+</FileTree>
+
+## 9. Opcional: vista previa de borradores
+
+El panel puede abrir un borrador en tu sitio con un token de vista previa de vida corta. El token
+lee ese único documento, borradores incluidos, y nada más. Como los borradores cambian después
+del build, la página de vista previa se genera en cada petición, lo que necesita un adaptador:
+
+```sh title="Terminal"
+npx astro add node --yes
+```
+
+Añade un cliente que envíe el token de vista previa en la cabecera `x-verdin-preview`:
+
+```ts title="src/lib/verdin.ts" ins={10-16}
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+
+/** A client that reads one draft with the preview token from the admin's link. */
+export function previewClient(previewToken: string) {
+  return createClient<VerdinSchema>({
+    url: VERDIN_URL,
+    headers: { 'x-verdin-preview': previewToken },
+  });
+}
+```
+
+Después, la página. `prerender = false` la genera bajo demanda; el token llega como parámetro de
+consulta `preview`:
+
+```astro title="src/pages/preview/[documentId].astro"
+---
+import { VerdinError } from '@verdin/client';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { previewClient } from '../../lib/verdin';
+
+export const prerender = false;
+
+const { documentId } = Astro.params;
+const token = Astro.url.searchParams.get('preview');
+if (!documentId || !token) {
+  return new Response('Missing preview token', { status: 401 });
+}
+
+let article;
+try {
+  ({ data: article } = await previewClient(token)
+    .collection('articles')
+    .findOne(documentId, { status: 'draft', populate: { category: true } }));
+} catch (error) {
+  if (error instanceof VerdinError) {
+    return new Response('This preview link has expired', { status: error.status });
+  }
+  throw error;
+}
+const html = await marked.parse(article.body ?? '');
+Astro.response.headers.set('cache-control', 'no-store');
+---
+
+<Layout title={`Preview: ${article.title}`}>
+  <p><strong>Draft preview</strong></p>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+Un token de vista previa no puede listar entradas, así que la página busca el borrador por
+`documentId` y no por slug. Ahora indica a Verdin dónde está la página:
+
+<Steps>
+
+1. En el panel, abre **Configuración → Funcionalidades**, activa **Vista previa** y selecciona
+   **Configurar las URL de vista previa**.
+2. Pon `http://localhost:4321/preview/{documentId}` como plantilla de URL de **Article** y guarda.
+   Verdin añade el token como `?preview=…`.
+3. Abre un artículo, cámbialo y selecciona **Guardar borrador**, y después **Abrir vista previa**.
+
+</Steps>
+
+La página muestra el borrador. Los enlaces duran 60 minutos por defecto. Consulta
+[Vista previa](/es/guides/content/preview/) para los marcadores y los ajustes, y
+[Edición visual](/es/guides/frontend/visual-editing/) para editar desde la vista previa.
+
+## Siguientes pasos
+
+- [Cliente tipado](/es/guides/frontend/typed-client/): todos los métodos de `@verdin/client`.
+- [API REST](/es/api/rest/): filtros, ordenación, paginación y `populate`.
+- [Imágenes](/es/guides/frontend/images/): los formatos responsive de la biblioteca de medios.
+- [SEO y mapa del sitio](/es/guides/frontend/seo-and-sitemap/): el componente `shared.seo` y el
+  sitemap de Verdin.

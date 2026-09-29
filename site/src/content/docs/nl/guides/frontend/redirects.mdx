@@ -1,0 +1,116 @@
+---
+title: Redirects
+description: Houd een lijst met redirects bij in het beheerpaneel en pas ze toe in de middleware van je site.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Met de functie **Redirects** sturen redacteuren oude paden door naar nieuwe zonder deploy: ze houden
+de lijst bij in het beheerpaneel, en je site haalt hem op en antwoordt met de redirect. Verdin
+stuurt bezoekers zelf niet door, omdat ze op je site terechtkomen, niet op het CMS.
+
+## Aanzetten
+
+Zet in **Instellingen → Functies** **Redirects** aan en kies daarna **Redirects beheren** (of ga
+naar **Instellingen → Redirects**). Redirects beheren vereist het recht
+**SEO, redirects, menu's en formulieren beheren** (`site.manage`), dat de ingebouwde rol Editor
+heeft. Zie [Rechten](/nl/reference/permissions/).
+
+## Redirects toevoegen
+
+<Steps>
+
+1. Kies in **Instellingen → Redirects** **Een redirect toevoegen**.
+2. **Van**: het oude pad, beginnend met `/` (bijvoorbeeld `/blog/2024/hello`).
+3. **Naar**: het nieuwe pad, of een volledige `http(s)`-URL op een andere site.
+4. **Type**: **301 · Permanent**, **302 · Tijdelijk**, **307 · Tijdelijk (behoudt methode)** of
+   **308 · Permanent (behoudt methode)**.
+5. Sla op.
+
+</Steps>
+
+Verdin weigert een redirect die nooit zou werken:
+
+- een tweede redirect vanaf hetzelfde pad;
+- een pad dat naar zichzelf doorverwijst;
+- een keten die een lus vormt (`/a` → `/b` → `/a`).
+
+Voor veel redirects tegelijk gebruik je **CSV importeren** met de kolommen `source`, `destination`
+en `status`. Rijen waarvan de bron al bestaat, werken die redirect bij. **CSV exporteren** schrijft
+hetzelfde formaat, handig voor een migratie vanaf een ander CMS of een controle in een spreadsheet.
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## Ze toepassen op je site
+
+Sites lezen de lijst vanaf `GET /api/_redirects`, zonder token:
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+De response wordt verzonden met `Cache-Control: public, max-age=60`, dus een wijziging bereikt
+sites binnen ongeveer een minuut. Vergelijk het pad van het request exact met `source`:
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+Haal voor een statische site de lijst op tijdens de build en schrijf het redirectbestand van je host
+(`_redirects` van Netlify, `vercel.json` van Vercel, een nginx-map). Combineer dat met een
+[deployknop](/nl/guides/integrations/deploys-and-cdn/) of een [webhook](/nl/guides/integrations/webhooks/),
+zodat redacteuren opnieuw kunnen bouwen nadat ze redirects hebben gewijzigd.
+
+<Aside type="note">
+Het API-prefix volgt [`[api].prefix`](/nl/reference/configuration/). Met de functie uit antwoordt
+`/api/_redirects` met `404`.
+</Aside>
+
+## Admin-API
+
+Het beheerpaneel gebruikt `/admin/api/site/redirects` (`GET`, `POST`) en
+`/admin/api/site/redirects/{id}` (`PUT`, `DELETE`), met het access token van een beheerder en
+`site.manage`. Zie [Admin-API](/nl/api/admin/).

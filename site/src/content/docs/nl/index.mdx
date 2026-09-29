@@ -1,0 +1,97 @@
+---
+title: Verdin — het headless CMS dat groeit op Rust
+description: Open-source headless CMS geschreven in Rust. Met Strapi v5 compatibele API's, één binary, PostgreSQL, MySQL, MariaDB en SQLite.
+template: splash
+editUrl: false
+tableOfContents: false
+lastUpdated: false
+hero:
+  title: Het headless CMS dat groeit op <span class="metal">Rust</span>.
+  tagline: Met Strapi v5 compatibele API's en een beheerpaneel voor je redacteuren, in één binary van ongeveer 25 MB. Open source en compleet — er is geen enterprise-editie.
+  actions:
+    - text: Aan de slag
+      link: /nl/start/quickstart/
+      icon: right-arrow
+    - text: Overstappen vanaf Strapi
+      link: /nl/migrate/from-strapi/
+      variant: minimal
+---
+
+import { Card, CardGrid, Code, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Nameplate from '../../../components/landing/Nameplate.astro';
+
+<Nameplate />
+
+## Van Strapi in drie commando's
+
+Exporteer het Strapi-project, importeer het in een nieuw Verdin-project, start het. Contenttypes,
+items met hun concepten en locales, relaties en de mediabibliotheek komen mee; de content-API
+behoudt zijn vorm, dus de frontend blijft werken.
+
+```sh title="Terminal"
+npx strapi export --no-encrypt -f my-export        # in het Strapi-project
+verdin new my-site && cd my-site && verdin import strapi ../my-export.tar.gz
+verdin dev                                         # http://localhost:1337/admin
+```
+
+<LinkCard
+  title="Een Strapi-project importeren"
+  description="Wat wordt geïmporteerd, de id-mapping, en wat je daarna controleert."
+  href="/nl/migrate/from-strapi/"
+/>
+
+## Lees je content zoals je dat al doet
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+    ```sh
+    curl 'localhost:1337/api/articles?filters[title][$containsi]=rust&populate=category&sort=publishedAt:desc'
+    ```
+  </TabItem>
+  <TabItem label="GraphQL">
+    ```graphql
+    query {
+      articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"]) {
+        documentId
+        title
+        category { name }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```ts
+    import { createClient } from '@verdin/client';
+    import type { VerdinSchema } from './verdin-types'; // verdin types -o src/verdin-types.ts
+
+    const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+    const { data } = await verdin.collection('articles').find({
+      filters: { title: { $containsi: 'rust' } },
+      populate: { category: true },
+      sort: ['publishedAt:desc'],
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## Wat redacteuren en ontwikkelaars krijgen
+
+<CardGrid>
+  <Card title="Schema in bestanden, migraties die je kunt lezen" icon="document">
+    Contenttypes zijn JSON-bestanden in het formaat van Strapi, bewaard in git. Elke
+    schemawijziging wordt een migratieplan met een risiconiveau en de exacte SQL voordat hij
+    draait.
+  </Card>
+  <Card title="Een beheerpaneel waar redacteuren blij van worden" icon="pencil">
+    Concepten en publiceren, contentgeschiedenis, releases, reviewworkflows, opmerkingen en live
+    presence, visueel bewerken op je eigen site — in 18 talen.
+  </Card>
+  <Card title="Beveiliging die geen upsell is" icon="approve-check">
+    SSO, tweefactorlogin met toegangssleutels, rollen tot op veld- en localeniveau, auditlogs en
+    API-tokens, allemaal in het open-sourceproject.
+  </Card>
+  <Card title="Veilig uitbreiden" icon="puzzle">
+    WebAssembly-plugins haken in op schrijfacties, voegen routes, jobs en adminwidgets toe, en
+    bereiken alleen wat ze declareren.
+  </Card>
+</CardGrid>

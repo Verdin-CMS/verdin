@@ -1,0 +1,150 @@
+---
+title: AI-acties
+description: Geef redacteuren AI-hulp in het beheerpaneel (vertaling, alt-tekst, samenvattingen en SEO-metadata) met de modelprovider die je kiest.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+AI-acties voegen vier hulpmiddelen toe aan het beheerpaneel: een item vertalen vanuit een andere
+locale, alternatieve tekst schrijven voor een afbeelding, een lange tekst samenvatten in een kort
+veld, en SEO-metadata voorstellen. Ze gebruiken een modelprovider die jij configureert (Anthropic,
+OpenAI, of een lokale server zoals Ollama), met je eigen sleutel.
+
+Elke actie geeft een suggestie terug die het formulier invult. Er wordt niets opgeslagen totdat de
+redacteur het heeft nagekeken en opslaat, en elke actie kan ongedaan worden gemaakt.
+
+## Instellen
+
+AI-acties hebben zowel een provider in `verdin.toml` nodig als de functie aangezet.
+
+<Steps>
+
+1. Voeg een sectie `[ai]` toe en geef de server de sleutel in `VERDIN_AI_KEY`:
+
+   <Tabs syncKey="ai-provider">
+   <TabItem label="Anthropic">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "anthropic"
+   # model = "claude-sonnet-5"   # the default
+   ```
+
+   </TabItem>
+   <TabItem label="OpenAI">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai"
+   model = "gpt-4.1-mini"        # required: name the model you want
+   ```
+
+   </TabItem>
+   <TabItem label="Lokaal (Ollama)">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai-compatible"
+   base_url = "http://localhost:11434/v1"
+   model = "llama3.2-vision"
+   ```
+
+   Lokale servers hebben geen `VERDIN_AI_KEY` nodig. LM Studio, vLLM en andere servers met een
+   OpenAI-compatibele API werken op dezelfde manier.
+
+   </TabItem>
+   </Tabs>
+
+   ```sh title="Terminal"
+   export VERDIN_AI_KEY=sk-...
+   ```
+
+2. Herstart Verdin. Het weigert te starten als de sectie onvolledig is: een ontbrekende sleutel, of
+   een ontbrekende `model` of `base_url` waar de provider die nodig heeft.
+3. Zet in **Instellingen → Functies** **AI-acties** aan.
+
+</Steps>
+
+| Sleutel | Standaard | Beschrijving |
+| --- | --- | --- |
+| `provider` | `"none"` | `anthropic`, `openai` of `openai-compatible`. |
+| `model` | `claude-sonnet-5` voor `anthropic` | Het model. Verplicht voor de andere providers. |
+| `base_url` | Die van de provider | Een ander endpoint: een proxy, of een lokale server (verplicht voor `openai-compatible`). |
+| `max_tokens` | `2048` | Langste antwoord, in tokens. |
+
+Zie [`[ai]`](/nl/reference/configuration/). Met de functie aan maar zonder sectie `[ai]` toont het
+beheerpaneel **AI-acties zijn niet beschikbaar op deze server.**
+
+De actie voor alt-tekst stuurt afbeeldingen, dus kies een model dat afbeeldingen accepteert als je
+die wilt gebruiken.
+
+## Wat de acties doen
+
+### Een item vertalen
+
+In de editor van een gelokaliseerd item opent **Vertalen vanuit _locale_…** de dialoog
+**Vertalen met AI**. Kies bij **Vertalen vanuit** de locale en kies **Vertalen**. De tekstvelden van
+het opgeslagen concept van die locale (strings, teksten, rich text, blocks, en de tekst binnen
+componenten en dynamische zones) worden vertaald naar de huidige locale en vervangen die velden in
+het formulier.
+
+- Velden die tussen locales worden gedeeld, blijven ongemoeid.
+- Niet-opgeslagen wijzigingen in de bronlocale worden niet meegenomen: sla die eerst op.
+- Markdown, HTML, URL's, id's en bloktypes blijven zoals ze zijn.
+- De vertaalde velden worden gemarkeerd; kijk ze na en sla daarna op, of kies
+  **Vertaling ongedaan maken**.
+
+Dit vereist het recht om het item in de doellocale bij te werken en om het in de bronlocale te
+lezen.
+
+### Alternatieve tekst schrijven
+
+Open in de mediabibliotheek een afbeelding en kies **Alt-tekst genereren**. Het model beschrijft de
+afbeelding (tot ongeveer 125 tekens) in de taal van de standaardlocale, en vult het bijschrift in
+als dat leeg is. Het werkt op JPEG-, PNG-, WebP- en GIF-afbeeldingen, en stuurt het formaat `small`
+of `medium` als dat er is, zodat grote originelen niet naar de provider worden geüpload. Vereist
+het recht om bij te werken in de mediabibliotheek (op het bestand, bij **Eigen bestanden**).
+
+### Samenvatten in een veld
+
+Tekstvelden met een naam als van een samenvatting (`description`, `summary`, `excerpt`, `abstract`,
+`intro`, `introduction`, `lead`, `teaser`) krijgen een knop **_field_ samenvatten** als het item een
+rich-text- of blocks-veld heeft, of een tekstveld met de naam `body`, `content`, `text` of
+`article`. In de voorbeeldblog krijgt **Excerpt** de knop **Body samenvatten**. De samenvatting
+past binnen de maximale lengte van het veld.
+
+### SEO-metadata voorstellen
+
+Een component met de tekstattributen `metaTitle` en `metaDescription`, zoals de
+[voorgestelde `shared.seo`](/nl/guides/frontend/seo-and-sitemap/), krijgt een knop **Voorstellen**.
+Die vult de metatitel, de beschrijving en, als de component er een heeft, `keywords` in vanuit het
+opgeslagen concept van het item.
+
+## Limieten
+
+- Elke beheerder mag 30 AI-requests per minuut doen; meer krijgen als antwoord
+  **Te veel AI-aanvragen. Wacht een minuut en probeer het opnieuw.**
+- Samenvattingen en SEO-suggesties sturen hoogstens 40.000 tekens tekst.
+- Een request naar de provider krijgt na 120 seconden een time-out.
+
+## Privacy
+
+<Aside type="caution">
+AI-acties sturen content naar de provider die je configureert: de velden die worden vertaald,
+samengevat of beschreven, en de afbeeldingen voor alt-tekst. Kies een provider en een abonnement
+die je organisatie voor die content toestaat, controleer de voorwaarden voor het bewaren van
+gegevens, en overweeg een lokaal model (`openai-compatible`) voor content die je netwerk niet mag
+verlaten.
+</Aside>
+
+- Requests gaan van de Verdin-server naar de provider; de sleutel bereikt de browser nooit.
+- Alleen de input van de actie wordt verzonden: de tekstvelden van het item, de tekst om samen te
+  vatten, of één afbeelding met haar bestandsnaam. Privéattributen en andere items niet.
+- Acties lezen alleen wat de beheerder al kan lezen, en suggesties worden niet opgeslagen.
+
+Het beheerpaneel toont welk model heeft geantwoord (**Suggesties van _model_ (_provider_).**).
+
+Om AI-agents buiten het beheerpaneel content te laten lezen en schrijven, zie
+[MCP-server](/nl/guides/integrations/mcp/).

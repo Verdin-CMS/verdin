@@ -1,0 +1,166 @@
+---
+title: Logowanie jednokrotne
+description: Pozwól administratorom logować się przez dostawcę OpenID Connect, takiego jak Microsoft Entra ID, Google Workspace, Okta czy Keycloak, z mapowaniem grup na role.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Administratorzy mogą logować się przez dowolnego dostawcę OpenID Connect: Microsoft Entra ID,
+Google Workspace, Okta, Auth0, Keycloak, Authentik, GitLab i innych. Każdy dostawca dostaje
+przycisk na stronie logowania, a logowanie hasłem nadal działa obok. Ten przewodnik
+rejestruje aplikację, konfiguruje dostawcę w Verdin i mapuje grupy na role.
+
+W Strapi SSO to funkcja Enterprise. W Verdin jest częścią otwartego rdzenia. Dla
+użytkowników końcowych twoich witryn zobacz zamiast tego
+[logowanie OAuth dla użytkowników końcowych](/pl/guides/auth/end-users/).
+
+## Zanim zaczniesz
+
+- Konfiguracja SSO wymaga **Zarządzanie funkcjami** (`features.manage`).
+- Ustaw `[server].public_url` na adres, pod którym administratorzy otwierają Verdin, np.
+  `https://cms.example.com`. Na jego podstawie budowany jest URI przekierowania.
+
+## Konfiguracja
+
+<Steps>
+
+1. **Zarejestruj aplikację** (klienta „web”) u dostawcy, z tym URI przekierowania:
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>` to identyfikator dostawcy wybrany w kroku 3, np. `corp`. Ścieżka panelu podąża
+   za `[admin].path`.
+
+2. **Umieść sekret klienta w środowisku** i zrestartuj Verdin:
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   Zmienna to `VERDIN_SSO_<ID>_SECRET`, z identyfikatorem wielkimi literami i myślnikami
+   zamienionymi na podkreślenia. Klienci publiczni (tylko PKCE, bez sekretu) nie potrzebują
+   zmiennej.
+
+3. **Dodaj dostawcę.** Włącz **Ustawienia → Funkcje → Logowanie jednokrotne**, wybierz
+   **Skonfiguruj dostawców**, potem **Dodaj dostawcę** i wypełnij:
+
+   - **ID**: małe litery, cyfry i myślniki, do 32 znaków.
+   - **Tekst przycisku**: wyświetlany na stronie logowania jako „Kontynuuj przez …”.
+   - **URL wystawcy**: Verdin odczytuje pod nim `/.well-known/openid-configuration`. Musi
+     używać `https`, z wyjątkiem `localhost`.
+   - **ID klienta** i **Zakresy** (domyślnie `openid email profile`; `openid` jest
+     wymagany).
+
+   Okno pokazuje **URI przekierowania do zarejestrowania u dostawcy** i nazwę zmiennej
+   z sekretem. Zapisz.
+
+4. **Wypróbuj** w oknie prywatnym: strona logowania pokazuje **Kontynuuj przez Corp account**.
+
+</Steps>
+
+## Kto może się logować i z jakimi rolami
+
+| Ustawienie | Klucz JSON | Efekt |
+| --- | --- | --- |
+| **Dozwolone domeny e-mail** | `allowedDomains` | Logować się mogą tylko te domeny e-mail. Puste oznacza dowolne. |
+| **Twórz konta przy pierwszym logowaniu** | `autoCreate` | Tworzy konto administratora, gdy ktoś loguje się po raz pierwszy. Bez tego logować się mogą tylko e-maile, które mają już konto. |
+| **Role domyślne** | `defaultRoles` | Kody ról tworzonych kont, gdy mapowanie ról nie daje żadnej. |
+| **Claim roli** | `roleClaim` | Claim tokenu ID wymieniający grupy użytkownika, np. `groups` lub `roles`. |
+| **Mapowanie ról** | `roleMap` | Jaki kod roli daje każda wartość claimu. |
+| **Ufaj niezweryfikowanym adresom e-mail** | `trustUnverifiedEmail` | Akceptuje e-maile, których dostawca nie oznacza jako zweryfikowane. |
+| **Dostawca wymusza MFA** | `providerMfa` | Nie pyta administratorów o drugi składnik Verdin po tym dostawcy. |
+
+- Dostawca, który tworzy konta, potrzebuje ról domyślnych lub mapowania ról.
+- Żadne z nich nie może nadać roli Super Admin; awansuj administratorów ręcznie
+  w **Ustawienia → Użytkownicy**.
+- Role są ustawiane tylko przy tworzeniu konta. Potem zarządzaj nimi w
+  **Ustawienia → Użytkownicy**.
+- Imię i nazwisko tworzonego konta pochodzą z claimów `given_name` i `family_name`.
+
+Ten sam dostawca jako JSON, w postaci zapisywanej przez funkcję
+(`PUT /admin/api/features/sso`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## Uwagi o dostawcach
+
+- **Microsoft Entra ID** pomija `email_verified` w swoich tokenach ID: włącz dla niego
+  **Ufaj niezweryfikowanym adresom e-mail**. Aby mapować grupy, dodaj claim `groups`
+  w konfiguracji tokenów aplikacji; jego wartości to identyfikatory grup.
+- **Google Workspace**: wystawca to `https://accounts.google.com`. Ogranicz logowania do
+  swojej domeny przez **Dozwolone domeny e-mail**.
+- **Keycloak**: wystawca to URL realmu, `https://<host>/realms/<realm>`.
+
+## Uwierzytelnianie dwuskładnikowe
+
+Domyślnie administrator, który ma [drugi składnik](/pl/guides/auth/two-factor/) w Verdin,
+jest o niego pytany po powrocie od dostawcy. Gdy dostawca już wymusza MFA, włącz **Dostawca
+wymusza MFA**, aby nie pytać dwa razy.
+
+## Jak to działa
+
+<Diagram
+  caption="Logowanie przez SSO"
+  code={`sequenceDiagram
+  participant B as Przeglądarka
+  participant V as Verdin
+  participant P as Dostawca
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: przekierowanie ze state i wyzwaniem PKCE
+  B->>P: logowanie
+  P-->>B: przekierowanie do callbacku z kodem
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: wymiana kodu (TLS)
+  V-->>B: ciasteczko sesji, przekierowanie do /admin/`}
+/>
+
+- Verdin używa przepływu authorization code z PKCE (S256). `state` jest podpisany i powiązany
+  z krótkotrwałym ciasteczkiem `HttpOnly`, a `nonce` jest z niego wyprowadzany.
+- Sprawdza wystawcę, odbiorcę (i `azp`, gdy jest ich kilku), czas ważności i nonce tokenu ID.
+  Wymaga claimu `email` z `email_verified: true`, chyba że włączone jest **Ufaj
+  niezweryfikowanym adresom e-mail**.
+- Endpointy dostawcy muszą używać `https`.
+- Każde logowanie przez SSO jest zapisywane w [dziennikach audytu](/pl/guides/content/audit-logs/)
+  jako `admin.login`, z dostawcą.
+
+Gdy logowanie się nie powiedzie, przeglądarka wraca na stronę logowania z przyczyną
+(„Logowanie jednokrotne nie powiodło się”), a przyczyna jest zapisywana w logu serwera.
+Najczęstsze:
+
+| Przyczyna | Rozwiązanie |
+| --- | --- |
+| the provider did not verify the email | Włącz **Ufaj niezweryfikowanym adresom e-mail** albo popraw claim u dostawcy. |
+| this email domain may not sign in | Dodaj domenę do **Dozwolonych domen e-mail**. |
+| no admin account for this identity | Włącz **Twórz konta przy pierwszym logowaniu** albo najpierw utwórz administratora. |
+| the sign-in request expired or was not started here | Zacznij ponownie ze strony logowania, w tej samej przeglądarce. |
+
+<Aside type="note">
+Dezaktywowany administrator nie może się zalogować również przez SSO.
+</Aside>

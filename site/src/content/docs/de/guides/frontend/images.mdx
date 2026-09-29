@@ -1,0 +1,237 @@
+---
+title: Responsive Bilder
+description: Liefere Bilder in der passenden Größe aus, mit den Formaten, die Verdin beim Upload erzeugt, und mit Transformationen per URL.
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin bietet zwei Wege, ein Bild in der Größe auszuliefern, die eine Seite braucht:
+
+- **Responsive Formate**, einmal beim Upload des Bilds erzeugt (`thumbnail`, `small`, `medium`,
+  `large`), genau wie beim Upload-Plugin von Strapi. Sie funktionieren mit jedem
+  Upload-Provider.
+- **Transformationen**, auf Anfrage aus URL-Parametern gerendert (`?preset=thumb` oder
+  `?w=800&format=webp` mit Signatur) und auf der Festplatte gecacht. Sie funktionieren mit dem
+  lokalen Provider.
+
+Beides gehört zur Medienbibliothek, die immer eingeschaltet ist. Zum Hochladen und Organisieren
+von Dateien siehe [Medien](/de/concepts/media/).
+
+## Responsive Formate
+
+Beim Upload eines JPEG-, PNG-, WebP-, TIFF- oder BMP-Bilds schreibt Verdin kleinere Kopien davon
+und listet sie in den `formats` der Datei:
+
+| Format | Größe |
+| --- | --- |
+| `thumbnail` | Passt in 245 × 156 Pixel. |
+| `large` | 1000 Pixel breit. |
+| `medium` | 750 Pixel breit. |
+| `small` | 500 Pixel breit. |
+
+Ein Format wird übersprungen, wenn das Bild schon kleiner ist; ein 600 Pixel breites Bild
+bekommt also nur `thumbnail` und `small`. Die Kopien behalten das Format des Originals (JPEGs
+werden mit Qualität 80 kodiert) und seine EXIF-Ausrichtung. GIFs bleiben unangetastet, weil sie
+animiert sein können.
+
+Lade das Medienfeld per Populate, um sie zu bekommen. Die Beispiele nutzen ein Medienattribut
+`cover` am Artikel; das Beispiel-Blog hat keines, füge also im Content-Type Builder eines hinzu,
+um mitzumachen.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?populate[cover]=true'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles {
+    title
+    cover { url width height alternativeText formats }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ populate: { cover: true } });
+const formats = data[0].cover?.formats; // Record<string, MediaFormat> | null
+```
+
+</TabItem>
+</Tabs>
+
+```json
+"cover": {
+  "url": "/uploads/team_4f1c2a.jpg",
+  "width": 2400,
+  "height": 1600,
+  "alternativeText": "The team at the office",
+  "formats": {
+    "thumbnail": { "url": "/uploads/thumbnail_team_4f1c2a.jpg", "width": 234, "height": 156 },
+    "large": { "url": "/uploads/large_team_4f1c2a.jpg", "width": 1000, "height": 667 },
+    "medium": { "url": "/uploads/medium_team_4f1c2a.jpg", "width": 750, "height": 500 },
+    "small": { "url": "/uploads/small_team_4f1c2a.jpg", "width": 500, "height": 333 }
+  }
+}
+```
+
+Bau daraus ein `srcset`. Mit dem lokalen Provider sind die `url`s Pfade auf dem Verdin-Host;
+stell ihnen seinen Origin voran:
+
+```ts
+const CMS = 'https://cms.example.com';
+
+function srcset(image: Media): string {
+  const sources = Object.values(image.formats ?? {}).map((f) => `${CMS}${f.url} ${f.width}w`);
+  return [...sources, `${CMS}${image.url} ${image.width}w`].join(', ');
+}
+```
+
+```html
+<img src="…/uploads/large_team_4f1c2a.jpg" srcset="…" sizes="(min-width: 60rem) 50vw, 100vw"
+     width="2400" height="1600" alt="The team at the office" />
+```
+
+### Die Formate ändern
+
+Die Formate kommen aus `[upload]` in `verdin.toml`:
+
+```toml title="verdin.toml"
+[upload]
+breakpoints = [{ name = "large", width = 1600 }, { name = "small", width = 640 }]
+# responsive_formats = false  # no copies at all
+# max_original_size = 3000    # scale larger originals down on upload (drops EXIF and GPS)
+```
+
+`breakpoints` ist die gleichnamige Einstellung von Strapi. Änderungen gelten für neue Uploads;
+bestehende Dateien behalten ihre Formate. Alle Schlüssel stehen unter
+[`[upload]`](/de/reference/configuration/), einschließlich `max_image_megapixels`, dem
+Dekodierlimit, das vor Dekompressionsbomben schützt (standardmäßig 100 Megapixel).
+
+## Transformationen
+
+Mit dem lokalen Provider liefert Verdin `/uploads/<file>` selbst aus und kann auf Anfrage andere
+Größen und Formate eines Bilds rendern:
+
+```
+/uploads/team_4f1c2a.jpg?preset=thumb
+/uploads/team_4f1c2a.jpg?w=800&format=webp&s=<signature>
+```
+
+| Parameter | Werte |
+| --- | --- |
+| `w`, `h` | Breite und Höhe in Pixeln, von 1 bis `max_size` (standardmäßig 4096). Mit nur einem folgt der andere dem Seitenverhältnis. Mit keinem behält das Bild seine Größe (eine Formatänderung). |
+| `fit` | `cover` (Standard) füllt die Box und schneidet den Rest ab, wobei der Fokuspunkt der Datei sichtbar bleibt. `inside` passt das Bild in die Box ein. `fill` streckt es auf die Box. |
+| `format` | `jpeg` (oder `jpg`), `png` oder `webp`. WebP-Ausgabe ist verlustfrei. Ohne den Parameter behält das Bild sein Format (TIFF und BMP werden zu JPEG). |
+| `q` | JPEG-Qualität, von 1 bis 100. Standard ist 80. |
+| `preset` | Eine benannte Transformation aus der Konfiguration. Lässt sich nicht mit den anderen Parametern kombinieren. |
+| `s` | Die Signatur, wenn die Parameter kein Preset sind. |
+
+Bilder werden nie vergrößert: Ein 600 Pixel breites Bild, das mit `w=1200` angefragt wird, kommt
+mit 600 zurück. Transformationen funktionieren mit JPEG-, PNG-, WebP-, TIFF- und BMP-Dateien,
+nicht mit GIFs.
+
+### Fokuspunkt
+
+Redakteure setzen den Fokuspunkt eines Bilds in der Medienbibliothek: Datei öffnen und auf das
+Bild klicken
+(**Fokuspunkt: Klicke auf das Bild oder lege ihn mit den Pfeiltasten fest**). Zuschnitte mit
+`fit=cover` halten diesen Punkt sichtbar, und eine Änderung verwirft die gecachten Renderings
+der Datei.
+
+### Presets
+
+Presets sind die Transformationen, die jeder anfragen darf. Du definierst sie in
+`[upload.transforms.presets]`:
+
+```toml title="verdin.toml"
+[upload.transforms.presets]
+thumb = { w = 300, h = 300 }
+card = { w = 640, h = 360, format = "webp" }
+hero = { w = 1600, h = 600, fit = "cover", format = "jpeg", q = 85 }
+```
+
+```html
+<img src="https://cms.example.com/uploads/team_4f1c2a.jpg?preset=card" alt="…" />
+```
+
+Ein unbekanntes Preset ergibt `400`.
+
+### Signierte Parameter
+
+Jede andere Kombination aus `w`, `h`, `fit`, `format` und `q` braucht eine Signatur, damit
+niemand den Server eine unbegrenzte Zahl von Varianten rendern (und speichern) lassen kann.
+Setze ein Secret in der Umgebung des Servers und des Codes, der die Bild-URLs baut:
+
+```sh title="Terminal"
+export VERDIN_IMAGE_SECRET="$(openssl rand -hex 32)"
+```
+
+Die Signatur `s` ist der hexkodierte HMAC-SHA256 von `<file>?<canonical query>`, mit diesem
+Secret als Schlüssel. Die kanonische Query listet die Parameter, die du setzt, außer
+`fit=cover` (dem Standard), sortiert nach Namen (`fit`, `format`, `h`, `q`, `w`), mit `jpeg`
+für JPEG:
+
+```ts title="src/image-url.ts"
+import { createHmac } from 'node:crypto';
+
+type Transform = { w?: number; h?: number; fit?: 'cover' | 'inside' | 'fill'; format?: 'jpeg' | 'png' | 'webp'; q?: number };
+
+export function imageUrl(cms: string, url: string, t: Transform): string {
+  const file = url.replace(/^\/uploads\//, '');
+  const params: [string, string][] = [];
+  if (t.fit && t.fit !== 'cover') params.push(['fit', t.fit]);
+  if (t.format) params.push(['format', t.format]);
+  if (t.h) params.push(['h', String(t.h)]);
+  if (t.q) params.push(['q', String(t.q)]);
+  if (t.w) params.push(['w', String(t.w)]);
+  const query = params.map(([k, v]) => `${k}=${v}`).join('&');
+  const s = createHmac('sha256', process.env.VERDIN_IMAGE_SECRET!).update(`${file}?${query}`).digest('hex');
+  return `${cms}/uploads/${file}?${query}&s=${s}`;
+}
+```
+
+Bau diese URLs auf dem Server (oder beim Build): Das Secret darf nicht in den Browser gelangen.
+Ohne `VERDIN_IMAGE_SECRET` oder mit falscher Signatur antwortet die Anfrage mit `403`.
+
+<Aside type="caution">
+`[upload.transforms].allow_arbitrary = true` akzeptiert beliebige Parameter ohne Signatur. Jede
+unterschiedliche URL wird dann gerendert und gecacht, sodass jeder die Festplatte füllen und die
+CPU beanspruchen kann. Schalte es nur ein, wenn der Server ausschließlich aus
+vertrauenswürdigen Netzen erreichbar ist.
+</Aside>
+
+### Caching und Limits
+
+- Renderings werden in `[upload.transforms].cache_dir` geschrieben (standardmäßig
+  `.cache/transforms`) und danach von dort ausgeliefert. Das Verzeichnis kannst du gefahrlos
+  löschen.
+- Eine Datei zu ersetzen oder ihren Fokuspunkt zu verschieben verwirft ihre gecachten
+  Renderings.
+- Transformierte Antworten werden von Browsern und CDNs einen Tag lang gecacht
+  (`Cache-Control: public, max-age=86400`), einfache Dateien ein Jahr lang, da sich ihre Namen
+  nie ändern.
+- Renderings laufen parallel bis zur Zahl der CPU-Kerne; weitere Anfragen warten.
+- Bilder größer als `max_image_megapixels` werden abgelehnt (`422`).
+
+Setze `[upload.transforms].enabled = false`, um Transformationen abzuschalten. Die Schlüssel
+stehen unter [`[upload.transforms]`](/de/reference/configuration/).
+
+### Mit S3 und anderen Providern
+
+Mit dem S3-Provider liefert der Bucket oder sein CDN die Dateien aus, nicht Verdin, die
+Transformationsparameter bewirken also nichts. Nimm die responsiven Formate oder den Bilddienst
+deines CDNs (zum Beispiel Cloudflare Images oder imgix) vor der `public_url` des Buckets.
+
+Strapi hat keine eingebauten Transformationen; seine responsiven Formate und `breakpoints`
+verhalten sich genauso wie die von Verdin.

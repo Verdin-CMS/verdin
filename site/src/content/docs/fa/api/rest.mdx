@@ -1,0 +1,475 @@
+---
+title: "REST API"
+description: "مسیرها، پارامترهای کوئری (filters، sort، pagination، fields، populate، locale، status)، بدنهٔ درخواست‌ها، پاسخ‌ها، خطاها و محدودیت‌های REST API سازگار با Strapi v5 در Verdin."
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+هر نوع محتوا مسیرهای REST را زیر پیشوند API محتوا می‌گیرد، که به‌طور پیش‌فرض `/api` است
+(`[api].prefix`). مسیرها، پارامترها و شکل پاسخ‌ها از Strapi v5 پیروی می‌کنند، بنابراین بیشتر
+فرانت‌اندهایی که برای Strapi نوشته شده‌اند بدون تغییر کار می‌کنند. این صفحه مرجع است؛ مثال‌ها از
+[نمونهٔ وبلاگ](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) استفاده می‌کنند (مقاله‌ها،
+دسته‌ها، برچسب‌ها و یک صفحهٔ اصلی).
+
+سرور مسیرهای طرح‌وارهٔ (schema) *خود شما* را هم در یک سند OpenAPI 3.1 در
+`GET /api/_openapi.json` توصیف می‌کند. صفحه‌های [API محتوای نمونه](/api/example/) سند وبلاگ را
+نمایش می‌دهند و [محیط آزمایش API](/fa/api/playground/) امکان امتحان درخواست‌ها را می‌دهد.
+
+## مثال
+
+یک کوئری یکسان در هر API: ده مقالهٔ آخر یک دسته، همراه با نام دستهٔ آن‌ها.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+[GraphQL API](/fa/api/graphql/) و [کلاینت تایپ‌شده](/fa/guides/frontend/typed-client/) را ببینید.
+
+## احراز هویت
+
+| هدر `Authorization` | فراخواننده | مجوزها |
+| --- | --- | --- |
+| هیچ | عمومی | **تنظیمات ← دسترسی عمومی** |
+| `Bearer vd_…` | توکن API | نوع و مجوزهای توکن |
+| `Bearer <JWT>` | کاربر نهایی | نقش کاربر نهایی او |
+
+یک توکن ناشناخته، منقضی یا بدشکل پاسخ `401` می‌گیرد؛ هرگز به دسترسی عمومی برنمی‌گردد. یک
+فراخوانندهٔ معتبر بدون مجوز لازم، `403` می‌گیرد. [مجوزها](/fa/concepts/permissions/) را ببینید.
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+مرورگرهایی که روی originهای دیگر هستند فقط وقتی می‌توانند API را فراخوانی کنند که
+`[api].cors_origins` آن‌ها را فهرست کرده باشد.
+
+## مسیرها
+
+نوع‌های مجموعه‌ای با `pluralName` خود ارائه می‌شوند:
+
+| روش و مسیر | کنش | پاسخ |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`، یک صفحه از سندها |
+| `GET /api/articles/{documentId}` | `findOne` | `200`، یک سند |
+| `POST /api/articles` | `create` | `201`، سند ساخته‌شده |
+| `PUT /api/articles/{documentId}` | `update` | `200`، سند به‌روزشده |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`، بدون بدنه |
+
+نوع‌های تکی با `singularName` خود ارائه می‌شوند:
+
+| روش و مسیر | کنش | پاسخ |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200`، یا `404` پیش از نخستین نوشتن |
+| `PUT /api/homepage` | `update` | `200`؛ نخستین `PUT` سند را می‌سازد |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+`POST` روی یک نوع تکی پاسخ `405` می‌دهد.
+
+### کنش‌ها
+
+نوع‌های دارای [پیش‌نویس و انتشار](/fa/concepts/draft-and-publish/) سه مسیر دیگر دارند که
+به مجوز `publish` نیاز دارند. Strapi معادل REST برای آن‌ها ندارد.
+
+| روش و مسیر | اثر | پاسخ |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | پیش‌نویس را منتشر می‌کند. | نسخهٔ منتشرشده |
+| `POST /api/articles/{documentId}/actions/unpublish` | نسخهٔ منتشرشده را حذف می‌کند. | پیش‌نویس |
+| `POST /api/articles/{documentId}/actions/discard-draft` | پیش‌نویس را با نسخهٔ منتشرشده جایگزین می‌کند. | پیش‌نویس |
+
+هر سه در نوع‌های بومی‌سازی‌شده `?locale=` را می‌پذیرند.
+
+## نوشتن
+
+`POST` و `PUT` یک بدنهٔ JSON با شیء `data` می‌گیرند:
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` یک به‌روزرسانی جزئی است: ویژگی‌هایی که نمی‌فرستید مقدار خود را نگه می‌دارند. کامپوننت‌ها و
+  ناحیه‌های پویایی که می‌فرستید، مقدار ذخیره‌شده را جایگزین می‌کنند.
+- در نوع‌های دارای پیش‌نویس و انتشار، `POST` و `PUT` پیش‌نویس را می‌نویسند **و آن را منتشر می‌کنند**،
+  مانند Strapi v5. برای نوشتن فقط پیش‌نویس، `?status=draft` را اضافه کنید. اگر انتشار در
+  اعتبارسنجی رد شود، هیچ چیزی نوشته نمی‌شود.
+- کلیدهای ناشناخته، فیلدهای سیستمی (`id`، `documentId`، مُهرهای زمانی) و سمت معکوس (`mappedBy`)
+  روابط، خطای اعتبارسنجی هستند.
+- روابط، `documentId`ها، فهرست‌ها، `null` یا `{ connect, disconnect, set }` را می‌پذیرند؛
+  [روابط](/fa/concepts/relations/#نوشتن) را ببینید. فیلدهای رسانه شناسهٔ فایل می‌گیرند.
+- پاسخ، نسخهٔ نوشته‌شده است که با `fields` و `populate` درخواست خوانده شده است.
+- `DELETE` همهٔ نسخه‌های سند را حذف می‌کند (در نوع‌های بومی‌سازی‌شده، نسخهٔ زبان درخواست‌شده را).
+
+## پارامترهای کوئری
+
+| پارامتر | مثال | پیش‌فرض |
+| --- | --- | --- |
+| [`filters`](#فیلترها) | `filters[title][$containsi]=rust` | هیچ |
+| [`sort`](#مرتبسازی) | `sort=publishedAt:desc` | بر اساس `id`، صعودی |
+| [`pagination`](#صفحهبندی) | `pagination[page]=2&pagination[pageSize]=10` | صفحهٔ 1، 25 در هر صفحه |
+| [`fields`](#فیلدها) | `fields[0]=title&fields[1]=slug` | همهٔ فیلدهای اسکالر |
+| [`populate`](#populate) | `populate[category][fields][0]=name` | هیچ |
+| [`status`](#وضعیت) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#وضعیت) | `hasPublishedVersion=false` | هیچ |
+| [`locale`](#زبان) | `locale=fr` | زبان پیش‌فرض |
+| [`_q`](#جستجو) | `_q=ownership` | هیچ |
+
+پارامترها از نشانه‌گذاری کروشه‌ای Strapi استفاده می‌کنند. فهرست‌ها را می‌توان با اندیس
+(`sort[0]=a&sort[1]=b`)، با کروشهٔ خالی (`sort[]=a`) یا با تکرار کلید
+(`sort=a&sort=b`) نوشت. کروشه‌ها و مقدارها را طبق معمول در URL کدگذاری کنید؛ کلاینت‌هایی مانند
+[`qs`](https://github.com/ljharb/qs) یا [کلاینت تایپ‌شده](/fa/guides/frontend/typed-client/)
+این رشته‌ها را برایتان می‌سازند.
+
+یک پارامتر ناشناخته، یک فیلد ناشناخته یا `private`، یا یک مقدار بدشکل، یک `400`
+از نوع `ValidationError` است که مشکل را نام می‌برد. هیچ چیزی بی‌صدا نادیده گرفته نمی‌شود.
+
+## فیلترها
+
+`filters[field][operator]=value`. یک مقدار تنها به معنی `$eq` است: `filters[slug]=hello-verdin`.
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+چند شرط در یک سطح باید همگی برقرار باشند. آن‌ها را با عملگرهای منطقی ترکیب کنید:
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| عملگر | تطبیق | نوع‌ها |
+| --- | --- | --- |
+| `$eq`، `$ne` | برابر، نابرابر | همهٔ اسکالرها |
+| `$eqi`، `$nei` | برابر، نابرابر، بدون توجه به بزرگی و کوچکی حروف | متن |
+| `$lt`، `$lte`، `$gt`، `$gte` | کوچک‌تر، کوچک‌تر یا مساوی، بزرگ‌تر، بزرگ‌تر یا مساوی | همهٔ اسکالرها جز بولی‌ها |
+| `$between` | بین دو مقدار، با احتساب خود آن‌ها: `[$between][0]=1&[$between][1]=5` | همهٔ اسکالرها جز بولی‌ها |
+| `$in`، `$notIn` | در یک فهرست، نه در یک فهرست: `[$in][0]=a&[$in][1]=b` | همهٔ اسکالرها |
+| `$contains`، `$notContains` | شامل است، شامل نیست | متن |
+| `$containsi`، `$notContainsi` | همان، بدون توجه به بزرگی و کوچکی حروف | متن |
+| `$startsWith`، `$startsWithi` | شروع می‌شود با (بدون توجه به بزرگی و کوچکی حروف) | متن |
+| `$endsWith`، `$endsWithi` | پایان می‌یابد با (بدون توجه به بزرگی و کوچکی حروف) | متن |
+| `$null`، `$notNull` | خالی است، مقدار دارد: `[$null]=true` | همهٔ فیلدها |
+| `$and`، `$or` | همه، برخی از شرط‌های یک فهرست | منطقی |
+| `$not` | یک شیء فیلتر را نقض می‌کند | منطقی |
+
+- نوع‌های متنی عبارت‌اند از `string`، `text`، `richtext`، `email`، `uid` و `enumeration`. `json` و
+  `blocks` فقط `$null` و `$notNull` را می‌پذیرند.
+- مقدارها به نوع فیلد تبدیل می‌شوند: عدد صحیح، عدد، `true`/`false` (یا `1`/`0`)،
+  تاریخ به شکل `YYYY-MM-DD`، زمان به شکل `HH:MM:SS`، تاریخ‌وزمان به شکل ISO 8601.
+- می‌توانید روی `id`، `documentId`، `createdAt`، `updatedAt`، `publishedAt` و در
+  نوع‌های بومی‌سازی‌شده، `locale` فیلتر کنید.
+- مقایسه‌های متنی روی همهٔ پایگاه‌های داده یکسان رفتار می‌کنند: `$eq`، `$contains` و دیگر
+  عملگرهای بدون `i` دقیق‌اند، و گونه‌های `…i` بزرگی و کوچکی حروف را نادیده می‌گیرند (و در MySQL
+  و MariaDB اعراب و نشانه‌های حروف را هم؛ SQLite فقط حروف ASCII را یکسان می‌کند).
+- هر درخواست حداکثر 100 شرط دارد.
+
+### فیلتر کردن از طریق روابط
+
+روی فیلدهای سندهای مرتبط فیلتر کنید، از هر دو سمت رابطه و به‌صورت تودرتو:
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+یک شرط to-many وقتی برقرار است که یکی از سندهای مرتبط با آن تطبیق کند. سندهای مرتبط در همان
+نسخه و زبانی که خوانده می‌شود تطبیق داده می‌شوند. روابط چندریختی (polymorphic) و فیلدهای رسانه را
+نمی‌توان فیلتر کرد.
+
+### فیلتر کردن روی کامپوننت‌ها و ناحیه‌های پویا
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+فیلدهای اسکالر کامپوننت‌ها، از جمله فیلدهای تودرتو، قابل فیلتر هستند؛ یک کامپوننت تکرارشونده
+وقتی تطبیق می‌کند که یکی از آیتم‌هایش تطبیق کند. ناحیه‌های پویا فقط با `__component` فیلتر می‌شوند.
+[کامپوننت‌ها و ناحیه‌های پویا](/fa/concepts/components-and-dynamic-zones/#فیلتر-کردن) را ببینید.
+
+## مرتب‌سازی
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` یا `field:asc|desc`؛ جهت پیش‌فرض `asc` است.
+- هر فیلد اسکالر به جز `json` و `blocks` قابل مرتب‌سازی است، از جمله فیلدهای سیستمی.
+- `relation.field` بر اساس فیلدی از یک رابطهٔ to-one مرتب می‌کند.
+- مقدارهای خالی در هر دو جهت در انتها می‌آیند و حالت‌های برابر با `id` از هم جدا می‌شوند، بنابراین
+  صفحه‌ها پایدار می‌مانند.
+
+## صفحه‌بندی
+
+بر پایهٔ صفحه یا بر پایهٔ offset، نه هر دو:
+
+| پارامتر | پیش‌فرض | نکته‌ها |
+| --- | --- | --- |
+| `pagination[page]` | `1` | از 1. |
+| `pagination[pageSize]` | `25` (`[api].default_page_size`) | سقف آن `[api].max_page_size` (100) است. |
+| `pagination[start]` | `0` | Offset. |
+| `pagination[limit]` | `25` | سقف آن حداکثر مجاز است؛ `-1` حداکثر را درخواست می‌کند. |
+| `pagination[withCount]` | `true` | `false` شمارش را انجام نمی‌دهد و `total` و `pageCount` را حذف می‌کند. |
+
+`meta.pagination` در پاسخ از حالتی که به کار برده‌اید پیروی می‌کند:
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## فیلدها
+
+`fields` ویژگی‌های اسکالر را انتخاب می‌کند:
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id` و `documentId` همیشه برگردانده می‌شوند. روابط، رسانه، کامپوننت‌ها و ناحیه‌های پویا هرگز
+با `fields` انتخاب نمی‌شوند: از `populate` استفاده کنید.
+
+## Populate
+
+روابط، رسانه، کامپوننت‌ها و ناحیه‌های پویا فقط وقتی populate شوند برگردانده می‌شوند:
+
+| شکل | آنچه populate می‌شود |
+| --- | --- |
+| `populate=*` | همهٔ روابط، فیلدهای رسانه، کامپوننت‌ها و ناحیه‌های پویا، تا یک سطح |
+| `populate=category,tags` یا `populate[0]=category&populate[1]=tags` | فیلدهای نام‌برده |
+| `populate[category]=true` | فیلد نام‌برده (`false` آن را کنار می‌گذارد) |
+| `populate[category][fields][0]=name` | فیلد، همراه با گزینه‌ها |
+
+هر رابطهٔ populateشده `fields`، `filters`، `sort`، `populate` (تودرتو، در مجموع تا 5
+سطح) و `count` را می‌پذیرد:
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- یک رابطهٔ to-one یک شیء یا `null` است؛ یک رابطهٔ to-many یک آرایه است، به ترتیب پیوند یا
+  به ترتیب `sort` در populate.
+- `count=true` به جای سندها `{ "count": 12 }` را برمی‌گرداند (فقط روابط to-many).
+- برای هر سند و رابطه حداکثر 1,000 سند مرتبط برگردانده می‌شود؛ `count` دقیق است.
+- کامپوننت‌ها و ناحیه‌های پویا کامل برمی‌گردند، با کامپوننت‌های تودرتو و روابط و رسانهٔ
+  آن‌ها. گزینه‌های سطح‌به‌سطح Strapi برای آن‌ها (`populate[blocks][on][…]`) پذیرفته و
+  نادیده گرفته می‌شوند.
+- فیلدهای رسانه به شکل شیء فایل برمی‌گردند.
+- روابط چندریختی فقط `count` را می‌پذیرند.
+- سندهای مرتبط در همان وضعیت و زبانِ سند خوانده می‌شوند. populate کردن نوعی که
+  فراخواننده اجازهٔ خواندنش را ندارد، `400` است؛ `populate=*` آن را رد می‌کند.
+
+هر سطح برای هر رابطه یک کوئری دسته‌ای است، بنابراین populateهای عمیق سریع می‌مانند و هرگز
+ردیف تکراری برنمی‌گردانند.
+
+## وضعیت
+
+در نوع‌های دارای پیش‌نویس و انتشار، `status` نسخه را انتخاب می‌کند:
+
+- `status=published` (پیش‌فرض) نسخه‌های منتشرشده را می‌خواند.
+- `status=draft` پیش‌نویس‌ها را می‌خواند و علاوه بر `find` یا `findOne` به مجوز `readDrafts` نیاز دارد.
+
+`hasPublishedVersion=true|false` سندهایی را نگه می‌دارد که نسخهٔ منتشرشده دارند یا ندارند:
+`?status=draft&hasPublishedVersion=false` سندهایی را فهرست می‌کند که هرگز منتشر نشده‌اند. در
+نوع‌های بدون پیش‌نویس و انتشار، `400` است.
+
+در نوشتن، `status=draft` پیش‌نویس را بدون انتشار ذخیره می‌کند.
+[پیش‌نویس و انتشار](/fa/concepts/draft-and-publish/) را ببینید.
+
+## زبان
+
+`locale=fr` نسخهٔ فرانسوی نوع‌های بومی‌سازی‌شده را می‌خواند و می‌نویسد. بدون آن، درخواست‌ها از
+زبان پیش‌فرض استفاده می‌کنند. یک کد نامعتبر یا ناشناخته `400` است. نوع‌هایی که بومی‌سازی‌شده
+نیستند آن را نادیده می‌گیرند. [بین‌المللی‌سازی](/fa/concepts/internationalization/) را ببینید.
+
+## جستجو
+
+`_q` سندهایی را پیدا می‌کند که فیلدهای متنی‌شان شامل آن واژه‌ها باشد، بدون توجه به بزرگی و کوچکی
+حروف (حداکثر 200 نویسه):
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+بدون نمایهٔ جستجو، این پارامتر مانند Strapi با هر فیلد غیرخصوصی `string`، `text`،
+`richtext`، `email`، `uid` یا `enumeration` تطبیق می‌کند. با `[search] enabled = true`، نتایج
+بر اساس ارتباط رتبه‌بندی می‌شوند، مگر اینکه `sort` بدهید. فیلترهای دیگر و صفحه‌بندی همچنان اعمال
+می‌شوند. [جستجو](/fa/guides/content/search/) را ببینید.
+
+## پاسخ‌ها
+
+یک فهرست:
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+یک سند: `{ "data": { … }, "meta": {} }`.
+
+- سندها مانند Strapi v5 تخت هستند: بدون پوشش `attributes`.
+- ویژگی‌ها به ترتیب طرح‌واره، بین `id`/`documentId` و مُهرهای زمانی می‌آیند؛ نوع‌های
+  بومی‌سازی‌شده `locale` را اضافه می‌کنند. فیلدهای `private` هرگز نمایش داده نمی‌شوند.
+- مقدارهای `biginteger` رشته هستند. مقدارهای `decimal` عدد هستند و به scale خود گرد می‌شوند
+  (با `[api].decimal_as_string = true` رشته). تاریخ‌ها `YYYY-MM-DD`، زمان‌ها
+  `HH:MM:SS.mmm` و تاریخ‌وزمان‌ها `YYYY-MM-DDTHH:MM:SS.mmmZ` به وقت UTC هستند.
+
+خواندن‌های موفق یک `ETag` دارند؛ آن را در `If-None-Match` برگردانید تا `304 Not Modified` بگیرید.
+آن‌ها هدرهای `Cache-Tag` و `Surrogate-Key` را هم برای پاک‌سازی CDN دارند (نگاه کنید به
+[استقرارها و CDN](/fa/guides/integrations/deploys-and-cdn/)).
+
+## خطاها
+
+خطاها شکل Strapi را دارند:
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| وضعیت | `name` | زمان |
+| --- | --- | --- |
+| `400` | `ValidationError` | پارامترها، بدنه یا محتوای نامعتبر. `details.errors` مشکلات محتوا را با مسیرشان فهرست می‌کند. |
+| `401` | `UnauthorizedError` | توکن بدشکل، ناشناخته یا منقضی. |
+| `403` | `ForbiddenError` | فراخواننده مجوز لازم را ندارد (برای پیش‌نویس‌ها، `readDrafts`). |
+| `404` | `NotFoundError` | مسیر، نوع محتوا یا سند ناشناخته. |
+| `405` | `MethodNotAllowedError` | `POST` روی یک نوع تکی، یا `PUT` یا `DELETE` روی مسیر یک نوع مجموعه‌ای. |
+| `408` | | درخواست بیش از `[server].request_timeout_secs` (30 ثانیه) طول کشید. |
+| `413` | | بدنه بزرگ‌تر از `[server].body_limit` (1 MB) است. |
+| `429` | `RateLimitError` | بیش از `[api].public_rate_limit` یا `[api].token_rate_limit`. `Retry-After` می‌گوید کی دوباره تلاش کنید. |
+| `500` | `ApplicationError` | یک خطای پیش‌بینی‌نشده؛ جزئیات فقط در لاگ سرور است. |
+
+## محدودیت‌ها
+
+| محدودیت | مقدار |
+| --- | --- |
+| اندازهٔ صفحه | `[api].max_page_size`، به‌طور پیش‌فرض 100 |
+| عمق populate | 5 سطح |
+| سندهای مرتبط برای هر سند و رابطه | 1,000 |
+| شرط‌های فیلتر | 100 |
+| تودرتویی کروشه‌ها در یک پارامتر | 12 سطح |
+| پارامترها در هر درخواست | 1,000 |
+| رشتهٔ کوئری | 16 KB |
+| `_q` | 200 نویسه |
+
+فقط اندازه‌های صفحه قابل پیکربندی هستند. هر نام فیلد در `filters`، `sort`، `fields` و
+`populate` با طرح‌واره بررسی می‌شود و مقدارها همیشه به‌صورت پارامترهای SQL متصل می‌شوند.
+
+## کتابخانهٔ رسانه
+
+مسیرهای بارگذاری Strapi که با مجوزهای **کتابخانهٔ رسانه** بررسی می‌شوند. این مسیرها مانند Strapi
+شیء‌ها و آرایه‌های ساده را بدون `data` برمی‌گردانند:
+
+| مسیر | مجوز | بدنه یا پارامترها |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart: `files` (تا 20)، و اختیاری `fileInfo` به شکل JSON (`name`، `alternativeText`، `caption`، `folder`، `focalPoint`)، یکی برای هر فایل یا یکی برای همه |
+| `POST /api/upload?id={id}` | `update` | Multipart `fileInfo`، و در صورت تمایل یک فایل جدید که محتوا را جایگزین می‌کند |
+| `GET /api/upload/files` | `find` | `pagination[page]`، `pagination[pageSize]`، `sort`، `filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+[رسانه](/fa/concepts/media/) را ببینید.
+
+## مسیرهای دیگر زیر پیشوند
+
+| مسیرها | صفحه |
+| --- | --- |
+| `/api/auth/*`، `/api/users/*`، `/api/connect/*` | [کاربران نهایی](/fa/guides/auth/end-users/) (وقتی قابلیت روشن است) |
+| `/api/_events` | [API بلادرنگ](/fa/api/realtime/) (وقتی قابلیت روشن است) |
+| `/api/_redirects`، `/api/_menus/{slug}`، `/api/_forms/{slug}` | [تغییرمسیرها](/fa/guides/frontend/redirects/)، [منوها](/fa/guides/frontend/menus/)، [فرم‌ها](/fa/guides/frontend/forms/) |
+| `/api/_openapi.json`، `/api/docs` | سند OpenAPI (فقط توکن‌های API، مگر اینکه در **تنظیمات ← قابلیت‌ها ← مستندات API** عمومی شده باشد) و مرجع تعاملی آن (وقتی عمومی است) |
+| `/api/plugins/{name}/*` | مسیرهای [افزونه‌ها](/fa/extending/plugins/) |

@@ -1,0 +1,125 @@
+---
+title: Edycja wizualna
+description: Pozwól redaktorom klikać tekst na stronie podglądu i trafiać do pola, które go przechowuje w panelu administracyjnym.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Edycja wizualna zamienia stronę podglądu w mapę panelu administracyjnego: redaktor najeżdża
+na nagłówek, klika **Edit**, a wpis otwiera się z tym polem w fokusie. Opiera się na
+[Podglądzie](/pl/guides/content/preview/): najpierw skonfiguruj adresy URL podglądu, a potem
+dodaj do strony podglądu dwa poniższe elementy.
+
+Verdin ukrywa małą, niewidoczną mapę źródłową w każdym zwracanym tekście (technika znana jako
+*stega*), a skrypt nakładki znajduje te teksty na stronie. W twoich komponentach nic się nie
+zmienia: oznaczony tekst renderuje się jak każdy inny.
+
+<Diagram code={`flowchart LR
+  A[Strona podglądu] -- "x-verdin-stega: true" --> B[API treści]
+  B -- "tekst + niewidoczna mapa źródłowa" --> A
+  A -- "visual-editing.js: kliknij Edit" --> C[Pole w panelu]`} caption="Strona prosi o mapy źródłowe, a nakładka zamienia je w linki do pól." />
+
+## Konfiguracja
+
+<Steps>
+
+1. Włącz **Podgląd** w **Ustawienia → Funkcje**, wybierz **Skonfiguruj adresy URL
+   podglądu** i podaj dla każdego typu zawartości URL strony, która go renderuje. Sekcja
+   **Edycja wizualna** tego samego okna pokazuje znacznik skryptu i nagłówek dla twojego
+   serwera. Zobacz [Podgląd](/pl/guides/content/preview/).
+
+2. Na stronie podglądu pobieraj treść z tokenem i nagłówkiem `x-verdin-stega: true`. Token
+   to token podglądu z URL podglądu (`?preview=…`, odsyłany jako `x-verdin-preview`) albo
+   token API:
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. Wczytaj nakładkę na tej samej stronie:
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   Ścieżka podąża za [`[admin].path`](/pl/reference/configuration/):
+   `{path}/api/visual-editing.js`.
+
+</Steps>
+
+Z [typowanym klientem](/pl/guides/frontend/typed-client/) przekaż oba nagłówki w `headers`:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+Mapy źródłowe są dodawane tylko do odpowiedzi REST, nie do GraphQL: czytaj treść podglądu
+przez API REST.
+
+Najedź na oznaczony tekst na stronie: dostaje zielony obrys i przycisk **Edit**. W podglądzie
+obok siebie w panelu (**Otwórz podgląd** → **Obok siebie**) przycisk prosi panel
+o otwarcie pola na miejscu. Gdy strona jest otwarta samodzielnie, przycisk otwiera wpis
+w nowej karcie.
+
+<Aside type="note">
+Mapy źródłowe są dodawane tylko do żądań `GET`, które wysyłają `x-verdin-stega: true` **oraz**
+token (`Authorization` lub `x-verdin-preview`). Ruch publiczny i wszystko, co cache'uje twój
+CDN, nigdy ich nie zawiera, a oznaczone odpowiedzi są wysyłane
+z `Cache-Control: private, no-store`.
+</Aside>
+
+## Co jest oznaczane
+
+| Oznaczane | Nieoznaczane |
+| --- | --- |
+| Atrybuty `string`, `text` i `richtext` | `uid`, `email`, `password`, `enumeration` |
+| Pierwszy tekst każdego bloku atrybutu `blocks` | Liczby, wartości logiczne, daty, JSON |
+| To samo wewnątrz komponentów i stref dynamicznych (`seo.metaTitle`, `blocks.2.title`) | Puste stringi |
+| Wypełnione relacje, wskazujące powiązany wpis | Pola multimediów |
+
+Nakładka czyta też znaczniki w atrybutach `alt` i `title`, więc oznaczony tekst umieszczony
+w jednym z nich (np. pole podpisu użyte jako `alt`) pozostaje klikalny.
+
+## Usuwaj znaczniki tam, gdzie tekst jest danymi
+
+Znaczniki to niewidoczne znaki dopisane do tekstu. Tam, gdzie używasz wartości jako danych,
+a nie ją wyświetlasz (klucz, URL, porównanie, sprawdzanie długości `<title>`), najpierw je
+usuń:
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+Pola, które z natury są danymi, takie jak slugi `uid` i wyliczenia, nigdy nie są oznaczane,
+więc routing po `slug` działa bez zmian.
+
+## Jak kodowany jest znacznik
+
+Dla narzędzi, które same czytają znaczniki: znacznik to U+2064, potem każdy bajt UTF-8 z
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+jako cztery cyfry w systemie czwórkowym (od najbardziej znaczącej) zapisane znakami U+200B,
+U+200C, U+200D i U+2060, a potem U+2063. URL panelu pochodzi z
+[`[server].public_url`](/pl/reference/configuration/) i `[admin].path`. Nakładka wysyła
+`{ type: 'verdin:edit', href }` do okna nadrzędnego przez `postMessage`; panel reaguje na to
+tylko wtedy, gdy wiadomość pochodzi z originu URL podglądu.

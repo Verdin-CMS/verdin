@@ -1,0 +1,126 @@
+---
+title: API 令牌
+description: 为内容 API 创建只读、完全访问或自定义的 API 令牌，重新生成或删除它们，并妥善保管令牌 pepper。
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+API 令牌让你的网站、应用和脚本能够以高于公开访问的权限调用内容 API。本指南介绍如何创建令牌、选择其访问权限、使用它，以及在泄露时替换它。令牌的工作方式与 Strapi 的 API 令牌相同。
+
+内容 API 默认是关闭的：不带令牌的请求只能获得 **设置 → 公开访问** 所允许的内容，而在你授权之前那里什么都没有。
+
+## 开始之前
+
+- 管理令牌需要 **管理 API 令牌**（`tokens.manage`）。参见[权限](/zh-cn/reference/permissions/)。
+- 必须设置 `VERDIN_TOKEN_PEPPER`；参见 [pepper 的作用](#pepper-的作用)。
+
+## 创建令牌
+
+<Steps>
+
+1. 打开 **设置 → API 令牌**，选择 **创建令牌**。
+2. 输入 **名称**，并可选择填写 **描述**。
+3. 选择 **类型**：
+
+   | 类型 | 允许 |
+   | --- | --- |
+   | **只读** | 在所有内容类型上执行查询和查询单个，仅限已发布版本。 |
+   | **完全访问** | 在所有内容类型和媒体库上执行所有操作。 |
+   | **自定义** | 只允许你在 **权限** 中勾选的操作。 |
+
+4. 选择 **过期时间**：**永不**，或者 7、30、90 天后。
+5. 对于自定义令牌，按内容类型在 **权限** 下勾选操作：**查询**、**查询单个**、**创建**、**更新**、**删除**、**发布** 和 **读取草稿**。**媒体库** 一行涵盖上传，**用户** 一行涵盖[终端用户](/zh-cn/guides/auth/end-users/)的 `/api/users` 路由。
+6. 选择 **创建**，然后复制令牌。这是它唯一一次显示。
+
+</Steps>
+
+令牌以 `vd_` 开头。列表中会显示每个令牌的前几个字符、最后使用时间和过期时间。
+
+## 使用令牌
+
+以 bearer 令牌的形式发送：
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'http://localhost:1337/api/articles?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/graphql \
+  -H "Authorization: Bearer $VERDIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({
+  url: 'http://localhost:1337',
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+</TabItem>
+</Tabs>
+
+- 令牌的访问权限会替代公开访问，而不是叠加在其上。在某个类型上没有 **查询** 权限的自定义令牌无法列出该类型，即使公众可以。
+- 读取草稿（`?status=draft`）需要 **读取草稿**；只读令牌永远看不到草稿。
+- 未知和过期的令牌会收到 `401`。超出令牌访问权限的操作会收到 `403`。
+- `[api].token_rate_limit` 限制每个令牌每分钟的请求数（默认关闭）。
+- 同样的令牌也用于 GraphQL 和 [MCP 服务器](/zh-cn/guides/integrations/mcp/)的授权。
+
+<Aside type="caution">
+浏览器中的令牌对每个访问者都是可见的。请只在服务器、构建步骤和私有应用中使用令牌；对于公开页面，请在 **设置 → 公开访问** 中授予它们所需的权限。
+</Aside>
+
+## 重新生成或删除令牌
+
+- 令牌所在行上的 **重新生成** 会创建一个名称、类型和权限都相同的新密钥。当前密钥会立即失效，因此使用它的应用在你更新之前都会出错。
+- **删除** 会移除该令牌；使用它的客户端会失去访问权限。
+
+一旦令牌可能泄露，请立即执行其中之一。
+
+## Pepper 的作用
+
+Verdin 从不存储令牌本身。它以 `VERDIN_TOKEN_PEPPER` 为密钥存储每个令牌的带密钥哈希（HMAC-SHA256），因此仅凭数据库副本，任何人都无法使用这些令牌。同一个 pepper 还保护：
+
+- API 令牌。
+- 管理员的身份验证器密钥和恢复码（[双因素认证](/zh-cn/guides/auth/two-factor/)）。
+- 与表单提交一起存储的哈希化 IP 地址。
+
+用 `verdin secrets` 生成一次 pepper，不要把它放在 `verdin.toml` 和数据库备份中，并让每个实例使用相同的值。
+
+<Aside type="caution" title="更换 pepper">
+换用另一个 pepper 后，所有 API 令牌都会失效，每位管理员的身份验证器应用和恢复码也会失效。只有在它泄露时才更换，然后创建新的令牌，并重置每位管理员的双因素认证。通行密钥和密码不受影响。
+</Aside>
+
+## 管理 API
+
+所有路由都位于 `/admin/api` 下，并且需要 `tokens.manage`。
+
+```http
+GET    /admin/api/api-tokens
+POST   /admin/api/api-tokens                  { "name": "Website", "kind": "custom", "expiresInDays": 90,
+                                                "permissions": [{ "subject": "api::article", "action": "find" }] }
+GET    /admin/api/api-tokens/{id}
+PUT    /admin/api/api-tokens/{id}             { "name": "…", "description": null, "kind": "read-only", "permissions": [...] }
+POST   /admin/api/api-tokens/{id}/regenerate
+DELETE /admin/api/api-tokens/{id}
+```
+
+- `kind` 为 `read-only`、`full-access` 或 `custom`；`expiresInDays` 可选（不设置则永不过期），并且之后不能修改。
+- `permissions` 列出 `{ subject, action }` 对。`subject` 是内容类型 uid、`plugin::upload`（媒体库）或 `plugin::users-permissions.user`；`action` 为 `find`、`findOne`、`create`、`update`、`delete`、`publish` 或 `readDrafts`。`publish` 和 `readDrafts` 不适用于后两个 subject。
+- `POST /api-tokens` 和 `/regenerate` 只返回一次密钥，字段为 `accessKey`。
+
+公开访问使用相同的权限对：`PUT /admin/api/public-permissions` `{ "permissions": [...] }`，需要 **管理角色**（`roles.manage`）。

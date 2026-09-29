@@ -1,0 +1,150 @@
+---
+title: טפסים
+description: הגדירו טופסי יצירת קשר והרשמה בפאנל הניהול, שלחו אליהם מהאתר שלכם, וקראו או ייצאו את ההגשות.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+התכונה **טפסים** מטפלת בטפסים של האתר שלכם (יצירת קשר, הרשמה לניוזלטר, הרשמה לאירוע) בלי
+שירות טפסים. העורכים מגדירים את השדות בפאנל הניהול, האתר שלכם מציג אותם ושולח ל-Verdin,
+וההגשות מאומתות, נשמרות, נשלחות בדוא"ל ומיוצאות כ-CSV.
+
+## הפעלה
+
+ב-**הגדרות ← תכונות**, הפעילו את **טפסים**, ואז בחרו **ניהול טפסים** (או עברו ל-**הגדרות ←
+טפסים**). ניהול טפסים וקריאת הגשות דורשים את ההרשאה **ניהול SEO, הפניות, תפריטים וטפסים**
+(`site.manage`), שיש לתפקיד המובנה Editor. ראו [הרשאות](/he/reference/permissions/).
+
+להודעות דוא"ל, הגדירו ספק ב-[`[email]`](/he/reference/configuration/); עם ספק ברירת המחדל
+`log`, הודעות הדוא"ל רק נכתבות ליומן השרת.
+
+## יצירת טופס
+
+<Steps>
+
+1. ב-**הגדרות ← טפסים**, בחרו **טופס חדש**.
+2. תנו לו שם (כמו **יצירת קשר**) ו-**Slug** (`contact`). ה-slug הוא חלק מכתובת ה-URL של
+   הטופס.
+3. בלשונית **שדות**, בחרו **הוספת שדה** לכל שדה, עם **תווית**, **שם**, **סוג**, **חובה**,
+   **טקסט מציין מקום** ו**אורך מקסימלי**.
+4. בלשונית **הגדרות**, הגדירו:
+   - **התראה**: כתובות דוא"ל שמקבלות כל הגשה.
+   - **הודעת הצלחה**: מוחזרת לאתר שלכם אחרי הגשה.
+   - **מלכודת ספאם**: פעילה כברירת מחדל (ראו [ספאם](#ספאם)).
+5. שמרו. הלשונית **שילוב** מציגה את נקודת הקצה הציבורית ודוגמה להעתקה.
+
+</Steps>
+
+| סוג | תווית בפאנל הניהול | מקבל |
+| --- | --- | --- |
+| `text` | **טקסט** | כל טקסט. |
+| `email` | **דוא״ל** | כתובת דוא"ל. |
+| `textarea` | **טקסט ארוך** | כל טקסט. |
+| `number` | **מספר** | מספר, שנשמר כמספר. |
+| `select` | **בחירה** | אחת מה**אפשרויות** שלו (אחת בכל שורה). |
+| `checkbox` | **תיבת סימון** | `true`, `on`, `1` או `yes` מסומן; כל דבר אחר לא. תיבת סימון שהיא חובה חייבת להיות מסומנת. |
+| `date` | **תאריך** | כל טקסט (השתמשו ב-`<input type="date">`). |
+| `url` | **URL** | כתובת URL. |
+| `tel` | **טלפון** | כל טקסט. |
+
+שמות שדות מתחילים באות, ואחריה אותיות, ספרות או `_`, והם ייחודיים בטופס. לטופס יש 1 עד 50
+שדות. הערכים הם לכל היותר **אורך מקסימלי** תווים (5,000 כברירת מחדל, 20,000 לכל היותר).
+
+## הצגת הטופס
+
+`GET /api/_forms/{slug}` מחזיר את ההגדרה, כך שהאתר שלכם יכול להציג את השדות שהעורכים בחרו:
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+`honeypot` הוא `null` כשמלכודת הספאם כבויה. ההגדרה נשמרת במטמון לדקה
+(`Cache-Control: public, max-age=60`).
+
+## הגשה
+
+`POST /api/_forms/{slug}` מקבל את הערכים כ-JSON (השדות, או `{ "data": { … } }`) או כשליחת
+טופס רגילה (`application/x-www-form-urlencoded`). אין צורך באסימון.
+
+<Tabs syncKey="form">
+<TabItem label="טופס HTML">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| תשובה | מתי |
+| --- | --- |
+| `201` עם `{ "data": { "message": … } }` | התקבל. `message` הוא **הודעת הצלחה**, או `Thank you!`. |
+| `400` `ValidationError` | ערך חסר או לא תקין. `details.errors` מפרט `{ path, message }` לכל שדה. |
+| `404` | אין טופס עם ה-slug הזה, או שהתכונה כבויה. |
+| `413` | ההגשה גדולה מ-64 KB. |
+| `429` | אותו מבקר שלח יותר מ-10 הגשות לטופס הזה בדקה. |
+
+הערכים עוברים trim ונבדקים מול השדות. שדות לא מוכרים מושמטים, כך שמבקר לא יכול להוסיף נתונים
+שלא ביקשתם.
+
+שליחת טופס HTML רגילה מקבלת את תשובת ה-JSON כדף. לחוויה טובה יותר, שלחו עם `fetch` והציגו את
+ההודעה בעצמכם. שליחה מהדפדפן למקור אחר דורשת את המקור של האתר שלכם ב-
+[`[api].cors_origins`](/he/reference/configuration/).
+
+### ספאם
+
+כש**מלכודת ספאם** פעילה, הוסיפו לטופס שדה `_gotcha` מוסתר וריק. בוטים ממלאים כל שדה; הגשה
+שבה `_gotcha` מלא נענית כמתקבלת (`201`) ונזרקת, כך שהבוט לא לומד כלום. יחד עם הגבלת הקצב, זה
+עוצר את רוב הספאם בטפסים בלי CAPTCHA.
+
+## קריאת הגשות
+
+הלשונית **הגשות** של הטופס מציגה את מה שהמבקרים שלחו, עם הזמן שבו זה **התקבל**. אפשר למחוק
+הגשה, ו**ייצוא CSV** מוריד את כולן.
+
+כל הגשה שהתקבלה נשלחת גם בדוא"ל לכתובות שב**התראה**, עם קישור להגשות בפאנל הניהול (שנבנה
+מ-[`[server].public_url`](/he/reference/configuration/)).
+
+<Aside type="note">
+Verdin שומר את הערכים של כל הגשה, את ה-user agent של המבקר, ו-hash עם מפתח של כתובת ה-IP שלו
+(לא את הכתובת עצמה), מספיק כדי לזהות הצפה בלי לעקוב אחרי אנשים. מחיקת טופס מוחקת את ההגשות
+שלו.
+</Aside>
+
+## API הניהול
+
+פאנל הניהול משתמש ב-`/admin/api/site/forms` וב-`/admin/api/site/forms/{id}`, ובנוסף
+ב-`/admin/api/site/forms/{id}/submissions` וב-`…/submissions/export` (CSV), עם אסימון גישה של
+מנהל ו-`site.manage`. ראו [API הניהול](/he/api/admin/).

@@ -1,0 +1,158 @@
+---
+title: 升级 Verdin
+description: 升级 Verdin 安装：二进制文件或 Docker 镜像、启动时执行的迁移，以及每个次版本的重要变更和破坏性变更。
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+本页介绍如何把项目迁移到更新的 Verdin 版本，并列出各次版本之间的变化。Verdin 遵循[语义化版本](https://semver.org/)，但在 0.x 阶段有所变通：在 1.0 之前，**次版本**（0.8 → 0.9）可能改变行为，而**补丁版本**（0.9.0 → 0.9.1）只做修复和加固。
+
+## 升级之前
+
+1. **阅读更新日志**，从你当前的版本读到新版本：[更新日志](/zh-cn/project/changelog/)列出了每一项变更，[下文的说明](#升级说明)汇总了需要你采取行动的那些。
+2. **备份**数据库和媒体存储（参见[备份](/zh-cn/deploy/backups/)）。回退到旧版本意味着要恢复该备份：旧版本不会撤销新版本添加的表和列。
+3. 如果说明中提到了你的前端或编辑所依赖的行为，请**先在生产环境的副本上试一试**。
+
+你可以跳过版本。迁移是根据数据库与新版本期望之间的差异计算出来的，而不是逐个版本重放，因此 0.6 → 0.9 只需一次迁移。请阅读中间每个版本的说明。
+
+## 升级
+
+<Tabs syncKey="install">
+<TabItem label="Docker">
+
+<Steps>
+
+1. 修改 Compose 文件、清单或 `Dockerfile` 中的镜像标签，例如 `ghcr.io/verdin-cms/verdin:0.10` → `ghcr.io/verdin-cms/verdin:0.11`。次版本标签（`0.9`）会跟随其补丁版本；如果也想自己决定补丁版本何时到来，请固定到完整版本（`0.9.1`）。
+
+2. 拉取并重启：
+
+   ```sh frame="terminal"
+   docker compose pull verdin
+   docker compose up -d verdin
+   docker compose logs -f verdin
+   ```
+
+   镜像的默认命令 `start --migrate` 会在提供服务之前执行新版本的迁移。请在日志中查找 `applied migrations` 和 `verdin listening`。
+
+</Steps>
+
+</TabItem>
+<TabItem label="Binary">
+
+<Steps>
+
+1. 从[发布页面](https://github.com/Verdin-CMS/verdin/releases)下载适合你平台的压缩包，例如 `verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz`，并对照该版本的 `SHA256SUMS` 进行校验：
+
+   ```sh frame="terminal"
+   sha256sum --ignore-missing -c SHA256SUMS
+   tar xzf verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz
+   ```
+
+2. 停止服务器，替换 `verdin` 二进制文件，并检查版本：
+
+   ```sh frame="terminal"
+   verdin version
+   ```
+
+3. 在项目目录中审查并执行迁移：
+
+   ```sh frame="terminal"
+   verdin migrate plan
+   verdin migrate apply
+   ```
+
+   或者使用 `verdin start --migrate` 启动，它会先执行安全步骤。
+
+4. 照常启动服务器（`verdin start`）。
+
+</Steps>
+
+</TabItem>
+</Tabs>
+
+## 启动时的迁移
+
+新版本通常会添加它自己的表或列（会话、设置、新功能）。`verdin start` 会把数据库与 schema 和新版本所需的内容进行比较：
+
+- 如果一致，就启动。
+- 如果有待处理的步骤，它会拒绝启动，并提示你运行 `verdin migrate plan` 和 `verdin migrate apply`，或者以 `--migrate` 启动。
+- `--migrate` 只执行**安全**步骤。如果某个步骤有风险或具有破坏性，启动会失败，你需要在阅读计划后自己用 `verdin migrate apply --allow risky`（或 `destructive`）执行它。
+- 在 MySQL 和 MariaDB 上，schema 变更无法在事务中执行，被中断的迁移会在下一次 `verdin migrate apply` 时从失败的步骤继续。
+
+有多个实例时，滚动升级是可行的：第一个新实例获取迁移锁并执行迁移，其他实例等待它完成，然后发现已无事可做。参见[运行多个实例](/zh-cn/deploy/scaling/)。
+
+<Aside type="caution">
+请把整个项目升级到同一个版本。不要让两个次版本的实例并行运行超过一次滚动部署所需的时间。
+</Aside>
+
+## 升级说明
+
+各版本的重要变更和破坏性变更，最旧的排在最后。完整列表请参见[更新日志](/zh-cn/project/changelog/)。
+
+### 0.9.1 → 0.10
+
+没有数据库迁移。文档已从 `docs/` 迁移到本站点。
+
+- **`review-workflows.updateEntryStage` 的 webhook 接收方**：`model` 现在是单数名称（`article`），与条目事件一致，uid 则移到了 `uid`。原来使用 `model` 的地方请改为读取 `uid`。
+- **请用 `verdin types` 重新生成 TypeScript 类型**：`Collections` 和 `Singles` 现在是类型别名，`createClient<VerdinSchema>` 需要这一点。
+- **Docker**：镜像把转换缓存和搜索索引保存在 `/data` 中，并把 `/app/public/uploads` 链接到 `/data/uploads`。如果你设置 `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR` 或 `VERDIN_SEARCH__DIR` 只是为了绕开只读的 `/app`，可以把它们删掉。镜像带有 `HEALTHCHECK`。
+- **CDN**：响应会带上它们可以 populate 的类型的标签，因此清除会比以前刷新更多缓存；无需做任何更改。
+- 管理后台中的关联字段改为通过对话框（**链接一个条目**）而不是内联搜索框来链接条目。
+
+### 0.9.0 → 0.9.1
+
+这是一个加固版本；建议所有安装都进行升级。它的迁移（一张新表、两个新列）会在启动时执行。
+
+- **在反向代理之后，请设置 `[server].trusted_proxies`。** 只有所列代理的 `X-Forwarded-For` 才会被用于获取客户端地址；否则代理之后的所有客户端在速率限制和审计日志中都会共用同一个地址。
+- **位于其他源的浏览器前端需要 `[api].cors_origins`。** 0.9.1 为内容 API 和 GraphQL 添加了 CORS；此前没有 CORS 支持。
+- **通过关联的读取遵循权限。** 在所有 API 上，`populate`、关联过滤和关联排序只能访问调用方有权读取的类型和字段。之前 populate 了没有 `find` 授权的类型的公开请求和令牌请求，现在得到的数据会变少：请授予缺少的权限。
+- **SSO 更加严格。** 其设置需要 Super Admin；`defaultRoles` 和 `roleMap` 不能授予 Super Admin；提供商的 `email_verified` 声明必须为 true（除非设置了 `trustUnverifiedEmail`）；除非该提供商被信任负责第二因素（`providerMfa`），否则管理员的第二因素仍然适用；颁发者和令牌端点必须是公开的 `https` URL。升级后请检查你的 SSO 登录。
+- **Super Admin** 只能由另一个 Super Admin 创建、编辑、删除、重新邀请或重置。
+- **终端用户账户**在多次输错密码后会**被锁定**，与管理员账户相同。
+- populate 的关联每个条目每个关联最多返回 1,000 个条目。
+- 首次启动时会重建搜索索引（组件中的 private 字段不再被索引）。
+
+### 0.8 → 0.9
+
+- 管理后台列表中的搜索框会搜索所有文本字段（`_q`），而不只是标题。
+- 新增管理员权限 `deploy.manage`、`deploy.trigger` 和 `site.manage`；Editor 获得 `deploy.trigger` 和 `site.manage`。
+- 新的可选功能（实时、评论与任务、AI 操作、SEO 与站点地图、重定向、菜单、表单）在你开启之前保持关闭。指标需要设置 `[metrics].enabled = true`。
+
+### 0.7 → 0.8
+
+- **条件字段开始生效**：被其 `conditions` 隐藏的字段不再是必填的。依赖此类字段为必填的内容，现在可能在缺少它的情况下保存。
+- 新增 `password` 属性类型；`verdin import strapi` 现在会导入 Strapi 的密码字段。
+
+### 0.7.0 → 0.7.1
+
+- 插件运行时升级到 Wasmtime 48。现有插件无需重新构建即可继续使用。
+- 从源码构建需要 Rust 1.95 或更高版本。
+
+### 0.6 → 0.7
+
+- **多个实例**：每个实例每隔 `[server].sync_interval_secs`（10 秒）读取一次其他实例修改的设置。如果运行多个实例，请在除一个实例外的所有实例上设置 `[plugins].run_jobs = false`。
+- 插件通过宿主写入的内容，现在会经过平台的写入前检查，例如审核工作流阶段。对于这些写入，插件自己的写入前钩子仍会被跳过，因此插件不会触发自身。
+
+### 0.5 → 0.6
+
+- **审计日志**默认开启，条目保留 `[audit].retention_days`（90 天）。如果不需要，请在 **设置 → 功能** 中关闭该功能。
+
+### 0.4 → 0.5
+
+- 无需修改。插件从 `[plugins].path`（`plugins/`）加载，在开启之前保持关闭。
+
+### 0.3 → 0.4
+
+- **`auth`、`users` 和 `connect` 是保留的路由名**，与 `upload` 和 `uploads` 一样：升级之前，请重命名 API 名称为其中之一的内容类型。
+
+### 0.2 → 0.3
+
+- 属性名遵循 Strapi 的规则（一个字母，之后是字母、数字和下划线），而不再只允许 camelCase。映射到同一列的两个名称会被拒绝。
+- `regex` 选项接受类似 JavaScript 的模式。
+
+### 0.1 → 0.2
+
+- 请求体大小限制和超时按 API 路由器分别应用；上传有自己的限制（`[upload].max_file_size`）。
+- 已有安装的内置角色会一次性获得新增的权限。

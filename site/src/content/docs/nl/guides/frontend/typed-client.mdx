@@ -1,0 +1,261 @@
+---
+title: Getypeerde client
+description: Lees en schrijf Verdin-content vanuit TypeScript met @verdin/client en types die `verdin types` uit je schema genereert.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`@verdin/client` is een kleine TypeScript-client voor de content-API: REST-documenten, de
+mediabibliotheek en GraphQL. Combineer hem met `verdin types`, dat TypeScript-definities van je
+contenttypes schrijft, en je editor controleert routenamen, velden en schrijfpayloads terwijl je
+typt.
+
+De client heeft geen dependencies en draait overal waar `fetch` bestaat: browsers, Node 20 en
+later, Deno, Bun en edge workers. Hij is optioneel; elke aanroep komt overeen met een gewoon
+HTTP-request van de [REST-API](/nl/api/rest/).
+
+## Installeren en types genereren
+
+<Steps>
+
+1. Installeer het pakket in je frontendproject:
+
+   ```sh title="Terminal"
+   npm install @verdin/client
+   ```
+
+2. Genereer in het Verdin-project (de map met `verdin.toml`) de types:
+
+   ```sh title="Terminal"
+   verdin types -o ../site/src/verdin-types.ts
+   ```
+
+   Zonder `-o` (`--out`) gaan de definities naar standard output. Het commando leest alleen de
+   schemabestanden; het heeft geen database nodig.
+
+3. Maak een client aan met het gegenereerde `VerdinSchema`:
+
+   ```ts title="src/verdin.ts"
+   import { createClient } from '@verdin/client';
+   import type { VerdinSchema } from './verdin-types';
+
+   export const verdin = createClient<VerdinSchema>({
+     url: 'https://cms.example.com',
+     token: process.env.VERDIN_TOKEN, // omit to use the public role
+   });
+   ```
+
+</Steps>
+
+Draai `verdin types` opnieuw na elke schemawijziging; het bestand zegt dat in zijn eerste regel.
+Het naast je frontendcode committen, of het in CI opnieuw genereren, houdt beide kanten in de pas.
+
+<Aside type="caution">
+Het token geeft de houder de rechten van het token. Houd tokens met volledige toegang en
+aangepaste tokens op de server (SSR, buildscripts, API-routes). Een browserbundel hoort geen token
+(de openbare rol) of een token met alleen-lezen te gebruiken. Zie [API-tokens](/nl/guides/auth/api-tokens/).
+</Aside>
+
+## Wat `verdin types` genereert
+
+Voor de [voorbeeldblog](https://github.com/Verdin-CMS/verdin/blob/main/examples/blog/)
+(artikelen, categorieën, tags, een enkel type homepage en de componenten `shared.seo`,
+`blocks.hero` en `blocks.quote`) bevat het bestand:
+
+| Type | Wat het is |
+| --- | --- |
+| `Article`, `Category`, `Tag`, `Homepage` | Eén interface per contenttype, genoemd naar zijn `singularName`, die `DocumentBase` uitbreidt (`id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt`). Privéattributen worden weggelaten. |
+| `ArticleInput`, … | De schrijftypes: elk attribuut optioneel, relaties als `documentId`-strings (of `connect` / `disconnect` / `set`), media als bestands-id's, inverse relatiekanten weggelaten. |
+| `ComponentSharedSeo`, `ComponentBlocksHero`, … | Eén interface per component, plus zijn type `…Input`. Items van dynamische zones hebben een getypeerde `__component`. |
+| `Media`, `MediaFormat`, `Blocks` | Bestanden uit de mediabibliotheek, hun responsieve formaten en het formaat van de rich-textblokken. |
+| `Collections`, `Singles`, `VerdinSchema` | Routes (`articles`, `homepage`) gekoppeld aan hun document- en inputtypes, voor de client. |
+
+Relaties, media, componenten en dynamische zones zijn optionele properties (`category?:`), omdat
+de API ze alleen teruggeeft als je ze `populate`. Grote gehele getallen zijn `string`, omdat ze
+niet in JavaScript-getallen passen.
+
+Zonder de gegenereerde types werkt de client nog steeds: elke route wordt geaccepteerd en
+documenten zijn `Record<string, unknown>`.
+
+## Content lezen
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[title][$containsi]=rust&populate[category]=true&populate[seo]=true&sort[0]=publishedAt:desc&pagination[page]=1&pagination[pageSize]=10' \
+  -H "Authorization: Bearer $VERDIN_TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { title: { containsi: "rust" } }
+    sort: ["publishedAt:desc"]
+    pagination: { page: 1, pageSize: 10 }
+  ) {
+    documentId
+    title
+    slug
+    category { name }
+    seo { metaTitle metaDescription }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { verdin } from './verdin';
+
+const { data, meta } = await verdin.collection('articles').find({
+  filters: { title: { $containsi: 'rust' } },
+  populate: { category: true, seo: true },
+  sort: ['publishedAt:desc'],
+  pagination: { page: 1, pageSize: 10 },
+});
+
+data[0].title; // string
+data[0].category?.name; // string | null | undefined
+meta.pagination.total;
+```
+
+</TabItem>
+</Tabs>
+
+Queryparameters gebruiken het formaat van Strapi v5 en worden in haakjesnotatie geserialiseerd,
+dus elke filter, sort, `fields`, `populate`, `status` of `locale` die op de REST-API werkt, werkt
+hier ook. Zie [REST-API](/nl/api/rest/) voor de volledige syntaxis.
+
+| Aanroep | Request |
+| --- | --- |
+| `collection(route).find(params?)` | `GET /api/:route` |
+| `collection(route).findOne(documentId, params?)` | `GET /api/:route/:documentId` |
+| `collection(route).create(data, params?)` | `POST /api/:route` (publiceert tenzij `status: 'draft'`) |
+| `collection(route).update(documentId, data, params?)` | `PUT /api/:route/:documentId` |
+| `collection(route).delete(documentId)` | `DELETE /api/:route/:documentId` |
+| `collection(route).publish(documentId)`, `unpublish`, `discardDraft` | `POST /api/:route/:documentId/actions/publish` (`unpublish`, `discard-draft`) |
+| `single(route).find(params?)`, `update(data, params?)`, `delete()` | `GET`, `PUT`, `DELETE /api/:route` |
+| `upload(files, info?)` | `POST /api/upload` (multipart) |
+| `files(params?)` | `GET /api/upload/files` |
+| `graphql(query, variables?)` | `POST /graphql` |
+
+`stringify(params)` wordt ook geëxporteerd, om zelf querystrings op te bouwen (bijvoorbeeld voor
+een `<link rel="preload">`).
+
+## Content schrijven
+
+```ts
+const { data: article } = await verdin.collection('articles').create(
+  {
+    title: 'Hello from TypeScript',
+    category: 'hx2n8r3w0c1kq5v7m4j6b9a0',       // a category's documentId
+    tags: { connect: ['t1…', 't2…'] },
+    seo: { metaTitle: 'Hello', metaDescription: 'A first post' },
+  },
+  { status: 'draft' },
+);
+
+await verdin.collection('articles').publish(article.documentId);
+```
+
+Net als in Strapi v5 publiceert `create` het document meteen op types met concept en publicatie,
+tenzij je `status: 'draft'` meegeeft. Schrijfacties vereisen een token met `create`, `update` of
+`publish` op het type; zie [Rechten](/nl/reference/permissions/).
+
+Upload bestanden met `upload` en verwijs er daarna naar via hun id:
+
+```ts
+const [cover] = await verdin.upload(file, { alternativeText: 'The team at the office' });
+```
+
+`file` is een `Blob` of `File` (of een lijst ervan). Uploads vereisen de grant `create` op de
+mediabibliotheek.
+
+## GraphQL
+
+`graphql()` post naar `/graphql`, dus de functie **GraphQL** moet aan staan in
+**Instellingen → Functies**. Het geeft de `data` van de response terug en gooit een fout bij de
+eerste error.
+
+```ts
+const data = await verdin.graphql<{ articles: Array<{ title: string }> }>(
+  `query ($q: String) { articles(filters: { title: { containsi: $q } }) { title } }`,
+  { q: 'rust' },
+);
+```
+
+De gegenereerde types beschrijven de REST-API. Geef voor GraphQL het resultaattype zelf mee, zoals
+hierboven, of gebruik een GraphQL-codegenerator tegen het endpoint. Zie [GraphQL](/nl/api/graphql/).
+
+## Fouten
+
+Elk mislukt request wordt afgewezen met een `VerdinError`, met de fout die de API in het formaat
+van Strapi stuurde:
+
+| Property | Voorbeeld |
+| --- | --- |
+| `status` | `400`, `401`, `403`, `404`, `429` |
+| `name` | `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `RateLimitError`, `GraphQLError` |
+| `message` | Een leesbare beschrijving. |
+| `details` | De details van de fout, zoals de lijst ongeldige velden van een `ValidationError`. |
+
+```ts
+import { VerdinError } from '@verdin/client';
+
+try {
+  const { data } = await verdin.collection('articles').findOne(id);
+  return data;
+} catch (error) {
+  if (error instanceof VerdinError && error.status === 404) return null;
+  throw error;
+}
+```
+
+## Opties
+
+| Optie | Beschrijving |
+| --- | --- |
+| `url` | De origin van de server, zoals `https://cms.example.com`. Verplicht. |
+| `token` | Een API-token of de JWT van een eindgebruiker, verzonden als `Authorization: Bearer …`. Laat het weg voor de openbare rol. |
+| `prefix` | Het prefix van de content-API. Standaard `/api`; laat het overeenkomen met [`[api].prefix`](/nl/reference/configuration/) als je dat hebt gewijzigd. |
+| `fetch` | Een `fetch`-implementatie om te gebruiken in plaats van de globale. |
+| `headers` | Extra headers die met elk request worden meegestuurd. |
+
+## Server rendering en edge-runtimes
+
+De client roept alleen `fetch` aan, dus hij draait ongewijzigd in servercomponenten, API-routes,
+buildscripts en edge functions. Geef een eigen `fetch` mee om de cacheopties van een framework aan
+elk request toe te voegen. Bijvoorbeeld met Next.js:
+
+```ts title="src/verdin.ts"
+export const verdin = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  token: process.env.VERDIN_TOKEN,
+  fetch: (input, init) => fetch(input, { ...init, next: { revalidate: 60, tags: ['verdin'] } }),
+});
+```
+
+Om concepten op een voorbeeldpagina te lezen, stuur je het voorbeeldtoken dat het beheerpaneel in
+de voorbeeld-URL heeft gezet als header mee:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  headers: { 'x-verdin-preview': searchParams.get('preview') ?? '' },
+});
+const { data } = await preview.collection('articles').findOne(id, { status: 'draft' });
+```
+
+Zie [Voorbeeld](/nl/guides/content/preview/) voor hoe voorbeeldlinks werken, en
+[Visueel bewerken](/nl/guides/frontend/visual-editing/) om klikken-om-te-bewerken aan dezelfde
+pagina toe te voegen.
+
+De API aanroepen vanuit een browser op een andere origin vereist die origin in
+[`[api].cors_origins`](/nl/reference/configuration/).

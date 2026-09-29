@@ -1,0 +1,219 @@
+---
+title: クイックスタート
+description: Docker またはバイナリで Verdin を起動し、最初の管理者を作成し、コンテンツタイプをモデル化して、API から読みます。
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+このページでは、何もない状態から約 10 分で最初の API レスポンスまで進みます。Verdin を起動し、最初の管理者を作成し、コンテンツタイプをモデル化し、それを公開して、REST、GraphQL、または TypeScript クライアントで読みます。
+
+必要なのは、[Docker](https://docs.docker.com/get-docker/) か、`verdin` のバイナリを実行できるマシン（x86-64 の Linux、macOS、Windows、または ARM64 の Linux、macOS）です。
+
+## 1. Verdin を起動する
+
+<Tabs syncKey="install">
+  <TabItem label="Docker">
+
+シークレットを一度だけ生成し、イメージを開発モードで起動します。
+
+```sh title="Terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+`verdin-data` ボリュームには、SQLite のデータベース（`/data/verdin.db`）、アップロードされたメディア（`/data/uploads`）、そして `dev` ではコンテンツタイプビルダーが書き込むスキーマファイル（`/data/schema`）が入ります。
+
+  </TabItem>
+  <TabItem label="Binary">
+
+[リリースのページ](https://github.com/Verdin-CMS/verdin/releases)からプラットフォーム用のアーカイブをダウンロードして展開し、`verdin` を `PATH` に置きます。管理パネルはバイナリに組み込まれています。
+
+プロジェクトのひな形を作り、開発モードで起動します。
+
+```sh title="Terminal"
+verdin new my-site            # verdin.toml、schema/、新しいシークレット入りの .env、SQLite
+cd my-site
+verdin dev
+```
+
+`verdin new` は、生成する `.env` が指すデータベースを選ぶ `--database sqlite|postgres|mysql|mariadb`（デフォルトは SQLite）を受け付けます。PostgreSQL、MySQL、MariaDB では、`verdin dev` を実行する前に、`.env` の `VERDIN_DATABASE_URL` をサーバーに合わせて編集してください。作成されるすべてのファイルは[プロジェクトの構成](/ja/start/project-structure/)で説明しています。
+
+  </TabItem>
+</Tabs>
+
+ログに `verdin listening` が表示されたら、サーバーはポート 1337 で応答しています。最初の起動でデータベースのテーブルが作成されます。
+
+## 2. シークレット
+
+Verdin には、それぞれ 32 バイト以上の 2 つのシークレットが必要です。
+
+| 変数 | 保護するもの |
+| --- | --- |
+| `VERDIN_ADMIN_JWT_SECRET` | 管理者のセッションに署名します。 |
+| `VERDIN_TOKEN_PEPPER` | API トークンをハッシュし、二段階認証のシークレットとリカバリーコードを保護します。 |
+
+`verdin secrets` は新しい値を出力し、`verdin new` はそれを `.env` に書き込みます。シークレットは環境変数からだけ読み込まれ、`verdin.toml` からは読み込まれません。シークレットがないとサーバーは起動しません。`verdin.toml` の隣にある `.env` ファイルが起動時に読み込まれ、環境ですでに設定されている変数が優先されます。
+
+<Aside type="caution">
+シークレットはインストールごとに一度だけ生成し、そのまま保ってください。新しい `VERDIN_ADMIN_JWT_SECRET` にすると、現在のログインのトークン、開いているプレビューのリンク、進行中の OAuth ログインが無効になります（管理パネルは自動でセッションを更新します）。新しい `VERDIN_TOKEN_PEPPER` にすると、すべての API トークンとすべての二段階認証の設定が無効になります。`.env` と `verdin.env` はバージョン管理に含めないでください。
+</Aside>
+
+## 3. 最初の管理者を作成する
+
+[http://localhost:1337/admin/](http://localhost:1337/admin/) を開きます。管理者が存在しない間、管理パネルには **Verdinへようこそ**が表示されます。名前、メールアドレス、8 文字以上のパスワードを入力し、**アカウントを作成**を選びます。この最初のアカウントは、すべての権限を持つ Super Admin です。
+
+管理者はコマンドラインからも作成できます。[コマンドラインでの管理者ユーザー](#コマンドラインでの管理者ユーザー)を参照してください。
+
+## 4. コンテンツタイプをモデル化する
+
+<Steps>
+
+1. サイドバーで**コンテンツタイプビルダー**を開き、**新規コンテンツタイプ**を選びます。
+2. **表示名**を `Article` にします。Verdin は<strong>単数形の名前（API ID）</strong>に `article` を、<strong>複数形の名前（ルート）</strong>に `articles` を入れます。ルートは API での型の URL です。**種類**は**コレクション**のままにします。
+3. **フィールドを追加**を選び、**短いテキスト**を選んで `title` と名前を付け、**完了**を選びます。
+4. **保存**を選びます。**マイグレーションの確認**に、データベースのステップが SQL とともに一覧されます。**適用**を選びます。
+
+</Steps>
+
+Verdin は型を `schema/content-types/article.json` に書き込み、そのテーブルを作成します。ビルダーは `verdin dev` でだけ使えます。本番環境では、スキーマはあなたのファイルから来ます。フィールドの型とオプションは[コンテンツモデル](/ja/concepts/content-model/)を参照してください。
+
+次にエントリーを追加します。**コレクション**の **Article** を開き、**新規エントリー**を選び、タイトルを入力して**公開**を選びます。新しい型では**下書きと公開**がオンなので、そのエントリーは公開されるまで下書きのままで、公開の API からは見えません。
+
+## 5. 公開する
+
+公開の権限を許可するか API トークンを作成するまで、コンテンツ API は閉じています。**設定 → 公開アクセス**を開き、**Article** に**検索**と**1件取得**を許可して、**保存**を選びます。
+
+公開アクセスなしで読むには、**設定 → APIトークン**でトークンを作成し、`Authorization: Bearer <token>` として送ります。[API トークン](/ja/guides/auth/api-tokens/)と[権限](/ja/concepts/permissions/)を参照してください。
+
+## 6. 最初のリクエストを送る
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl localhost:1337/api/articles
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "documentId": "01m3p88agn712n02wb8kkpe94p",
+      "title": "Hello Verdin",
+      "createdAt": "2026-09-29T09:34:39.637Z",
+      "updatedAt": "2026-09-29T09:34:39.637Z",
+      "publishedAt": "2026-09-29T09:34:39.637Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+レスポンスは Strapi v5 のフラットな形です。フィルター、ソート、ページネーション、`populate` は同じクエリパラメーターを使います。[REST API](/ja/api/rest/) を参照してください。
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+**設定 → 機能 → GraphQL**をオンにします。すると `POST /graphql` が、コンテンツタイプから生成したスキーマを、REST API と同じ権限で提供します。
+
+```sh title="Terminal"
+curl localhost:1337/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+```json
+{ "data": { "articles": [{ "documentId": "01m3p88agn712n02wb8kkpe94p", "title": "Hello Verdin" }] } }
+```
+
+[GraphQL API](/ja/api/graphql/) を参照してください。
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+スキーマから型を生成し、フロントエンドのプロジェクトにクライアントをインストールします。
+
+```sh title="Terminal"
+verdin types -o src/verdin-types.ts   # Verdin のプロジェクトで
+npm install @verdin/client            # フロントエンドのプロジェクトで
+```
+
+Docker では、イメージがボリューム内のスキーマから型を出力できます: `docker run --rm -v verdin-data:/data ghcr.io/verdin-cms/verdin types > src/verdin-types.ts`。
+
+```ts title="src/articles.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+
+const { data } = await verdin.collection('articles').find({ sort: ['publishedAt:desc'] });
+console.log(data.map((article) => article.title));
+```
+
+[型付きクライアント](/ja/guides/frontend/typed-client/)を参照してください。
+
+  </TabItem>
+</Tabs>
+
+ここからは、[Astro](/ja/start/tutorial-astro/) と [Next.js](/ja/start/tutorial-nextjs/) のチュートリアルで、同じ API を使ったブログのフロントエンドを作れます。
+
+## 開発モードと本番モード
+
+| コマンド | 用途 |
+| --- | --- |
+| `verdin dev` | 開発。安全なマイグレーションは自動で適用され、コンテンツタイプビルダーでスキーマファイルを編集でき、ファイルが変わるとサーバーが再読み込みします。 |
+| `verdin start` | 本番。データベースがスキーマに追いついていない間は実行を拒否します。 |
+| `verdin start --migrate` | 本番。起動前に保留中の安全なマイグレーションを適用します。これが Docker イメージのデフォルトのコマンドです。 |
+
+リフレッシュ Cookie は、`verdin start` では `Secure` で、`verdin dev` ではそうではないので、`start` のサーバーにログインするには HTTPS が必要です。プレーンな HTTP で `start` を試すには、`VERDIN_ADMIN__SECURE_COOKIES=false` を設定してください。
+
+本番環境では、スキーマをバージョン管理し、読み取り専用でマウントします。Docker では次のようにします。
+
+```sh title="Terminal"
+docker run -p 1337:1337 --env-file verdin.env \
+  -e VERDIN_DATABASE_URL=postgres://user:pass@db:5432/verdin \
+  -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
+```
+
+残りは[本番環境のチェックリスト](/ja/deploy/production-checklist/)で扱います。
+
+## スキーマとマイグレーション
+
+コンテンツタイプは `schema/content-types/<singularName>.json` に、コンポーネントは `schema/components/<category>/<name>.json` に、Strapi の形式で置きます。ファイルが変わると、Verdin はマイグレーションを計画します。
+
+```sh title="Terminal"
+verdin schema check                      # すべてのスキーマファイルを検証
+verdin migrate plan                      # ステップ、リスクレベル、正確な SQL
+verdin migrate apply                     # 安全なステップのみ
+verdin migrate apply --allow risky       # 型の変更と新しい一意制約も
+verdin migrate apply --allow destructive # カラムとテーブルの削除も
+verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
+```
+
+トランザクション内の DDL がない MySQL と MariaDB では、中断されたマイグレーションは次の `migrate apply` で失敗したステップから再開します。[スキーマのマイグレーション](/ja/concepts/schema-migrations/)を参照してください。
+
+## コマンドラインでの管理者ユーザー
+
+```sh title="Terminal"
+verdin admin create --email other@example.com      # パスワードは VERDIN_ADMIN_PASSWORD か標準入力から
+verdin admin reset-password --email you@example.com
+```
+
+`admin create` は Super Admin を作成します。`reset-password` はアカウントのロックも解除し、そのセッションを終了します。どちらも、データベースがスキーマに対して最新である必要があります。
+
+## その他のコマンド
+
+| コマンド | 動作 |
+| --- | --- |
+| `verdin types -o src/verdin-types.ts` | コンテンツ API の TypeScript の定義を書き出します（`-o` がなければ標準出力）。 |
+| `verdin import strapi <export>` | Strapi のプロジェクトをインポートします。[Strapi からの移行](/ja/migrate/from-strapi/)を参照してください。 |
+| `verdin export <file.tar.gz>` | スキーマ、コンテンツ、メディアをアーカイブに書き出します。`verdin import verdin` で読み戻せます。 |
+| `verdin version` | バージョンを出力します。 |
+
+すべてのコマンドは `-c, --config <path>`（デフォルトは `verdin.toml`、または `VERDIN_CONFIG`）を受け付けます。[CLI のリファレンス](/ja/reference/cli/)にすべてのコマンドとフラグが、[設定のリファレンス](/ja/reference/configuration/)にすべての設定が一覧されています。
+
+## ヘルスチェック
+
+`GET /_health` は、プロセスが動いている間応答します。`GET /_ready` はデータベースも確認し、到達できない場合は 503 を返します。ロードバランサーはこちらに向けてください（[スケーリング](/ja/deploy/scaling/)を参照）。

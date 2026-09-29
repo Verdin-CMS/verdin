@@ -1,0 +1,111 @@
+---
+title: Wydania
+description: Grupuj wpisy i publikuj je lub wycofuj z publikacji razem, od razu lub w zaplanowanym terminie.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Wydanie grupuje wpisy, które razem trafiają do publikacji albo razem z niej znikają: premiera
+produktu, kampania, zestaw tłumaczeń. Publikujesz je ręcznie albo nadajesz mu datę. Ten
+przewodnik tworzy wydanie, dodaje wpisy, wykonuje je i pokazuje API administracyjne.
+
+Wydania działają jak Releases w Strapi, które są częścią płatnych planów Strapi.
+
+## Zanim zaczniesz
+
+- **Ustawienia → Funkcje → Wydania** są domyślnie włączone. Gdy są wyłączone, strona
+  **Wydania** i trasy są niedostępne, a zaplanowane wydania czekają.
+- Zarządzanie wydaniami wymaga **Zarządzanie wydaniami** (`releases.manage`).
+- Dodanie wpisu wymaga też **Publikacji** na jego typie zawartości, a typ musi używać
+  [szkiców i publikacji](/pl/concepts/draft-and-publish/).
+
+## Utwórz wydanie
+
+<Steps>
+
+1. Otwórz **Wydania** w pasku bocznym i wybierz **Nowe wydanie**.
+2. Wpisz **Nazwę**.
+3. Opcjonalnie ustaw **Opublikuj w dniu (opcjonalnie)**: datę i godzinę, w twojej strefie
+   czasowej, kiedy wydanie zostanie wykonane. Bez daty wydanie czeka, aż je opublikujesz.
+4. Wybierz **Utwórz**.
+
+</Steps>
+
+## Dodaj wpisy
+
+<Steps>
+
+1. Otwórz wpis w edytorze. Panel **Wydania** wymienia wydania, w których się znajduje.
+2. Wybierz **Dodaj do wydania**.
+3. Wybierz **Wydanie**, a w **Po wykonaniu wydania** wybierz **Publikacja** lub **Cofnięcie
+   publikacji**.
+4. Wybierz **Dodaj**.
+
+</Steps>
+
+W typach lokalizowanych dodawana jest tylko wersja w bieżącym języku edytora. Dodaj każdy
+język, który chcesz wydać. Dodanie wpisu, który już jest w wydaniu, zastępuje jego działanie.
+
+Strona wydania wymienia jego wpisy z typem zawartości i działaniem. Usuń wpis przyciskiem
+w jego wierszu.
+
+## Opublikuj wydanie
+
+- **Teraz:** otwórz wydanie i wybierz **Opublikuj teraz**.
+- **W wyznaczonym terminie:** zadanie w tle co 30 sekund sprawdza i wykonuje wydania, których
+  termin nadszedł, w imieniu administratora, który je utworzył.
+
+<Diagram
+  caption="Statusy wydania"
+  code={`flowchart LR
+  P[Oczekujące] -->|Opublikuj teraz lub nadejście terminu| R[W trakcie]
+  R -->|każde działanie się powiodło| D[Gotowe]
+  R -->|niektóre działania się nie powiodły| F[Niepowodzenie]`}
+/>
+
+Każde działanie zapisuje, czy się powiodło. Gdy któreś się nie powiedzie, np. dlatego że wpis
+został usunięty albo nie przechodzi walidacji, pozostałe działania nadal się wykonują,
+a wydanie kończy się statusem **Niepowodzenie**, z błędem każdego nieudanego działania w jego
+wierszu.
+
+<Aside type="caution">
+Wykonanego wydania nie można już zmienić. Aby ponowić nieudane działania, dodaj te wpisy do
+nowego wydania.
+</Aside>
+
+Wydanie jest publikowane w całości: nie czeka na
+[etapy recenzji](/pl/guides/content/review-workflows/). Jeśli przepływ wymaga określonego
+etapu do publikacji, wpisy spoza tego etapu kończą się niepowodzeniem jak każda inna
+publikacja.
+
+Webhooki mogą subskrybować **Wydanie opublikowane** (`releases.publish`), wysyłane, gdy
+wydanie zostaje wykonane. Zobacz [Webhooki](/pl/guides/integrations/webhooks/).
+
+## API administracyjne
+
+Wszystkie trasy są pod `/admin/api` i wymagają `releases.manage`.
+
+```http
+GET    /admin/api/releases?status=pending
+POST   /admin/api/releases                    { "name": "Launch", "scheduledAt": "2026-10-01T08:00:00Z" }
+GET    /admin/api/releases/{id}
+PUT    /admin/api/releases/{id}               { "name": "Launch", "scheduledAt": null }
+DELETE /admin/api/releases/{id}
+POST   /admin/api/releases/{id}/actions       { "uid": "api::article", "documentId": "…", "locale": "fr", "action": "publish" }
+DELETE /admin/api/releases/{id}/actions/{actionId}
+POST   /admin/api/releases/{id}/publish
+GET    /admin/api/content/{uid}/{documentId}/releases
+```
+
+- `status` to `pending`, `running`, `done` lub `failed`; każde działanie ma własne `status`
+  i `error`.
+- Zmiana, dodawanie do lub publikacja wydania, które już nie oczekuje, daje `409`.
+- `action` to `publish` lub `unpublish`. Dodanie działania wymaga też `content.publish` na
+  danym typie. Język jest ustalany w chwili dodania działania, więc późniejsza zmiana języka
+  domyślnego go nie przesuwa.
+- Usunięcie wydania usuwa jego listę wpisów. Same wpisy się nie zmieniają.
+- `GET /content/{uid}/{documentId}/releases` wymaga dostępu do odczytu wpisu i zwraca pustą
+  listę administratorom bez `releases.manage`.

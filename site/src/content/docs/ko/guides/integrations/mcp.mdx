@@ -1,0 +1,139 @@
+---
+title: MCP 서버
+description: API 토큰의 권한으로 Claude와 다른 AI 에이전트가 Model Context Protocol을 통해 Verdin 콘텐츠를 읽고 편집하게 합니다.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin은 [Model Context Protocol](https://modelcontextprotocol.io)(MCP)로 AI 에이전트에게 콘텐츠를 제공할 수 있습니다.
+Claude Code, Claude Desktop, Cursor 등 MCP 클라이언트를 연결하면, 에이전트가 주어진 토큰의 권한 안에서 콘텐츠 타입을
+나열하고, REST API의 필터로 항목을 조회하고, 항목을 생성, 수정, 게시할 수 있습니다.
+
+Strapi v5에는 기본 MCP 서버가 없습니다.
+
+## 켜기
+
+<Steps>
+
+1. **설정 → 기능**에서 **MCP 서버**를 켭니다. 카드에 콘텐츠 API와 같은 호스트의 **엔드포인트**
+   `https://cms.example.com/mcp`가 표시됩니다.
+2. **설정 → API 토큰**에서 **토큰 만들기**를 선택합니다. 에이전트가 써야 하는 게 아니라면 **읽기 전용**을, 일부 타입과
+   작업만 허용하려면 **사용자 지정**을 고르세요. 토큰은 한 번만 표시되니 복사하세요. [API 토큰](/ko/guides/auth/api-tokens/)을
+   참고하세요.
+3. 엔드포인트와 토큰으로 클라이언트를 연결합니다(아래 참고).
+
+</Steps>
+
+## 클라이언트 연결
+
+서버는 MCP의 Streamable HTTP 전송을 씁니다. 모든 클라이언트에는 URL과 `Authorization: Bearer <token>` 헤더가 필요합니다.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+**MCP 서버** 카드의 **Claude Code에 추가** 아래에 이 명령이 있습니다(**명령어 복사**). `<token>`을 API 토큰으로 바꾸세요.
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+Claude Desktop의 설정 파일은 로컬 서버를 시작하므로 [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)로 HTTP
+엔드포인트에 연결하세요.
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+클라이언트 설정 형식은 바뀔 수 있습니다. 키를 인식하지 못하면 클라이언트 문서를 확인하세요. 그다음 에이전트에게
+*"이번 주에 News 카테고리에 게시된 글을 나열해 줘"* 같은 것을 물어보세요.
+
+## 도구
+
+| 도구 | 필요한 권한 | 하는 일 |
+| --- | --- | --- |
+| `list_content_types` | `find` 또는 `findOne` | 호출자가 읽을 수 있는 콘텐츠 타입과 그 종류, 속성. |
+| `get_content_type` | `find` 또는 `findOne` | 콘텐츠 타입의 속성: 타입, 옵션, 관계. |
+| `find_entries` | `find` | 타입의 항목. `query`는 REST API의 파라미터를 JSON으로 받습니다(`filters`, `sort`, `fields`, `populate`, `pagination`). `status: "draft"`에는 `readDrafts`도 필요합니다. |
+| `get_entry` | `findOne` | `documentId`로 항목 하나(싱글 타입은 `documentId` 없이). |
+| `create_entry` | `create` | REST API처럼 `data`로 항목을 만듭니다. `status: "draft"`는 초안을 저장합니다. |
+| `update_entry` | `update` | 항목을 수정합니다(싱글 타입은 `documentId` 없이). |
+| `delete_entry` | `delete` | 항목을 삭제합니다. |
+| `publish_entry`, `unpublish_entry` | `publish` | 항목을 게시하거나 게시 취소합니다. |
+
+도구는 `uid`(예: `api::article`)와, 로컬라이즈된 타입에서는 `locale`을 받습니다. 각 도구는 대응하는 REST 라우트와 같은
+권한을 확인하며, 쓰기는 REST API와 같은 경로를 거칩니다. 검증, 플러그인 훅, 검토 단계, 웹훅, 콘텐츠 기록, 감사 로그입니다.
+에이전트는 그 토큰이 REST로 할 수 없는 일은 아무것도 할 수 없습니다.
+
+콘텐츠 API 작업은 [권한](/ko/reference/permissions/)을 참고하세요.
+
+## 인증
+
+엔드포인트는 콘텐츠 API와 같은 자격 증명을 받습니다.
+
+- API 토큰. 에이전트에는 보통 이것을 씁니다.
+- 최종 사용자의 JWT. 앱에 로그인한 사용자로 행동하는 에이전트용입니다.
+- `Authorization` 헤더 없음. 공개 역할의 권한을 씁니다.
+
+잘못된 토큰은 `401`로 응답합니다. 서버는 세션을 유지하지 않고 스트림을 열지 않습니다. 각 요청은 JSON으로 응답하는
+JSON-RPC `POST`입니다(`GET`은 `405`로 응답).
+
+### 브라우저 출처
+
+브라우저가 보내는 `Origin` 헤더를 담은 요청은, 그 출처가 **MCP 서버** 카드의 **허용된 브라우저 출처**에 나열되지 않으면
+거부됩니다. 웹 페이지가 브라우저를 속여 네트워크 안의 서버를 호출하게 하는 DNS 리바인딩을 막기 위해서입니다. 명령줄과
+데스크톱 클라이언트는 `Origin`을 보내지 않으므로 목록은 보통 비어 있습니다.
+
+<Aside type="caution">
+전체 접근 토큰을 가진 에이전트는 콘텐츠를 삭제하고 게시할 수 있습니다. 에이전트에게는 필요한 범위로 제한한 읽기 전용이나
+사용자 지정 토큰을 주세요. 에이전트가 쓰는 초안에는 [검토 워크플로](/ko/guides/content/review-workflows/)가 에이전트와 게시
+사이에 사람을 둡니다.
+</Aside>
+
+대신 관리자 패널 안에서 편집자에게 AI 도움(번역, 대체 텍스트, SEO 제안)을 주려면 [AI 기능](/ko/guides/integrations/ai-actions/)을
+참고하세요.

@@ -1,0 +1,138 @@
+---
+title: Tweefactorauthenticatie
+description: Bescherm beheerdersaccounts met een authenticator-app of toegangssleutels, vereis per rol een tweede factor, en herstel of reset verloren factoren.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Tweefactorauthenticatie voegt na het wachtwoord een tweede stap toe: een code van 6 cijfers uit
+een authenticator-app, of een toegangssleutel (passkey: vingerafdruk, gezicht, schermvergrendeling
+of beveiligingssleutel). Deze gids stelt beide in, maakt ze verplicht voor een rol, en behandelt
+wat je doet als een beheerder de zijne kwijtraakt. Strapi heeft geen ingebouwd equivalent.
+
+Tweefactorauthenticatie is voor beheerders. [Eindgebruikers](/nl/guides/auth/end-users/) loggen in
+met een wachtwoord of een OAuth-provider.
+
+## Voordat je begint
+
+- Er is geen functie om aan te zetten: elke beheerder kan in zijn profiel een tweede factor
+  instellen.
+- Toegangssleutels zijn gebonden aan het adres van het beheerpaneel. Stel `[server].public_url` in
+  op het adres dat beheerders openen, zoals `https://cms.example.com`. Browsers bieden
+  toegangssleutels alleen aan via `https://` (en op `localhost`).
+- Houd `VERDIN_TOKEN_PEPPER` stabiel: authenticatorgeheimen en herstelcodes worden ermee
+  beschermd, en als je hem wijzigt, worden ze onbruikbaar.
+
+## Een authenticator-app instellen
+
+<Steps>
+
+1. Open je **Profiel** en zoek **Tweefactorauthenticatie**.
+2. Kies onder **Authenticator-app** **Instellen** en bevestig je wachtwoord.
+3. Scan de QR-code met een app zoals 1Password, Google Authenticator of Authy. Als je hem niet kunt
+   scannen, voer dan de instelsleutel in die eronder staat.
+4. Vul de **Zescijferige code** in die de app toont en kies **Aanzetten**.
+5. Bewaar de **herstelcodes** die Verdin toont: **Downloaden** of kopieer ze, en kies daarna
+   **Ik heb ze bewaard**.
+
+</Steps>
+
+Codes volgen het standaard TOTP-schema (stappen van 30 seconden, SHA-1, 6 cijfers). Een code van
+de stap ervoor of erna wordt ook geaccepteerd, om klokafwijking op te vangen. Als codes worden
+geweigerd, controleer dan de tijd op je apparaat.
+
+## Een toegangssleutel toevoegen
+
+<Steps>
+
+1. Kies onder **Toegangssleutels** **Een toegangssleutel toevoegen**.
+2. Geef hem een **Naam**, zoals "MacBook Touch ID", en bevestig je wachtwoord.
+3. Volg de vraag van je browser.
+
+</Steps>
+
+Je kunt tot 20 toegangssleutels registreren en ze met **Verwijderen** weghalen. Toegangssleutels
+zijn een tweede factor na het wachtwoord, geen vervanging ervan.
+
+## Herstelcodes
+
+Je krijgt 10 herstelcodes wanneer je je eerste factor instelt. Elke code logt je één keer in als je
+je app of toegangssleutels kwijt bent. Het profiel toont hoeveel er nog over zijn; **Nieuwe codes
+genereren** vervangt ze allemaal (de oude werken niet meer).
+
+<Aside type="caution">
+De codes worden één keer getoond. Bewaar ze in een wachtwoordbeheerder of ergens offline, niet
+naast het apparaat met je authenticator.
+</Aside>
+
+## Inloggen met een tweede factor
+
+<Diagram
+  caption="Inloggen met tweefactorauthenticatie"
+  code={`flowchart LR
+  A[E-mail en wachtwoord] --> B{Tweede factor?}
+  B -->|nee| S[Ingelogd]
+  B -->|ja| C[Code, toegangssleutel of herstelcode]
+  C -->|binnen 5 minuten| S`}
+/>
+
+Na het wachtwoord vraagt de inlogpagina om de **Authenticatiecode**. Kies **Een toegangssleutel
+gebruiken** of **Een herstelcode gebruiken** om van methode te wisselen. Je hebt 5 minuten om af te
+ronden; daarna vul je je wachtwoord opnieuw in.
+
+## Tweefactorauthenticatie vereisen voor een rol
+
+<Steps>
+
+1. Open **Instellingen → Rollen** en de rol.
+2. Zet **Tweefactorauthenticatie vereisen** aan en sla op.
+
+</Steps>
+
+Leden zonder tweede factor worden bij het inloggen gevraagd er een in te stellen. Totdat ze dat
+doen, kunnen ze alleen hun profiel openen. In **Instellingen → Gebruikers** toont hun rij
+**2FA ontbreekt**; beheerders die een tweede factor hebben, tonen **2FA**.
+
+Zolang je rol een tweede factor vereist, weigert Verdin je laatste te verwijderen: voeg een
+toegangssleutel toe voordat je de app uitzet, of een andere factor voordat je je enige
+toegangssleutel verwijdert.
+
+## De tweede factor van een andere beheerder resetten
+
+Als een beheerder zijn apparaat en zijn herstelcodes kwijt is:
+
+<Steps>
+
+1. Open **Instellingen → Gebruikers** en zoek de beheerder.
+2. Kies **Tweefactor resetten** en bevestig.
+
+</Steps>
+
+Dit verwijdert zijn authenticator-app, toegangssleutels en herstelcodes, zodat hij alleen met zijn
+wachtwoord inlogt. Als zijn rol tweefactorauthenticatie vereist, moet hij die opnieuw instellen.
+Het vereist **Gebruikers beheren**; alleen een Super Admin kan een andere Super Admin resetten.
+
+`verdin admin reset-password` reset alleen het wachtwoord, niet de tweede factor.
+
+## Single sign-on
+
+Beheerders die via [single sign-on](/nl/guides/auth/sso/) inloggen, worden ook om hun tweede factor
+van Verdin gevraagd, tenzij de provider is gemarkeerd met **De provider dwingt MFA af**.
+
+## Admin-API
+
+Alle routes staan onder `/admin/api`. De routes die factoren wijzigen, nemen je `password`.
+
+| Route | Doet |
+| --- | --- |
+| `POST /auth/login` | Antwoordt met een tweede factor `{ twoFactorRequired: true, twoFactorToken, methods }` in plaats van een sessie. |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }` (TOTP- of herstelcode), of `{ twoFactorToken, challengeToken, credential }` voor een toegangssleutel. Antwoordt met de sessie. |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }`: de challenge voor de toegangssleutel. |
+| `GET /auth/two-factor` | Je factoren: `totp`, `passkeys`, `recoveryCodesLeft`, `required`. |
+| `POST /auth/two-factor/totp/setup`, `/totp/enable`, `/totp/disable` | De authenticator-app instellen (wachtwoord), aanzetten (code) en uitzetten (wachtwoord). |
+| `POST /auth/two-factor/recovery-codes` | Nieuwe herstelcodes. |
+| `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/{id}` | Toegangssleutels registreren en verwijderen. |
+| `DELETE /users/{id}/two-factor` | De factoren van een andere beheerder resetten (`users.manage`). |

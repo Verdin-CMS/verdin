@@ -1,0 +1,260 @@
+---
+title: Типізований клієнт
+description: Читайте й записуйте вміст Verdin з TypeScript за допомогою @verdin/client і типів, згенерованих із вашої схеми командою `verdin types`.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`@verdin/client` — невеликий TypeScript-клієнт для API вмісту: документи REST, медіатека й
+GraphQL. Поєднайте його з `verdin types`, що записує TypeScript-визначення ваших типів вмісту, і
+ваш редактор перевірятиме назви маршрутів, поля й payload запису просто під час введення.
+
+Клієнт не має залежностей і працює всюди, де є `fetch`: у браузерах, Node 20 і новіших, Deno,
+Bun та edge workers. Він необов'язковий; кожен виклик відповідає звичайному HTTP-запиту
+[REST API](/uk/api/rest/).
+
+## Встановлення й генерація типів
+
+<Steps>
+
+1. Встановіть пакет у свій фронтенд-проєкт:
+
+   ```sh title="Terminal"
+   npm install @verdin/client
+   ```
+
+2. У проєкті Verdin (каталозі з `verdin.toml`) згенеруйте типи:
+
+   ```sh title="Terminal"
+   verdin types -o ../site/src/verdin-types.ts
+   ```
+
+   Без `-o` (`--out`) визначення виводяться у стандартний вивід. Команда лише читає файли
+   схеми; база даних їй не потрібна.
+
+3. Створіть клієнт зі згенерованим `VerdinSchema`:
+
+   ```ts title="src/verdin.ts"
+   import { createClient } from '@verdin/client';
+   import type { VerdinSchema } from './verdin-types';
+
+   export const verdin = createClient<VerdinSchema>({
+     url: 'https://cms.example.com',
+     token: process.env.VERDIN_TOKEN, // omit to use the public role
+   });
+   ```
+
+</Steps>
+
+Запускайте `verdin types` знову після кожної зміни схеми; про це сказано в першому рядку файлу.
+Комітьте його поруч із кодом фронтенду або генеруйте заново в CI, щоб обидві сторони
+залишалися узгодженими.
+
+<Aside type="caution">
+Токен дає своєму власникові дозволи токена. Тримайте токени з повним доступом і налаштовувані
+токени на сервері (SSR, скрипти збірки, API-маршрути). Браузерний бандл має використовувати або
+жодного токена (публічна роль), або токен лише для читання. Див. [API-токени](/uk/guides/auth/api-tokens/).
+</Aside>
+
+## Що генерує `verdin types`
+
+Для [прикладу блогу](https://github.com/Verdin-CMS/verdin/blob/main/examples/blog/) (статті,
+категорії, теги, поодинокий тип homepage і компоненти `shared.seo`, `blocks.hero` та
+`blocks.quote`) файл містить:
+
+| Тип | Що це |
+| --- | --- |
+| `Article`, `Category`, `Tag`, `Homepage` | Один інтерфейс на тип вмісту, названий за його `singularName`, що розширює `DocumentBase` (`id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt`). Приватні атрибути пропущено. |
+| `ArticleInput`, … | Типи для запису: усі атрибути необов'язкові, зв'язки — рядки `documentId` (або `connect` / `disconnect` / `set`), медіа — id файлів, зворотні сторони зв'язків пропущено. |
+| `ComponentSharedSeo`, `ComponentBlocksHero`, … | Один інтерфейс на компонент плюс його тип `…Input`. Елементи динамічної зони мають типізований `__component`. |
+| `Media`, `MediaFormat`, `Blocks` | Файли медіатеки, їхні адаптивні формати й формат блоків rich text. |
+| `Collections`, `Singles`, `VerdinSchema` | Маршрути (`articles`, `homepage`), зіставлені з їхніми типами документа й вхідних даних, для клієнта. |
+
+Зв'язки, медіа, компоненти й динамічні зони — необов'язкові властивості (`category?:`), бо API
+повертає їх лише тоді, коли ви робите `populate`. Великі цілі числа мають тип `string`, бо не
+вміщаються в числа JavaScript.
+
+Без згенерованих типів клієнт однаково працює: приймається будь-який маршрут, а документи мають
+тип `Record<string, unknown>`.
+
+## Читання вмісту
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[title][$containsi]=rust&populate[category]=true&populate[seo]=true&sort[0]=publishedAt:desc&pagination[page]=1&pagination[pageSize]=10' \
+  -H "Authorization: Bearer $VERDIN_TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { title: { containsi: "rust" } }
+    sort: ["publishedAt:desc"]
+    pagination: { page: 1, pageSize: 10 }
+  ) {
+    documentId
+    title
+    slug
+    category { name }
+    seo { metaTitle metaDescription }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { verdin } from './verdin';
+
+const { data, meta } = await verdin.collection('articles').find({
+  filters: { title: { $containsi: 'rust' } },
+  populate: { category: true, seo: true },
+  sort: ['publishedAt:desc'],
+  pagination: { page: 1, pageSize: 10 },
+});
+
+data[0].title; // string
+data[0].category?.name; // string | null | undefined
+meta.pagination.total;
+```
+
+</TabItem>
+</Tabs>
+
+Параметри запиту використовують формат Strapi v5 і серіалізуються з квадратними дужками, тож
+будь-який фільтр, sort, `fields`, `populate`, `status` чи `locale`, що працює в REST API, працює
+й тут. Повний синтаксис див. у [REST API](/uk/api/rest/).
+
+| Виклик | Запит |
+| --- | --- |
+| `collection(route).find(params?)` | `GET /api/:route` |
+| `collection(route).findOne(documentId, params?)` | `GET /api/:route/:documentId` |
+| `collection(route).create(data, params?)` | `POST /api/:route` (публікує, якщо не `status: 'draft'`) |
+| `collection(route).update(documentId, data, params?)` | `PUT /api/:route/:documentId` |
+| `collection(route).delete(documentId)` | `DELETE /api/:route/:documentId` |
+| `collection(route).publish(documentId)`, `unpublish`, `discardDraft` | `POST /api/:route/:documentId/actions/publish` (`unpublish`, `discard-draft`) |
+| `single(route).find(params?)`, `update(data, params?)`, `delete()` | `GET`, `PUT`, `DELETE /api/:route` |
+| `upload(files, info?)` | `POST /api/upload` (multipart) |
+| `files(params?)` | `GET /api/upload/files` |
+| `graphql(query, variables?)` | `POST /graphql` |
+
+`stringify(params)` теж експортується — щоб будувати рядки запиту самостійно (наприклад, для
+`<link rel="preload">`).
+
+## Запис вмісту
+
+```ts
+const { data: article } = await verdin.collection('articles').create(
+  {
+    title: 'Hello from TypeScript',
+    category: 'hx2n8r3w0c1kq5v7m4j6b9a0',       // a category's documentId
+    tags: { connect: ['t1…', 't2…'] },
+    seo: { metaTitle: 'Hello', metaDescription: 'A first post' },
+  },
+  { status: 'draft' },
+);
+
+await verdin.collection('articles').publish(article.documentId);
+```
+
+Як і в Strapi v5, у типах із чернетками й публікацією `create` одразу публікує документ, якщо
+не передати `status: 'draft'`. Запис потребує токена з `create`, `update` чи `publish` для типу;
+див. [Дозволи](/uk/reference/permissions/).
+
+Завантажуйте файли через `upload`, потім посилайтеся на них за id:
+
+```ts
+const [cover] = await verdin.upload(file, { alternativeText: 'The team at the office' });
+```
+
+`file` — це `Blob` або `File` (або їх список). Завантаження потребують дозволу `create` для
+медіатеки.
+
+## GraphQL
+
+`graphql()` надсилає запит на `/graphql`, тож функція **GraphQL** має бути ввімкнена в
+**Налаштування → Функції**. Він повертає `data` відповіді й кидає виняток на першій помилці.
+
+```ts
+const data = await verdin.graphql<{ articles: Array<{ title: string }> }>(
+  `query ($q: String) { articles(filters: { title: { containsi: $q } }) { title } }`,
+  { q: 'rust' },
+);
+```
+
+Згенеровані типи описують REST API. Для GraphQL передавайте тип результату самі, як вище, або
+використовуйте генератор коду GraphQL на ендпоінті. Див. [GraphQL](/uk/api/graphql/).
+
+## Помилки
+
+Кожен невдалий запит відхиляється з `VerdinError`, що містить помилку, яку API надіслав у
+форматі Strapi:
+
+| Властивість | Приклад |
+| --- | --- |
+| `status` | `400`, `401`, `403`, `404`, `429` |
+| `name` | `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `RateLimitError`, `GraphQLError` |
+| `message` | Зрозумілий опис. |
+| `details` | Подробиці помилки, наприклад список некоректних полів у `ValidationError`. |
+
+```ts
+import { VerdinError } from '@verdin/client';
+
+try {
+  const { data } = await verdin.collection('articles').findOne(id);
+  return data;
+} catch (error) {
+  if (error instanceof VerdinError && error.status === 404) return null;
+  throw error;
+}
+```
+
+## Параметри
+
+| Параметр | Опис |
+| --- | --- |
+| `url` | Origin сервера, наприклад `https://cms.example.com`. Обов'язковий. |
+| `token` | API-токен або JWT кінцевого користувача, що надсилається як `Authorization: Bearer …`. Пропустіть для публічної ролі. |
+| `prefix` | Префікс API вмісту. Типово `/api`; узгодьте з [`[api].prefix`](/uk/reference/configuration/), якщо ви його змінили. |
+| `fetch` | Реалізація `fetch` замість глобальної. |
+| `headers` | Додаткові заголовки, що надсилаються з кожним запитом. |
+
+## Серверний рендеринг і edge-середовища
+
+Клієнт лише викликає `fetch`, тож працює без змін у серверних компонентах, API-маршрутах,
+скриптах збірки й edge-функціях. Передайте власний `fetch`, щоб додати параметри кешу
+фреймворку до кожного запиту. Наприклад, у Next.js:
+
+```ts title="src/verdin.ts"
+export const verdin = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  token: process.env.VERDIN_TOKEN,
+  fetch: (input, init) => fetch(input, { ...init, next: { revalidate: 60, tags: ['verdin'] } }),
+});
+```
+
+Щоб читати чернетки на сторінці попереднього перегляду, надсилайте як заголовок токен
+попереднього перегляду, який адмінка додала в URL попереднього перегляду:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  headers: { 'x-verdin-preview': searchParams.get('preview') ?? '' },
+});
+const { data } = await preview.collection('articles').findOne(id, { status: 'draft' });
+```
+
+Як працюють посилання попереднього перегляду, див. у [Попередній перегляд](/uk/guides/content/preview/),
+а щоб додати на ту саму сторінку редагування за кліком — у
+[Візуальне редагування](/uk/guides/frontend/visual-editing/).
+
+Виклик API з браузера з іншого origin потребує цього origin у
+[`[api].cors_origins`](/uk/reference/configuration/).

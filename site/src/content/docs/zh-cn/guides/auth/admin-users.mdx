@@ -1,0 +1,134 @@
+---
+title: 管理员用户和角色
+description: 创建第一个管理员、邀请其他管理员、为他们分配角色、通过管理后台或 CLI 重置密码，以及管理会话。
+sidebar:
+  order: 1
+  label: 管理员用户
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+管理员是登录管理后台的人。他们与你的网站和应用的[终端用户](/zh-cn/guides/auth/end-users/)是分开的。本指南介绍如何创建第一个管理员、邀请其他管理员、为他们分配角色，以及在他们被锁定时帮助他们恢复访问。
+
+## 开始之前
+
+- Verdin 需要环境变量中有 `VERDIN_ADMIN_JWT_SECRET` 和 `VERDIN_TOKEN_PEPPER`。用 `verdin secrets` 生成一次即可。
+- 管理管理员需要 **管理用户**（`users.manage`）；管理角色需要 **管理角色**（`roles.manage`）。参见[权限](/zh-cn/reference/permissions/)。
+- 邀请和密码重置邮件通过 `[email]` 发送。使用默认的 `log` 提供方时，邮件（包括其中的链接）会写入服务器日志。
+
+## 创建第一个管理员
+
+打开管理后台（默认为 `http://localhost:1337/admin/`）。在还没有任何管理员时，它会要求创建第一个管理员，该管理员将成为 Super Admin。密码长度为 8 到 128 个字符。
+
+没有浏览器时，可以使用 CLI 或 API：
+
+<Tabs>
+<TabItem label="CLI">
+
+```sh title="Terminal"
+verdin admin create --email you@example.com
+```
+
+密码取自 `VERDIN_ADMIN_PASSWORD`，或者从标准输入读取。该命令会创建一个 Super Admin，任何时候都可以使用，而不仅限于创建第一个管理员。
+
+</TabItem>
+<TabItem label="API">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/register-first-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+```
+
+此路由只在还没有任何管理员时可用。
+
+</TabItem>
+</Tabs>
+
+## 邀请管理员
+
+<Steps>
+
+1. 打开 **设置 → 用户**，选择 **添加用户**。
+2. 输入邮箱，并可选择填写 **名** 和 **姓**。
+3. 选择一个或多个 **角色**。
+4. 保持 **立即设置密码** 关闭即可发送邀请；打开它则由你自己设置密码。
+5. 选择 **邀请**（设置密码时选择 **保存**）。
+
+</Steps>
+
+**邀请链接** 对话框会显示链接，并说明是否已通过邮件发送。如果没有发送（使用 `log` 提供方时总是如此），请自行分享该链接。链接只能使用一次，有效期 7 天；受邀的管理员打开它、设置密码后即可登录。
+
+只要该管理员从未登录过，其所在行上的 **新的邀请链接** 就会替换旧链接。一旦登录过，他们就需要通过重置密码来恢复访问。
+
+## 角色
+
+与 Strapi 一样，Verdin 会创建三个角色：
+
+| 角色 | 可以 |
+| --- | --- |
+| **Super Admin** | 一切操作。其权限不可更改。 |
+| **Editor** | 创建、编辑、发布和删除所有内容；管理媒体库；触发部署；管理 SEO、重定向、菜单和表单。 |
+| **Author** | 创建内容，编辑和删除自己的条目和文件。不能发布。 |
+
+在 **设置 → 角色** 中通过 **新建角色** 创建更多角色。对于每个角色，可以选择：
+
+- **内容**：按内容类型（或 **所有内容类型**）设置 **读取**、**创建**、**更新**、**删除** 和 **发布** 的级别：**无权访问**、**自己的**（只限该管理员创建的条目）或 **全部**。**字段** 把某个操作限定于部分字段，**语言** 则限定于部分语言区域。
+- **媒体库**：文件操作，作用于 **所有文件** 或 **自己的文件**。
+- **设置**：对各管理区域的访问，例如 **管理用户** 或 **读取审计日志**。
+- **要求启用双重验证**：参见[双因素认证](/zh-cn/guides/auth/two-factor/)。
+
+拥有多个角色的管理员会获得各角色权限的并集。完整列表请参见[权限参考](/zh-cn/reference/permissions/)。
+
+只有 Super Admin 才能授予 Super Admin 角色，或者编辑、删除、重置另一个 Super Admin。
+
+## 停用或删除管理员
+
+在 **设置 → 用户** 中编辑该管理员并关闭 **已启用**：未启用的用户无法登录。**删除** 会永久删除该账户；此后其评论会显示为由已删除的管理员撰写。
+
+## 重置密码
+
+- **管理员自行重置：** 登录页上的 **忘记密码？** 会发送一封邮件，其中的链接一小时内有效。密码更改后，该账户的所有会话都会结束。
+- **由另一位管理员设置：** 在 **设置 → 用户** 中编辑该管理员并输入新密码。字段留空则保留当前密码。
+- **在服务器上重置：** 当没有人能登录时，运行
+
+  ```sh title="Terminal"
+  verdin admin reset-password --email you@example.com
+  ```
+
+  密码取自 `VERDIN_ADMIN_PASSWORD` 或标准输入。它会设置密码、解锁账户并结束其会话。它不会移除双因素认证：丢失了第二因素的管理员需要另一位管理员来[重置它](/zh-cn/guides/auth/two-factor/)。
+
+## 登录保护
+
+- 连续 5 次输错密码后，账户会被锁定 15 分钟。
+- 登录、注册和刷新请求按客户端 IP 受 `[admin].auth_rate_limit` 限制（默认每分钟 20 次）。
+- 管理员会话是一个有效期 15 分钟的访问令牌，通过一个有效期 30 天的刷新 cookie 续期。在 `verdin start` 中该 cookie 带有 `Secure`；参见 `[admin].secure_cookies`。
+
+每位管理员都可以在其 **个人资料** 的 **会话** 下看到自己已登录的设备，并可以让其中一个或其他所有设备 **退出登录**。更改密码会让所有其他设备退出登录。
+
+## 管理 API
+
+登录以获取管理 API 的访问令牌：
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+# → { "data": { "user": {…}, "accessToken": "…", "accessTokenExpiresAt": "…" } }
+```
+
+| 路由 | 权限 | 作用 |
+| --- | --- | --- |
+| `GET /users`、`GET /users/{id}` | `users.manage` | 管理员及其角色。 |
+| `POST /users` | `users.manage` | `{ email, firstname?, lastname?, roles: [ids], isActive?, password? }`。不带 `password` 时，响应的 `meta` 中包含 `inviteUrl` 和 `emailed`。 |
+| `PUT /users/{id}`、`DELETE /users/{id}` | `users.manage` | 修改或删除管理员。 |
+| `POST /users/{id}/invite` | `users.manage` | 为从未登录过的管理员生成新的邀请链接。 |
+| `GET /roles`、`POST /roles`、`PUT /roles/{id}`、`DELETE /roles/{id}` | `roles.manage` | 角色及其权限。 |
+| `POST /auth/forgot-password` | 公开 | `{ email }`。始终返回 `204`。 |
+| `GET /auth/sessions`、`DELETE /auth/sessions/{id}` | 已登录 | 你的会话。 |
+
+所有路由都位于 `/admin/api` 下。参见[管理 API](/zh-cn/api/admin/)。
+
+<Aside type="caution">
+密钥绝不要放在 `verdin.toml` 中。请在重启和各实例之间保持两个密钥不变：`VERDIN_ADMIN_JWT_SECRET` 为访问令牌、终端用户的 JWT 和预览链接签名，`VERDIN_TOKEN_PEPPER` 保护 API 令牌和第二因素（参见 [API 令牌](/zh-cn/guides/auth/api-tokens/)）。
+</Aside>

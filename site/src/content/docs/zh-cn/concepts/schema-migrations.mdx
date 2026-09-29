@@ -1,0 +1,118 @@
+---
+title: "Schema 迁移"
+description: "Verdin 如何把 schema 变更转换为数据库迁移：迁移计划、风险等级、verdin dev 和 verdin start 的行为、重命名以及 --allow。"
+sidebar:
+  order: 7
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+修改 schema 文件后，数据库必须随之变化：新属性需要一个列，新关联需要一个链接表。Verdin 会替你计算出这次迁移，在执行之前先展示出来，并且未经你的明确要求绝不会删除数据。本页介绍其工作方式。
+
+## 从 schema 到迁移计划
+
+Verdin 从不要求你编写迁移。它会比较数据库的两个模型：
+
+1. **期望模型**：从你的 `schema/*.json` 文件推导而来，包含它们所需的每个表、列和索引（包括链接表和 Verdin 自己的表）。
+2. **当前模型**：上一次迁移留下的模型，以快照的形式存储在数据库中。
+
+两者的差异就是一份**迁移计划**：一系列步骤，每个步骤都附带针对你的数据库的 SQL 和风险等级。由于计划来自存储的快照，而不是通过检查数据库得出，因此它是确定性的，并且在所有方言上都一样。在你的数据库上生成相同 SQL 的变更（例如 SQLite 上从 `integer` 改为 `biginteger`）不会产生任何步骤。
+
+<Diagram
+  caption="schema 变更如何成为一次迁移"
+  code={`flowchart LR
+    F[schema/*.json] --> D[期望模型]
+    S[(存储的快照)] --> C[当前模型]
+    D --> X{差异}
+    C --> X
+    X --> P[计划：步骤、风险、SQL]
+    P --> A[apply --allow]
+    A --> B[(数据库和新快照)]`}
+/>
+
+`verdin migrate plan` 会输出这份计划。下面的例子中，博客示例 `article.json` 里的 `excerpt` 属性被重命名为 `summary`：
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [safe] add column articles.summary
+       ALTER TABLE "articles" ADD COLUMN "summary" text
+  2. [destructive] drop column articles.excerpt
+       ALTER TABLE "articles" DROP COLUMN "excerpt"
+
+requires: verdin migrate apply --allow destructive
+
+possible renames (pass them to keep the data):
+  --rename-column articles.excerpt=summary
+```
+
+## 风险等级
+
+| 风险 | 步骤 | 原因 |
+| --- | --- | --- |
+| **safe**（安全） | 创建表、添加列、添加或删除非唯一索引、重命名表或列。 | 不会丢失数据，也不会因现有行而失败。 |
+| **risky**（有风险） | 修改列的类型、为已有表添加唯一索引、重建 SQLite 表（SQLite 无法原地修改列）。 | 可能因现有数据而失败（重复值、无法转换的值），或者会重写数据。 |
+| **destructive**（破坏性） | 删除列或表。 | 会删除数据。 |
+
+每个属性列都可以为空（`required` 在发布时检查），因此添加属性，无论是否必填，始终是安全的。给博客示例的文章标题加上 `"unique": true` 则是有风险的，因为现有的标题可能重复：
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [risky] create unique index articles_title_uq
+       CREATE UNIQUE INDEX "articles_title_uq" ON "articles" ("title", "locale", "publication_state")
+
+requires: verdin migrate apply --allow risky
+```
+
+在执行第一条语句之前，Verdin 会为每个可能失败的有风险步骤运行一次检查，例如在创建唯一索引之前查找重复值；如果某项检查发现问题，就会停止并给出提示。此时什么都没有改变。
+
+## 执行迁移计划
+
+`verdin migrate apply` 执行待处理的步骤。它接受你能接受的最高风险等级：
+
+```sh title="Terminal"
+verdin migrate apply                        # 只执行安全步骤（默认）
+verdin migrate apply --allow risky          # 同时执行类型变更和唯一索引
+verdin migrate apply --allow destructive    # 同时执行删除操作
+```
+
+只要有任何步骤超过允许的风险等级，就什么都不会执行：
+
+```text title="Terminal"
+$ verdin migrate apply
+Error: these steps need explicit approval:
+  create unique index articles_title_uq (risky)
+```
+
+迁移会获取一个锁，因此两个实例永远不会同时迁移。在 PostgreSQL 和 SQLite 上，整个计划在一个事务中执行：失败时会全部回滚。MySQL 和 MariaDB 会单独提交每条 DDL 语句，因此 Verdin 会在日志表中逐步记录进度。失败后，修复原因并再次运行 `verdin migrate apply`：如果计划没有变化，它会从失败的步骤继续；如果 schema 在此期间发生了变化，它会拒绝执行。
+
+## 重命名
+
+删除一个属性再新增一个属性，看起来就是一次删除加一次添加，这会丢失该列的数据。Verdin 从不猜测重命名。当某个列消失、同一张表中又出现一个相同类型的列时（或者某张表消失、又出现一张列相同的表时），它会给出重命名建议，由你明确确认：
+
+```text title="Terminal"
+$ verdin migrate apply --rename-column articles.excerpt=summary
+applied 1 step
+```
+
+- `--rename-column TABLE.OLD=NEW` 重命名一个列；`TABLE` 是内容类型的表（其 `collectionName`）。
+- `--rename-table OLD=NEW` 重命名一张表。该类型的链接表会随之重命名。
+- 给 `migrate plan` 传入同样的参数即可预览结果。
+
+重命名是安全步骤。内容类型构建器会在其对话框中给出同样的建议。
+
+## `verdin dev` 和 `verdin start`
+
+| | `verdin dev` | `verdin start` |
+| --- | --- | --- |
+| 启动时 | 执行待处理的安全步骤。如果还有其他待处理步骤，则停止。 | 只要有任何待处理步骤就拒绝启动，除非传入 `--migrate`，它会先执行安全步骤。 |
+| 运行期间的 schema 变更 | **内容类型构建器** 会展示计划及其风险和重命名建议，在你确认后执行，包括风险更高的步骤。手动编辑（或 `git pull`）会被文件监视器捕获：安全的计划会被执行并重新加载应用；其他计划会记录到日志中，正在运行的应用保持不变。 | schema 是只读的。部署新文件并执行迁移。 |
+
+构建器会先迁移数据库，然后写入 schema 文件，再在不重启的情况下重新加载内容 API、管理 API、GraphQL 和 OpenAPI 文档。如果迁移失败，文件和正在运行的应用都保持不变。
+
+在生产环境中，请在启动新版本之前，先对数据库的副本运行 `verdin migrate plan`，再以你能接受的风险等级运行 `verdin migrate apply`。参见[升级](/zh-cn/migrate/upgrading/)和[备份](/zh-cn/deploy/backups/)。
+
+## 与 Strapi 对比
+
+Strapi 在启动时把数据库与 schema 同步，但不会展示它将要做什么。Verdin 先制定计划并展示 SQL，未经要求只执行安全步骤，对于任何可能失败或删除数据的操作都需要 `--allow`。

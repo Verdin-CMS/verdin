@@ -1,0 +1,210 @@
+---
+title: Visió general de l'arquitectura
+description: Com està construït Verdin, des dels seus principis de disseny fins als crates per on passa una petició, per a qui vulgui llegir o canviar el codi.
+sidebar:
+  order: 1
+  label: Visió general
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Aquesta secció és per a les persones que treballen en el mateix Verdin. Explica com s'uneixen el
+servidor i el tauler d'administració, per què es construeixen així i per on començar a llegir el
+codi. Per fer servir Verdin, comença per la [guia d'inici ràpid](/ca/start/quickstart/).
+
+Verdin és un CMS headless escrit en Rust que segueix Strapi v5: modeles el contingut de manera
+visual o en fitxers JSON, i obtens una API REST i GraphQL i un tauler d'administració. Es distribueix
+com un sol binari que conté el servidor, la CLI i el tauler d'administració Angular, i funciona amb
+PostgreSQL, MySQL, MariaDB i SQLite.
+
+## Objectius
+
+- **Un sol binari.** `verdin` conté el servidor, la CLI i el tauler d'administració incrustat. La
+  producció no necessita Node.js ni `node_modules`.
+- **Arrencada ràpida, poca memòria.**
+- **Quatre bases de dades, un sol conjunt de proves.** PostgreSQL, MySQL, MariaDB i SQLite són
+  totes de primera classe i totes estan cobertes per les mateixes proves.
+- **L'esquema com a codi.** Els tipus de contingut són fitxers JSON que versiones a git.
+- **API REST compatible amb Strapi v5** sempre que sigui raonable, perquè els frontends existents es
+  traslladin amb pocs canvis.
+- **Tot gratuït.** No hi ha edició enterprise: SSO, registres d'auditoria, fluxos de revisió,
+  llançaments i totes les altres funcionalitats són per a tothom.
+
+El que s'ha publicat versió a versió, i el que ve després, és al [full de ruta](/ca/project/roadmap/).
+
+### El que no es pretén
+
+- Executar els connectors JavaScript de Strapi. Els connectors de Verdin són mòduls WebAssembly
+  (consulta [connectors](/ca/extending/plugins/)).
+- Llegir tal qual una base de dades de Strapi. El contingut es trasllada mitjançant un importador
+  (consulta [migrar des de Strapi](/ca/migrate/from-strapi/)).
+- Renderitzar pàgines. Verdin és headless.
+
+## Principis de disseny
+
+1. **L'esquema és la font de veritat.** Les taules, la validació, les API REST i GraphQL, el document
+   OpenAPI i els formularis de l'administració en deriven tots.
+2. **Cap identificador SQL no prové mai d'una petició.** Els noms de taules i columnes només surten
+   de l'esquema validat, i cada valor és un paràmetre enllaçat.
+3. **Els dialectes són de primera classe.** Res de «funciona a PostgreSQL, MySQL més endavant».
+   Cada funcionalitat es prova als quatre motors.
+4. **Segur per defecte.** L'API de contingut està tancada fins que concedeixes permisos, els camps
+   `private` mai no s'exposen, i els límits de profunditat i de mida de les consultes sempre estan
+   activats.
+5. **Les operacions destructives són explícites.** Eliminar una columna o una taula necessita la
+   teva aprovació; mai no passa com a efecte secundari.
+6. **Sense estat global.** Els serveis es passen a través de l'estat d'`axum` i dels constructors;
+   no hi ha singletons.
+
+## La imatge general
+
+Una petició entra al binari a través d'una petita pila de capes compartides, arriba a un dels routers
+de l'API i acaba al Document Service, que construeix l'SQL per al dialecte connectat. El registre
+d'esquemes, carregat de `schema/*.json`, alimenta cada pas, i el motor de migracions manté la base
+de dades d'acord amb ell.
+
+<Diagram
+  caption="Una petició de l'API de contingut, i els crates per on passa"
+  code={`flowchart LR
+  Client["Frontend o tauler d'administració"] --> Layers["Capes compartides<br/>IP del client, id de petició, CORS, límits"]
+  Layers --> Routers["verdin-api / verdin-graphql<br/>REST, API d'administració, GraphQL, MCP"]
+  Routers --> Auth["verdin-auth<br/>tokens, rols, permisos"]
+  Routers --> Query["verdin-query<br/>paràmetres a consulta tipada"]
+  Query --> Docs["verdin-content<br/>Document Service"]
+  Docs --> Db["verdin-db<br/>pool i Flavor"]
+  Db --> Engines[("PostgreSQL, MySQL,<br/>MariaDB, SQLite")]
+  Schema["verdin-schema<br/>schema/*.json"] --> Migrate["verdin-migrate<br/>diff, pla, aplicació"]
+  Migrate --> Db`}
+/>
+
+- **API de contingut** sota `[api].prefix` (per defecte `/api`): rutes REST per tipus de contingut,
+  pujades i el document OpenAPI. Consulta l'[API REST](/ca/api/rest/).
+- **API d'administració** sota `{admin.path}/api` (per defecte `/admin/api`): tot el que fa el
+  tauler d'administració. Consulta l'[API d'administració](/ca/api/admin/).
+- **GraphQL** a `/graphql` i **MCP** a `/mcp`, quan aquestes funcionalitats estan activades. Els
+  arguments GraphQL es tradueixen al mateix arbre de paràmetres que llegeix l'analitzador REST, de
+  manera que totes dues API comparteixen filtres, paginació, populate i regles de permisos.
+- **Tauler d'administració** sota `[admin].path` (per defecte `/admin`), servit des del binari o des
+  de `[admin].assets_dir`. Consulta [el tauler d'administració per dins](/ca/internals/admin-panel/).
+- **Rutes operatives**: `/_health`, `/_ready` i `/_metrics` quan les mètriques estan activades.
+  Consulta [monitoratge](/ca/deploy/monitoring/).
+
+Cada escriptura passa pel [Document Service](/ca/internals/document-service/), vingui de l'API que
+vingui. Valida les dades, escriu les files i les taules d'enllaç en una sola transacció, i després
+diu als escoltadors (webhooks, índex de cerca, historial, temps real, registre d'auditoria) què ha
+canviat.
+
+Quan s'activen o es desactiven funcionalitats, o quan el constructor de tipus de contingut canvia
+l'esquema a `verdin dev`, tot el router es reconstrueix i se substitueix in situ (un `ArcSwap`), sense
+reiniciar.
+
+## Pila tecnològica
+
+### Servidor (Rust, edició 2024)
+
+| Àrea | Tria | Per què |
+|---|---|---|
+| Runtime | `tokio` | El runtime asíncron estàndard |
+| HTTP | `axum`, `tower`, `tower-http` | Middleware per a CORS, límits de cos, temps d'espera, ids de petició, traçat |
+| Driver SQL | `sqlx` (postgres, mysql, sqlite) | Asíncron, pools, TLS; MySQL i MariaDB comparteixen un driver; SQLite es compila a dins |
+| Construcció d'SQL | Constructors propis de Verdin: DDL a `verdin-migrate`, DML a `verdin-query` i `verdin-content` | Les taules les defineix l'esquema, així que l'SQL es construeix en temps d'execució. De totes maneres cal un control exacte per dialecte (`jsonb`, `datetime(3)`, col·lacions binàries, NULL tipats, formats de text de SQLite). Ni ORM ni `sea-query` |
+| Cadenes de consulta | Analitzador propi de notació de claudàtors a `verdin-query` | `filters[title][$eq]=…` a l'estil de Strapi, amb límits de profunditat, longitud i parells |
+| JSON | `serde`, `serde_json` | — |
+| Decimals | `rust_decimal` | Sense pèrdua de precisió dins del servidor |
+| Dates | `time` | — |
+| Ids de document | `ulid` | Ordenables, 26 caràcters, portables |
+| OpenAPI | Generador propi a `verdin-api` | Un camí i un esquema per tipus de contingut, construïts a partir del registre |
+| GraphQL | `async-graphql` (esquema dinàmic) | Construït a partir de l'esquema de contingut |
+| Autenticació | `argon2` (argon2id), JWT HS256 sobre `hmac` + `sha2` | Unes quantes línies d'HS256 eviten arrossegar una pila RSA |
+| Configuració | `figment` (TOML + entorn), `dotenvy` | Capes i valors específics per entorn |
+| CLI | `clap` | — |
+| Registres | `tracing`, `tracing-subscriber` | Llegibles per defecte, JSON amb `[log].format = "json"` |
+| Límits de freqüència | Limitador propi de finestra fixa a `verdin-api` | Rutes d'inici de sessió i límits opcionals de l'API de contingut |
+| Multimèdia | `object_store`, `image`, `infer` | Disc local o emmagatzematge compatible amb S3; formats i detecció del MIME |
+| Cerca | `tantivy` | Índex de text complet opcional dins del binari |
+| Connectors | `extism` | Connectors WebAssembly |
+| Correu electrònic | `lettre`, `reqwest` | SMTP, Resend, Postmark |
+| Incrustació de l'administració | `rust-embed` (funcionalitat `embed-admin`) | El tauler d'administració es distribueix dins del binari |
+| Observació de l'esquema | `notify` | Recàrregues a `verdin dev` |
+| Errors | `thiserror` a les biblioteques, `anyhow` al binari | — |
+| Proves | `cargo test`, `insta` (snapshots de DDL) | Consulta [proves](/ca/internals/testing/) |
+
+### Tauler d'administració (Angular)
+
+| Àrea | Tria |
+|---|---|
+| Framework | Angular 22: components standalone, sense zones, signals, rutes diferides |
+| Interfície | spartan/ui (primitives brain, components helm copiats a `src/app/shared/ui`) sobre Tailwind CSS v4 |
+| Icones | `@ng-icons` amb Lucide |
+| Estat | Signals en serveis injectables (sense biblioteca de store) |
+| Formularis | Signal Forms (`@angular/forms/signals`) |
+| Client de l'API | Tipus escrits a mà (`core/types.ts`) i un petit embolcall sobre `HttpClient` (`core/api.ts`) |
+| Traduccions | Transloco amb ICU MessageFormat mitjançant FormatJS |
+| Text enriquit | Editor Markdown amb previsualització (`marked`, `DOMPurify`); camps `blocks` amb TipTap |
+| Proves | Vitest mitjançant el constructor de proves unitàries d'Angular, Playwright de punta a punta |
+
+### Documentació
+
+Astro amb Starlight, a `site/`. `site/scripts/sync-docs.mjs` copia uns quants fitxers Markdown de
+`docs/` (full de ruta, guia de traducció) i `CHANGELOG.md` a la secció **Projecte** en temps de
+build.
+
+## Estructura del repositori
+
+<FileTree>
+- Cargo.toml l'espai de treball (versió, edició, perfil de release)
+- crates/
+  - verdin-schema/ model d'esquema, analitzador JSON, validació, regles de noms
+  - verdin-db/ pools de connexions, detecció del flavor i de la versió, valors tipats
+  - verdin-migrate/ model físic, instantània, diff, pla, aplicació amb diari, taules de la plataforma
+  - verdin-query/ paràmetres de consulta a consulta tipada, i SQL per a filtres i ordenacions
+  - verdin-content/ Document Service: validació, esborrany i publicació, relacions, components, blocs, esdeveniments
+  - verdin-auth/ usuaris administradors, sessions, dos factors i claus d'accés, tokens d'API, RBAC, permisos públics
+  - verdin-upload/ mediateca: proveïdors d'emmagatzematge, metadades de fitxers, formats d'imatge
+  - verdin-email/ enviament de correu: SMTP, Resend, Postmark i un proveïdor de registre
+  - verdin-search/ índex de text complet Tantivy
+  - verdin-plugins/ connectors WebAssembly (Extism): hooks de documents, rutes, tasques programades
+  - verdin-graphql/ API GraphQL generada a partir de l'esquema
+  - verdin-api/ routers axum: API de contingut, API d'administració, OpenAPI, MCP, temps real, webhooks…
+  - verdin-testkit/ ajudes per a proves (una base de dades nova per prova); no es publica
+  - verdin/ el binari: configuració, arrencada, CLI, mètriques, administració incrustada
+- admin/ tauler d'administració Angular
+- packages/
+  - client/ `@verdin/client`, el client TypeScript tipat
+- examples/
+  - blog/ projecte d'exemple
+- docker/ `compose.dev.yml` (bases de dades, RustFS, Mailpit) i la imatge de release
+- site/ aquest lloc de documentació
+- docs/ full de ruta, guia de traducció i notes de disseny
+</FileTree>
+
+**Regla de dependències.** `verdin-schema` i `verdin-db` són la base. `verdin-migrate` i
+`verdin-query` s'hi basen, `verdin-content` en aquests, i `verdin-auth`, `verdin-upload`,
+`verdin-search` i `verdin-plugins` en les capes de sota. `verdin-api` i `verdin-graphql` són a prop
+del cim, i el binari `verdin` depèn de tot. Cargo prohibeix els cicles, i el codi `unsafe` està
+prohibit a tot l'espai de treball.
+
+## Per on començar a llegir
+
+| Per entendre | Llegeix |
+|---|---|
+| Com arrenca el binari i munta els seus routers | `crates/verdin/src/cli.rs` (`start`), després `crates/verdin/src/app.rs` |
+| El format de l'esquema i les seves regles de validació | `crates/verdin-schema/src/raw.rs`, `validate.rs`, `naming.rs` |
+| Com un esquema es converteix en taules | `crates/verdin-migrate/src/derive.rs`, després [emmagatzematge](/ca/internals/storage/) |
+| Les migracions | `crates/verdin-migrate/src/diff.rs`, `plan.rs`, `apply.rs`, i el [motor de migracions](/ca/internals/migrations/) |
+| Els gestors de l'API de contingut | `crates/verdin-api/src/handlers.rs` i `lib.rs` |
+| Els paràmetres de consulta | `crates/verdin-query/src/params.rs` (analitzador), `parse.rs` (validació), `sql.rs` (SQL) |
+| Les lectures i les escriptures | `crates/verdin-content/src/service.rs` i `input.rs`, i el [Document Service](/ca/internals/document-service/) |
+| El tauler d'administració | `admin/src/app/app.routes.ts`, després `features/content/` i [el tauler d'administració per dins](/ca/internals/admin-panel/) |
+
+Explora el codi a [GitHub](https://github.com/Verdin-CMS/verdin). La resta d'aquesta secció tracta
+l'[emmagatzematge](/ca/internals/storage/), la [capa de base de dades](/ca/internals/database/), les
+[migracions](/ca/internals/migrations/), el [Document Service](/ca/internals/document-service/), el
+[tauler d'administració](/ca/internals/admin-panel/), les [proves](/ca/internals/testing/) i el
+[registre de decisions](/ca/internals/decisions/).
+
+El comportament per als usuaris està documentat en altres llocs: els paràmetres de consulta a
+l'[API REST](/ca/api/rest/), les opcions a la [referència de configuració](/ca/reference/configuration/),
+les ordres a la [referència de la CLI](/ca/reference/cli/), i el reforç de la seguretat a
+[seguretat](/ca/deploy/security/).

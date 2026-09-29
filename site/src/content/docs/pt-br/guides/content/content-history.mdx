@@ -1,0 +1,90 @@
+---
+title: Histórico de conteúdo
+description: Navegue pelas versões salvas, publicadas e despublicadas de uma entrada e restaure uma como o rascunho atual.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+O Verdin guarda uma versão de uma entrada cada vez que ela é criada, salva, publicada,
+despublicada ou tem o rascunho descartado, por qualquer API. Este guia mostra como encontrar uma
+versão antiga e restaurá-la, quantas versões são mantidas e a API de administração
+correspondente.
+
+O histórico de conteúdo funciona como o do Strapi, onde é um recurso pago.
+
+## Antes de começar
+
+- **Configurações → Recursos → Histórico de conteúdo** vem ativado por padrão. Enquanto estiver
+  desativado, nenhuma versão é registrada e o histórico fica indisponível.
+- Ler o histórico de uma entrada exige acesso de leitura à entrada; restaurar exige acesso de
+  atualização. As restrições de campo se aplicam: você só vê, e só restaura, os campos que a sua
+  função pode ler ou atualizar. Veja [Permissões](/pt-br/reference/permissions/).
+
+## Restaure uma versão
+
+<Steps>
+
+1. Abra a entrada e selecione **Histórico**.
+2. A lista **Versões** mostra cada versão com o seu evento (**Criado**, **Salvo**,
+   **Publicado**, **Despublicado**, **Rascunho descartado**), a sua data e quem a fez. As
+   alterações feitas pela API de conteúdo mostram **API** como autor.
+3. Selecione uma versão para ver os seus campos.
+4. Selecione **Restaurar** e confirme.
+
+</Steps>
+
+A versão substitui o rascunho atual; publique-a depois, quando estiver pronto. Nos tipos sem
+rascunho e publicação, restaurar atualiza a entrada diretamente.
+
+O que fica de fora ao restaurar:
+
+- Os campos que não existem mais no schema são listados e não são restaurados.
+- As referências a entradas ou arquivos excluídos são descartadas, e o editor informa quais
+  campos as perderam.
+
+**Voltar para o editor** retorna à entrada sem alterar nada.
+
+## Quantas versões são mantidas
+
+O Verdin mantém as `[history].max_versions` versões mais recentes de cada entrada e idioma (50
+por padrão) e remove as mais antigas à medida que chegam novas versões:
+
+```toml title="verdin.toml"
+[history]
+max_versions = 100
+```
+
+Cada idioma de uma entrada localizada tem o seu próprio histórico. Excluir uma entrada, ou um dos
+seus idiomas, também exclui as suas versões. Veja a
+[referência de configuração](/pt-br/reference/configuration/).
+
+<Aside type="note">
+Ao contrário do Strapi, onde o histórico é mantido por um número de dias, o Verdin mantém um
+número de versões por entrada, independentemente da idade delas.
+</Aside>
+
+## API de administração
+
+Todas as rotas ficam em `/admin/api`.
+
+| Rota | Permissão | Faz |
+| --- | --- | --- |
+| `GET /history/{uid}/{documentId}?locale=&page=&pageSize=` | ler a entrada | As versões, da mais recente para a mais antiga, sem os seus dados (20 por página, no máximo 100). |
+| `GET /history/versions/{id}` | ler a entrada | Uma versão com os seus dados. |
+| `POST /history/versions/{id}/restore` | atualizar a entrada | Restaura a versão como o rascunho atual. |
+
+A resposta da restauração lista o que foi descartado:
+
+```json
+{
+  "data": {
+    "documentId": "k3v9…",
+    "restored": 42,
+    "dropped": [{ "field": "tags", "count": 1 }]
+  }
+}
+```
+
+As rotas respondem `404` enquanto o recurso está desativado.

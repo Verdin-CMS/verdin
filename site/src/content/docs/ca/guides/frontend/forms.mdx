@@ -1,0 +1,155 @@
+---
+title: Formularis
+description: Defineix formularis de contacte i de registre al tauler d'administració, envia-hi dades des del teu lloc, i llegeix o exporta els enviaments.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+La funcionalitat **Formularis** gestiona els formularis del teu lloc (contacte, subscripció a un
+butlletí, inscripció a un esdeveniment) sense cap servei de formularis. Els editors defineixen els
+camps al tauler d'administració, el teu lloc els mostra i envia les dades a Verdin, i els
+enviaments es validen, es desen, s'envien per correu i s'exporten en CSV.
+
+## Activa-la
+
+A **Configuració → Funcionalitats**, activa **Formularis** i després tria **Gestiona els
+formularis** (o ves a **Configuració → Formularis**). Gestionar formularis i llegir enviaments
+necessita el permís **Gestiona el SEO, les redireccions, els menús i els formularis**
+(`site.manage`), que té el rol integrat Editor. Consulta [Permisos](/ca/reference/permissions/).
+
+Per als correus de notificació, configura un proveïdor a [`[email]`](/ca/reference/configuration/);
+amb el proveïdor per defecte `log`, els correus només s'escriuen al registre del servidor.
+
+## Crea un formulari
+
+<Steps>
+
+1. A **Configuració → Formularis**, tria **Formulari nou**.
+2. Dona-li un nom (com ara **Contacte**) i un **Slug** (`contact`). L'slug forma part de l'URL del
+   formulari.
+3. A la pestanya **Camps**, tria **Afegeix un camp** per a cada camp, amb la seva **Etiqueta**, el
+   **Nom**, el **Tipus**, **Obligatori**, **Text d’exemple** i **Longitud màxima**.
+4. A la pestanya **Configuració**, defineix:
+   - **Notifica**: adreces de correu que reben cada enviament.
+   - **Missatge d’èxit**: es retorna al teu lloc després d'un enviament.
+   - **Parany antispam**: activat per defecte (consulta [Spam](#spam)).
+5. Desa. La pestanya **Integració** mostra l'endpoint públic i un exemple per copiar.
+
+</Steps>
+
+| Tipus | Etiqueta a l'administració | Accepta |
+| --- | --- | --- |
+| `text` | **Text** | Qualsevol text. |
+| `email` | **Correu electrònic** | Una adreça de correu electrònic. |
+| `textarea` | **Text llarg** | Qualsevol text. |
+| `number` | **Número** | Un nombre, desat com a nombre. |
+| `select` | **Selecció** | Una de les seves **Opcions** (una per línia). |
+| `checkbox` | **Casella de selecció** | `true`, `on`, `1` o `yes` vol dir marcada; qualsevol altra cosa, no. Una casella obligatòria ha d'estar marcada. |
+| `date` | **Data** | Qualsevol text (fes servir `<input type="date">`). |
+| `url` | **URL** | Un URL. |
+| `tel` | **Telèfon** | Qualsevol text. |
+
+Els noms dels camps comencen per una lletra, seguida de lletres, dígits o `_`, i són únics dins del
+formulari. Un formulari té d'1 a 50 camps. Els valors tenen com a màxim **Longitud màxima**
+caràcters (5.000 per defecte, 20.000 com a màxim).
+
+## Mostra el formulari
+
+`GET /api/_forms/{slug}` retorna la definició, perquè el teu lloc pugui mostrar els camps que han
+triat els editors:
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+`honeypot` és `null` quan el parany antispam està desactivat. La definició es desa a la memòria
+cau durant un minut (`Cache-Control: public, max-age=60`).
+
+## Envia
+
+`POST /api/_forms/{slug}` accepta els valors com a JSON (els camps, o `{ "data": { … } }`) o com un
+enviament de formulari normal (`application/x-www-form-urlencoded`). No cal cap token.
+
+<Tabs syncKey="form">
+<TabItem label="Formulari HTML">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| Resposta | Quan |
+| --- | --- |
+| `201` amb `{ "data": { "message": … } }` | Acceptat. `message` és el **Missatge d’èxit**, o `Thank you!`. |
+| `400` `ValidationError` | Falta un valor o no és vàlid. `details.errors` llista `{ path, message }` per camp. |
+| `404` | No hi ha cap formulari amb aquest slug, o la funcionalitat està desactivada. |
+| `413` | L'enviament supera els 64 KB. |
+| `429` | El mateix visitant ha enviat més de 10 enviaments a aquest formulari en un minut. |
+
+Els valors se'ls treuen els espais dels extrems i es comproven amb els camps. Els camps desconeguts
+es descarten, de manera que un visitant no pot afegir dades que no has demanat.
+
+Un enviament de formulari HTML normal rep la resposta JSON com a pàgina. Per a una experiència
+millor, envia amb `fetch` i mostra el missatge tu mateix. Enviar des del navegador a un altre
+origen necessita l'origen del teu lloc a [`[api].cors_origins`](/ca/reference/configuration/).
+
+### Spam
+
+Amb **Parany antispam** activat, afegeix al formulari un camp `_gotcha` ocult i buit. Els bots
+omplen tots els camps; un enviament amb `_gotcha` omplert es respon com a acceptat (`201`) i es
+descarta, de manera que el bot no n'aprèn res. Juntament amb el límit de freqüència, això atura la
+major part de l'spam de formularis sense cap CAPTCHA.
+
+## Llegeix els enviaments
+
+La pestanya **Enviaments** del formulari llista el que han enviat els visitants, amb l'hora en què
+es va rebre (**Rebut**). Pots eliminar un enviament, i **Exporta CSV** els baixa tots.
+
+Cada enviament acceptat també s'envia per correu a les adreces de **Notifica**, amb un enllaç als
+enviaments a l'administració (construït a partir de [`[server].public_url`](/ca/reference/configuration/)).
+
+<Aside type="note">
+Verdin desa els valors de cada enviament, l'agent d'usuari del visitant i un hash amb clau de la
+seva adreça IP (no l'adreça mateixa), suficient per detectar una allau sense fer seguiment de les
+persones. Eliminar un formulari n'elimina els enviaments.
+</Aside>
+
+## API d'administració
+
+El tauler d'administració fa servir `/admin/api/site/forms` i `/admin/api/site/forms/{id}`, a més
+de `/admin/api/site/forms/{id}/submissions` i `…/submissions/export` (CSV), amb el token d'accés
+d'un administrador i `site.manage`. Consulta l'[API d'administració](/ca/api/admin/).

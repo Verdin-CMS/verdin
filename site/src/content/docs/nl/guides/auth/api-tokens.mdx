@@ -1,0 +1,152 @@
+---
+title: API-tokens
+description: Maak API-tokens aan voor de content-API (alleen lezen, volledige toegang of aangepast), genereer ze opnieuw of verwijder ze, en houd de token-pepper veilig.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Met API-tokens roepen je sites, apps en scripts de content-API aan met meer toegang dan het publiek
+heeft. Deze gids maakt een token aan, kiest de toegang ervan, gebruikt het, en vervangt het als het
+is uitgelekt. Tokens werken zoals de API-tokens van Strapi.
+
+De content-API is standaard dicht: zonder token krijgen requests alleen wat **Instellingen →
+Openbare toegang** toestaat, en dat is niets totdat je het verleent.
+
+## Voordat je begint
+
+- Tokens beheren vereist **API-tokens beheren** (`tokens.manage`). Zie
+  [Rechten](/nl/reference/permissions/).
+- `VERDIN_TOKEN_PEPPER` moet zijn ingesteld; zie [Waar de pepper ertoe doet](#waar-de-pepper-ertoe-doet).
+
+## Een token aanmaken
+
+<Steps>
+
+1. Open **Instellingen → API-tokens** en kies **Token aanmaken**.
+2. Vul een **Naam** in en, optioneel, een **Beschrijving**.
+3. Kies het **Type**:
+
+   | Type | Staat toe |
+   | --- | --- |
+   | **Alleen lezen** | Zoeken en Eén zoeken op elk contenttype, alleen gepubliceerde versies. |
+   | **Volledige toegang** | Elke actie op elk contenttype en de mediabibliotheek. |
+   | **Aangepast** | Alleen de acties die je aanvinkt bij **Rechten**. |
+
+4. Kies wanneer het **Verloopt**: **Nooit**, of over 7, 30 of 90 dagen.
+5. Vink voor een aangepast token de acties aan onder **Rechten**, per contenttype: **Zoeken**,
+   **Eén zoeken**, **Aanmaken**, **Bijwerken**, **Verwijderen**, **Publiceren** en **Concepten
+   lezen**. De rij **Mediabibliotheek** dekt uploads, en de rij **Gebruikers** de routes
+   `/api/users` van [eindgebruikers](/nl/guides/auth/end-users/).
+6. Kies **Aanmaken** en kopieer daarna het token. Dit is de enige keer dat het wordt getoond.
+
+</Steps>
+
+Tokens beginnen met `vd_`. De lijst toont van elk token de eerste tekens, wanneer het voor het
+laatst is gebruikt en wanneer het verloopt.
+
+## Een token gebruiken
+
+Stuur het mee als bearer-token:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'http://localhost:1337/api/articles?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/graphql \
+  -H "Authorization: Bearer $VERDIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({
+  url: 'http://localhost:1337',
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+</TabItem>
+</Tabs>
+
+- De toegang van een token vervangt de openbare toegang; hij telt er niet bij op. Een aangepast
+  token zonder **Zoeken** op een type kan het niet opsommen, ook niet als het publiek dat wel kan.
+- Concepten lezen (`?status=draft`) vereist **Concepten lezen**; tokens met alleen-lezen zien
+  nooit concepten.
+- Onbekende en verlopen tokens krijgen `401`. Acties buiten de toegang van het token krijgen `403`.
+- `[api].token_rate_limit` begrenst requests per token en minuut (standaard uit).
+- Dezelfde tokens autoriseren GraphQL en de [MCP-server](/nl/guides/integrations/mcp/).
+
+<Aside type="caution">
+Een token in een browser is zichtbaar voor elke bezoeker. Gebruik tokens alleen vanuit servers,
+buildstappen en privé-apps; verleen voor openbare pagina's wat ze nodig hebben in **Instellingen →
+Openbare toegang**.
+</Aside>
+
+## Een token opnieuw genereren of verwijderen
+
+- **Opnieuw genereren** op de rij van een token maakt een nieuwe sleutel aan met dezelfde naam,
+  hetzelfde type en dezelfde rechten. De huidige sleutel werkt meteen niet meer, dus apps die hem
+  gebruiken krijgen fouten totdat je ze bijwerkt.
+- **Verwijderen** verwijdert het token; clients die het gebruiken, verliezen hun toegang.
+
+Doe een van beide zodra een token mogelijk is uitgelekt.
+
+## Waar de pepper ertoe doet
+
+Verdin slaat tokens nooit op. Het slaat van elk token een hash met sleutel (HMAC-SHA256) op, met
+`VERDIN_TOKEN_PEPPER` als sleutel, zodat een kopie van alleen de database niemand in staat stelt ze
+te gebruiken. Dezelfde pepper beschermt:
+
+- API-tokens.
+- De authenticatorgeheimen en herstelcodes van beheerders
+  ([tweefactorauthenticatie](/nl/guides/auth/two-factor/)).
+- De gehashte IP-adressen die bij formulierinzendingen worden opgeslagen.
+
+Genereer de pepper één keer met `verdin secrets`, houd hem buiten `verdin.toml` en de
+databaseback-ups, en geef elke instantie dezelfde waarde.
+
+<Aside type="caution" title="De pepper wijzigen">
+Met een andere pepper werkt geen enkel API-token meer, en werken de authenticator-app en
+herstelcodes van geen enkele beheerder meer. Wijzig hem alleen als hij is uitgelekt, en maak
+daarna nieuwe tokens aan en reset de tweefactorauthenticatie van elke beheerder. Toegangssleutels
+en wachtwoorden worden niet geraakt.
+</Aside>
+
+## Admin-API
+
+Alle routes staan onder `/admin/api` en vereisen `tokens.manage`.
+
+```http
+GET    /admin/api/api-tokens
+POST   /admin/api/api-tokens                  { "name": "Website", "kind": "custom", "expiresInDays": 90,
+                                                "permissions": [{ "subject": "api::article", "action": "find" }] }
+GET    /admin/api/api-tokens/{id}
+PUT    /admin/api/api-tokens/{id}             { "name": "…", "description": null, "kind": "read-only", "permissions": [...] }
+POST   /admin/api/api-tokens/{id}/regenerate
+DELETE /admin/api/api-tokens/{id}
+```
+
+- `kind` is `read-only`, `full-access` of `custom`; `expiresInDays` is optioneel (zonder verloopt
+  het token nooit) en kan later niet worden gewijzigd.
+- `permissions` somt paren `{ subject, action }` op. `subject` is een uid van een contenttype,
+  `plugin::upload` (de mediabibliotheek) of `plugin::users-permissions.user`; `action` is `find`,
+  `findOne`, `create`, `update`, `delete`, `publish` of `readDrafts`. `publish` en `readDrafts`
+  gelden niet voor de laatste twee onderwerpen.
+- `POST /api-tokens` en `/regenerate` geven de sleutel één keer terug, als `accessKey`.
+
+Openbare toegang gebruikt dezelfde paren: `PUT /admin/api/public-permissions`
+`{ "permissions": [...] }`, waarvoor **Rollen beheren** (`roles.manage`) nodig is.

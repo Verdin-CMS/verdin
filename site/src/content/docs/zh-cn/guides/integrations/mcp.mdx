@@ -1,0 +1,124 @@
+---
+title: MCP 服务器
+description: 让 Claude 和其他 AI 智能体通过 Model Context Protocol 读取和编辑 Verdin 内容，权限由 API 令牌决定。
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin 可以通过 [Model Context Protocol](https://modelcontextprotocol.io)（MCP）向 AI 智能体提供内容。连接 Claude Code、Claude Desktop、Cursor 或任何其他 MCP 客户端后，智能体就可以在你所提供令牌的权限范围内，列出内容类型、使用 REST API 的过滤条件查询条目，以及创建、更新或发布条目。
+
+Strapi v5 没有内置的 MCP 服务器。
+
+## 开启
+
+<Steps>
+
+1. 在 **设置 → 功能** 中开启 **MCP 服务器**。其卡片会显示 **端点** `https://cms.example.com/mcp`，与内容 API 位于同一主机上。
+2. 在 **设置 → API 令牌** 中选择 **创建令牌**。除非智能体需要写入，否则请选择 **只读**；或者选择 **自定义**，只允许部分类型和操作。复制令牌：它只显示一次。参见 [API 令牌](/zh-cn/guides/auth/api-tokens/)。
+3. 用端点和令牌连接你的客户端（见下文）。
+
+</Steps>
+
+## 连接客户端
+
+该服务器使用 MCP 的 Streamable HTTP 传输。每个客户端都需要 URL 和 `Authorization: Bearer <token>` 请求头。
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+**MCP 服务器** 卡片上的 **将其添加到 Claude Code** 下有这条命令（**复制命令**）；请把 `<token>` 替换为你的 API 令牌：
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+Claude Desktop 的配置文件用于启动本地服务器，因此请通过 [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) 桥接到 HTTP 端点：
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+客户端的配置格式会变化；如果某个键无法识别，请查阅客户端的文档。然后可以向智能体提出类似 *“列出本周在 News 分类中发布的文章”* 的请求。
+
+## 工具
+
+| 工具 | 需要 | 作用 |
+| --- | --- | --- |
+| `list_content_types` | `find` 或 `findOne` | 调用方可以读取的内容类型，以及它们的种类和属性。 |
+| `get_content_type` | `find` 或 `findOne` | 某个内容类型的属性：类型、选项和关联。 |
+| `find_entries` | `find` | 某个类型的条目。`query` 以 JSON 形式接受 REST API 的参数（`filters`、`sort`、`fields`、`populate`、`pagination`）；`status: "draft"` 还需要 `readDrafts`。 |
+| `get_entry` | `findOne` | 按 `documentId` 获取一个条目（单一类型不需要 `documentId`）。 |
+| `create_entry` | `create` | 与 REST API 一样，根据 `data` 创建条目。`status: "draft"` 只保存草稿。 |
+| `update_entry` | `update` | 更新条目（单一类型不需要 `documentId`）。 |
+| `delete_entry` | `delete` | 删除条目。 |
+| `publish_entry`、`unpublish_entry` | `publish` | 发布或取消发布条目。 |
+
+工具接受 `uid`（例如 `api::article`），对于本地化类型还接受 `locale`。每个工具检查的权限与对应的 REST 路由相同，写入也经过与 REST API 相同的路径：校验、插件钩子、审核阶段、webhook、内容历史和审计日志。令牌无法通过 REST 完成的事，智能体同样无法完成。
+
+内容 API 的操作请参见[权限](/zh-cn/reference/permissions/)。
+
+## 身份验证
+
+该端点接受与内容 API 相同的凭据：
+
+- API 令牌，智能体的常规选择；
+- 终端用户的 JWT，用于以你的应用中某个已登录用户的身份行事的智能体；
+- 不带 `Authorization` 请求头，使用公开角色的权限。
+
+无效的令牌返回 `401`。服务器不保存会话，也不打开事件流：每个请求都是一个以 JSON 响应的 JSON-RPC `POST`（`GET` 返回 `405`）。
+
+### 浏览器来源
+
+带有 `Origin` 请求头的请求（浏览器会发送）会被拒绝，除非该来源列在 **MCP 服务器** 卡片的 **允许的浏览器来源** 中。这可以防范 DNS 重绑定攻击，即网页诱使浏览器调用你网络中的服务器。命令行和桌面客户端不会发送 `Origin`，因此该列表通常为空。
+
+<Aside type="caution">
+拥有完全访问令牌的智能体可以删除和发布内容。请为智能体提供只读令牌，或者只涵盖其所需范围的自定义令牌。对于智能体写入的草稿，[审核工作流](/zh-cn/guides/content/review-workflows/)可以在智能体和发布之间保留一道人工环节。
+</Aside>
+
+如果想在管理后台内部为编辑提供 AI 帮助（翻译、替代文本、SEO 建议），请参见 [AI 操作](/zh-cn/guides/integrations/ai-actions/)。

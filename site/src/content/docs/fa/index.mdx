@@ -1,0 +1,96 @@
+---
+title: Verdin — CMS هدلسی که روی Rust می‌روید
+description: یک CMS هدلس (headless) متن‌باز نوشته‌شده با Rust. APIهای سازگار با Strapi v5، یک فایل باینری واحد، PostgreSQL، MySQL، MariaDB و SQLite.
+template: splash
+editUrl: false
+tableOfContents: false
+lastUpdated: false
+hero:
+  title: CMS هدلسی که روی <span class="metal">Rust</span> می‌روید.
+  tagline: APIهای سازگار با Strapi v5 و یک پنل مدیریت برای ویراستاران شما، در یک فایل باینری حدود 25 مگابایتی. متن‌باز و کامل؛ نسخهٔ سازمانی وجود ندارد.
+  actions:
+    - text: شروع کنید
+      link: /fa/start/quickstart/
+      icon: right-arrow
+    - text: آمدن از Strapi
+      link: /fa/migrate/from-strapi/
+      variant: minimal
+---
+
+import { Card, CardGrid, Code, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Nameplate from '../../../components/landing/Nameplate.astro';
+
+<Nameplate />
+
+## از Strapi با سه فرمان
+
+از پروژهٔ Strapi خروجی بگیرید، آن را در یک پروژهٔ Verdin تازه درون‌ریزی کنید و اجرایش کنید.
+نوع‌های محتوا، مدخل‌ها همراه با پیش‌نویس‌ها و زبان‌هایشان، روابط و کتابخانهٔ رسانه منتقل می‌شوند؛
+API محتوا همان شکل را حفظ می‌کند، پس فرانت‌اند همچنان کار می‌کند.
+
+```sh title="Terminal"
+npx strapi export --no-encrypt -f my-export        # in the Strapi project
+verdin new my-site && cd my-site && verdin import strapi ../my-export.tar.gz
+verdin dev                                         # http://localhost:1337/admin
+```
+
+<LinkCard
+  title="درون‌ریزی یک پروژهٔ Strapi"
+  description="چه چیزهایی درون‌ریزی می‌شوند، نگاشت شناسه‌ها، و آنچه بعد از آن باید بررسی کنید."
+  href="/fa/migrate/from-strapi/"
+/>
+
+## محتوایتان را همان‌طور بخوانید که تا امروز می‌خواندید
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+    ```sh
+    curl 'localhost:1337/api/articles?filters[title][$containsi]=rust&populate=category&sort=publishedAt:desc'
+    ```
+  </TabItem>
+  <TabItem label="GraphQL">
+    ```graphql
+    query {
+      articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"]) {
+        documentId
+        title
+        category { name }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```ts
+    import { createClient } from '@verdin/client';
+    import type { VerdinSchema } from './verdin-types'; // verdin types -o src/verdin-types.ts
+
+    const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+    const { data } = await verdin.collection('articles').find({
+      filters: { title: { $containsi: 'rust' } },
+      populate: { category: true },
+      sort: ['publishedAt:desc'],
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## آنچه ویراستاران و توسعه‌دهندگان به دست می‌آورند
+
+<CardGrid>
+  <Card title="طرح‌واره در فایل‌ها، مهاجرت‌هایی که می‌توانید بخوانید" icon="document">
+    نوع‌های محتوا فایل‌های JSON با قالب Strapi هستند که در git نگه داشته می‌شوند. هر تغییر
+    طرح‌واره پیش از اجرا به یک برنامهٔ مهاجرت با سطح ریسک و SQL دقیق تبدیل می‌شود.
+  </Card>
+  <Card title="پنل مدیریتی که ویراستاران دوستش دارند" icon="pencil">
+    پیش‌نویس و انتشار، تاریخچهٔ محتوا، بسته‌های انتشار، گردش‌کار بازبینی، نظرها و
+    حضور زنده، ویرایش دیداری روی سایت خودتان؛ به 18 زبان.
+  </Card>
+  <Card title="امنیتی که فروش اضافه نیست" icon="approve-check">
+    SSO، ورود دومرحله‌ای با کلید دسترسی (passkey)، نقش‌ها تا سطح فیلد و زبان، گزارش‌های
+    حسابرسی و توکن‌های API؛ همه در پروژهٔ متن‌باز.
+  </Card>
+  <Card title="گسترش امن" icon="puzzle">
+    افزونه‌های WebAssembly به نوشتن‌ها هوک می‌شوند، مسیر، کار (job) و ویجت‌های پنل مدیریت
+    اضافه می‌کنند و فقط به چیزی دسترسی دارند که اعلام کرده‌اند.
+  </Card>
+</CardGrid>

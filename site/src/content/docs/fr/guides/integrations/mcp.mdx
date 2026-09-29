@@ -1,0 +1,152 @@
+---
+title: Serveur MCP
+description: Permettez à Claude et à d’autres agents IA de lire et de modifier le contenu Verdin via le Model Context Protocol, avec les autorisations d’un jeton d’API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin peut servir son contenu aux agents IA via le
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP). Connectez Claude Code, Claude
+Desktop, Cursor ou tout autre client MCP, et l’agent peut lister vos types de contenu, interroger
+les entrées avec les filtres de l’API REST, et créer, modifier ou publier des entrées, dans la
+limite des autorisations du jeton que vous lui donnez.
+
+Strapi v5 n’a pas de serveur MCP intégré.
+
+## L’activer
+
+<Steps>
+
+1. Dans **Paramètres → Fonctionnalités**, activez **Serveur MCP**. Sa carte affiche le
+   **Point de terminaison**, `https://cms.example.com/mcp`, sur le même hôte que l’API de
+   contenu.
+2. Dans **Paramètres → Jetons d’API**, choisissez **Créer un jeton**. Choisissez
+   **Lecture seule**, sauf si l’agent doit écrire, ou **Personnalisé** pour n’autoriser que
+   certains types et certaines actions. Copiez le jeton : il n’est affiché qu’une fois. Voir
+   [Jetons d’API](/fr/guides/auth/api-tokens/).
+3. Connectez votre client avec le point de terminaison et le jeton (ci-dessous).
+
+</Steps>
+
+## Connecter un client
+
+Le serveur parle le transport Streamable HTTP de MCP. Chaque client a besoin de l’URL et d’un
+en-tête `Authorization: Bearer <token>`.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+La carte **Serveur MCP** propose cette commande sous **Ajouter à Claude Code**
+(**Copier la commande**) ; remplacez `<token>` par votre jeton d’API :
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+Le fichier de configuration de Claude Desktop lance des serveurs locaux : faites donc le pont
+vers l’endpoint HTTP avec [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) :
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Les formats de configuration des clients évoluent ; consultez la documentation de votre client si
+une clé n’est pas reconnue. Demandez ensuite à l’agent quelque chose comme *« Liste les articles
+publiés cette semaine dans la catégorie News »*.
+
+## Outils
+
+| Outil | Nécessite | Ce qu’il fait |
+| --- | --- | --- |
+| `list_content_types` | `find` ou `findOne` | Les types de contenu que l’appelant peut lire, avec leur genre et leurs attributs. |
+| `get_content_type` | `find` ou `findOne` | Les attributs d’un type de contenu : types, options et relations. |
+| `find_entries` | `find` | Les entrées d’un type. `query` prend les paramètres de l’API REST en JSON (`filters`, `sort`, `fields`, `populate`, `pagination`) ; `status: "draft"` nécessite aussi `readDrafts`. |
+| `get_entry` | `findOne` | Une entrée par son `documentId` (types uniques : sans celui-ci). |
+| `create_entry` | `create` | Crée une entrée à partir de `data`, comme dans l’API REST. `status: "draft"` enregistre un brouillon. |
+| `update_entry` | `update` | Modifie une entrée (types uniques : sans `documentId`). |
+| `delete_entry` | `delete` | Supprime une entrée. |
+| `publish_entry`, `unpublish_entry` | `publish` | Publie ou dépublie une entrée. |
+
+Les outils prennent un `uid` (comme `api::article`) et, pour les types localisés, une `locale`.
+Chaque outil vérifie la même autorisation que la route REST correspondante, et les écritures
+suivent le même chemin que l’API REST : validation, hooks des plugins, étapes de relecture,
+webhooks, historique du contenu et journaux d’audit. Un agent ne peut rien faire que son jeton ne
+puisse faire en REST.
+
+Voir [Autorisations](/fr/reference/permissions/) pour les actions de l’API de contenu.
+
+## Authentification
+
+L’endpoint accepte les mêmes identifiants que l’API de contenu :
+
+- un jeton d’API, le choix habituel pour les agents ;
+- le JWT d’un utilisateur final, pour un agent agissant au nom d’un utilisateur connecté de votre
+  application ;
+- aucun en-tête `Authorization`, pour les autorisations du rôle public.
+
+Un jeton invalide répond `401`. Le serveur ne conserve aucune session et n’ouvre aucun flux :
+chaque requête est un `POST` JSON-RPC qui reçoit une réponse JSON (`GET` répond `405`).
+
+### Origines de navigateur
+
+Les requêtes qui portent un en-tête `Origin`, que les navigateurs envoient, sont refusées sauf si
+l’origine est listée sous **Origines de navigateur autorisées** sur la carte **Serveur MCP**. Cela
+protège contre le DNS rebinding, où une page web amène le navigateur à appeler un serveur de votre
+réseau. Les clients en ligne de commande et de bureau n’envoient pas d’`Origin` : la liste est donc
+généralement vide.
+
+<Aside type="caution">
+Un agent doté d’un jeton à accès complet peut supprimer et publier du contenu. Donnez aux agents
+des jetons en lecture seule ou personnalisés, limités à ce dont ils ont besoin. Pour les
+brouillons qu’écrit un agent, un [workflow de relecture](/fr/guides/content/review-workflows/)
+place une personne entre l’agent et la publication.
+</Aside>
+
+Pour offrir plutôt aux rédacteurs l’aide de l’IA dans le panneau d’administration (traduction,
+texte alternatif, suggestions SEO), voir [Actions IA](/fr/guides/integrations/ai-actions/).

@@ -1,0 +1,90 @@
+---
+title: リリース
+description: エントリーをまとめ、すぐに、または予約した日時に、一緒に公開・非公開にします。
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+リリースは、一緒に公開されたり非公開になったりするエントリーをまとめます。製品のローンチ、キャンペーン、翻訳のセットなどです。手動で公開するか、日時を指定します。このガイドでは、リリースを作成し、エントリーを追加し、実行し、Admin API を紹介します。
+
+リリースは Strapi の Releases と同じように動きます。Strapi では有料プランの一部です。
+
+## 始める前に
+
+- **設定 → 機能 → リリース**はデフォルトでオンです。オフの間は、**リリース**のページとルートが使えず、予約されたリリースは待機します。
+- リリースの管理には**リリースの管理**（`releases.manage`）が必要です。
+- エントリーを追加するには、そのコンテンツタイプに対する**公開**も必要で、型は[下書きと公開](/ja/concepts/draft-and-publish/)を使っている必要があります。
+
+## リリースを作成する
+
+<Steps>
+
+1. サイドバーの**リリース**を開き、**新規リリース**を選びます。
+2. **名前**を入力します。
+3. 必要なら、<strong>公開日時（任意）</strong>を設定します。リリースを実行する日時で、あなたのタイムゾーンで指定します。日時がない場合、リリースはあなたが公開するまで待機します。
+4. **作成**を選びます。
+
+</Steps>
+
+## エントリーを追加する
+
+<Steps>
+
+1. エディターでエントリーを開きます。**リリース**のパネルに、そのエントリーが含まれるリリースが一覧されます。
+2. **リリースに追加**を選びます。
+3. **リリース**を選び、**リリース実行時の操作**で**公開**または**非公開にする**を選びます。
+4. **追加**を選びます。
+
+</Steps>
+
+多言語化された型では、エディターの現在のロケールのバージョンだけが追加されます。リリースしたい各ロケールを追加してください。すでにリリースに含まれるエントリーを追加すると、そのアクションが置き換わります。
+
+リリースのページには、エントリーがコンテンツタイプとアクションとともに一覧されます。行のボタンで取り除けます。
+
+## リリースを公開する
+
+- **すぐに:** リリースを開き、**今すぐ公開**を選びます。
+- **指定日時に:** バックグラウンドのタスクが 30 秒ごとに確認し、期限の来たリリースを、それを作成した管理者の代わりに実行します。
+
+<Diagram
+  caption="リリースのステータス"
+  code={`flowchart LR
+  P[保留中] -->|今すぐ公開、または日時に到達| R[実行中]
+  R -->|すべてのアクションが成功| D[完了]
+  R -->|一部のアクションが失敗| F[失敗]`}
+/>
+
+各アクションは、成功したかどうかを記録します。エントリーが削除された、バリデーションに通らないなどの理由でアクションが失敗しても、他のアクションは実行され、リリースは**失敗**で終わり、失敗した各アクションの行にそのエラーが表示されます。
+
+<Aside type="caution">
+実行されたリリースは、もう変更できません。失敗したアクションを再試行するには、それらのエントリーを新しいリリースに追加してください。
+</Aside>
+
+リリースは全体として公開され、[レビューの段階](/ja/guides/content/review-workflows/)を待ちません。ワークフローで公開に段階が必要な場合、その段階にないエントリーは、通常の公開と同じように失敗します。
+
+Webhook は、リリースの実行時に送られる**リリースの公開**（`releases.publish`）を購読できます。[Webhook](/ja/guides/integrations/webhooks/) を参照してください。
+
+## Admin API
+
+すべてのルートは `/admin/api` 配下にあり、`releases.manage` が必要です。
+
+```http
+GET    /admin/api/releases?status=pending
+POST   /admin/api/releases                    { "name": "Launch", "scheduledAt": "2026-10-01T08:00:00Z" }
+GET    /admin/api/releases/{id}
+PUT    /admin/api/releases/{id}               { "name": "Launch", "scheduledAt": null }
+DELETE /admin/api/releases/{id}
+POST   /admin/api/releases/{id}/actions       { "uid": "api::article", "documentId": "…", "locale": "fr", "action": "publish" }
+DELETE /admin/api/releases/{id}/actions/{actionId}
+POST   /admin/api/releases/{id}/publish
+GET    /admin/api/content/{uid}/{documentId}/releases
+```
+
+- `status` は `pending`、`running`、`done`、`failed` のいずれかです。各アクションは独自の `status` と `error` を持ちます。
+- 保留中でなくなったリリースの変更、追加、公開は `409` を返します。
+- `action` は `publish` または `unpublish` です。アクションを追加するには、その型に対する `content.publish` も必要です。ロケールはアクションの追加時に決まるので、後でデフォルトのロケールを変えてもアクションは移りません。
+- リリースを削除すると、そのエントリーのリストが削除されます。エントリー自体は変わりません。
+- `GET /content/{uid}/{documentId}/releases` にはエントリーへの読み取り権限が必要で、`releases.manage` のない管理者には空のリストを返します。

@@ -1,0 +1,147 @@
+---
+title: "Şema migrasyonları"
+description: "Verdin’in şema değişikliklerini veritabanı migrasyonlarına nasıl dönüştürdüğü: plan, risk düzeyleri, verdin dev ve verdin start’ın yaptıkları, yeniden adlandırmalar ve --allow."
+sidebar:
+  order: 7
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Bir şema dosyasını değiştirdiğinizde veritabanının da buna uyması gerekir: yeni bir nitelik bir
+sütun, yeni bir ilişki bir bağlantı tablosu gerektirir. Verdin bu migrasyonu sizin için
+hesaplar, çalıştırmadan önce gösterir ve söylenmedikçe asla veri silmez. Bu sayfa bunun nasıl
+olduğunu açıklar.
+
+## Şemadan plana
+
+Verdin sizden asla migrasyon yazmanızı istemez. Veritabanının iki modelini karşılaştırır:
+
+1. **İstenen**: `schema/*.json` dosyalarınızdan türetilir; ihtiyaç duydukları her tablo, sütun
+   ve indeksle (bağlantı tabloları ve Verdin’in kendi tabloları dâhil).
+2. **Mevcut**: son migrasyonun bıraktığı, veritabanında bir anlık görüntü (snapshot) olarak
+   saklanan model.
+
+Aradaki fark bir **plandır**: her biri veritabanınız için SQL’i ve bir risk düzeyi olan
+adımlardan oluşan bir liste. Plan veritabanını incelemekten değil saklanan anlık görüntüden
+geldiği için deterministiktir ve her dialect’te aynıdır. Veritabanınızda aynı SQL’i üreten
+değişiklikler, örneğin SQLite’ta `integer`’dan `biginteger`’a geçiş, hiçbir adım üretmez.
+
+<Diagram
+  caption="Bir şema değişikliği nasıl migrasyona dönüşür"
+  code={`flowchart LR
+    F[schema/*.json] --> D[İstenen model]
+    S[(Saklanan anlık görüntü)] --> C[Mevcut model]
+    D --> X{Fark}
+    C --> X
+    X --> P[Plan: adımlar, risk, SQL]
+    P --> A[apply --allow]
+    A --> B[(Veritabanı ve yeni anlık görüntü)]`}
+/>
+
+`verdin migrate plan` bunu yazdırır. Burada blog’un `excerpt` niteliği `article.json` içinde
+`summary` olarak yeniden adlandırıldı:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [safe] add column articles.summary
+       ALTER TABLE "articles" ADD COLUMN "summary" text
+  2. [destructive] drop column articles.excerpt
+       ALTER TABLE "articles" DROP COLUMN "excerpt"
+
+requires: verdin migrate apply --allow destructive
+
+possible renames (pass them to keep the data):
+  --rename-column articles.excerpt=summary
+```
+
+## Risk düzeyleri
+
+| Risk | Adımlar | Neden |
+| --- | --- | --- |
+| **safe** (güvenli) | Tablo oluşturma, sütun ekleme, benzersiz olmayan bir indeks ekleme veya kaldırma, tablo ya da sütun yeniden adlandırma. | Veri kaybedemez veya mevcut satırlarda başarısız olamaz. |
+| **risky** (riskli) | Bir sütunun tipini değiştirme, mevcut bir tabloya benzersiz indeks ekleme, bir SQLite tablosunu yeniden oluşturma (SQLite sütunları yerinde değiştiremez). | Mevcut verilerde başarısız olabilir (yinelenenler, dönüştürülemeyen değerler) veya onları yeniden yazabilir. |
+| **destructive** (yıkıcı) | Bir sütunu veya tabloyu kaldırma. | Veri siler. |
+
+Her nitelik sütunu nullable’dır (`required` yayınlamada denetlenir); bu yüzden zorunlu olsun
+olmasın nitelik eklemek her zaman güvenlidir. Blog’un makale başlığına `"unique": true` eklemek
+risklidir, çünkü mevcut başlıklar tekrarlanıyor olabilir:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [risky] create unique index articles_title_uq
+       CREATE UNIQUE INDEX "articles_title_uq" ON "articles" ("title", "locale", "publication_state")
+
+requires: verdin migrate apply --allow risky
+```
+
+İlk ifade çalışmadan önce Verdin, başarısız olabilecek her riskli adım için bir denetim
+çalıştırır (örneğin benzersiz bir indeksten önce yinelenenleri arar) ve biri sorun bulursa bir
+mesajla durur. O noktada hiçbir şey değişmemiştir.
+
+## Bir planı uygulama
+
+`verdin migrate apply` bekleyen adımları çalıştırır. Kabul ettiğiniz en yüksek riski alır:
+
+```sh title="Terminal"
+verdin migrate apply                        # yalnızca güvenli adımlar (varsayılan)
+verdin migrate apply --allow risky          # tip değişiklikleri ve benzersiz indeksler de
+verdin migrate apply --allow destructive    # kaldırmalar da
+```
+
+Herhangi bir adım izin verilen riskin üzerindeyse hiçbir şey çalışmaz:
+
+```text title="Terminal"
+$ verdin migrate apply
+Error: these steps need explicit approval:
+  create unique index articles_title_uq (risky)
+```
+
+Bir migrasyon bir kilit alır, böylece iki örnek asla aynı anda migrasyon yapmaz. PostgreSQL ve
+SQLite’ta tüm plan tek bir transaction içinde çalışır: bir hata her şeyi geri alır. MySQL ve
+MariaDB her DDL ifadesini kendi başına commit eder; bu yüzden Verdin ilerlemesini adım adım bir
+günlüğe (journal) kaydeder. Bir hatadan sonra nedeni düzeltin ve `verdin migrate apply`’ı yeniden
+çalıştırın: plan değişmediyse başarısız adımdan devam eder, arada şema değiştiyse reddeder.
+
+## Yeniden adlandırmalar
+
+Kaldırılan bir nitelik ve yeni bir nitelik, bir kaldırma ve bir ekleme gibi görünür; bu da
+sütunun verisini kaybettirir. Verdin bir yeniden adlandırmayı asla tahmin etmez. Bir sütun
+kaybolduğunda ve aynı tabloda aynı tipte bir sütun göründüğünde (veya bir tablo kaybolup aynı
+sütunlara sahip bir tablo göründüğünde) bir öneride bulunur ve siz bunu açıkça onaylarsınız:
+
+```text title="Terminal"
+$ verdin migrate apply --rename-column articles.excerpt=summary
+applied 1 step
+```
+
+- `--rename-column TABLE.OLD=NEW` bir sütunu yeniden adlandırır; `TABLE`, içerik tipinin
+  tablosudur (`collectionName` değeri).
+- `--rename-table OLD=NEW` bir tabloyu yeniden adlandırır. Tipin bağlantı tabloları da onunla
+  birlikte yeniden adlandırılır.
+- Sonucu önizlemek için aynı bayrakları `migrate plan`’a verin.
+
+Yeniden adlandırmalar güvenli adımlardır. İçerik tipi oluşturucusu diyaloğunda aynı önerileri
+sunar.
+
+## `verdin dev` ve `verdin start`
+
+| | `verdin dev` | `verdin start` |
+| --- | --- | --- |
+| Başlangıçta | Bekleyen güvenli adımları uygular. Başka adımlar bekliyorsa durur. | Herhangi bir adım beklerken, önce güvenli adımları uygulayan `--migrate` verilmedikçe başlamayı reddeder. |
+| Çalışırken şema değişiklikleri | **İçerik Tipi Oluşturucu** planı riskleri ve yeniden adlandırma önerileriyle gösterir ve onayladığınızda, daha riskli adımlar dâhil uygular. Elle yapılan düzenlemeler (veya bir `git pull`) bir dosya izleyicisi tarafından algılanır: güvenli planlar uygulanır ve uygulama yeniden yüklenir; diğerleri günlüğe yazılır ve çalışan uygulama olduğu gibi kalır. | Şema salt okunurdur. Yeni dosyaları dağıtın ve migrasyon yapın. |
+
+Oluşturucu önce veritabanını migre eder, ardından şema dosyalarını yazar, sonra içerik API’sini,
+admin API’yi, GraphQL’i ve OpenAPI belgesini yeniden başlatmadan yeniden yükler. Migrasyon
+başarısız olursa dosyalar ve çalışan uygulama olduğu gibi kalır.
+
+Üretimde, yeni sürümü başlatmadan önce veritabanının bir kopyasına karşı
+`verdin migrate plan`, ardından kabul ettiğiniz riskle `verdin migrate apply` çalıştırın. Bkz.
+[Yükseltme](/tr/migrate/upgrading/) ve [Yedekler](/tr/deploy/backups/).
+
+## Strapi ile karşılaştırma
+
+Strapi başlarken veritabanını şemayla, ne yapacağını göstermeden senkronize eder. Verdin önce
+planlar, SQL’i gösterir, sorulmadan yalnızca güvenli adımları uygular ve başarısız olabilecek
+veya veri silebilecek her şey için `--allow` ister.

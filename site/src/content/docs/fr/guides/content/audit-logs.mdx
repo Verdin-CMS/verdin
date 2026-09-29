@@ -1,0 +1,116 @@
+---
+title: Journaux d’audit
+description: Voyez qui a modifié quoi et quand, filtrez les journaux d’audit dans le panneau d’administration ou via l’API, et définissez leur durée de conservation.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Les journaux d’audit enregistrent qui a modifié quoi, et quand : le contenu, les médias, les
+connexions et chaque modification faite dans le panneau d’administration. Ce guide montre ce qui
+est enregistré, comment filtrer les journaux et combien de temps ils sont conservés.
+
+Les journaux d’audit sont une fonctionnalité Enterprise dans Strapi. Dans Verdin, ils font
+partie du cœur open source.
+
+## Avant de commencer
+
+- **Paramètres → Fonctionnalités → Journaux d’audit** est activé par défaut. Le désactiver
+  arrête l’enregistrement des nouvelles actions ; les entrées existantes restent lisibles.
+- Lire les journaux nécessite **Consulter les journaux d’audit** (`audit.read`). Voir
+  [Autorisations](/fr/reference/permissions/).
+
+## Ce qui est enregistré
+
+| Domaine | Actions | Remarques |
+| --- | --- | --- |
+| Contenu | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | Depuis toutes les API : le panneau d’administration, REST, GraphQL et les plugins. La langue figure dans les détails. |
+| Workflows de relecture | `entry.stage`, `entry.assign` | Changements d’étape et assignations. |
+| Médias | `media.create`, `media.update`, `media.delete` | Téléversements, modifications et suppressions de fichiers. Le nom du fichier figure dans les détails. |
+| Connexions | `admin.login` | Connexions par mot de passe et du premier administrateur (enregistrées après le second facteur quand le compte en a un), et connexions SSO avec le fournisseur. |
+| Modifications d’administration | `{METHOD} {route}`, par exemple `PUT /roles/{id}` | Chaque écriture réussie sur l’API d’administration : utilisateurs, rôles, jetons d’API, paramètres, fonctionnalités, webhooks, langues, plugins, releases… Les paramètres de la route figurent dans les détails. |
+
+Chaque entrée comporte une heure, un auteur, une action, un objet (un UID de type de contenu,
+`plugin::upload.file`, ou la ressource d’administration comme `roles`), l’identifiant de
+l’objet, des détails et, pour les requêtes, l’adresse IP du client.
+
+L’auteur est l’un des suivants :
+
+- **Administrateur** : un administrateur connecté, nommé dans le journal.
+- **API** : une modification faite via l’API de contenu ou GraphQL, avec un jeton d’API, le jeton
+  d’un utilisateur final ou l’accès public.
+- **Système** : une écriture sur l’API d’administration sans administrateur connecté.
+
+Derrière un reverse proxy, définissez `[server].trusted_proxies` pour que les journaux affichent
+l’adresse du client plutôt que celle du proxy. Voir la
+[référence de configuration](/fr/reference/configuration/).
+
+## Filtrer les journaux
+
+<Steps>
+
+1. Ouvrez **Paramètres → Journaux d’audit**.
+2. Utilisez un préréglage des **Filtres rapides** (**Contenu**, **Médias**, **Connexions**), ou
+   remplissez les filtres :
+   - **Action** : une action exacte comme `entry.publish`, ou un préfixe se terminant par `*`,
+     comme `entry.*`.
+   - **Auteur** : un administrateur, ou **Tout le monde**.
+   - **Objet** : un UID de type de contenu comme `api::article`.
+   - **Du** et **Au** : une plage de dates. Une date sans heure inclut toute la journée.
+3. Sélectionnez **Appliquer**. Ouvrez **Détails** sur une ligne pour voir tout ce qui a été
+   enregistré pour elle.
+
+</Steps>
+
+## Interroger l’API
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+Les entrées arrivent de la plus récente à la plus ancienne, 50 par page par défaut et 200 au
+maximum :
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` et `to` acceptent des dates ou des date-heures ISO 8601 ; toute autre valeur est une
+erreur `400`.
+
+## Définir la durée de conservation
+
+Les entrées plus anciennes que `[audit].retention_days` sont supprimées une fois par jour. La
+valeur par défaut est de 90 jours.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+Pour conserver les entrées d’audit plus longtemps que votre base de données ne le devrait,
+copiez-les régulièrement vers votre propre stockage avec l’API ci-dessus.
+</Aside>

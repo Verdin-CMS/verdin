@@ -1,0 +1,483 @@
+---
+title: "REST API"
+description: "Маршруты, параметры запроса (filters, sort, pagination, fields, populate, locale, status), тела запросов, ответы, ошибки и ограничения REST API Verdin, совместимого со Strapi v5."
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+Каждый тип содержимого получает REST-маршруты под префиксом content API, по умолчанию `/api`
+(`[api].prefix`). Маршруты, параметры и формат ответов повторяют Strapi v5, поэтому
+большинство фронтендов, написанных для Strapi, работают без изменений. Эта страница —
+справочник; в примерах используется
+[пример блога](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) (статьи,
+категории, теги и главная страница).
+
+Сервер также описывает маршруты *вашей* схемы в документе OpenAPI 3.1 по адресу
+`GET /api/_openapi.json`. Страницы [примера content API](/api/example/) показывают документ
+блога, а в [песочнице API](/ru/api/playground/) можно попробовать запросы.
+
+## Пример
+
+Один и тот же запрос в каждом API: десять последних статей категории с названием их
+категории.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+См. [GraphQL API](/ru/api/graphql/) и [Типизированный клиент](/ru/guides/frontend/typed-client/).
+
+## Аутентификация
+
+| Заголовок `Authorization` | Клиент | Разрешения |
+| --- | --- | --- |
+| нет | Публичный доступ | **Настройки → Публичный доступ** |
+| `Bearer vd_…` | API-токен | Тип и права токена |
+| `Bearer <JWT>` | Конечный пользователь | Его роль конечного пользователя |
+
+Неизвестный, просроченный или некорректный токен даёт `401`; публичный доступ в этом случае
+никогда не используется. Действительный клиент без нужного права получает `403`. См.
+[Разрешения](/ru/concepts/permissions/).
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+Браузеры с других источников (origin) могут обращаться к API, только если они перечислены в
+`[api].cors_origins`.
+
+## Маршруты
+
+Типы-коллекции доступны по их `pluralName`:
+
+| Метод и путь | Действие | Ответ |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`, страница документов |
+| `GET /api/articles/{documentId}` | `findOne` | `200`, один документ |
+| `POST /api/articles` | `create` | `201`, созданный документ |
+| `PUT /api/articles/{documentId}` | `update` | `200`, обновлённый документ |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`, без тела |
+
+Одиночные типы доступны по их `singularName`:
+
+| Метод и путь | Действие | Ответ |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200` или `404` до первой записи |
+| `PUT /api/homepage` | `update` | `200`; первый `PUT` создаёт документ |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+`POST` для одиночного типа отвечает `405`.
+
+### Действия
+
+У типов с [черновиками и публикацией](/ru/concepts/draft-and-publish/) есть ещё три маршрута,
+для которых нужно право `publish`. В REST API Strapi аналога нет.
+
+| Метод и путь | Результат | Ответ |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | Публикует черновик. | Опубликованная версия |
+| `POST /api/articles/{documentId}/actions/unpublish` | Удаляет опубликованную версию. | Черновик |
+| `POST /api/articles/{documentId}/actions/discard-draft` | Заменяет черновик опубликованной версией. | Черновик |
+
+Все три принимают `?locale=` для локализованных типов.
+
+## Запись данных
+
+`POST` и `PUT` принимают JSON-тело с объектом `data`:
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` — частичное обновление: атрибуты, которые вы не передали, сохраняют своё значение.
+  Переданные компоненты и динамические зоны заменяют сохранённое значение.
+- Для типов с черновиками и публикацией `POST` и `PUT` записывают черновик **и публикуют
+  его**, как в Strapi v5. Добавьте `?status=draft`, чтобы записать только черновик. Если
+  публикация не проходит валидацию, ничего не записывается.
+- Неизвестные ключи, системные поля (`id`, `documentId`, временные метки) и обратные стороны
+  связей (`mappedBy`) — это ошибки валидации.
+- Связи принимают значения `documentId`, списки, `null` или `{ connect, disconnect, set }`;
+  см. [Связи](/ru/concepts/relations/#запись). Медиаполя принимают id файлов.
+- Ответ — записанная версия, прочитанная с параметрами `fields` и `populate` запроса.
+- `DELETE` удаляет все версии документа (для локализованных типов — версию в запрошенной
+  локали).
+
+## Параметры запроса
+
+| Параметр | Пример | По умолчанию |
+| --- | --- | --- |
+| [`filters`](#фильтры) | `filters[title][$containsi]=rust` | нет |
+| [`sort`](#сортировка) | `sort=publishedAt:desc` | по `id`, по возрастанию |
+| [`pagination`](#пагинация) | `pagination[page]=2&pagination[pageSize]=10` | страница 1, по 25 на странице |
+| [`fields`](#поля) | `fields[0]=title&fields[1]=slug` | все скалярные поля |
+| [`populate`](#связанные-данные-populate) | `populate[category][fields][0]=name` | ничего |
+| [`status`](#статус) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#статус) | `hasPublishedVersion=false` | нет |
+| [`locale`](#локаль) | `locale=fr` | локаль по умолчанию |
+| [`_q`](#поиск) | `_q=ownership` | нет |
+
+Параметры используют скобочную нотацию Strapi. Списки можно записывать с индексами
+(`sort[0]=a&sort[1]=b`), с пустыми скобками (`sort[]=a`) или повторяя ключ
+(`sort=a&sort=b`). Кодируйте скобки и значения как обычно в URL; клиенты вроде
+[`qs`](https://github.com/ljharb/qs) или [типизированного клиента](/ru/guides/frontend/typed-client/)
+собирают эти строки за вас.
+
+Неизвестный параметр, неизвестное или `private` поле, некорректное значение — это `400`
+`ValidationError` с описанием проблемы. Ничего не игнорируется молча.
+
+## Фильтры
+
+`filters[field][operator]=value`. Значение без оператора означает `$eq`:
+`filters[slug]=hello-verdin`.
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+Все условия на одном уровне должны выполняться одновременно. Комбинируйте их логическими
+операторами:
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| Оператор | Совпадает, если | Типы |
+| --- | --- | --- |
+| `$eq`, `$ne` | Равно, не равно | все скалярные |
+| `$eqi`, `$nei` | Равно, не равно без учёта регистра | текстовые |
+| `$lt`, `$lte`, `$gt`, `$gte` | Меньше, меньше или равно, больше, больше или равно | все скалярные, кроме логических |
+| `$between` | Между двумя значениями включительно: `[$between][0]=1&[$between][1]=5` | все скалярные, кроме логических |
+| `$in`, `$notIn` | Входит, не входит в список: `[$in][0]=a&[$in][1]=b` | все скалярные |
+| `$contains`, `$notContains` | Содержит, не содержит | текстовые |
+| `$containsi`, `$notContainsi` | То же без учёта регистра | текстовые |
+| `$startsWith`, `$startsWithi` | Начинается с (без учёта регистра) | текстовые |
+| `$endsWith`, `$endsWithi` | Заканчивается на (без учёта регистра) | текстовые |
+| `$null`, `$notNull` | Пусто, задано: `[$null]=true` | все поля |
+| `$and`, `$or` | Все, хотя бы одно условие из списка | логические |
+| `$not` | Отрицает объект фильтра | логические |
+
+- Текстовые типы — это `string`, `text`, `richtext`, `email`, `uid` и `enumeration`. `json` и
+  `blocks` принимают только `$null` и `$notNull`.
+- Значения приводятся к типу поля: целые числа, числа, `true`/`false` (или `1`/`0`), даты в
+  формате `YYYY-MM-DD`, время — `HH:MM:SS`, дата и время — ISO 8601.
+- Фильтровать можно по `id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt`, а для
+  локализованных типов — по `locale`.
+- Сравнение текста работает одинаково во всех базах данных: `$eq`, `$contains` и другие
+  операторы без `i` точные, а варианты `…i` не учитывают регистр (и диакритику в MySQL и
+  MariaDB; SQLite приводит к одному регистру только буквы ASCII).
+- В запросе не больше 100 условий.
+
+### Фильтрация по связям
+
+Фильтруйте по полям связанных документов — с любой стороны связи и с вложенностью:
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+Условие на связь «ко многим» выполняется, если подходит хотя бы один связанный документ.
+Связанные документы сравниваются в той версии и локали, которые читаются. Полиморфные связи и
+медиаполя фильтровать нельзя.
+
+### Фильтрация по компонентам и динамическим зонам
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+Скалярные поля компонентов можно фильтровать, в том числе вложенные; повторяемый компонент
+подходит, если подходит хотя бы один его элемент. Динамические зоны фильтруются только по
+`__component`. См. [Компоненты и динамические зоны](/ru/concepts/components-and-dynamic-zones/#фильтрация).
+
+## Сортировка
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` или `field:asc|desc`; направление по умолчанию — `asc`.
+- Сортировать можно по любому скалярному полю, кроме `json` и `blocks`, включая системные.
+- `relation.field` сортирует по полю связи «к одному».
+- Пустые значения идут последними в обоих направлениях, а при равенстве порядок определяет
+  `id`, поэтому страницы стабильны.
+
+## Пагинация
+
+Постраничная или по смещению, но не обе сразу:
+
+| Параметр | По умолчанию | Примечания |
+| --- | --- | --- |
+| `pagination[page]` | `1` | С 1. |
+| `pagination[pageSize]` | `25` (`[api].default_page_size`) | Не больше `[api].max_page_size` (100). |
+| `pagination[start]` | `0` | Смещение. |
+| `pagination[limit]` | `25` | Не больше максимума; `-1` запрашивает максимум. |
+| `pagination[withCount]` | `true` | `false` пропускает подсчёт и не возвращает `total` и `pageCount`. |
+
+`meta.pagination` в ответе соответствует выбранному режиму:
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## Поля
+
+`fields` выбирает скалярные атрибуты:
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id` и `documentId` возвращаются всегда. Связи, медиа, компоненты и динамические зоны через
+`fields` не выбираются: используйте `populate`.
+
+## Связанные данные (populate)
+
+Связи, медиа, компоненты и динамические зоны возвращаются, только если их запросить через
+`populate`:
+
+| Форма | Что подгружает |
+| --- | --- |
+| `populate=*` | Все связи, медиаполя, компоненты и динамические зоны на один уровень вглубь |
+| `populate=category,tags` или `populate[0]=category&populate[1]=tags` | Указанные поля |
+| `populate[category]=true` | Указанное поле (`false` его исключает) |
+| `populate[category][fields][0]=name` | Поле с параметрами |
+
+Каждая подгружаемая связь принимает `fields`, `filters`, `sort`, `populate` (вложенный, всего
+до 5 уровней) и `count`:
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- Связь «к одному» — это объект или `null`; связь «ко многим» — массив в порядке связей или в
+  порядке `sort` из populate.
+- `count=true` возвращает `{ "count": 12 }` вместо документов (только для связей «ко многим»).
+- Возвращается не больше 1000 связанных документов на документ и связь; `count` точный.
+- Компоненты и динамические зоны возвращаются целиком, вместе с вложенными компонентами и их
+  связями и медиа. Параметры Strapi для отдельных уровней (`populate[blocks][on][…]`)
+  принимаются и игнорируются.
+- Медиаполя возвращаются как объекты файлов.
+- Полиморфные связи принимают только `count`.
+- Связанные документы читаются в том же статусе и локали, что и сам документ. Подгрузка типа,
+  который клиент не может читать, даёт `400`; `populate=*` его пропускает.
+
+Каждый уровень — это один пакетный запрос на связь, поэтому глубокий populate остаётся
+быстрым и никогда не возвращает дублирующихся строк.
+
+## Статус
+
+Для типов с черновиками и публикацией `status` выбирает версию:
+
+- `status=published` (по умолчанию) читает опубликованные версии.
+- `status=draft` читает черновики; для этого помимо `find` или `findOne` нужно право
+  `readDrafts`.
+
+`hasPublishedVersion=true|false` оставляет документы, у которых есть или нет опубликованной
+версии: `?status=draft&hasPublishedVersion=false` перечисляет документы, которые ни разу не
+публиковались. Для типов без черновиков и публикации это `400`.
+
+При записи `status=draft` сохраняет черновик, не публикуя его. См.
+[Черновики и публикация](/ru/concepts/draft-and-publish/).
+
+## Локаль
+
+`locale=fr` читает и записывает французскую версию локализованных типов. Без параметра
+запросы используют локаль по умолчанию. Неверный или неизвестный код даёт `400`. Типы без
+локализации игнорируют этот параметр. См. [Интернационализация](/ru/concepts/internationalization/).
+
+## Поиск
+
+`_q` находит документы, текстовые поля которых содержат указанные слова, без учёта регистра
+(не больше 200 символов):
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+Без поискового индекса, как и в Strapi, поиск идёт по всем не-private полям `string`, `text`,
+`richtext`, `email`, `uid` и `enumeration`. С `[search] enabled = true` результаты
+ранжируются по релевантности, если не передан `sort`. Остальные фильтры и пагинация
+продолжают действовать. См. [Поиск](/ru/guides/content/search/).
+
+## Ответы
+
+Список:
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+Один документ: `{ "data": { … }, "meta": {} }`.
+
+- Документы плоские, как в Strapi v5: без обёртки `attributes`.
+- Атрибуты идут в порядке схемы, между `id`/`documentId` и временными метками; у
+  локализованных типов добавляется `locale`. Поля `private` никогда не выводятся.
+- Значения `biginteger` — строки. Значения `decimal` — числа, округлённые до их масштаба
+  (строки при `[api].decimal_as_string = true`). Даты — `YYYY-MM-DD`, время —
+  `HH:MM:SS.mmm`, дата и время — `YYYY-MM-DDTHH:MM:SS.mmmZ` в UTC.
+
+Успешные ответы на чтение содержат `ETag`; верните его в `If-None-Match`, чтобы получить
+`304 Not Modified`. В них также есть заголовки `Cache-Tag` и `Surrogate-Key` для очистки CDN
+(см. [Деплои и CDN](/ru/guides/integrations/deploys-and-cdn/)).
+
+## Ошибки
+
+Ошибки имеют формат Strapi:
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| Статус | `name` | Когда |
+| --- | --- | --- |
+| `400` | `ValidationError` | Неверные параметры, тело или содержимое. `details.errors` перечисляет проблемы содержимого с их путями. |
+| `401` | `UnauthorizedError` | Некорректный, неизвестный или просроченный токен. |
+| `403` | `ForbiddenError` | У клиента нет права (для черновиков — `readDrafts`). |
+| `404` | `NotFoundError` | Неизвестный маршрут, тип содержимого или документ. |
+| `405` | `MethodNotAllowedError` | `POST` для одиночного типа либо `PUT` или `DELETE` для маршрута типа-коллекции. |
+| `408` | | Запрос выполнялся дольше `[server].request_timeout_secs` (30 с). |
+| `413` | | Тело больше `[server].body_limit` (1 МБ). |
+| `429` | `RateLimitError` | Превышен `[api].public_rate_limit` или `[api].token_rate_limit`. `Retry-After` сообщает, когда повторить. |
+| `500` | `ApplicationError` | Непредвиденная ошибка; подробности есть только в логе сервера. |
+
+## Ограничения
+
+| Ограничение | Значение |
+| --- | --- |
+| Размер страницы | `[api].max_page_size`, по умолчанию 100 |
+| Глубина populate | 5 уровней |
+| Связанных документов на документ и связь | 1000 |
+| Условий фильтра | 100 |
+| Вложенность скобок в параметре | 12 уровней |
+| Параметров в запросе | 1000 |
+| Строка запроса | 16 КБ |
+| `_q` | 200 символов |
+
+Настраиваются только размеры страниц. Каждое имя поля в `filters`, `sort`, `fields` и
+`populate` проверяется по схеме, а значения всегда передаются как параметры SQL.
+
+## Медиатека
+
+Маршруты загрузки Strapi, которые проверяются по правам **Медиатека**. Они отвечают обычными
+объектами и массивами, без `data`, как Strapi:
+
+| Маршрут | Право | Тело или параметры |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart: `files` (до 20), необязательный JSON `fileInfo` (`name`, `alternativeText`, `caption`, `folder`, `focalPoint`) — по одному на файл или один на все |
+| `POST /api/upload?id={id}` | `update` | Multipart `fileInfo` и, при необходимости, новый файл, который заменяет содержимое |
+| `GET /api/upload/files` | `find` | `pagination[page]`, `pagination[pageSize]`, `sort`, `filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+См. [Медиа](/ru/concepts/media/).
+
+## Другие маршруты под префиксом
+
+| Маршруты | Страница |
+| --- | --- |
+| `/api/auth/*`, `/api/users/*`, `/api/connect/*` | [Конечные пользователи](/ru/guides/auth/end-users/) (когда функция включена) |
+| `/api/_events` | [Realtime API](/ru/api/realtime/) (когда функция включена) |
+| `/api/_redirects`, `/api/_menus/{slug}`, `/api/_forms/{slug}` | [Редиректы](/ru/guides/frontend/redirects/), [Меню](/ru/guides/frontend/menus/), [Формы](/ru/guides/frontend/forms/) |
+| `/api/_openapi.json`, `/api/docs` | Документ OpenAPI (только для API-токенов, если не сделан публичным в **Настройки → Функции → Документация API**) и его интерактивный справочник (когда документ публичный) |
+| `/api/plugins/{name}/*` | Маршруты [плагинов](/ru/extending/plugins/) |

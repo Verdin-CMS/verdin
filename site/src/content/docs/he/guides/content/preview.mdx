@@ -1,0 +1,149 @@
+---
+title: תצוגה מקדימה
+description: פתחו טיוטות באתר שלכם מעורך הרשומות עם אסימון תצוגה מקדימה קצר מועד, וגרמו לאתר שלכם לקרוא איתו את הטיוטה.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+התצוגה המקדימה פותחת את הטיוטה של רשומה באתר שלכם, לפני שהיא מתפרסמת. העורך בונה קישור
+מתבנית URL לכל סוג תוכן ומוסיף אסימון קצר מועד שמאפשר לאתר שלכם לקרוא את הטיוטה הזו בלבד.
+המדריך הזה מגדיר את התבניות ואת צד האתר.
+
+כדי ללחוץ על טקסט בתצוגה המקדימה ולקפוץ לשדה שלו, הוסיפו מעל זה את
+[העריכה החזותית](/he/guides/frontend/visual-editing/).
+
+## לפני שמתחילים
+
+- הפעילו את **הגדרות ← תכונות ← תצוגה מקדימה**. היא כבויה כברירת מחדל.
+- שינוי ההגדרות של התכונה דורש **ניהול תכונות** (`features.manage`).
+- פתיחת תצוגה מקדימה דורשת הרשאת קריאה לרשומה. ראו
+  [הרשאות](/he/reference/permissions/).
+
+## הגדרת כתובות התצוגה המקדימה
+
+<Steps>
+
+1. בכרטיס **תצוגה מקדימה** ב-**הגדרות ← תכונות**, בחרו **הגדרת כתובות תצוגה מקדימה**.
+2. תחת **תבניות כתובות URL**, הזינו את הדף באתר שלכם שמציג את הטיוטה של כל סוג תוכן. השאירו
+   סוג ריק כדי לא לתת לו תצוגה מקדימה.
+3. באופן אופציונלי, שנו את **תוקף הקישור (בדקות)**: 60 כברירת מחדל, לכל היותר 10080 (7
+   ימים).
+4. שמרו.
+
+</Steps>
+
+תבנית היא כתובת `http` או `https` עם ממלאי מקום בסוגריים מסולסלים:
+
+| ממלא מקום | ממולא ב |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | כל שדה ברמה העליונה של הטיוטה. ממלאי מקום לא מוכרים הופכים לריקים. |
+| `{documentId}`, `{uid}` | מזהה המסמך וה-UID של סוג התוכן. |
+| `{token}` | אסימון התצוגה המקדימה. בלי ממלא המקום הזה, האסימון מתווסף כפרמטר השאילתה `preview`. |
+
+עבור המאמרים של פרויקט הדוגמה:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+נותן `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+אותן הגדרות כ-JSON, כפי שהתכונה שומרת אותן (`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## פתיחת תצוגה מקדימה
+
+בעורך הרשומות, בחרו **פתיחת תצוגה מקדימה** כדי לפתוח את הטיוטה באתר שלכם בכרטיסייה חדשה, או
+**זה לצד זה** כדי להציג אותה בחלונית ליד הטופס, ברוחב **מחשב**, **טאבלט** ו**נייד**. החלונית
+הצדדית נטענת מחדש אחרי כל שמירה. אם היא נשארת ריקה, כנראה שהאתר שלכם מסרב להיות מוטמע
+ב-frame: השתמשו ב**פתיחה בכרטיסייה חדשה**.
+
+## קריאת הטיוטה באתר שלכם
+
+דף התצוגה המקדימה שלכם לוקח את האסימון מה-URL ושולח אותו בחזרה ל-API התוכן בכותרת
+`x-verdin-preview`, ומבקש את הטיוטה:
+
+<Diagram
+  caption="בקשת תצוגה מקדימה"
+  code={`sequenceDiagram
+  participant E as עורך
+  participant V as Verdin
+  participant S as האתר שלכם
+  E->>V: פתיחת תצוגה מקדימה
+  V-->>E: URL עם אסימון תצוגה מקדימה
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: הטיוטה`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+את אסימון התצוגה המקדימה קורא ה-REST API של התוכן. שלפו את הטיוטה דרך REST בדף התצוגה
+המקדימה שלכם.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+אותה כותרת עובדת בסוגים יחידים (`GET /api/<singularName>?status=draft`).
+
+מה האסימון מעניק:
+
+- הוא מאפשר למחזיק בו לקרוא את המסמך הזה בלבד, כולל טיוטות, עד שהוא פג.
+- הוא לא יכול לקרוא מסמכים אחרים, להציג רשימות של רשומות או לכתוב משהו.
+- תגובות לבקשות תצוגה מקדימה אף פעם לא נשמרות במטמון.
+
+<Aside type="caution">
+כל מי שיש לו את הקישור יכול לקרוא את הטיוטה עד שהאסימון פג. שמרו על תוקף קצר, ואל תשתפו
+קישורי תצוגה מקדימה במקומות ציבוריים.
+</Aside>
+
+דף התצוגה המקדימה שלכם מחפש בדרך כלל את הרשומה לפי שדה כמו `slug`. מכיוון שהאסימון קורא לפי
+`documentId`, שימו גם את `{documentId}` בתבנית, או שמרו אצלכם את המיפוי מ-slug למזהה.
+
+## API הניהול
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` מחזיר את הקישור עבור הכפתור של
+העורך:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+הוא דורש הרשאת קריאה לרשומה, ועונה `404` כשהתכונה כבויה או שלסוג אין תבנית.

@@ -1,0 +1,118 @@
+---
+title: Mehrere Instanzen betreiben
+description: Mehrere Verdin-Instanzen eines Projekts hinter einem Load Balancer betreiben – was sie über die Datenbank teilen, was pro Instanz bleibt und welche Einstellungen du ändern musst.
+sidebar:
+  order: 8
+  label: Mehrere Instanzen
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Verdin hält seinen Zustand in der Datenbank, du kannst also mehrere Instanzen desselben
+Projekts hinter einem Load Balancer betreiben, für Verfügbarkeit oder Last. Diese Seite listet,
+was die Instanzen teilen, was jede für sich behält und welche Einstellungen wichtig sind.
+
+<Diagram
+  caption="Instanzen teilen Datenbank und Medienspeicher; Caches, Rate Limits und Event-Streams bleiben in jeder Instanz."
+  code={`flowchart LR
+  LB[Load Balancer] --> A[Instanz 1]
+  LB --> B[Instanz 2]
+  LB --> C[Instanz 3]
+  A --> DB[(Datenbank)]
+  B --> DB
+  C --> DB
+  A --> S3[(S3-Medien)]
+  B --> S3
+  C --> S3`}
+/>
+
+## Checkliste
+
+- **Eine gemeinsame Datenbank.** PostgreSQL, MySQL oder MariaDB. SQLite ist eine Datei auf
+  einer Maschine und funktioniert nicht mit mehreren Instanzen.
+- **Überall dieselbe Konfiguration.** Jede Instanz nutzt dieselbe `verdin.toml`, dieselben
+  Schemadateien und dieselben Secrets (`VERDIN_ADMIN_JWT_SECRET`, `VERDIN_TOKEN_PEPPER`,
+  `VERDIN_SSO_<ID>_SECRET`…). Mit unterschiedlichen Secrets lehnen die anderen Instanzen
+  Sitzungen und API-Tokens ab, die auf einer Instanz entstanden sind.
+- **Produktionsmodus.** Nimm `verdin start`, nicht `verdin dev`. Ändere das Schema in der
+  Entwicklung, committe es und migriere einmal pro Deploy.
+- **Gemeinsamer Medienspeicher.** Nimm den S3-Provider
+  (`[upload] provider = { name = "s3", … }`), oder binde für den lokalen Provider dasselbe
+  Volume in jede Instanz ein.
+- **Health Checks.** Richte den Load Balancer auf `GET /_ready`, das mit `503` antwortet, wenn
+  die Datenbank nicht erreichbar ist. `GET /_health` sagt nur, dass der Prozess läuft; nimm es
+  für die Liveness.
+- **Plugin-Jobs auf einer Instanz.** Setze `[plugins].run_jobs = false` auf jeder Instanz bis
+  auf eine; sonst führt jede Instanz die geplanten Jobs aus.
+- **Metriken pro Instanz.** Mit `[metrics].enabled = true` liefert jede Instanz ihr eigenes
+  `/_metrics`; scrape jede einzeln.
+
+## Migrationen mit mehreren Instanzen
+
+`verdin start --migrate` kann gefahrlos auf allen Instanzen gleichzeitig laufen. Jeder
+Migrationslauf hält eine Sperre in der Datenbank (ein Advisory Lock auf PostgreSQL,
+`GET_LOCK` auf MySQL und MariaDB, mit bis zu 60 Sekunden Wartezeit), sodass die erste Instanz
+die Schritte anwendet und die anderen die Datenbank aktuell vorfinden.
+
+Während eines Rolling Deploys laufen Instanzen der alten Version noch eine Weile gegen die
+migrierte Datenbank. Sichere Schritte legen Tabellen an, fügen nullable Spalten oder Spalten
+mit Standardwert und Indizes hinzu, verbreitern Textspalten oder ergänzen Enum-Werte, was die
+alte Version nicht bemerkt. Wende riskante oder destruktive Schritte
+(`verdin migrate apply --allow risky|destructive`) in einem eigenen Deploy an, sobald keine
+Instanz des alten Schemas die Daten mehr braucht. Siehe
+[Schemamigrationen](/de/concepts/schema-migrations/).
+
+## Was geteilt wird
+
+| Was | Wie |
+| --- | --- |
+| Admin-Sitzungen, API-Tokens, Berechtigungen | In der Datenbank; keine Sticky Sessions nötig. |
+| Funktionsschalter, Plugin-Schalter, Sprachen, Review-Workflows | In der Datenbank. Jede Instanz liest sie alle `[server].sync_interval_secs` (10 s) neu, eine Änderung auf einer Instanz erreicht die anderen also innerhalb dieser Frist. |
+| Webhook-Zustellungen | Eine Warteschlange in der Datenbank. Eine Instanz beansprucht eine Zustellung, bevor sie sie sendet, jede geht also einmal raus. |
+| Geplante Releases | Werden vor der Ausführung in der Datenbank beansprucht, jedes läuft also einmal. |
+| Täglicher Digest | Der Lauf jedes Tages wird in der Datenbank beansprucht, Admins bekommen also eine E-Mail. |
+| Passkey-Challenges | Verbrauchte Challenges werden in der Datenbank festgehalten, jede wird also instanzübergreifend nur einmal beantwortet. |
+| Bereinigung des Audit-Logs | Läuft auf jeder Instanz; alte Zeilen doppelt zu löschen schadet nicht. |
+| Key-Value-Speicher der Plugins | In der Datenbank. |
+
+## Was auf jeder Instanz bleibt
+
+- **Rate Limits** zählt jede Instanz für sich. Mit `n` Instanzen kann ein Client bis zum
+  `n`-Fachen von `[api].public_rate_limit` Anfragen pro Minute stellen. Setze ein globales
+  Limit am Load Balancer durch, wenn du eines brauchst.
+- **Der Antwort-Cache für anonyme Anfragen** (`[api].cache_ttl_secs`). Ein Schreibvorgang leert
+  den Cache der Instanz, die ihn ausgeführt hat; die anderen können die vorherige Antwort
+  ausliefern, bis ihr Eintrag abläuft. Halte die TTL bei wenigen Sekunden oder bei `0`.
+- **Echtzeit-Events und Präsenz** sind die der Instanz, mit der ein Client verbunden ist. Nutze
+  Sticky Sessions für die Event-Streams (siehe [Echtzeit](/de/guides/frontend/realtime/)).
+- **Der Suchindex** (`[search]`) liegt auf der Festplatte der Instanz und folgt nur den
+  Schreibvorgängen dieser Instanz. Aktiviere ihn auf einer Instanz und leite `_q`-Anfragen
+  dorthin, oder akzeptiere, dass die anderen zurückfallen, bis sie mit leerem Indexverzeichnis
+  neu starten.
+- **Bildtransformationen** (`[upload.transforms]`) werden pro Instanz unter `cache_dir`
+  gecacht. Stell ein CDN vor `/uploads`, um sie zu teilen.
+- **Geplante Plugin-Jobs**: siehe `run_jobs` oben.
+
+## Einstellungen
+
+```toml title="verdin.toml"
+[server]
+# How often to read settings that other instances changed; 0 turns it off.
+sync_interval_secs = 10
+
+[plugins]
+# Run the plugins' scheduled jobs here (true on one instance only).
+run_jobs = true
+
+[api]
+# Short-lived when each instance keeps its own cache.
+cache_ttl_secs = 5
+```
+
+Setze `run_jobs` pro Instanz mit `VERDIN_PLUGINS__RUN_JOBS=false`.
+
+## Datenbankverbindungen
+
+Jede Instanz öffnet bis zu `[database].pool_max` Verbindungen (standardmäßig 10). Halte
+`instances × pool_max` unter dem Limit des Servers, mit Luft für Migrationen, Backups und
+Wartung. Das Standardlimit von PostgreSQL liegt bei 100 Verbindungen.

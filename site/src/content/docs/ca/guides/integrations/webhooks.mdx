@@ -1,0 +1,193 @@
+---
+title: Webhooks
+description: Crida els teus propis endpoints quan canvia el contingut o la multimèdia, comprova que els enviaments provenen de Verdin i gestiona els reintents.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Els webhooks envien un `POST` HTTP a un URL teu quan canvia el contingut o la multimèdia:
+reconstruir un lloc estàtic, purgar una memòria cau, sincronitzar un índex de cerca, publicar en
+un xat. Els enviaments es posen a la cua, se signen, es reintenten i es registren.
+
+Aquesta pàgina explica com configurar-ne un i com rebre'l. Els esdeveniments, les càrregues i les
+capçaleres es llisten a la [referència de webhooks](/ca/api/webhooks/).
+
+## Activa'ls
+
+La funcionalitat **Webhooks** està activada per defecte; la pots desactivar a **Configuració →
+Funcionalitats**. Gestionar webhooks necessita el permís **Gestiona els webhooks**
+(`webhooks.manage`). Consulta [Permisos](/ca/reference/permissions/).
+
+## Crea un webhook
+
+<Steps>
+
+1. Ves a **Configuració → Webhooks** i tria **Nou webhook**.
+2. A **General**, dona-li un **Nom** i l'**URL** que ha de cridar Verdin.
+3. A **Esdeveniments**, tria els esdeveniments que disparen un enviament: **Entrades** (crear,
+   actualitzar, publicar, despublicar, descartar l'esborrany, eliminar), **Multimèdia**,
+   **Llançaments** (**Llançament publicat**) i **Fluxos de revisió** (**Etapa de l’entrada
+   canviada**).
+4. A **Tipus de contingut**, mantén **Tots els tipus de contingut** o tria'n alguns. Això només
+   filtra els esdeveniments d'entrada; els esdeveniments de multimèdia s'envien igualment.
+5. A **Capçaleres**, afegeix les capçaleres que necessiti el teu endpoint, com ara un token
+   `authorization` (**Afegeix una capçalera**). `content-type`, `host` i les capçaleres
+   `x-verdin-*` les defineix Verdin.
+6. A **Signatura**, mantén activat **Signa els enviaments** (el valor per defecte).
+7. Tria **Crea**. Verdin mostra el secret de signatura (`whsec_…`) un sol cop: copia'l a la
+   configuració del teu endpoint.
+
+</Steps>
+
+**Activat** desactiva un webhook sense eliminar-lo. Els webhooks desactivats no reben
+esdeveniments però encara es poden provar.
+
+## Prova'l
+
+Tria **Envia un esdeveniment de prova** al webhook. Verdin envia, immediatament:
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+L'enviament apareix al **Registre d’enviaments** del webhook amb el seu estat, l'estat HTTP, la
+durada i l'inici del cos de la resposta. Obre un enviament per veure'n la càrrega completa i
+l'error, si n'hi ha.
+
+Per rebre webhooks a la teva màquina mentre desenvolupes, executa el servidor amb `verdin dev`:
+permet URL de `localhost`, que `verdin start` rebutja (consulta [Seguretat](#seguretat)).
+
+## Rep un enviament
+
+Un enviament és un `POST` amb un cos JSON i aquestes capçaleres:
+
+| Capçalera | Valor |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | El nom de l'esdeveniment, com ara `entry.publish`. |
+| `x-verdin-delivery` | L'id de l'enviament. Es manté igual entre reintents: fes-lo servir per ignorar duplicats. |
+| `x-verdin-signature` | `t=<unix seconds>,v1=<hex>`, als webhooks signats. |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+Respon amb qualsevol estat `2xx`, ràpidament. Fes la feina lenta (una reconstrucció completa)
+després de respondre, o posa-la en una cua: un enviament que triga més que el temps d'espera (10
+segons per defecte) compta com a fallit.
+
+### Verifica la signatura
+
+`v1` és l'HMAC-SHA256 de `"<t>.<raw body>"`, amb el secret del webhook com a clau. Per comprovar un
+enviament:
+
+1. Torna a calcular l'HMAC sobre el cos de la petició **en brut**, no sobre JSON tornat a
+   serialitzar.
+2. Compara'l amb `v1` en temps constant.
+3. Rebutja les marques de temps de fa més d'uns quants minuts, perquè un enviament capturat no es
+   pugui reproduir.
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+Amb Express, conserva el cos en brut: `app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)`
+i passa `req.body.toString()`.
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+`crypto.subtle.verify` compara en temps constant.
+
+</TabItem>
+</Tabs>
+
+**Renova el secret** emet un secret nou (que es mostra un sol cop); l'antic deixa de funcionar a
+l'instant. **Deixa de signar** elimina el secret i envia els enviaments sense signar.
+
+## Reintents
+
+Els enviaments es desen a la base de dades quan es confirma el canvi i els envia un procés en segon
+pla, de manera que un endpoint lent mai no alenteix els editors.
+
+- **Èxit:** qualsevol resposta `2xx`.
+- **Error:** qualsevol altra cosa, incloses les redireccions (que no se segueixen), els errors de
+  connexió i els temps d'espera esgotats.
+- **Reintents:** un enviament fallit es torna a intentar al cap de 30 segons, 2 minuts, 10
+  minuts, 1 hora i 6 hores. Després es marca com a **Fallit**.
+
+Tria **Torna-ho a provar** en un enviament del registre per tornar-lo a enviar ara. El registre es
+conserva durant 30 dies. Com que els reintents reutilitzen el mateix `x-verdin-delivery`, fes que
+el teu gestor sigui idempotent: desa els ids que has processat, o fes que la feina es pugui repetir
+sense problemes.
+
+## Seguretat
+
+Amb `verdin start`, els URL dels webhooks no poden apuntar a adreces de loopback, privades,
+d'enllaç local ni altres adreces reservades, inclosos els noms de host que s'hi resolen. Això evita
+que un administrador faci servir webhooks per arribar a serveis interns (SSRF). Les credencials a
+l'URL (`https://user:pass@…`) es rebutgen; envia-les en una capçalera.
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+Consulta [`[webhooks]`](/ca/reference/configuration/).
+
+## Si véns de Strapi
+
+Els webhooks de Verdin segueixen els esdeveniments i les càrregues de Strapi, amb aquestes
+diferències:
+
+- els enviaments se signen, es reintenten i es registren;
+- un webhook es pot limitar a alguns tipus de contingut;
+- l'`entry.draft-discard` de Strapi s'anomena `entry.discard-draft`.
+
+Per reconstruir un lloc estàtic des de l'administració amb un botó en lloc de fer-ho a cada canvi,
+consulta [Desplegaments i CDN](/ca/guides/integrations/deploys-and-cdn/).

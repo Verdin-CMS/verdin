@@ -1,0 +1,234 @@
+---
+title: Imatges responsives
+description: Serveix les imatges a la mida adequada, amb els formats que Verdin genera en pujar-les i transformacions al vol per URL.
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin t'ofereix dues maneres de servir una imatge a la mida que necessita una pàgina:
+
+- **Formats responsius**, generats un sol cop quan es puja la imatge (`thumbnail`, `small`,
+  `medium`, `large`), exactament com el connector de pujades de Strapi. Funcionen amb tots els
+  proveïdors de pujades.
+- **Transformacions**, generades sota demanda a partir de paràmetres de l'URL (`?preset=thumb`, o
+  `?w=800&format=webp` amb una signatura) i desades a la memòria cau al disc. Funcionen amb el
+  proveïdor local.
+
+Totes dues formen part de la mediateca, que sempre està activada. Per pujar i organitzar fitxers,
+consulta [Multimèdia](/ca/concepts/media/).
+
+## Formats responsius
+
+Quan es puja una imatge JPEG, PNG, WebP, TIFF o BMP, Verdin n'escriu còpies més petites i les
+llista als `formats` del fitxer:
+
+| Format | Mida |
+| --- | --- |
+| `thumbnail` | Cap dins de 245 × 156 píxels. |
+| `large` | 1000 píxels d'amplada. |
+| `medium` | 750 píxels d'amplada. |
+| `small` | 500 píxels d'amplada. |
+
+Un format s'omet quan la imatge ja és més petita, de manera que una imatge de 600 píxels d'amplada
+només rep `thumbnail` i `small`. Les còpies conserven el format de l'original (els JPEG es
+codifiquen amb qualitat 80) i la seva orientació EXIF. Els GIF es deixen com estan, perquè poden
+ser animats.
+
+Pobla el camp de multimèdia per obtenir-los. Els exemples fan servir un atribut de multimèdia
+`cover` a Article; el blog d'exemple no en té, així que afegeix-ne un al constructor de tipus de
+contingut per seguir-los.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?populate[cover]=true'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles {
+    title
+    cover { url width height alternativeText formats }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ populate: { cover: true } });
+const formats = data[0].cover?.formats; // Record<string, MediaFormat> | null
+```
+
+</TabItem>
+</Tabs>
+
+```json
+"cover": {
+  "url": "/uploads/team_4f1c2a.jpg",
+  "width": 2400,
+  "height": 1600,
+  "alternativeText": "The team at the office",
+  "formats": {
+    "thumbnail": { "url": "/uploads/thumbnail_team_4f1c2a.jpg", "width": 234, "height": 156 },
+    "large": { "url": "/uploads/large_team_4f1c2a.jpg", "width": 1000, "height": 667 },
+    "medium": { "url": "/uploads/medium_team_4f1c2a.jpg", "width": 750, "height": 500 },
+    "small": { "url": "/uploads/small_team_4f1c2a.jpg", "width": 500, "height": 333 }
+  }
+}
+```
+
+Construeix-ne un `srcset`. Amb el proveïdor local, els `url` són camins al host de Verdin;
+posa-hi el seu origen al davant:
+
+```ts
+const CMS = 'https://cms.example.com';
+
+function srcset(image: Media): string {
+  const sources = Object.values(image.formats ?? {}).map((f) => `${CMS}${f.url} ${f.width}w`);
+  return [...sources, `${CMS}${image.url} ${image.width}w`].join(', ');
+}
+```
+
+```html
+<img src="…/uploads/large_team_4f1c2a.jpg" srcset="…" sizes="(min-width: 60rem) 50vw, 100vw"
+     width="2400" height="1600" alt="The team at the office" />
+```
+
+### Canvia els formats
+
+Els formats surten d'`[upload]` a `verdin.toml`:
+
+```toml title="verdin.toml"
+[upload]
+breakpoints = [{ name = "large", width = 1600 }, { name = "small", width = 640 }]
+# responsive_formats = false  # no copies at all
+# max_original_size = 3000    # scale larger originals down on upload (drops EXIF and GPS)
+```
+
+`breakpoints` és l'opció de Strapi amb el mateix nom. Els canvis s'apliquen a les pujades noves;
+els fitxers existents conserven els formats que tenen. Consulta [`[upload]`](/ca/reference/configuration/)
+per a totes les claus, inclosa `max_image_megapixels`, el límit de descodificació que protegeix
+contra les bombes de descompressió (100 megapíxels per defecte).
+
+## Transformacions
+
+Amb el proveïdor local, Verdin serveix ell mateix `/uploads/<file>` i pot generar altres mides i
+formats d'una imatge sota demanda:
+
+```
+/uploads/team_4f1c2a.jpg?preset=thumb
+/uploads/team_4f1c2a.jpg?w=800&format=webp&s=<signature>
+```
+
+| Paràmetre | Valors |
+| --- | --- |
+| `w`, `h` | Amplada i alçada en píxels, d'1 a `max_size` (4096 per defecte). Amb només un, l'altre segueix la relació d'aspecte. Sense cap dels dos, la imatge conserva la seva mida (un canvi de format). |
+| `fit` | `cover` (per defecte) omple el requadre i retalla la resta, mantenint visible el punt focal del fitxer. `inside` encaixa la imatge dins del requadre. `fill` l'estira fins al requadre. |
+| `format` | `jpeg` (o `jpg`), `png` o `webp`. La sortida WebP és sense pèrdua. Sense aquest paràmetre, la imatge conserva el seu format (TIFF i BMP es converteixen en JPEG). |
+| `q` | Qualitat JPEG, d'1 a 100. Per defecte, 80. |
+| `preset` | Una transformació amb nom de la configuració. No es pot combinar amb els altres paràmetres. |
+| `s` | La signatura, quan els paràmetres no són un preset. |
+
+Les imatges mai no s'amplien: una imatge de 600 píxels d'amplada demanada a `w=1200` torna a 600.
+Les transformacions funcionen amb fitxers JPEG, PNG, WebP, TIFF i BMP, no amb GIF.
+
+### Punt focal
+
+Els editors defineixen el punt focal d'una imatge a la mediateca: obre el fitxer i fes clic a la
+imatge (**Punt focal: fes clic a la imatge o fes servir les tecles de fletxa per definir-lo**). Els
+retalls `fit=cover` mantenen aquest punt visible, i canviar-lo descarta les versions generades del
+fitxer desades a la memòria cau.
+
+### Presets
+
+Els presets són les transformacions que permets demanar a qualsevol. Defineix-los a
+`[upload.transforms.presets]`:
+
+```toml title="verdin.toml"
+[upload.transforms.presets]
+thumb = { w = 300, h = 300 }
+card = { w = 640, h = 360, format = "webp" }
+hero = { w = 1600, h = 600, fit = "cover", format = "jpeg", q = 85 }
+```
+
+```html
+<img src="https://cms.example.com/uploads/team_4f1c2a.jpg?preset=card" alt="…" />
+```
+
+Un preset desconegut respon `400`.
+
+### Paràmetres signats
+
+Qualsevol altra combinació de `w`, `h`, `fit`, `format` i `q` necessita una signatura, perquè
+ningú no pugui fer que el servidor generi (i desi) un nombre il·limitat de variants. Defineix un
+secret a l'entorn del servidor i del codi que construeix els URL de les imatges:
+
+```sh title="Terminal"
+export VERDIN_IMAGE_SECRET="$(openssl rand -hex 32)"
+```
+
+La signatura `s` és l'HMAC-SHA256 en hexadecimal, amb aquest secret com a clau, de
+`<file>?<canonical query>`. La consulta canònica llista els paràmetres que defineixes, excepte
+`fit=cover` (el valor per defecte), ordenats per nom (`fit`, `format`, `h`, `q`, `w`), amb `jpeg`
+per a JPEG:
+
+```ts title="src/image-url.ts"
+import { createHmac } from 'node:crypto';
+
+type Transform = { w?: number; h?: number; fit?: 'cover' | 'inside' | 'fill'; format?: 'jpeg' | 'png' | 'webp'; q?: number };
+
+export function imageUrl(cms: string, url: string, t: Transform): string {
+  const file = url.replace(/^\/uploads\//, '');
+  const params: [string, string][] = [];
+  if (t.fit && t.fit !== 'cover') params.push(['fit', t.fit]);
+  if (t.format) params.push(['format', t.format]);
+  if (t.h) params.push(['h', String(t.h)]);
+  if (t.q) params.push(['q', String(t.q)]);
+  if (t.w) params.push(['w', String(t.w)]);
+  const query = params.map(([k, v]) => `${k}=${v}`).join('&');
+  const s = createHmac('sha256', process.env.VERDIN_IMAGE_SECRET!).update(`${file}?${query}`).digest('hex');
+  return `${cms}/uploads/${file}?${query}&s=${s}`;
+}
+```
+
+Construeix aquests URL al servidor (o en temps de build): el secret no ha d'arribar al navegador.
+Sense `VERDIN_IMAGE_SECRET`, o amb una signatura incorrecta, la petició respon `403`.
+
+<Aside type="caution">
+`[upload.transforms].allow_arbitrary = true` accepta qualsevol paràmetre sense signatura.
+Aleshores cada URL diferent es genera i es desa a la memòria cau, de manera que qualsevol pot
+omplir el disc i fer servir la CPU. Activa-ho només quan el servidor sigui accessible únicament
+des de xarxes de confiança.
+</Aside>
+
+### Memòria cau i límits
+
+- Les versions generades s'escriuen a `[upload.transforms].cache_dir` (`.cache/transforms` per
+  defecte) i després se serveixen des d'allà. El directori es pot eliminar sense risc.
+- Substituir un fitxer o moure'n el punt focal descarta les seves versions generades.
+- Els navegadors i les CDN desen les respostes transformades a la memòria cau durant un dia
+  (`Cache-Control: public, max-age=86400`); els fitxers originals durant un any, ja que els seus
+  noms no canvien mai.
+- Les generacions s'executen en paral·lel fins al nombre de nuclis de CPU; les altres peticions
+  esperen.
+- Les imatges més grans que `max_image_megapixels` es rebutgen (`422`).
+
+Defineix `[upload.transforms].enabled = false` per desactivar les transformacions. Consulta
+[`[upload.transforms]`](/ca/reference/configuration/) per a les claus.
+
+### Amb S3 i altres proveïdors
+
+Amb el proveïdor S3, els fitxers els serveix el bucket o la seva CDN, no Verdin, així que els
+paràmetres de transformació no fan res. Fes servir els formats responsius, o el servei d'imatges
+de la teva CDN (per exemple Cloudflare Images o imgix) davant de la `public_url` del bucket.
+
+Strapi no té transformacions integrades; els seus formats responsius i `breakpoints` es comporten
+igual que els de Verdin.

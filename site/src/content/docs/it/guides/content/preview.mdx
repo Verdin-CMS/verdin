@@ -1,0 +1,157 @@
+---
+title: Anteprima
+description: Apri le bozze sul tuo sito dall'editor della voce con un token di anteprima di breve durata, e fai leggere la bozza al tuo sito con quel token.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+L'anteprima apre la bozza di una voce sul tuo sito, prima che venga pubblicata. L'editor
+costruisce un link da un modello di URL per tipo di contenuto e aggiunge un token di breve
+durata che permette al tuo sito di leggere quella sola bozza. Questa guida configura i
+modelli e il lato del sito.
+
+Per fare clic sul testo dell'anteprima e saltare al suo campo, aggiungi sopra a questo
+la [modifica visiva](/it/guides/frontend/visual-editing/).
+
+## Prima di iniziare
+
+- Attiva **Impostazioni → Funzionalità → Anteprima**. È disattivata di default.
+- Modificare le impostazioni della funzionalità richiede **Gestisci funzionalità**
+  (`features.manage`).
+- Aprire un'anteprima richiede l'accesso in lettura alla voce. Vedi
+  [Permessi](/it/reference/permissions/).
+
+## Configura gli URL di anteprima
+
+<Steps>
+
+1. Sulla scheda **Anteprima** in **Impostazioni → Funzionalità**, seleziona **Configura gli
+   URL di anteprima**.
+2. Sotto **Modelli di URL**, inserisci la pagina del tuo sito che mostra la bozza di ogni
+   tipo di contenuto. Lascia vuoto un tipo per non dargli un'anteprima.
+3. Opzionalmente, cambia **Durata del link (minuti)**: 60 di default, al massimo 10080 (7
+   giorni).
+4. Salva.
+
+</Steps>
+
+Un modello è un URL `http` o `https` con segnaposto tra parentesi graffe:
+
+| Segnaposto | Compilato con |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | Qualsiasi campo di primo livello della bozza. I segnaposto sconosciuti diventano vuoti. |
+| `{documentId}`, `{uid}` | L'id del documento e l'uid del tipo di contenuto. |
+| `{token}` | Il token di anteprima. Senza questo segnaposto, il token viene aggiunto come parametro di query `preview`. |
+
+Per gli articoli del progetto di esempio:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+dà `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+Le stesse impostazioni in JSON, come le memorizza la funzionalità
+(`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## Apri un'anteprima
+
+Nell'editor della voce, seleziona **Apri anteprima** per aprire la bozza sul tuo sito in una
+nuova scheda, o **Affiancati** per mostrarla in un pannello accanto al form, con le larghezze
+**Desktop**, **Tablet** e **Cellulare**. Il pannello laterale si ricarica dopo ogni
+salvataggio. Se resta vuoto, probabilmente il tuo sito rifiuta di essere incorporato in un
+frame: usa **Apri in una nuova scheda**.
+
+## Leggi la bozza sul tuo sito
+
+La tua pagina di anteprima prende il token dall'URL e lo rimanda alla content API
+nell'header `x-verdin-preview`, chiedendo la bozza:
+
+<Diagram
+  caption="Una richiesta di anteprima"
+  code={`sequenceDiagram
+  participant E as Editor
+  participant V as Verdin
+  participant S as Il tuo sito
+  E->>V: Apri anteprima
+  V-->>E: URL con il token di anteprima
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: la bozza`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+Il token di anteprima viene letto dalla content API REST. Recupera la bozza via REST nella
+tua pagina di anteprima.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+Lo stesso header funziona sui single type (`GET /api/<singularName>?status=draft`).
+
+Cosa concede il token:
+
+- Permette a chi lo possiede di leggere quel solo documento, bozze comprese, finché non
+  scade.
+- Non può leggere altri documenti, elencare voci né scrivere nulla.
+- Le risposte alle richieste di anteprima non vengono mai messe in cache.
+
+<Aside type="caution">
+Chiunque abbia il link può leggere la bozza finché il token non scade. Mantieni breve la
+durata, e non condividere link di anteprima in luoghi pubblici.
+</Aside>
+
+La tua pagina di anteprima di solito cerca la voce tramite un campo come `slug`. Dato che il
+token legge per `documentId`, metti anche `{documentId}` nel modello, o gestisci dal tuo lato
+la corrispondenza tra slug e id.
+
+## API admin
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` restituisce il link per il
+pulsante dell'editor:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+Richiede l'accesso in lettura alla voce, e risponde `404` quando la funzionalità è
+disattivata o il tipo non ha un modello.

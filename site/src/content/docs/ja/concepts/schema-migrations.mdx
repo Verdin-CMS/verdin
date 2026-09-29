@@ -1,0 +1,118 @@
+---
+title: "スキーマのマイグレーション"
+description: "Verdin がスキーマの変更をデータベースのマイグレーションに変える方法。プラン、リスクレベル、verdin dev と verdin start の動作、名前の変更、--allow を説明します。"
+sidebar:
+  order: 7
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+スキーマファイルを変更すると、データベースもそれに追従する必要があります。新しい属性にはカラムが、新しいリレーションにはリンクテーブルが必要です。Verdin はそのマイグレーションを自動で計算し、実行前に表示し、指示されない限りデータを削除しません。このページではその仕組みを説明します。
+
+## スキーマからプランへ
+
+Verdin がマイグレーションを書くよう求めることはありません。データベースの 2 つのモデルを比較します。
+
+1. **目標**: `schema/*.json` ファイルから導き出され、必要なすべてのテーブル、カラム、インデックス（リンクテーブルと Verdin 自身のテーブルを含む）を持ちます。
+2. **現在**: 前回のマイグレーションが残したモデルで、スナップショットとしてデータベースに保存されています。
+
+その差分が**プラン**です。プランはステップのリストで、各ステップにはデータベース用の SQL とリスクレベルがあります。プランはデータベースを調べるのではなく保存されたスナップショットから作られるので、決定的で、どの方言でも同じになります。`integer` から SQLite の `biginteger` への変更のように、データベース上で同じ SQL になる変更からはステップが作られません。
+
+<Diagram
+  caption="スキーマの変更がマイグレーションになるまで"
+  code={`flowchart LR
+    F[schema/*.json] --> D[目標のモデル]
+    S[(保存されたスナップショット)] --> C[現在のモデル]
+    D --> X{差分}
+    C --> X
+    X --> P[プラン: ステップ、リスク、SQL]
+    P --> A[apply --allow]
+    A --> B[(データベースと新しいスナップショット)]`}
+/>
+
+`verdin migrate plan` でプランを表示します。次の例では、`article.json` でブログの `excerpt` 属性を `summary` に名前変更しています。
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [safe] add column articles.summary
+       ALTER TABLE "articles" ADD COLUMN "summary" text
+  2. [destructive] drop column articles.excerpt
+       ALTER TABLE "articles" DROP COLUMN "excerpt"
+
+requires: verdin migrate apply --allow destructive
+
+possible renames (pass them to keep the data):
+  --rename-column articles.excerpt=summary
+```
+
+## リスクレベル
+
+| リスク | ステップ | 理由 |
+| --- | --- | --- |
+| **safe**（安全） | テーブルの作成、カラムの追加、一意でないインデックスの追加・削除、テーブルやカラムの名前変更。 | データを失うことも、既存の行で失敗することもありません。 |
+| **risky**（要注意） | カラムの型の変更、既存のテーブルへの一意インデックスの追加、SQLite のテーブルの再構築（SQLite はカラムをその場で変更できません）。 | 既存のデータで失敗する（重複、変換できない値）か、データを書き換えることがあります。 |
+| **destructive**（破壊的） | カラムやテーブルの削除。 | データを削除します。 |
+
+すべての属性カラムは NULL を許容する（`required` は公開時に確認される）ので、必須かどうかにかかわらず、属性の追加は常に安全です。ブログの記事タイトルに `"unique": true` を追加するのは risky です。既存のタイトルが重複しているかもしれないからです。
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [risky] create unique index articles_title_uq
+       CREATE UNIQUE INDEX "articles_title_uq" ON "articles" ("title", "locale", "publication_state")
+
+requires: verdin migrate apply --allow risky
+```
+
+最初のステートメントを実行する前に、Verdin は失敗しうる risky なステップごとに事前チェック（一意インデックスの前に重複を探すなど）を行い、問題が見つかればメッセージを出して停止します。その時点では何も変更されていません。
+
+## プランの適用
+
+`verdin migrate apply` は保留中のステップを実行します。受け入れる最大のリスクを指定します。
+
+```sh title="Terminal"
+verdin migrate apply                        # 安全なステップのみ（デフォルト）
+verdin migrate apply --allow risky          # 型の変更と一意インデックスも
+verdin migrate apply --allow destructive    # 削除も
+```
+
+許可したリスクを超えるステップが 1 つでもあれば、何も実行されません。
+
+```text title="Terminal"
+$ verdin migrate apply
+Error: these steps need explicit approval:
+  create unique index articles_title_uq (risky)
+```
+
+マイグレーションはロックを取得するので、2 つのインスタンスが同時にマイグレーションすることはありません。PostgreSQL と SQLite では、プラン全体が 1 つのトランザクションで実行され、失敗するとすべてロールバックされます。MySQL と MariaDB は DDL ステートメントを 1 つずつコミットするので、Verdin は進捗をステップごとにジャーナルに記録します。失敗したら原因を直して、もう一度 `verdin migrate apply` を実行してください。プランが変わっていなければ失敗したステップから再開し、その間にスキーマが変わっていれば拒否します。
+
+## 名前の変更
+
+属性を削除して新しい属性を追加すると、削除と追加に見えるので、カラムのデータが失われてしまいます。Verdin は名前の変更を推測しません。カラムが消え、同じテーブルに同じ型のカラムが現れた場合（またはテーブルが消え、同じカラムを持つテーブルが現れた場合）に名前の変更を提案し、あなたが明示的に確認します。
+
+```text title="Terminal"
+$ verdin migrate apply --rename-column articles.excerpt=summary
+applied 1 step
+```
+
+- `--rename-column TABLE.OLD=NEW` はカラムの名前を変更します。`TABLE` はコンテンツタイプのテーブル（その `collectionName`）です。
+- `--rename-table OLD=NEW` はテーブルの名前を変更します。型のリンクテーブルも一緒に名前が変わります。
+- 結果をプレビューするには、同じフラグを `migrate plan` に渡してください。
+
+名前の変更は安全なステップです。コンテンツタイプビルダーも、ダイアログで同じ提案をします。
+
+## `verdin dev` と `verdin start`
+
+| | `verdin dev` | `verdin start` |
+| --- | --- | --- |
+| 起動時 | 保留中の安全なステップを適用します。他のステップが保留中なら停止します。 | ステップが 1 つでも保留中なら起動を拒否します。ただし `--migrate` を渡すと、先に安全なステップを適用します。 |
+| 実行中のスキーマの変更 | **コンテンツタイプビルダー**がリスクと名前変更の提案付きでプランを表示し、確認するとより危険なステップも含めて適用します。手による編集（や `git pull`）はファイルウォッチャーが検出します。安全なプランは適用されてアプリが再読み込みされ、それ以外はログに記録され、実行中のアプリはそのままです。 | スキーマは読み取り専用です。新しいファイルをデプロイしてマイグレーションしてください。 |
+
+ビルダーは、まずデータベースをマイグレーションし、次にスキーマファイルを書き込み、その後、再起動なしでコンテンツ API、Admin API、GraphQL、OpenAPI ドキュメントを再読み込みします。マイグレーションに失敗すると、ファイルと実行中のアプリはそのまま残ります。
+
+本番環境では、新しいバージョンを起動する前に、データベースのコピーに対して `verdin migrate plan` を実行し、受け入れるリスクを指定して `verdin migrate apply` を実行してください。[アップグレード](/ja/migrate/upgrading/)と[バックアップ](/ja/deploy/backups/)を参照してください。
+
+## Strapi との比較
+
+Strapi は、起動時に何をするかを示さずにデータベースをスキーマと同期します。Verdin はまずプランを立て、SQL を表示し、指示がなくても適用するのは安全なステップだけで、失敗やデータ削除の可能性があるものには `--allow` を求めます。

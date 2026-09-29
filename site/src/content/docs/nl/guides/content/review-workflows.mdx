@@ -1,0 +1,132 @@
+---
+title: Reviewworkflows
+description: Verplaats items door reviewfasen, wijs ze toe aan reviewers, beperk wie ze mag verplaatsen en vereis een fase vóór publicatie.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Een reviewworkflow is een geordende lijst fasen, zoals *To do*, *In review* en *Ready*, die de
+items van bepaalde contenttypes doorlopen voordat ze worden gepubliceerd. Deze gids stelt er een
+in, verplaatst en wijst items toe, en laat de bijbehorende admin-API zien.
+
+In Strapi zijn reviewworkflows een Enterprise-functie. In Verdin horen ze bij de open-source kern.
+
+## Voordat je begint
+
+- Zet **Instellingen → Functies → Reviewworkflows** aan. Het staat standaard uit.
+- Workflows instellen vereist **Reviewworkflows beheren** (`workflows.manage`).
+- Een item verplaatsen en toewijzen vereist toegang om het bij te werken. Zie
+  [Rechten](/nl/reference/permissions/).
+
+## Een workflow aanmaken
+
+<Steps>
+
+1. Open **Instellingen → Reviewworkflows** en kies **Nieuwe workflow**.
+2. Geef hem een **Naam**.
+3. Kies onder **Contenttypes** de types waarvan de items hem volgen. Een type volgt hoogstens één
+   workflow.
+4. Zet onder **Fasen** de fasen op volgorde. Elke fase heeft een **Fasenaam** en een **Kleur**.
+   Gebruik **Fase toevoegen** voor meer, en de pijlknoppen om ze te herschikken. Nieuwe items
+   beginnen in de eerste fase.
+5. Kies eventueel bij een fase **Rollen die items naar deze fase kunnen verplaatsen**. Zonder
+   gekozen rollen kan iedereen die het item mag bijwerken dat.
+6. Stel eventueel **Vereiste fase om te publiceren** in. Items kunnen dan alleen worden
+   gepubliceerd zolang ze in die fase zijn. **Elke fase** laat publiceren ongemoeid.
+7. Sla op.
+
+</Steps>
+
+<Diagram
+  caption="Een redactionele workflow met een vereiste fase om te publiceren"
+  code={`flowchart LR
+  A[To do] --> B[In review] --> C[Ready]
+  C -->|publiceren toegestaan| P((Gepubliceerd))
+  A -.->|publiceren geweigerd| X[400]`}
+/>
+
+Items die al bestonden voordat hun type bij de workflow kwam, staan in de eerste fase.
+
+Als je een workflow later wijzigt:
+
+- Een fase verwijderen stuurt zijn items terug naar de eerste fase.
+- Een contenttype uit de workflow verwijderen wist de fasen van zijn items.
+- De workflow verwijderen wist de fasen en toegewezenen van zijn items.
+
+## Items verplaatsen en toewijzen
+
+De item-editor toont een paneel **Review** met de **Fase** en **Toegewezen aan**.
+
+- Kies een andere **Fase** om het item te verplaatsen. Fasen die voor andere rollen zijn
+  gereserveerd, kunnen niet worden gekozen, en het paneel meldt dat. Beheerders met
+  **Reviewworkflows beheren** kunnen items altijd verplaatsen.
+- Kies bij **Toegewezen aan** een van de actieve beheerders die het contenttype mogen lezen, of
+  kies **Toewijzing verwijderen**. Iedereen die het item mag bijwerken, kan het toewijzen.
+- Als de workflow een vereiste fase heeft, meldt het paneel welke fase het item moet bereiken
+  voordat **Publiceren** werkt.
+
+De lijstweergave toont een kolom **Fase**, en de startpagina toont de items die aan jou zijn
+toegewezen onder **Aan mij toegewezen**. Gelokaliseerde types houden een fase per locale bij.
+
+## Wat de publicatiefase blokkeert
+
+De vereiste fase geldt voor elke manier van publiceren: het beheerpaneel, REST, GraphQL, releases en
+plugins. Een publicatie van een item buiten die fase mislukt met `400`:
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+In Strapi geldt de fasevereiste alleen voor het beheerpaneel. Faserollen verschillen ook: in Verdin
+beperken ze wie items *naar* een fase verplaatst.
+
+## Auditlogs en webhooks
+
+- Fasewijzigingen en toewijzingen worden in de [auditlogs](/nl/guides/content/audit-logs/)
+  vastgelegd als `entry.stage` en `entry.assign`.
+- Webhooks kunnen zich abonneren op **Fase van item gewijzigd**
+  (`review-workflows.updateEntryStage`). Zie [Webhooks](/nl/guides/integrations/webhooks/).
+
+## Admin-API
+
+Alle routes staan onder `/admin/api` en nemen een access token van een beheerder.
+
+| Route | Recht | Doet |
+| --- | --- | --- |
+| `GET /review-workflows`, `GET /review-workflows/{id}` | `workflows.manage` | Workflows met hun fasen. |
+| `POST /review-workflows`, `PUT /review-workflows/{id}` | `workflows.manage` | Een workflow aanmaken of vervangen (body hieronder). |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | Items van zijn types verliezen hun fasen. |
+| `GET /content/{uid}/{documentId}/review?locale=` | het item lezen | Fase, toegewezene, en de fasen waarnaar je het item kunt verplaatsen (`canMoveTo`). |
+| `PUT /content/{uid}/{documentId}/review?locale=` | het item bijwerken | `{ "stageId": 3, "assigneeId": 7 }`. Beide velden zijn optioneel; `"assigneeId": null` verwijdert de toewijzing. |
+| `GET /content/{uid}/review?documentIds=a,b` | het type lezen | Fasen van tot 200 items, met de workflow in `meta.workflow`. |
+| `GET /review/assigned` | ingelogd | Items die aan jou zijn toegewezen. |
+| `GET /review/assignees?uid=` | het type bijwerken | Actieve beheerders die het type mogen lezen. |
+| `GET /review/roles` | `workflows.manage` | Rolcodes en -namen, voor faserollen. |
+
+Een workflow zoals hij naar `POST` en `PUT` wordt gestuurd:
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- Een workflow heeft 1 tot 50 fasen met unieke namen en `#rrggbb`-kleuren.
+- `publishStage` noemt een van de fasen; laat hem weg voor geen.
+- Stuur bestaande fasen mee met hun `id`, zodat hun items blijven waar ze zijn. Fasen zonder `id`
+  zijn nieuw.
+
+<Aside type="note">
+De functie uitzetten verbergt de fasen en stopt met het afdwingen van de publicatiefase. De
+workflows en fasen van items blijven bewaard voor als je hem weer aanzet.
+</Aside>

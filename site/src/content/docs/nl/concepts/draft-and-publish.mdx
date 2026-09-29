@@ -1,0 +1,137 @@
+---
+title: "Concept en publicatie"
+description: "Documenten, hun concept- en gepubliceerde versies, de statussen die een item doorloopt, en hoe elke API ze leest en schrijft."
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Met concept en publicatie werken redacteuren aan een document zonder te veranderen wat je site
+toont, en publiceren ze wanneer het klaar is. Deze pagina legt het model uit: documenten,
+versies, de acties die content ertussen verplaatsen, en hoe elke API ermee omgaat. Het werkt
+zoals in Strapi v5.
+
+Zet het per contenttype aan in zijn schema:
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+Het staat uit als `options.draftAndPublish` ontbreekt.
+
+## Documenten en versies
+
+Een **document** is één item, geïdentificeerd door zijn `documentId`. Met concept en publicatie
+heeft een document tot twee **versies**:
+
+- een **concept**, dat bij elke bewerking verandert, en
+- een **gepubliceerde** versie, die de content-API standaard serveert.
+
+Bij een [gelokaliseerd](/nl/concepts/internationalization/) type heeft elke locale een eigen
+concept en gepubliceerde versie, die allemaal het `documentId` delen.
+
+Types zonder concept en publicatie hebben één versie per locale, die altijd gepubliceerd is: elke
+schrijfactie verandert wat lezers zien.
+
+## Statussen
+
+Het beheerpaneel toont de status van elk item in de lijst en in de editor:
+
+| Status | Concept | Gepubliceerde versie | Wat lezers van gepubliceerde content zien |
+| --- | --- | --- | --- |
+| **Concept** | ja | geen | Niets: het document is niet zichtbaar. |
+| **Gepubliceerd** | gelijk aan de gepubliceerde | ja | De gepubliceerde versie. |
+| **Gewijzigd** | gewijzigd sinds de laatste publicatie | ja | De gepubliceerde versie, zonder de nieuwe wijzigingen. |
+
+<Diagram
+  caption="Statussen van een document met concept en publicatie, en de acties ertussen"
+  code={`stateDiagram-v2
+    state "Concept" as Draft
+    state "Gepubliceerd" as Published
+    state "Gewijzigd" as Modified
+    [*] --> Draft: aanmaken
+    Draft --> Published: publiceren
+    Published --> Modified: opslaan
+    Modified --> Published: publiceren of wijzigingen verwerpen
+    Published --> Draft: publicatie ongedaan maken
+    Modified --> Draft: publicatie ongedaan maken`}
+/>
+
+De acties verplaatsen een document tussen deze statussen:
+
+| Actie | Effect | Van → naar |
+| --- | --- | --- |
+| Opslaan | Schrijft het concept. | Concept → Concept, Gepubliceerd → Gewijzigd |
+| **Publiceren** | Kopieert het concept naar de gepubliceerde versie, en maakt die zo nodig aan. | Concept of Gewijzigd → Gepubliceerd |
+| **Publicatie ongedaan maken** | Verwijdert de gepubliceerde versie; het concept blijft. | Gepubliceerd of Gewijzigd → Concept |
+| **Wijzigingen verwerpen** | Vervangt het concept door een kopie van de gepubliceerde versie. | Gewijzigd → Gepubliceerd |
+| Verwijderen | Verwijdert elke versie (van de gevraagde locale, bij gelokaliseerde types). | elke → weg |
+
+Publiceren gebeurt in één transactie. Het controleert `required`-velden en de
+[regels over meerdere velden](/nl/concepts/content-model/#validaties-over-meerdere-velden) van het
+type op het concept; een mislukte controle publiceert niets. Tot die tijd mogen concepten
+onvolledig zijn en die regels breken.
+
+`publishedAt` is `null` bij concepten. De gepubliceerde versie bevat het tijdstip waarop hij
+voor het laatst is gepubliceerd.
+
+## Relaties en media volgen de versie
+
+Elke versie heeft zijn eigen relatie- en mediakoppelingen, en publiceren kopieert de koppelingen
+van het concept naar de gepubliceerde versie. Koppelingen wijzen naar documenten en worden
+opgelost in de versie die gelezen wordt: een gepubliceerd artikel toont de gepubliceerde versie
+van zijn categorie, en een concept toont het concept van de categorie. Als de publicatie van de
+categorie ongedaan wordt gemaakt, verdwijnt die uit het gepubliceerde artikel totdat ze weer
+wordt gepubliceerd, zonder dat er een koppeling wordt herschreven. Zie
+[Relaties](/nl/concepts/relations/#gekoppeld-per-document-niet-per-rij).
+
+Componenten en dynamische zones horen bij de rij, dus publiceren kopieert ze zoals ze zijn.
+
+## Concepten en gepubliceerde content lezen
+
+| API | Leest standaard | Om concepten te lezen |
+| --- | --- | --- |
+| [REST](/nl/api/rest/#status) | Gepubliceerde versies | `?status=draft`, waarvoor het recht **Concepten lezen** nodig is |
+| [GraphQL](/nl/api/graphql/) | Gepubliceerde versies | `status: DRAFT`, met hetzelfde recht |
+| [Admin-API](/nl/api/admin/) | Concepten | `?status=published` |
+
+Concepten lezen is een apart recht (`readDrafts`), zodat een token dat de content van je site
+leest, geen ongepubliceerd werk kan lezen. Alleen-lezen API-tokens lezen nooit concepten.
+
+Om documenten te onderscheiden op basis van of ze ooit zijn gepubliceerd, filter je met
+`hasPublishedVersion`: `?status=draft&hasPublishedVersion=false` somt documenten op die nooit zijn
+gepubliceerd.
+
+## Schrijven via de API's
+
+De API's volgen Strapi v5 bij schrijfacties:
+
+- **REST en GraphQL**: `create` en `update` schrijven het concept **en publiceren het**, tenzij
+  het request om `status=draft` vraagt (`status: DRAFT` in GraphQL). Een mislukte publicatie
+  draait het hele request terug.
+- **Het beheerpaneel en de admin-API** slaan alleen concepten op. Publiceren is altijd een
+  expliciete actie.
+
+De REST-API heeft ook expliciete acties, die Strapi niet via REST aanbiedt:
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+Ze vereisen het recht **Publiceren** op het type. Zie [REST-API](/nl/api/rest/#acties).
+
+## Andere functies die publiceren
+
+- [Releases](/nl/guides/content/releases/) groeperen documenten en publiceren ze of maken hun
+  publicatie samen ongedaan, nu of op een datum.
+- [Reviewworkflows](/nl/guides/content/review-workflows/) kunnen een fase vereisen voordat een
+  document mag worden gepubliceerd.
+- Publiceren en publicatie ongedaan maken sturen de [webhook-events](/nl/api/webhooks/) en
+  [realtime-events](/nl/api/realtime/) `entry.publish` en `entry.unpublish`. Opslaan van een
+  concept stuurt `entry.update`, dat via realtime alleen aanroepers ontvangen die concepten mogen
+  lezen.

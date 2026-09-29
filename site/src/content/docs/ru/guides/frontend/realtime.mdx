@@ -1,0 +1,145 @@
+---
+title: Обновления в реальном времени
+description: Обновляйте фронтенд в момент изменения контента, подписавшись на server-sent events Verdin.
+sidebar:
+  order: 8
+  label: Реальное время
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Когда включена функция **Реальное время**, Verdin передаёт небольшое событие при каждом
+изменении записи или медиафайла. Фронтенд подписывается на поток и заново запрашивает то, что
+изменилось: живой блог, табло, дашборд, которому никогда не нужна перезагрузка. Каждый
+подписчик получает только события о контенте, который ему разрешено читать.
+
+На этой странице показано, как использовать поток во фронтенде. Имена событий, полезная
+нагрузка и правила описаны в [справочнике по realtime API](/ru/api/realtime/). В Strapi v5
+встроенного аналога нет.
+
+## Включите функцию
+
+<Steps>
+
+1. В **Настройки → Функции** включите **Реальное время**.
+2. Решите, кто будет подписываться. Поток использует разрешения content API:
+   - для всех — разрешите **Найти** или **Найти одну** для нужных типов в
+     **Настройки → Публичный доступ**;
+   - для сервера или приложения — создайте [API-токен](/ru/guides/auth/api-tokens/) с этими
+     разрешениями (и **Читать черновики**, чтобы получать события только о черновиках);
+   - для вошедших конечных пользователей подходит и их JWT (см.
+     [Конечные пользователи](/ru/guides/auth/end-users/)).
+
+</Steps>
+
+Поток — это `GET /api/_events`. Добавьте `?types=` со списком UID типов содержимого через
+запятую, чтобы получать только их (`plugin::upload` — это медиатека):
+
+```sh title="Terminal"
+curl -N "https://cms.example.com/api/_events?types=api::article,api::category"
+```
+
+```
+event: ready
+data: {}
+
+event: entry.publish
+data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","locale":"en"}
+```
+
+## Подписка из браузера
+
+События содержат id, а не контент. На каждое событие заново запрашивайте то, что показываете,
+через тот же API и с теми же разрешениями, что и при любом другом чтении.
+
+<Tabs syncKey="auth">
+<TabItem label="Публичный доступ">
+
+С публичной ролью достаточно браузерного `EventSource`, и он сам переподключается:
+
+```js
+const CMS = 'https://cms.example.com';
+const events = new EventSource(`${CMS}/api/_events?types=api::article`);
+
+for (const name of ['entry.publish', 'entry.unpublish', 'entry.delete']) {
+  events.addEventListener(name, (event) => {
+    const { documentId } = JSON.parse(event.data);
+    refreshArticle(documentId);
+  });
+}
+
+events.addEventListener('lagged', () => refreshEverything());
+```
+
+</TabItem>
+<TabItem label="С токеном">
+
+`EventSource` не умеет отправлять заголовок `Authorization`. Вместо него читайте поток через
+`fetch` и переподключайтесь, когда он завершится:
+
+```js
+async function subscribe(token, onEvent) {
+  for (;;) {
+    try {
+      const response = await fetch(`${CMS}/api/_events?types=api::article`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) return; // token refused
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const name = block.match(/^event: (.*)$/m)?.[1];
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (name && data) onEvent(name, JSON.parse(data));
+        }
+      }
+    } catch {
+      // network error: retry below
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+```
+
+Подойдёт и любая клиентская библиотека SSE с поддержкой заголовков.
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution">
+Токен в браузерном коде может прочитать любой, кто откроет страницу. Отдавайте в браузер
+только токен для чтения, ограниченный типами, которые показывает страница, или подписывайтесь
+со своего сервера и пересылайте обновления в браузер.
+</Aside>
+
+Для обращения к потоку с сайта на другом origin нужен этот origin в
+[`[api].cors_origins`](/ru/reference/configuration/).
+
+## Поддерживайте поток в порядке
+
+- Первое событие — `ready`: подписка активна.
+- Поток завершается через час. Тогда переподключитесь: `EventSource` делает это
+  автоматически, а при переподключении токен проверяется заново, так что отозванный токен
+  перестаёт получать события.
+- Событие `lagged` означает, что клиент читал слишком медленно и пропустил события. Заново
+  запросите всё, что показывает страница.
+- События только о черновиках (`entry.create`, `entry.update` и `entry.discard-draft` для
+  типов с черновиками и публикацией) доходят только до клиентов с **Читать черновики**.
+  Публичный сайт обычно слушает `entry.publish`, `entry.unpublish` и `entry.delete`.
+
+## За балансировщиком нагрузки
+
+События относятся к экземпляру, к которому подключён клиент. При нескольких экземплярах
+используйте липкие сессии для `/api/_events` или подключайте realtime-клиентов к одному
+экземпляру. См. [Масштабирование](/ru/deploy/scaling/).
+
+Админ-панель использует собственный поток (`/admin/api/events`) для обновлений в реальном
+времени, присутствия и мягких блокировок при редактировании; см.
+[справочник по realtime API](/ru/api/realtime/).

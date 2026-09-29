@@ -1,0 +1,178 @@
+---
+title: Proje yapısı
+description: verdin new’in oluşturduğu dosyalar, Verdin’in çalışırken eklediği dosyalar ve bunlardan hangilerinin git’e ait olduğu.
+sidebar:
+  order: 5
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+Bir Verdin projesi, bir yapılandırma dosyası ve şema içeren bir dizindir. Bu sayfa `verdin new`’in
+oluşturduklarını, sunucunun çalışırken eklediklerini ve neyin commit edileceğini listeler.
+
+## `verdin new` ne oluşturur
+
+```sh title="Terminal"
+verdin new my-site
+```
+
+<FileTree>
+- my-site/
+  - verdin.toml proje yapılandırması
+  - .env secret’lar ve veritabanı URL’si, yalnızca sizin okuyabileceğiniz şekilde
+  - .gitignore
+  - schema/
+    - content-types/ içerik tipi başına bir JSON dosyası
+    - components/ bileşen kategorisi başına bir klasör
+  - data/ SQLite veritabanı (yalnızca `--database sqlite` ile)
+</FileTree>
+
+Dizin var olmamalı veya boş olmalıdır. Veritabanı URL’sindeki proje adı dizin adından gelir; küçük
+harfe çevrilir ve diğer karakterler `_` ile değiştirilir (`My Site`, `my_site` olur).
+
+### `verdin.toml`
+
+Yapılandırma. Üretilen dosya portu, içerik API’si önekini ve sayfa boyutlarını ve admin yolunu
+ayarlar:
+
+```toml title="verdin.toml"
+[server]
+port = 1337
+# public_url = "https://cms.example.com"
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+
+[admin]
+path = "/admin"
+# secure_cookies = true
+```
+
+Her anahtarın bir varsayılanı vardır; bu yüzden dosya boş veya eksik olabilir. Bilinmeyen anahtarlar
+sunucuyu bir hatayla durdurur. Herhangi bir anahtar ortamdan `VERDIN_<SECTION>__<KEY>` olarak
+geçersiz kılınabilir; örneğin `VERDIN_SERVER__PORT=8080`. Komutlar `verdin.toml`’u mevcut dizinden
+okur; başka bir dosya kullanmak için `-c <path>` geçin veya `VERDIN_CONFIG` ayarlayın. Dosyadaki
+şema veya yükleme dizinleri gibi yollar, onu içeren dizine göredir. Tüm ayarlar
+[yapılandırma başvurusundadır](/tr/reference/configuration/).
+
+### `.env`
+
+```sh title=".env"
+# Yerel secret’lar: bu dosyayı sürüm denetiminin dışında tutun.
+VERDIN_DATABASE_URL=sqlite://data/verdin.db
+VERDIN_ADMIN_JWT_SECRET=…
+VERDIN_TOKEN_PEPPER=…
+```
+
+`verdin new`, iki rastgele secret’ı ve `--database` ile seçtiğiniz motor için bir veritabanı URL’sini
+doldurur:
+
+| `--database` | Üretilen `VERDIN_DATABASE_URL` |
+| --- | --- |
+| `sqlite` (varsayılan) | `sqlite://data/verdin.db` |
+| `postgres` | `postgres://verdin:change-me@localhost:5432/<name>` |
+| `mysql`, `mariadb` | `mysql://verdin:change-me@localhost:3306/<name>` |
+
+PostgreSQL, MySQL ve MariaDB için kullanıcıyı ve parolayı değiştirin. Göreli SQLite yolları,
+komutu çalıştırdığınız dizine değil proje dizinine göre çözümlenir.
+
+Her komut `verdin.toml`’un yanındaki `.env`’yi yükler; ortamda zaten ayarlanmış değişkenler üstün
+gelir. Linux ve macOS’ta dosya yalnızca sahibinin okuyabileceği şekilde oluşturulur. Üretimde bir
+`.env` dosyası göndermek yerine bu değişkenleri platformunuzun secret deposunda ayarlayın.
+[Hızlı başlangıç](/tr/start/quickstart/#2-gizli-anahtarlar) iki secret’ı açıklar.
+
+### `schema/`
+
+Strapi’nin şema biçiminde içerik modeli:
+
+- Koleksiyon veya tekil tip başına bir dosya olarak `schema/content-types/<singularName>.json`.
+- Bileşen başına bir dosya olarak `schema/components/<category>/<name>.json`; bileşenin uid’si
+  `<category>.<name>`’dir.
+
+İçerik tipi oluşturucusu bu dosyaları `verdin dev` içinde yazar ve onları elle de
+düzenleyebilirsiniz: `verdin dev` değiştiklerinde yeniden yükler. Örnek blog’un şeması şöyle
+görünür:
+
+<FileTree>
+- schema/
+  - content-types/
+    - article.json
+    - category.json
+    - homepage.json tekil tip
+    - tag.json
+  - components/
+    - blocks/
+      - hero.json `blocks.hero`
+      - quote.json `blocks.quote`
+    - shared/
+      - seo.json `shared.seo`
+</FileTree>
+
+Dosyalar doğruluğun kaynağıdır: Verdin veritabanı tablolarını, doğrulamayı, REST ve GraphQL
+API’lerini, OpenAPI belgesini, TypeScript tiplerini ve admin formlarını bunlardan türetir. Bkz.
+[İçerik modeli](/tr/concepts/content-model/) ve [Şema migrasyonları](/tr/concepts/schema-migrations/).
+Şema dizini `verdin.toml` içinde `[schema].path`’tir, varsayılan olarak `schema`.
+
+## Verdin çalışırken ortaya çıkanlar
+
+<FileTree>
+- my-site/
+  - verdin.toml
+  - .env
+  - schema/
+  - data/
+    - verdin.db `-wal` ve `-shm` dosyalarıyla SQLite veritabanı
+    - search/ `[search].enabled` açıkken tam metin dizini
+  - public/
+    - uploads/ `/uploads` adresinde sunulan medya kütüphanesi dosyaları
+  - .cache/
+    - transforms/ istek üzerine yeniden oluşturulan boyutlandırılmış görseller
+  - plugins/ her biri bir klasörde WebAssembly eklentileri (siz oluşturursunuz)
+  - strapi-id-map.json `verdin import strapi` tarafından yazılır
+</FileTree>
+
+| Yol | Yazan | Ayar |
+| --- | --- | --- |
+| `data/verdin.db` | SQLite ile sunucu | `VERDIN_DATABASE_URL` |
+| `public/uploads/` | Yerel sağlayıcıyla (varsayılan) yüklemeler | `[upload].provider` |
+| `.cache/transforms/` | `/uploads` adresinde istenen görsel dönüştürmeleri | `[upload.transforms].cache_dir` |
+| `data/search/` | Tam metin dizini | `[search].dir` |
+| `plugins/` | Siz: her eklenti kendi klasöründe | `[plugins].path` |
+| `strapi-id-map.json` | `verdin import strapi`: Verdin kimliklerine eşlenmiş Strapi kimlikleri | — |
+
+PostgreSQL, MySQL veya MariaDB ile `data/verdin.db` yoktur: içerik veritabanı sunucusunda bulunur.
+S3 sağlayıcısıyla medya dosyaları bucket’ta bulunur ve `public/uploads` boş kalır.
+
+## Git’e neler girer
+
+| Commit edin | Git’in dışında tutun |
+| --- | --- |
+| `verdin.toml` | `.env` (secret’lar) |
+| `schema/` (içerik tipleri ve bileşenler) | `data/` (SQLite veritabanı, arama dizini) |
+| Eklenti kullanıyorsanız `plugins/` | `public/uploads/` (medya) |
+| `.gitignore` | `.cache/` |
+
+Üretilen `.gitignore` hepsini kapsar:
+
+```sh title=".gitignore"
+.env
+data/
+*.db
+*.db-*
+.cache/
+# Local media library ([upload.provider] dir).
+public/uploads/
+```
+
+0.10’dan önce oluşturulan projelerde `public/uploads/` satırı eksiktir: onu ekleyin.
+
+<Aside>
+İçerik ve medya kod değil veridir. Onları commit etmek yerine `verdin export` veya veritabanınızın
+kendi araçlarıyla yedekleyin; bkz. [Yedekler](/tr/deploy/backups/).
+</Aside>
+
+Şemayı, frontend’inizin üretilen tipleri gibi ona bağlı kodla birlikte commit edin. Üretimde commit
+edilmiş şemayı dağıtın ve `verdin start --migrate` çalıştırın: içerik tipi oluşturucusu `verdin dev`
+dışında kapalıdır, bu yüzden şema yalnızca deponuz üzerinden değişir.

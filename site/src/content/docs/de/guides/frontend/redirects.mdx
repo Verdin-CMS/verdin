@@ -1,0 +1,122 @@
+---
+title: Weiterleitungen
+description: Eine Liste von Weiterleitungen im Admin-Panel pflegen und sie in der Middleware deiner Website anwenden.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Mit der Funktion **Weiterleitungen** schicken Redakteure alte Pfade ohne Deploy auf neue: Sie
+pflegen die Liste im Admin-Panel, und deine Website holt sie und antwortet mit der
+Weiterleitung. Verdin leitet Besucher nicht selbst weiter, da sie deine Website erreichen, nicht
+das CMS.
+
+## Einschalten
+
+Schalte unter **Einstellungen → Funktionen** **Weiterleitungen** ein und wähle dann
+**Weiterleitungen verwalten** (oder geh zu **Einstellungen → Weiterleitungen**).
+Weiterleitungen zu verwalten braucht die Berechtigung
+**SEO, Weiterleitungen, Menüs und Formulare verwalten** (`site.manage`), die die eingebaute
+Rolle Editor hat. Siehe [Berechtigungen](/de/reference/permissions/).
+
+## Weiterleitungen hinzufügen
+
+<Steps>
+
+1. Wähle unter **Einstellungen → Weiterleitungen** **Weiterleitung hinzufügen**.
+2. **Von**: der alte Pfad, beginnend mit `/` (zum Beispiel `/blog/2024/hello`).
+3. **Nach**: der neue Pfad oder eine vollständige `http(s)`-URL auf einer anderen Website.
+4. **Typ**: **301 · Dauerhaft**, **302 · Vorübergehend**,
+   **307 · Vorübergehend (behält Methode bei)** oder **308 · Dauerhaft (behält Methode bei)**.
+5. Speichere.
+
+</Steps>
+
+Verdin lehnt Weiterleitungen ab, die nie funktionieren würden:
+
+- eine zweite Weiterleitung vom selben Pfad;
+- einen Pfad, der auf sich selbst weiterleitet;
+- eine Kette, die eine Schleife bildet (`/a` → `/b` → `/a`).
+
+Für viele Weiterleitungen auf einmal nimm **CSV importieren** mit den Spalten `source`,
+`destination` und `status`. Zeilen, deren Quelle schon existiert, aktualisieren diese
+Weiterleitung. **CSV exportieren** schreibt dasselbe Format, praktisch für eine Migration aus
+einem anderen CMS oder eine Durchsicht in der Tabellenkalkulation.
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## Auf deiner Website anwenden
+
+Websites lesen die Liste unter `GET /api/_redirects`, ohne Token:
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+Die Antwort wird mit `Cache-Control: public, max-age=60` gesendet, eine Änderung erreicht
+Websites also innerhalb von etwa einer Minute. Vergleiche den Pfad der Anfrage exakt mit
+`source`:
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+Bei einer statischen Website holst du die Liste beim Build und schreibst die
+Weiterleitungsdatei deines Hosts (`_redirects` bei Netlify, `vercel.json` bei Vercel, eine
+nginx-Map). Kombiniere das mit einem
+[Deploy-Button](/de/guides/integrations/deploys-and-cdn/) oder einem
+[Webhook](/de/guides/integrations/webhooks/), damit Redakteure nach dem Ändern von
+Weiterleitungen neu bauen können.
+
+<Aside type="note">
+Das API-Präfix folgt [`[api].prefix`](/de/reference/configuration/). Bei ausgeschalteter
+Funktion antwortet `/api/_redirects` mit `404`.
+</Aside>
+
+## Admin-API
+
+Das Admin-Panel nutzt `/admin/api/site/redirects` (`GET`, `POST`) und
+`/admin/api/site/redirects/{id}` (`PUT`, `DELETE`), mit dem Access-Token eines Admins und
+`site.manage`. Siehe [Admin-API](/de/api/admin/).

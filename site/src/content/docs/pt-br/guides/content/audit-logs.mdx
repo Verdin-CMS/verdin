@@ -1,0 +1,114 @@
+---
+title: Logs de auditoria
+description: Veja quem alterou o quê e quando, filtre os logs de auditoria no painel de administração ou pela API e defina por quanto tempo as entradas são mantidas.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Os logs de auditoria registram quem alterou o quê, e quando: conteúdo, mídia, logins e todas as
+alterações feitas no painel de administração. Este guia mostra o que é registrado, como filtrar
+os logs e por quanto tempo eles são mantidos.
+
+Os logs de auditoria são um recurso Enterprise no Strapi. No Verdin, eles fazem parte do núcleo
+open source.
+
+## Antes de começar
+
+- **Configurações → Recursos → Logs de auditoria** vem ativado por padrão. Desativá-lo
+  interrompe o registro de novas ações; as entradas existentes continuam legíveis.
+- Ler os logs exige **Ler logs de auditoria** (`audit.read`). Veja
+  [Permissões](/pt-br/reference/permissions/).
+
+## O que é registrado
+
+| Área | Ações | Observações |
+| --- | --- | --- |
+| Conteúdo | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | De todas as APIs: o painel de administração, REST, GraphQL e plugins. O idioma está nos detalhes. |
+| Fluxos de revisão | `entry.stage`, `entry.assign` | Mudanças de etapa e atribuições. |
+| Mídia | `media.create`, `media.update`, `media.delete` | Uploads, alterações e exclusões de arquivos. O nome do arquivo está nos detalhes. |
+| Logins | `admin.login` | Logins com senha e do primeiro administrador (registrados depois do segundo fator quando a conta tem um), e logins via SSO com o provedor. |
+| Alterações administrativas | `{METHOD} {route}`, por exemplo `PUT /roles/{id}` | Toda escrita bem-sucedida na API de administração: usuários, funções, tokens de API, configurações, recursos, webhooks, idiomas, plugins, lançamentos… Os parâmetros da rota estão nos detalhes. |
+
+Cada entrada tem um horário, um autor, uma ação, um objeto (o uid de um tipo de conteúdo,
+`plugin::upload.file` ou o recurso de administração, como `roles`), o id do objeto, os detalhes
+e, para as requisições, o endereço IP do cliente.
+
+O autor é um destes:
+
+- **Administrador**: um administrador com login, nomeado no log.
+- **API**: uma alteração feita pela API de conteúdo ou pelo GraphQL, com um token de API, o token
+  de um usuário final ou o acesso público.
+- **Sistema**: uma escrita na API de administração sem administrador com login.
+
+Atrás de um proxy reverso, defina `[server].trusted_proxies` para que os logs mostrem o endereço
+do cliente em vez do endereço do proxy. Veja a
+[referência de configuração](/pt-br/reference/configuration/).
+
+## Filtre os logs
+
+<Steps>
+
+1. Abra **Configurações → Logs de auditoria**.
+2. Use um preset de **Filtros rápidos** (**Conteúdo**, **Mídia**, **Logins**) ou preencha os
+   filtros:
+   - **Ação**: uma ação exata, como `entry.publish`, ou um prefixo terminado em `*`, como
+     `entry.*`.
+   - **Autor**: um administrador, ou **Qualquer pessoa**.
+   - **Objeto**: o uid de um tipo de conteúdo, como `api::article`.
+   - **De** e **Até**: um intervalo de datas. Uma data sem horário inclui o dia inteiro.
+3. Selecione **Aplicar**. Abra **Detalhes** em uma linha para ver tudo o que foi registrado
+   para ela.
+
+</Steps>
+
+## Consulte a API
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+As entradas vêm da mais recente para a mais antiga, 50 por página por padrão e no máximo 200:
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` e `to` aceitam datas ou datas com hora em ISO 8601; qualquer outra coisa é um erro `400`.
+
+## Defina por quanto tempo as entradas são mantidas
+
+As entradas mais antigas que `[audit].retention_days` são excluídas uma vez por dia. O padrão é
+de 90 dias.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+Para manter as entradas de auditoria por mais tempo do que o seu banco de dados deveria,
+copie-as regularmente para o seu próprio armazenamento com a API acima.
+</Aside>

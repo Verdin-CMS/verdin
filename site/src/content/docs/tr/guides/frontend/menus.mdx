@@ -1,0 +1,129 @@
+---
+title: Menüler
+description: Bağlantılardan ve kayıtlardan oluşan gezinme menülerini yönetim panelinde oluşturun ve sitenizde gösterin.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+**Menüler** özelliği editörlere sayfalara, kayıtlara veya başka sitelere bağlanan adlandırılmış
+gezinme ağaçları (bir üst bilgi, bir alt bilgi, bir kenar çubuğu) sağlar. Siteniz bir menüyü
+slug’ına göre getirir ve gösterir; kayıtlara giden bağlantılar yayınlanma durumlarını ve yollarını
+izler.
+
+Strapi’de bu genellikle bir navigation eklentisi veya elle yapılmış bir menü içerik tipi gerektirir;
+Verdin’de yerleşiktir.
+
+## Açma
+
+**Ayarlar → Özellikler** bölümünde **Menüler**’i açın, ardından **Menüleri yönet**’i seçin (ya da
+**Ayarlar → Menüler**’e gidin). Menüleri yönetmek, yerleşik Editor rolünün sahip olduğu **SEO,
+yönlendirmeleri, menüleri ve formları yönet** iznini (`site.manage`) gerektirir. Bkz.
+[İzinler](/tr/reference/permissions/).
+
+Kayıtları yola göre bağlamak için [SEO ve site haritası](/tr/guides/frontend/seo-and-sitemap/)
+bölümünde yol kalıplarını da ayarlayın.
+
+## Bir menü oluşturma
+
+<Steps>
+
+1. **Ayarlar → Menüler** bölümünde **Yeni menü**’yü seçin.
+2. Ona bir ad (örneğin **Ana gezinme**) ve bir **Slug** (`main`) verin: küçük harfler, rakamlar ve
+   tireler. Siteler menüyü slug’ına göre getirir.
+3. **Öğe ekle**’yi seçin ve öğeyi doldurun:
+   - **Etiket**: bağlantının metni, en fazla 255 karakter.
+   - **Bağlantı hedefi**: **Bir URL**, **Bir kayıt** veya **Hiçbir şey (bir başlık)**.
+   - **URL**: bir yol (`/about`), bir çapa (`#team`) ya da bir `http(s)`, `mailto:` veya `tel:`
+     bağlantısı.
+   - Bir kayıt için **Girdi seç**’i seçin: birden fazla tip bağlanabiliyorsa **İçerik tipi**’ni
+     seçin, kayıtlarda arayın ve birini seçin.
+   - **Şurada açılır**: **Aynı sekme** veya **Yeni bir sekme**.
+4. Öğeleri sıralamak ve iç içe koymak için sürükleyin ya da düğmelerini kullanın. Klavyeyle, bir
+   sürükleme tutamacında: Alt+↑ ve Alt+↓ bir öğeyi taşır, Alt+→ onu üstündekinin altına yerleştirir,
+   Alt+← onu dışarı çıkarır.
+5. Kaydedin.
+
+</Steps>
+
+Bir menü en fazla 5 düzey ve 500 öğe içerir.
+
+## Bir menüyü getirme
+
+Siteler bir menüyü token olmadan `GET /api/_menus/{slug}` adresinden okur. Yerelleştirilmiş içerik
+için `?locale=` ekleyin:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+Kayıt bağlantıları nasıl çözümlenir:
+
+- İstenen dilde yayınlanmamış bir kayıt (alt öğeleriyle birlikte) menünün dışında bırakılır.
+  Menüler asla taslak sızdırmaz.
+- `entry.path`, [SEO ve site haritası](/tr/guides/frontend/seo-and-sitemap/) bölümündeki tipin
+  kalıbından gelir ve kaydın alanları ile dille doldurulur. Tipin kalıbı yoksa veya kayıt onu
+  doldurmuyorsa `null`’dır.
+- Öğenin kendine ait bir `url`’si olmadığında yolu `url` olarak alır; bu yüzden çoğu sitenin
+  yalnızca `url`’yi okuması yeterlidir.
+
+`locale` olmadan kayıtlar varsayılan dilde okunur. Yanıt `Cache-Control: public, max-age=60` ile
+gönderilir.
+
+## Gösterme
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+Bir menüyü silmek, özelliği kapatmak gibi, `/api/_menus/{slug}` adresinin `404` yanıtını vermesine
+yol açar. Bunu sitenizde ele alın; örneğin hiçbir gezinme göstermeyerek.
+</Aside>
+
+## Admin API
+
+Yönetim paneli, bir admin’in erişim token’ı ve `site.manage` ile `/admin/api/site/menus` (`GET`,
+`POST`) ve `/admin/api/site/menus/{id}` (`GET`, `PUT`, `DELETE`) adreslerini kullanır. Bkz.
+[Admin API](/tr/api/admin/).

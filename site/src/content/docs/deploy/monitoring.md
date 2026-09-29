@@ -90,7 +90,7 @@ Use `json` in production and ship standard error to your log system. A JSON line
 like:
 
 ```json
-{"timestamp":"2026-09-29T09:27:16.444598Z","level":"INFO","fields":{"message":"verdin listening","address":"0.0.0.0:1337","mode":"production","version":"0.9.1"},"target":"verdin::app"}
+{"timestamp":"2026-09-29T09:27:16.444598Z","level":"INFO","fields":{"message":"verdin listening","address":"0.0.0.0:1337","mode":"production","version":"0.10.0"},"target":"verdin::app"}
 ```
 
 At startup, `WARN` lines point out settings to fix in production, such as

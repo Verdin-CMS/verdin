@@ -1,0 +1,163 @@
+---
+title: Formulaires
+description: Définissez des formulaires de contact et d’inscription dans le panneau d’administration, envoyez-y des données depuis votre site, et consultez ou exportez les soumissions.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+La fonctionnalité **Formulaires** gère les formulaires de votre site (contact, inscription à une
+newsletter, inscription à un événement) sans service de formulaires. Les rédacteurs définissent
+les champs dans le panneau d’administration, votre site les affiche et envoie les données à
+Verdin, et les soumissions sont validées, stockées, envoyées par e-mail et exportées en CSV.
+
+## L’activer
+
+Dans **Paramètres → Fonctionnalités**, activez **Formulaires**, puis choisissez
+**Gérer les formulaires** (ou allez dans **Paramètres → Formulaires**). Gérer les formulaires et
+lire les soumissions nécessite l’autorisation
+**Gérer le SEO, les redirections, les menus et les formulaires** (`site.manage`), dont dispose le
+rôle intégré Editor. Voir [Autorisations](/fr/reference/permissions/).
+
+Pour les e-mails de notification, configurez un fournisseur dans
+[`[email]`](/fr/reference/configuration/) ; avec le fournisseur `log` par défaut, les e-mails
+sont seulement écrits dans le log du serveur.
+
+## Créer un formulaire
+
+<Steps>
+
+1. Dans **Paramètres → Formulaires**, choisissez **Nouveau formulaire**.
+2. Donnez-lui un nom (par exemple **Contact**) et un **Slug** (`contact`). Le slug fait partie de
+   l’URL du formulaire.
+3. Dans l’onglet **Champs**, choisissez **Ajouter un champ** pour chaque champ, avec son
+   **Libellé**, son **Nom**, son **Type**, **Obligatoire**, son **Texte indicatif** et sa
+   **Longueur maximale**.
+4. Dans l’onglet **Paramètres**, définissez :
+   - **Notifier** : les adresses e-mail qui reçoivent chaque soumission.
+   - **Message de succès** : renvoyé à votre site après une soumission.
+   - **Piège à spam** : activé par défaut (voir [Spam](#spam)).
+5. Enregistrez. L’onglet **Intégration** affiche l’endpoint public et un exemple à copier.
+
+</Steps>
+
+| Type | Libellé dans l’administration | Accepte |
+| --- | --- | --- |
+| `text` | **Texte** | N’importe quel texte. |
+| `email` | **E-mail** | Une adresse e-mail. |
+| `textarea` | **Texte long** | N’importe quel texte. |
+| `number` | **Nombre** | Un nombre, stocké comme nombre. |
+| `select` | **Choix** | L’une de ses **Options** (une par ligne). |
+| `checkbox` | **Case à cocher** | `true`, `on`, `1` ou `yes` signifie cochée ; toute autre valeur non. Une case à cocher obligatoire doit être cochée. |
+| `date` | **Date** | N’importe quel texte (utilisez `<input type="date">`). |
+| `url` | **URL** | Une URL. |
+| `tel` | **Téléphone** | N’importe quel texte. |
+
+Les noms de champs commencent par une lettre, suivie de lettres, chiffres ou `_`, et sont uniques
+dans le formulaire. Un formulaire a de 1 à 50 champs. Les valeurs font au plus
+**Longueur maximale** caractères (5 000 par défaut, 20 000 au maximum).
+
+## Afficher le formulaire
+
+`GET /api/_forms/{slug}` renvoie la définition, pour que votre site puisse afficher les champs
+choisis par les rédacteurs :
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+`honeypot` vaut `null` quand le piège à spam est désactivé. La définition est mise en cache
+pendant une minute (`Cache-Control: public, max-age=60`).
+
+## Soumettre
+
+`POST /api/_forms/{slug}` accepte les valeurs en JSON (les champs, ou `{ "data": { … } }`) ou
+sous la forme d’un envoi de formulaire classique (`application/x-www-form-urlencoded`). Aucun
+jeton n’est nécessaire.
+
+<Tabs syncKey="form">
+<TabItem label="Formulaire HTML">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| Réponse | Quand |
+| --- | --- |
+| `201` avec `{ "data": { "message": … } }` | Acceptée. `message` est le **Message de succès**, ou `Thank you!`. |
+| `400` `ValidationError` | Une valeur est manquante ou invalide. `details.errors` liste `{ path, message }` par champ. |
+| `404` | Aucun formulaire avec ce slug, ou la fonctionnalité est désactivée. |
+| `413` | La soumission dépasse 64 Ko. |
+| `429` | Le même visiteur a envoyé plus de 10 soumissions à ce formulaire en une minute. |
+
+Les valeurs sont nettoyées des espaces superflus et vérifiées par rapport aux champs. Les champs
+inconnus sont écartés : un visiteur ne peut donc pas ajouter de données que vous n’avez pas
+demandées.
+
+Un envoi de formulaire HTML classique reçoit la réponse JSON comme page. Pour une meilleure
+expérience, soumettez avec `fetch` et affichez vous-même le message. Envoyer depuis le navigateur
+vers une autre origine nécessite l’origine de votre site dans
+[`[api].cors_origins`](/fr/reference/configuration/).
+
+### Spam
+
+Avec le **Piège à spam** activé, ajoutez au formulaire un champ `_gotcha` caché et vide. Les bots
+remplissent tous les champs ; une soumission dont `_gotcha` est rempli reçoit une réponse
+d’acceptation (`201`) et est jetée, si bien que le bot n’apprend rien. Combiné à la limite de
+débit, cela arrête la plupart du spam de formulaires sans CAPTCHA.
+
+## Consulter les soumissions
+
+L’onglet **Soumissions** du formulaire liste ce que les visiteurs ont envoyé, avec l’heure de
+réception (**Reçu**). Vous pouvez supprimer une soumission, et **Exporter en CSV** les télécharge
+toutes.
+
+Chaque soumission acceptée est aussi envoyée par e-mail aux adresses de **Notifier**, avec un lien
+vers les soumissions dans l’administration (construit à partir de
+[`[server].public_url`](/fr/reference/configuration/)).
+
+<Aside type="note">
+Verdin stocke les valeurs de chaque soumission, le user agent du visiteur et un hachage à clé de
+son adresse IP (et non l’adresse elle-même), assez pour repérer un afflux sans suivre les
+personnes. Supprimer un formulaire supprime ses soumissions.
+</Aside>
+
+## API d’administration
+
+Le panneau d’administration utilise `/admin/api/site/forms` et `/admin/api/site/forms/{id}`,
+ainsi que `/admin/api/site/forms/{id}/submissions` et `…/submissions/export` (CSV), avec le jeton
+d’accès d’un administrateur et `site.manage`. Voir [API d’administration](/fr/api/admin/).

@@ -1,0 +1,136 @@
+---
+title: "Borrador y publicación"
+description: "Los documentos, sus versiones de borrador y publicada, los estados por los que pasa una entrada y cómo las lee y escribe cada API."
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Borrador y publicación permite a los editores trabajar en un documento sin cambiar lo que
+muestra tu sitio, y publicarlo cuando está listo. Esta página explica el modelo: documentos,
+versiones, las acciones que mueven el contenido entre ellas y cómo las trata cada API.
+Funciona como en Strapi v5.
+
+Se activa por tipo de contenido en su esquema:
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+Está desactivado cuando falta `options.draftAndPublish`.
+
+## Documentos y versiones
+
+Un **documento** es una entrada, identificada por su `documentId`. Con borrador y
+publicación, un documento tiene hasta dos **versiones**:
+
+- un **borrador**, que cambia con cada edición, y
+- una versión **publicada**, que es la que sirve por defecto la API de contenido.
+
+En un tipo [localizado](/es/concepts/internationalization/), cada idioma tiene su propio
+borrador y su propia versión publicada, todos con el mismo `documentId`.
+
+Los tipos sin borrador y publicación tienen una única versión por idioma, que siempre está
+publicada: cada escritura cambia lo que ven los lectores.
+
+## Estados
+
+El panel de administración muestra el estado de cada entrada en la lista y en el editor:
+
+| Estado | Borrador | Versión publicada | Lo que ven los lectores del contenido publicado |
+| --- | --- | --- | --- |
+| **Borrador** | sí | ninguna | Nada: el documento no es visible. |
+| **Publicado** | igual que la publicada | sí | La versión publicada. |
+| **Modificado** | cambiado desde la última publicación | sí | La versión publicada, sin los cambios nuevos. |
+
+<Diagram
+  caption="Estados de un documento con borrador y publicación, y las acciones entre ellos"
+  code={`stateDiagram-v2
+    [*] --> Draft: crear
+    Draft --> Published: publicar
+    Published --> Modified: guardar
+    Modified --> Published: publicar o descartar cambios
+    Published --> Draft: despublicar
+    Modified --> Draft: despublicar`}
+/>
+
+Las acciones mueven un documento entre estos estados:
+
+| Acción | Efecto | De → a |
+| --- | --- | --- |
+| Guardar | Escribe el borrador. | Borrador → Borrador, Publicado → Modificado |
+| **Publicar** | Copia el borrador sobre la versión publicada, y la crea si hace falta. | Borrador o Modificado → Publicado |
+| **Despublicar** | Elimina la versión publicada; el borrador se queda. | Publicado o Modificado → Borrador |
+| **Descartar cambios** | Sustituye el borrador por una copia de la versión publicada. | Modificado → Publicado |
+| Eliminar | Elimina todas las versiones (del idioma pedido, en los tipos localizados). | cualquiera → eliminado |
+
+La publicación se ejecuta en una sola transacción. Comprueba en el borrador los campos
+`required` y las [reglas entre campos](/es/concepts/content-model/#validaciones-entre-campos)
+del tipo; si la comprobación falla, no se publica nada. Hasta entonces, los borradores pueden
+estar incompletos e incumplir esas reglas.
+
+`publishedAt` es `null` en los borradores. La versión publicada lleva la hora de su última
+publicación.
+
+## Las relaciones y los medios siguen a la versión
+
+Cada versión tiene sus propios enlaces de relaciones y medios, y al publicar se copian los
+enlaces del borrador a la versión publicada. Los enlaces apuntan a documentos y se resuelven
+en la versión que se está leyendo: un artículo publicado muestra la versión publicada de su
+categoría, y un borrador muestra el borrador de la categoría. Si se despublica la categoría,
+desaparece del artículo publicado hasta que se vuelva a publicar, sin que se reescriba ningún
+enlace. Consulta
+[Relaciones](/es/concepts/relations/#enlazadas-por-documento-no-por-fila).
+
+Los componentes y las zonas dinámicas forman parte de la fila, así que al publicar se copian
+tal cual.
+
+## Leer borradores y contenido publicado
+
+| API | Lee por defecto | Para leer borradores |
+| --- | --- | --- |
+| [REST](/es/api/rest/#estado) | Versiones publicadas | `?status=draft`, que necesita el permiso **Leer borradores** |
+| [GraphQL](/es/api/graphql/) | Versiones publicadas | `status: DRAFT`, con el mismo permiso |
+| [API de administración](/es/api/admin/) | Borradores | `?status=published` |
+
+Leer borradores es un permiso aparte (`readDrafts`), para que un token que lee el contenido
+de tu sitio no pueda leer el trabajo sin publicar. Los tokens de API de solo lectura nunca
+leen borradores.
+
+Para distinguir los documentos según si se han publicado alguna vez, filtra con
+`hasPublishedVersion`: `?status=draft&hasPublishedVersion=false` enumera los documentos que
+nunca se han publicado.
+
+## Escribir a través de las APIs
+
+Las APIs siguen a Strapi v5 en las escrituras:
+
+- **REST y GraphQL**: `create` y `update` escriben el borrador **y lo publican**, salvo que la
+  petición pida `status=draft` (`status: DRAFT` en GraphQL). Si la publicación falla, se
+  revierte toda la petición.
+- **El panel de administración y la API de administración** solo guardan borradores. Publicar
+  es siempre una acción explícita.
+
+La API REST también tiene acciones explícitas, que Strapi no ofrece por REST:
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+Necesitan el permiso **Publicar** sobre el tipo. Consulta [API REST](/es/api/rest/#acciones).
+
+## Otras funciones que publican
+
+- Los [lanzamientos](/es/guides/content/releases/) agrupan documentos y los publican o
+  despublican juntos, en el momento o en una fecha.
+- Los [flujos de revisión](/es/guides/content/review-workflows/) pueden exigir una etapa antes
+  de que un documento se pueda publicar.
+- Publicar y despublicar envían los [eventos de webhook](/es/api/webhooks/) y los
+  [eventos en tiempo real](/es/api/realtime/) `entry.publish` y `entry.unpublish`. Guardar un
+  borrador envía `entry.update`, que en tiempo real solo reciben los clientes autorizados a
+  leer borradores.

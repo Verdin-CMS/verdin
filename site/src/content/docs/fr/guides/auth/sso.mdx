@@ -1,0 +1,172 @@
+---
+title: Authentification unique
+description: Permettez aux administrateurs de se connecter avec un fournisseur OpenID Connect comme Microsoft Entra ID, Google Workspace, Okta ou Keycloak, avec une correspondance entre groupes et rôles.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Les administrateurs peuvent se connecter via n’importe quel fournisseur OpenID Connect :
+Microsoft Entra ID, Google Workspace, Okta, Auth0, Keycloak, Authentik, GitLab et d’autres.
+Chaque fournisseur obtient un bouton sur la page de connexion, et la connexion par mot de passe
+continue de fonctionner à côté. Ce guide enregistre une application, configure le fournisseur
+dans Verdin et fait correspondre des groupes à des rôles.
+
+Le SSO est une fonctionnalité Enterprise dans Strapi. Dans Verdin, il fait partie du cœur open
+source. Pour les utilisateurs finaux de vos sites, voir plutôt
+[Connexion OAuth des utilisateurs finaux](/fr/guides/auth/end-users/).
+
+## Avant de commencer
+
+- Configurer le SSO nécessite **Gérer les fonctionnalités** (`features.manage`).
+- Définissez `[server].public_url` sur l’adresse par laquelle les administrateurs accèdent à
+  Verdin, par exemple `https://cms.example.com`. L’URI de redirection est construite à partir
+  de celle-ci.
+
+## Configuration
+
+<Steps>
+
+1. **Enregistrez une application** (un client « web ») chez le fournisseur, avec cette URI de
+   redirection :
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>` est l’identifiant de fournisseur que vous choisissez à l’étape 3, par exemple `corp`.
+   Le chemin d’administration suit `[admin].path`.
+
+2. **Placez le secret client dans l’environnement** et redémarrez Verdin :
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   La variable est `VERDIN_SSO_<ID>_SECRET`, avec l’identifiant en majuscules et les tirets
+   remplacés par des tirets bas. Les clients publics (PKCE uniquement, sans secret) n’ont besoin
+   d’aucune variable.
+
+3. **Ajoutez le fournisseur.** Activez **Paramètres → Fonctionnalités → Authentification
+   unique**, sélectionnez **Configurer les fournisseurs**, puis **Ajouter un fournisseur**, et
+   remplissez :
+
+   - **ID** : lettres minuscules, chiffres et tirets, jusqu’à 32 caractères.
+   - **Texte du bouton** : affiché sur la page de connexion sous la forme « Continuer avec … ».
+   - **URL de l’émetteur** : Verdin lit `/.well-known/openid-configuration` sous cette URL.
+     Elle doit utiliser `https`, sauf sur `localhost`.
+   - **ID client** et **Portées** (`openid email profile` par défaut ; `openid` est
+     obligatoire).
+
+   La boîte de dialogue affiche l’**URI de redirection à enregistrer auprès du fournisseur** et
+   le nom de la variable du secret. Enregistrez.
+
+4. **Essayez** dans une fenêtre de navigation privée : la page de connexion affiche
+   **Continuer avec Corp account**.
+
+</Steps>
+
+## Qui peut se connecter, et avec quels rôles
+
+| Paramètre | Clé JSON | Effet |
+| --- | --- | --- |
+| **Domaines e-mail autorisés** | `allowedDomains` | Seuls ces domaines e-mail peuvent se connecter. Vide signifie tous. |
+| **Créer les comptes à la première connexion** | `autoCreate` | Crée un compte administrateur la première fois qu’une personne se connecte. Sans cela, seuls les e-mails qui ont déjà un compte peuvent se connecter. |
+| **Rôles par défaut** | `defaultRoles` | Les codes de rôles des comptes créés quand la correspondance des rôles n’en donne aucun. |
+| **Claim de rôle** | `roleClaim` | Le claim du jeton d’identité qui liste les groupes de l’utilisateur, comme `groups` ou `roles`. |
+| **Mappage des rôles** | `roleMap` | Le code de rôle que donne chaque valeur du claim. |
+| **Faire confiance aux e-mails non vérifiés** | `trustUnverifiedEmail` | Accepte les e-mails que le fournisseur ne marque pas comme vérifiés. |
+| **Le fournisseur impose la MFA** | `providerMfa` | Ne demande pas aux administrateurs leur second facteur Verdin après ce fournisseur. |
+
+- Un fournisseur qui crée des comptes a besoin de rôles par défaut ou d’un mappage des rôles.
+- Ni l’un ni l’autre ne peut attribuer le rôle Super Admin ; promouvez les administrateurs à la
+  main dans **Paramètres → Utilisateurs**.
+- Les rôles ne sont définis qu’à la création du compte. Ensuite, gérez-les dans
+  **Paramètres → Utilisateurs**.
+- Le prénom et le nom d’un compte créé proviennent des claims `given_name` et `family_name`.
+
+Le même fournisseur en JSON, tel que le stocke la fonctionnalité
+(`PUT /admin/api/features/sso`) :
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## Remarques par fournisseur
+
+- **Microsoft Entra ID** omet `email_verified` de ses jetons d’identité : activez
+  **Faire confiance aux e-mails non vérifiés** pour lui. Ajoutez le claim `groups` dans la
+  configuration des jetons de l’application pour faire correspondre les groupes ; ses valeurs
+  sont des identifiants de groupes.
+- **Google Workspace** : l’émetteur est `https://accounts.google.com`. Limitez les connexions à
+  votre domaine avec **Domaines e-mail autorisés**.
+- **Keycloak** : l’émetteur est l’URL du realm, `https://<host>/realms/<realm>`.
+
+## Authentification à deux facteurs
+
+Par défaut, un administrateur qui a un [second facteur](/fr/guides/auth/two-factor/) Verdin se
+le voit demander après que le fournisseur l’a renvoyé. Quand le fournisseur impose déjà la MFA,
+activez **Le fournisseur impose la MFA** pour qu’il ne soit pas sollicité deux fois.
+
+## Fonctionnement
+
+<Diagram
+  caption="Une connexion SSO"
+  code={`sequenceDiagram
+  participant B as Navigateur
+  participant V as Verdin
+  participant P as Fournisseur
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: redirection avec state et challenge PKCE
+  B->>P: connexion
+  P-->>B: redirection vers le callback avec le code
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: échange du code (TLS)
+  V-->>B: cookie de session, redirection vers /admin/`}
+/>
+
+- Verdin utilise le flux authorization code avec PKCE (S256). Le `state` est signé et lié à un
+  cookie `HttpOnly` de courte durée, et le `nonce` en est dérivé.
+- Il vérifie l’émetteur, l’audience (et `azp` quand il y en a plusieurs), l’expiration et le
+  nonce du jeton d’identité. Il exige un claim `email` avec `email_verified: true`, sauf si
+  **Faire confiance aux e-mails non vérifiés** est activé.
+- Les endpoints du fournisseur doivent utiliser `https`.
+- Chaque connexion SSO est enregistrée dans les [journaux d’audit](/fr/guides/content/audit-logs/)
+  comme `admin.login`, avec le fournisseur.
+
+Quand une connexion échoue, le navigateur revient à la page de connexion avec la raison
+(« Échec de l’authentification unique »), et la raison est écrite dans le log du serveur. Les
+plus courantes :
+
+| Raison | Solution |
+| --- | --- |
+| the provider did not verify the email | Activez **Faire confiance aux e-mails non vérifiés**, ou corrigez le claim du fournisseur. |
+| this email domain may not sign in | Ajoutez le domaine à **Domaines e-mail autorisés**. |
+| no admin account for this identity | Activez **Créer les comptes à la première connexion**, ou créez d’abord l’administrateur. |
+| the sign-in request expired or was not started here | Recommencez depuis la page de connexion, dans le même navigateur. |
+
+<Aside type="note">
+Un administrateur désactivé ne peut pas non plus se connecter via le SSO.
+</Aside>

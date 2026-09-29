@@ -1,0 +1,89 @@
+---
+title: Arama
+description: Kayıtları _q ile arayın ve sıralı, aksana duyarsız sonuçlar için Tantivy tam metin dizinini açın.
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+İçerik API’si ve yönetim paneli, Strapi’deki gibi `_q` parametresiyle kayıtlarda arama yapar.
+Varsayılan olarak `_q` kelimeleri içeren metin alanlarıyla eşleşir. Sonuçları sunucuya yerleşik
+bir tam metin motoruyla (Tantivy) sıralamak için `[search]` dizinini açın. Bu kılavuz ikisini de
+ve dizini ne zaman kullanacağınızı gösterir.
+
+## `_q` ile arama
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/api/articles' --data-urlencode '_q=rust cms'
+```
+
+`_q` diğer parametrelerle birleşir: `filters`, `status`, `locale`, `pagination`, `fields` ve
+`populate`. Admin listesinin arama kutusu aynı parametreyi gönderir.
+
+Hangi alanlarda arama yapılır:
+
+- Metin alanları: `string`, `text`, `richtext`, `email`, `uid` ve `enumeration`.
+- Dizinle birlikte ayrıca `blocks`, bileşenler ve dinamik bölgeler içindeki metin.
+- Asla private alanlar veya parolalar.
+
+`_q` bir REST parametresidir. GraphQL’de ve TypeScript istemcisinin sorgu seçeneklerinde arama
+argümanı yoktur; orada bir `$containsi` filtresi kullanın.
+
+## Dizin olmadan
+
+`[search]` olmadan `_q`, herhangi bir metin alanı büyük/küçük harf yok sayılarak tüm arama
+metnini içeren kayıtlarla eşleşir; Strapi’nin `$containsi`’si gibi. Sonuçlar olağan sıralamayı
+izler. Bu kurulum gerektirmez ve her veritabanında çalışır, ancak tabloyu tarar ve sıralama
+yapmaz.
+
+## Tam metin dizinini açma
+
+<Steps>
+
+1. Dizini `verdin.toml` içinde etkinleştirin:
+
+   ```toml title="verdin.toml"
+   [search]
+   enabled = true
+   ```
+
+2. Verdin’i yeniden başlatın. Dizini arka planda her kayıttan oluşturur; hazır olana kadar `_q`
+   `$containsi`’ye geri döner.
+
+</Steps>
+
+| Anahtar | Varsayılan | Açıklama |
+| --- | --- | --- |
+| `enabled` | `false` | `_q`’yu tam metin diziniyle sıralar. |
+| `dir` | `"data/search"` | Projeye göre dizin klasörü. |
+| `memory_mb` | `50` | Megabayt cinsinden dizinleme bellek bütçesi. |
+
+Bkz. [yapılandırma başvurusu](/tr/reference/configuration/).
+
+Dizin nasıl eşleştirir:
+
+- Kelimeler harf veya rakam olmayan her şeyde bölünür, küçük harfe çevrilir ve aksanlarından
+  arındırılır; böylece `cafe`, `Café`’yi bulur.
+- Her kelime eşleşmelidir. Son kelime ön ek olarak da eşleşir; böylece sonuçlar biri yazarken
+  görünür.
+- Başlık (tipin ilk metin alanı) iki kat ağırlık taşır.
+- `sort` olmadan sonuçlar en iyi eşleşmeden başlayarak gelir. `sort` ile eşleşmeler sizin
+  istediğiniz şekilde sıralanır. Arama başına en fazla 1.000 eşleşme dikkate alınır.
+- Taslaklar ve yayınlanmış sürümler ile her dil, `status` ve `locale`’i izleyerek ayrı ayrı
+  aranır.
+
+Dizin, herhangi bir API’den gelen her yazmayı izler. Şema aranabilir alanları değiştirdiğinde ve
+dizini eksik olduğunda yeniden oluşturulur.
+
+## Birden fazla örnek
+
+Dizin örneğin diskinde bulunur ve o örneğin yazmalarını izler. Birden fazla örnek
+çalıştırdığınızda birindeki yazmalar diğerlerinin dizinine ulaşmaz. Aramayı tek bir örnekte tutun
+ya da bir dağıtımdan sonra başlatmadan önce dizin klasörünü silerek yeniden oluşturun. Bkz.
+[Ölçekleme](/tr/deploy/scaling/).
+
+<Aside type="tip">
+Dizin klasörünü silmek güvenlidir. Onu yedeklerin ve sürüm denetiminin dışında tutun; Verdin onu
+veritabanından yeniden oluşturur.
+</Aside>

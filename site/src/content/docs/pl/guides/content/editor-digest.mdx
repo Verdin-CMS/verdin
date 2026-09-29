@@ -1,0 +1,79 @@
+---
+title: Podsumowanie dla redaktorów
+description: Otrzymuj codzienny e-mail z wpisami, które zmieniły się od czasu, gdy ostatnio je oglądałeś, i wybierz instancję, która go wysyła.
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Podsumowanie dla redaktorów to codzienny e-mail, który informuje każdego administratora, ile
+wpisów zmieniło się od czasu, gdy ostatnio je oglądał, w podziale na typy zawartości. Jest
+wyłączone dla wszystkich, dopóki każdy administrator go nie włączy. Ten przewodnik opisuje
+stronę administratora, ustawienia serwera i działanie przy kilku instancjach.
+
+## Jak działa „nieprzejrzane”
+
+Wpis staje się dla ciebie nieprzejrzany, gdy ktoś inny go zmieni, z dowolnego API. Znów jest
+przejrzany, gdy go otworzysz. Te same znaczniki sterują plakietkami **Nowe** w pasku bocznym
+(wyłącz je opcją **Pokazuj plakietki nowych elementów**) i widżetem **Jeszcze nie widziane**
+na stronie głównej.
+
+## Włącz podsumowanie
+
+<Steps>
+
+1. Otwórz swój **Profil** (albo menu preferencji na górnym pasku).
+2. W sekcji **Preferencje** włącz **Codzienny e-mail z nieprzejrzanymi zmianami**.
+
+</Steps>
+
+Przełącznik ustawia na twoim koncie preferencję `"digest": "daily"`
+(`PUT /admin/api/users/me/preferences`). Wyłączasz je w ten sam sposób.
+
+Co dostajesz:
+
+- Wiadomość z liczbą nieprzejrzanych wpisów w każdym typie zawartości, który możesz czytać,
+  i linkiem do panelu administracyjnego.
+- Nic w dni, w które nie ma nic nowego.
+- Tylko dopóki twoje konto jest aktywne.
+
+## Ustawienia serwera
+
+Podsumowanie jest wysyłane o `[digest].hour_utc`, przez `[email]`:
+
+```toml title="verdin.toml"
+[email]
+provider = "smtp"
+from = "Verdin <no-reply@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+
+[digest]
+hour_utc = 7    # 0–23, UTC; 8 by default
+```
+
+| Klucz | Domyślnie | Opis |
+| --- | --- | --- |
+| `[digest].enabled` | `true` | Wysyłaj podsumowanie z tej instancji. |
+| `[digest].hour_utc` | `8` | Godzina (UTC), o której wychodzi podsumowanie. |
+
+Link w e-mailu używa `[server].public_url`; ustaw go, gdy Verdin działa za proxy. Z domyślnym
+dostawcą e-mail `log` wiadomości są tylko zapisywane w logu serwera. Zobacz
+[dokumentację konfiguracji](/pl/reference/configuration/).
+
+## Kilka instancji
+
+Każda instancja z `[digest].enabled = true` próbuje wysłać podsumowanie o ustawionej
+godzinie. Pierwsza, która przejmie dany dzień w bazie danych, je wysyła, a pozostałe pomijają
+ten dzień, więc administratorzy dostają jeden e-mail. Aby zadanie działało na znanej
+instancji, ustaw `enabled = false` na pozostałych:
+
+```sh title="Terminal"
+VERDIN_DIGEST__ENABLED=false verdin start
+```
+
+<Aside type="note">
+Podsumowanie to dodatek Verdin; Strapi nie ma odpowiednika.
+</Aside>

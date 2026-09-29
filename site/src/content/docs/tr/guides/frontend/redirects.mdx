@@ -1,0 +1,117 @@
+---
+title: Yönlendirmeler
+description: Yönetim panelinde bir yönlendirme listesi tutun ve bunları sitenizin middleware’inde uygulayın.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**Yönlendirmeler** özelliği editörlerin eski yolları dağıtım yapmadan yenilerine göndermesini
+sağlar: listeyi yönetim panelinde tutarlar, siteniz onu getirir ve yönlendirmeyle yanıt verir.
+Verdin ziyaretçileri kendisi yönlendirmez, çünkü ziyaretçiler CMS’e değil sitenize ulaşır.
+
+## Açma
+
+**Ayarlar → Özellikler** bölümünde **Yönlendirmeler**’i açın, ardından **Yönlendirmeleri yönet**’i
+seçin (ya da **Ayarlar → Yönlendirmeler**’e gidin). Yönlendirmeleri yönetmek, yerleşik Editor
+rolünün sahip olduğu **SEO, yönlendirmeleri, menüleri ve formları yönet** iznini (`site.manage`)
+gerektirir. Bkz. [İzinler](/tr/reference/permissions/).
+
+## Yönlendirme ekleme
+
+<Steps>
+
+1. **Ayarlar → Yönlendirmeler** bölümünde **Yönlendirme ekle**’yi seçin.
+2. **Kaynak**: `/` ile başlayan eski yol (örneğin `/blog/2024/hello`).
+3. **Hedef**: yeni yol veya başka bir sitede tam bir `http(s)` URL’si.
+4. **Tür**: **301 · Kalıcı**, **302 · Geçici**, **307 · Geçici (yöntemi korur)** veya
+   **308 · Kalıcı (yöntemi korur)**.
+5. Kaydedin.
+
+</Steps>
+
+Verdin asla çalışmayacak bir yönlendirmeyi reddeder:
+
+- aynı yoldan ikinci bir yönlendirme;
+- kendine yönlendiren bir yol;
+- döngüye giren bir zincir (`/a` → `/b` → `/a`).
+
+Aynı anda çok sayıda yönlendirme için `source`, `destination` ve `status` sütunlarıyla **CSV içe
+aktar**’ı kullanın. Kaynağı zaten var olan satırlar o yönlendirmeyi günceller. **CSV dışa aktar**
+aynı biçimi yazar; başka bir CMS’den geçiş veya bir elektronik tablo incelemesi için kullanışlıdır.
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## Sitenizde uygulama
+
+Siteler listeyi token olmadan `GET /api/_redirects` adresinden okur:
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+Yanıt `Cache-Control: public, max-age=60` ile gönderilir; böylece bir değişiklik sitelere yaklaşık
+bir dakika içinde ulaşır. İstek yolunu `source` ile tam olarak eşleştirin:
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+Statik bir site için listeyi build sırasında getirin ve host’unuzun yönlendirme dosyasını yazın
+(Netlify’ın `_redirects`’i, Vercel’in `vercel.json`’ı, bir nginx map’i). Editörlerin yönlendirmeleri
+değiştirdikten sonra yeniden derleyebilmesi için bunu bir
+[dağıtım düğmesi](/tr/guides/integrations/deploys-and-cdn/) veya bir
+[webhook](/tr/guides/integrations/webhooks/) ile birleştirin.
+
+<Aside type="note">
+API öneki [`[api].prefix`](/tr/reference/configuration/)’i izler. Özellik kapalıyken
+`/api/_redirects` `404` yanıtını verir.
+</Aside>
+
+## Admin API
+
+Yönetim paneli, bir admin’in erişim token’ı ve `site.manage` ile `/admin/api/site/redirects`
+(`GET`, `POST`) ve `/admin/api/site/redirects/{id}` (`PUT`, `DELETE`) adreslerini kullanır. Bkz.
+[Admin API](/tr/api/admin/).

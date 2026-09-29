@@ -1,0 +1,129 @@
+---
+title: 表单
+description: 在管理后台中定义联系表单和注册表单，从网站向其提交数据，并读取或导出提交记录。
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**表单** 功能无需借助表单服务，即可处理网站上的表单（联系、订阅邮件、活动报名）。编辑在管理后台中定义字段，你的网站渲染这些字段并提交到 Verdin，提交的数据会经过校验、存储、通过邮件发送，并可导出为 CSV。
+
+## 开启
+
+在 **设置 → 功能** 中开启 **表单**，然后选择 **管理表单**（或者前往 **设置 → 表单**）。管理表单和读取提交记录需要 **管理 SEO、重定向、菜单和表单** 权限（`site.manage`），内置的 Editor 角色拥有该权限。参见[权限](/zh-cn/reference/permissions/)。
+
+如需通知邮件，请在 [`[email]`](/zh-cn/reference/configuration/) 中配置邮件提供方；使用默认的 `log` 提供方时，邮件只会写入服务器日志。
+
+## 创建表单
+
+<Steps>
+
+1. 在 **设置 → 表单** 中选择 **新建表单**。
+2. 为它设置名称（例如 **Contact**）和 **Slug**（`contact`）。slug 是表单 URL 的一部分。
+3. 在 **字段** 标签页中，为每个字段选择 **添加字段**，并设置其 **标签**、**名称**、**类型**、**必填**、**占位符** 和 **最大长度**。
+4. 在 **设置** 标签页中设置：
+   - **通知**：接收每次提交的邮箱地址。
+   - **成功提示信息**：提交后返回给网站的消息。
+   - **垃圾邮件陷阱**：默认开启（参见[垃圾信息](#垃圾信息)）。
+5. 保存。**集成** 标签页会显示公开端点以及可供复制的示例。
+
+</Steps>
+
+| 类型 | 管理后台中的标签 | 接受的值 |
+| --- | --- | --- |
+| `text` | **文本** | 任意文本。 |
+| `email` | **电子邮箱** | 一个邮箱地址。 |
+| `textarea` | **长文本** | 任意文本。 |
+| `number` | **数字** | 一个数字，以数字形式存储。 |
+| `select` | **选择** | 其 **选项** 之一（每行一个）。 |
+| `checkbox` | **复选框** | `true`、`on`、`1` 或 `yes` 表示勾选；其他任何值表示未勾选。必填的复选框必须勾选。 |
+| `date` | **日期** | 任意文本（请使用 `<input type="date">`）。 |
+| `url` | **URL** | 一个 URL。 |
+| `tel` | **电话** | 任意文本。 |
+
+字段名以字母开头，之后可以是字母、数字或 `_`，并且在表单内唯一。一个表单有 1 到 50 个字段。值最多为 **最大长度** 个字符（默认 5,000，最大 20,000）。
+
+## 渲染表单
+
+`GET /api/_forms/{slug}` 返回表单定义，这样你的网站就可以渲染编辑所选的字段：
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+垃圾邮件陷阱关闭时，`honeypot` 为 `null`。表单定义会被缓存一分钟（`Cache-Control: public, max-age=60`）。
+
+## 提交
+
+`POST /api/_forms/{slug}` 接受 JSON 格式的值（字段本身，或 `{ "data": { … } }`），也接受普通的表单提交（`application/x-www-form-urlencoded`）。不需要令牌。
+
+<Tabs syncKey="form">
+<TabItem label="HTML 表单">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| 响应 | 何时出现 |
+| --- | --- |
+| `201` 以及 `{ "data": { "message": … } }` | 已接受。`message` 为 **成功提示信息**，或者 `Thank you!`。 |
+| `400` `ValidationError` | 某个值缺失或无效。`details.errors` 按字段列出 `{ path, message }`。 |
+| `404` | 没有该 slug 的表单，或者功能已关闭。 |
+| `413` | 提交内容超过 64 KB。 |
+| `429` | 同一访问者在一分钟内向该表单提交了超过 10 次。 |
+
+值会被去除首尾空白并对照字段进行检查。未知字段会被丢弃，因此访问者无法添加你没有要求的数据。
+
+普通的 HTML 表单提交会把 JSON 响应作为页面显示。为了更好的体验，请用 `fetch` 提交并自行显示消息。从浏览器向其他源提交时，需要把你的网站的源加入 [`[api].cors_origins`](/zh-cn/reference/configuration/)。
+
+### 垃圾信息
+
+开启 **垃圾邮件陷阱** 后，请在表单中添加一个隐藏且为空的 `_gotcha` 字段。机器人会填写所有字段；填写了 `_gotcha` 的提交会被当作已接受（`201`）并直接丢弃，这样机器人什么也学不到。结合速率限制，这无需 CAPTCHA 即可拦截大多数表单垃圾信息。
+
+## 读取提交记录
+
+表单的 **提交记录** 标签页会列出访问者发送的内容以及 **接收时间**。你可以删除某条提交，**导出 CSV** 则会下载全部提交记录。
+
+每次被接受的提交也会通过邮件发送给 **通知** 中的地址，并附带指向管理后台中提交记录的链接（由 [`[server].public_url`](/zh-cn/reference/configuration/) 构建）。
+
+<Aside type="note">
+Verdin 会存储每次提交的值、访问者的 user agent，以及其 IP 地址的带密钥哈希（而不是地址本身），这足以发现洪水式提交，又不会追踪用户。删除表单会删除其提交记录。
+</Aside>
+
+## 管理 API
+
+管理后台使用 `/admin/api/site/forms` 和 `/admin/api/site/forms/{id}`，以及 `/admin/api/site/forms/{id}/submissions` 和 `…/submissions/export`（CSV），需要管理员的访问令牌和 `site.manage`。参见[管理 API](/zh-cn/api/admin/)。

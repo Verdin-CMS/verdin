@@ -1,0 +1,149 @@
+---
+title: "Schemamigraties"
+description: "Hoe Verdin schemawijzigingen omzet in databasemigraties: het plan, risiconiveaus, wat verdin dev en verdin start doen, hernoemingen, en --allow."
+sidebar:
+  order: 7
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Als je een schemabestand wijzigt, moet de database volgen: een nieuw attribuut heeft een kolom
+nodig, een nieuwe relatie een koppeltabel. Verdin berekent die migratie voor je, toont hem
+voordat hij draait, en verwijdert nooit gegevens zonder dat je dat zegt. Deze pagina legt uit
+hoe.
+
+## Van schema naar plan
+
+Verdin vraagt je nooit een migratie te schrijven. Het vergelijkt twee modellen van de database:
+
+1. **Gewenst**: afgeleid van je bestanden `schema/*.json`, met elke tabel, kolom en index die ze
+   nodig hebben (inclusief koppeltabellen en de eigen tabellen van Verdin).
+2. **Huidig**: het model dat de laatste migratie heeft achtergelaten, als snapshot in de database
+   opgeslagen.
+
+Het verschil is een **plan**: een lijst stappen, elk met zijn SQL voor jouw database en een
+risiconiveau. Omdat het plan uit de opgeslagen snapshot komt en niet uit het inspecteren van de
+database, is het deterministisch en op elk dialect gelijk. Wijzigingen die op jouw database
+dezelfde SQL opleveren, zoals `integer` naar `biginteger` op SQLite, leveren geen stap op.
+
+<Diagram
+  caption="Hoe een schemawijziging een migratie wordt"
+  code={`flowchart LR
+    F[schema/*.json] --> D[Gewenst model]
+    S[(Opgeslagen snapshot)] --> C[Huidig model]
+    D --> X{Diff}
+    C --> X
+    X --> P[Plan: stappen, risico, SQL]
+    P --> A[apply --allow]
+    A --> B[(Database en nieuwe snapshot)]`}
+/>
+
+`verdin migrate plan` drukt het af. Hier is het attribuut `excerpt` van de blog in `article.json`
+hernoemd naar `summary`:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [safe] add column articles.summary
+       ALTER TABLE "articles" ADD COLUMN "summary" text
+  2. [destructive] drop column articles.excerpt
+       ALTER TABLE "articles" DROP COLUMN "excerpt"
+
+requires: verdin migrate apply --allow destructive
+
+possible renames (pass them to keep the data):
+  --rename-column articles.excerpt=summary
+```
+
+## Risiconiveaus
+
+| Risico | Stappen | Waarom |
+| --- | --- | --- |
+| **safe** | Een tabel aanmaken, een kolom toevoegen, een niet-unieke index toevoegen of verwijderen, een tabel of kolom hernoemen. | Kan geen gegevens verliezen of falen op bestaande rijen. |
+| **risky** | Het type van een kolom wijzigen, een unieke index toevoegen aan een bestaande tabel, een SQLite-tabel opnieuw opbouwen (SQLite kan kolommen niet ter plekke wijzigen). | Kan falen op bestaande gegevens (duplicaten, waarden die niet omzetten), of ze herschrijven. |
+| **destructive** | Een kolom of tabel verwijderen. | Verwijdert gegevens. |
+
+Elke attribuutkolom is nullable (`required` wordt bij het publiceren gecontroleerd), dus
+attributen toevoegen, verplicht of niet, is altijd veilig. `"unique": true` toevoegen aan de titel
+van het blogartikel is riskant, omdat bestaande titels kunnen herhalen:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [risky] create unique index articles_title_uq
+       CREATE UNIQUE INDEX "articles_title_uq" ON "articles" ("title", "locale", "publication_state")
+
+requires: verdin migrate apply --allow risky
+```
+
+Voordat de eerste instructie draait, voert Verdin een controle uit voor elke riskante stap die
+kan falen, zoals zoeken naar duplicaten vóór een unieke index, en stopt met een melding als er een
+probleem wordt gevonden. Op dat moment is er nog niets veranderd.
+
+## Een plan toepassen
+
+`verdin migrate apply` voert de openstaande stappen uit. Het neemt het hoogste risico dat je
+accepteert:
+
+```sh title="Terminal"
+verdin migrate apply                        # alleen veilige stappen (de standaard)
+verdin migrate apply --allow risky          # ook typewijzigingen en unieke indexen
+verdin migrate apply --allow destructive    # ook verwijderingen
+```
+
+Als een stap boven het toegestane risico ligt, draait er niets:
+
+```text title="Terminal"
+$ verdin migrate apply
+Error: these steps need explicit approval:
+  create unique index articles_title_uq (risky)
+```
+
+Een migratie neemt een lock, zodat twee instanties nooit tegelijk migreren. Op PostgreSQL en
+SQLite draait het hele plan in één transactie: een fout draait alles terug. MySQL en MariaDB
+committen elke DDL-instructie afzonderlijk, dus Verdin legt zijn voortgang stap voor stap vast in
+een journaal. Herstel na een fout de oorzaak en draai `verdin migrate apply` opnieuw: het gaat
+verder vanaf de mislukte stap als het plan ongewijzigd is, en weigert als het schema intussen is
+veranderd.
+
+## Hernoemingen
+
+Een verwijderd attribuut en een nieuw attribuut zien eruit als een verwijdering en een toevoeging,
+waarmee de gegevens van de kolom verloren zouden gaan. Verdin raadt nooit een hernoeming. Het
+stelt er een voor als er een kolom verdwijnt en er een kolom van hetzelfde type in dezelfde tabel
+verschijnt (of als een tabel verdwijnt en er een met dezelfde kolommen verschijnt), en jij
+bevestigt die expliciet:
+
+```text title="Terminal"
+$ verdin migrate apply --rename-column articles.excerpt=summary
+applied 1 step
+```
+
+- `--rename-column TABLE.OLD=NEW` hernoemt een kolom; `TABLE` is de tabel van het contenttype
+  (zijn `collectionName`).
+- `--rename-table OLD=NEW` hernoemt een tabel. De koppeltabellen van het type worden mee hernoemd.
+- Geef dezelfde vlaggen mee aan `migrate plan` om het resultaat vooraf te bekijken.
+
+Hernoemingen zijn veilige stappen. De contenttype-bouwer biedt dezelfde suggesties in zijn
+dialoog.
+
+## `verdin dev` en `verdin start`
+
+| | `verdin dev` | `verdin start` |
+| --- | --- | --- |
+| Bij het opstarten | Past openstaande veilige stappen toe. Stopt als er andere stappen openstaan. | Weigert te starten zolang er een stap openstaat, tenzij je `--migrate` meegeeft, dat eerst de veilige stappen toepast. |
+| Schemawijzigingen tijdens het draaien | De **Contenttype-bouwer** toont het plan met zijn risico's en hernoemingssuggesties, en past het toe wanneer je bevestigt, riskantere stappen inbegrepen. Handmatige bewerkingen (of een `git pull`) worden opgepikt door een file watcher: veilige plannen worden toegepast en de app herlaadt; andere worden gelogd en de draaiende app blijft zoals hij was. | Het schema is alleen-lezen. Deploy de nieuwe bestanden en migreer. |
+
+De bouwer migreert eerst de database, schrijft dan de schemabestanden en herlaadt daarna de
+content-API, de admin-API, GraphQL en het OpenAPI-document zonder herstart. Als de migratie
+mislukt, blijven de bestanden en de draaiende app zoals ze waren.
+
+Draai in productie `verdin migrate plan` tegen een kopie van de database, en daarna
+`verdin migrate apply` met het risico dat je accepteert, voordat je de nieuwe versie start. Zie
+[Upgraden](/nl/migrate/upgrading/) en [Back-ups](/nl/deploy/backups/).
+
+## Vergeleken met Strapi
+
+Strapi synchroniseert de database met het schema wanneer het start, zonder te tonen wat het gaat
+doen. Verdin plant eerst, toont de SQL, past zonder te vragen alleen veilige stappen toe, en heeft
+`--allow` nodig voor alles wat kan falen of gegevens kan verwijderen.

@@ -1,0 +1,139 @@
+---
+title: 单点登录
+description: 让管理员通过 Microsoft Entra ID、Google Workspace、Okta 或 Keycloak 等 OpenID Connect 提供商登录，并支持组到角色的映射。
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+管理员可以通过任何 OpenID Connect 提供商登录：Microsoft Entra ID、Google Workspace、Okta、Auth0、Keycloak、Authentik、GitLab 等。每个提供商都会在登录页上获得一个按钮，密码登录依然可以在旁边正常使用。本指南介绍如何注册应用、在 Verdin 中配置提供商，以及把组映射到角色。
+
+SSO 在 Strapi 中是企业版功能。在 Verdin 中，它是开源核心的一部分。如果是为网站的终端用户配置登录，请改为参见[终端用户的 OAuth 登录](/zh-cn/guides/auth/end-users/)。
+
+## 开始之前
+
+- 配置 SSO 需要 **管理功能**（`features.manage`）。
+- 把 `[server].public_url` 设置为管理员访问 Verdin 所用的地址，例如 `https://cms.example.com`。重定向 URI 由它构建。
+
+## 设置
+
+<Steps>
+
+1. **注册应用**（一个 “web” 客户端），在提供商处使用以下重定向 URI：
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>` 是你在第 3 步中选择的提供商 id，例如 `corp`。管理后台路径跟随 `[admin].path`。
+
+2. **把客户端密钥放入环境变量**，然后重启 Verdin：
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   变量名为 `VERDIN_SSO_<ID>_SECRET`，其中 id 使用大写，连字符改为下划线。公共客户端（仅 PKCE，没有密钥）不需要该变量。
+
+3. **添加提供商。** 开启 **设置 → 功能 → 单点登录**，选择 **配置服务商**，然后选择 **添加服务商** 并填写：
+
+   - **ID**：小写字母、数字和连字符，最多 32 个字符。
+   - **按钮文字**：在登录页上显示为 “使用 … 继续”。
+   - **颁发者 URL**：Verdin 会读取其下的 `/.well-known/openid-configuration`。除 `localhost` 外，必须使用 `https`。
+   - **客户端 ID** 和 **作用域**（默认为 `openid email profile`；`openid` 是必需的）。
+
+   对话框中会显示 **需在服务商处注册的重定向 URI** 以及密钥变量的名称。保存。
+
+4. 在隐私窗口中**试一试**：登录页会显示 **使用 Corp account 继续**。
+
+</Steps>
+
+## 谁可以登录，以及获得哪些角色
+
+| 设置 | JSON 键 | 作用 |
+| --- | --- | --- |
+| **允许的邮箱域名** | `allowedDomains` | 只有这些邮箱域名可以登录。为空表示不限。 |
+| **首次登录时创建账户** | `autoCreate` | 某人首次登录时创建一个管理员账户。不开启时，只有已有账户的邮箱才能登录。 |
+| **默认角色** | `defaultRoles` | 角色映射没有给出任何角色时，新建账户所获得的角色代码。 |
+| **角色声明** | `roleClaim` | ID 令牌中列出用户所属组的声明，例如 `groups` 或 `roles`。 |
+| **角色映射** | `roleMap` | 每个声明值对应哪个角色代码。 |
+| **信任未验证的邮箱** | `trustUnverifiedEmail` | 接受提供商未标记为已验证的邮箱。 |
+| **提供方强制 MFA** | `providerMfa` | 通过该提供商登录后，不再要求管理员提供其 Verdin 第二因素。 |
+
+- 会创建账户的提供商需要设置默认角色或角色映射。
+- 两者都不能授予 Super Admin 角色；请在 **设置 → 用户** 中手动提升管理员。
+- 角色只在创建账户时设置。之后请在 **设置 → 用户** 中管理它们。
+- 新建账户的名和姓来自 `given_name` 和 `family_name` 声明。
+
+同一个提供商以 JSON 表示，即该功能所存储的形式（`PUT /admin/api/features/sso`）：
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## 各提供商说明
+
+- **Microsoft Entra ID** 的 ID 令牌中不包含 `email_verified`：请为它开启 **信任未验证的邮箱**。要映射组，请在应用的令牌配置中添加 `groups` 声明；其值为组 id。
+- **Google Workspace**：颁发者为 `https://accounts.google.com`。用 **允许的邮箱域名** 把登录限定于你的域名。
+- **Keycloak**：颁发者为 realm URL，即 `https://<host>/realms/<realm>`。
+
+## 双因素认证
+
+默认情况下，拥有 Verdin [第二因素](/zh-cn/guides/auth/two-factor/)的管理员在提供商把他们送回来之后，还会被要求提供第二因素。如果提供商已经强制执行 MFA，请开启 **提供方强制 MFA**，以免他们被要求验证两次。
+
+## 工作原理
+
+<Diagram
+  caption="一次 SSO 登录"
+  code={`sequenceDiagram
+  participant B as 浏览器
+  participant V as Verdin
+  participant P as 提供商
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: 带 state 和 PKCE challenge 重定向
+  B->>P: 登录
+  P-->>B: 带 code 重定向到回调
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: 交换 code（TLS）
+  V-->>B: 会话 cookie，重定向到 /admin/`}
+/>
+
+- Verdin 使用带 PKCE（S256）的授权码流程。`state` 经过签名，并绑定到一个短期的 `HttpOnly` cookie，`nonce` 由它派生。
+- 它会检查 ID 令牌的颁发者、受众（有多个受众时还检查 `azp`）、过期时间和 nonce。它需要一个 `email_verified: true` 的 `email` 声明，除非开启了 **信任未验证的邮箱**。
+- 提供商的端点必须使用 `https`。
+- 每次 SSO 登录都会以 `admin.login` 的形式记录在[审计日志](/zh-cn/guides/content/audit-logs/)中，并附带提供商。
+
+登录失败时，浏览器会返回登录页并显示原因（“单点登录失败”），原因也会写入服务器日志。常见原因：
+
+| 原因 | 解决方法 |
+| --- | --- |
+| the provider did not verify the email | 开启 **信任未验证的邮箱**，或者修正提供商的声明。 |
+| this email domain may not sign in | 把该域名添加到 **允许的邮箱域名**。 |
+| no admin account for this identity | 开启 **首次登录时创建账户**，或者先创建该管理员。 |
+| the sign-in request expired or was not started here | 在同一个浏览器中从登录页重新开始。 |
+
+<Aside type="note">
+已停用的管理员同样无法通过 SSO 登录。
+</Aside>

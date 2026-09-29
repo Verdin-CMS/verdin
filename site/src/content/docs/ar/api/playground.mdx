@@ -1,0 +1,33 @@
+---
+title: بيئة تجربة الـ API
+description: أرسل طلبات إلى API المحتوى لمشروع المدونة المثالي من المتصفح، نحو Verdin المحلي لديك.
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+جرّب API المحتوى لـ[مشروع المدونة المثالي](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+دون كتابة أي شيفرة. تذهب الطلبات من متصفحك إلى الخادم الذي تختاره في **Server**،
+وهو افتراضيًا `http://localhost:1337`.
+
+للإجابة عنها، شغّل المشروع المثالي محليًا واسمح بالطلبات:
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- أنشئ المسؤول الأول على [localhost:1337/admin](http://localhost:1337/admin/) وأضف بضع مقالات.
+- اسمح بـ `find` و`findOne` في **الإعدادات ← الوصول العام**، أو
+  الصق رمز API تحت **Authentication**.
+- تعمل بيئة التجربة على مصدر (origin) هذا الموقع، لذا يجب أن يقبله الخادم: أضفه إلى
+  `[api].cors_origins` في `verdin.toml` (راجع [التهيئة](/ar/reference/configuration/)).
+
+لمشروعك الخاص المرجع نفسه لمخططه على `/api/docs` بمجرد تفعيل
+**التوثيق العام** في **الإعدادات ← الميزات ← توثيق الـ API**.
+
+<Playground />

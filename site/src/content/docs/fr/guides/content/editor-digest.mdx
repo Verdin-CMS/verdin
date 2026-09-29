@@ -1,0 +1,79 @@
+---
+title: Résumé pour les rédacteurs
+description: Recevez chaque jour un e-mail des entrées modifiées depuis votre dernière consultation, et choisissez l’instance qui l’envoie.
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Le résumé pour les rédacteurs est un e-mail quotidien qui indique à chaque administrateur combien
+d’entrées ont changé depuis sa dernière consultation, par type de contenu. Il est désactivé pour
+tout le monde jusqu’à ce que chaque administrateur l’active. Ce guide couvre le côté
+administration, les paramètres du serveur et son fonctionnement avec plusieurs instances.
+
+## Fonctionnement du « non vu »
+
+Une entrée devient non vue pour vous quand quelqu’un d’autre la modifie, depuis n’importe quelle
+API. Elle redevient vue dès que vous l’ouvrez. Les mêmes marques alimentent les pastilles
+**nouveau(x)** de la barre latérale (désactivez-les avec
+**Afficher les pastilles de nouveautés**) et le widget **Pas encore vues** de la page d’accueil.
+
+## Activer le résumé
+
+<Steps>
+
+1. Ouvrez votre **Profil** (ou le menu des préférences dans la barre supérieure).
+2. Sous **Préférences**, activez **E-mail quotidien des modifications non vues**.
+
+</Steps>
+
+L’interrupteur définit la préférence `"digest": "daily"` sur votre compte
+(`PUT /admin/api/users/me/preferences`). Désactivez-le de la même façon.
+
+Ce que vous recevez :
+
+- Un message avec le nombre d’entrées non vues par type de contenu que vous pouvez lire, et un
+  lien vers le panneau d’administration.
+- Rien les jours où il n’y a rien de nouveau.
+- Uniquement tant que votre compte est actif.
+
+## Paramètres du serveur
+
+Le résumé est envoyé à `[digest].hour_utc`, via `[email]` :
+
+```toml title="verdin.toml"
+[email]
+provider = "smtp"
+from = "Verdin <no-reply@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+
+[digest]
+hour_utc = 7    # 0–23, UTC; 8 by default
+```
+
+| Clé | Valeur par défaut | Description |
+| --- | --- | --- |
+| `[digest].enabled` | `true` | Envoie le résumé depuis cette instance. |
+| `[digest].hour_utc` | `8` | Heure (UTC) d’envoi du résumé. |
+
+Le lien de l’e-mail utilise `[server].public_url` ; définissez-le quand Verdin tourne derrière
+un proxy. Avec le fournisseur d’e-mail `log` par défaut, les messages sont seulement écrits dans
+le log du serveur. Voir la [référence de configuration](/fr/reference/configuration/).
+
+## Plusieurs instances
+
+Chaque instance avec `[digest].enabled = true` tente d’envoyer le résumé à l’heure définie. La
+première à réserver la journée dans la base de données l’envoie, et les autres sautent ce jour :
+les administrateurs reçoivent donc un seul e-mail. Pour garder la tâche sur une instance connue,
+définissez `enabled = false` sur les autres :
+
+```sh title="Terminal"
+VERDIN_DIGEST__ENABLED=false verdin start
+```
+
+<Aside type="note">
+Le résumé est un ajout de Verdin ; Strapi n’a pas d’équivalent.
+</Aside>

@@ -1,0 +1,257 @@
+---
+title: Usuarios finales
+description: Permite que las personas que usan tus sitios se registren e inicien sesión a través de la API de contenido, con confirmación por correo, proveedores OAuth y roles, usando las rutas de users-permissions de Strapi.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Los usuarios finales son las personas que inician sesión en tu sitio o tu aplicación, no en el
+panel de administración. Verdin les da registro, inicio de sesión, confirmación por correo,
+restablecimiento de contraseña, proveedores OAuth y roles que deciden lo que pueden hacer en la
+API de contenido. Las rutas y los payloads son los del plugin users-permissions de Strapi v5,
+así que los frontends existentes siguen funcionando.
+
+## Antes de empezar
+
+<Steps>
+
+1. Activa **Configuración → Funcionalidades → Usuarios y permisos** (está desactivado por
+   defecto), o activa **Usuarios finales** en
+   **Configuración → Usuarios finales → Configuración**.
+2. Configura `[email]` si usas la confirmación por correo o el restablecimiento de contraseña:
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend y Postmark leen su clave de `VERDIN_EMAIL_API_KEY`.
+   **Configuración → Funcionalidades → Correo electrónico** tiene
+   **Enviar un correo de prueba**. Para trabajar en local, `docker/compose.dev.yml` incluye
+   Mailpit (SMTP en el puerto 1025, bandeja de entrada en `http://localhost:8025`).
+
+3. Define `[server].public_url`: los enlaces de los correos y los callbacks de OAuth la usan.
+
+</Steps>
+
+Gestionar cuentas y roles necesita **Gestionar usuarios finales** (`endusers.manage`). Cambiar la
+pestaña de configuración (registro, proveedores, plantillas) necesita
+**Gestionar funcionalidades** (`features.manage`).
+
+## Configura el registro y las sesiones
+
+En **Configuración → Usuarios finales → Configuración**, en **Registro y sesiones**:
+
+| Ajuste | Por defecto | Efecto |
+| --- | --- | --- |
+| **Permitir el registro** | activado | Cualquiera puede crear una cuenta a través de la API de contenido. Desactivado: `register` responde `400`. |
+| **Confirmar direcciones de correo** | desactivado | Los usuarios nuevos deben abrir un enlace enviado por correo antes de poder iniciar sesión. |
+| **Rol predeterminado** | Authenticated | El rol de las cuentas nuevas. |
+| **Sesiones** | Un token de larga duración | **Un token de larga duración** (el modo heredado de Strapi) o **Tokens cortos con renovación**. |
+| **Duración de la sesión (días)** | 30 | Vida del token de larga duración. |
+| **Duración del token de acceso (minutos)**, **Duración del token de renovación (días)** | 30, 30 | Con tokens de renovación. |
+
+En **Las páginas de tu aplicación**, define **Tras confirmar un correo** (adonde llegan los
+usuarios una vez confirmada su dirección) y **Página de restablecimiento de contraseña** (tu
+página que recibe `?code=` y pide una contraseña nueva). El restablecimiento de contraseña
+necesita la página de restablecimiento.
+
+## Configura los roles
+
+Cada petición se hace como uno de estos:
+
+- **Public**: las peticiones sin token. Sus permisos son los de
+  **Configuración → Acceso público**.
+- **Authenticated**: el rol predefinido que se asigna a las cuentas nuevas. No se puede
+  eliminar.
+- **Roles personalizados**: créalos en **Configuración → Usuarios finales → Roles** con
+  **Crear rol**.
+
+Los **Permisos** de un rol usan la misma matriz que el acceso público y los tokens de API:
+**Buscar**, **Buscar uno**, **Crear**, **Actualizar**, **Eliminar**, **Publicar** y
+**Leer borradores** por tipo de contenido, la **Biblioteca de medios** y **Usuarios** (las rutas
+`/api/users`). Un usuario con sesión iniciada solo obtiene los permisos de su rol, no también
+los del acceso público: concede también al rol las lecturas públicas cuando los usuarios con
+sesión iniciada las necesiten. Eliminar un rol pasa sus usuarios a Authenticated.
+
+Para actuar como un usuario, el frontend envía su JWT como `Authorization: Bearer <jwt>`. Los
+tokens de API empiezan por `vd_`, y así los distingue Verdin.
+
+## Registro e inicio de sesión
+
+<Tabs>
+<TabItem label="Registro">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   or { "user": … } when email confirmation is on
+```
+
+</TabItem>
+<TabItem label="Inicio de sesión">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` es el correo electrónico o el nombre de usuario.
+
+</TabItem>
+<TabItem label="Leer como el usuario">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+El inicio de sesión se rechaza a los usuarios bloqueados ("Your account has been blocked by an
+administrator") y, con la confirmación activada, a los no confirmados ("Your account email is
+not confirmed").
+
+## Tokens y sesiones
+
+- **Un token de larga duración** (`jwtManagement: "legacy-support"`): el JWT dura
+  **Duración de la sesión (días)**.
+- **Tokens cortos con renovación** (`jwtManagement: "refresh"`, como en Strapi 5): el JWT dura
+  **Duración del token de acceso (minutos)**, y las respuestas de inicio de sesión llevan además
+  un `refreshToken`. Llama a `POST /api/auth/refresh` con `{ refreshToken }` para obtener un par
+  nuevo. Cada token de renovación funciona una sola vez; presentar uno ya usado termina toda la
+  sesión. `POST /api/auth/logout` con `{ refreshToken }` la termina a propósito.
+- Cambiar o restablecer una contraseña revoca los tokens anteriores del usuario, y bloquear al
+  usuario también.
+- Las peticiones de inicio de sesión, registro y restablecimiento se limitan a 20 por minuto y
+  por IP de cliente.
+- Las contraseñas se guardan con Argon2id. Las cuentas importadas de Strapi conservan su hash
+  bcrypt hasta su siguiente inicio de sesión, cuando se vuelve a calcular.
+
+## Confirmar direcciones de correo y restablecer contraseñas
+
+Con **Confirmar direcciones de correo** activado, el registro envía por correo un enlace a
+`/api/auth/email-confirmation?confirmation=…`. Al abrirlo se confirma la cuenta y se redirige a
+**Tras confirmar un correo**. `POST /api/auth/send-email-confirmation` con `{ email }` envía un
+enlace nuevo.
+
+Para una contraseña olvidada:
+
+<Steps>
+
+1. Tu aplicación llama a `POST /api/auth/forgot-password` con `{ email }`. La respuesta es la
+   misma exista o no la cuenta.
+2. El usuario recibe un correo con un enlace a tu **Página de restablecimiento de contraseña**,
+   con `?code=…`. El código funciona durante una hora.
+3. Tu página llama a `POST /api/auth/reset-password` con
+   `{ code, password, passwordConfirmation }` y obtiene `{ jwt, user }`.
+
+</Steps>
+
+Los usuarios con sesión iniciada cambian su contraseña con `POST /api/auth/change-password`
+(`{ currentPassword, password, passwordConfirmation }`).
+
+Los correos se editan en
+**Configuración → Usuarios finales → Configuración → Plantillas de correo**: un **Asunto**, un
+**Mensaje** y un **Cuerpo HTML (opcional)** para la **Confirmación de correo** y el
+**Restablecimiento de contraseña**. Admiten los marcadores `{{username}}`, `{{email}}` y
+`{{url}}`; en el cuerpo HTML, los valores se escapan como HTML.
+
+## Iniciar sesión con proveedores OAuth
+
+Hay ajustes predefinidos para GitHub, Google, Microsoft, Discord, Facebook, GitLab y LinkedIn.
+Cualquier otro nombre es un proveedor OAuth 2 genérico que necesita su **URL de autorización**,
+su **URL del token** y su **URL de información del usuario**: Keycloak, Auth0 y Okta funcionan
+así con las URLs de tu realm o tenant. Sign in with Apple no está soportado.
+
+<Steps>
+
+1. En **Configuración → Usuarios finales → Configuración → Proveedores de inicio de sesión**,
+   selecciona **Añadir GitHub** (u otro predefinido, o **Añadir proveedor OAuth 2**).
+2. En el proveedor, registra la **URL de retorno para registrar en el proveedor** que aparece en
+   el diálogo: `https://cms.example.com/api/connect/github/callback`.
+3. Introduce el **ID de cliente**, los **Ámbitos** opcionales y la
+   **Redirección a tu aplicación**: la página de tu frontend que recibe `?access_token=` después
+   del inicio de sesión. Activa **Activado**.
+4. Pon el secreto del cliente en el entorno del servidor y reinicia:
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   La variable es `VERDIN_OAUTH_<PROVIDER>_SECRET`. Los secretos nunca se guardan en la base de
+   datos.
+
+</Steps>
+
+El inicio de sesión sigue el flujo de Strapi:
+
+<Diagram
+  caption="Inicio de sesión OAuth para usuarios finales"
+  code={`sequenceDiagram
+  participant B as Navegador
+  participant V as Verdin
+  participant P as Proveedor
+  B->>V: GET /api/connect/github
+  V-->>B: redirección al proveedor
+  B->>P: consentimiento
+  P-->>B: redirección a /api/connect/github/callback
+  B->>V: callback
+  V-->>B: redirección a tu página ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+El `state` de OAuth va firmado y ligado al navegador con una cookie. Las cuentas se emparejan
+por correo electrónico; un correo que ya usa otro proveedor, o una cuenta con correo y
+contraseña, se rechaza ("Email is already taken.").
+
+## Gestionar cuentas en el panel de administración
+
+**Configuración → Usuarios finales → Usuarios** enumera las cuentas, con búsqueda por nombre de
+usuario o correo. Puedes **Añadir usuario**, editar uno (nombre de usuario, correo, contraseña,
+rol, **Confirmado**, **Bloqueado**), **Bloquear** o **Desbloquear**, y eliminarlo.
+
+## Rutas
+
+Las rutas están bajo el prefijo de la API de contenido, `/api` por defecto. La forma de las
+peticiones y de las respuestas sigue a Strapi v5.
+
+| Ruta | Hace |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }`, o `{ user }` con la confirmación por correo activada. |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`. |
+| `GET /auth/email-confirmation?confirmation=` | Confirma el correo y después redirige o devuelve el usuario. |
+| `POST /auth/send-email-confirmation` | `{ email }`: un nuevo enlace de confirmación. |
+| `POST /auth/forgot-password` | `{ email }`: envía por correo el enlace de restablecimiento. |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/change-password` | Con sesión iniciada. `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/refresh`, `POST /auth/logout` | Solo en modo de renovación: `{ refreshToken }`. |
+| `GET /users/me` | El usuario con sesión iniciada. |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | Necesita Buscar / Buscar uno sobre Usuarios. JSON simple, sin envoltorio `data`, como Strapi. `populate=role` añade el rol, `_q=` busca en nombres de usuario y correos, y `pagination[page]` y `pagination[pageSize]` (como máximo 100) paginan. |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | Necesita Crear / Actualizar / Eliminar sobre Usuarios. `{ username, email, password, confirmed, blocked, role }`, con `role` como id de rol. |
+| `GET /connect/{provider}` | Inicia un inicio de sesión OAuth. |
+| `GET /auth/{provider}/callback?access_token=` | Intercambia el token del proveedor por `{ jwt, user }`. |
+
+`verdin import strapi` trae los usuarios finales con sus contraseñas, los roles personalizados y
+los permisos de los roles public, authenticated y personalizados. Consulta
+[Migrar desde Strapi](/es/migrate/from-strapi/).
+
+<Aside type="caution">
+Un rol con Crear, Actualizar o Eliminar sobre **Usuarios** permite a sus miembros gestionar todas
+las cuentas de usuario final. Dáselo solo a roles o tokens de API de confianza.
+</Aside>

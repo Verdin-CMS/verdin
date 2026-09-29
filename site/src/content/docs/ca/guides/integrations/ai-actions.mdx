@@ -1,0 +1,146 @@
+---
+title: Accions d'IA
+description: Dona als editors ajuda d'IA al tauler d'administració (traducció, text alternatiu, resums i metadades SEO) amb el proveïdor de models que triïs.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Les accions d'IA afegeixen quatre ajudes al tauler d'administració: traduir una entrada des d'un
+altre idioma, escriure text alternatiu per a una imatge, resumir un text llarg en un camp curt i
+suggerir metadades SEO. Fan servir un proveïdor de models que configures tu (Anthropic, OpenAI, o
+un servidor local com Ollama), amb la teva pròpia clau.
+
+Cada acció retorna un suggeriment que omple el formulari. No es desa res fins que l'editor el
+revisa i desa, i cada acció es pot desfer.
+
+## Configura-ho
+
+Les accions d'IA necessiten un proveïdor a `verdin.toml` i la funcionalitat activada.
+
+<Steps>
+
+1. Afegeix una secció `[ai]` i dona la clau al servidor a `VERDIN_AI_KEY`:
+
+   <Tabs syncKey="ai-provider">
+   <TabItem label="Anthropic">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "anthropic"
+   # model = "claude-sonnet-5"   # the default
+   ```
+
+   </TabItem>
+   <TabItem label="OpenAI">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai"
+   model = "gpt-4.1-mini"        # required: name the model you want
+   ```
+
+   </TabItem>
+   <TabItem label="Local (Ollama)">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai-compatible"
+   base_url = "http://localhost:11434/v1"
+   model = "llama3.2-vision"
+   ```
+
+   Els servidors locals no necessiten `VERDIN_AI_KEY`. LM Studio, vLLM i altres servidors amb
+   una API compatible amb OpenAI funcionen igual.
+
+   </TabItem>
+   </Tabs>
+
+   ```sh title="Terminal"
+   export VERDIN_AI_KEY=sk-...
+   ```
+
+2. Reinicia Verdin. Es nega a iniciar-se quan la secció és incompleta: falta la clau, o falta
+   `model` o `base_url` on el proveïdor en necessita.
+3. A **Configuració → Funcionalitats**, activa **Accions d’IA**.
+
+</Steps>
+
+| Clau | Per defecte | Descripció |
+| --- | --- | --- |
+| `provider` | `"none"` | `anthropic`, `openai` o `openai-compatible`. |
+| `model` | `claude-sonnet-5` per a `anthropic` | El model. Obligatori per als altres proveïdors. |
+| `base_url` | El del proveïdor | Un altre endpoint: un proxy o un servidor local (obligatori per a `openai-compatible`). |
+| `max_tokens` | `2048` | Resposta més llarga, en tokens. |
+
+Consulta [`[ai]`](/ca/reference/configuration/). Amb la funcionalitat activada però sense secció
+`[ai]`, l'administració mostra **Les accions d’IA no estan disponibles en aquest servidor.**
+
+L'acció de text alternatiu envia imatges, així que tria un model que accepti imatges si la vols.
+
+## Què fan les accions
+
+### Traduir una entrada
+
+A l'editor d'una entrada localitzada, **Tradueix des de _idioma_…** obre **Tradueix amb IA**. Tria
+l'idioma a **Tradueix des de** i tria **Tradueix**. Els camps de text de l'esborrany desat d'aquell
+idioma (cadenes, textos, text enriquit, blocs i el text dins de components i zones dinàmiques) es
+tradueixen a l'idioma actual i substitueixen aquests camps al formulari.
+
+- Els camps compartits entre idiomes es deixen com estan.
+- Els canvis sense desar de l'idioma d'origen no s'inclouen: desa'l primer.
+- El Markdown, l'HTML, els URL, els ids i els tipus de bloc es mantenen tal qual.
+- Els camps traduïts queden marcats; revisa'ls i després desa, o tria **Desfés la traducció**.
+
+Això necessita permís per actualitzar l'entrada en l'idioma de destinació i per llegir-la en
+l'idioma d'origen.
+
+### Escriure text alternatiu
+
+A la mediateca, obre una imatge i tria **Genera text alternatiu**. El model descriu la imatge
+(fins a uns 125 caràcters) en la llengua de l'idioma per defecte, i omple la llegenda quan és
+buida. Funciona amb imatges JPEG, PNG, WebP i GIF, i envia el format `small` o `medium` quan n'hi
+ha, de manera que els originals grans no es pugen al proveïdor. Necessita el permís
+d'actualització de la mediateca (sobre el fitxer, per a **Fitxers propis**).
+
+### Resumir en un camp
+
+Els camps de text amb nom de resum (`description`, `summary`, `excerpt`, `abstract`, `intro`,
+`introduction`, `lead`, `teaser`) reben un botó **Resumeix _camp_** quan l'entrada té un camp de
+text enriquit o de blocs, o un camp de text anomenat `body`, `content`, `text` o `article`. Al blog
+d'exemple, **Excerpt** rep **Resumeix Body**. El resum s'ajusta a la longitud màxima del camp.
+
+### Suggerir metadades SEO
+
+Un component amb atributs de text `metaTitle` i `metaDescription`, com el
+[`shared.seo` suggerit](/ca/guides/frontend/seo-and-sitemap/), rep un botó **Suggereix**. Omple el
+títol meta, la descripció i, quan el component en té, `keywords`, a partir de l'esborrany desat de
+l'entrada.
+
+## Límits
+
+- Cada administrador pot fer 30 peticions d'IA per minut; les que passen d'aquí responen
+  **Massa sol·licituds d’IA. Espera un minut i torna-ho a provar.**
+- Els resums i els suggeriments SEO envien com a màxim 40.000 caràcters de text.
+- Una petició al proveïdor esgota el temps d'espera al cap de 120 segons.
+
+## Privadesa
+
+<Aside type="caution">
+Les accions d'IA envien contingut al proveïdor que configures: els camps que es tradueixen, es
+resumeixen o es descriuen, i les imatges per al text alternatiu. Tria un proveïdor i un pla que la
+teva organització permeti per a aquest contingut, comprova'n les condicions de retenció de dades, i
+planteja't un model local (`openai-compatible`) per al contingut que no ha de sortir de la teva
+xarxa.
+</Aside>
+
+- Les peticions van del servidor de Verdin al proveïdor; la clau mai no arriba al navegador.
+- Només s'envia l'entrada de l'acció: els camps de text de l'entrada, el text que cal resumir, o una
+  imatge i el seu nom de fitxer. Els atributs privats i les altres entrades no.
+- Les accions només llegeixen el que l'administrador ja pot llegir, i els suggeriments no es desen.
+
+L'administració mostra quin model ha respost (**Suggeriments de _model_ (_proveïdor_).**).
+
+Per permetre que agents d'IA de fora de l'administració llegeixin i escriguin contingut, consulta
+[Servidor MCP](/ca/guides/integrations/mcp/).

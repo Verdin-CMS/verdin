@@ -1,0 +1,155 @@
+---
+title: Actions IA
+description: Offrez aux rédacteurs l’aide de l’IA dans le panneau d’administration (traduction, texte alternatif, résumés et métadonnées SEO) avec le fournisseur de modèles de votre choix.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Les actions IA ajoutent quatre assistants au panneau d’administration : traduire une entrée à
+partir d’une autre langue, rédiger le texte alternatif d’une image, résumer un long texte dans un
+champ court, et suggérer des métadonnées SEO. Elles utilisent un fournisseur de modèles que vous
+configurez (Anthropic, OpenAI ou un serveur local comme Ollama), avec votre propre clé.
+
+Chaque action renvoie une suggestion qui remplit le formulaire. Rien n’est enregistré tant que le
+rédacteur ne l’a pas relue et enregistrée, et chaque action peut être annulée.
+
+## Configuration
+
+Les actions IA nécessitent à la fois un fournisseur dans `verdin.toml` et l’activation de la
+fonctionnalité.
+
+<Steps>
+
+1. Ajoutez une section `[ai]` et fournissez la clé au serveur dans `VERDIN_AI_KEY` :
+
+   <Tabs syncKey="ai-provider">
+   <TabItem label="Anthropic">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "anthropic"
+   # model = "claude-sonnet-5"   # the default
+   ```
+
+   </TabItem>
+   <TabItem label="OpenAI">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai"
+   model = "gpt-4.1-mini"        # required: name the model you want
+   ```
+
+   </TabItem>
+   <TabItem label="Local (Ollama)">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai-compatible"
+   base_url = "http://localhost:11434/v1"
+   model = "llama3.2-vision"
+   ```
+
+   Les serveurs locaux n’ont pas besoin de `VERDIN_AI_KEY`. LM Studio, vLLM et les autres
+   serveurs dotés d’une API compatible OpenAI fonctionnent de la même façon.
+
+   </TabItem>
+   </Tabs>
+
+   ```sh title="Terminal"
+   export VERDIN_AI_KEY=sk-...
+   ```
+
+2. Redémarrez Verdin. Il refuse de démarrer quand la section est incomplète : une clé manquante,
+   ou un `model` ou un `base_url` manquant là où le fournisseur en a besoin.
+3. Dans **Paramètres → Fonctionnalités**, activez **Actions IA**.
+
+</Steps>
+
+| Clé | Valeur par défaut | Description |
+| --- | --- | --- |
+| `provider` | `"none"` | `anthropic`, `openai` ou `openai-compatible`. |
+| `model` | `claude-sonnet-5` pour `anthropic` | Le modèle. Obligatoire pour les autres fournisseurs. |
+| `base_url` | Celle du fournisseur | Un autre endpoint : un proxy, ou un serveur local (obligatoire pour `openai-compatible`). |
+| `max_tokens` | `2048` | Longueur maximale de la réponse, en tokens. |
+
+Voir [`[ai]`](/fr/reference/configuration/). Quand la fonctionnalité est activée sans section
+`[ai]`, l’administration affiche **Les actions IA ne sont pas disponibles sur ce serveur.**
+
+L’action de texte alternatif envoie des images : choisissez un modèle qui accepte les images si
+vous voulez l’utiliser.
+
+## Ce que font les actions
+
+### Traduire une entrée
+
+Dans l’éditeur d’une entrée localisée, **Traduire depuis _langue_…** ouvre
+**Traduire avec l’IA**. Choisissez la langue dans **Traduire depuis** et choisissez
+**Traduire**. Les champs texte du brouillon enregistré de cette langue (chaînes, textes, texte
+enrichi, blocks, et le texte dans les composants et les zones dynamiques) sont traduits dans la
+langue actuelle et remplacent ces champs dans le formulaire.
+
+- Les champs partagés entre les langues ne sont pas touchés.
+- Les modifications non enregistrées dans la langue source ne sont pas incluses : enregistrez-la
+  d’abord.
+- Le Markdown, le HTML, les URL, les identifiants et les types de blocs sont conservés tels quels.
+- Les champs traduits sont signalés ; relisez-les, puis enregistrez, ou choisissez
+  **Annuler la traduction**.
+
+Cela nécessite l’autorisation de modifier l’entrée dans la langue cible et de la lire dans la
+langue source.
+
+### Rédiger un texte alternatif
+
+Dans la médiathèque, ouvrez une image et choisissez **Générer le texte alternatif**. Le modèle
+décrit l’image (en 125 caractères environ) dans la langue de la langue par défaut, et remplit la
+légende quand elle est vide. Cela fonctionne sur les images JPEG, PNG, WebP et GIF, et envoie le
+format `small` ou `medium` quand il existe, pour que les grands originaux ne soient pas envoyés au
+fournisseur. Nécessite l’autorisation de modification de la médiathèque (sur le fichier, pour
+**Ses fichiers**).
+
+### Résumer dans un champ
+
+Les champs texte nommés comme un résumé (`description`, `summary`, `excerpt`, `abstract`,
+`intro`, `introduction`, `lead`, `teaser`) obtiennent un bouton **Résumer _champ_** quand
+l’entrée a un champ de texte enrichi ou blocks, ou un champ texte nommé `body`, `content`, `text`
+ou `article`. Dans le blog d’exemple, **Excerpt** obtient **Résumer Body**. Le résumé respecte la
+longueur maximale du champ.
+
+### Suggérer des métadonnées SEO
+
+Un composant doté d’attributs texte `metaTitle` et `metaDescription`, comme le
+[`shared.seo` proposé](/fr/guides/frontend/seo-and-sitemap/), obtient un bouton **Suggérer**. Il
+remplit le titre meta, la description et, quand le composant en a un, `keywords`, à partir du
+brouillon enregistré de l’entrée.
+
+## Limites
+
+- Chaque administrateur peut faire 30 requêtes IA par minute ; au-delà, la réponse est
+  **Trop de requêtes IA. Attendez une minute et réessayez.**
+- Les résumés et les suggestions SEO envoient au plus 40 000 caractères de texte.
+- Une requête au fournisseur expire au bout de 120 secondes.
+
+## Confidentialité
+
+<Aside type="caution">
+Les actions IA envoient du contenu au fournisseur que vous configurez : les champs traduits,
+résumés ou décrits, et les images pour le texte alternatif. Choisissez un fournisseur et une offre
+que votre organisation autorise pour ce contenu, vérifiez ses conditions de conservation des
+données, et envisagez un modèle local (`openai-compatible`) pour le contenu qui ne doit pas
+quitter votre réseau.
+</Aside>
+
+- Les requêtes partent du serveur Verdin vers le fournisseur ; la clé n’atteint jamais le
+  navigateur.
+- Seule l’entrée de l’action est envoyée : les champs texte de l’entrée, le texte à résumer, ou
+  une image et son nom de fichier. Les attributs privés et les autres entrées ne le sont pas.
+- Les actions ne lisent que ce que l’administrateur peut déjà lire, et les suggestions ne sont
+  pas stockées.
+
+L’administration indique quel modèle a répondu (**Suggestions de _modèle_ (_fournisseur_).**).
+
+Pour permettre à des agents IA hors de l’administration de lire et d’écrire du contenu, voir
+[Serveur MCP](/fr/guides/integrations/mcp/).

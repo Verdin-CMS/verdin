@@ -1,0 +1,134 @@
+---
+title: Plugins
+description: O que os plugins do Verdin podem fazer, como o sandbox WebAssembly e as capacidades os mantêm contidos, e como instalá-los e ativá-los.
+sidebar:
+  order: 1
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Os plugins adicionam comportamento ao Verdin sem alterar nem reconstruir o servidor. Um plugin é
+um módulo WebAssembly com um manifesto, colocado no diretório `plugins/` do projeto. Esta página
+explica o que os plugins podem fazer e como instalar um; para escrever um, siga o
+[tutorial de plugin](/pt-br/extending/plugin-tutorial/) e consulte os detalhes na
+[referência de plugins](/pt-br/extending/plugin-reference/).
+
+## O que um plugin pode fazer
+
+| Ponto de extensão | Para que serve |
+| --- | --- |
+| **Hooks nas escritas** | Antes de uma entrada ser criada, atualizada, publicada, despublicada, excluída ou ter o rascunho descartado, altera os dados ou recusa a escrita com uma mensagem. Depois da escrita, reage a ela (registrar no log, notificar, sincronizar). |
+| **Rotas** | Serve endpoints HTTP em `/api/plugins/<name>/…`: um receptor de webhooks, um feed calculado, um proxy para outro serviço. |
+| **Jobs agendados** | Roda uma função em uma programação cron (UTC). |
+| **Campos GraphQL** | Adiciona campos `name(args: JSON): JSON` a `Query` ou `Mutation`. |
+| **Widgets do dashboard** | Adiciona tipos de widget ao dashboard da administração, como Web Components. |
+| **Campos personalizados** | Dá aos atributos um editor personalizado na administração (um seletor de cor, um mapa), como Web Components; o valor é armazenado como um tipo de atributo normal. |
+| **Configurações** | Declara um formulário de configurações que os administradores preenchem em **Configurações → Plugins**. |
+
+Um plugin lê e escreve conteúdo pelo mesmo Document Service da administração e da API, então
+os webhooks, o histórico, as etapas de revisão e a validação se aplicam às suas escritas.
+
+<Aside type="note">
+Os plugins do Verdin não são plugins do Strapi. Os plugins do Strapi são pacotes Node.js com
+acesso total ao servidor; o Verdin não roda JavaScript no servidor. Os campos personalizados
+declarados por schemas do Strapi (atributos `customField`) carregam como estão, e um plugin do
+Verdin pode fornecer o seu editor.
+</Aside>
+
+## O sandbox
+
+Os plugins rodam em um sandbox WebAssembly ([Extism](https://extism.org), sobre o Wasmtime). Um
+módulo não tem arquivos, sockets nem conexão própria com o banco de dados. Tudo o que ele faz
+fora da sua própria memória passa por algumas funções do host, e o servidor verifica cada
+chamada contra as **capacidades** que o manifesto declara:
+
+| Capacidade | Concede |
+| --- | --- |
+| `read` | Ler entradas dos tipos de conteúdo listados (ou `*`). |
+| `write` | Criar, atualizar, publicar, despublicar e excluir entradas dos tipos listados (e também lê-las). |
+| `http` | Requisições HTTP para os hosts listados (`api.example.com`, `*.example.com`). |
+| `kv` | Um armazenamento chave-valor próprio, no banco de dados do Verdin. |
+
+<Diagram
+  caption="As chamadas para um plugin, e o que as suas chamadas ao host podem alcançar"
+  code={`flowchart LR
+    W[Escritas] -->|hooks| M
+    R["/api/plugins/name/…"] --> M
+    J[Jobs agendados] --> M
+    M[Módulo WebAssembly] --> C{Capacidades}
+    C -->|read, write| D[(Conteúdo)]
+    C -->|kv| K[(Armazenamento do plugin)]
+    C -->|http| H[Hosts listados]`}
+/>
+
+Cada chamada também tem limites: um limite de tempo (5 segundos por padrão) e um limite de
+memória (64 MB por padrão), definidos no manifesto. Um módulo que dá trap ou estoura o tempo faz
+falhar apenas aquela chamada; o Verdin o reconstrói na chamada seguinte.
+
+O que o sandbox não decide por você:
+
+- **As rotas são públicas.** As requisições para `/api/plugins/<name>/…` não são verificadas
+  contra o **Acesso público** nem contra as permissões dos tokens de API. O plugin recebe quem
+  está chamando (qualquer pessoa, um token de API ou um usuário final) e precisa verificar isso.
+- **Os hooks veem todas as escritas nos seus tipos**, qualquer que seja a capacidade `read` do
+  plugin.
+- **Um hook before que falha não bloqueia a escrita.** Se o módulo travar ou estourar o tempo, o
+  erro é registrado no log e a escrita continua. Apenas uma recusa explícita a interrompe.
+
+## Instale um plugin
+
+<Steps>
+
+1. Coloque o plugin no seu próprio diretório em `plugins/`, ao lado do `verdin.toml`. Ele
+   contém o manifesto, o módulo e, opcionalmente, os arquivos do painel de administração:
+
+   <FileTree>
+   - verdin.toml
+   - plugins/
+     - reading-time/
+       - plugin.toml
+       - plugin.wasm
+       - admin/ opcional: Web Components para o painel de administração
+         - index.js
+   - schema/
+   </FileTree>
+
+2. Reinicie o Verdin. Ele carrega todos os `plugins/*/plugin.toml` na inicialização e registra
+   `plugin found` para cada um. Um plugin que não carrega (manifesto inválido, módulo ausente,
+   nome duplicado) é listado em **Configurações → Plugins** com o motivo.
+
+3. No painel de administração, abra **Configurações → Plugins**. Revise o que o plugin pede em
+   **Acesso**, **Hooks**, **Rotas** e **Tarefas**, e então ative-o.
+
+4. Se o plugin tiver configurações, abra **Configurações** no seu cartão, preencha-as e salve.
+
+</Steps>
+
+Os plugins instalados começam desativados. Ativar um plugin e editar as suas configurações vale
+na hora, em todas as instâncias (as outras instâncias recebem a alteração em até
+`[server].sync_interval_secs`). As alterações no `plugin.toml` ou no módulo precisam de uma
+reinicialização.
+
+Gerenciar plugins exige a permissão `plugins.manage` (**Gerenciar plugins**). Veja a
+[referência de permissões](/pt-br/reference/permissions/).
+
+## Configure `[plugins]`
+
+```toml title="verdin.toml"
+[plugins]
+path = "plugins"   # directory of plugins, relative to verdin.toml
+run_jobs = true    # run scheduled jobs on this instance
+```
+
+Com várias instâncias, defina `run_jobs = false` em todas menos uma, para que cada job rode uma
+única vez. Veja a [referência de configuração](/pt-br/reference/configuration/).
+
+## Operação
+
+- **Uma chamada por vez.** Cada plugin tem uma instância e atende uma chamada por vez, então uma
+  rota lenta atrasa os hooks daquele plugin. Mantenha as funções curtas.
+- **Logs.** O que um plugin registra vai para o log do servidor e para **Configurações →
+  Plugins → Logs** (as últimas 200 linhas, mantidas em memória).
+- **Deploys.** Leve os plugins junto com o projeto (na imagem ou no volume), como o schema. Os
+  interruptores e as configurações ficam no banco de dados.

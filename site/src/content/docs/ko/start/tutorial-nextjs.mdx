@@ -1,0 +1,382 @@
+---
+title: '튜토리얼: Next.js로 블로그 만들기'
+description: Verdin의 예제 스키마로 타입 있는 쿼리, slug별 글 페이지, 카테고리, 선택 사항인 초안 미리 보기를 갖춘 작은 Next.js App Router 블로그를 만듭니다.
+sidebar:
+  order: 4
+  label: Next.js 블로그
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+이 튜토리얼에서는 Verdin에서 콘텐츠를 읽는 블로그를 [Next.js](https://nextjs.org)와 App Router로 만듭니다. 글을 나열하는 홈
+페이지, 카테고리와 함께 `/articles/<slug>`에 있는 글마다 페이지 하나, 그리고 선택적으로 관리자의 미리 보기 링크에서 초안을
+보여 주는 페이지입니다. Server Components에서 스키마로 생성한 타입과 함께 타입 클라이언트 `@verdin/client`를 씁니다.
+
+Next.js 16.3(`create-next-app` 16.3), React 19.2, Node.js 20.9 이상, Verdin과 `@verdin/client` 0.10 기준으로 작성했습니다.
+`cacheComponents` 없이 Next.js의 기본 캐싱을 씁니다. [Astro 튜토리얼](/ko/start/tutorial-astro/)은 같은 블로그를 Astro로
+만듭니다.
+
+## 시작하기 전에
+
+`PATH`에 `verdin` 바이너리([빠른 시작](/ko/start/quickstart/) 참고), Node.js, Git이 필요합니다. 결과적으로 두 폴더가 나란히
+생깁니다. Verdin 프로젝트인 `cms`와 Next.js 앱인 `blog`입니다.
+
+## 1. 블로그 스키마로 Verdin 설정
+
+저장소의 [`examples/blog`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) 프로젝트는 블로그를 모델링합니다.
+제목, `slug`, 요약, Markdown `body`, 카테고리, 태그를 가진 글과, homepage 싱글 타입, 컴포넌트 몇 개입니다.
+
+<Steps>
+
+1. Verdin 프로젝트를 만들고 예제 스키마를 복사합니다.
+
+   ```sh title="Terminal"
+   git clone --depth 1 https://github.com/Verdin-CMS/verdin.git
+   verdin new cms
+   cp verdin/examples/blog/schema/content-types/{article,category,tag,homepage}.json cms/schema/content-types/
+   cp -r verdin/examples/blog/schema/components/* cms/schema/components/
+   ```
+
+2. 시작합니다.
+
+   ```sh title="Terminal"
+   cd cms
+   verdin dev
+   ```
+
+   처음 시작하면 네 콘텐츠 타입의 테이블이 만들어집니다.
+
+3. [http://localhost:1337/admin/](http://localhost:1337/admin/)을 열고 첫 관리자를 만듭니다.
+
+4. **컬렉션** 아래에서 **Category**를 열고, **새 항목**을 선택하고, 이름을 `News`로 한 뒤 저장합니다.
+
+5. **Article**을 열고, **새 항목**을 선택하고, 제목, 요약, Markdown 본문을 채웁니다. `slug`는 제목에서 생성됩니다.
+   카테고리로 `News`를 고르고 **게시**를 선택합니다. 같은 방법으로 글을 하나 더 추가합니다.
+
+6. **설정 → 공개 접근**을 열고 **Article**과 **Category**에 대해 **목록 조회**와 **단건 조회**를 허용한 뒤 **저장**을
+   선택합니다.
+
+</Steps>
+
+API가 응답하는지 확인합니다.
+
+```sh title="Terminal"
+curl 'localhost:1337/api/articles?populate=category'
+```
+
+<Aside>
+관계를 populate하려면 대상에 대한 읽기 권한이 필요합니다. **Category**에 **목록 조회**가 없으면 `populate=category`는
+``invalid key `category` in populate``와 함께 `400`으로 응답합니다.
+</Aside>
+
+## 2. Next.js 앱 만들기
+
+새 터미널에서 `cms` 옆에 만듭니다.
+
+```sh title="Terminal"
+npx create-next-app@latest blog --ts --app --src-dir --no-tailwind --no-eslint --no-react-compiler --import-alias '@/*' --yes
+cd blog
+npm install @verdin/client marked
+```
+
+[`marked`](https://marked.js.org)는 `body` 필드의 Markdown을 HTML로 바꿉니다.
+
+## 3. 타입 생성
+
+`verdin types`는 스키마를 읽고 콘텐츠 타입과 컴포넌트마다 TypeScript 인터페이스 하나와, 클라이언트용 라우트 맵
+`VerdinSchema`를 씁니다. Verdin 프로젝트의 설정을 가리키며 `blog`에서 실행하세요.
+
+```sh title="Terminal"
+verdin types -c ../cms/verdin.toml -o src/verdin-types.ts
+```
+
+파일에는 다음 등이 들어 있습니다.
+
+```ts title="src/verdin-types.ts"
+export interface Article extends DocumentBase {
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  body: string | null;
+  // …
+  category?: Category | null;
+  tags?: Tag[];
+}
+```
+
+관계, 미디어, 컴포넌트는 populate했을 때만 API가 반환하므로 선택 속성입니다. 스키마가 바뀔 때마다 명령을 다시 실행하세요.
+
+## 4. Verdin에 연결
+
+서버 URL을 `.env.local`에 넣습니다.
+
+```sh title=".env.local"
+VERDIN_URL=http://localhost:1337
+# VERDIN_TOKEN=…
+```
+
+토큰이 없으면 클라이언트는 1단계에서 연 공개 역할로 읽습니다. 대신 토큰으로 읽으려면 **설정 → API 토큰**에서
+**읽기 전용** 토큰을 만들고 `VERDIN_TOKEN`을 설정하세요. 두 변수 모두 서버에만 머뭅니다. `NEXT_PUBLIC_` 접두사가 없고,
+클라이언트는 Server Components에서만 실행되기 때문입니다.
+
+클라이언트를 한 번 만들어 공유합니다.
+
+```ts title="src/lib/verdin.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from '@/verdin-types';
+
+const url = process.env.VERDIN_URL ?? 'http://localhost:1337';
+
+export const verdin = createClient<VerdinSchema>({
+  url,
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+이제 `verdin.collection('articles')`는 스키마의 라우트만 받으며, 결과의 타입은 `Article`입니다.
+
+## 5. 레이아웃 바꾸기
+
+시작 레이아웃을 바꾸고, 새 페이지들이 쓰지 않는 `src/app/page.module.css`를 삭제합니다.
+
+```tsx title="src/app/layout.tsx"
+import type { Metadata } from 'next';
+import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'My blog',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <header>
+          <Link href="/">My blog</Link>
+        </header>
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+```
+
+## 6. 글 나열
+
+```tsx title="src/app/page.tsx"
+import Link from 'next/link';
+import { verdin } from '@/lib/verdin';
+
+export const revalidate = 60;
+
+export default async function Home() {
+  const { data: articles } = await verdin.collection('articles').find({
+    fields: ['title', 'slug', 'excerpt', 'publishedAt'],
+    populate: { category: { fields: ['name'] } },
+    sort: ['publishedAt:desc'],
+  });
+
+  return (
+    <>
+      <h1>Articles</h1>
+      <ul>
+        {articles.map((article) => (
+          <li key={article.documentId}>
+            <Link href={`/articles/${article.slug}`}>{article.title}</Link>
+            {article.category && <small> in {article.category.name}</small>}
+            {article.excerpt && <p>{article.excerpt}</p>}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+```
+
+이 쿼리는 Strapi v5 형식의 REST 호출
+`GET /api/articles?fields[0]=title&…&populate[category][fields][0]=name&sort[0]=publishedAt:desc`입니다. `fields`는 응답을
+작게 유지하고, `populate`는 이름만 가진 카테고리를 추가합니다. 공개 역할은 게시된 글만 읽습니다.
+
+`revalidate = 60`은 빌드 시점에 페이지를 미리 렌더링하고 그 뒤로는 최대 1분에 한 번 갱신하므로, 게시한 변경이 다시 빌드하지
+않아도 나타납니다.
+
+## 7. 글마다 페이지 추가
+
+글 페이지는 필터로 slug에 맞는 글을 찾습니다. `generateStaticParams`는 기존 글을 미리 렌더링하며, 나중에 게시된 글은 첫
+방문 때 렌더링됩니다.
+
+```tsx title="src/app/articles/[slug]/page.tsx"
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { marked } from 'marked';
+import { verdin } from '@/lib/verdin';
+
+export const revalidate = 60;
+
+type Props = { params: Promise<{ slug: string }> };
+
+async function getArticle(slug: string) {
+  const { data } = await verdin.collection('articles').find({
+    filters: { slug: { $eq: slug } },
+    populate: { category: true },
+    pagination: { pageSize: 1 },
+  });
+  return data[0];
+}
+
+export async function generateStaticParams() {
+  const { data: articles } = await verdin.collection('articles').find({
+    fields: ['slug'],
+    pagination: { pageSize: 100 },
+  });
+  return articles.map((article) => ({ slug: article.slug }));
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const article = await getArticle((await params).slug);
+  return { title: article?.title };
+}
+
+export default async function ArticlePage({ params }: Props) {
+  const article = await getArticle((await params).slug);
+  if (!article) notFound();
+  const html = await marked.parse(article.body ?? '');
+
+  return (
+    <article>
+      <h1>{article.title}</h1>
+      {article.category && <p>Category: {article.category.name}</p>}
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </article>
+  );
+}
+```
+
+Next.js 16에서 `params`는 promise이므로 slug를 읽기 전에 await하세요. 알 수 없는 slug는 글을 찾지 못하고 `notFound()`로
+404를 응답합니다. `pageSize`는 `[api].max_page_size`(기본 100)로 제한됩니다.
+
+<Aside type="caution">
+`marked`는 HTML을 정화하지 않습니다. 여러분의 편집자가 쓰는 Markdown이라면 괜찮지만, 신뢰할 수 없는 사람이 콘텐츠를 쓸 수
+있다면 렌더링하기 전에 HTML을 정화하세요.
+</Aside>
+
+## 8. 실행
+
+```sh title="Terminal"
+npm run dev
+```
+
+[http://localhost:3000](http://localhost:3000)을 엽니다. 목록에 게시된 글이 나오고, 각 글이 페이지로 연결됩니다.
+`npm run build`는 미리 렌더링할 글을 가져오므로 Verdin이 실행 중이어야 합니다.
+
+1분 안이 아니라 콘텐츠가 바뀌는 즉시 페이지를 갱신하려면, Verdin 웹훅이 호출하는 route handler에서 `revalidatePath`를
+호출하세요. [웹훅](/ko/guides/integrations/webhooks/)을 참고하세요.
+
+이제 프로젝트는 다음과 같습니다.
+
+<FileTree>
+- blog/
+  - .env.local
+  - src/
+    - verdin-types.ts `verdin types`가 생성
+    - lib/
+      - verdin.ts
+    - app/
+      - layout.tsx
+      - page.tsx
+      - articles/
+        - [slug]/
+          - page.tsx
+</FileTree>
+
+## 9. 선택 사항: 초안 미리 보기
+
+관리자는 수명이 짧은 미리 보기 토큰으로 사이트에서 초안을 열 수 있습니다. 토큰은 초안을 포함해 그 문서 하나만 읽습니다.
+
+`x-verdin-preview` 헤더로 미리 보기 토큰을 보내는 클라이언트를 추가합니다.
+
+```ts title="src/lib/verdin.ts" ins={11-17}
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from '@/verdin-types';
+
+const url = process.env.VERDIN_URL ?? 'http://localhost:1337';
+
+export const verdin = createClient<VerdinSchema>({
+  url,
+  token: process.env.VERDIN_TOKEN,
+});
+
+/** A client that reads one draft with the preview token from the admin's link. */
+export function previewClient(previewToken: string) {
+  return createClient<VerdinSchema>({
+    url,
+    headers: { 'x-verdin-preview': previewToken },
+  });
+}
+```
+
+그다음 페이지입니다. `searchParams`를 읽으므로 Next.js가 요청마다 렌더링하며, 토큰은 `preview` 쿼리 파라미터로 옵니다.
+
+```tsx title="src/app/preview/[documentId]/page.tsx"
+import { VerdinError } from '@verdin/client';
+import { notFound } from 'next/navigation';
+import { marked } from 'marked';
+import { previewClient } from '@/lib/verdin';
+
+type Props = {
+  params: Promise<{ documentId: string }>;
+  searchParams: Promise<{ preview?: string }>;
+};
+
+export default async function PreviewPage({ params, searchParams }: Props) {
+  const { documentId } = await params;
+  const { preview } = await searchParams;
+  if (!preview) notFound();
+
+  let article;
+  try {
+    ({ data: article } = await previewClient(preview)
+      .collection('articles')
+      .findOne(documentId, { status: 'draft', populate: { category: true } }));
+  } catch (error) {
+    if (error instanceof VerdinError) {
+      return <p>This preview link is invalid or has expired.</p>;
+    }
+    throw error;
+  }
+  const html = await marked.parse(article.body ?? '');
+
+  return (
+    <article>
+      <p>
+        <strong>Draft preview</strong>
+      </p>
+      <h1>{article.title}</h1>
+      {article.category && <p>Category: {article.category.name}</p>}
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </article>
+  );
+}
+```
+
+미리 보기 토큰은 항목을 나열할 수 없으므로, 페이지는 slug가 아니라 `documentId`로 초안을 찾습니다. 이제 Verdin에 페이지
+위치를 알려 줍니다.
+
+<Steps>
+
+1. 관리자 패널에서 **설정 → 기능**을 열고, **미리 보기**를 켜고, **미리 보기 URL 구성**을 선택합니다.
+2. **Article**의 URL 템플릿을 `http://localhost:3000/preview/{documentId}`로 설정하고 저장합니다. Verdin이 토큰을
+   `?preview=…`로 붙입니다.
+3. 글을 열고, 바꾸고, **초안 저장**을 선택한 뒤 **미리 보기 열기**를 선택합니다.
+
+</Steps>
+
+페이지에 초안이 나옵니다. 링크는 기본적으로 60분 동안 유효합니다. 자리 표시자와 설정은 [미리 보기](/ko/guides/content/preview/)를,
+미리 보기에서 편집하려면 [비주얼 에디팅](/ko/guides/frontend/visual-editing/)을 참고하세요.
+
+## 다음 단계
+
+- [타입 클라이언트](/ko/guides/frontend/typed-client/): `@verdin/client`의 모든 메서드.
+- [REST API](/ko/api/rest/): 필터, 정렬, 페이지네이션, `populate`.
+- [이미지](/ko/guides/frontend/images/): 미디어 라이브러리의 반응형 포맷.
+- [SEO와 사이트맵](/ko/guides/frontend/seo-and-sitemap/): `shared.seo` 컴포넌트와 Verdin의 사이트맵.

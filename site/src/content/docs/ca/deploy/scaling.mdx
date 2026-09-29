@@ -1,0 +1,119 @@
+---
+title: Executar diverses instàncies
+description: Executa diverses instàncies de Verdin d'un mateix projecte darrere d'un balancejador de càrrega — què comparteixen a través de la base de dades, què es queda a cada instància i les opcions que cal canviar.
+sidebar:
+  order: 8
+  label: Diverses instàncies
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Verdin guarda el seu estat a la base de dades, de manera que pots executar diverses instàncies
+del mateix projecte darrere d'un balancejador de càrrega per disponibilitat o per càrrega.
+Aquesta pàgina llista què comparteixen les instàncies, què es guarda cadascuna per a si mateixa i
+les opcions que importen.
+
+<Diagram
+  caption="Les instàncies comparteixen la base de dades i l'emmagatzematge de multimèdia; les memòries cau, els límits de freqüència i els fluxos d'esdeveniments es queden a cada instància."
+  code={`flowchart LR
+  LB[Balancejador de càrrega] --> A[Instància 1]
+  LB --> B[Instància 2]
+  LB --> C[Instància 3]
+  A --> DB[(Base de dades)]
+  B --> DB
+  C --> DB
+  A --> S3[(Multimèdia a S3)]
+  B --> S3
+  C --> S3`}
+/>
+
+## Llista de comprovació
+
+- **Una base de dades compartida.** PostgreSQL, MySQL o MariaDB. SQLite és un fitxer en una sola
+  màquina i no funciona amb diverses instàncies.
+- **La mateixa configuració a tot arreu.** Totes les instàncies fan servir el mateix
+  `verdin.toml`, els mateixos fitxers d'esquema i els mateixos secrets
+  (`VERDIN_ADMIN_JWT_SECRET`, `VERDIN_TOKEN_PEPPER`, `VERDIN_SSO_<ID>_SECRET`…). Amb secrets
+  diferents, les altres instàncies rebutgen les sessions i els tokens d'API creats en una.
+- **Mode de producció.** Executa `verdin start`, no `verdin dev`. Canvia l'esquema en
+  desenvolupament, confirma'l i migra un cop per desplegament.
+- **Emmagatzematge de multimèdia compartit.** Fes servir el proveïdor S3
+  (`[upload] provider = { name = "s3", … }`), o munta el mateix volum a totes les instàncies per
+  al proveïdor local.
+- **Comprovacions de salut.** Apunta el balancejador de càrrega a `GET /_ready`, que respon
+  `503` quan no es pot arribar a la base de dades. `GET /_health` només diu que el procés està en
+  marxa; fes-lo servir per a la disponibilitat.
+- **Tasques de connectors en una sola instància.** Defineix `[plugins].run_jobs = false` a totes
+  les instàncies excepte una; si no, cada instància executa les tasques programades.
+- **Mètriques per instància.** Amb `[metrics].enabled = true`, cada instància serveix el seu
+  propi `/_metrics`; llegeix-les totes.
+
+## Migracions amb diverses instàncies
+
+`verdin start --migrate` es pot executar sense risc a totes les instàncies alhora. Cada execució
+de migració manté un bloqueig a la base de dades (un advisory lock a PostgreSQL, `GET_LOCK` a
+MySQL i MariaDB, amb una espera de fins a 60 segons), de manera que la primera instància aplica
+els passos i les altres troben la base de dades al dia.
+
+Durant un desplegament progressiu, les instàncies de la versió antiga continuen funcionant un
+temps contra la base de dades migrada. Els passos segurs creen taules, afegeixen columnes que
+admeten nuls o tenen valor per defecte i índexs, amplien columnes de text o afegeixen valors
+d'enumeració, cosa que la versió antiga no nota. Aplica els passos arriscats o destructius
+(`verdin migrate apply --allow risky|destructive`) en un desplegament a part, quan cap instància
+de l'esquema antic ja no necessiti les dades. Consulta
+[Migracions d'esquema](/ca/concepts/schema-migrations/).
+
+## Què es comparteix
+
+| Què | Com |
+| --- | --- |
+| Sessions d'administració, tokens d'API, permisos | A la base de dades; no calen sessions persistents. |
+| Interruptors de funcionalitats i de connectors, idiomes, fluxos de revisió | A la base de dades. Cada instància els torna a llegir cada `[server].sync_interval_secs` (10 s), de manera que un canvi fet en una instància arriba a les altres dins d'aquest termini. |
+| Enviaments de webhooks | Una cua a la base de dades. Una instància reclama un enviament abans d'enviar-lo, de manera que cadascun surt un sol cop. |
+| Llançaments programats | Es reclamen a la base de dades abans d'executar-se, de manera que cadascun s'executa un sol cop. |
+| Resum diari | L'execució de cada dia es reclama a la base de dades, de manera que els administradors reben un sol correu. |
+| Reptes de claus d'accés | Els reptes consumits es registren a la base de dades, de manera que cadascun es respon un sol cop entre instàncies. |
+| Neteja del registre d'auditoria | S'executa a totes les instàncies; eliminar dues vegades les files antigues és inofensiu. |
+| Magatzem clau-valor dels connectors | A la base de dades. |
+
+## Què es queda a cada instància
+
+- **Els límits de freqüència** els compta cada instància. Amb `n` instàncies, un client pot fer
+  fins a `n` vegades `[api].public_rate_limit` peticions per minut. Aplica un límit global al
+  balancejador de càrrega si en necessites un.
+- **La memòria cau de respostes anònimes** (`[api].cache_ttl_secs`). Una escriptura buida la
+  memòria cau de la instància que l'ha feta; les altres poden servir la resposta anterior fins
+  que caduqui la seva entrada. Mantén el TTL en uns quants segons, o a `0`.
+- **Els esdeveniments en temps real i la presència** són els de la instància a què està connectat
+  un client. Fes servir sessions persistents per als fluxos d'esdeveniments (consulta
+  [Temps real](/ca/guides/frontend/realtime/)).
+- **L'índex de cerca** (`[search]`) viu al disc de la instància i només segueix les escriptures
+  que fa aquesta instància. Activa'l en una sola instància i encamina-hi les peticions `_q`, o
+  accepta que les altres es quedin enrere fins que es reiniciïn amb un directori d'índex buit.
+- **Les transformacions d'imatges** (`[upload.transforms]`) es desen a la memòria cau de cada
+  instància a `cache_dir`. Posa una CDN davant de `/uploads` per compartir-les.
+- **Tasques programades dels connectors**: consulta `run_jobs` a dalt.
+
+## Opcions
+
+```toml title="verdin.toml"
+[server]
+# How often to read settings that other instances changed; 0 turns it off.
+sync_interval_secs = 10
+
+[plugins]
+# Run the plugins' scheduled jobs here (true on one instance only).
+run_jobs = true
+
+[api]
+# Short-lived when each instance keeps its own cache.
+cache_ttl_secs = 5
+```
+
+Defineix `run_jobs` per instància amb `VERDIN_PLUGINS__RUN_JOBS=false`.
+
+## Connexions a la base de dades
+
+Cada instància obre fins a `[database].pool_max` connexions (10 per defecte). Mantén
+`instances × pool_max` per sota del límit del servidor, amb marge per a migracions, còpies de
+seguretat i manteniment. El límit per defecte de PostgreSQL és de 100 connexions.

@@ -1,0 +1,155 @@
+---
+title: Moduli
+description: Definisci moduli di contatto e di iscrizione nel pannello di amministrazione, inviali dal tuo sito, e leggi o esporta gli invii.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+La funzionalità **Moduli** gestisce i moduli del tuo sito (contatti, iscrizione alla
+newsletter, registrazione a eventi) senza un servizio esterno. I redattori definiscono i campi
+nel pannello di amministrazione, il tuo sito li mostra e li invia a Verdin, e gli invii
+vengono validati, memorizzati, inviati per email ed esportati in CSV.
+
+## Attivala
+
+In **Impostazioni → Funzionalità**, attiva **Moduli**, poi scegli **Gestisci i moduli** (o
+vai su **Impostazioni → Moduli**). Gestire i moduli e leggere gli invii richiede il permesso
+**Gestisci SEO, reindirizzamenti, menu e moduli** (`site.manage`), che ha il ruolo
+predefinito Editor. Vedi [Permessi](/it/reference/permissions/).
+
+Per le email di notifica, configura un provider in [`[email]`](/it/reference/configuration/);
+con il provider di default `log`, le email vengono solo scritte nel log del server.
+
+## Crea un modulo
+
+<Steps>
+
+1. In **Impostazioni → Moduli**, scegli **Nuovo modulo**.
+2. Dagli un nome (come **Contatto**) e uno **Slug** (`contact`). Lo slug fa parte dell'URL
+   del modulo.
+3. Nella scheda **Campi**, scegli **Aggiungi un campo** per ogni campo, con **Etichetta**,
+   **Nome**, **Tipo**, **Obbligatorio**, **Segnaposto** e **Lunghezza massima**.
+4. Nella scheda **Impostazioni**, imposta:
+   - **Notifica**: indirizzi email che ricevono ogni invio.
+   - **Messaggio di successo**: restituito al tuo sito dopo un invio.
+   - **Trappola anti-spam**: attiva di default (vedi [Spam](#spam)).
+5. Salva. La scheda **Integrazione** mostra l'endpoint pubblico e un esempio da copiare.
+
+</Steps>
+
+| Tipo | Etichetta nell'admin | Accetta |
+| --- | --- | --- |
+| `text` | **Testo** | Qualsiasi testo. |
+| `email` | **Email** | Un indirizzo email. |
+| `textarea` | **Testo lungo** | Qualsiasi testo. |
+| `number` | **Numero** | Un numero, memorizzato come numero. |
+| `select` | **Scelta** | Una delle sue **Opzioni** (una per riga). |
+| `checkbox` | **Casella di controllo** | `true`, `on`, `1` o `yes` è spuntata; qualsiasi altra cosa no. Una casella obbligatoria deve essere spuntata. |
+| `date` | **Data** | Qualsiasi testo (usa `<input type="date">`). |
+| `url` | **URL** | Un URL. |
+| `tel` | **Telefono** | Qualsiasi testo. |
+
+I nomi dei campi iniziano con una lettera, seguita da lettere, cifre o `_`, e sono unici nel
+modulo. Un modulo ha da 1 a 50 campi. I valori hanno al massimo **Lunghezza massima**
+caratteri (5.000 di default, al massimo 20.000).
+
+## Mostra il modulo
+
+`GET /api/_forms/{slug}` restituisce la definizione, così il tuo sito può mostrare i campi
+scelti dai redattori:
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+`honeypot` è `null` quando la trappola anti-spam è disattivata. La definizione viene messa in
+cache per un minuto (`Cache-Control: public, max-age=60`).
+
+## Invio
+
+`POST /api/_forms/{slug}` accetta i valori come JSON (i campi, o `{ "data": { … } }`) o come
+un normale invio di form (`application/x-www-form-urlencoded`). Non serve un token.
+
+<Tabs syncKey="form">
+<TabItem label="HTML form">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| Risposta | Quando |
+| --- | --- |
+| `201` con `{ "data": { "message": … } }` | Accettato. `message` è il **Messaggio di successo**, o `Thank you!`. |
+| `400` `ValidationError` | Un valore manca o non è valido. `details.errors` elenca `{ path, message }` per campo. |
+| `404` | Nessun modulo con quello slug, o la funzionalità è disattivata. |
+| `413` | L'invio supera i 64 KB. |
+| `429` | Lo stesso visitatore ha inviato più di 10 invii a questo modulo in un minuto. |
+
+I valori vengono ripuliti dagli spazi e verificati rispetto ai campi. I campi sconosciuti
+vengono scartati, così un visitatore non può aggiungere dati che non hai chiesto.
+
+Un normale invio di form HTML riceve la risposta JSON come pagina. Per un'esperienza
+migliore, invia con `fetch` e mostra tu il messaggio. Inviare dal browser verso un'altra
+origine richiede l'origine del tuo sito in [`[api].cors_origins`](/it/reference/configuration/).
+
+### Spam
+
+Con **Trappola anti-spam** attiva, aggiungi al modulo un campo `_gotcha` nascosto e vuoto. I
+bot compilano ogni campo; un invio con `_gotcha` compilato riceve risposta come accettato
+(`201`) e viene buttato via, così il bot non impara nulla. Insieme al limite di frequenza,
+questo blocca la maggior parte dello spam sui moduli senza CAPTCHA.
+
+## Leggi gli invii
+
+La scheda **Invii** del modulo elenca ciò che hanno inviato i visitatori, con l'ora in cui è
+stato **Ricevuto**. Puoi eliminare un invio, ed **Esporta CSV** li scarica tutti.
+
+Ogni invio accettato viene anche inviato per email agli indirizzi di **Notifica**, con un link
+agli invii nell'admin (costruito da [`[server].public_url`](/it/reference/configuration/)).
+
+<Aside type="note">
+Verdin memorizza i valori di ogni invio, lo user agent del visitatore e un hash con chiave
+del suo indirizzo IP (non l'indirizzo stesso), abbastanza per individuare un'ondata di invii
+senza tracciare le persone. Eliminare un modulo ne elimina gli invii.
+</Aside>
+
+## API admin
+
+Il pannello di amministrazione usa `/admin/api/site/forms` e `/admin/api/site/forms/{id}`,
+più `/admin/api/site/forms/{id}/submissions` e `…/submissions/export` (CSV), con l'access
+token di un admin e `site.manage`. Vedi [API admin](/it/api/admin/).

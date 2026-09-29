@@ -1,0 +1,220 @@
+---
+title: Deploys en CDN
+description: Geef redacteuren een Deploy-knop voor je statische site, volg de builds ervan, en wis je CDN-cache als content verandert.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Twee hulpmiddelen voor sites die cachen wat Verdin serveert:
+
+- **Deploys** zetten een knop **Deploy** in de header van het beheerpaneel. Die roept de build hook
+  van je site aan (Netlify, Vercel, Cloudflare Pages of een andere CI), en de provider meldt terug
+  hoe de build verloopt.
+- **CDN-purges** taggen responses van de content-API per contenttype en wissen die tags bij
+  Cloudflare, Fastly of je eigen endpoint wanneer content publiek verandert.
+
+Beide horen bij de kern: er is geen functieschakelaar. Deploys stel je in bij
+**Instellingen → Deployments**; de CDN in `verdin.toml`.
+
+## Deploys
+
+<Diagram code={`sequenceDiagram
+  participant E as Editor
+  participant V as Verdin
+  participant P as Buildprovider
+  E->>V: Deploy
+  V->>P: POST build hook
+  P-->>V: callback: building
+  P-->>V: callback: ready (url)
+  V-->>E: "Productiesite is gedeployed"`} caption="De knop Deploy roept de build hook aan; de provider meldt terug via de callback-URL." />
+
+### Een doel toevoegen
+
+<Steps>
+
+1. Maak bij je provider een build hook voor de site aan en kopieer de URL ervan (Netlify: **Build
+   hooks**; Vercel: **Deploy Hooks**; Cloudflare Pages: **Deploy hooks**; een CI: elke URL die bij
+   een `POST` een pipeline start).
+2. Ga in Verdin naar **Instellingen → Deployments** en kies **Een doel toevoegen**.
+3. Geef het een **Naam** (zoals **Productiesite**) en plak de **Build hook-URL**.
+4. Sla op. De hook-URL is geheim: vanaf nu wordt alleen de host ervan getoond. Om het doel naar een
+   andere hook te laten wijzen, gebruik je **URL vervangen**.
+
+</Steps>
+
+Beheerders die mogen deployen, zien nu **Deploy** in de header. Met meerdere doelen opent die een
+menu **Deploy naar**. Na bevestiging stuurt Verdin:
+
+```http
+POST <build hook URL>
+content-type: application/json
+
+{ "trigger": "verdin", "triggeredBy": "editor@example.com" }
+```
+
+Een doel deployt hoogstens elke 10 seconden, zodat een dubbelklik geen twee builds start. Het
+request krijgt na 15 seconden een time-out en volgt geen redirects. Een hook die met iets anders
+dan `2xx` antwoordt, wordt vastgelegd als **Geweigerd**.
+
+### Buildstatussen terugmelden
+
+Zonder callback blijft een deploy op **Gestart** staan. Om **Wordt gebouwd**, **Gereed** en
+**Fout** in het beheerpaneel te zien, en een link naar de gedeployde site, geef je de provider de
+callback-URL van het doel: kies de knop **Callback-URL** van het doel en kopieer hem.
+
+<Tabs syncKey="deploy-provider">
+<TabItem label="Netlify">
+
+Voeg in **Site configuration → Build & deploy → Deploy notifications** een uitgaande webhook toe
+voor **Deploy started**, **Deploy succeeded** en **Deploy failed**, met de callback-URL.
+
+</TabItem>
+<TabItem label="Vercel">
+
+Maak in **Team settings → Webhooks** een webhook aan voor de events `deployment.created`,
+`deployment.succeeded` en `deployment.error`, met de callback-URL.
+
+</TabItem>
+<TabItem label="Andere CI">
+
+`POST` JSON met een `status` (`building`, `ready` of `error`) en, optioneel, de gedeployde `url` en
+een `message`:
+
+```sh title="Terminal"
+curl -X POST "$VERDIN_CALLBACK_URL" -H 'content-type: application/json' \
+  -d '{ "status": "ready", "url": "https://www.example.com" }'
+```
+
+</TabItem>
+</Tabs>
+
+Verdin begrijpt `state` van Netlify, `type` van Vercel en een gewone `status`, en werkt de laatste
+deploy van het doel bij. Het antwoordt met `204`, of `404` als de URL verkeerd is. De callback-URL
+is `{public_url}{admin path}/api/deploy/callback/{id}/{secret}`, dus stel
+[`[server].public_url`](/nl/reference/configuration/) in op het adres dat providers kunnen bereiken.
+
+<Aside type="caution">
+De callback-URL bevat een geheim: iedereen die hem heeft, kan deploystatussen voor dat doel melden.
+Hij kan geen deploys starten of iets lezen.
+</Aside>
+
+**Deploygeschiedenis** toont de laatste 50 deploys, nieuwste eerst, met hun doel, starttijd,
+status, de HTTP-status van de hook en het bericht van de provider. Een doel verwijderen verwijdert
+zijn geschiedenis, niet de build hook.
+
+### Rechten
+
+| Recht | Staat toe |
+| --- | --- |
+| **Deploys starten** (`deploy.trigger`) | De knop **Deploy** in de header. De ingebouwde rol Editor heeft het. |
+| **Deploydoelen en de CDN beheren** (`deploy.manage`) | **Instellingen → Deployments**: doelen, callback-URL's en CDN-purges. |
+
+Zie [Rechten](/nl/reference/permissions/). Build hook-URL's volgen dezelfde adresregels als
+[webhooks](/nl/guides/integrations/webhooks/): met `verdin start` mogen ze niet naar privénetwerken
+wijzen, tenzij [`[webhooks].allow_private_networks`](/nl/reference/configuration/) dat toestaat.
+
+### In plaats daarvan bij elke wijziging deployen
+
+De knop past bij sites die op verzoek opnieuw bouwen. Om bij elke publicatie opnieuw te bouwen, maak
+je een [webhook](/nl/guides/integrations/webhooks/) aan voor `entry.publish` en `entry.unpublish`
+met de build hook als URL. Voor een geplande reeks wijzigingen publiceer je ze met een
+[release](/nl/guides/content/releases/) en koppel je de webhook aan `releases.publish`.
+
+## CDN-purges
+
+Als een CDN de content-API cachet, serveert hij verouderde content totdat de cache verloopt. Met
+`[cdn]` ingesteld tagt Verdin zijn responses en wist het de juiste tags als content verandert, zodat
+je lang kunt cachen.
+
+### Hoe taggen werkt
+
+Elke geslaagde `GET` van de content-API bevat `vd` (alles), `vd-<singularName>` (het contenttype)
+en de tag van elk type dat zijn documenten kunnen populeren: relatiedoelen, ook binnen componenten
+en dynamische zones, gevolgd tot hun eigen relaties. Voor de artikelen van het blogvoorbeeld, in
+beide headerformaten:
+
+```http
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
+```
+
+Een type met een polymorfe relatie kan elk type bereiken, dus zijn responses bevatten de tag van
+elk type.
+
+Cloudflare leest `Cache-Tag`, Fastly leest `Surrogate-Key`. Als content publiek verandert, wist
+Verdin de tag van het type:
+
+- een item publiceren, depubliceren of verwijderen;
+- elke schrijfactie naar een type zonder concept en publicatie (zijn schrijfacties zijn meteen
+  publiek).
+
+Een concept opslaan wist niets, omdat concepten niet publiek worden geserveerd. Wijzigingen binnen
+een seconde (`debounce_ms`) worden in één purge samengevoegd, en een mislukte purge wordt twee keer
+opnieuw geprobeerd.
+
+### Configureren
+
+<Tabs syncKey="cdn">
+<TabItem label="Cloudflare">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "cloudflare"
+zone_id = "023e105f4ecef8ad9ca31a8372d0c353"
+```
+
+`VERDIN_CDN_TOKEN` is een API-token met het recht **Cache Purge** op de zone.
+
+</TabItem>
+<TabItem label="Fastly">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "fastly"
+service_id = "SU1Z0isxPaozGVKXdv0eY"
+```
+
+`VERDIN_CDN_TOKEN` is een Fastly-API-token dat de service mag purgen.
+
+</TabItem>
+<TabItem label="Webhook">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "webhook"
+url = "https://purge.example.com/verdin"
+```
+
+Verdin stuurt `POST { "tags": ["vd-article"] }`, met `Authorization: Bearer <VERDIN_CDN_TOKEN>` als
+het token is ingesteld. Gebruik het voor een andere CDN, een reverse proxy of de revalidatie-API
+van je framework.
+
+</TabItem>
+</Tabs>
+
+```sh title="Terminal"
+export VERDIN_CDN_TOKEN=...
+```
+
+Verdin controleert de sectie bij het starten en weigert te draaien zonder de `zone_id`,
+`service_id`, `url` of het token dat de provider nodig heeft. Zie [`[cdn]`](/nl/reference/configuration/).
+
+Je CDN bepaalt nog steeds wat er wordt gecachet: stel een cacheregel in voor de API-paden
+(bijvoorbeeld `/api/*` bij anonieme `GET`s) met een lange edge-TTL. Houd geauthenticeerde requests,
+voorbeeldleesacties en `/api/_events` buiten de cache.
+
+### Controleren en met de hand wissen
+
+Het onderdeel **CDN** van **Instellingen → Deployments** toont de provider en
+**Recente cachewissingen** (**Gewist** of **Mislukt**, met de tags). **Alles wissen** laat elke
+response met de tag `vd` vallen.
+
+Omdat responses de tags bevatten van de types die ze kunnen populeren, wist het hernoemen van een
+categorie ook de gecachte artikellijsten die haar zouden kunnen bevatten, of het request nu om
+`populate` vroeg of niet.
+
+De eigen cache in het geheugen van Verdin ([`[api].cache_ttl_secs`](/nl/reference/configuration/))
+staat daar los van: die wordt bij elke wijziging geleegd.

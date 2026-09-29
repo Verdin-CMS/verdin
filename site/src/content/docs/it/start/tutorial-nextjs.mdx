@@ -1,0 +1,405 @@
+---
+title: 'Tutorial: un blog con Next.js'
+description: Costruisci un piccolo blog Next.js con App Router sullo schema di esempio di Verdin, con query tipizzate, pagine degli articoli per slug, categorie e un'anteprima opzionale delle bozze.
+sidebar:
+  order: 4
+  label: Blog con Next.js
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+In questo tutorial costruisci un blog con [Next.js](https://nextjs.org) e l'App Router che
+legge i suoi contenuti da Verdin: una home che elenca gli articoli, una pagina per articolo
+su `/articles/<slug>` con la sua categoria e, opzionalmente, una pagina che mostra le bozze
+dal link di anteprima dell'admin. Usi il client tipizzato `@verdin/client` con i tipi
+generati dallo schema, nei Server Component.
+
+Scritto per Next.js 16.3 (`create-next-app` 16.3), React 19.2 e Node.js 20.9 o successivo,
+con Verdin e `@verdin/client` 0.10. Usa il caching di default di Next.js, senza
+`cacheComponents`. Il [tutorial Astro](/it/start/tutorial-astro/) costruisce lo stesso blog
+con Astro.
+
+## Prima di iniziare
+
+Ti servono il binario `verdin` nel tuo `PATH` (vedi il [Quickstart](/it/start/quickstart/)),
+Node.js e Git. Alla fine avrai due cartelle affiancate: `cms`, il progetto Verdin, e `blog`,
+l'app Next.js.
+
+## 1. Configura Verdin con lo schema del blog
+
+Il progetto [`examples/blog`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+del repository modella un blog: articoli con un titolo, uno `slug`, un estratto, un `body` in
+Markdown, una categoria e dei tag, più un single type homepage e alcuni componenti.
+
+<Steps>
+
+1. Crea un progetto Verdin e copiaci lo schema di esempio:
+
+   ```sh title="Terminal"
+   git clone --depth 1 https://github.com/Verdin-CMS/verdin.git
+   verdin new cms
+   cp verdin/examples/blog/schema/content-types/{article,category,tag,homepage}.json cms/schema/content-types/
+   cp -r verdin/examples/blog/schema/components/* cms/schema/components/
+   ```
+
+2. Avvialo:
+
+   ```sh title="Terminal"
+   cd cms
+   verdin dev
+   ```
+
+   Il primo avvio crea le tabelle per i quattro tipi di contenuto.
+
+3. Apri [http://localhost:1337/admin/](http://localhost:1337/admin/) e crea il primo admin.
+
+4. Sotto **Collezioni**, apri **Category**, seleziona **Nuova voce**, chiamala `News` e
+   salva.
+
+5. Apri **Article**, seleziona **Nuova voce**, e compila un titolo, un estratto e un corpo in
+   Markdown. Lo `slug` viene generato dal titolo. Scegli `News` come categoria e seleziona
+   **Pubblica**. Aggiungi un secondo articolo allo stesso modo.
+
+6. Apri **Impostazioni → Accesso pubblico**, consenti **Trova** e **Trova uno** per
+   **Article** e **Category**, e seleziona **Salva**.
+
+</Steps>
+
+Verifica che l'API risponda:
+
+```sh title="Terminal"
+curl 'localhost:1337/api/articles?populate=category'
+```
+
+<Aside>
+Popolare una relazione richiede l'accesso in lettura al suo target. Senza **Trova** su
+**Category**, `populate=category` risponde `400` con ``invalid key `category` in populate``.
+</Aside>
+
+## 2. Crea l'app Next.js
+
+In un nuovo terminale, accanto a `cms`:
+
+```sh title="Terminal"
+npx create-next-app@latest blog --ts --app --src-dir --no-tailwind --no-eslint --no-react-compiler --import-alias '@/*' --yes
+cd blog
+npm install @verdin/client marked
+```
+
+[`marked`](https://marked.js.org) trasforma in HTML il Markdown del campo `body`.
+
+## 3. Genera i tipi
+
+`verdin types` legge lo schema e scrive un'interfaccia TypeScript per tipo di contenuto e
+componente, e una mappa `VerdinSchema` delle route per il client. Eseguilo da `blog`,
+puntando alla configurazione del progetto Verdin:
+
+```sh title="Terminal"
+verdin types -c ../cms/verdin.toml -o src/verdin-types.ts
+```
+
+Il file contiene, tra l'altro:
+
+```ts title="src/verdin-types.ts"
+export interface Article extends DocumentBase {
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  body: string | null;
+  // …
+  category?: Category | null;
+  tags?: Tag[];
+}
+```
+
+Relazioni, media e componenti sono opzionali perché l'API li restituisce solo quando li
+popoli. Esegui di nuovo il comando ogni volta che lo schema cambia.
+
+## 4. Collegati a Verdin
+
+Metti l'URL del server in `.env.local`:
+
+```sh title=".env.local"
+VERDIN_URL=http://localhost:1337
+# VERDIN_TOKEN=…
+```
+
+Senza token il client legge come ruolo pubblico, cioè quello che hai aperto al passo 1. Per
+leggere invece con un token, creane uno **Sola lettura** in **Impostazioni → Token API** e
+imposta `VERDIN_TOKEN`. Entrambe le variabili restano sul server: non hanno il prefisso
+`NEXT_PUBLIC_`, e il client gira solo nei Server Component.
+
+Crea il client una volta e condividilo:
+
+```ts title="src/lib/verdin.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from '@/verdin-types';
+
+const url = process.env.VERDIN_URL ?? 'http://localhost:1337';
+
+export const verdin = createClient<VerdinSchema>({
+  url,
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+`verdin.collection('articles')` ora accetta solo le route del tuo schema, e i suoi risultati
+sono tipizzati come `Article`.
+
+## 5. Sostituisci il layout
+
+Sostituisci il layout iniziale, ed elimina `src/app/page.module.css`, che le nuove pagine non
+usano:
+
+```tsx title="src/app/layout.tsx"
+import type { Metadata } from 'next';
+import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'My blog',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <header>
+          <Link href="/">My blog</Link>
+        </header>
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+```
+
+## 6. Elenca gli articoli
+
+```tsx title="src/app/page.tsx"
+import Link from 'next/link';
+import { verdin } from '@/lib/verdin';
+
+export const revalidate = 60;
+
+export default async function Home() {
+  const { data: articles } = await verdin.collection('articles').find({
+    fields: ['title', 'slug', 'excerpt', 'publishedAt'],
+    populate: { category: { fields: ['name'] } },
+    sort: ['publishedAt:desc'],
+  });
+
+  return (
+    <>
+      <h1>Articles</h1>
+      <ul>
+        {articles.map((article) => (
+          <li key={article.documentId}>
+            <Link href={`/articles/${article.slug}`}>{article.title}</Link>
+            {article.category && <small> in {article.category.name}</small>}
+            {article.excerpt && <p>{article.excerpt}</p>}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+```
+
+La query è la chiamata REST
+`GET /api/articles?fields[0]=title&…&populate[category][fields][0]=name&sort[0]=publishedAt:desc`,
+nel formato di Strapi v5. `fields` mantiene piccola la risposta, e `populate` aggiunge la
+categoria con il solo nome. Il ruolo pubblico legge solo gli articoli pubblicati.
+
+`revalidate = 60` pre-genera la pagina in fase di build e poi la aggiorna al massimo una
+volta al minuto, così le modifiche pubblicate compaiono senza una nuova build.
+
+## 7. Aggiungi una pagina per articolo
+
+La pagina dell'articolo trova il suo articolo per slug con un filtro. `generateStaticParams`
+pre-genera gli articoli esistenti; gli articoli pubblicati dopo vengono generati alla prima
+visita.
+
+```tsx title="src/app/articles/[slug]/page.tsx"
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { marked } from 'marked';
+import { verdin } from '@/lib/verdin';
+
+export const revalidate = 60;
+
+type Props = { params: Promise<{ slug: string }> };
+
+async function getArticle(slug: string) {
+  const { data } = await verdin.collection('articles').find({
+    filters: { slug: { $eq: slug } },
+    populate: { category: true },
+    pagination: { pageSize: 1 },
+  });
+  return data[0];
+}
+
+export async function generateStaticParams() {
+  const { data: articles } = await verdin.collection('articles').find({
+    fields: ['slug'],
+    pagination: { pageSize: 100 },
+  });
+  return articles.map((article) => ({ slug: article.slug }));
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const article = await getArticle((await params).slug);
+  return { title: article?.title };
+}
+
+export default async function ArticlePage({ params }: Props) {
+  const article = await getArticle((await params).slug);
+  if (!article) notFound();
+  const html = await marked.parse(article.body ?? '');
+
+  return (
+    <article>
+      <h1>{article.title}</h1>
+      {article.category && <p>Category: {article.category.name}</p>}
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </article>
+  );
+}
+```
+
+In Next.js 16, `params` è una promise: attendila con `await` prima di leggere lo slug. Uno
+slug sconosciuto non trova alcun articolo e risponde 404 tramite `notFound()`. `pageSize` è
+limitato da `[api].max_page_size` (100 di default).
+
+<Aside type="caution">
+`marked` non sanifica l'HTML. Va bene per il Markdown scritto dai tuoi redattori; se i
+contenuti possono arrivare da persone non affidabili, sanifica l'HTML prima di mostrarlo.
+</Aside>
+
+## 8. Eseguilo
+
+```sh title="Terminal"
+npm run dev
+```
+
+Apri [http://localhost:3000](http://localhost:3000): la lista mostra i tuoi articoli
+pubblicati, e ciascuno rimanda alla sua pagina. `npm run build` richiede che Verdin sia in
+esecuzione, perché recupera gli articoli per pre-generarli.
+
+Per aggiornare le pagine appena cambiano i contenuti invece che entro un minuto, chiama
+`revalidatePath` da un route handler attivato da un webhook di Verdin; vedi
+[Webhook](/it/guides/integrations/webhooks/).
+
+Il tuo progetto ora ha questo aspetto:
+
+<FileTree>
+- blog/
+  - .env.local
+  - src/
+    - verdin-types.ts generato da `verdin types`
+    - lib/
+      - verdin.ts
+    - app/
+      - layout.tsx
+      - page.tsx
+      - articles/
+        - [slug]/
+          - page.tsx
+</FileTree>
+
+## 9. Opzionale: anteprima delle bozze
+
+L'admin può aprire una bozza sul tuo sito con un token di anteprima di breve durata. Il token
+legge quel solo documento, bozze comprese, e nient'altro.
+
+Aggiungi un client che invia il token di anteprima nell'header `x-verdin-preview`:
+
+```ts title="src/lib/verdin.ts" ins={11-17}
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from '@/verdin-types';
+
+const url = process.env.VERDIN_URL ?? 'http://localhost:1337';
+
+export const verdin = createClient<VerdinSchema>({
+  url,
+  token: process.env.VERDIN_TOKEN,
+});
+
+/** A client that reads one draft with the preview token from the admin's link. */
+export function previewClient(previewToken: string) {
+  return createClient<VerdinSchema>({
+    url,
+    headers: { 'x-verdin-preview': previewToken },
+  });
+}
+```
+
+Poi la pagina. Legge `searchParams`, quindi Next.js la genera a ogni richiesta; il token
+arriva come parametro di query `preview`:
+
+```tsx title="src/app/preview/[documentId]/page.tsx"
+import { VerdinError } from '@verdin/client';
+import { notFound } from 'next/navigation';
+import { marked } from 'marked';
+import { previewClient } from '@/lib/verdin';
+
+type Props = {
+  params: Promise<{ documentId: string }>;
+  searchParams: Promise<{ preview?: string }>;
+};
+
+export default async function PreviewPage({ params, searchParams }: Props) {
+  const { documentId } = await params;
+  const { preview } = await searchParams;
+  if (!preview) notFound();
+
+  let article;
+  try {
+    ({ data: article } = await previewClient(preview)
+      .collection('articles')
+      .findOne(documentId, { status: 'draft', populate: { category: true } }));
+  } catch (error) {
+    if (error instanceof VerdinError) {
+      return <p>This preview link is invalid or has expired.</p>;
+    }
+    throw error;
+  }
+  const html = await marked.parse(article.body ?? '');
+
+  return (
+    <article>
+      <p>
+        <strong>Draft preview</strong>
+      </p>
+      <h1>{article.title}</h1>
+      {article.category && <p>Category: {article.category.name}</p>}
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </article>
+  );
+}
+```
+
+Un token di anteprima non può elencare voci, quindi la pagina cerca la bozza per
+`documentId` anziché per slug. Ora di' a Verdin dove si trova la pagina:
+
+<Steps>
+
+1. Nell'admin, apri **Impostazioni → Funzionalità**, attiva **Anteprima** e seleziona
+   **Configura gli URL di anteprima**.
+2. Imposta il modello di URL di **Article** a `http://localhost:3000/preview/{documentId}` e
+   salva. Verdin aggiunge il token come `?preview=…`.
+3. Apri un articolo, modificalo e seleziona **Salva bozza**, poi seleziona **Apri
+   anteprima**.
+
+</Steps>
+
+La pagina mostra la bozza. I link durano 60 minuti di default. Vedi
+[Anteprima](/it/guides/content/preview/) per segnaposto e impostazioni, e
+[Modifica visiva](/it/guides/frontend/visual-editing/) per modificare dall'anteprima.
+
+## Prossimi passi
+
+- [Client tipizzato](/it/guides/frontend/typed-client/): tutti i metodi di `@verdin/client`.
+- [API REST](/it/api/rest/): filtri, ordinamento, paginazione e `populate`.
+- [Immagini](/it/guides/frontend/images/): i formati responsive della libreria media.
+- [SEO e sitemap](/it/guides/frontend/seo-and-sitemap/): il componente `shared.seo` e la
+  sitemap di Verdin.

@@ -1,0 +1,123 @@
+---
+title: Importar i exportar entrades
+description: Exporta les entrades d'una llista a CSV o JSON, i crea o actualitza entrades a partir d'un fitxer CSV o JSON, amb una prova prèvia.
+sidebar:
+  order: 9
+  label: Importació i exportació
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+La llista d'administració de cada tipus de contingut exporta les seves entrades a CSV o JSON, i les
+torna a importar des del mateix tipus de fitxer: per corregir moltes entrades en un full de
+càlcul, carregar un catàleg de productes o copiar entrades entre projectes. Aquesta guia explica
+les dues direccions i el format del fitxer.
+
+Això és per a les entrades d'un sol tipus de contingut cada vegada. Per traslladar un projecte
+sencer, consulta [`verdin export` i `verdin import verdin`](/ca/reference/cli/). Per venir de
+Strapi, consulta [Migrar des de Strapi](/ca/migrate/from-strapi/).
+
+## Abans de començar
+
+- Exportar necessita accés de lectura al tipus de contingut. Només s'exporten els camps que el teu
+  rol pot llegir.
+- Importar necessita accés de creació, d'actualització o tots dos: les files que creen entrades
+  necessiten creació, les que les actualitzen necessiten actualització. Publicar les files
+  importades també necessita publicació. Consulta [Permisos](/ca/reference/permissions/).
+
+## Exporta entrades
+
+<Steps>
+
+1. Obre la llista del tipus de contingut i configura-la com vulguis l'exportació: filtres, cerca,
+   ordenació, estat i idioma.
+2. Selecciona **Exporta** i després **Exporta com a CSV** o **Exporta com a JSON**.
+
+</Steps>
+
+El fitxer conté les entrades que mostra la llista, amb els seus filtres, cerca i ordenació, de
+totes les pàgines, fins a 50.000 entrades. Cada fila comença per `documentId`, seguit dels camps.
+
+## Importa entrades
+
+<Steps>
+
+1. Obre la llista del tipus de contingut i selecciona **Importa**.
+2. Tria un **Fitxer**: un fitxer `.csv` amb una fila de capçalera, o un fitxer `.json` que
+   contingui una llista d'objectes, de fins a 1 MB.
+3. A **Columnes**, tria el camp on va cada columna. Les columnes amb el nom d'un camp ja estan
+   associades. Tria **Omet** per deixar fora una columna, i **ID del document (actualitza)** per a
+   la columna que identifica entrades existents.
+4. Opcionalment, activa **Publica les entrades importades**. Si no, es desen com a esborranys.
+5. Selecciona **Comprova**. Verdin comprova cada fila, restriccions i referències incloses, sense
+   escriure res, i informa de les files que crearia, actualitzaria o rebutjaria.
+6. Corregeix el fitxer si cal i selecciona **Importa**.
+
+</Steps>
+
+Com s'escriuen les files:
+
+- Una fila amb `documentId` actualitza aquella entrada; les altres creen entrades noves.
+- Les files s'escriuen una per una. Una fila que falla s'informa amb el seu camp i el problema, i
+  s'omet; les altres s'escriuen igualment.
+- L'informe llista fins a 100 files amb errors, i les columnes que no han coincidit amb cap camp.
+- Una importació accepta com a màxim 5.000 files. Divideix els fitxers més grans.
+- Les entrades s'escriuen en l'idioma actual de la llista.
+
+<Aside type="caution">
+Una importació passa les teves files per la mateixa validació que l'editor, però no es pot
+desfer. Executa primer **Comprova**, i exporta la llista abans d'una actualització gran perquè la
+puguis restaurar. Amb l'[historial de contingut](/ca/guides/content/content-history/) activat, cada
+entrada actualitzada conserva la seva versió anterior.
+</Aside>
+
+## Format del fitxer
+
+Els camps fan servir les mateixes formes que el format d'escriptura de l'API de contingut:
+
+| Camp | Valor |
+| --- | --- |
+| Text, nombres, booleans, dates | Com a l'API (`true`/`false`, dates ISO 8601). |
+| Relacions | `documentId` de les entrades relacionades. |
+| Multimèdia | Ids de fitxer de la mediateca. |
+| Relacions polimòrfiques | `uid:documentId`, per exemple `api::article:k3v9…`. |
+| Components, zones dinàmiques, blocs i JSON | JSON. |
+
+En CSV, les llistes (diverses relacions o fitxers) s'uneixen amb `|`.
+
+```csv title="articles.csv"
+documentId,title,slug,featured,tags
+,Hello world,hello-world,true,t1a2b3|t4c5d6
+k3v9x8…,Updated title,updated-title,false,
+```
+
+Les mateixes files en JSON:
+
+```json title="articles.json"
+[
+  { "title": "Hello world", "slug": "hello-world", "featured": true, "tags": ["t1a2b3", "t4c5d6"] },
+  { "documentId": "k3v9x8…", "title": "Updated title", "slug": "updated-title", "featured": false }
+]
+```
+
+L'exportació d'una llista sempre és un fitxer d'importació vàlid per al mateix tipus de contingut.
+
+## API d'administració
+
+- `GET /admin/api/content/{uid}/export?format=csv` (o `json`) accepta els paràmetres de consulta
+  de la llista: `filters`, `_q`, `sort`, `status` i `locale`.
+- `POST /admin/api/content/{uid}/import?locale=` accepta el contingut del fitxer com a cadena:
+
+```json
+{
+  "format": "csv",
+  "data": "title,slug\nHello world,hello-world\n",
+  "mapping": { "slug": "slug", "notes": null },
+  "dryRun": true,
+  "publish": false
+}
+```
+
+`mapping` associa una columna a un camp; `null` omet la columna, i les columnes sense associar
+conserven el seu nom. El cos de la petició està limitat per `[server].body_limit` (1 MB per
+defecte).

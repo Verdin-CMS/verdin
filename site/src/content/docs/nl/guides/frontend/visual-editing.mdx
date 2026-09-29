@@ -1,0 +1,123 @@
+---
+title: Visueel bewerken
+description: Laat redacteuren op tekst op je voorbeeldpagina klikken en uitkomen bij het veld in het beheerpaneel dat die tekst bevat.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Visueel bewerken maakt van je voorbeeldpagina een kaart van het beheerpaneel: een redacteur gaat
+met de muis over een kop, klikt op **Bewerken**, en het item opent met dat veld in focus. Het bouwt
+voort op [Voorbeeld](/nl/guides/content/preview/): stel eerst voorbeeld-URL's in, en voeg daarna de
+twee onderdelen hieronder aan de voorbeeldpagina toe.
+
+Verdin verbergt een kleine, onzichtbare source map in elke tekst die het teruggeeft (een techniek
+die bekendstaat als *stega*), en een overlayscript vindt die teksten op de pagina. Er verandert
+niets in je componenten: de gemarkeerde tekst wordt getoond zoals elke andere.
+
+<Diagram code={`flowchart LR
+  A[Voorbeeldpagina] -- "x-verdin-stega: true" --> B[Content-API]
+  B -- "tekst + onzichtbare source map" --> A
+  A -- "visual-editing.js: klik op Bewerken" --> C[Veld in het beheerpaneel]`} caption="De pagina vraagt om source maps, en de overlay maakt er links naar velden van." />
+
+## Instellen
+
+<Steps>
+
+1. Zet **Voorbeeld** aan in **Instellingen → Functies**, kies **Voorbeeld-URL’s instellen** en geef
+   elk contenttype de URL van de pagina die het toont. Het onderdeel **Visueel bewerken** van
+   dezelfde dialoog toont de scripttag en de header voor je server. Zie
+   [Voorbeeld](/nl/guides/content/preview/).
+
+2. Haal op de voorbeeldpagina content op met een token en de header `x-verdin-stega: true`. Het
+   token is het voorbeeldtoken uit de voorbeeld-URL (`?preview=…`, teruggestuurd als
+   `x-verdin-preview`) of een API-token:
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. Laad de overlay op dezelfde pagina:
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   Het pad volgt [`[admin].path`](/nl/reference/configuration/): `{path}/api/visual-editing.js`.
+
+</Steps>
+
+Geef met de [getypeerde client](/nl/guides/frontend/typed-client/) beide headers mee in `headers`:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+Source maps worden alleen aan REST-responses toegevoegd, niet aan GraphQL: lees voorbeeldcontent
+via de REST-API.
+
+Ga met de muis over gemarkeerde tekst op de pagina: die krijgt een groene omlijning en een knop
+**Bewerken**. In het voorbeeld naast elkaar van het beheerpaneel (**Voorbeeld openen** →
+**Naast elkaar**) vraagt de knop het beheerpaneel om het veld daar te openen. Als de pagina op
+zichzelf open is, opent de knop het item in een nieuw tabblad.
+
+<Aside type="note">
+Source maps worden alleen toegevoegd aan `GET`-requests die `x-verdin-stega: true` **en** een token
+(`Authorization` of `x-verdin-preview`) meesturen. Openbaar verkeer en alles wat je CDN cachet,
+krijgen ze nooit, en gemarkeerde responses worden verzonden met `Cache-Control: private, no-store`.
+</Aside>
+
+## Wat wordt gemarkeerd
+
+| Gemarkeerd | Niet gemarkeerd |
+| --- | --- |
+| Attributen `string`, `text` en `richtext` | `uid`, `email`, `password`, `enumeration` |
+| De eerste tekst van elk blok van een attribuut `blocks` | Getallen, booleans, datums, JSON |
+| Hetzelfde binnen componenten en dynamische zones (`seo.metaTitle`, `blocks.2.title`) | Lege strings |
+| Gepopuleerde relaties, wijzend naar het gerelateerde item | Mediavelden |
+
+De overlay leest ook markeringen in de attributen `alt` en `title`, zodat een gemarkeerde tekst die
+je in een ervan zet (bijvoorbeeld een bijschriftveld gebruikt als `alt`), klikbaar blijft.
+
+## Markeringen verwijderen waar tekst data is
+
+De markeringen zijn onzichtbare tekens die aan de tekst worden toegevoegd. Waar je een waarde als
+data gebruikt in plaats van haar te tonen (een sleutel, een URL, een vergelijking, een controle op
+de lengte van een `<title>`), verwijder je ze eerst:
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+Velden die van nature data zijn, zoals `uid`-slugs en enumeraties, worden nooit gemarkeerd, dus
+routeren op `slug` werkt zoals het is.
+
+## Hoe een markering wordt gecodeerd
+
+Voor tools die de markeringen zelf lezen: een markering is U+2064, dan elke UTF-8-byte van
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+als vier cijfers in grondtal 4 (meest significante eerst), geschreven met U+200B, U+200C, U+200D en
+U+2060, en dan U+2063. De admin-URL komt uit [`[server].public_url`](/nl/reference/configuration/)
+en `[admin].path`. De overlay stuurt `{ type: 'verdin:edit', href }` naar het bovenliggende venster
+met `postMessage`; het beheerpaneel handelt er alleen naar als het van de origin van de
+voorbeeld-URL komt.

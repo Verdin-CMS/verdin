@@ -1,0 +1,103 @@
+---
+title: Comentários e tarefas
+description: Discuta as entradas em tópicos, comente campos específicos, mencione outros administradores e atribua tarefas com prazos.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Os administradores podem discutir uma entrada em tópicos de comentários, comentar um campo,
+mencionar uns aos outros e atribuir tarefas com prazos, sem sair do editor. Este guia cobre os
+dois, quem pode fazer o quê e a API de administração. O Strapi não tem equivalente.
+
+## Antes de começar
+
+- **Configurações → Recursos → Comentários e tarefas** vem ativado por padrão.
+- Ler o tipo de conteúdo de uma entrada basta para ler e escrever os seus comentários e as suas
+  tarefas.
+- Os administradores mencionados e os responsáveis pelas tarefas recebem e-mails via `[email]`.
+  Com o provedor padrão `log`, os e-mails vão apenas para o log do servidor. Veja a
+  [referência de configuração](/pt-br/reference/configuration/).
+
+## Comente uma entrada
+
+<Steps>
+
+1. Abra a entrada e selecione **Comentários**. O botão mostra o número de tópicos abertos.
+2. Na aba **Comentários**, escreva em **Novo comentário**. Digite `@` para mencionar um
+   administrador.
+3. Selecione **Comentar**, ou pressione Control ou Command e Enter.
+
+</Steps>
+
+Para comentar um campo, use o botão de comentário ao lado do campo (**Comentar em**, seguido do
+nome do campo). Os tópicos de um campo aparecem em **Sobre** esse campo; **Mostrar todos** lista
+de novo todos os tópicos.
+
+Em um tópico, você pode:
+
+- **Responder**.
+- **Resolver** o tópico quando a discussão terminar, e **Reabrir** depois. Os tópicos resolvidos
+  vão para **Tópicos resolvidos**. Apenas o primeiro comentário de um tópico o resolve.
+- **Editar comentário** nos seus próprios comentários.
+- **Excluir comentário** ou **Excluir tópico** nos seus próprios comentários. Um Super Admin pode
+  excluir qualquer comentário.
+
+Os comentários são mantidos por idioma nos tipos localizados e têm até 10.000 caracteres.
+
+## Mencione um administrador
+
+Os administradores mencionados recebem um e-mail com o comentário e um link para a entrada,
+desde que possam lê-la. Você nunca recebe e-mail por mencionar a si mesmo.
+
+## Atribua uma tarefa
+
+<Steps>
+
+1. Abra a aba **Tarefas** do mesmo painel e selecione **Nova tarefa**.
+2. Informe um **Título** e, opcionalmente, uma **Descrição**, um **Responsável** e um **Prazo**.
+   O responsável precisa conseguir ler a entrada.
+3. Selecione **Criar tarefa**.
+
+</Steps>
+
+O responsável recebe um e-mail, a menos que tenha atribuído a tarefa a si mesmo. As tarefas com
+o prazo vencido aparecem como atrasadas. Marque uma tarefa como concluída a partir da sua linha.
+
+O criador e o responsável de uma tarefa podem alterá-la ou concluí-la. Apenas o seu criador a
+exclui. Um Super Admin pode fazer as duas coisas em qualquer tarefa.
+
+Para ver as suas tarefas abertas em todas as entradas, adicione o widget **Minhas tarefas** à
+página inicial: selecione **Personalizar** e depois **Adicionar widget**.
+
+## Trabalho conjunto ao vivo
+
+Quando outro administrador adiciona, resolve ou exclui um comentário ou uma tarefa na entrada que
+você tem aberta, o painel diz **Os comentários foram atualizados.** ou **As tarefas foram
+atualizadas.** e mostra a alteração.
+
+## API de administração
+
+Todas as rotas ficam em `/admin/api`. `uid`, `documentId` e `locale` identificam a entrada.
+
+| Rota | Faz |
+| --- | --- |
+| `GET /comments?uid=&documentId=&locale=` | Os tópicos da entrada com as suas respostas. |
+| `POST /comments` | `{ uid, documentId, locale?, field?, parentId?, body }`. `parentId` cria uma resposta. |
+| `PUT /comments/{id}` | `{ body }`. Apenas os seus próprios comentários. |
+| `DELETE /comments/{id}` | Os seus próprios comentários, ou qualquer um como Super Admin. |
+| `POST /comments/{id}/resolve`, `POST /comments/{id}/reopen` | No primeiro comentário de um tópico. |
+| `GET /tasks?uid=&documentId=&locale=` | As tarefas da entrada. |
+| `GET /tasks?mine=true&status=open` | As suas tarefas, nas entradas que você ainda pode ler. |
+| `POST /tasks` | `{ uid, documentId, locale?, title, description?, assigneeId?, dueDate? }`, com `dueDate` como `YYYY-MM-DD`. |
+| `PUT /tasks/{id}` | Criador ou responsável. Qualquer um de `title`, `description`, `assigneeId`, `dueDate` (`null` os limpa) e `status` (`open` ou `done`). |
+| `DELETE /tasks/{id}` | Apenas o criador (ou um Super Admin). |
+
+No corpo de um comentário, uma menção é escrita `@[Name](user:12)`, onde `12` é o id do
+administrador.
+
+<Aside type="note">
+As rotas respondem `404` enquanto o recurso está desativado. Desativá-lo esconde os comentários e
+as tarefas; eles são mantidos para quando você o reativar.
+</Aside>

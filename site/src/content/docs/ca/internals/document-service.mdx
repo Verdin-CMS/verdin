@@ -1,0 +1,159 @@
+---
+title: Document Service
+description: L'única API interna que llegeix i escriu contingut a Verdin, què garanteix a cada escriptura i el camí que fa una petició de l'API de contingut fins a arribar-hi.
+sidebar:
+  order: 5
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+El Document Service (`DocumentService` a `crates/verdin-content/src/service.rs`) és l'únic codi que
+llegeix i escriu files de contingut. L'API de contingut, l'API d'administració, GraphQL, MCP, els
+connectors, les importacions i el mapa del lloc hi passen tots, de manera que la validació,
+l'esborrany i publicació, les regles de relacions i els esdeveniments es comporten igual sigui quina
+sigui l'API que ha fet la crida. Com el Document Service de Strapi v5, treballa amb documents
+(identificats per `documentId`), no amb files.
+
+## API
+
+Els mètodes principals (simplificats; consulta el codi font per als tipus exactes):
+
+| Mètode | Fa |
+|---|---|
+| `find_many(uid, &Query) -> Page` | Una pàgina de documents, amb `meta` en forma de pàgina o de desplaçament |
+| `find_one(uid, document_id, &Query) -> Option<Json>` | Un document en l'estat i l'idioma de la consulta |
+| `single_document_id(uid)` | El document d'un tipus únic, si existeix |
+| `create(uid, &data, WriteOptions) -> String` | Crea un document i en retorna el `documentId` |
+| `update(uid, document_id, &data, WriteOptions)` | Actualització parcial de l'esborrany (o de l'única versió); crea una versió d'idioma nova quan cal |
+| `delete(uid, document_id)` | Elimina totes les versions del document en l'idioma actual |
+| `publish(uid, document_id, actor)` | Copia l'esborrany sobre la versió publicada |
+| `unpublish(uid, document_id)` | Elimina la versió publicada |
+| `discard_draft(uid, document_id)` | Substitueix l'esborrany per la versió publicada |
+| `uid_availability(…)` | Si un valor `uid` és lliure, amb un suggeriment lliure |
+| `document_locales`, `timeline`, `usage`… | Ajudes per al tauler d'administració |
+
+`WriteOptions` té dos camps: `publish` (publicar després d'escriure, als tipus amb esborrany i
+publicació) i `actor` (l'administrador registrat a `created_by_id` / `updated_by_id`).
+
+El servei és un valor barat de clonar que es configura amb mètodes constructors: `in_locale(locale)`
+per als tipus localitzats, `with_listener`, `with_hook`, `dry_run()` (valida una escriptura
+completament i la desfà, fet servir per les proves d'importació) i `without_plugin_hooks()` (per a
+les escriptures que fan els mateixos connectors).
+
+No sap qui fa la crida. Els permisos els aplica la capa de l'API abans de la crida: rebutja les
+accions que el client no té, restringeix per quins tipus pot poblar o filtrar una consulta, i afegeix
+filtres de condició a la consulta (per exemple, la condició «entrades pròpies» del rol **Author**
+d'administració es converteix en `created_by_id = <admin id>`). Els filtres formen part de l'SQL, de
+manera que la paginació i els recomptes es mantenen exactes.
+
+## Què fa cada escriptura
+
+1. **Hooks.** Primer s'executen els `DocumentHook`, per ordre: les etapes dels fluxos de revisió i
+   després els connectors. Un hook pot substituir les dades o rebutjar l'escriptura, cosa que es
+   converteix en un `400`. Fan servir els noms de cicle de vida de Strapi (`beforeCreate`,
+   `beforeUpdate`, `beforeDelete`, `beforePublish`, `beforeUnpublish`, `beforeDiscardDraft`).
+2. **Validació de l'entrada** (`input.rs`): les claus desconegudes, els camps del sistema (`id`,
+   `documentId`, marques de temps) i els costats inversos (`mappedBy`) de les relacions són errors;
+   cada valor es comprova amb el seu tipus d'atribut i les seves restriccions (`min`, `max`,
+   `minLength`, `maxLength`, `regex`, valors d'enumeració, cardinalitat de les relacions,
+   `allowedTypes` de la multimèdia); els components i les zones dinàmiques es validen de manera
+   recursiva; els valors `password` es fan passar per un hash amb argon2.
+3. **Referències.** Els documents relacionats i els fitxers multimèdia han d'existir, cosa que es
+   comprova dins de la transacció.
+4. **Files i enllaços**, en una sola transacció: s'insereix o s'actualitza la fila, i després es
+   reescriuen les seves taules d'enllaç de relacions, polimòrfiques i de multimèdia (posicions
+   renumerades 1..n). Enllaçar una destinació `oneToOne` o `oneToMany` l'aparta d'altres documents
+   en el mateix estat.
+5. **Camps obligatoris i regles.** Quan una versió passa a estar publicada, o a cada escriptura als
+   tipus sense esborrany i publicació, es comproven els atributs `required` (inclosos els de dins
+   de components i zones dinàmiques) i les regles de validació entre camps. Un error desfà tota
+   l'escriptura.
+6. **La unicitat** la fan complir els índexs únics amb àmbit. Una violació s'associa al seu atribut
+   i s'informa com a `ValidationError`, sense condicions de carrera.
+7. **Commit i després esdeveniments.** Després de confirmar la transacció, el servei crida tots els
+   `DocumentListener` amb un `DocumentEvent` (`entry.create`, `entry.update`, `entry.publish`,
+   `entry.unpublish`, `entry.discard-draft`, `entry.delete`), que porta l'uid, el `documentId`,
+   l'idioma i l'autor.
+
+Els errors de validació fan servir el format de Strapi: una llista de
+`{ path, message, name: "ValidationError" }`, on `path` apunta dins de les dades
+(`["seo", "metaTitle"]`, `["blocks", 2, "text"]`). El tauler d'administració els associa als seus
+camps.
+
+Els escoltadors mantenen l'estat derivat al dia amb el contingut sense codi per gestor: webhooks,
+historial de contingut, memòria cau de respostes, hooks posteriors dels connectors, registre
+d'auditoria, esdeveniments en temps real, comentaris i tasques, marques de «vist», purgues de CDN i
+l'índex de cerca. Un escoltador que falla registra el seu propi error; l'escriptura ja ha tingut
+èxit. Com que els escoltadors s'executen després del commit, una prova (dry run) mai no hi arriba.
+
+## Lectures
+
+Una lectura selecciona les files de l'estat i l'idioma demanats, aplica els filtres i l'ordenació a
+l'SQL, i després pobla el que s'ha demanat:
+
+- **Les relacions** es carreguen amb consultes agrupades, una per relació i nivell (`WHERE … IN (…)`,
+  en blocs de 500 ids), mai amb joins en cascada. Això evita tant les explosions cartesianes com les
+  consultes N+1. Es poblen com a màxim 1.000 entrades relacionades per entrada i relació; els
+  recomptes es mantenen exactes.
+- Les destinacions es llegeixen en la mateixa versió que l'origen: els documents publicats veuen
+  destinacions publicades, els esborranys veuen esborranys.
+- **Els components i les zones dinàmiques** surten de la seva columna JSON; les relacions i la
+  multimèdia que contenen es resolen amb les mateixes consultes agrupades.
+- **La cerca `_q`** fa servir l'índex Tantivy quan `[search]` està activat, i si no, un `$containsi`
+  que no distingeix majúscules sobre els camps de text.
+
+Com és la sortida (documents plans, formats dels valors, sintaxi de `populate`, límits) està
+documentat a l'[API REST](/ca/api/rest/).
+
+## Cicle de vida d'una petició de l'API de contingut
+
+<Diagram
+  caption="Una petició GET /api/articles, del sòcol a la base de dades"
+  code={`sequenceDiagram
+  participant C as Client
+  participant L as Capes compartides
+  participant H as handlers.rs
+  participant Q as verdin-query
+  participant D as Document Service
+  participant DB as Base de dades
+  C->>L: GET /api/articles?filters…
+  L->>H: IP del client, id de petició, CORS, límits, memòria cau
+  H->>H: encaminament per pluralName, autorització del token o del rol públic
+  H->>Q: anàlisi i validació contra l'esquema
+  Q-->>H: Query tipada
+  H->>D: find_many(uid, query)
+  D->>DB: SELECT … WHERE … ORDER BY … LIMIT
+  D->>DB: una consulta agrupada per relació poblada
+  D-->>H: documents i meta de la pàgina
+  H-->>C: { data, meta }`}
+/>
+
+1. **Capes compartides** (de fora cap a dins): es resol l'adreça del client (fent servir
+   `X-Forwarded-For` només des de `[server].trusted_proxies`), les mètriques compten la petició quan
+   estan activades, es defineix un id de petició que es propaga com a `x-request-id`, el traçat obre
+   un span, i CORS s'aplica a l'API de contingut i a GraphQL quan `[api].cors_origins` està definit.
+2. **Capes de l'API de contingut**: límits de freqüència per client, `ETag` i la memòria cau
+   opcional de lectures anònimes, el límit de mida del cos (`[server].body_limit`) i el temps d'espera
+   de la petició, i les etiquetes de memòria cau de CDN a les respostes.
+3. **Encaminament.** El segment del camí es busca entre els `pluralName` (tipus de col·lecció) i els
+   `singularName` (tipus únics) dels tipus de contingut. Els noms desconeguts són `404`.
+4. **Autorització** (`verdin-auth`). Sense capçalera `Authorization` vol dir el rol públic;
+   `Bearer vd_…` és un token d'API. Un token no vàlid o caducat és `401`, mai el rol públic. L'acció
+   de la ruta (`find`, `findOne`, `create`, `update`, `delete`, `publish`) ha d'estar concedida per al
+   tipus, o la resposta és `403`.
+5. **Anàlisi de la consulta** (`verdin-query`). La cadena de consulta en brut s'analitza en un arbre
+   de claudàtors (com a màxim 16 KB, 12 nivells, 1.000 parells), i després en una `Query` tipada
+   validada contra els camps del tipus: els camps desconeguts i `private` són `400`, i el populate,
+   els filtres de relació i les ordenacions per relació es limiten als tipus que el client pot
+   llegir. Llegir `?status=draft` també necessita `readDrafts`.
+6. **Document Service.** El gestor crida `find_many`, `find_one`, `create`, `update`, `delete` o una
+   acció. Les escriptures sense `?status=draft` publiquen als tipus amb esborrany i publicació
+   (comportament de Strapi v5), i tornen a llegir la versió escrita per a la resposta.
+7. **Resposta.** `{ "data": …, "meta": … }`. Els errors fan servir el mateix embolcall amb
+   `data: null` i un objecte `error`.
+
+Les rutes de l'API d'administració segueixen el mateix camí amb una sessió d'administració en lloc
+d'un token d'API, l'RBAC d'administració en lloc dels permisos de l'API de contingut, i valors per
+defecte centrats en els esborranys: llegeixen esborranys i només escriuen esborranys, i publicar és
+una acció explícita. GraphQL tradueix els seus arguments al mateix arbre de paràmetres abans del
+pas 5, de manera que comparteix l'analitzador, els límits i les regles de permisos.

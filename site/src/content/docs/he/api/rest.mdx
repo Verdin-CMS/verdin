@@ -1,0 +1,470 @@
+---
+title: "REST API"
+description: "נתיבים, פרמטרי שאילתה (filters, sort, pagination, fields, populate, locale, status), גופי בקשות, תגובות, שגיאות ומגבלות של ה-REST API של Verdin, התואם ל-Strapi v5."
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+כל סוג תוכן מקבל נתיבי REST תחת הקידומת של API התוכן, `/api` כברירת מחדל
+(`[api].prefix`). הנתיבים, הפרמטרים ומבנה התגובות עוקבים אחרי Strapi v5, כך שרוב
+הפרונטאנדים שנכתבו עבור Strapi עובדים בלי שינוי. העמוד הזה הוא התיעוד המלא; הדוגמאות
+משתמשות ב-[דוגמת הבלוג](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+(מאמרים, קטגוריות, תגיות ודף בית).
+
+השרת גם מתאר את הנתיבים של הסכמה *שלכם* במסמך OpenAPI 3.1 בכתובת
+`GET /api/_openapi.json`. העמודים של [API התוכן לדוגמה](/api/example/) מציגים את המסמך
+של הבלוג, ו[סביבת הניסוי ל-API](/he/api/playground/) מאפשרת לנסות בקשות.
+
+## דוגמה
+
+אותה שאילתה בכל API: עשרת המאמרים האחרונים של קטגוריה, עם שם הקטגוריה שלהם.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+ראו [GraphQL API](/he/api/graphql/) ו[לקוח עם טיפוסים](/he/guides/frontend/typed-client/).
+
+## אימות
+
+| כותרת `Authorization` | מבקש | הרשאות |
+| --- | --- | --- |
+| אין | ציבורי | **הגדרות ← גישה ציבורית** |
+| `Bearer vd_…` | אסימון API | הסוג וההרשאות של האסימון |
+| `Bearer <JWT>` | משתמש קצה | תפקיד משתמש הקצה שלו |
+
+אסימון לא מוכר, שפג תוקפו או פגום מחזיר `401`; הוא אף פעם לא נופל חזרה לגישה ציבורית.
+מבקש תקין בלי ההרשאה מקבל `403`. ראו [הרשאות](/he/concepts/permissions/).
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+דפדפנים ממקורות אחרים יכולים לקרוא ל-API רק כש-`[api].cors_origins` מפרט אותם.
+
+## נתיבים
+
+סוגי אוסף מוגשים לפי ה-`pluralName` שלהם:
+
+| שיטה ונתיב | פעולה | תשובה |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`, עמוד של מסמכים |
+| `GET /api/articles/{documentId}` | `findOne` | `200`, מסמך אחד |
+| `POST /api/articles` | `create` | `201`, המסמך שנוצר |
+| `PUT /api/articles/{documentId}` | `update` | `200`, המסמך המעודכן |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`, בלי גוף |
+
+סוגים יחידים מוגשים לפי ה-`singularName` שלהם:
+
+| שיטה ונתיב | פעולה | תשובה |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200`, או `404` לפני הכתיבה הראשונה |
+| `PUT /api/homepage` | `update` | `200`; ה-`PUT` הראשון יוצר את המסמך |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+`POST` על סוג יחיד עונה `405`.
+
+### פעולות
+
+לסוגים עם [טיוטה ופרסום](/he/concepts/draft-and-publish/) יש עוד שלושה נתיבים, שדורשים את
+ההרשאה `publish`. ל-Strapi אין מקבילה ב-REST.
+
+| שיטה ונתיב | השפעה | תשובה |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | מפרסם את הטיוטה. | הגרסה המפורסמת |
+| `POST /api/articles/{documentId}/actions/unpublish` | מוחק את הגרסה המפורסמת. | הטיוטה |
+| `POST /api/articles/{documentId}/actions/discard-draft` | מחליף את הטיוטה בגרסה המפורסמת. | הטיוטה |
+
+שלושתם מקבלים `?locale=` בסוגים מתורגמים.
+
+## כתיבה
+
+`POST` ו-`PUT` מקבלים גוף JSON עם אובייקט `data`:
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` הוא עדכון חלקי: מאפיינים שלא שולחים שומרים על הערך שלהם. רכיבים ואזורים
+  דינמיים שנשלחים מחליפים את הערך השמור.
+- בסוגים עם טיוטה ופרסום, `POST` ו-`PUT` כותבים את הטיוטה **ומפרסמים אותה**, כמו
+  ב-Strapi v5. הוסיפו `?status=draft` כדי לכתוב רק את הטיוטה. אם הפרסום נכשל באימות,
+  שום דבר לא נכתב.
+- מפתחות לא מוכרים, שדות מערכת (`id`, `documentId`, חותמות זמן) והצדדים ההפוכים
+  (`mappedBy`) של קשרים הם שגיאות אימות.
+- קשרים מקבלים ערכי `documentId`, רשימות, `null`, או `{ connect, disconnect, set }`; ראו
+  [קשרים](/he/concepts/relations/#כתיבה). שדות מדיה מקבלים מזהי קבצים.
+- התגובה היא הגרסה שנכתבה, כפי שהיא נקראת עם ה-`fields` וה-`populate` של הבקשה.
+- `DELETE` מסיר את כל הגרסאות של המסמך (בסוגים מתורגמים, את הגרסה בשפה המבוקשת).
+
+## פרמטרי שאילתה
+
+| פרמטר | דוגמה | ברירת מחדל |
+| --- | --- | --- |
+| [`filters`](#מסננים) | `filters[title][$containsi]=rust` | אין |
+| [`sort`](#מיון) | `sort=publishedAt:desc` | לפי `id`, בסדר עולה |
+| [`pagination`](#עימוד) | `pagination[page]=2&pagination[pageSize]=10` | עמוד 1, 25 לעמוד |
+| [`fields`](#שדות) | `fields[0]=title&fields[1]=slug` | כל שדה סקלרי |
+| [`populate`](#populate) | `populate[category][fields][0]=name` | כלום |
+| [`status`](#סטטוס) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#סטטוס) | `hasPublishedVersion=false` | אין |
+| [`locale`](#שפה) | `locale=fr` | שפת ברירת המחדל |
+| [`_q`](#חיפוש) | `_q=ownership` | אין |
+
+הפרמטרים משתמשים בכתיב הסוגריים של Strapi. אפשר לכתוב רשימות עם אינדקסים
+(`sort[0]=a&sort[1]=b`), עם סוגריים ריקים (`sort[]=a`) או בחזרה על המפתח
+(`sort=a&sort=b`). קודדו סוגריים וערכים כרגיל ב-URL; לקוחות כמו
+[`qs`](https://github.com/ljharb/qs) או [הלקוח עם הטיפוסים](/he/guides/frontend/typed-client/)
+בונים את המחרוזות האלה בשבילכם.
+
+פרמטר לא מוכר, שדה לא מוכר או `private`, או ערך פגום הם `400`
+`ValidationError` שמציין את הבעיה. שום דבר לא מתעלמים ממנו בשקט.
+
+## מסננים
+
+`filters[field][operator]=value`. ערך בלבד פירושו `$eq`: `filters[slug]=hello-verdin`.
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+כמה תנאים באותה רמה חייבים כולם להתקיים. צרפו אותם עם אופרטורים לוגיים:
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| אופרטור | מתאים ל | טיפוסים |
+| --- | --- | --- |
+| `$eq`, `$ne` | שווה, לא שווה | כל הסקלריים |
+| `$eqi`, `$nei` | שווה, לא שווה, בלי תלות ברישיות | טקסט |
+| `$lt`, `$lte`, `$gt`, `$gte` | קטן מ, קטן או שווה, גדול מ, גדול או שווה | כל הסקלריים חוץ מבוליאניים |
+| `$between` | בין שני ערכים, כולל: `[$between][0]=1&[$between][1]=5` | כל הסקלריים חוץ מבוליאניים |
+| `$in`, `$notIn` | ברשימה, לא ברשימה: `[$in][0]=a&[$in][1]=b` | כל הסקלריים |
+| `$contains`, `$notContains` | מכיל, לא מכיל | טקסט |
+| `$containsi`, `$notContainsi` | כנ"ל, בלי תלות ברישיות | טקסט |
+| `$startsWith`, `$startsWithi` | מתחיל ב (בלי תלות ברישיות) | טקסט |
+| `$endsWith`, `$endsWithi` | מסתיים ב (בלי תלות ברישיות) | טקסט |
+| `$null`, `$notNull` | ריק, מוגדר: `[$null]=true` | כל השדות |
+| `$and`, `$or` | כל התנאים, חלק מהתנאים ברשימה | לוגי |
+| `$not` | שולל אובייקט מסנן | לוגי |
+
+- טיפוסי הטקסט הם `string`, `text`, `richtext`, `email`, `uid` ו-`enumeration`. `json`
+  ו-`blocks` מקבלים רק `$null` ו-`$notNull`.
+- הערכים מומרים לטיפוס של השדה: מספרים שלמים, מספרים, `true`/`false` (או `1`/`0`),
+  תאריכים כ-`YYYY-MM-DD`, שעות כ-`HH:MM:SS`, ותאריך-שעה כ-ISO 8601.
+- אפשר לסנן לפי `id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt` ובסוגים
+  מתורגמים גם לפי `locale`.
+- השוואות טקסט מתנהגות אותו דבר בכל מסד נתונים: `$eq`, `$contains` ושאר האופרטורים
+  בלי `i` מדויקים, וגרסאות ה-`…i` מתעלמות מרישיות (ומסימני הטעמה ב-MySQL
+  וב-MariaDB; SQLite מקפל רק אותיות ASCII).
+- בבקשה יש לכל היותר 100 תנאים.
+
+### סינון דרך קשרים
+
+סננו לפי השדות של מסמכים קשורים, בכל צד של הקשר ובקינון:
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+תנאי to-many מתקיים כשמסמך קשור כלשהו מתאים. מסמכים קשורים נבדקים בגרסה ובשפה שנקראות.
+אי אפשר לסנן קשרים פולימורפיים ושדות מדיה.
+
+### סינון לפי רכיבים ואזורים דינמיים
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+אפשר לסנן שדות סקלריים של רכיבים, כולל רכיבים מקוננים; רכיב חוזר מתאים כשפריט כלשהו
+מתאים. אזורים דינמיים מסוננים רק לפי `__component`. ראו
+[רכיבים ואזורים דינמיים](/he/concepts/components-and-dynamic-zones/#סינון).
+
+## מיון
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` או `field:asc|desc`; הכיוון ברירת המחדל הוא `asc`.
+- אפשר למיין לפי כל שדה סקלרי חוץ מ-`json` ו-`blocks`, כולל שדות מערכת.
+- `relation.field` ממיין לפי שדה של קשר to-one.
+- ערכים ריקים באים אחרונים בשני הכיוונים, ושוויון מוכרע לפי `id`, כך שהעמודים יציבים.
+
+## עימוד
+
+לפי עמודים או לפי היסט, לא שניהם:
+
+| פרמטר | ברירת מחדל | הערות |
+| --- | --- | --- |
+| `pagination[page]` | `1` | מתחיל ב-1. |
+| `pagination[pageSize]` | `25` (`[api].default_page_size`) | מוגבל ל-`[api].max_page_size` (100). |
+| `pagination[start]` | `0` | היסט. |
+| `pagination[limit]` | `25` | מוגבל למקסימום; `-1` מבקש את המקסימום. |
+| `pagination[withCount]` | `true` | `false` מדלג על הספירה ומשמיט את `total` ואת `pageCount`. |
+
+ה-`meta.pagination` של התגובה עוקב אחרי המצב שבו השתמשתם:
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## שדות
+
+`fields` בוחר מאפיינים סקלריים:
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id` ו-`documentId` מוחזרים תמיד. קשרים, מדיה, רכיבים ואזורים דינמיים אף פעם לא נבחרים
+דרך `fields`: השתמשו ב-`populate`.
+
+## Populate
+
+קשרים, מדיה, רכיבים ואזורים דינמיים מוחזרים רק כשהם עוברים populate:
+
+| צורה | ממלא |
+| --- | --- |
+| `populate=*` | כל קשר, שדה מדיה, רכיב ואזור דינמי, ברמה אחת |
+| `populate=category,tags` או `populate[0]=category&populate[1]=tags` | השדות שצוינו |
+| `populate[category]=true` | השדה שצוין (`false` משמיט אותו) |
+| `populate[category][fields][0]=name` | השדה, עם אפשרויות |
+
+כל קשר שעובר populate מקבל `fields`, `filters`, `sort`, `populate` (מקונן, עד 5 רמות בסך
+הכול) ו-`count`:
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- קשר to-one הוא אובייקט או `null`; קשר to-many הוא מערך, בסדר הקישור או בסדר ה-`sort`
+  של ה-populate.
+- `count=true` מחזיר `{ "count": 12 }` במקום המסמכים (רק בקשרי to-many).
+- מוחזרים לכל היותר 1,000 מסמכים קשורים לכל מסמך וקשר; `count` מדויק.
+- רכיבים ואזורים דינמיים חוזרים בשלמותם, כולל רכיבים מקוננים והקשרים והמדיה שלהם.
+  האפשרויות של Strapi לכל רמה עבורם (`populate[blocks][on][…]`) מתקבלות ומתעלמים מהן.
+- שדות מדיה חוזרים כאובייקטי קבצים.
+- קשרים פולימורפיים מקבלים רק `count`.
+- מסמכים קשורים נקראים באותו סטטוס ובאותה שפה כמו המסמך. populate של סוג שהמבקש לא יכול
+  לקרוא הוא `400`; `populate=*` מדלג עליו.
+
+כל רמה היא שאילתה מקובצת אחת לכל קשר, כך ש-populate עמוק נשאר מהיר ואף פעם לא מחזיר
+שורות כפולות.
+
+## סטטוס
+
+בסוגים עם טיוטה ופרסום, `status` בוחר את הגרסה:
+
+- `status=published` (ברירת המחדל) קורא גרסאות מפורסמות.
+- `status=draft` קורא טיוטות, ודורש את ההרשאה `readDrafts` בנוסף ל-`find` או ל-`findOne`.
+
+`hasPublishedVersion=true|false` שומר מסמכים שיש להם, או שאין להם, גרסה מפורסמת:
+`?status=draft&hasPublishedVersion=false` מפרט מסמכים שמעולם לא פורסמו. בסוגים בלי טיוטה
+ופרסום זה `400`.
+
+בכתיבות, `status=draft` שומר את הטיוטה בלי לפרסם אותה. ראו
+[טיוטה ופרסום](/he/concepts/draft-and-publish/).
+
+## שפה
+
+`locale=fr` קורא וכותב את הגרסה הצרפתית של סוגים מתורגמים. בלעדיו, הבקשות משתמשות בשפת
+ברירת המחדל. קוד לא תקין או לא מוכר הוא `400`. סוגים שאינם מתורגמים מתעלמים ממנו. ראו
+[בינאום](/he/concepts/internationalization/).
+
+## חיפוש
+
+`_q` מוצא מסמכים ששדות הטקסט שלהם מכילים את המילים, בלי תלות ברישיות (עד 200 תווים):
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+בלי אינדקס חיפוש זה מתאים, כמו ב-Strapi, לכל שדה `string`, `text`, `richtext`, `email`,
+`uid` או `enumeration` שאינו פרטי. עם `[search] enabled = true`, התוצאות מדורגות לפי
+רלוונטיות אלא אם מעבירים `sort`. שאר המסננים והעימוד עדיין חלים. ראו
+[חיפוש](/he/guides/content/search/).
+
+## תגובות
+
+רשימה:
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+מסמך אחד: `{ "data": { … }, "meta": {} }`.
+
+- המסמכים שטוחים, כמו ב-Strapi v5: בלי עטיפת `attributes`.
+- המאפיינים מופיעים בסדר הסכמה, בין `id`/`documentId` לבין חותמות הזמן; סוגים מתורגמים
+  מוסיפים `locale`. שדות `private` אף פעם לא מופיעים.
+- ערכי `biginteger` הם מחרוזות. ערכי `decimal` הם מספרים, מעוגלים לפי ה-scale שלהם
+  (מחרוזות עם `[api].decimal_as_string = true`). תאריכים הם `YYYY-MM-DD`, שעות
+  `HH:MM:SS.mmm`, ותאריך-שעה `YYYY-MM-DDTHH:MM:SS.mmmZ` ב-UTC.
+
+קריאות מוצלחות נושאות `ETag`; שלחו אותו בחזרה ב-`If-None-Match` כדי לקבל `304 Not Modified`.
+הן נושאות גם כותרות `Cache-Tag` ו-`Surrogate-Key` לניקוי CDN (ראו
+[פריסות ו-CDN](/he/guides/integrations/deploys-and-cdn/)).
+
+## שגיאות
+
+לשגיאות יש המבנה של Strapi:
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| סטטוס | `name` | מתי |
+| --- | --- | --- |
+| `400` | `ValidationError` | פרמטרים, גוף או תוכן לא תקינים. `details.errors` מפרט את בעיות התוכן עם הנתיב שלהן. |
+| `401` | `UnauthorizedError` | אסימון פגום, לא מוכר או שפג תוקפו. |
+| `403` | `ForbiddenError` | למבקש אין ההרשאה (לטיוטות, `readDrafts`). |
+| `404` | `NotFoundError` | נתיב, סוג תוכן או מסמך לא מוכרים. |
+| `405` | `MethodNotAllowedError` | `POST` על סוג יחיד, או `PUT` או `DELETE` על הנתיב של סוג אוסף. |
+| `408` | | הבקשה נמשכה יותר מ-`[server].request_timeout_secs` (30 שניות). |
+| `413` | | הגוף גדול מ-`[server].body_limit` (1 MB). |
+| `429` | `RateLimitError` | מעבר ל-`[api].public_rate_limit` או ל-`[api].token_rate_limit`. `Retry-After` אומר מתי לנסות שוב. |
+| `500` | `ApplicationError` | שגיאה לא צפויה; הפרטים נמצאים רק ביומן השרת. |
+
+## מגבלות
+
+| מגבלה | ערך |
+| --- | --- |
+| גודל עמוד | `[api].max_page_size`, 100 כברירת מחדל |
+| עומק populate | 5 רמות |
+| מסמכים קשורים לכל מסמך וקשר | 1,000 |
+| תנאי סינון | 100 |
+| קינון סוגריים בפרמטר | 12 רמות |
+| פרמטרים לבקשה | 1,000 |
+| מחרוזת שאילתה | 16 KB |
+| `_q` | 200 תווים |
+
+רק גודלי העמודים ניתנים להגדרה. כל שם שדה ב-`filters`, `sort`, `fields` ו-`populate` נבדק
+מול הסכמה, והערכים תמיד נקשרים כפרמטרים של SQL.
+
+## ספריית המדיה
+
+נתיבי ההעלאה של Strapi, שנבדקים מול ההרשאות של **ספריית המדיה**. הם עונים באובייקטים
+ובמערכים פשוטים, בלי `data`, כמו Strapi:
+
+| נתיב | הרשאה | גוף או פרמטרים |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart: `files` (עד 20), `fileInfo` JSON אופציונלי (`name`, `alternativeText`, `caption`, `folder`, `focalPoint`), אחד לכל קובץ או אחד לכולם |
+| `POST /api/upload?id={id}` | `update` | Multipart `fileInfo`, ואופציונלית קובץ חדש שמחליף את התוכן |
+| `GET /api/upload/files` | `find` | `pagination[page]`, `pagination[pageSize]`, `sort`, `filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+ראו [מדיה](/he/concepts/media/).
+
+## נתיבים נוספים תחת הקידומת
+
+| נתיבים | עמוד |
+| --- | --- |
+| `/api/auth/*`, `/api/users/*`, `/api/connect/*` | [משתמשי קצה](/he/guides/auth/end-users/) (כשהתכונה פעילה) |
+| `/api/_events` | [API זמן אמת](/he/api/realtime/) (כשהתכונה פעילה) |
+| `/api/_redirects`, `/api/_menus/{slug}`, `/api/_forms/{slug}` | [הפניות](/he/guides/frontend/redirects/), [תפריטים](/he/guides/frontend/menus/), [טפסים](/he/guides/frontend/forms/) |
+| `/api/_openapi.json`, `/api/docs` | מסמך ה-OpenAPI (לאסימוני API בלבד, אלא אם הוא הפך לציבורי ב-**הגדרות ← תכונות ← תיעוד API**) והתיעוד האינטראקטיבי שלו (כשהוא ציבורי) |
+| `/api/plugins/{name}/*` | נתיבים של [תוספים](/he/extending/plugins/) |

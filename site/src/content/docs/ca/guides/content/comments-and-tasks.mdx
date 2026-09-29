@@ -1,0 +1,104 @@
+---
+title: Comentaris i tasques
+description: Debat les entrades en fils, comenta camps concrets, menciona altres administradors i assigna tasques amb data límit.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Els administradors poden debatre una entrada en fils de comentaris, comentar un camp,
+mencionar-se entre ells i assignar tasques amb data límit, sense sortir de l'editor. Aquesta guia
+explica totes dues coses, qui pot fer què, i l'API d'administració. Strapi no té cap equivalent.
+
+## Abans de començar
+
+- **Configuració → Funcionalitats → Comentaris i tasques** està activat per defecte.
+- Poder llegir el tipus de contingut d'una entrada és suficient per llegir i escriure'n els
+  comentaris i les tasques.
+- Els administradors mencionats i les persones assignades a tasques reben un correu a través
+  d'`[email]`. Amb el proveïdor per defecte `log`, els correus només van al registre del servidor.
+  Consulta la [referència de configuració](/ca/reference/configuration/).
+
+## Comenta una entrada
+
+<Steps>
+
+1. Obre l'entrada i selecciona **Comentaris**. El botó mostra el nombre de fils oberts.
+2. A la pestanya **Comentaris**, escriu a **Comentari nou**. Escriu `@` per mencionar un
+   administrador.
+3. Selecciona **Comenta**, o prem Control o Command i Retorn.
+
+</Steps>
+
+Per comentar un camp, fes servir el botó de comentari del costat del camp (**Comenta** seguit del
+nom del camp). Els fils d'un camp es mostren a **Sobre** aquell camp; **Mostra-ho tot** torna a
+llistar tots els fils.
+
+En un fil pots:
+
+- **Respon**.
+- **Resol** quan la discussió s'ha acabat, i **Reobre** més tard. Els fils resolts es mouen a
+  **Fils resolts**. Només el primer comentari d'un fil el resol.
+- **Edita el comentari** en els teus propis comentaris.
+- **Suprimeix el comentari** o **Suprimeix el fil** en els teus propis comentaris. Un Super Admin
+  pot eliminar qualsevol comentari.
+
+Els comentaris es guarden per idioma als tipus localitzats, i tenen fins a 10.000 caràcters.
+
+## Menciona un administrador
+
+Els administradors mencionats reben un correu amb el comentari i un enllaç a l'entrada, sempre que
+la puguin llegir. Mai no reps cap correu per mencionar-te a tu mateix.
+
+## Assigna una tasca
+
+<Steps>
+
+1. Obre la pestanya **Tasques** del mateix panell i selecciona **Tasca nova**.
+2. Introdueix un **Títol** i, opcionalment, una **Descripció**, un **Assignat a** i una **Data
+   límit**. La persona assignada ha de poder llegir l'entrada.
+3. Selecciona **Crea la tasca**.
+
+</Steps>
+
+La persona assignada rep un correu, tret que s'hagi assignat la tasca a si mateixa. Les tasques
+que han passat la data límit es mostren com a endarrerides. Marca una tasca com a feta des de la
+seva fila.
+
+El creador i la persona assignada d'una tasca la poden canviar o completar. Només el creador
+l'elimina. Un Super Admin pot fer totes dues coses amb qualsevol tasca.
+
+Per veure les teves tasques obertes de totes les entrades, afegeix el widget **Les meves tasques**
+a la pàgina d'inici: selecciona **Personalitza** i després **Afegeix un widget**.
+
+## Treballar junts en directe
+
+Quan un altre administrador afegeix, resol o elimina un comentari o una tasca a l'entrada que
+tens oberta, el tauler diu **S’han actualitzat els comentaris.** o **S’han actualitzat les
+tasques.** i mostra el canvi.
+
+## API d'administració
+
+Totes les rutes són sota `/admin/api`. `uid`, `documentId` i `locale` identifiquen l'entrada.
+
+| Ruta | Fa |
+| --- | --- |
+| `GET /comments?uid=&documentId=&locale=` | Els fils de l'entrada amb les seves respostes. |
+| `POST /comments` | `{ uid, documentId, locale?, field?, parentId?, body }`. `parentId` en fa una resposta. |
+| `PUT /comments/{id}` | `{ body }`. Només els teus propis comentaris. |
+| `DELETE /comments/{id}` | Els teus propis comentaris, o qualsevol com a Super Admin. |
+| `POST /comments/{id}/resolve`, `POST /comments/{id}/reopen` | Sobre el primer comentari d'un fil. |
+| `GET /tasks?uid=&documentId=&locale=` | Les tasques de l'entrada. |
+| `GET /tasks?mine=true&status=open` | Les teves tasques, de les entrades que encara pots llegir. |
+| `POST /tasks` | `{ uid, documentId, locale?, title, description?, assigneeId?, dueDate? }`, amb `dueDate` com a `YYYY-MM-DD`. |
+| `PUT /tasks/{id}` | Creador o persona assignada. Qualsevol de `title`, `description`, `assigneeId`, `dueDate` (`null` els buida), i `status` (`open` o `done`). |
+| `DELETE /tasks/{id}` | Només el creador (o un Super Admin). |
+
+En el cos d'un comentari, una menció s'escriu `@[Name](user:12)`, on `12` és l'id de
+l'administrador.
+
+<Aside type="note">
+Les rutes responen `404` mentre la funcionalitat està desactivada. Desactivar-la amaga els
+comentaris i les tasques; es conserven per quan la tornis a activar.
+</Aside>

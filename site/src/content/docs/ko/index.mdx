@@ -1,0 +1,94 @@
+---
+title: Verdin — Rust 위에서 자라는 헤드리스 CMS
+description: Rust로 작성한 오픈 소스 헤드리스 CMS. Strapi v5 호환 API, 바이너리 하나, PostgreSQL, MySQL, MariaDB, SQLite.
+template: splash
+editUrl: false
+tableOfContents: false
+lastUpdated: false
+hero:
+  title: <span class="metal">Rust</span> 위에서 자라는 헤드리스 CMS.
+  tagline: Strapi v5 호환 API와 편집자를 위한 관리자 패널을 약 25 MB의 바이너리 하나에 담았습니다. 오픈 소스이며 완전합니다 — 엔터프라이즈 에디션은 없습니다.
+  actions:
+    - text: 시작하기
+      link: /ko/start/quickstart/
+      icon: right-arrow
+    - text: Strapi에서 옮겨 오기
+      link: /ko/migrate/from-strapi/
+      variant: minimal
+---
+
+import { Card, CardGrid, Code, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Nameplate from '../../../components/landing/Nameplate.astro';
+
+<Nameplate />
+
+## 명령 세 개로 Strapi에서 옮겨 오기
+
+Strapi 프로젝트를 내보내고, 새 Verdin 프로젝트로 가져오고, 시작하세요. 콘텐츠 타입, 초안과 로케일을 포함한 항목, 관계, 미디어
+라이브러리가 옮겨집니다. 콘텐츠 API는 형태가 그대로이므로 프런트엔드도 계속 동작합니다.
+
+```sh title="Terminal"
+npx strapi export --no-encrypt -f my-export        # Strapi 프로젝트에서
+verdin new my-site && cd my-site && verdin import strapi ../my-export.tar.gz
+verdin dev                                         # http://localhost:1337/admin
+```
+
+<LinkCard
+  title="Strapi 프로젝트 가져오기"
+  description="가져오는 것, id 맵, 이후 확인할 것."
+  href="/ko/migrate/from-strapi/"
+/>
+
+## 지금 쓰는 방식 그대로 콘텐츠 읽기
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+    ```sh
+    curl 'localhost:1337/api/articles?filters[title][$containsi]=rust&populate=category&sort=publishedAt:desc'
+    ```
+  </TabItem>
+  <TabItem label="GraphQL">
+    ```graphql
+    query {
+      articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"]) {
+        documentId
+        title
+        category { name }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```ts
+    import { createClient } from '@verdin/client';
+    import type { VerdinSchema } from './verdin-types'; // verdin types -o src/verdin-types.ts
+
+    const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+    const { data } = await verdin.collection('articles').find({
+      filters: { title: { $containsi: 'rust' } },
+      populate: { category: true },
+      sort: ['publishedAt:desc'],
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## 편집자와 개발자가 얻는 것
+
+<CardGrid>
+  <Card title="파일 속 스키마, 읽을 수 있는 마이그레이션" icon="document">
+    콘텐츠 타입은 Strapi 형식의 JSON 파일이며 git에 보관합니다. 모든 스키마 변경은 실행하기 전에 위험 수준과 정확한 SQL을
+    담은 마이그레이션 플랜이 됩니다.
+  </Card>
+  <Card title="편집자가 좋아하는 관리자 패널" icon="pencil">
+    초안과 게시, 콘텐츠 기록, 릴리스, 검토 워크플로, 댓글과 실시간 프레즌스, 여러분의 사이트에서 하는 비주얼 에디팅 —
+    18개 언어로.
+  </Card>
+  <Card title="추가 요금 없는 보안" icon="approve-check">
+    SSO, 패스키를 쓰는 2단계 로그인, 필드와 로케일까지 내려가는 역할, 감사 로그와 API 토큰이 모두 오픈 소스 프로젝트에
+    들어 있습니다.
+  </Card>
+  <Card title="안전하게 확장하기" icon="puzzle">
+    WebAssembly 플러그인이 쓰기에 훅을 걸고, 라우트, 작업, 관리자 위젯을 추가하며, 선언한 것에만 접근합니다.
+  </Card>
+</CardGrid>

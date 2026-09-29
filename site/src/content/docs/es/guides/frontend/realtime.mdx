@@ -1,0 +1,147 @@
+---
+title: Actualizaciones en tiempo real
+description: Actualiza tu frontend en cuanto cambia el contenido, suscribiéndote a los server-sent events de Verdin.
+sidebar:
+  order: 8
+  label: Tiempo real
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Con la funcionalidad **Tiempo real** activada, Verdin emite un pequeño evento cada vez que cambia
+una entrada o un archivo de medios. Un frontend se suscribe al flujo y vuelve a pedir lo que ha
+cambiado: un blog en directo, un marcador, un panel que nunca necesita recargarse. Cada
+suscriptor solo recibe eventos sobre el contenido que puede leer.
+
+Esta página muestra cómo usar el flujo desde un frontend. Los nombres de los eventos, los
+payloads y las reglas están en la [referencia de la API en tiempo real](/es/api/realtime/).
+Strapi v5 no tiene un equivalente integrado.
+
+## Actívala
+
+<Steps>
+
+1. En **Configuración → Funcionalidades**, activa **Tiempo real**.
+2. Decide quién se suscribe. El flujo usa los permisos de la API de contenido:
+   - para cualquiera, permite **Buscar** o **Buscar uno** sobre los tipos en
+     **Configuración → Acceso público**;
+   - para un servidor o una aplicación, crea un [token de API](/es/guides/auth/api-tokens/) con
+     esos permisos (y **Leer borradores** para recibir los eventos que solo afectan a
+     borradores);
+   - para los usuarios finales con sesión iniciada, su JWT también sirve (consulta
+     [Usuarios finales](/es/guides/auth/end-users/)).
+
+</Steps>
+
+El flujo es `GET /api/_events`. Añade `?types=` con una lista de uids de tipos de contenido
+separados por comas para recibir solo esos (`plugin::upload` es la biblioteca de medios):
+
+```sh title="Terminal"
+curl -N "https://cms.example.com/api/_events?types=api::article,api::category"
+```
+
+```
+event: ready
+data: {}
+
+event: entry.publish
+data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","locale":"en"}
+```
+
+## Suscríbete desde un navegador
+
+Los eventos llevan ids, no contenido. En cada evento, vuelve a pedir lo que muestras, a través de
+la misma API y con los mismos permisos que cualquier otra lectura.
+
+<Tabs syncKey="auth">
+<TabItem label="Público">
+
+Con el rol público, basta con el `EventSource` del navegador, que además se reconecta solo:
+
+```js
+const CMS = 'https://cms.example.com';
+const events = new EventSource(`${CMS}/api/_events?types=api::article`);
+
+for (const name of ['entry.publish', 'entry.unpublish', 'entry.delete']) {
+  events.addEventListener(name, (event) => {
+    const { documentId } = JSON.parse(event.data);
+    refreshArticle(documentId);
+  });
+}
+
+events.addEventListener('lagged', () => refreshEverything());
+```
+
+</TabItem>
+<TabItem label="Con un token">
+
+`EventSource` no puede enviar una cabecera `Authorization`. Lee el flujo con `fetch` y vuelve a
+conectar cuando termine:
+
+```js
+async function subscribe(token, onEvent) {
+  for (;;) {
+    try {
+      const response = await fetch(`${CMS}/api/_events?types=api::article`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) return; // token refused
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const name = block.match(/^event: (.*)$/m)?.[1];
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (name && data) onEvent(name, JSON.parse(data));
+        }
+      }
+    } catch {
+      // network error: retry below
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+```
+
+También sirve cualquier biblioteca cliente de SSE que admita cabeceras.
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution">
+Un token en el código del navegador lo puede leer cualquiera que abra la página. Distribuye solo
+un token de solo lectura limitado a los tipos que muestra la página, o suscríbete desde tu
+servidor y reenvía las actualizaciones al navegador.
+</Aside>
+
+Llamar al flujo desde un sitio de otro origen necesita ese origen en
+[`[api].cors_origins`](/es/reference/configuration/).
+
+## Mantén el flujo en buen estado
+
+- El primer evento es `ready`: la suscripción está activa.
+- Un flujo termina al cabo de una hora. Vuelve a conectar entonces: `EventSource` lo hace
+  automáticamente, y al reconectar se vuelve a comprobar el token, así que un token revocado deja
+  de recibir eventos.
+- Un evento llamado `lagged` significa que el cliente leyó demasiado despacio y se perdió
+  eventos. Vuelve a pedir todo lo que muestra la página.
+- Los eventos que solo afectan a borradores (`entry.create`, `entry.update` y
+  `entry.discard-draft` en los tipos con borrador y publicación) solo llegan a los clientes con
+  **Leer borradores**. Un sitio público normalmente escucha `entry.publish`, `entry.unpublish` y
+  `entry.delete`.
+
+## Detrás de un balanceador de carga
+
+Los eventos son los de la instancia a la que está conectado cada cliente. Con varias instancias,
+usa sesiones persistentes para `/api/_events`, o conecta los clientes de tiempo real a una sola
+instancia. Consulta [Varias instancias](/es/deploy/scaling/).
+
+El panel de administración usa su propio flujo (`/admin/api/events`) para las actualizaciones en
+directo, la presencia y los bloqueos blandos durante la edición; consulta la
+[referencia de la API en tiempo real](/es/api/realtime/).

@@ -1,0 +1,85 @@
+---
+title: 运行多个实例
+description: 在负载均衡器之后运行同一项目的多个 Verdin 实例：它们通过数据库共享什么、哪些内容保留在各个实例中，以及需要修改的设置。
+sidebar:
+  order: 8
+  label: 多个实例
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Verdin 把状态保存在数据库中，因此你可以在负载均衡器之后运行同一项目的多个实例，以提高可用性或分担负载。本页列出各实例共享的内容、每个实例各自保留的内容，以及相关的设置。
+
+<Diagram
+  caption="各实例共享数据库和媒体存储；缓存、速率限制和事件流保留在各个实例中。"
+  code={`flowchart LR
+  LB[负载均衡器] --> A[实例 1]
+  LB --> B[实例 2]
+  LB --> C[实例 3]
+  A --> DB[(数据库)]
+  B --> DB
+  C --> DB
+  A --> S3[(S3 媒体)]
+  B --> S3
+  C --> S3`}
+/>
+
+## 检查清单
+
+- **共享的数据库。** PostgreSQL、MySQL 或 MariaDB。SQLite 是一台机器上的文件，无法用于多个实例。
+- **所有实例使用相同的配置。** 每个实例都使用相同的 `verdin.toml`、schema 文件和密钥（`VERDIN_ADMIN_JWT_SECRET`、`VERDIN_TOKEN_PEPPER`、`VERDIN_SSO_<ID>_SECRET`……）。如果密钥不同，在一个实例上创建的会话和 API 令牌会被其他实例拒绝。
+- **生产模式。** 运行 `verdin start`，而不是 `verdin dev`。在开发环境中修改 schema，提交后每次部署迁移一次。
+- **共享的媒体存储。** 使用 S3 提供方（`[upload] provider = { name = "s3", … }`），或者在使用本地提供方时，把同一个卷挂载到每个实例上。
+- **健康检查。** 让负载均衡器指向 `GET /_ready`，无法连接数据库时它会返回 `503`。`GET /_health` 只表示进程在运行；请将其用于存活检查。
+- **插件任务只在一个实例上运行。** 除一个实例外，在其他所有实例上设置 `[plugins].run_jobs = false`；否则每个实例都会运行定时任务。
+- **按实例提供指标。** 设置 `[metrics].enabled = true` 后，每个实例都提供自己的 `/_metrics`；请逐个抓取。
+
+## 多个实例时的迁移
+
+在每个实例上同时运行 `verdin start --migrate` 是安全的。每次迁移运行都会在数据库中持有一个锁（PostgreSQL 上为 advisory lock，MySQL 和 MariaDB 上为 `GET_LOCK`，最多等待 60 秒），因此第一个实例执行这些步骤，其他实例会发现数据库已是最新状态。
+
+滚动部署期间，旧版本的实例会在已迁移的数据库上继续运行一段时间。安全步骤只会创建表、添加可为空或带默认值的列和索引、加宽文本列或添加枚举值，旧版本察觉不到这些变化。有风险或破坏性的步骤（`verdin migrate apply --allow risky|destructive`）请在单独的一次部署中执行，等到没有任何旧 schema 的实例再需要那些数据时再进行。参见 [Schema 迁移](/zh-cn/concepts/schema-migrations/)。
+
+## 共享的内容
+
+| 内容 | 方式 |
+| --- | --- |
+| 管理后台会话、API 令牌、权限 | 存储在数据库中；无需会话保持。 |
+| 功能开关、插件开关、语言区域、审核工作流 | 存储在数据库中。每个实例每隔 `[server].sync_interval_secs`（10 秒）重新读取一次，因此在一个实例上所做的更改会在这段时间内同步到其他实例。 |
+| webhook 投递 | 数据库中的一个队列。实例在发送之前先领取投递，因此每次投递只发送一次。 |
+| 定时发布计划 | 在执行前于数据库中领取，因此每个只执行一次。 |
+| 每日摘要 | 每天的运行都会在数据库中领取，因此管理员只会收到一封邮件。 |
+| 通行密钥质询 | 已使用的质询会记录在数据库中，因此在所有实例中每个质询只能响应一次。 |
+| 审计日志清理 | 在每个实例上运行；重复删除旧行不会造成问题。 |
+| 插件键值存储 | 存储在数据库中。 |
+
+## 保留在各个实例中的内容
+
+- **速率限制**由每个实例各自计数。有 `n` 个实例时，一个客户端每分钟最多可以发出 `[api].public_rate_limit` 的 `n` 倍请求。如果需要全局限制，请在负载均衡器上实施。
+- **匿名响应缓存**（`[api].cache_ttl_secs`）。写入会清空执行写入的那个实例的缓存；其他实例在其缓存条目过期之前仍可能返回之前的响应。请把 TTL 设为几秒，或者设为 `0`。
+- **实时事件和在线状态**只属于客户端所连接的那个实例。请为事件流使用会话保持（参见[实时](/zh-cn/guides/frontend/realtime/)）。
+- **搜索索引**（`[search]`）位于实例的磁盘上，只跟踪该实例执行的写入。请只在一个实例上启用它并把 `_q` 请求路由到那里，或者接受其他实例会逐渐落后，直到它们以空的索引目录重启。
+- **图片转换**（`[upload.transforms]`）按实例缓存在 `cache_dir` 下。在 `/uploads` 前放置 CDN 即可共享它们。
+- **定时插件任务**：参见上文的 `run_jobs`。
+
+## 设置
+
+```toml title="verdin.toml"
+[server]
+# How often to read settings that other instances changed; 0 turns it off.
+sync_interval_secs = 10
+
+[plugins]
+# Run the plugins' scheduled jobs here (true on one instance only).
+run_jobs = true
+
+[api]
+# Short-lived when each instance keeps its own cache.
+cache_ttl_secs = 5
+```
+
+用 `VERDIN_PLUGINS__RUN_JOBS=false` 按实例设置 `run_jobs`。
+
+## 数据库连接
+
+每个实例最多打开 `[database].pool_max` 个连接（默认 10 个）。请让 `实例数 × pool_max` 低于数据库服务器的上限，并为迁移、备份和维护留出余量。PostgreSQL 的默认上限是 100 个连接。

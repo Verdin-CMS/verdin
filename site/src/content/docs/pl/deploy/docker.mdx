@@ -1,0 +1,391 @@
+---
+title: Docker
+description: Uruchamiaj Verdin z oficjalnego obrazu w Docker lub Docker Compose, z PostgreSQL, MySQL, MariaDB lub SQLite, ze schematem zamontowanym tylko do odczytu i multimediami na wolumenie lub w S3.
+sidebar:
+  order: 3
+---
+
+import { Aside, FileTree, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+Oficjalny obraz uruchamia jeden serwer Verdin z wbudowanym panelem administracyjnym. Ta
+strona opisuje, co zawiera obraz, plik Compose dla każdej bazy danych i jak dodać własną
+konfigurację. Pozostałe strony platform opierają się na niej.
+
+## Obraz
+
+`ghcr.io/verdin-cms/verdin` jest publikowany dla `linux/amd64` i `linux/arm64` przy każdym
+wydaniu, z tagami pełnej wersji (`0.10.0`), wersji minor (`0.10`) i `latest`. W produkcji
+przypinaj wersję minor: wydania minor serii 0.x mogą zmieniać zachowanie (zobacz
+[Aktualizacja](/pl/migrate/upgrading/)).
+
+| | |
+| --- | --- |
+| Baza | Distroless (`gcr.io/distroless/static-debian12:nonroot`): bez powłoki, bez menedżera pakietów, bez `curl`. |
+| Użytkownik | `nonroot` (uid i gid `65532`). |
+| Entrypoint | `/usr/local/bin/verdin` |
+| Domyślne polecenie | `start --migrate`: stosuje oczekujące bezpieczne migracje, potem serwuje. |
+| Port | `1337` |
+| Wolumen | `/data`: baza SQLite, lokalne przesłane pliki i, z `dev`, schemat. |
+| Konfiguracja | `/app/verdin.toml` (`VERDIN_CONFIG=/app/verdin.toml`). |
+
+Wbudowana konfiguracja:
+
+```toml title="/app/verdin.toml"
+[server]
+host = "0.0.0.0"
+port = 1337
+
+[schema]
+path = "/data/schema"
+
+[log]
+format = "json"
+
+[upload.transforms]
+cache_dir = "/data/.cache/transforms"
+
+[search]
+dir = "/data/search"
+```
+
+oraz `VERDIN_DATABASE_URL=sqlite:///data/verdin.db`. `/app/public/uploads`, gdzie domyślnie
+zapisuje lokalny dostawca przesyłania, to dowiązanie do `/data/uploads`. Każdy klucz można
+nadpisać zmienną `VERDIN_<SECTION>__<KEY>` (zobacz
+[dokumentację konfiguracji](/pl/reference/configuration/)).
+
+## Wypróbuj
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+`dev` włącza kreator typów zawartości, który zapisuje schemat do `/data/schema` w wolumenie.
+Otwórz `http://localhost:1337/admin/` i zarejestruj pierwszego administratora. W produkcji
+trzymaj schemat w repozytorium i uruchamiaj domyślne `start --migrate`, jak poniżej.
+
+## Uruchom z Compose
+
+Umieść zatwierdzony schemat obok pliku Compose:
+
+<FileTree>
+- compose.yaml
+- .env              hasło bazy danych, dla Compose
+- verdin.env        sekrety z `verdin secrets`
+- schema/
+  - content-types/
+  - components/
+</FileTree>
+
+<Steps>
+
+1. Wygeneruj sekrety raz i trzymaj je poza systemem kontroli wersji:
+
+   ```sh frame="terminal"
+   docker run --rm ghcr.io/verdin-cms/verdin:0.10 secrets > verdin.env
+   echo "DB_PASSWORD=$(openssl rand -hex 24)" > .env
+   ```
+
+2. Napisz `compose.yaml` dla swojej bazy danych. Zastąp `https://cms.example.com` adresem,
+   którego będą używać przeglądarki.
+
+   <Tabs syncKey="db">
+   <TabItem label="PostgreSQL">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD}@db:5432/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: postgres:17
+       restart: unless-stopped
+       environment:
+         POSTGRES_USER: verdin
+         POSTGRES_PASSWORD: ${DB_PASSWORD}
+         POSTGRES_DB: verdin
+       volumes:
+         - db-data:/var/lib/postgresql/data
+       healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U verdin -d verdin"]
+         interval: 5s
+         retries: 20
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   </TabItem>
+   <TabItem label="MySQL">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: mysql://verdin:${DB_PASSWORD}@db:3306/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: mysql:8.4
+       restart: unless-stopped
+       environment:
+         MYSQL_USER: verdin
+         MYSQL_PASSWORD: ${DB_PASSWORD}
+         MYSQL_DATABASE: verdin
+         MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+       volumes:
+         - db-data:/var/lib/mysql
+       healthcheck:
+         test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+         interval: 5s
+         retries: 30
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   </TabItem>
+   <TabItem label="MariaDB">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: mysql://verdin:${DB_PASSWORD}@db:3306/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: mariadb:11.4
+       restart: unless-stopped
+       environment:
+         MARIADB_USER: verdin
+         MARIADB_PASSWORD: ${DB_PASSWORD}
+         MARIADB_DATABASE: verdin
+         MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+       volumes:
+         - db-data:/var/lib/mysql
+       healthcheck:
+         test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+         interval: 5s
+         retries: 30
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   MariaDB używa URL-i `mysql://`; Verdin rozpoznaje serwer, z którym rozmawia.
+
+   </TabItem>
+   <TabItem label="SQLite">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         # The image's default; the file lives in the volume.
+         VERDIN_DATABASE_URL: sqlite:///data/verdin.db
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+
+   volumes:
+     verdin-data:
+   ```
+
+   Z SQLite uruchamiaj jeden kontener: baza danych to plik w jego wolumenie.
+
+   </TabItem>
+   </Tabs>
+
+   Hasło ze znakami takimi jak `@`, `:` czy `/` musi być w URL zakodowane procentowo;
+   powyższe hasło z `openssl rand -hex` tego nie wymaga.
+
+3. Uruchom i śledź logi:
+
+   ```sh frame="terminal"
+   docker compose up -d
+   docker compose logs -f verdin
+   ```
+
+   Pierwsze uruchomienie tworzy wszystkie tabele. Poczekaj na `verdin listening`.
+
+4. Od razu zarejestruj pierwszego administratora pod `/admin/` albo z wiersza poleceń
+   (zapyta o hasło):
+
+   ```sh frame="terminal"
+   docker compose exec -it verdin verdin admin create --email you@example.com
+   ```
+
+</Steps>
+
+Postaw przed portem 1337 reverse proxy, które terminuje TLS (Caddy, nginx, Traefik lub twój
+load balancer), i wpisz je do `VERDIN_SERVER__TRUSTED_PROXIES`. W sieci Compose adres proxy
+jest w prywatnych zakresach Dockera; `'["172.16.0.0/12"]'` obejmuje domyślne sieci Dockera,
+ale sprawdź swoją przez `docker network inspect`.
+
+## Wolumeny
+
+| Ścieżka | Zawiera | Uwagi |
+| --- | --- | --- |
+| `/data` | Bazę SQLite, lokalne przesłane pliki (`/data/uploads`) | Nazwany wolumen zachowuje własność z obrazu (`65532`). Bind mount musi być zapisywalny dla uid `65532`. |
+| `/data/schema` | Pliki schematu | Z `start` montuj zatwierdzony schemat tylko do odczytu (`:ro`). `dev` wymaga możliwości zapisu. |
+
+Obraz nie zapisuje nigdzie indziej: cache transformacji obrazów i indeks wyszukiwania też są
+w wolumenie (`/data/.cache/transforms`, `/data/search`). Obrazy sprzed 0.10 trzymały te dwa
+katalogi w `/app`, do którego użytkownik `nonroot` nie może pisać; tam ustaw
+`VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR` i `VERDIN_SEARCH__DIR` na ścieżki w `/data`.
+
+Przesyłane pliki są strumieniowane do systemowego katalogu tymczasowego (`/tmp`), zanim
+zostaną zapisane.
+
+## Kontrole stanu
+
+Obraz deklaruje `HEALTHCHECK`, który uruchamia [`verdin healthcheck`](/pl/reference/cli/):
+odpytuje `/_health` na interfejsie loopback, więc `docker ps` pokazuje kontener jako
+`healthy`, a `depends_on: condition: service_healthy` w Compose działa. Obraz nie ma powłoki
+ani `curl`; aby napisać własną kontrolę w Compose, wywołaj binarkę w ten sam sposób:
+
+```yaml
+healthcheck:
+  test: ["CMD", "/usr/local/bin/verdin", "healthcheck"]
+  interval: 30s
+```
+
+Proxy, load balancery i orkiestratory powinny wywoływać `GET /_ready` (200, gdy baza danych
+odpowiada, w przeciwnym razie 503) oraz `GET /_health` do sprawdzania żywotności. Zobacz
+[Monitoring](/pl/deploy/monitoring/).
+
+## Własny plik konfiguracyjny
+
+Zmienne środowiskowe obejmują większość ustawień, łącznie z dostawcą przesyłania S3
+(`VERDIN_UPLOAD__PROVIDER__NAME=s3`, `VERDIN_UPLOAD__PROVIDER__BUCKET`,
+`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`, …; przed 0.10 wbudowany klucz `dir` obrazu powodował
+tu błąd). Użyj pliku konfiguracyjnego, jeśli wolisz trzymać ustawienia w jednym
+wersjonowanym pliku.
+
+Napisz `verdin.toml` dla kontenerów:
+
+```toml title="verdin.toml"
+[server]
+host = "0.0.0.0"
+port = 1337
+public_url = "https://cms.example.com"
+trusted_proxies = ["172.16.0.0/12"]
+
+[schema]
+path = "/data/schema"
+
+[log]
+format = "json"
+
+[upload]
+provider = { name = "s3", bucket = "media", region = "auto",
+             endpoint = "https://<account>.r2.cloudflarestorage.com",
+             public_url = "https://media.example.com" }
+
+[email]
+provider = "smtp"
+from = "Verdin <cms@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+username = "cms@example.com"
+```
+
+i zamontuj go w miejsce wbudowanego:
+
+```yaml title="compose.yaml"
+services:
+  verdin:
+    # …as above
+    environment:
+      VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD}@db:5432/verdin
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+    volumes:
+      - verdin-data:/data
+      - ./verdin.toml:/app/verdin.toml:ro
+      - ./schema:/data/schema:ro
+```
+
+Trzymaj sekrety poza plikiem: `VERDIN_EMAIL_SMTP_PASSWORD`, `AWS_*` i pozostałe zostają
+w środowisku.
+
+## Własny obraz
+
+Na platformach, na których nie możesz montować plików (Fly.io, Render, Railway, większość
+konfiguracji Kubernetes), zbuduj mały obraz na bazie oficjalnego, z konfiguracją i schematem
+w środku. Każde wdrożenie dostarcza wtedy dokładnie ten schemat, który zatwierdziłeś:
+
+```dockerfile title="Dockerfile"
+FROM ghcr.io/verdin-cms/verdin:0.10
+COPY verdin.toml /app/verdin.toml
+COPY schema /app/schema
+# Plugins, if you use them: COPY plugins /app/plugins
+```
+
+z `[schema] path = "schema"` w tym `verdin.toml` (ścieżki są względne wobec pliku, więc
+`/app/schema`). Pliki należą do roota i są dla serwera tylko do odczytu, a tego właśnie
+potrzebuje `verdin start`.
+
+Twój plik całkowicie zastępuje wbudowany. Powtórz klucze, które nadal chcesz z niego
+zachować (`host`, `[log] format = "json"`, ścieżki `/data` dla cache transformacji i indeksu
+wyszukiwania). Domyślny katalog lokalnego dostawcy przesyłania, `public/uploads`, już
+wskazuje na wolumen.
+
+<Aside type="caution">
+Kopiuj pliki po nazwie, jak powyżej. Nigdy `COPY . /app`: umieściłoby to w obrazie twój
+`.env` z sekretami.
+</Aside>
+
+## Budowanie obrazu ze źródeł
+
+`Dockerfile` z repozytorium buduje panel administracyjny i serwer:
+
+```sh frame="terminal"
+git clone https://github.com/Verdin-CMS/verdin && cd verdin
+docker build -t verdin .
+```
+
+Używa `gcr.io/distroless/cc-debian12:nonroot` jako bazy; poza tym zachowuje się jak
+opublikowany obraz.

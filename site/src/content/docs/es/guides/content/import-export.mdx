@@ -1,0 +1,126 @@
+---
+title: Importar y exportar entradas
+description: Exporta las entradas de una lista a CSV o JSON, y crea o actualiza entradas a partir de un archivo CSV o JSON, con una comprobación previa.
+sidebar:
+  order: 9
+  label: Importar y exportar
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+La lista de cada tipo de contenido en el panel exporta sus entradas a CSV o JSON, y las vuelve a
+importar desde el mismo tipo de archivo: para corregir muchas entradas en una hoja de cálculo,
+cargar un catálogo de productos o copiar entradas entre proyectos. Esta guía cubre ambos
+sentidos y el formato del archivo.
+
+Esto sirve para las entradas de un solo tipo de contenido a la vez. Para trasladar un proyecto
+entero, consulta [`verdin export` y `verdin import verdin`](/es/reference/cli/). Si vienes de
+Strapi, consulta [Migrar desde Strapi](/es/migrate/from-strapi/).
+
+## Antes de empezar
+
+- Exportar necesita acceso de lectura al tipo de contenido. Solo se exportan los campos que tu
+  rol puede leer.
+- Importar necesita acceso de creación, de actualización o ambos: las filas que crean entradas
+  necesitan crear, y las que las actualizan necesitan actualizar. Publicar las filas importadas
+  necesita además publicar. Consulta [Permisos](/es/reference/permissions/).
+
+## Exporta entradas
+
+<Steps>
+
+1. Abre la lista del tipo de contenido y déjala como quieras la exportación: filtros, búsqueda,
+   orden, estado e idioma.
+2. Selecciona **Exportar** y después **Exportar como CSV** o **Exportar como JSON**.
+
+</Steps>
+
+El archivo contiene las entradas que muestra la lista, con sus filtros, su búsqueda y su orden,
+de todas las páginas, hasta 50.000 entradas. Cada fila empieza por `documentId`, seguido de los
+campos.
+
+## Importa entradas
+
+<Steps>
+
+1. Abre la lista del tipo de contenido y selecciona **Importar**.
+2. Elige un **Archivo**: un `.csv` con una fila de cabecera o un `.json` con una lista de
+   objetos, de hasta 1 MB.
+3. En **Columnas**, elige el campo al que va cada columna. Las columnas que se llaman como un
+   campo ya vienen emparejadas. Elige **Omitir** para dejar fuera una columna, e
+   **ID de documento (actualizar)** para la columna que identifica las entradas existentes.
+4. Opcionalmente, activa **Publicar las entradas importadas**. Si no, se guardan como borradores.
+5. Selecciona **Comprobar**. Verdin comprueba todas las filas, restricciones y referencias
+   incluidas, sin escribir nada, e informa de las filas que crearía, actualizaría o rechazaría.
+6. Corrige el archivo si hace falta y selecciona **Importar**.
+
+</Steps>
+
+Cómo se escriben las filas:
+
+- Una fila con `documentId` actualiza esa entrada; las demás crean entradas nuevas.
+- Las filas se escriben una a una. Una fila que falla se indica con su campo y el problema, y se
+  omite; las demás se escriben igualmente.
+- El informe enumera hasta 100 filas con errores, y las columnas que no coincidieron con ningún
+  campo.
+- Una importación admite como máximo 5.000 filas. Divide los archivos más grandes.
+- Las entradas se escriben en el idioma actual de la lista.
+
+<Aside type="caution">
+Una importación pasa tus filas por la misma validación que el editor, pero no se puede deshacer.
+Ejecuta antes **Comprobar**, y exporta la lista antes de una actualización grande para poder
+restaurarla. Con el [historial de contenido](/es/guides/content/content-history/) activado,
+cada entrada actualizada conserva su versión anterior.
+</Aside>
+
+## Formato del archivo
+
+Los campos usan las mismas formas que el formato de escritura de la API de contenido:
+
+| Campo | Valor |
+| --- | --- |
+| Texto, números, booleanos, fechas | Como en la API (`true`/`false`, fechas ISO 8601). |
+| Relaciones | `documentId`s de las entradas relacionadas. |
+| Medios | Ids de archivo de la biblioteca de medios. |
+| Relaciones polimórficas | `uid:documentId`, por ejemplo `api::article:k3v9…`. |
+| Componentes, zonas dinámicas, bloques y JSON | JSON. |
+
+En CSV, las listas (varias relaciones o archivos) se unen con `|`.
+
+```csv title="articles.csv"
+documentId,title,slug,featured,tags
+,Hello world,hello-world,true,t1a2b3|t4c5d6
+k3v9x8…,Updated title,updated-title,false,
+```
+
+Las mismas filas en JSON:
+
+```json title="articles.json"
+[
+  { "title": "Hello world", "slug": "hello-world", "featured": true, "tags": ["t1a2b3", "t4c5d6"] },
+  { "documentId": "k3v9x8…", "title": "Updated title", "slug": "updated-title", "featured": false }
+]
+```
+
+La exportación de una lista es siempre un archivo de importación válido para el mismo tipo de
+contenido.
+
+## API de administración
+
+- `GET /admin/api/content/{uid}/export?format=csv` (o `json`) acepta los parámetros de consulta
+  de la lista: `filters`, `_q`, `sort`, `status` y `locale`.
+- `POST /admin/api/content/{uid}/import?locale=` recibe el contenido del archivo como cadena:
+
+```json
+{
+  "format": "csv",
+  "data": "title,slug\nHello world,hello-world\n",
+  "mapping": { "slug": "slug", "notes": null },
+  "dryRun": true,
+  "publish": false
+}
+```
+
+`mapping` asocia una columna a un campo; `null` omite la columna, y las columnas sin asociar
+conservan su nombre. El cuerpo de la petición está limitado por `[server].body_limit` (1 MB por
+defecto).

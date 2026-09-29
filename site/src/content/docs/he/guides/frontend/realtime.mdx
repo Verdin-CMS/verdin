@@ -1,0 +1,137 @@
+---
+title: עדכונים בזמן אמת
+description: רעננו את הפרונטאנד שלכם ברגע שהתוכן משתנה, באמצעות הרשמה ל-server-sent events של Verdin.
+sidebar:
+  order: 8
+  label: זמן אמת
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+כשהתכונה **זמן אמת** פעילה, Verdin משדר אירוע קטן בכל פעם שרשומה או קובץ מדיה משתנים.
+פרונטאנד נרשם לזרם ושולף מחדש את מה שהשתנה: בלוג חי, לוח תוצאות, לוח בקרה שאף פעם לא צריך
+טעינה מחדש. כל מנוי מקבל רק אירועים על תוכן שמותר לו לקרוא.
+
+העמוד הזה מראה איך להשתמש בזרם מפרונטאנד. שמות האירועים, ה-payloads והכללים נמצאים
+ב[תיעוד ה-API של זמן אמת](/he/api/realtime/). ל-Strapi v5 אין מקבילה מובנית.
+
+## הפעלה
+
+<Steps>
+
+1. ב-**הגדרות ← תכונות**, הפעילו את **זמן אמת**.
+2. החליטו מי נרשם. הזרם משתמש בהרשאות של API התוכן:
+   - לכל אחד, אפשרו **חיפוש** או **חיפוש פריט אחד** על הסוגים ב-**הגדרות ← גישה ציבורית**;
+   - לשרת או לאפליקציה, צרו [אסימון API](/he/guides/auth/api-tokens/) עם ההרשאות האלה (ועם
+     **קריאת טיוטות** כדי לקבל אירועים של טיוטות בלבד);
+   - למשתמשי קצה מחוברים, גם ה-JWT שלהם עובד (ראו [משתמשי קצה](/he/guides/auth/end-users/)).
+
+</Steps>
+
+הזרם הוא `GET /api/_events`. הוסיפו `?types=` עם רשימה מופרדת בפסיקים של UIDs של סוגי תוכן
+כדי לקבל רק אותם (`plugin::upload` הוא ספריית המדיה):
+
+```sh title="Terminal"
+curl -N "https://cms.example.com/api/_events?types=api::article,api::category"
+```
+
+```
+event: ready
+data: {}
+
+event: entry.publish
+data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","locale":"en"}
+```
+
+## הרשמה מדפדפן
+
+אירועים נושאים מזהים, לא תוכן. בכל אירוע, שלפו מחדש את מה שאתם מציגים, דרך אותו API ואותן
+הרשאות כמו כל קריאה אחרת.
+
+<Tabs syncKey="auth">
+<TabItem label="ציבורי">
+
+עם התפקיד הציבורי, ה-`EventSource` של הדפדפן מספיק, והוא מתחבר מחדש לבד:
+
+```js
+const CMS = 'https://cms.example.com';
+const events = new EventSource(`${CMS}/api/_events?types=api::article`);
+
+for (const name of ['entry.publish', 'entry.unpublish', 'entry.delete']) {
+  events.addEventListener(name, (event) => {
+    const { documentId } = JSON.parse(event.data);
+    refreshArticle(documentId);
+  });
+}
+
+events.addEventListener('lagged', () => refreshEverything());
+```
+
+</TabItem>
+<TabItem label="עם אסימון">
+
+`EventSource` לא יכול לשלוח כותרת `Authorization`. קראו את הזרם עם `fetch` במקום זאת,
+והתחברו מחדש כשהוא מסתיים:
+
+```js
+async function subscribe(token, onEvent) {
+  for (;;) {
+    try {
+      const response = await fetch(`${CMS}/api/_events?types=api::article`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) return; // token refused
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const name = block.match(/^event: (.*)$/m)?.[1];
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (name && data) onEvent(name, JSON.parse(data));
+        }
+      }
+    } catch {
+      // network error: retry below
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+```
+
+כל ספריית לקוח SSE שתומכת בכותרות עובדת גם היא.
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution">
+אסימון בקוד של הדפדפן קריא לכל מי שפותח את הדף. שלחו רק אסימון לקריאה בלבד שמוגבל לסוגים
+שהדף מציג, או הירשמו מהשרת שלכם והעבירו את העדכונים לדפדפן.
+</Aside>
+
+קריאה לזרם מאתר במקור אחר דורשת את המקור הזה ב-
+[`[api].cors_origins`](/he/reference/configuration/).
+
+## שמירה על זרם תקין
+
+- האירוע הראשון הוא `ready`: ההרשמה פעילה.
+- זרם מסתיים אחרי שעה. התחברו אז מחדש: `EventSource` עושה זאת אוטומטית, וההתחברות מחדש בודקת
+  גם שוב את האסימון, כך שאסימון שבוטל מפסיק לקבל אירועים.
+- אירוע בשם `lagged` אומר שהלקוח קרא לאט מדי ופספס אירועים. שלפו מחדש את כל מה שהדף מציג.
+- אירועים של טיוטות בלבד (`entry.create`, `entry.update` ו-`entry.discard-draft` בסוגים עם
+  טיוטה ופרסום) מגיעים רק למבקשים עם **קריאת טיוטות**. אתר ציבורי מאזין בדרך כלל ל-
+  `entry.publish`, `entry.unpublish` ו-`entry.delete`.
+
+## מאחורי מאזן עומסים
+
+האירועים הם של המופע שאליו הלקוח מחובר. עם כמה מופעים, השתמשו ב-sticky sessions עבור
+`/api/_events`, או כוונו את לקוחות הזמן האמת למופע יחיד. ראו
+[הרצת כמה מופעים](/he/deploy/scaling/).
+
+פאנל הניהול משתמש בזרם משלו (`/admin/api/events`) לעדכונים חיים, לנוכחות ולנעילות רכות בזמן
+עריכה; ראו את [תיעוד ה-API של זמן אמת](/he/api/realtime/).

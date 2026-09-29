@@ -1,0 +1,149 @@
+---
+title: MCP-сервер
+description: Дозвольте Claude та іншим ШІ-агентам читати й редагувати вміст Verdin через Model Context Protocol з дозволами API-токена.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin може віддавати свій вміст ШІ-агентам через
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP). Підключіть Claude Code, Claude
+Desktop, Cursor чи будь-який інший MCP-клієнт, і агент зможе переглядати ваші типи вмісту,
+запитувати записи з фільтрами REST API, а також створювати, оновлювати й публікувати записи — у
+межах дозволів токена, який ви йому дасте.
+
+У Strapi v5 вбудованого MCP-сервера немає.
+
+## Увімкнення
+
+<Steps>
+
+1. У **Налаштування → Функції** увімкніть **MCP-сервер**. Його картка показує
+   **Кінцева точка** — `https://cms.example.com/mcp`, на тому самому хості, що й API вмісту.
+2. У **Налаштування → API-токени** виберіть **Створити токен**. Виберіть **Лише читання**, якщо
+   агент не має писати, або **Налаштовуваний**, щоб дозволити лише певні типи й дії. Скопіюйте
+   токен: він показується один раз. Див. [API-токени](/uk/guides/auth/api-tokens/).
+3. Підключіть клієнт із кінцевою точкою й токеном (див. нижче).
+
+</Steps>
+
+## Підключення клієнта
+
+Сервер використовує транспорт Streamable HTTP протоколу MCP. Кожному клієнту потрібні URL і
+заголовок `Authorization: Bearer <token>`.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+Картка **MCP-сервер** має цю команду в розділі **Додати до Claude Code** (**Копіювати
+команду**); замініть `<token>` своїм API-токеном:
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+Файл конфігурації Claude Desktop запускає локальні сервери, тож з'єднайтеся з HTTP-ендпоінтом
+через [`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Формати конфігурації клієнтів змінюються; якщо ключ не розпізнається, перевірте документацію
+свого клієнта. Потім попросіть агента, наприклад: *«Покажи статті, опубліковані цього тижня в
+категорії News»*.
+
+## Інструменти
+
+| Інструмент | Потрібно | Що робить |
+| --- | --- | --- |
+| `list_content_types` | `find` або `findOne` | Типи вмісту, які клієнт може читати, з їхнім видом і атрибутами. |
+| `get_content_type` | `find` або `findOne` | Атрибути типу вмісту: типи, параметри й зв'язки. |
+| `find_entries` | `find` | Записи типу. `query` приймає параметри REST API як JSON (`filters`, `sort`, `fields`, `populate`, `pagination`); `status: "draft"` потребує також `readDrafts`. |
+| `get_entry` | `findOne` | Один запис за `documentId` (для поодиноких типів — без нього). |
+| `create_entry` | `create` | Створює запис із `data`, як у REST API. `status: "draft"` зберігає чернетку. |
+| `update_entry` | `update` | Оновлює запис (для поодиноких типів — без `documentId`). |
+| `delete_entry` | `delete` | Видаляє запис. |
+| `publish_entry`, `unpublish_entry` | `publish` | Публікує або знімає запис з публікації. |
+
+Інструменти приймають `uid` (наприклад, `api::article`) і, для локалізованих типів, `locale`.
+Кожен інструмент перевіряє той самий дозвіл, що й відповідний REST-маршрут, а записи проходять
+тим самим шляхом, що й через REST API: валідація, хуки плагінів, етапи перевірки, вебхуки,
+історія вмісту й журнали аудиту. Агент не може зробити нічого, чого його токен не може через
+REST.
+
+Дії API вмісту див. у [Дозволи](/uk/reference/permissions/).
+
+## Автентифікація
+
+Ендпоінт приймає ті самі облікові дані, що й API вмісту:
+
+- API-токен — звичайний вибір для агентів;
+- JWT кінцевого користувача — для агента, що діє від імені користувача вашого застосунку, який
+  увійшов;
+- без заголовка `Authorization` — з дозволами публічної ролі.
+
+Недійсний токен дає `401`. Сервер не зберігає сесій і не відкриває потоків: кожен запит — це
+JSON-RPC `POST` із JSON-відповіддю (`GET` відповідає `405`).
+
+### Origin браузерів
+
+Запити із заголовком `Origin`, який надсилають браузери, відхиляються, якщо origin не вказано
+в **Дозволені origin-и браузера** на картці **MCP-сервер**. Це захищає від DNS rebinding, коли
+вебсторінка змушує браузер викликати сервер у вашій мережі. Клієнти командного рядка й
+десктопні клієнти не надсилають `Origin`, тож список зазвичай порожній.
+
+<Aside type="caution">
+Агент із токеном повного доступу може видаляти й публікувати вміст. Давайте агентам токени лише
+для читання або налаштовувані, обмежені тим, що їм потрібно. Для чернеток, які пише агент,
+[процес перевірки](/uk/guides/content/review-workflows/) залишає людину між агентом і
+публікацією.
+</Aside>
+
+Щоб натомість дати редакторам допомогу ШІ всередині адмін-панелі (переклад, альтернативний
+текст, SEO-пропозиції), див. [Дії ШІ](/uk/guides/integrations/ai-actions/).

@@ -64,7 +64,7 @@ Verdin necesita dos secretos, cada uno de al menos 32 bytes:
 | Variable | Qué protege |
 | --- | --- |
 | `VERDIN_ADMIN_JWT_SECRET` | Firma las sesiones de administración. |
-| `VERDIN_TOKEN_PEPPER` | Genera el hash de los tokens de API y protege los secretos de la verificación en dos pasos y los códigos de recuperación. |
+| `VERDIN_TOKEN_PEPPER` | Genera el hash de los tokens de API y protege los secretos de la autenticación de dos factores y los códigos de recuperación. |
 
 `verdin secrets` imprime valores nuevos y `verdin new` los escribe en `.env`. Los secretos
 solo se leen del entorno, nunca de `verdin.toml`, y el servidor no arranca sin ellos. El
@@ -72,10 +72,11 @@ archivo `.env` que está junto a `verdin.toml` se carga al arrancar; las variabl
 definidas en el entorno tienen prioridad.
 
 <Aside type="caution">
-Genera los secretos una vez por instalación y consérvalos. Un `VERDIN_ADMIN_JWT_SECRET`
-nuevo cierra la sesión de todos los administradores; un `VERDIN_TOKEN_PEPPER` nuevo
-invalida todos los tokens de API y todas las configuraciones de verificación en dos pasos.
-Deja `.env` y `verdin.env` fuera del control de versiones.
+Genera los secretos una vez por instalación y consérvalos. Un `VERDIN_ADMIN_JWT_SECRET` nuevo
+invalida los tokens de inicio de sesión actuales, los enlaces de vista previa abiertos y los
+inicios de sesión OAuth en curso (el panel de administración renueva su sesión por sí solo); un
+`VERDIN_TOKEN_PEPPER` nuevo invalida todos los tokens de API y todas las configuraciones de
+autenticación de dos factores. Deja `.env` y `verdin.env` fuera del control de versiones.
 </Aside>
 
 ## 3. Crea el primer administrador
@@ -271,4 +272,4 @@ ajustes.
 
 `GET /_health` responde mientras el proceso está en marcha. `GET /_ready` comprueba además
 la base de datos y responde 503 cuando no puede conectar con ella: apunta ahí los
-balanceadores de carga (consulta [Escalado](/es/deploy/scaling/)).
+balanceadores de carga (consulta [Varias instancias](/es/deploy/scaling/)).

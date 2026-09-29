@@ -1,0 +1,330 @@
+---
+title: "Tutorial: el teu primer connector"
+description: Construeix un connector de Verdin en Rust que omple el temps de lectura d'un article, registra les publicacions i serveix una petita ruta d'API.
+sidebar:
+  order: 2
+  label: Tutorial de connectors
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+En aquest tutorial construeixes **reading-time**, un connector per a l'exemple del blog. El
+connector:
+
+- omple el `readingTime` d'un article a partir del seu `body` cada vegada que s'escriu el cos
+  (un hook previ);
+- escriu una línia al seu registre quan es publica un article (un hook posterior);
+- serveix `GET /api/plugins/reading-time/stats` amb el temps de lectura mitjà (una ruta que
+  llegeix contingut);
+- té una opció **Words per minute**.
+
+Triga uns 20 minuts. Per saber què són els connectors i com funciona el sandbox, llegeix primer
+[Connectors](/ca/extending/plugins/).
+
+## Abans de començar
+
+Necessites:
+
+- Un projecte Verdin amb l'esquema de l'exemple del blog: copia
+  [`examples/blog/schema`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog/schema)
+  en un projecte creat amb `verdin new`, o executa l'exemple directament. El connector fa servir
+  els atributs `body` (`richtext`) i `readingTime` (`integer`) del tipus `article`.
+- Rust amb la destinació WebAssembly:
+
+  ```sh title="Terminal"
+  rustup target add wasm32-unknown-unknown
+  ```
+
+Els connectors es poden escriure en qualsevol llenguatge amb un [PDK d'Extism](https://extism.org/docs/concepts/pdk)
+(JavaScript, Go, Zig, C i altres). Aquest tutorial fa servir Rust i `extism-pdk`.
+
+## Crea el crate
+
+<Steps>
+
+1. Crea un crate de biblioteca, fora del teu projecte Verdin:
+
+   ```sh title="Terminal"
+   cargo new --lib reading-time
+   cd reading-time
+   ```
+
+2. Substitueix `Cargo.toml`. Un connector és un `cdylib`; el perfil release manté el mòdul
+   petit.
+
+   ```toml title="Cargo.toml"
+   [package]
+   name = "reading-time"
+   version = "0.1.0"
+   edition = "2024"
+   publish = false
+
+   [lib]
+   crate-type = ["cdylib"]
+
+   [dependencies]
+   extism-pdk = "1.4.1"
+   serde_json = "1"
+
+   [profile.release]
+   opt-level = "s"
+   lto = true
+   strip = true
+   ```
+
+</Steps>
+
+## Escriu les funcions
+
+Cada funció que exporta el connector rep JSON i retorna JSON. Verdin les crida per als hooks, les
+rutes i les tasques que indica el manifest; les funcions tornen a cridar Verdin mitjançant
+funcions de l'amfitrió (`verdin_log`, `verdin_content`, `verdin_config`…).
+
+Substitueix `src/lib.rs`:
+
+```rust title="src/lib.rs"
+use extism_pdk::*;
+use serde_json::{Value, json};
+
+// Host functions Verdin provides (namespace `extism:host/user`).
+#[host_fn]
+extern "ExtismHost" {
+    fn verdin_log(input: Json<Value>);
+    fn verdin_content(input: Json<Value>) -> Json<Value>;
+    fn verdin_config() -> Json<Value>;
+}
+
+/// Minutes needed to read `text` at `per_minute` words a minute (at least 1).
+fn minutes(text: &str, per_minute: u64) -> u64 {
+    let words = text.split_whitespace().count() as u64;
+    words.div_ceil(per_minute.max(1)).max(1)
+}
+
+/// `beforeCreate` and `beforeUpdate` on articles: fills `readingTime` from `body`.
+#[plugin_fn]
+pub fn set_reading_time(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    // An update may leave the body out: then there is nothing to recompute.
+    let Some(body) = data["body"].as_str() else {
+        return Ok(Json(json!({})));
+    };
+    let config = unsafe { verdin_config()? }.0;
+    let per_minute = config["wordsPerMinute"].as_u64().unwrap_or(200);
+    data["readingTime"] = json!(minutes(body, per_minute));
+    Ok(Json(json!({ "data": data })))
+}
+
+/// `afterPublish` on articles: writes a line to the plugin's log.
+#[plugin_fn]
+pub fn log_publish(Json(input): Json<Value>) -> FnResult<()> {
+    let message = format!("published {}", input["documentId"].as_str().unwrap_or("?"));
+    unsafe { verdin_log(Json(json!({ "level": "info", "message": message })))? };
+    Ok(())
+}
+
+/// `GET /api/plugins/reading-time/stats`: the average reading time of published articles.
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    if request["method"] != "GET" || request["path"] != "/stats" {
+        return Ok(Json(json!({ "status": 404, "body": { "error": "not found" } })));
+    }
+    let found = unsafe {
+        verdin_content(Json(json!({
+            "op": "findMany",
+            "uid": "api::article",
+            "query": { "fields": ["readingTime"], "pagination": { "pageSize": 100 } }
+        })))?
+    }
+    .0;
+    if let Some(error) = found.get("error") {
+        return Ok(Json(json!({ "status": 500, "body": { "error": error } })));
+    }
+    let times: Vec<u64> = found["documents"]
+        .as_array()
+        .map(|documents| documents.iter().filter_map(|d| d["readingTime"].as_u64()).collect())
+        .unwrap_or_default();
+    let average = if times.is_empty() { 0.0 } else { times.iter().sum::<u64>() as f64 / times.len() as f64 };
+    Ok(Json(json!({
+        "status": 200,
+        "headers": { "cache-control": "max-age=60" },
+        "body": { "articles": times.len(), "averageMinutes": average }
+    })))
+}
+```
+
+Què retorna cada funció:
+
+- **`set_reading_time`** és un hook previ. `{ "data": … }` substitueix les dades que s'escriuen;
+  `{}` les deixa com estan. També podria retornar `{ "error": "…" }` per rebutjar l'escriptura
+  amb un 400.
+- **`log_publish`** és un hook posterior: la seva sortida s'ignora.
+- **`handle`** serveix totes les peticions sota `/api/plugins/reading-time/`. Rep el camí que ve
+  després d'aquest prefix i respon `{ status, headers, body }`.
+
+## Construeix el mòdul
+
+```sh title="Terminal"
+cargo build --release --target wasm32-unknown-unknown
+```
+
+El mòdul és `target/wasm32-unknown-unknown/release/reading_time.wasm` (Cargo converteix el guió
+en un guió baix), d'uns 120 KB.
+
+## Escriu el manifest
+
+<Steps>
+
+1. Al teu projecte Verdin, crea `plugins/reading-time/` i copia-hi el mòdul com a
+   `plugin.wasm`:
+
+   ```sh title="Terminal"
+   mkdir -p plugins/reading-time
+   cp ../reading-time/target/wasm32-unknown-unknown/release/reading_time.wasm plugins/reading-time/plugin.wasm
+   ```
+
+2. Al costat, crea el manifest. Dona nom al connector, demana el que necessiten les funcions i
+   les connecta als hooks i a les rutes:
+
+   ```toml title="plugins/reading-time/plugin.toml"
+   name = "reading-time"
+   version = "0.1.0"
+   description = "Fills an article's reading time from its body"
+
+   [capabilities]
+   read = ["api::article"]           # for the stats route
+
+   [[hooks]]
+   on = "beforeCreate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "beforeUpdate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "afterPublish"
+   uid = "api::article"
+   function = "log_publish"
+
+   [routes]
+   function = "handle"               # serves /api/plugins/reading-time/…
+
+   [[settings]]
+   key = "wordsPerMinute"
+   label = "Words per minute"
+   type = "integer"
+   min = 50
+   max = 1000
+   default = 200
+   ```
+
+   Els hooks no necessiten cap capacitat: canvien les dades que reben. Només la crida
+   `verdin_content` de la ruta llegeix contingut, així que el connector demana `read` sobre els
+   articles i res més.
+
+</Steps>
+
+Ara el projecte té aquest aspecte:
+
+<FileTree>
+- verdin.toml
+- .env
+- plugins/
+  - reading-time/
+    - plugin.toml
+    - plugin.wasm
+- schema/
+  - content-types/
+    - article.json
+    - …
+</FileTree>
+
+## Activa'l
+
+<Steps>
+
+1. Inicia (o reinicia) el servidor:
+
+   ```sh title="Terminal"
+   verdin dev
+   ```
+
+   El registre mostra `plugin found plugin=reading-time version=0.1.0`.
+
+2. Obre el tauler d'administració i després **Configuració → Connectors**. La targeta de
+   **reading-time** llista el seu accés (llegeix articles), els seus hooks i la seva ruta.
+   Activa'l.
+
+3. Obre **Configuració** a la targeta: el formulari mostra **Words per minute** amb el seu valor
+   per defecte, 200. Es rebutgen els valors fora de l'interval de 50 a 1.000. Deixa'l com està.
+
+</Steps>
+
+## Prova'l
+
+<Steps>
+
+1. Crea un article amb un cos d'uns quants centenars de paraules, al tauler d'administració o
+   per l'API amb un token d'API:
+
+   ```sh title="Terminal"
+   curl -X POST http://localhost:1337/api/articles \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "data": { "title": "Hello plugins", "slug": "hello-plugins", "body": "…450 words…" } }'
+   ```
+
+   La resposta té `"readingTime": 3`: 450 paraules a 200 paraules per minut, arrodonit cap
+   amunt. No l'has enviat; l'ha omplert el hook.
+
+2. Actualitza només el títol. `readingTime` es manté: les dades de l'actualització no tenen
+   `body`, així que el hook retorna `{}`. Actualitza el cos i es torna a calcular.
+
+3. Publica l'article i obre **Registres** a la targeta del connector: mostra
+   `published <documentId>`. (Per l'API, una creació sense `?status=draft` publica
+   immediatament, així que la línia ja hi és.)
+
+4. Crida la ruta:
+
+   ```sh title="Terminal"
+   curl -i http://localhost:1337/api/plugins/reading-time/stats
+   ```
+
+   ```text
+   HTTP/1.1 200 OK
+   content-type: application/json
+   cache-control: max-age=60
+
+   {"articles":1,"averageMinutes":3.0}
+   ```
+
+   Compta els articles publicats: `verdin_content` llegeix les versions publicades tret que la
+   consulta demani `status: "draft"`.
+
+</Steps>
+
+<Aside type="caution">
+La ruta respon a qualsevol: l'**Accés públic** no cobreix les rutes dels connectors. Aquí només
+retorna una mitjana, però una ruta que retorni o canviï contingut ha de comprovar ella mateixa
+`request.actor` (`{ "kind": "public" }`, `{ "kind": "token", "id": … }` o
+`{ "kind": "user", "id": … }`).
+</Aside>
+
+## Modifica'l
+
+- Edita el codi, torna a executar `cargo build --release --target wasm32-unknown-unknown`,
+  copia el mòdul i reinicia Verdin. L'interruptor i la configuració es conserven.
+- Els canvis a `plugin.toml` també necessiten un reinici. Els canvis de configuració s'apliquen
+  a l'instant.
+- Si una crida falla, l'error és al registre del servidor i a **Registres**. Un pànic o un temps
+  esgotat només fan fallar aquella crida; en un hook previ, l'escriptura continua sense el canvi
+  del connector.
+
+## Propers passos
+
+- Afegeix una [tasca programada, un camp GraphQL o un widget d'administració](/ca/extending/plugin-reference/).
+- Desa estat entre crides amb la capacitat `kv` i `verdin_kv_get` / `verdin_kv_set`.
+- El connector de proves del repositori,
+  [`crates/verdin-plugins/tests/fixtures/sample`](https://github.com/Verdin-CMS/verdin/tree/main/crates/verdin-plugins/tests/fixtures/sample),
+  fa servir totes les funcions de l'amfitrió.

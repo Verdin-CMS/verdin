@@ -1,0 +1,108 @@
+---
+title: Commentaires et tâches
+description: Discutez des entrées dans des fils, commentez un champ précis, mentionnez d’autres administrateurs et assignez des tâches avec des échéances.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Les administrateurs peuvent discuter d’une entrée dans des fils de commentaires, commenter un
+champ, se mentionner les uns les autres et assigner des tâches avec des échéances, sans quitter
+l’éditeur. Ce guide couvre les deux, qui peut faire quoi, et l’API d’administration. Strapi n’a
+pas d’équivalent.
+
+## Avant de commencer
+
+- **Paramètres → Fonctionnalités → Commentaires et tâches** est activé par défaut.
+- Pouvoir lire le type de contenu d’une entrée suffit pour lire et écrire ses commentaires et ses
+  tâches.
+- Les administrateurs mentionnés et les personnes assignées aux tâches sont prévenus par e-mail
+  via `[email]`. Avec le fournisseur `log` par défaut, les e-mails ne vont que dans le log du
+  serveur. Voir la [référence de configuration](/fr/reference/configuration/).
+
+## Commenter une entrée
+
+<Steps>
+
+1. Ouvrez l’entrée et sélectionnez **Commentaires**. Le bouton affiche le nombre de fils ouverts.
+2. Dans l’onglet **Commentaires**, écrivez dans **Nouveau commentaire**. Tapez `@` pour
+   mentionner un administrateur.
+3. Sélectionnez **Commenter**, ou appuyez sur Ctrl ou Cmd et Entrée.
+
+</Steps>
+
+Pour commenter un champ, utilisez le bouton de commentaire à côté du champ (**Commenter**, suivi
+du nom du champ). Les fils d’un champ s’affichent sous **À propos de** ce champ ;
+**Tout afficher** liste à nouveau tous les fils.
+
+Dans un fil, vous pouvez :
+
+- **Répondre**.
+- **Résoudre** le fil quand la discussion est terminée, et le **Rouvrir** plus tard. Les fils
+  résolus passent dans **Fils résolus**. Seul le premier commentaire d’un fil permet de le
+  résoudre.
+- **Modifier le commentaire** sur vos propres commentaires.
+- **Supprimer le commentaire** ou **Supprimer le fil** sur vos propres commentaires. Un Super
+  Admin peut supprimer n’importe quel commentaire.
+
+Les commentaires sont conservés par langue sur les types localisés, et contiennent jusqu’à
+10 000 caractères.
+
+## Mentionner un administrateur
+
+Les administrateurs mentionnés reçoivent un e-mail avec le commentaire et un lien vers l’entrée,
+à condition de pouvoir la lire. Vous ne recevez jamais d’e-mail quand vous vous mentionnez
+vous-même.
+
+## Assigner une tâche
+
+<Steps>
+
+1. Ouvrez l’onglet **Tâches** du même panneau et sélectionnez **Nouvelle tâche**.
+2. Saisissez un **Titre** et, éventuellement, une **Description**, un **Assigné à** et une
+   **Date d’échéance**. La personne assignée doit pouvoir lire l’entrée.
+3. Sélectionnez **Créer la tâche**.
+
+</Steps>
+
+La personne assignée est prévenue par e-mail, sauf si elle s’est assigné la tâche elle-même. Les
+tâches dont l’échéance est dépassée apparaissent en retard. Marquez une tâche comme terminée
+depuis sa ligne.
+
+Le créateur et la personne assignée d’une tâche peuvent la modifier ou la terminer. Seul son
+créateur la supprime. Un Super Admin peut faire les deux sur n’importe quelle tâche.
+
+Pour voir vos tâches ouvertes sur l’ensemble des entrées, ajoutez le widget **Mes tâches** à la
+page d’accueil : sélectionnez **Personnaliser**, puis **Ajouter un widget**.
+
+## Travailler ensemble en direct
+
+Quand un autre administrateur ajoute, résout ou supprime un commentaire ou une tâche sur l’entrée
+que vous avez ouverte, le panneau affiche **Les commentaires ont été mis à jour.** ou
+**Les tâches ont été mises à jour.** et montre la modification.
+
+## API d’administration
+
+Toutes les routes sont sous `/admin/api`. `uid`, `documentId` et `locale` désignent l’entrée.
+
+| Route | Effet |
+| --- | --- |
+| `GET /comments?uid=&documentId=&locale=` | Les fils de l’entrée avec leurs réponses. |
+| `POST /comments` | `{ uid, documentId, locale?, field?, parentId?, body }`. `parentId` en fait une réponse. |
+| `PUT /comments/{id}` | `{ body }`. Vos propres commentaires uniquement. |
+| `DELETE /comments/{id}` | Vos propres commentaires, ou n’importe lequel pour un Super Admin. |
+| `POST /comments/{id}/resolve`, `POST /comments/{id}/reopen` | Sur le premier commentaire d’un fil. |
+| `GET /tasks?uid=&documentId=&locale=` | Les tâches de l’entrée. |
+| `GET /tasks?mine=true&status=open` | Vos tâches, sur les entrées que vous pouvez encore lire. |
+| `POST /tasks` | `{ uid, documentId, locale?, title, description?, assigneeId?, dueDate? }`, avec `dueDate` au format `YYYY-MM-DD`. |
+| `PUT /tasks/{id}` | Créateur ou personne assignée. N’importe lesquels de `title`, `description`, `assigneeId`, `dueDate` (`null` les vide), et `status` (`open` ou `done`). |
+| `DELETE /tasks/{id}` | Créateur uniquement (ou un Super Admin). |
+
+Dans le corps d’un commentaire, une mention s’écrit `@[Name](user:12)`, où `12` est
+l’identifiant de l’administrateur.
+
+<Aside type="note">
+Les routes répondent `404` tant que la fonctionnalité est désactivée. La désactiver masque les
+commentaires et les tâches ; ils sont conservés pour le jour où vous la réactivez.
+</Aside>

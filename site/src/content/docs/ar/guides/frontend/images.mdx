@@ -1,0 +1,229 @@
+---
+title: الصور المتجاوبة
+description: قدّم الصور بالحجم المناسب، بالصيغ التي يولّدها Verdin عند الرفع وبالتحويلات الفورية عبر عنوان URL.
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+يمنحك Verdin طريقتين لتقديم صورة بالحجم الذي تحتاجه الصفحة:
+
+- **الصيغ المتجاوبة**، تُولَّد مرة واحدة عند رفع الصورة (`thumbnail`،
+  `small`، `medium`، `large`)، تمامًا مثل إضافة الرفع في Strapi. وتعمل مع كل
+  موفّر رفع.
+- **التحويلات**، تُرسم عند الطلب من معاملات عنوان URL (`?preset=thumb`، أو
+  `?w=800&format=webp` مع توقيع) وتُخزَّن مؤقتًا على القرص. وتعمل مع الموفّر
+  المحلي.
+
+كلتاهما جزء من مكتبة الوسائط، المفعّلة دائمًا. لرفع الملفات وتنظيمها،
+راجع [الوسائط](/ar/concepts/media/).
+
+## الصيغ المتجاوبة
+
+عند رفع صورة JPEG أو PNG أو WebP أو TIFF أو BMP، يكتب Verdin نسخًا أصغر منها
+ويسردها في `formats` الخاصة بالملف:
+
+| الصيغة | الحجم |
+| --- | --- |
+| `thumbnail` | ضمن 245 × 156 بكسل. |
+| `large` | بعرض 1000 بكسل. |
+| `medium` | بعرض 750 بكسل. |
+| `small` | بعرض 500 بكسل. |
+
+تُتخطّى الصيغة عندما تكون الصورة أصغر بالفعل، فالصورة بعرض 600 بكسل لا تحصل إلا على
+`thumbnail` و`small`. تحتفظ النسخ بصيغة الأصل (تُرمَّز صور JPEG بجودة
+80) وباتجاه EXIF الخاص به. تُترك صور GIF كما هي، لأنها قد تكون متحركة.
+
+عبّئ حقل الوسائط للحصول عليها. تستخدم الأمثلة سمة وسائط `cover` في
+Article؛ ولا يحتوي مثال المدونة على واحدة، لذا أضفها في منشئ أنواع المحتوى لتتابع.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?populate[cover]=true'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles {
+    title
+    cover { url width height alternativeText formats }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ populate: { cover: true } });
+const formats = data[0].cover?.formats; // Record<string, MediaFormat> | null
+```
+
+</TabItem>
+</Tabs>
+
+```json
+"cover": {
+  "url": "/uploads/team_4f1c2a.jpg",
+  "width": 2400,
+  "height": 1600,
+  "alternativeText": "The team at the office",
+  "formats": {
+    "thumbnail": { "url": "/uploads/thumbnail_team_4f1c2a.jpg", "width": 234, "height": 156 },
+    "large": { "url": "/uploads/large_team_4f1c2a.jpg", "width": 1000, "height": 667 },
+    "medium": { "url": "/uploads/medium_team_4f1c2a.jpg", "width": 750, "height": 500 },
+    "small": { "url": "/uploads/small_team_4f1c2a.jpg", "width": 500, "height": 333 }
+  }
+}
+```
+
+ابنِ `srcset` منها. مع الموفّر المحلي، تكون قيم `url` مسارات على مضيف Verdin؛
+أضف مصدره قبلها:
+
+```ts
+const CMS = 'https://cms.example.com';
+
+function srcset(image: Media): string {
+  const sources = Object.values(image.formats ?? {}).map((f) => `${CMS}${f.url} ${f.width}w`);
+  return [...sources, `${CMS}${image.url} ${image.width}w`].join(', ');
+}
+```
+
+```html
+<img src="…/uploads/large_team_4f1c2a.jpg" srcset="…" sizes="(min-width: 60rem) 50vw, 100vw"
+     width="2400" height="1600" alt="The team at the office" />
+```
+
+### غيّر الصيغ
+
+تأتي الصيغ من `[upload]` في `verdin.toml`:
+
+```toml title="verdin.toml"
+[upload]
+breakpoints = [{ name = "large", width = 1600 }, { name = "small", width = 640 }]
+# responsive_formats = false  # no copies at all
+# max_original_size = 3000    # scale larger originals down on upload (drops EXIF and GPS)
+```
+
+`breakpoints` هو إعداد Strapi الذي يحمل الاسم نفسه. تُطبَّق التغييرات على عمليات الرفع الجديدة؛ وتحتفظ الملفات
+الموجودة بصيغها. راجع [`[upload]`](/ar/reference/configuration/) لكل مفتاح،
+بما في ذلك `max_image_megapixels`، حد فك الترميز الذي يحمي من قنابل
+فك الضغط (100 ميغابكسل افتراضيًا).
+
+## التحويلات
+
+مع الموفّر المحلي، يقدّم Verdin `/uploads/<file>` بنفسه ويمكنه رسم أحجام
+وصيغ أخرى للصورة عند الطلب:
+
+```
+/uploads/team_4f1c2a.jpg?preset=thumb
+/uploads/team_4f1c2a.jpg?w=800&format=webp&s=<signature>
+```
+
+| المعامل | القيم |
+| --- | --- |
+| `w`، `h` | العرض والارتفاع بالبكسل، من 1 إلى `max_size` (4096 افتراضيًا). مع واحد منهما فقط، يتبع الآخر نسبة الأبعاد. وبدونهما، تحتفظ الصورة بحجمها (تغيير للصيغة). |
+| `fit` | `cover` (الافتراضي) يملأ المربع ويقص الباقي، مع إبقاء نقطة التركيز في الملف ظاهرة. `inside` يُلائم الصورة داخل المربع. `fill` يمطّها إلى المربع. |
+| `format` | `jpeg` (أو `jpg`) أو `png` أو `webp`. مخرج WebP بلا فقد. بدونه تحتفظ الصورة بصيغتها (تصبح TIFF وBMP صيغة JPEG). |
+| `q` | جودة JPEG، من 1 إلى 100. افتراضيًا 80. |
+| `preset` | تحويل مسمّى من التهيئة. لا يمكن جمعه مع المعاملات الأخرى. |
+| `s` | التوقيع، عندما لا تكون المعاملات إعدادًا مسبقًا. |
+
+لا تُكبَّر الصور أبدًا: الصورة بعرض 600 بكسل المطلوبة بـ `w=1200` تعود بعرض 600.
+تعمل التحويلات على ملفات JPEG وPNG وWebP وTIFF وBMP، لا على GIF.
+
+### نقطة التركيز
+
+يعيّن المحررون نقطة التركيز لصورة في مكتبة الوسائط: افتح الملف وانقر على
+الصورة (**نقطة التركيز: انقر على الصورة أو استخدم مفاتيح الأسهم لتحديدها**). تُبقي عمليات القص بـ `fit=cover`
+تلك النقطة ظاهرة، وتغييرها يسقط الرسوم المخزّنة مؤقتًا للملف.
+
+### الإعدادات المسبقة
+
+الإعدادات المسبقة (presets) هي التحويلات التي تسمح لأي شخص بطلبها. عرّفها في
+`[upload.transforms.presets]`:
+
+```toml title="verdin.toml"
+[upload.transforms.presets]
+thumb = { w = 300, h = 300 }
+card = { w = 640, h = 360, format = "webp" }
+hero = { w = 1600, h = 600, fit = "cover", format = "jpeg", q = 85 }
+```
+
+```html
+<img src="https://cms.example.com/uploads/team_4f1c2a.jpg?preset=card" alt="…" />
+```
+
+الإعداد المسبق غير المعروف يجيب بـ `400`.
+
+### المعاملات الموقّعة
+
+أي تركيبة أخرى من `w` و`h` و`fit` و`format` و`q` تحتاج إلى توقيع، حتى لا يستطيع أحد
+جعل الخادم يرسم (ويخزّن) عددًا غير محدود من المتغيرات. عيّن سرًا في
+بيئة الخادم وبيئة الشيفرة التي تبني عناوين URL للصور:
+
+```sh title="Terminal"
+export VERDIN_IMAGE_SECRET="$(openssl rand -hex 32)"
+```
+
+التوقيع `s` هو HMAC-SHA256 بترميز hex، بمفتاح هو ذلك السرّ، لـ
+`<file>?<canonical query>`. يسرد الاستعلام القانوني المعاملات التي عيّنتها، ما عدا
+`fit=cover` (الافتراضي)، مرتّبة حسب الاسم (`fit`، `format`، `h`، `q`، `w`)، مع `jpeg`
+لصيغة JPEG:
+
+```ts title="src/image-url.ts"
+import { createHmac } from 'node:crypto';
+
+type Transform = { w?: number; h?: number; fit?: 'cover' | 'inside' | 'fill'; format?: 'jpeg' | 'png' | 'webp'; q?: number };
+
+export function imageUrl(cms: string, url: string, t: Transform): string {
+  const file = url.replace(/^\/uploads\//, '');
+  const params: [string, string][] = [];
+  if (t.fit && t.fit !== 'cover') params.push(['fit', t.fit]);
+  if (t.format) params.push(['format', t.format]);
+  if (t.h) params.push(['h', String(t.h)]);
+  if (t.q) params.push(['q', String(t.q)]);
+  if (t.w) params.push(['w', String(t.w)]);
+  const query = params.map(([k, v]) => `${k}=${v}`).join('&');
+  const s = createHmac('sha256', process.env.VERDIN_IMAGE_SECRET!).update(`${file}?${query}`).digest('hex');
+  return `${cms}/uploads/${file}?${query}&s=${s}`;
+}
+```
+
+ابنِ عناوين URL هذه على الخادم (أو وقت البناء): يجب ألا يصل السرّ إلى المتصفح.
+بدون `VERDIN_IMAGE_SECRET`، أو مع توقيع خاطئ، يجيب الطلب بـ `403`.
+
+<Aside type="caution">
+يقبل `[upload.transforms].allow_arbitrary = true` أي معاملات دون توقيع.
+عندئذ يُرسم كل عنوان URL مختلف ويُخزَّن مؤقتًا، فيستطيع أي شخص ملء القرص واستهلاك
+المعالج. لا تفعّله إلا عندما لا يمكن الوصول إلى الخادم إلا من شبكات موثوقة.
+</Aside>
+
+### التخزين المؤقت والحدود
+
+- تُكتب الرسوم في `[upload.transforms].cache_dir` (`.cache/transforms`
+  افتراضيًا) وتُقدَّم من هناك بعد ذلك. حذف المجلد آمن.
+- استبدال ملف أو تحريك نقطة تركيزه يسقط رسومه المخزّنة مؤقتًا.
+- تخزّن المتصفحات وشبكات CDN الاستجابات المحوّلة مؤقتًا لمدة يوم
+  (`Cache-Control: public, max-age=86400`)؛ والملفات العادية لمدة سنة، لأن أسماءها
+  لا تتغير أبدًا.
+- يجري الرسم بالتوازي حتى عدد أنوية المعالج؛ وتنتظر الطلبات الإضافية.
+- تُرفض الصور الأكبر من `max_image_megapixels` (`422`).
+
+عيّن `[upload.transforms].enabled = false` لإيقاف التحويلات. راجع
+[`[upload.transforms]`](/ar/reference/configuration/) للمفاتيح.
+
+### مع S3 والموفّرين الآخرين
+
+مع موفّر S3، تقدّم الحاوية أو الـ CDN الخاص بها الملفات، لا Verdin، لذا
+لا تفعل معاملات التحويل شيئًا. استخدم الصيغ المتجاوبة، أو خدمة الصور في
+الـ CDN لديك (مثل Cloudflare Images أو imgix) أمام `public_url` الخاص بالحاوية.
+
+ليس لدى Strapi تحويلات مدمجة؛ وتتصرف صيغه المتجاوبة و`breakpoints`
+كما في Verdin.

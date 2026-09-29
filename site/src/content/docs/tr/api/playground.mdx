@@ -1,0 +1,35 @@
+---
+title: API oyun alanı
+description: Örnek blog projesinin içerik API’sine tarayıcıdan, yerel Verdin’inize karşı istek gönderin.
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+[Örnek blog projesinin](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) içerik
+API’sini kod yazmadan deneyin. İstekler tarayıcınızdan **Server** alanında seçtiğiniz sunucuya
+gider; varsayılan olarak `http://localhost:1337`.
+
+Bunlara yanıt vermek için örnek projeyi yerelde çalıştırın ve isteklere izin verin:
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- [localhost:1337/admin](http://localhost:1337/admin/) adresinde ilk admin’i oluşturun ve
+  birkaç makale ekleyin.
+- **Ayarlar → Herkese açık erişim** bölümünde `find` ve `findOne` izinlerini verin ya da
+  **Authentication** altına bir API token’ı yapıştırın.
+- Oyun alanı bu sitenin origin’inde çalışır, bu yüzden sunucunun onu kabul etmesi gerekir:
+  onu `verdin.toml` içindeki `[api].cors_origins` listesine ekleyin (bkz.
+  [Yapılandırma](/tr/reference/configuration/)).
+
+Kendi projenizde, **Ayarlar → Özellikler → API dokümantasyonu** bölümünde **Herkese açık
+dokümantasyon** açıldığında, kendi şemanız için aynı başvuru `/api/docs` adresinde bulunur.
+
+<Playground />

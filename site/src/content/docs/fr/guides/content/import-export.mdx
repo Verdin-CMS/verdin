@@ -1,0 +1,127 @@
+---
+title: Importer et exporter des entrées
+description: Exportez les entrées d’une liste en CSV ou en JSON, et créez ou modifiez des entrées à partir d’un fichier CSV ou JSON, avec une simulation au préalable.
+sidebar:
+  order: 9
+  label: Import et export
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+La liste de chaque type de contenu dans l’administration exporte ses entrées en CSV ou en JSON,
+et les réimporte à partir du même genre de fichier : pour corriger de nombreuses entrées dans un
+tableur, charger un catalogue de produits ou copier des entrées d’un projet à l’autre. Ce guide
+couvre les deux sens et le format des fichiers.
+
+Cela concerne les entrées d’un seul type de contenu à la fois. Pour déplacer un projet entier,
+voir [`verdin export` et `verdin import verdin`](/fr/reference/cli/). Pour venir de Strapi, voir
+[Migrer depuis Strapi](/fr/migrate/from-strapi/).
+
+## Avant de commencer
+
+- Exporter nécessite l’accès en lecture au type de contenu. Seuls les champs que votre rôle peut
+  lire sont exportés.
+- Importer nécessite l’accès en création, en modification ou les deux : les lignes qui créent des
+  entrées nécessitent la création, celles qui les modifient la modification. Publier les lignes
+  importées nécessite aussi la publication. Voir [Autorisations](/fr/reference/permissions/).
+
+## Exporter des entrées
+
+<Steps>
+
+1. Ouvrez la liste du type de contenu et configurez-la comme vous voulez l’export : filtres,
+   recherche, tri, statut et langue.
+2. Sélectionnez **Exporter**, puis **Exporter en CSV** ou **Exporter en JSON**.
+
+</Steps>
+
+Le fichier contient les entrées qu’affiche la liste, avec ses filtres, sa recherche et son tri,
+sur toutes les pages, jusqu’à 50 000 entrées. Chaque ligne commence par `documentId`, suivi des
+champs.
+
+## Importer des entrées
+
+<Steps>
+
+1. Ouvrez la liste du type de contenu et sélectionnez **Importer**.
+2. Choisissez un **Fichier** : un fichier `.csv` avec une ligne d’en-tête, ou un fichier `.json`
+   contenant une liste d’objets, jusqu’à 1 Mo.
+3. Sous **Colonnes**, choisissez le champ dans lequel va chaque colonne. Les colonnes nommées
+   comme un champ sont déjà associées. Choisissez **Ignorer** pour exclure une colonne, et
+   **ID de document (mise à jour)** pour la colonne qui désigne des entrées existantes.
+4. Éventuellement, activez **Publier les entrées importées**. Sinon, elles sont enregistrées
+   comme brouillons.
+5. Sélectionnez **Vérifier**. Verdin vérifie chaque ligne, contraintes et références comprises,
+   sans rien écrire, et indique les lignes qu’il créerait, modifierait ou rejetterait.
+6. Corrigez le fichier si besoin, puis sélectionnez **Importer**.
+
+</Steps>
+
+Comment les lignes sont écrites :
+
+- Une ligne avec un `documentId` modifie cette entrée ; les autres créent de nouvelles entrées.
+- Les lignes sont écrites une par une. Une ligne en échec est signalée avec son champ et le
+  problème, puis ignorée ; les autres sont quand même écrites.
+- Le rapport liste jusqu’à 100 lignes en erreur, et les colonnes qui ne correspondent à aucun
+  champ.
+- Un import comporte au plus 5 000 lignes. Découpez les fichiers plus gros.
+- Les entrées sont écrites dans la langue actuelle de la liste.
+
+<Aside type="caution">
+Un import fait passer vos lignes par la même validation que l’éditeur, mais il n’y a pas
+d’annulation. Lancez d’abord **Vérifier**, et exportez la liste avant une grosse mise à jour pour
+pouvoir la restaurer. Avec l’[historique du contenu](/fr/guides/content/content-history/)
+activé, chaque entrée modifiée conserve sa version précédente.
+</Aside>
+
+## Format des fichiers
+
+Les champs utilisent les mêmes formes que le format d’écriture de l’API de contenu :
+
+| Champ | Valeur |
+| --- | --- |
+| Texte, nombres, booléens, dates | Comme dans l’API (`true`/`false`, dates ISO 8601). |
+| Relations | Les `documentId` des entrées liées. |
+| Médias | Les identifiants de fichiers de la médiathèque. |
+| Relations polymorphes | `uid:documentId`, par exemple `api::article:k3v9…`. |
+| Composants, zones dynamiques, blocks et JSON | Du JSON. |
+
+En CSV, les listes (plusieurs relations ou fichiers) sont jointes avec `|`.
+
+```csv title="articles.csv"
+documentId,title,slug,featured,tags
+,Hello world,hello-world,true,t1a2b3|t4c5d6
+k3v9x8…,Updated title,updated-title,false,
+```
+
+Les mêmes lignes en JSON :
+
+```json title="articles.json"
+[
+  { "title": "Hello world", "slug": "hello-world", "featured": true, "tags": ["t1a2b3", "t4c5d6"] },
+  { "documentId": "k3v9x8…", "title": "Updated title", "slug": "updated-title", "featured": false }
+]
+```
+
+L’export d’une liste est toujours un fichier d’import valide pour le même type de contenu.
+
+## API d’administration
+
+- `GET /admin/api/content/{uid}/export?format=csv` (ou `json`) prend les paramètres de requête
+  de la liste : `filters`, `_q`, `sort`, `status` et `locale`.
+- `POST /admin/api/content/{uid}/import?locale=` prend le contenu du fichier sous forme de
+  chaîne :
+
+```json
+{
+  "format": "csv",
+  "data": "title,slug\nHello world,hello-world\n",
+  "mapping": { "slug": "slug", "notes": null },
+  "dryRun": true,
+  "publish": false
+}
+```
+
+`mapping` associe une colonne à un champ ; `null` ignore la colonne, et les colonnes non
+associées gardent leur nom. Le corps de la requête est limité par `[server].body_limit` (1 Mo par
+défaut).

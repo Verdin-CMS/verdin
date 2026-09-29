@@ -1,0 +1,120 @@
+---
+title: Exécuter plusieurs instances
+description: Exécutez plusieurs instances Verdin d’un même projet derrière un répartiteur de charge — ce qu’elles partagent via la base de données, ce qui reste propre à chaque instance, et les paramètres à modifier.
+sidebar:
+  order: 8
+  label: Plusieurs instances
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Verdin garde son état dans la base de données : vous pouvez donc exécuter plusieurs instances du
+même projet derrière un répartiteur de charge, pour la disponibilité ou pour la charge. Cette
+page liste ce que les instances partagent, ce que chacune garde pour elle, et les paramètres qui
+comptent.
+
+<Diagram
+  caption="Les instances partagent la base de données et le stockage des médias ; les caches, les limites de débit et les flux d’événements restent dans chaque instance."
+  code={`flowchart LR
+  LB[Répartiteur de charge] --> A[Instance 1]
+  LB --> B[Instance 2]
+  LB --> C[Instance 3]
+  A --> DB[(Base de données)]
+  B --> DB
+  C --> DB
+  A --> S3[(Médias S3)]
+  B --> S3
+  C --> S3`}
+/>
+
+## Check-list
+
+- **Une base de données partagée.** PostgreSQL, MySQL ou MariaDB. SQLite est un fichier sur une
+  seule machine et ne fonctionne pas avec plusieurs instances.
+- **La même configuration partout.** Chaque instance utilise les mêmes `verdin.toml`, fichiers
+  de schéma et secrets (`VERDIN_ADMIN_JWT_SECRET`, `VERDIN_TOKEN_PEPPER`,
+  `VERDIN_SSO_<ID>_SECRET`…). Avec des secrets différents, les sessions et les jetons d’API
+  créés sur une instance sont refusés par les autres.
+- **Le mode production.** Exécutez `verdin start`, pas `verdin dev`. Modifiez le schéma en
+  développement, commitez-le, et migrez une fois par déploiement.
+- **Un stockage des médias partagé.** Utilisez le fournisseur S3
+  (`[upload] provider = { name = "s3", … }`), ou montez le même volume sur chaque instance pour
+  le fournisseur local.
+- **Des health checks.** Pointez le répartiteur de charge vers `GET /_ready`, qui répond `503`
+  quand la base de données est injoignable. `GET /_health` indique seulement que le processus
+  tourne ; utilisez-le pour la liveness.
+- **Les tâches de plugins sur une seule instance.** Définissez `[plugins].run_jobs = false` sur
+  toutes les instances sauf une ; sinon, chaque instance exécute les tâches planifiées.
+- **Des métriques par instance.** Avec `[metrics].enabled = true`, chaque instance sert son
+  propre `/_metrics` ; collectez chacune d’elles.
+
+## Migrations avec plusieurs instances
+
+`verdin start --migrate` peut être exécuté sans risque sur toutes les instances à la fois.
+Chaque exécution de migration détient un verrou dans la base de données (un advisory lock sur
+PostgreSQL, `GET_LOCK` sur MySQL et MariaDB, avec une attente de 60 secondes au maximum) : la
+première instance applique les étapes et les autres trouvent la base de données à jour.
+
+Pendant un déploiement progressif, des instances de l’ancienne version continuent de tourner un
+moment sur la base de données migrée. Les étapes sans risque créent des tables, ajoutent des
+colonnes acceptant `NULL` ou dotées d’une valeur par défaut et des index, élargissent des
+colonnes de texte ou ajoutent des valeurs d’énumération, ce que l’ancienne version ne remarque
+pas. Appliquez les étapes risquées ou destructives (`verdin migrate apply --allow
+risky|destructive`) dans un déploiement séparé, une fois qu’aucune instance de l’ancien schéma
+n’a plus besoin des données. Voir [Migrations de schéma](/fr/concepts/schema-migrations/).
+
+## Ce qui est partagé
+
+| Quoi | Comment |
+| --- | --- |
+| Sessions d’administration, jetons d’API, autorisations | Dans la base de données ; aucune sticky session nécessaire. |
+| Interrupteurs des fonctionnalités et des plugins, langues, workflows de relecture | Dans la base de données. Chaque instance les relit toutes les `[server].sync_interval_secs` (10 s) : une modification faite sur une instance atteint les autres dans ce délai. |
+| Envois de webhooks | Une file d’attente dans la base de données. Une instance réserve un envoi avant de l’envoyer : chacun part une seule fois. |
+| Releases planifiées | Réservées dans la base de données avant leur exécution : chacune s’exécute une seule fois. |
+| Résumé quotidien | L’exécution de chaque jour est réservée dans la base de données : les administrateurs reçoivent un seul e-mail. |
+| Challenges de passkeys | Les challenges utilisés sont enregistrés dans la base de données : chacun ne reçoit qu’une réponse, toutes instances confondues. |
+| Purge du journal d’audit | S’exécute sur chaque instance ; supprimer deux fois d’anciennes lignes est sans conséquence. |
+| Stockage clé-valeur des plugins | Dans la base de données. |
+
+## Ce qui reste propre à chaque instance
+
+- **Les limites de débit** sont comptées par chaque instance. Avec `n` instances, un client peut
+  faire jusqu’à `n` fois `[api].public_rate_limit` requêtes par minute. Appliquez une limite
+  globale au niveau du répartiteur de charge si vous en avez besoin.
+- **Le cache des réponses anonymes** (`[api].cache_ttl_secs`). Une écriture vide le cache de
+  l’instance qui l’a effectuée ; les autres peuvent servir la réponse précédente jusqu’à
+  l’expiration de leur entrée. Limitez le TTL à quelques secondes, ou à `0`.
+- **Les événements temps réel et la présence** sont ceux de l’instance à laquelle un client est
+  connecté. Utilisez des sticky sessions pour les flux d’événements (voir
+  [Temps réel](/fr/guides/frontend/realtime/)).
+- **L’index de recherche** (`[search]`) réside sur le disque de l’instance et ne suit que les
+  écritures de cette instance. Activez-le sur une seule instance et routez-y les requêtes `_q`,
+  ou acceptez que les autres prennent du retard jusqu’à leur redémarrage avec un répertoire
+  d’index vide.
+- **Les transformations d’images** (`[upload.transforms]`) sont mises en cache par instance
+  sous `cache_dir`. Placez un CDN devant `/uploads` pour les partager.
+- **Les tâches planifiées des plugins** : voir `run_jobs` ci-dessus.
+
+## Paramètres
+
+```toml title="verdin.toml"
+[server]
+# How often to read settings that other instances changed; 0 turns it off.
+sync_interval_secs = 10
+
+[plugins]
+# Run the plugins' scheduled jobs here (true on one instance only).
+run_jobs = true
+
+[api]
+# Short-lived when each instance keeps its own cache.
+cache_ttl_secs = 5
+```
+
+Définissez `run_jobs` par instance avec `VERDIN_PLUGINS__RUN_JOBS=false`.
+
+## Connexions à la base de données
+
+Chaque instance ouvre jusqu’à `[database].pool_max` connexions (10 par défaut). Gardez
+`instances × pool_max` sous la limite du serveur, avec de la marge pour les migrations, les
+sauvegardes et la maintenance. La limite par défaut de PostgreSQL est de 100 connexions.

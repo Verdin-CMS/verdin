@@ -1,0 +1,156 @@
+---
+title: Aperçu
+description: Ouvrez les brouillons sur votre site depuis l’éditeur d’entrée avec un jeton d’aperçu de courte durée, et faites lire le brouillon à votre site grâce à ce jeton.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+L’aperçu ouvre le brouillon d’une entrée sur votre propre site, avant sa publication. L’éditeur
+construit un lien à partir d’un modèle d’URL par type de contenu et y ajoute un jeton de courte
+durée qui permet à votre site de lire ce seul brouillon. Ce guide configure les modèles et le
+côté site.
+
+Pour cliquer sur du texte dans l’aperçu et sauter à son champ, ajoutez
+l’[édition visuelle](/fr/guides/frontend/visual-editing/) par-dessus.
+
+## Avant de commencer
+
+- Activez **Paramètres → Fonctionnalités → Aperçu**. Il est désactivé par défaut.
+- Modifier les paramètres de la fonctionnalité nécessite **Gérer les fonctionnalités**
+  (`features.manage`).
+- Ouvrir un aperçu nécessite l’accès en lecture à l’entrée. Voir
+  [Autorisations](/fr/reference/permissions/).
+
+## Configurer les URL d’aperçu
+
+<Steps>
+
+1. Sur la carte **Aperçu** de **Paramètres → Fonctionnalités**, sélectionnez
+   **Configurer les URL d’aperçu**.
+2. Sous **Modèles d’URL**, saisissez la page de votre site qui affiche le brouillon de chaque
+   type de contenu. Laissez un type vide pour ne lui donner aucun aperçu.
+3. Éventuellement, modifiez la **Durée de validité du lien (minutes)** : 60 par défaut,
+   10080 au maximum (7 jours).
+4. Enregistrez.
+
+</Steps>
+
+Un modèle est une URL `http` ou `https` avec des variables entre accolades :
+
+| Variable | Remplacée par |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | N’importe quel champ de premier niveau du brouillon. Les variables inconnues deviennent vides. |
+| `{documentId}`, `{uid}` | L’identifiant du document et l’UID du type de contenu. |
+| `{token}` | Le jeton d’aperçu. Sans cette variable, le jeton est ajouté comme paramètre de requête `preview`. |
+
+Pour les articles du projet d’exemple :
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+donne `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+Les mêmes paramètres en JSON, tels que les stocke la fonctionnalité
+(`PUT /admin/api/features/preview`) :
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## Ouvrir un aperçu
+
+Dans l’éditeur d’entrée, sélectionnez **Ouvrir l’aperçu** pour ouvrir le brouillon sur votre
+site dans un nouvel onglet, ou **Côte à côte** pour l’afficher dans un panneau à côté du
+formulaire, avec les largeurs **Ordinateur**, **Tablette** et **Mobile**. Le panneau latéral se
+recharge après chaque enregistrement. S’il reste vide, votre site refuse probablement d’être
+intégré dans une frame : utilisez **Ouvrir dans un nouvel onglet**.
+
+## Lire le brouillon sur votre site
+
+Votre page d’aperçu récupère le jeton dans l’URL et le renvoie à l’API de contenu dans l’en-tête
+`x-verdin-preview`, en demandant le brouillon :
+
+<Diagram
+  caption="Une requête d’aperçu"
+  code={`sequenceDiagram
+  participant E as Éditeur
+  participant V as Verdin
+  participant S as Votre site
+  E->>V: Ouvrir l’aperçu
+  V-->>E: URL avec le jeton d’aperçu
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: le brouillon`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+Le jeton d’aperçu est lu par l’API de contenu REST. Récupérez le brouillon en REST sur votre page
+d’aperçu.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+Le même en-tête fonctionne sur les types uniques (`GET /api/<singularName>?status=draft`).
+
+Ce que le jeton accorde :
+
+- Il permet à son porteur de lire ce seul document, brouillons compris, jusqu’à son expiration.
+- Il ne peut pas lire d’autres documents, lister des entrées ni rien écrire.
+- Les réponses aux requêtes d’aperçu ne sont jamais mises en cache.
+
+<Aside type="caution">
+Toute personne disposant du lien peut lire le brouillon jusqu’à l’expiration du jeton. Gardez une
+durée de validité courte, et ne partagez pas de liens d’aperçu dans des lieux publics.
+</Aside>
+
+Votre page d’aperçu recherche généralement l’entrée par un champ comme `slug`. Comme le jeton lit
+par `documentId`, placez aussi `{documentId}` dans le modèle, ou gardez de votre côté la
+correspondance entre slug et identifiant.
+
+## API d’administration
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` renvoie le lien du bouton de
+l’éditeur :
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+Il nécessite l’accès en lecture à l’entrée, et répond `404` quand la fonctionnalité est
+désactivée ou que le type n’a pas de modèle.

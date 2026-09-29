@@ -1,0 +1,261 @@
+---
+title: Tipli istemci
+description: Verdin içeriğini TypeScript’ten @verdin/client ve `verdin types` ile şemanızdan üretilen tiplerle okuyun ve yazın.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`@verdin/client`, içerik API’si için küçük bir TypeScript istemcisidir: REST belgeleri, medya
+kütüphanesi ve GraphQL. Onu içerik tiplerinizin TypeScript tanımlarını yazan `verdin types` ile
+eşleştirin; editörünüz rota adlarını, alanları ve yazma payload’larını siz yazarken denetler.
+
+İstemcinin hiçbir bağımlılığı yoktur ve `fetch` bulunan her yerde çalışır: tarayıcılar, Node 20 ve
+sonrası, Deno, Bun ve edge worker’lar. İsteğe bağlıdır; her çağrı [REST API](/tr/api/rest/)’nin düz
+bir HTTP isteğine karşılık gelir.
+
+## Kurulum ve tip üretimi
+
+<Steps>
+
+1. Paketi frontend projenize kurun:
+
+   ```sh title="Terminal"
+   npm install @verdin/client
+   ```
+
+2. Verdin projesinde (`verdin.toml` bulunan dizin) tipleri üretin:
+
+   ```sh title="Terminal"
+   verdin types -o ../site/src/verdin-types.ts
+   ```
+
+   `-o` (`--out`) olmadan tanımlar standart çıktıya gider. Komut yalnızca şema dosyalarını okur;
+   veritabanı gerektirmez.
+
+3. Üretilen `VerdinSchema` ile bir istemci oluşturun:
+
+   ```ts title="src/verdin.ts"
+   import { createClient } from '@verdin/client';
+   import type { VerdinSchema } from './verdin-types';
+
+   export const verdin = createClient<VerdinSchema>({
+     url: 'https://cms.example.com',
+     token: process.env.VERDIN_TOKEN, // omit to use the public role
+   });
+   ```
+
+</Steps>
+
+Her şema değişikliğinden sonra `verdin types`’ı yeniden çalıştırın; dosya bunu ilk satırında
+söyler. Onu frontend kodunuzun yanında commit etmek ya da CI’da yeniden üretmek iki tarafı uyumlu
+tutar.
+
+<Aside type="caution">
+Token, sahibine token’ın izinlerini verir. Tam erişimli ve özel token’ları sunucuda (SSR, build
+betikleri, API rotaları) tutun. Bir tarayıcı paketi token kullanmamalı (public rolü) ya da salt
+okunur bir token kullanmalıdır. Bkz. [API token’ları](/tr/guides/auth/api-tokens/).
+</Aside>
+
+## `verdin types` ne üretir
+
+[Örnek blog](https://github.com/Verdin-CMS/verdin/blob/main/examples/blog/) için (makaleler,
+kategoriler, etiketler, bir homepage tekil tipi ve `shared.seo`, `blocks.hero` ve `blocks.quote`
+bileşenleri) dosya şunları içerir:
+
+| Tip | Nedir |
+| --- | --- |
+| `Article`, `Category`, `Tag`, `Homepage` | İçerik tipi başına, `singularName` değerine göre adlandırılmış ve `DocumentBase`’i (`id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt`) genişleten bir arayüz. Private nitelikler dışarıda bırakılır. |
+| `ArticleInput`, … | Yazma tipleri: her nitelik isteğe bağlı, ilişkiler `documentId` string’leri (veya `connect` / `disconnect` / `set`), medya dosya kimlikleri olarak, ters ilişki tarafları dışarıda. |
+| `ComponentSharedSeo`, `ComponentBlocksHero`, … | Bileşen başına bir arayüz, ayrıca onun `…Input` tipi. Dinamik bölge öğeleri tipli bir `__component` taşır. |
+| `Media`, `MediaFormat`, `Blocks` | Medya kütüphanesi dosyaları, duyarlı formatları ve zengin metin blokları biçimi. |
+| `Collections`, `Singles`, `VerdinSchema` | İstemci için belge ve girdi tiplerine eşlenmiş rotalar (`articles`, `homepage`). |
+
+İlişkiler, medya, bileşenler ve dinamik bölgeler isteğe bağlı özelliklerdir (`category?:`), çünkü
+API onları yalnızca `populate` ettiğinizde döndürür. Büyük tam sayılar JavaScript sayılarına
+sığmadıkları için `string`’dir.
+
+Üretilen tipler olmadan da istemci çalışır: her rota kabul edilir ve belgeler
+`Record<string, unknown>`’dur.
+
+## İçerik okuma
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[title][$containsi]=rust&populate[category]=true&populate[seo]=true&sort[0]=publishedAt:desc&pagination[page]=1&pagination[pageSize]=10' \
+  -H "Authorization: Bearer $VERDIN_TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { title: { containsi: "rust" } }
+    sort: ["publishedAt:desc"]
+    pagination: { page: 1, pageSize: 10 }
+  ) {
+    documentId
+    title
+    slug
+    category { name }
+    seo { metaTitle metaDescription }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { verdin } from './verdin';
+
+const { data, meta } = await verdin.collection('articles').find({
+  filters: { title: { $containsi: 'rust' } },
+  populate: { category: true, seo: true },
+  sort: ['publishedAt:desc'],
+  pagination: { page: 1, pageSize: 10 },
+});
+
+data[0].title; // string
+data[0].category?.name; // string | null | undefined
+meta.pagination.total;
+```
+
+</TabItem>
+</Tabs>
+
+Sorgu parametreleri Strapi v5’in biçimini kullanır ve köşeli parantez gösterimiyle
+serileştirilir; bu yüzden REST API’de çalışan her filtre, sıralama, `fields`, `populate`, `status`
+veya `locale` burada da çalışır. Tam sözdizimi için bkz. [REST API](/tr/api/rest/).
+
+| Çağrı | İstek |
+| --- | --- |
+| `collection(route).find(params?)` | `GET /api/:route` |
+| `collection(route).findOne(documentId, params?)` | `GET /api/:route/:documentId` |
+| `collection(route).create(data, params?)` | `POST /api/:route` (`status: 'draft'` olmadıkça yayınlar) |
+| `collection(route).update(documentId, data, params?)` | `PUT /api/:route/:documentId` |
+| `collection(route).delete(documentId)` | `DELETE /api/:route/:documentId` |
+| `collection(route).publish(documentId)`, `unpublish`, `discardDraft` | `POST /api/:route/:documentId/actions/publish` (`unpublish`, `discard-draft`) |
+| `single(route).find(params?)`, `update(data, params?)`, `delete()` | `GET`, `PUT`, `DELETE /api/:route` |
+| `upload(files, info?)` | `POST /api/upload` (multipart) |
+| `files(params?)` | `GET /api/upload/files` |
+| `graphql(query, variables?)` | `POST /graphql` |
+
+Sorgu string’lerini kendiniz oluşturmak için (örneğin bir `<link rel="preload">` için)
+`stringify(params)` da dışa aktarılır.
+
+## İçerik yazma
+
+```ts
+const { data: article } = await verdin.collection('articles').create(
+  {
+    title: 'Hello from TypeScript',
+    category: 'hx2n8r3w0c1kq5v7m4j6b9a0',       // a category's documentId
+    tags: { connect: ['t1…', 't2…'] },
+    seo: { metaTitle: 'Hello', metaDescription: 'A first post' },
+  },
+  { status: 'draft' },
+);
+
+await verdin.collection('articles').publish(article.documentId);
+```
+
+Strapi v5’teki gibi `create`, taslak ve yayınlama kullanan tiplerde `status: 'draft'` geçmediğiniz
+sürece belgeyi hemen yayınlar. Yazmalar tip üzerinde `create`, `update` veya `publish` yetkisi olan
+bir token gerektirir; bkz. [İzinler](/tr/reference/permissions/).
+
+Dosyaları `upload` ile yükleyin, ardından onlara kimlikleriyle başvurun:
+
+```ts
+const [cover] = await verdin.upload(file, { alternativeText: 'The team at the office' });
+```
+
+`file` bir `Blob` veya `File`’dır (ya da bunların bir listesi). Yüklemeler medya kütüphanesinde
+`create` yetkisi gerektirir.
+
+## GraphQL
+
+`graphql()`, `/graphql` adresine gönderim yapar; bu yüzden **GraphQL** özelliği **Ayarlar →
+Özellikler** bölümünde açık olmalıdır. Yanıtın `data` alanını döndürür ve ilk hatada istisna
+fırlatır.
+
+```ts
+const data = await verdin.graphql<{ articles: Array<{ title: string }> }>(
+  `query ($q: String) { articles(filters: { title: { containsi: $q } }) { title } }`,
+  { q: 'rust' },
+);
+```
+
+Üretilen tipler REST API’yi tanımlar. GraphQL için sonuç tipini yukarıdaki gibi kendiniz verin ya
+da uç noktaya karşı bir GraphQL kod üreteci kullanın. Bkz. [GraphQL](/tr/api/graphql/).
+
+## Hatalar
+
+Başarısız her istek, API’nin Strapi biçiminde gönderdiği hatayı taşıyan bir `VerdinError` ile
+reddedilir:
+
+| Özellik | Örnek |
+| --- | --- |
+| `status` | `400`, `401`, `403`, `404`, `429` |
+| `name` | `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `RateLimitError`, `GraphQLError` |
+| `message` | Okunabilir bir açıklama. |
+| `details` | Hatanın ayrıntıları; örneğin bir `ValidationError`’ın geçersiz alan listesi. |
+
+```ts
+import { VerdinError } from '@verdin/client';
+
+try {
+  const { data } = await verdin.collection('articles').findOne(id);
+  return data;
+} catch (error) {
+  if (error instanceof VerdinError && error.status === 404) return null;
+  throw error;
+}
+```
+
+## Seçenekler
+
+| Seçenek | Açıklama |
+| --- | --- |
+| `url` | Sunucu origin’i, örneğin `https://cms.example.com`. Zorunlu. |
+| `token` | `Authorization: Bearer …` olarak gönderilen bir API token’ı veya bir son kullanıcının JWT’si. Public rolü için belirtmeyin. |
+| `prefix` | İçerik API’si öneki. Varsayılan `/api`; değiştirdiyseniz [`[api].prefix`](/tr/reference/configuration/) ile eşleştirin. |
+| `fetch` | Global olanın yerine kullanılacak bir `fetch` uygulaması. |
+| `headers` | Her istekle gönderilen ek başlıklar. |
+
+## Sunucu tarafı oluşturma ve edge çalışma zamanları
+
+İstemci yalnızca `fetch` çağırır; bu yüzden sunucu bileşenlerinde, API rotalarında, build
+betiklerinde ve edge fonksiyonlarında değişmeden çalışır. Her isteğe bir framework’ün önbellek
+seçeneklerini eklemek için özel bir `fetch` geçin. Örneğin Next.js ile:
+
+```ts title="src/verdin.ts"
+export const verdin = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  token: process.env.VERDIN_TOKEN,
+  fetch: (input, init) => fetch(input, { ...init, next: { revalidate: 60, tags: ['verdin'] } }),
+});
+```
+
+Bir önizleme sayfasında taslakları okumak için admin’in önizleme URL’sine koyduğu önizleme
+token’ını bir başlık olarak gönderin:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  headers: { 'x-verdin-preview': searchParams.get('preview') ?? '' },
+});
+const { data } = await preview.collection('articles').findOne(id, { status: 'draft' });
+```
+
+Önizleme bağlantılarının nasıl çalıştığı için [Önizleme](/tr/guides/content/preview/) sayfasına,
+aynı sayfaya tıkla-düzenle eklemek için [Görsel düzenleme](/tr/guides/frontend/visual-editing/)
+sayfasına bakın.
+
+API’yi başka bir origin’deki bir tarayıcıdan çağırmak, o origin’in
+[`[api].cors_origins`](/tr/reference/configuration/) içinde olmasını gerektirir.

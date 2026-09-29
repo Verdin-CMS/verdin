@@ -1,0 +1,114 @@
+---
+title: Log di audit
+description: Scopri chi ha cambiato cosa e quando, filtra i log di audit nel pannello di amministrazione o tramite l'API, e imposta per quanto tempo vengono conservate le voci.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+I log di audit registrano chi ha cambiato cosa, e quando: contenuti, media, accessi e ogni
+modifica fatta nel pannello di amministrazione. Questa guida mostra cosa viene registrato,
+come filtrare i log e per quanto tempo vengono conservati.
+
+In Strapi i log di audit sono una funzionalità Enterprise. In Verdin fanno parte del core
+open source.
+
+## Prima di iniziare
+
+- **Impostazioni → Funzionalità → Log di audit** è attivo di default. Disattivarlo smette di
+  registrare nuove azioni; le voci esistenti restano leggibili.
+- Leggere i log richiede **Visualizza i log di audit** (`audit.read`). Vedi
+  [Permessi](/it/reference/permissions/).
+
+## Cosa viene registrato
+
+| Area | Azioni | Note |
+| --- | --- | --- |
+| Contenuti | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | Da ogni API: il pannello di amministrazione, REST, GraphQL e i plugin. La lingua è nei dettagli. |
+| Flussi di revisione | `entry.stage`, `entry.assign` | Cambi di fase e assegnazioni. |
+| Media | `media.create`, `media.update`, `media.delete` | Upload, modifiche ed eliminazioni di file. Il nome del file è nei dettagli. |
+| Accessi | `admin.login` | Accessi con password e del primo admin (registrati dopo il secondo fattore quando l'account ne ha uno), e accessi SSO con il provider. |
+| Modifiche admin | `{METHOD} {route}`, per esempio `PUT /roles/{id}` | Ogni scrittura riuscita sull'API admin: utenti, ruoli, token API, impostazioni, funzionalità, webhook, lingue, plugin, rilasci… I parametri della route sono nei dettagli. |
+
+Ogni voce ha un'ora, un autore, un'azione, un oggetto (l'uid di un tipo di contenuto,
+`plugin::upload.file`, o la risorsa admin come `roles`), l'id dell'oggetto, i dettagli e,
+per le richieste, l'indirizzo IP del client.
+
+L'autore è uno di questi:
+
+- **Amministratore**: un admin autenticato, indicato per nome nel log.
+- **API**: una modifica fatta tramite la content API o GraphQL, con un token API, il token
+  di un utente finale o l'accesso pubblico.
+- **Sistema**: una scrittura sull'API admin senza un admin autenticato.
+
+Dietro un reverse proxy, imposta `[server].trusted_proxies` così i log mostrano l'indirizzo
+del client invece di quello del proxy. Vedi il
+[riferimento della configurazione](/it/reference/configuration/).
+
+## Filtra i log
+
+<Steps>
+
+1. Apri **Impostazioni → Log di audit**.
+2. Usa un preset dei **Filtri rapidi** (**Contenuti**, **Media**, **Accessi**), o compila i
+   filtri:
+   - **Azione**: un'azione esatta come `entry.publish`, o un prefisso che termina con `*`,
+     come `entry.*`.
+   - **Autore**: un admin, o **Chiunque**.
+   - **Oggetto**: l'uid di un tipo di contenuto come `api::article`.
+   - **Dal** e **Al**: un intervallo di date. Una data senza ora include l'intera giornata.
+3. Seleziona **Applica**. Apri **Dettagli** su una riga per vedere tutto ciò che è stato
+   registrato.
+
+</Steps>
+
+## Interroga l'API
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+Le voci arrivano dalla più recente, 50 per pagina di default e al massimo 200:
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` e `to` accettano date o date-ora ISO 8601; qualsiasi altra cosa è un errore `400`.
+
+## Imposta per quanto tempo vengono conservate le voci
+
+Le voci più vecchie di `[audit].retention_days` vengono eliminate una volta al giorno. Il
+default è 90 giorni.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+Per conservare le voci di audit più a lungo di quanto dovrebbe il tuo database, copiale
+regolarmente nel tuo storage con l'API qui sopra.
+</Aside>

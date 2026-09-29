@@ -1,0 +1,423 @@
+---
+title: "REST API"
+description: "Verdin の Strapi v5 互換 REST API のルート、クエリパラメーター（filters、sort、pagination、fields、populate、locale、status）、リクエストボディ、レスポンス、エラー、制限を説明します。"
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+すべてのコンテンツタイプには、コンテンツ API のプレフィックス（デフォルトは `/api`、`[api].prefix`）配下に REST ルートができます。ルート、パラメーター、レスポンスの形は Strapi v5 に従っているので、Strapi 向けに書かれたフロントエンドの多くはそのまま動きます。このページはリファレンスです。例では[ブログのサンプル](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)（記事、カテゴリー、タグ、ホームページ）を使います。
+
+サーバーは、*あなたの*スキーマのルートを OpenAPI 3.1 ドキュメントとして `GET /api/_openapi.json` でも公開しています。[コンテンツ API のサンプル](/api/example/)のページではブログのドキュメントを表示しており、[API プレイグラウンド](/ja/api/playground/)ではリクエストを試せます。
+
+## 例
+
+各 API で同じクエリを実行します。あるカテゴリーの最新記事 10 件を、カテゴリー名付きで取得します。
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+[GraphQL API](/ja/api/graphql/) と[型付きクライアント](/ja/guides/frontend/typed-client/)を参照してください。
+
+## 認証
+
+| `Authorization` ヘッダー | 呼び出し元 | 権限 |
+| --- | --- | --- |
+| なし | 公開 | **設定 → 公開アクセス** |
+| `Bearer vd_…` | API トークン | トークンの種類と許可 |
+| `Bearer <JWT>` | エンドユーザー | そのエンドユーザーのロール |
+
+不明なトークン、期限切れのトークン、不正な形式のトークンは `401` になり、公開アクセスにフォールバックすることはありません。有効な呼び出し元でも許可がなければ `403` になります。[権限](/ja/concepts/permissions/)を参照してください。
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+他のオリジンのブラウザーは、`[api].cors_origins` に含まれている場合にだけ API を呼び出せます。
+
+## ルート
+
+コレクションタイプは `pluralName` で提供されます。
+
+| メソッドとパス | アクション | 応答 |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`、ドキュメントの 1 ページ分 |
+| `GET /api/articles/{documentId}` | `findOne` | `200`、1 件のドキュメント |
+| `POST /api/articles` | `create` | `201`、作成されたドキュメント |
+| `PUT /api/articles/{documentId}` | `update` | `200`、更新されたドキュメント |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`、ボディなし |
+
+シングルタイプは `singularName` で提供されます。
+
+| メソッドとパス | アクション | 応答 |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200`。最初の書き込み前は `404` |
+| `PUT /api/homepage` | `update` | `200`。最初の `PUT` でドキュメントが作成されます |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+シングルタイプへの `POST` は `405` を返します。
+
+### アクション
+
+[下書きと公開](/ja/concepts/draft-and-publish/)を使う型には、さらに 3 つのルートがあり、`publish` の許可が必要です。Strapi には対応する REST ルートがありません。
+
+| メソッドとパス | 効果 | 応答 |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | 下書きを公開します。 | 公開されたバージョン |
+| `POST /api/articles/{documentId}/actions/unpublish` | 公開バージョンを削除します。 | 下書き |
+| `POST /api/articles/{documentId}/actions/discard-draft` | 下書きを公開バージョンで置き換えます。 | 下書き |
+
+多言語化された型では、3 つとも `?locale=` を受け付けます。
+
+## 書き込み
+
+`POST` と `PUT` は、`data` オブジェクトを持つ JSON ボディを受け取ります。
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` は部分更新です。省略した属性は値が保たれます。送ったコンポーネントとダイナミックゾーンは、保存されている値を置き換えます。
+- 下書きと公開を使う型では、Strapi v5 と同様に、`POST` と `PUT` は下書きを書き込み、**さらに公開します**。下書きだけを書き込むには `?status=draft` を付けてください。公開時のバリデーションに失敗すると、何も書き込まれません。
+- 不明なキー、システムフィールド（`id`、`documentId`、タイムスタンプ）、逆側（`mappedBy`）のリレーションは、バリデーションエラーになります。
+- リレーションは `documentId`、そのリスト、`null`、または `{ connect, disconnect, set }` を受け取ります。[リレーション](/ja/concepts/relations/#書き込み)を参照してください。メディアフィールドはファイル ID を受け取ります。
+- レスポンスは書き込まれたバージョンで、リクエストの `fields` と `populate` で読み取られます。
+- `DELETE` はドキュメントのすべてのバージョンを削除します（多言語化された型では、リクエストしたロケールのバージョン）。
+
+## クエリパラメーター
+
+| パラメーター | 例 | デフォルト |
+| --- | --- | --- |
+| [`filters`](#フィルター) | `filters[title][$containsi]=rust` | なし |
+| [`sort`](#ソート) | `sort=publishedAt:desc` | `id` の昇順 |
+| [`pagination`](#ページネーション) | `pagination[page]=2&pagination[pageSize]=10` | 1 ページ目、1 ページ 25 件 |
+| [`fields`](#フィールド) | `fields[0]=title&fields[1]=slug` | すべてのスカラーフィールド |
+| [`populate`](#populate) | `populate[category][fields][0]=name` | なし |
+| [`status`](#ステータス) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#ステータス) | `hasPublishedVersion=false` | なし |
+| [`locale`](#ロケール) | `locale=fr` | デフォルトのロケール |
+| [`_q`](#検索) | `_q=ownership` | なし |
+
+パラメーターは Strapi の角かっこ記法を使います。リストは、インデックス付き（`sort[0]=a&sort[1]=b`）、空の角かっこ（`sort[]=a`）、キーの繰り返し（`sort=a&sort=b`）のいずれでも書けます。角かっこと値は URL の通常の規則どおりにエンコードしてください。[`qs`](https://github.com/ljharb/qs) や[型付きクライアント](/ja/guides/frontend/typed-client/)などのクライアントは、これらの文字列を自動で組み立てます。
+
+不明なパラメーター、不明なフィールドや `private` なフィールド、不正な形式の値は、問題を示す `400` `ValidationError` になります。黙って無視されるものはありません。
+
+## フィルター
+
+`filters[field][operator]=value` の形です。値だけを書くと `$eq` になります: `filters[slug]=hello-verdin`。
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+同じ階層にある複数の条件は、すべて一致する必要があります。論理演算子で組み合わせることもできます。
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| 演算子 | 一致する条件 | 型 |
+| --- | --- | --- |
+| `$eq`、`$ne` | 等しい、等しくない | すべてのスカラー |
+| `$eqi`、`$nei` | 大文字小文字を区別せずに等しい、等しくない | テキスト |
+| `$lt`、`$lte`、`$gt`、`$gte` | より小さい、以下、より大きい、以上 | ブール値以外のすべてのスカラー |
+| `$between` | 2 つの値の範囲内（両端を含む）: `[$between][0]=1&[$between][1]=5` | ブール値以外のすべてのスカラー |
+| `$in`、`$notIn` | リストに含まれる、含まれない: `[$in][0]=a&[$in][1]=b` | すべてのスカラー |
+| `$contains`、`$notContains` | 含む、含まない | テキスト |
+| `$containsi`、`$notContainsi` | 同上、大文字小文字を区別しない | テキスト |
+| `$startsWith`、`$startsWithi` | で始まる（大文字小文字を区別しない） | テキスト |
+| `$endsWith`、`$endsWithi` | で終わる（大文字小文字を区別しない） | テキスト |
+| `$null`、`$notNull` | 空である、設定されている: `[$null]=true` | すべてのフィールド |
+| `$and`、`$or` | リストのすべての条件、いずれかの条件 | 論理 |
+| `$not` | フィルターオブジェクトを否定 | 論理 |
+
+- テキスト型は `string`、`text`、`richtext`、`email`、`uid`、`enumeration` です。`json` と `blocks` は `$null` と `$notNull` だけを受け付けます。
+- 値はフィールドの型に変換されます。整数、数値、`true`/`false`（または `1`/`0`）、日付は `YYYY-MM-DD`、時刻は `HH:MM:SS`、日時は ISO 8601 です。
+- `id`、`documentId`、`createdAt`、`updatedAt`、`publishedAt`、多言語化された型では `locale` でもフィルターできます。
+- テキストの比較は、どのデータベースでも同じように動きます。`$eq`、`$contains` など `i` の付かない演算子は完全一致で、`…i` の付く演算子は大文字小文字を区別しません（MySQL と MariaDB ではアクセントも区別しません。SQLite は ASCII 文字だけを同一視します）。
+- 1 つのリクエストに含められる条件は最大 100 個です。
+
+### リレーションを介したフィルター
+
+関連ドキュメントのフィールドでフィルターできます。リレーションのどちら側からでも、ネストしても使えます。
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+対多の条件は、関連ドキュメントのいずれかが一致すれば一致します。関連ドキュメントは、読み取り中のバージョンとロケールで照合されます。ポリモーフィックリレーションとメディアフィールドではフィルターできません。
+
+### コンポーネントとダイナミックゾーンでのフィルター
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+コンポーネントのスカラーフィールドは、ネストしたものも含めてフィルターできます。繰り返し可能なコンポーネントは、いずれかの項目が一致すれば一致します。ダイナミックゾーンは `__component` でのみフィルターできます。[コンポーネントとダイナミックゾーン](/ja/concepts/components-and-dynamic-zones/#フィルター)を参照してください。
+
+## ソート
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` または `field:asc|desc`。方向のデフォルトは `asc` です。
+- `json` と `blocks` 以外のすべてのスカラーフィールドでソートでき、システムフィールドも含まれます。
+- `relation.field` は、対一リレーションのフィールドでソートします。
+- 空の値はどちらの方向でも最後に来て、同じ値の順序は `id` で決まるので、ページは安定します。
+
+## ページネーション
+
+ページ単位かオフセット単位のどちらかで、両方は使えません。
+
+| パラメーター | デフォルト | 備考 |
+| --- | --- | --- |
+| `pagination[page]` | `1` | 1 から始まります。 |
+| `pagination[pageSize]` | `25`（`[api].default_page_size`） | 上限は `[api].max_page_size`（100）。 |
+| `pagination[start]` | `0` | オフセット。 |
+| `pagination[limit]` | `25` | 上限は最大値。`-1` で最大値を要求します。 |
+| `pagination[withCount]` | `true` | `false` にすると件数を数えず、`total` と `pageCount` を省きます。 |
+
+レスポンスの `meta.pagination` は、使ったモードに従います。
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## フィールド
+
+`fields` はスカラー属性を選択します。
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id` と `documentId` は常に返されます。リレーション、メディア、コンポーネント、ダイナミックゾーンは `fields` では選択されません。`populate` を使ってください。
+
+## Populate
+
+リレーション、メディア、コンポーネント、ダイナミックゾーンは、populate した場合にだけ返されます。
+
+| 形式 | populate の対象 |
+| --- | --- |
+| `populate=*` | すべてのリレーション、メディアフィールド、コンポーネント、ダイナミックゾーン（1 階層） |
+| `populate=category,tags` または `populate[0]=category&populate[1]=tags` | 指定したフィールド |
+| `populate[category]=true` | 指定したフィールド（`false` で除外） |
+| `populate[category][fields][0]=name` | オプション付きのフィールド |
+
+populate した各リレーションは、`fields`、`filters`、`sort`、`populate`（ネスト、全体で最大 5 階層）、`count` を受け付けます。
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- 対一リレーションはオブジェクトまたは `null`、対多リレーションは配列で、リンクの順序か populate の `sort` の順序になります。
+- `count=true` は、ドキュメントの代わりに `{ "count": 12 }` を返します（対多リレーションのみ）。
+- ドキュメントとリレーションごとに返される関連ドキュメントは最大 1,000 件です。`count` は正確な値です。
+- コンポーネントとダイナミックゾーンは、ネストしたコンポーネントとそのリレーションやメディアを含めて丸ごと返されます。Strapi の階層ごとのオプション（`populate[blocks][on][…]`）は受け付けますが、無視されます。
+- メディアフィールドはファイルオブジェクトとして返されます。
+- ポリモーフィックリレーションは `count` だけを受け付けます。
+- 関連ドキュメントは、ドキュメントと同じステータスとロケールで読み取られます。呼び出し元が読み取れない型を populate すると `400` になります。`populate=*` の場合はスキップされます。
+
+各階層はリレーションごとに 1 回のバッチクエリなので、深い populate でも速く、行が重複して返されることもありません。
+
+## ステータス
+
+下書きと公開を使う型では、`status` でバージョンを選びます。
+
+- `status=published`（デフォルト）は公開バージョンを読み取ります。
+- `status=draft` は下書きを読み取ります。`find` または `findOne` に加えて `readDrafts` の許可が必要です。
+
+`hasPublishedVersion=true|false` は、公開バージョンを持つ（または持たない）ドキュメントに絞り込みます。`?status=draft&hasPublishedVersion=false` は一度も公開されていないドキュメントを一覧にします。下書きと公開を使わない型では `400` になります。
+
+書き込みでは、`status=draft` は下書きを公開せずに保存します。[下書きと公開](/ja/concepts/draft-and-publish/)を参照してください。
+
+## ロケール
+
+`locale=fr` は、多言語化された型のフランス語版を読み書きします。指定しない場合、リクエストはデフォルトのロケールを使います。無効なコードや不明なコードは `400` になります。多言語化されていない型では無視されます。[国際化](/ja/concepts/internationalization/)を参照してください。
+
+## 検索
+
+`_q` は、テキストフィールドに語句を含むドキュメントを、大文字小文字を区別せずに探します（最大 200 文字）。
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+検索インデックスがない場合、Strapi と同様に、private でない `string`、`text`、`richtext`、`email`、`uid`、`enumeration` のいずれかのフィールドに一致します。`[search] enabled = true` の場合、`sort` を渡さない限り結果は関連度順に並びます。他のフィルターとページネーションもそのまま適用されます。[検索](/ja/guides/content/search/)を参照してください。
+
+## レスポンス
+
+リストの場合:
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+1 件のドキュメントの場合: `{ "data": { … }, "meta": {} }`。
+
+- ドキュメントは Strapi v5 と同様にフラットで、`attributes` のラッパーはありません。
+- 属性はスキーマの順序で、`id`/`documentId` とタイムスタンプの間に並びます。多言語化された型では `locale` が加わります。`private` なフィールドが現れることはありません。
+- `biginteger` の値は文字列です。`decimal` の値は数値で、スケールに合わせて丸められます（`[api].decimal_as_string = true` の場合は文字列）。日付は `YYYY-MM-DD`、時刻は `HH:MM:SS.mmm`、日時は UTC の `YYYY-MM-DDTHH:MM:SS.mmmZ` です。
+
+成功した読み取りには `ETag` が付きます。`If-None-Match` で送り返すと `304 Not Modified` が返ります。CDN のパージ用に `Cache-Tag` と `Surrogate-Key` ヘッダーも付きます（[デプロイと CDN](/ja/guides/integrations/deploys-and-cdn/)を参照）。
+
+## エラー
+
+エラーは Strapi と同じ形です。
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| ステータス | `name` | 発生条件 |
+| --- | --- | --- |
+| `400` | `ValidationError` | パラメーター、ボディ、コンテンツが無効。`details.errors` にコンテンツの問題とそのパスが並びます。 |
+| `401` | `UnauthorizedError` | 不正な形式、不明、または期限切れのトークン。 |
+| `403` | `ForbiddenError` | 呼び出し元に許可がない（下書きの場合は `readDrafts`）。 |
+| `404` | `NotFoundError` | 不明なルート、コンテンツタイプ、ドキュメント。 |
+| `405` | `MethodNotAllowedError` | シングルタイプへの `POST`、またはコレクションタイプのルートへの `PUT` や `DELETE`。 |
+| `408` | | リクエストが `[server].request_timeout_secs`（30 秒）より長くかかった。 |
+| `413` | | ボディが `[server].body_limit`（1 MB）より大きい。 |
+| `429` | `RateLimitError` | `[api].public_rate_limit` または `[api].token_rate_limit` を超えた。`Retry-After` が再試行のタイミングを示します。 |
+| `500` | `ApplicationError` | 予期しないエラー。詳細はサーバーのログにのみ記録されます。 |
+
+## 制限
+
+| 制限 | 値 |
+| --- | --- |
+| ページサイズ | `[api].max_page_size`、デフォルトは 100 |
+| populate の深さ | 5 階層 |
+| ドキュメントとリレーションごとの関連ドキュメント | 1,000 |
+| フィルター条件 | 100 |
+| パラメーター内の角かっこのネスト | 12 階層 |
+| リクエストあたりのパラメーター数 | 1,000 |
+| クエリ文字列 | 16 KB |
+| `_q` | 200 文字 |
+
+設定できるのはページサイズだけです。`filters`、`sort`、`fields`、`populate` のフィールド名はすべてスキーマと照合され、値は常に SQL パラメーターとしてバインドされます。
+
+## メディアライブラリ
+
+Strapi のアップロード用ルートで、**メディアライブラリ**の許可で確認されます。Strapi と同様に、`data` なしのプレーンなオブジェクトや配列を返します。
+
+| ルート | 許可 | ボディまたはパラメーター |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | マルチパート: `files`（最大 20 個）、任意の `fileInfo` JSON（`name`、`alternativeText`、`caption`、`folder`、`focalPoint`）。ファイルごとに 1 つ、またはすべてに 1 つ |
+| `POST /api/upload?id={id}` | `update` | マルチパートの `fileInfo`。任意で、内容を置き換える新しいファイル |
+| `GET /api/upload/files` | `find` | `pagination[page]`、`pagination[pageSize]`、`sort`、`filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+[メディア](/ja/concepts/media/)を参照してください。
+
+## プレフィックス配下のその他のルート
+
+| ルート | ページ |
+| --- | --- |
+| `/api/auth/*`、`/api/users/*`、`/api/connect/*` | [エンドユーザー](/ja/guides/auth/end-users/)（機能がオンの場合） |
+| `/api/_events` | [リアルタイム API](/ja/api/realtime/)（機能がオンの場合） |
+| `/api/_redirects`、`/api/_menus/{slug}`、`/api/_forms/{slug}` | [リダイレクト](/ja/guides/frontend/redirects/)、[メニュー](/ja/guides/frontend/menus/)、[フォーム](/ja/guides/frontend/forms/) |
+| `/api/_openapi.json`、`/api/docs` | OpenAPI ドキュメント（**設定 → 機能 → APIドキュメント**で公開しない限り API トークンのみ）と、そのインタラクティブなリファレンス（公開時） |
+| `/api/plugins/{name}/*` | [プラグイン](/ja/extending/plugins/)のルート |

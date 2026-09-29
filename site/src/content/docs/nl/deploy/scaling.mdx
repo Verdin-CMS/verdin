@@ -1,0 +1,115 @@
+---
+title: Meerdere instanties draaien
+description: Draai meerdere Verdin-instanties van één project achter een load balancer — wat ze via de database delen, wat per instantie blijft, en de instellingen die je moet aanpassen.
+sidebar:
+  order: 8
+  label: Meerdere instanties
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Verdin bewaart zijn state in de database, dus je kunt meerdere instanties van hetzelfde project
+achter een load balancer draaien voor beschikbaarheid of belasting. Deze pagina somt op wat de
+instanties delen, wat elke instantie voor zichzelf houdt, en welke instellingen ertoe doen.
+
+<Diagram
+  caption="Instanties delen de database en de mediaopslag; caches, rate limits en eventstreams blijven in elke instantie."
+  code={`flowchart LR
+  LB[Load balancer] --> A[Instantie 1]
+  LB --> B[Instantie 2]
+  LB --> C[Instantie 3]
+  A --> DB[(Database)]
+  B --> DB
+  C --> DB
+  A --> S3[(S3-media)]
+  B --> S3
+  C --> S3`}
+/>
+
+## Checklist
+
+- **Een gedeelde database.** PostgreSQL, MySQL of MariaDB. SQLite is een bestand op één machine en
+  werkt niet met meerdere instanties.
+- **Overal dezelfde configuratie.** Elke instantie gebruikt dezelfde `verdin.toml`,
+  schemabestanden en geheimen (`VERDIN_ADMIN_JWT_SECRET`, `VERDIN_TOKEN_PEPPER`,
+  `VERDIN_SSO_<ID>_SECRET`…). Met verschillende geheimen weigeren de andere instanties sessies en
+  API-tokens die op één instantie zijn gemaakt.
+- **Productiemodus.** Draai `verdin start`, niet `verdin dev`. Wijzig het schema in ontwikkeling,
+  commit het, en migreer één keer per deploy.
+- **Gedeelde mediaopslag.** Gebruik de S3-provider (`[upload] provider = { name = "s3", … }`), of
+  mount voor de lokale provider hetzelfde volume op elke instantie.
+- **Healthchecks.** Richt de load balancer op `GET /_ready`, dat `503` antwoordt als de database
+  niet bereikbaar is. `GET /_health` zegt alleen dat het proces draait; gebruik het voor liveness.
+- **Pluginjobs op één instantie.** Stel `[plugins].run_jobs = false` in op alle instanties op één
+  na; anders draait elke instantie de geplande jobs.
+- **Metrics per instantie.** Met `[metrics].enabled = true` serveert elke instantie haar eigen
+  `/_metrics`; scrape ze allemaal.
+
+## Migraties met meerdere instanties
+
+`verdin start --migrate` kun je veilig op elke instantie tegelijk draaien. Elke migratierun houdt
+een lock in de database (een advisory lock op PostgreSQL, `GET_LOCK` op MySQL en MariaDB, met
+maximaal 60 seconden wachten), dus de eerste instantie past de stappen toe en de andere vinden de
+database up-to-date.
+
+Tijdens een rolling deploy blijven instanties van de oude versie nog een tijd tegen de gemigreerde
+database draaien. Veilige stappen maken tabellen aan, voegen nullable kolommen of kolommen met een
+standaardwaarde en indexen toe, maken tekstkolommen breder of voegen enum-waarden toe, en dat merkt
+de oude versie niet. Pas riskante of destructieve stappen (`verdin migrate apply --allow
+risky|destructive`) toe in een aparte deploy, zodra geen instantie met het oude schema de gegevens
+meer nodig heeft. Zie [Schemamigraties](/nl/concepts/schema-migrations/).
+
+## Wat wordt gedeeld
+
+| Wat | Hoe |
+| --- | --- |
+| Beheerderssessies, API-tokens, rechten | In de database; geen sticky sessions nodig. |
+| Functieschakelaars, pluginschakelaars, locales, reviewworkflows | In de database. Elke instantie leest ze elke `[server].sync_interval_secs` (10 s) opnieuw, dus een wijziging op één instantie bereikt de andere binnen die tijd. |
+| Webhook-afleveringen | Een wachtrij in de database. Een instantie claimt een aflevering voordat ze hem verstuurt, dus elke aflevering gaat één keer de deur uit. |
+| Geplande releases | Worden in de database geclaimd voordat ze draaien, dus elke release draait één keer. |
+| Dagelijkse samenvatting | De run van elke dag wordt in de database geclaimd, dus beheerders krijgen één e-mail. |
+| Challenges van toegangssleutels | Gebruikte challenges worden in de database vastgelegd, dus elke challenge wordt over alle instanties heen één keer beantwoord. |
+| Opschonen van de auditlog | Draait op elke instantie; oude rijen twee keer verwijderen kan geen kwaad. |
+| Key-value-store van plugins | In de database. |
+
+## Wat op elke instantie blijft
+
+- **Rate limits** worden door elke instantie apart geteld. Met `n` instanties kan een client tot
+  `n` keer `[api].public_rate_limit` requests per minuut doen. Dwing een globale limiet af op de
+  load balancer als je die nodig hebt.
+- **De cache voor anonieme responses** (`[api].cache_ttl_secs`). Een schrijfactie leegt de cache
+  van de instantie die hem deed; de andere kunnen de vorige response serveren totdat hun regel
+  verloopt. Houd de TTL op een paar seconden, of `0`.
+- **Realtime-events en presence** zijn die van de instantie waarmee een client verbonden is.
+  Gebruik sticky sessions voor de eventstreams (zie [Realtime](/nl/guides/frontend/realtime/)).
+- **De zoekindex** (`[search]`) staat op de schijf van de instantie en volgt alleen de
+  schrijfacties die die instantie doet. Schakel hem in op één instantie en routeer
+  `_q`-requests daarheen, of accepteer dat de andere achterlopen totdat ze met een lege indexmap
+  herstarten.
+- **Afbeeldingstransformaties** (`[upload.transforms]`) worden per instantie gecachet onder
+  `cache_dir`. Zet een CDN vóór `/uploads` om ze te delen.
+- **Geplande pluginjobs**: zie `run_jobs` hierboven.
+
+## Instellingen
+
+```toml title="verdin.toml"
+[server]
+# How often to read settings that other instances changed; 0 turns it off.
+sync_interval_secs = 10
+
+[plugins]
+# Run the plugins' scheduled jobs here (true on one instance only).
+run_jobs = true
+
+[api]
+# Short-lived when each instance keeps its own cache.
+cache_ttl_secs = 5
+```
+
+Stel `run_jobs` per instantie in met `VERDIN_PLUGINS__RUN_JOBS=false`.
+
+## Databaseverbindingen
+
+Elke instantie opent tot `[database].pool_max` verbindingen (standaard 10). Houd
+`instances × pool_max` onder de limiet van de server, met ruimte voor migraties, back-ups en
+onderhoud. De standaardlimiet van PostgreSQL is 100 verbindingen.

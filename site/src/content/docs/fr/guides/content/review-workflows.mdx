@@ -1,0 +1,138 @@
+---
+title: Workflows de relecture
+description: Faites passer les entrées par des étapes de relecture, assignez-les à des relecteurs, limitez qui peut les déplacer et exigez une étape avant la publication.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Un workflow de relecture est une liste ordonnée d’étapes, comme *To do*, *In review* et *Ready*,
+par lesquelles passent les entrées de certains types de contenu avant d’être publiées. Ce guide
+en configure un, déplace et assigne des entrées, et présente l’API d’administration
+correspondante.
+
+Dans Strapi, les workflows de relecture sont une fonctionnalité Enterprise. Dans Verdin, ils font
+partie du cœur open source.
+
+## Avant de commencer
+
+- Activez **Paramètres → Fonctionnalités → Workflows de relecture**. Ils sont désactivés par
+  défaut.
+- Configurer les workflows nécessite **Gérer les workflows de relecture** (`workflows.manage`).
+- Déplacer et assigner une entrée nécessite l’accès en modification à celle-ci. Voir
+  [Autorisations](/fr/reference/permissions/).
+
+## Créer un workflow
+
+<Steps>
+
+1. Ouvrez **Paramètres → Workflows de relecture** et sélectionnez **Nouveau workflow**.
+2. Donnez-lui un **Nom**.
+3. Sous **Types de contenu**, choisissez les types dont les entrées le suivent. Un type suit au
+   plus un workflow.
+4. Sous **Étapes**, listez les étapes dans l’ordre. Chacune a un **Nom de l’étape** et une
+   **Couleur**. Utilisez **Ajouter une étape** pour en ajouter, et les boutons fléchés pour les
+   réordonner. Les nouvelles entrées commencent à la première étape.
+5. Éventuellement, choisissez les **Rôles pouvant déplacer des entrées vers cette étape** sur une
+   étape. Sans rôle sélectionné, toute personne qui peut modifier l’entrée le peut.
+6. Éventuellement, définissez l’**Étape requise pour publier**. Les entrées ne peuvent alors être
+   publiées que lorsqu’elles se trouvent à cette étape. **N’importe quelle étape** laisse la
+   publication libre.
+7. Enregistrez.
+
+</Steps>
+
+<Diagram
+  caption="Un workflow éditorial avec une étape requise pour publier"
+  code={`flowchart LR
+  A[To do] --> B[In review] --> C[Ready]
+  C -->|publication autorisée| P((Publié))
+  A -.->|publication refusée| X[400]`}
+/>
+
+Les entrées qui existaient avant que leur type ne rejoigne le workflow sont à la première étape.
+
+Quand vous modifiez un workflow par la suite :
+
+- Supprimer une étape renvoie ses entrées à la première étape.
+- Retirer un type de contenu du workflow efface les étapes de ses entrées.
+- Supprimer le workflow efface les étapes et les assignations de ses entrées.
+
+## Déplacer et assigner des entrées
+
+L’éditeur d’entrée affiche un panneau **Relecture** avec l’**Étape** et l’**Assigné à**.
+
+- Choisissez une autre **Étape** pour déplacer l’entrée. Les étapes réservées à d’autres rôles ne
+  peuvent pas être choisies, et le panneau le signale. Les administrateurs disposant de
+  **Gérer les workflows de relecture** peuvent toujours déplacer les entrées.
+- Choisissez un **Assigné à** parmi les administrateurs actifs qui peuvent lire le type de
+  contenu, ou sélectionnez **Supprimer l’assignation**. Toute personne qui peut modifier l’entrée
+  peut l’assigner.
+- Quand le workflow a une étape requise, le panneau indique l’étape que l’entrée doit atteindre
+  pour que **Publier** fonctionne.
+
+La vue liste affiche une colonne **Étape**, et la page d’accueil liste les entrées qui vous sont
+assignées sous **Assignées à moi**. Les types localisés conservent une étape par langue.
+
+## Ce que bloque l’étape de publication
+
+L’étape requise s’applique à tous les moyens de publier : le panneau d’administration, REST,
+GraphQL, les releases et les plugins. La publication d’une entrée hors de cette étape échoue avec
+`400` :
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+Dans Strapi, l’exigence d’étape ne s’applique qu’au panneau d’administration. Les rôles des
+étapes diffèrent aussi : dans Verdin, ils limitent qui déplace des entrées *vers* une étape.
+
+## Journaux d’audit et webhooks
+
+- Les changements d’étape et les assignations sont enregistrés dans les
+  [journaux d’audit](/fr/guides/content/audit-logs/) sous `entry.stage` et `entry.assign`.
+- Les webhooks peuvent s’abonner à **Étape de l’entrée modifiée**
+  (`review-workflows.updateEntryStage`). Voir [Webhooks](/fr/guides/integrations/webhooks/).
+
+## API d’administration
+
+Toutes les routes sont sous `/admin/api` et prennent un jeton d’accès d’administrateur.
+
+| Route | Autorisation | Effet |
+| --- | --- | --- |
+| `GET /review-workflows`, `GET /review-workflows/{id}` | `workflows.manage` | Les workflows avec leurs étapes. |
+| `POST /review-workflows`, `PUT /review-workflows/{id}` | `workflows.manage` | Crée ou remplace un workflow (corps ci-dessous). |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | Les entrées de ses types perdent leurs étapes. |
+| `GET /content/{uid}/{documentId}/review?locale=` | lire l’entrée | L’étape, la personne assignée, et les étapes vers lesquelles vous pouvez déplacer l’entrée (`canMoveTo`). |
+| `PUT /content/{uid}/{documentId}/review?locale=` | modifier l’entrée | `{ "stageId": 3, "assigneeId": 7 }`. Les deux champs sont facultatifs ; `"assigneeId": null` supprime l’assignation. |
+| `GET /content/{uid}/review?documentIds=a,b` | lire le type | Les étapes de 200 entrées au maximum, avec le workflow dans `meta.workflow`. |
+| `GET /review/assigned` | connecté | Les entrées qui vous sont assignées. |
+| `GET /review/assignees?uid=` | modifier le type | Les administrateurs actifs qui peuvent lire le type. |
+| `GET /review/roles` | `workflows.manage` | Les codes et noms des rôles, pour les rôles des étapes. |
+
+Un workflow tel qu’envoyé à `POST` et `PUT` :
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- Un workflow a de 1 à 50 étapes aux noms uniques et aux couleurs `#rrggbb`.
+- `publishStage` nomme l’une des étapes ; omettez-le pour n’en exiger aucune.
+- Envoyez les étapes existantes avec leur `id` pour que leurs entrées restent où elles sont. Les
+  étapes sans `id` sont nouvelles.
+
+<Aside type="note">
+Désactiver la fonctionnalité masque les étapes et cesse d’imposer l’étape de publication. Les
+workflows et les étapes des entrées sont conservés pour le jour où vous la réactivez.
+</Aside>

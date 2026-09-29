@@ -1,0 +1,33 @@
+---
+title: محیط آزمایش API
+description: از مرورگر به API محتوای پروژهٔ نمونهٔ وبلاگ درخواست بفرستید، روی Verdin محلی خودتان.
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+API محتوای [پروژهٔ نمونهٔ وبلاگ](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+را بدون نوشتن کد امتحان کنید. درخواست‌ها از مرورگر شما به سروری می‌روند که در **Server**
+انتخاب می‌کنید؛ به‌طور پیش‌فرض `http://localhost:1337`.
+
+برای پاسخ دادن به آن‌ها، پروژهٔ نمونه را به‌صورت محلی اجرا کنید و اجازهٔ درخواست‌ها را بدهید:
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- نخستین مدیر را در [localhost:1337/admin](http://localhost:1337/admin/) بسازید و چند مقاله اضافه کنید.
+- `find` و `findOne` را در **تنظیمات ← دسترسی عمومی** مجاز کنید، یا
+  یک توکن API را زیر **Authentication** بچسبانید.
+- محیط آزمایش روی origin همین سایت اجرا می‌شود، پس سرور باید آن را بپذیرد: آن را به
+  `[api].cors_origins` در `verdin.toml` اضافه کنید (نگاه کنید به [پیکربندی](/fa/reference/configuration/)).
+
+پروژهٔ خود شما همین مرجع را برای طرح‌وارهٔ خودش در `/api/docs` دارد، به شرطی که
+**مستندات عمومی** در **تنظیمات ← قابلیت‌ها ← مستندات API** روشن باشد.
+
+<Playground />

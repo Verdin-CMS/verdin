@@ -1,0 +1,99 @@
+---
+title: 审计日志
+description: 查看谁在何时修改了什么，在管理后台或通过 API 过滤审计日志，以及设置条目的保留时间。
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+审计日志记录谁在何时修改了什么：内容、媒体、登录，以及在管理后台中所做的每一处更改。本指南介绍记录哪些内容、如何过滤日志，以及日志的保留时间。
+
+审计日志在 Strapi 中是企业版功能。在 Verdin 中，它是开源核心的一部分。
+
+## 开始之前
+
+- **设置 → 功能 → 审计日志** 默认开启。关闭它会停止记录新的操作；已有的条目仍然可以读取。
+- 读取日志需要 **读取审计日志**（`audit.read`）。参见[权限](/zh-cn/reference/permissions/)。
+
+## 记录哪些内容
+
+| 领域 | 操作 | 说明 |
+| --- | --- | --- |
+| 内容 | `entry.create`、`entry.update`、`entry.publish`、`entry.unpublish`、`entry.discard-draft`、`entry.delete` | 来自所有 API：管理后台、REST、GraphQL 和插件。语言区域记录在详情中。 |
+| 审核工作流 | `entry.stage`、`entry.assign` | 阶段变更和指派。 |
+| 媒体 | `media.create`、`media.update`、`media.delete` | 文件的上传、修改和删除。文件名记录在详情中。 |
+| 登录 | `admin.login` | 密码登录和第一个管理员的登录（账户设置了第二因素时，在第二因素验证之后记录），以及附带提供商信息的 SSO 登录。 |
+| 管理后台更改 | `{METHOD} {route}`，例如 `PUT /roles/{id}` | 管理 API 上每一次成功的写入：用户、角色、API 令牌、设置、功能、webhook、语言区域、插件、发布计划…… 路由参数记录在详情中。 |
+
+每个条目都包含时间、操作者、操作、对象（内容类型 uid、`plugin::upload.file`，或者诸如 `roles` 的管理资源）、对象的 id、详情，对于请求还包含客户端的 IP 地址。
+
+操作者是以下之一：
+
+- **管理员**：已登录的管理员，日志中会显示其名称。
+- **API**：通过内容 API 或 GraphQL 所做的更改，使用 API 令牌、终端用户的令牌或公开访问。
+- **系统**：没有已登录管理员的管理 API 写入。
+
+在反向代理之后，请设置 `[server].trusted_proxies`，这样日志显示的是客户端地址而不是代理地址。参见[配置参考](/zh-cn/reference/configuration/)。
+
+## 过滤日志
+
+<Steps>
+
+1. 打开 **设置 → 审计日志**。
+2. 使用 **快速筛选** 预设（**内容**、**媒体**、**登录**），或者填写过滤条件：
+   - **操作**：一个确切的操作，例如 `entry.publish`，或者以 `*` 结尾的前缀，例如 `entry.*`。
+   - **操作者**：某一位管理员，或 **任何人**。
+   - **对象**：内容类型 uid，例如 `api::article`。
+   - **开始** 和 **结束**：日期范围。不带时间的日期包含当天全天。
+3. 选择 **应用**。打开某一行上的 **详情** 即可查看为其记录的全部内容。
+
+</Steps>
+
+## 通过 API 查询
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+条目按从新到旧排列，默认每页 50 条，最多 200 条：
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` 和 `to` 接受 ISO 8601 格式的日期或日期时间；其他格式会返回 `400` 错误。
+
+## 设置条目的保留时间
+
+早于 `[audit].retention_days` 的条目每天删除一次。默认值为 90 天。
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+如果要把审计条目保留得比数据库适合保存的时间更久，请用上面的 API 定期把它们复制到你自己的存储中。
+</Aside>

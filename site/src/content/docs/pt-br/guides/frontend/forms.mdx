@@ -1,0 +1,158 @@
+---
+title: Formulários
+description: Defina formulários de contato e de cadastro no painel de administração, envie-os a partir do seu site e leia ou exporte os envios.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+O recurso **Formulários** cuida dos formulários do seu site (contato, inscrição em newsletter,
+inscrição em eventos) sem um serviço de formulários. Os editores definem os campos no painel de
+administração, o seu site os renderiza e os envia ao Verdin, e os envios são validados,
+armazenados, enviados por e-mail e exportados em CSV.
+
+## Ative o recurso
+
+Em **Configurações → Recursos**, ative **Formulários** e depois escolha **Gerenciar
+formulários** (ou vá para **Configurações → Formulários**). Gerenciar formulários e ler os envios
+exige a permissão **Gerenciar SEO, redirecionamentos, menus e formulários** (`site.manage`), que
+a função integrada Editor tem. Veja [Permissões](/pt-br/reference/permissions/).
+
+Para os e-mails de notificação, configure um provedor em
+[`[email]`](/pt-br/reference/configuration/); com o provedor padrão `log`, os e-mails são apenas
+gravados no log do servidor.
+
+## Crie um formulário
+
+<Steps>
+
+1. Em **Configurações → Formulários**, escolha **Novo formulário**.
+2. Dê a ele um nome (como **Contato**) e um **Slug** (`contact`). O slug faz parte da URL do
+   formulário.
+3. Na aba **Campos**, escolha **Adicionar um campo** para cada campo, com o seu **Rótulo**,
+   **Nome**, **Tipo**, **Obrigatório**, **Placeholder** e **Comprimento máximo**.
+4. Na aba **Configurações**, defina:
+   - **Notificar**: os endereços de e-mail que recebem cada envio.
+   - **Mensagem de sucesso**: retornada ao seu site após um envio.
+   - **Armadilha para spam**: ativada por padrão (veja [Spam](#spam)).
+5. Salve. A aba **Integração** mostra o endpoint público e um exemplo para copiar.
+
+</Steps>
+
+| Tipo | Rótulo na administração | Aceita |
+| --- | --- | --- |
+| `text` | **Texto** | Qualquer texto. |
+| `email` | **E-mail** | Um endereço de e-mail. |
+| `textarea` | **Texto longo** | Qualquer texto. |
+| `number` | **Número** | Um número, armazenado como número. |
+| `select` | **Escolha** | Uma das suas **Opções** (uma por linha). |
+| `checkbox` | **Caixa de seleção** | `true`, `on`, `1` ou `yes` é marcado; qualquer outra coisa não é. Uma caixa de seleção obrigatória precisa estar marcada. |
+| `date` | **Data** | Qualquer texto (use `<input type="date">`). |
+| `url` | **URL** | Uma URL. |
+| `tel` | **Telefone** | Qualquer texto. |
+
+Os nomes dos campos começam com uma letra, seguida de letras, dígitos ou `_`, e são únicos no
+formulário. Um formulário tem de 1 a 50 campos. Os valores têm no máximo **Comprimento máximo**
+caracteres (5.000 por padrão, 20.000 no máximo).
+
+## Renderize o formulário
+
+`GET /api/_forms/{slug}` retorna a definição, para que o seu site possa renderizar os campos que
+os editores escolheram:
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+`honeypot` é `null` quando a armadilha para spam está desativada. A definição fica em cache por
+um minuto (`Cache-Control: public, max-age=60`).
+
+## Envie
+
+`POST /api/_forms/{slug}` recebe os valores como JSON (os campos, ou `{ "data": { … } }`) ou como
+um envio de formulário simples (`application/x-www-form-urlencoded`). Nenhum token é necessário.
+
+<Tabs syncKey="form">
+<TabItem label="Formulário HTML">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| Resposta | Quando |
+| --- | --- |
+| `201` com `{ "data": { "message": … } }` | Aceito. `message` é a **Mensagem de sucesso**, ou `Thank you!`. |
+| `400` `ValidationError` | Um valor está faltando ou é inválido. `details.errors` lista `{ path, message }` por campo. |
+| `404` | Não há formulário com esse slug, ou o recurso está desativado. |
+| `413` | O envio tem mais de 64 KB. |
+| `429` | O mesmo visitante enviou mais de 10 envios para este formulário em um minuto. |
+
+Os valores têm os espaços das pontas removidos e são verificados contra os campos. Os campos
+desconhecidos são descartados, então um visitante não consegue adicionar dados que você não
+pediu.
+
+Um envio de formulário HTML simples recebe a resposta JSON como a página. Para uma experiência
+melhor, envie com `fetch` e mostre você mesmo a mensagem. Enviar do navegador para outra origem
+exige a origem do seu site em [`[api].cors_origins`](/pt-br/reference/configuration/).
+
+### Spam
+
+Com **Armadilha para spam** ativada, adicione ao formulário um campo `_gotcha` oculto e vazio.
+Os bots preenchem todos os campos; um envio com `_gotcha` preenchido é respondido como aceito
+(`201`) e descartado, então o bot não aprende nada. Junto com o limite de taxa, isso barra a
+maior parte do spam em formulários sem CAPTCHA.
+
+## Leia os envios
+
+A aba **Envios** do formulário lista o que os visitantes enviaram, com o horário em que foi
+**Recebido**. Você pode excluir um envio, e **Exportar CSV** baixa todos.
+
+Todo envio aceito também é enviado por e-mail aos endereços de **Notificar**, com um link para os
+envios na administração (montado a partir de
+[`[server].public_url`](/pt-br/reference/configuration/)).
+
+<Aside type="note">
+O Verdin armazena os valores de cada envio, o user agent do visitante e um hash com chave do seu
+endereço IP (não o endereço em si), o suficiente para detectar uma enxurrada sem rastrear as
+pessoas. Excluir um formulário exclui os seus envios.
+</Aside>
+
+## API de administração
+
+O painel de administração usa `/admin/api/site/forms` e `/admin/api/site/forms/{id}`, além de
+`/admin/api/site/forms/{id}/submissions` e `…/submissions/export` (CSV), com o token de acesso
+de um administrador e `site.manage`. Veja [API de administração](/pt-br/api/admin/).

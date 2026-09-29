@@ -1,0 +1,157 @@
+---
+title: כניסה יחידה (SSO)
+description: אפשרו למנהלים להתחבר עם ספק OpenID Connect כמו Microsoft Entra ID, Google Workspace, Okta או Keycloak, עם מיפוי של קבוצות לתפקידים.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+מנהלים יכולים להתחבר דרך כל ספק OpenID Connect: Microsoft Entra ID, Google Workspace, Okta,
+Auth0, Keycloak, Authentik, GitLab ואחרים. כל ספק מקבל כפתור בדף ההתחברות, וההתחברות עם סיסמה
+ממשיכה לעבוד לצדו. המדריך הזה רושם אפליקציה, מגדיר את הספק ב-Verdin וממפה קבוצות לתפקידים.
+
+ב-Strapi, SSO הוא תכונת Enterprise. ב-Verdin הוא חלק מליבת הקוד הפתוח. עבור משתמשי הקצה של
+האתרים שלכם, ראו במקום זאת [התחברות OAuth למשתמשי קצה](/he/guides/auth/end-users/).
+
+## לפני שמתחילים
+
+- הגדרת SSO דורשת **ניהול תכונות** (`features.manage`).
+- הגדירו את `[server].public_url` לכתובת שבה מנהלים מגיעים ל-Verdin, כמו
+  `https://cms.example.com`. כתובת ההפניה נבנית ממנה.
+
+## הגדרה
+
+<Steps>
+
+1. **רשמו אפליקציה** (לקוח מסוג "web") אצל הספק, עם כתובת ההפניה הזו:
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>` הוא מזהה הספק שתבחרו בשלב 3, כמו `corp`. נתיב הניהול עוקב אחרי `[admin].path`.
+
+2. **שימו את סוד הלקוח בסביבה** והפעילו מחדש את Verdin:
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   המשתנה הוא `VERDIN_SSO_<ID>_SECRET`, עם המזהה באותיות גדולות ומקפים כקווים תחתונים.
+   לקוחות ציבוריים (PKCE בלבד, בלי סוד) לא צריכים משתנה.
+
+3. **הוסיפו את הספק.** הפעילו את **הגדרות ← תכונות ← כניסה יחידה (SSO)**, בחרו **הגדרת
+   ספקים**, ואז **הוספת ספק** ומלאו:
+
+   - **מזהה**: אותיות קטנות, ספרות ומקפים, עד 32 תווים.
+   - **טקסט הכפתור**: מוצג בדף ההתחברות כ-"המשך עם …".
+   - **כתובת ה־Issuer**: Verdin קורא את `/.well-known/openid-configuration` שתחתיה. היא
+     חייבת להשתמש ב-`https`, חוץ מאשר ב-`localhost`.
+   - **מזהה לקוח (Client id)** ו**הרשאות (Scopes)** (`openid email profile` כברירת מחדל;
+     `openid` הוא חובה).
+
+   החלון מציג את **כתובת ההפניה (Redirect URI) לרישום אצל הספק** ואת שם משתנה הסוד. שמרו.
+
+4. **נסו את זה** בחלון פרטי: דף ההתחברות מציג **המשך עם Corp account**.
+
+</Steps>
+
+## מי רשאי להתחבר, ועם אילו תפקידים
+
+| הגדרה | מפתח JSON | השפעה |
+| --- | --- | --- |
+| **דומיינים מותרים של דוא״ל** | `allowedDomains` | רק דומייני הדוא"ל האלה רשאים להתחבר. ריק פירושו כל דומיין. |
+| **יצירת חשבונות בכניסה הראשונה** | `autoCreate` | יוצר חשבון מנהל בפעם הראשונה שמישהו מתחבר. בלי זה, רק כתובות דוא"ל שכבר יש להן חשבון רשאיות להתחבר. |
+| **תפקידי ברירת מחדל** | `defaultRoles` | קודי התפקידים של חשבונות שנוצרו כשמיפוי התפקידים לא נותן אף תפקיד. |
+| **Claim של התפקיד** | `roleClaim` | ה-claim ב-ID token שמפרט את הקבוצות של המשתמש, כמו `groups` או `roles`. |
+| **מיפוי תפקידים** | `roleMap` | איזה קוד תפקיד כל ערך של ה-claim נותן. |
+| **לסמוך על כתובות דוא"ל לא מאומתות** | `trustUnverifiedEmail` | מקבל כתובות דוא"ל שהספק לא מסמן כמאומתות. |
+| **הספק אוכף MFA** | `providerMfa` | לא מבקש מהמנהלים את הגורם השני שלהם ב-Verdin אחרי הספק הזה. |
+
+- ספק שיוצר חשבונות צריך תפקידי ברירת מחדל או מיפוי תפקידים.
+- אף אחד מהם לא יכול לתת את התפקיד Super Admin; קדמו מנהלים ידנית ב-**הגדרות ← משתמשים**.
+- התפקידים נקבעים רק כשהחשבון נוצר. אחרי זה, נהלו אותם ב-**הגדרות ← משתמשים**.
+- השם הפרטי ושם המשפחה של חשבון שנוצר מגיעים מה-claims `given_name` ו-`family_name`.
+
+אותו ספק כ-JSON, כפי שהתכונה שומרת אותו (`PUT /admin/api/features/sso`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## הערות לפי ספק
+
+- **Microsoft Entra ID** משמיט את `email_verified` מה-ID tokens שלו: הפעילו עבורו את **לסמוך
+  על כתובות דוא"ל לא מאומתות**. הוסיפו את ה-claim `groups` בהגדרות האסימון של האפליקציה
+  כדי למפות קבוצות; הערכים שלו הם מזהי קבוצות.
+- **Google Workspace**: ה-issuer הוא `https://accounts.google.com`. הגבילו את ההתחברויות
+  לדומיין שלכם עם **דומיינים מותרים של דוא״ל**.
+- **Keycloak**: ה-issuer הוא כתובת ה-realm, `https://<host>/realms/<realm>`.
+
+## אימות דו-שלבי
+
+כברירת מחדל, מנהל שיש לו [גורם שני](/he/guides/auth/two-factor/) ב-Verdin מתבקש להזין אותו
+אחרי שהספק מחזיר אותו. כשהספק כבר אוכף MFA, הפעילו את **הספק אוכף MFA** כדי שלא יתבקש
+פעמיים.
+
+## איך זה עובד
+
+<Diagram
+  caption="התחברות SSO"
+  code={`sequenceDiagram
+  participant B as דפדפן
+  participant V as Verdin
+  participant P as ספק
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: הפניה עם state ואתגר PKCE
+  B->>P: התחברות
+  P-->>B: הפניה ל-callback עם code
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: החלפת ה-code (TLS)
+  V-->>B: עוגיית סשן, הפניה ל-/admin/`}
+/>
+
+- Verdin משתמש ב-authorization code flow עם PKCE (S256). ה-`state` חתום וקשור לעוגיית
+  `HttpOnly` קצרת מועד, וה-`nonce` נגזר ממנו.
+- הוא בודק את ה-issuer, ה-audience (ו-`azp` כשיש כמה), התפוגה וה-nonce של ה-ID token. הוא
+  צריך claim של `email` עם `email_verified: true`, אלא אם **לסמוך על כתובות דוא"ל לא
+  מאומתות** פעיל.
+- נקודות הקצה של הספק חייבות להשתמש ב-`https`.
+- כל התחברות SSO נרשמת ב[יומני הביקורת](/he/guides/content/audit-logs/) כ-`admin.login`, עם
+  הספק.
+
+כשהתחברות נכשלת, הדפדפן חוזר לדף ההתחברות עם הסיבה ("הכניסה היחידה נכשלה"), והסיבה נכתבת
+ליומן השרת. סיבות נפוצות:
+
+| סיבה | תיקון |
+| --- | --- |
+| the provider did not verify the email | הפעילו את **לסמוך על כתובות דוא"ל לא מאומתות**, או תקנו את ה-claim של הספק. |
+| this email domain may not sign in | הוסיפו את הדומיין ל**דומיינים מותרים של דוא״ל**. |
+| no admin account for this identity | הפעילו את **יצירת חשבונות בכניסה הראשונה**, או צרו קודם את המנהל. |
+| the sign-in request expired or was not started here | התחילו שוב מדף ההתחברות, באותו דפדפן. |
+
+<Aside type="note">
+גם מנהל מושבת לא יכול להתחבר דרך SSO.
+</Aside>

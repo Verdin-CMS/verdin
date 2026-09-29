@@ -1,0 +1,213 @@
+---
+title: Strapi’den geçiş
+description: Bir Strapi v4 veya v5 projesini verdin import strapi ile Verdin’e taşıyın — dışa aktarma, içe aktarma, neler taşınır, kimlik eşlemesi, sonrasındaki denetimler ve frontend’inizin ihtiyaç duyduğu değişiklikler.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+`verdin import strapi`, bir Strapi v4 veya v5 projesini Verdin’e getirir: içerik tipleri ve
+bileşenleri şema dosyalarına dönüşür; kayıtları, dilleri, medya kütüphanesi, ilişkileri, son
+kullanıcıları ve herkese açık izinleri içe aktarılır. Bu sayfa bir geçişi adım adım anlatır ve
+frontend’inizin değiştirmesi gerekenleri listeler. Özellik özellik bir karşılaştırma için bkz.
+[Strapi uyumluluğu](/tr/migrate/compatibility/).
+
+<Diagram
+  caption="İçe aktarıcı Strapi’nin dışa aktarma dosyasını okur; Strapi veritabanına asla bağlanmaz."
+  code={`flowchart LR
+  S[Strapi projesi] -->|strapi export| E[dışa aktarma .tar.gz]
+  E -->|verdin import strapi| F[şema dosyaları]
+  F --> M[veritabanını migre et]
+  M --> D[kayıtlar, medya, kullanıcılar]
+  D --> R[strapi-id-map.json]`}
+/>
+
+## Başlamadan önce
+
+- `strapi export` çalıştırabildiğiniz bir Strapi v4 veya v5 projesi.
+- Yeni bir Verdin projesi (`verdin new my-site`) ya da aynı adlarda şema dosyası olmayan bir proje.
+  Bkz. [hızlı başlangıç](/tr/start/quickstart/).
+- Mümkünse Verdin projesinin üretimde kullanacağı veritabanı ve medya depolama: içe aktarma
+  sırasında dosyalar yapılandırılmış yükleme sağlayıcısına kopyalanır.
+
+## 1. Strapi’den dışa aktarma
+
+Strapi projesinde:
+
+```sh frame="terminal"
+npx strapi export --no-encrypt -f my-export      # my-export.tar.gz dosyasını yazar
+```
+
+Verdin şifrelenmiş dışa aktarmaları (`.tar.gz.enc`) okuyamaz; `--no-encrypt` ile yeniden dışa
+aktarın. Sıkıştırılmamış dışa aktarmalar (`--no-compress`, bir `.tar`) ve açılmış bir dışa aktarma
+dizini de çalışır.
+
+## 2. Verdin’e içe aktarma
+
+<Steps>
+
+1. Projeyi oluşturun ve dışa aktarmayı içe aktarın:
+
+   ```sh frame="terminal"
+   verdin new my-site && cd my-site
+   verdin import strapi ../my-export.tar.gz
+   ```
+
+2. Özeti okuyun. İçe aktarıcı kaç belge, sürüm, dosya, klasör, dil ve bağlantı içe aktardığını,
+   ardından her uyarı için bir satır yazdırır.
+
+3. Geliştirme sunucusunu başlatın ve yönetim panelini açın:
+
+   ```sh frame="terminal"
+   verdin dev
+   ```
+
+</Steps>
+
+Komut şu adımları sırayla çalıştırır:
+
+1. Her `api::` içerik tipi ve her bileşen için `schema/` içine bir şema dosyası yazar. Dönüştürülen
+   şema doğrulanmazsa hiçbir şey yazılmaz.
+2. Veritabanını migre eder (güvenli adımlar).
+3. Dilleri, medya klasörlerini ve dosyalarını, kayıtları (her taslak, yayınlanmış sürüm ve dil),
+   ilişkileri ve kayıtlara ve bileşenlere bağlı medyayı içe aktarır.
+4. Son kullanıcıları, rollerini ve public ve authenticated izinleri içe aktarır.
+5. Proje dizinine `strapi-id-map.json` yazar.
+
+| Seçenek | Etkisi |
+| --- | --- |
+| `--schema-only` | Şema dosyalarını yazdıktan sonra durur. Önce şemayı gözden geçirmek veya ayarlamak için kullanışlıdır. |
+| `--force` | Mevcut şema dosyalarının üzerine yazar ve zaten kayıtları olan içerik tiplerine içe aktarır. |
+
+`--force` olmadan, yazacağı bir şema dosyası zaten varsa veya bir içerik tipinin zaten kayıtları
+varsa içe aktarma durur.
+
+## Neler taşınır
+
+| Strapi | Verdin |
+| --- | --- |
+| `api::…` içerik tipleri ve bileşenler | `collectionName`, taslak ve yayınlama, i18n seçenekleri ve alan seçeneklerini (`required`, `private`, `unique`, uzunluklar, `regex`, varsayılanlar…) koruyan şema dosyaları |
+| `api::` tipleri arasındaki ilişkiler | Aynı ilişkiler |
+| Bileşenler içindeki ilişkiler | `oneWay` / `manyWay` referansları |
+| Polimorfik ilişkiler (`morphToOne`, `morphToMany`, `morphOne`, `morphMany`) | İçe aktarılan içerik tiplerine bağlantılarıyla aynıları |
+| Medya alanları (bileşenlerde de) | Medya alanları |
+| v5 satırları (taslak ve yayınlanmış) | Taslak ve yayınlanmış sürümler |
+| v4 satırları | Bir taslak, artı `publishedAt` ayarlıysa bir yayınlanmış sürüm; `localizations` tek bir belgenin dilleri olur |
+| `plugin::i18n.locale` | Diller (Strapi’nin varsayılanı varsayılan kalır) |
+| `plugin::upload.file` ve `folder` | Medya kütüphanesi dosyaları (formatlarıyla) ve klasörleri |
+| `password` alanları | Strapi’nin bcrypt hash’lerini koruyan `password` alanları |
+| Özel alanlar (`customField`) | `customField` değeri korunan nitelik; aşağıya bakın |
+| Koşullu alanlar (`conditions`, Strapi 5.17) | Şemada korunur ve düzenleyici tarafından uygulanır |
+| `plugin::users-permissions.user` | Bcrypt parolaları (bir sonraki oturum açmada Argon2id ile yeniden hash’lenir), `confirmed` ve `blocked` ile son kullanıcılar |
+| Users & Permissions rolleri | Public rolünün yetkileri Verdin’in herkese açık izinleri olur; Authenticated ve özel roller son kullanıcı rolleri olur |
+| İçerik tipleri ve yüklemeler üzerindeki rol izinleri | `find`, `findOne`, `create`, `update` ve `delete` yetkileri; upload `find`, `findOne`, `upload` ve `destroy` |
+
+## Neler taşınmaz
+
+Uyarı olarak bildirilir:
+
+- Admin kullanıcılara, son kullanıcılara veya diğer eklentilerin tiplerine ilişkiler (yalnızca
+  `api::` hedefleri içe aktarılır). `createdBy` / `updatedBy` alanları dışarıda bırakılır.
+- `text`, `richtext`, `blocks` ve `json` niteliklerinde `unique` (Verdin bunu kısa metin
+  tiplerinde destekler).
+- Verdin’in bilmediği nitelik tipleri ve bir bileşenin içinde saklayamadığı ilişki tipleri.
+- `inversedBy` / `mappedBy` değerleri diğer tarafla eşleşmeyen ilişki yarıları.
+- Geçerli olmayan dil kodları.
+
+Hiç içe aktarılmayanlar: admin kullanıcılar ve admin rolleri, API token’ları, transfer token’ları,
+webhook’lar, sürümler, inceleme iş akışı aşamaları, içerik geçmişi ve denetim kayıtları ve Strapi
+eklentilerinin ayarları. Strapi kodunuzun — controller’lar, servisler, rotalar, policy’ler,
+middleware’ler, lifecycle hook’ları, cron görevleri ve admin özelleştirmeleri — dönüştürülecek bir
+Verdin karşılığı yoktur; bkz. [Özel kodu yeniden oluşturma](#özel-kodu-yeniden-oluşturma).
+
+<Aside type="note">
+Özel alanlar `plugin::color-picker.color` gibi `customField` adlarını korur. Düzenleyici onları o
+alanı sağlayan bir [eklentiyle](/tr/extending/plugins/) gösterir, hiçbiri yoksa saklanan tipin
+girdisine geri düşer.
+</Aside>
+
+## Kimlik eşlemesi
+
+Verdin yeni belge kimlikleri üretir: Strapi’nin `documentId`’leri 24 karakterdir, Verdin’inkiler 26;
+bu yüzden her belge yeni bir kimlik alır. Sayısal `id`’ler de değişir. `strapi-id-map.json`
+eşlemeyi kaydeder:
+
+```json title="strapi-id-map.json"
+{
+  "documents": {
+    "api::article": {
+      "hq7xw1c6m2vkn0f3t8ybz5sd": "01k6b3xg0r9m2m7c1d4e5f6g7h"
+    }
+  },
+  "files": {
+    "12": 3
+  }
+}
+```
+
+- `documents`, Verdin içerik tipi uid’sine (`api::article`, Strapi’nin `api::article.article`’ı),
+  ardından Strapi `documentId`’sine (v5) veya bir satır kimliğine (v4: bir kimlik, bir belgenin tüm
+  dillerini temsil eder) göre anahtarlanır.
+- `files`, Strapi dosya kimliklerini Verdin dosya kimliklerine eşler.
+
+Bunu CMS dışında saklanan kimlikleri yeniden yazmak için kullanın: frontend kodunuzdaki
+bağlantılar, başka bir veritabanındaki kimlikler, analitik, yer imleri.
+
+## Sonucu denetleme
+
+1. `verdin schema check` geçer ve `verdin migrate plan` veritabanının güncel olduğunu söyler.
+2. Yönetim panelinde her koleksiyonu açın ve kayıt, taslak ve dil sayısını Strapi ile
+   karşılaştırın.
+3. İlişkiler, bileşenler, dinamik bölgeler ve medya içeren birkaç kaydı açın ve bağlantıların doğru
+   belgelere ve dosyalara işaret ettiğini denetleyin.
+4. **Medya kütüphanesi**’ni açın ve klasörlerin ve görsellerin (formatlarıyla) orada olduğunu
+   denetleyin.
+5. **Ayarlar → Herkese açık erişim** ve **Ayarlar → Son kullanıcılar** bölümlerinde içe aktarılan
+   izinleri ve rolleri gözden geçirin.
+6. API’nizi frontend’inizin yaptığı gibi çağırın ve yanıtları Strapi’ninkilerle karşılaştırın.
+
+Ardından `schema/`’yı commit edin, admin’lerinizi, API token’larınızı ve webhook’larınızı oluşturun
+ve dağıtın (bkz. [üretim kontrol listesi](/tr/deploy/production-checklist/)).
+
+## Frontend değişiklikleri
+
+İçerik API’si Strapi v5’in REST ve GraphQL biçimlerini izler; bu yüzden isteklerin çoğu olduğu gibi
+çalışır. Şunları değiştirin:
+
+- **Temel URL.** Frontend’i Verdin sunucusuna yönlendirin. İçerik API’si `/api` altındadır
+  (`[api].prefix`), GraphQL ise **Ayarlar → Özellikler** bölümünde açtığınızda `/graphql`
+  adresindedir.
+- **API token’ları.** Token’lar içe aktarılmaz: **Ayarlar → API token’ları** bölümünde yenilerini
+  oluşturun ve frontend’inizin ortamında değiştirin.
+- **Belge kimlikleri.** Her `documentId` ve sayısal `id` yenidir. Frontend’e sabit kodlanmış
+  kimlikleri `strapi-id-map.json` içindekilerle değiştirin ya da daha iyisi, kayıtları bir slug veya
+  başka bir `uid` alanıyla arayın.
+- **Medya URL’leri.** Dosya URL’leri yeni sağlayıcıya işaret eder: yerel sağlayıcı için Verdin
+  sunucusunda `/uploads/…` veya S3 için `[upload.provider].public_url`. Framework’ünüzün izin verdiği
+  görsel alan adlarını güncelleyin (örneğin Next.js’te `images.remotePatterns`).
+- **Oturum açmış son kullanıcılar** yeniden oturum açmalıdır: parolaları çalışır, ancak Strapi’nin
+  verdiği JWT’ler çalışmaz.
+- **CORS.** Bir tarayıcı API’yi başka bir origin’den çağırıyorsa onu `[api].cors_origins` içinde
+  listeleyin.
+- **Webhook’lar.** Onları **Ayarlar → Webhook’lar** bölümünde yeniden oluşturun. Strapi’nin
+  `entry.draft-discard` olayının adı `entry.discard-draft`’tır ve teslimler imzalanır (bkz.
+  [Webhook’lar](/tr/guides/integrations/webhooks/)).
+- **Strapi v4 frontend’leri** v5 değişikliklerine de ihtiyaç duyar: `attributes` olmadan düz
+  yanıtlar, URL’lerde `id` yerine `documentId` ve `publicationState=preview` yerine `status=draft`.
+
+Tipli erişim için `verdin types` ile TypeScript tipleri üretin ve
+[tipli istemciyi](/tr/guides/frontend/typed-client/) kullanın.
+
+## Özel kodu yeniden oluşturma
+
+| Strapi | Verdin |
+| --- | --- |
+| Lifecycle hook’ları, document service middleware’leri | Bir [WebAssembly eklentisinde](/tr/extending/plugins/) eklenti hook’ları (`beforeCreate`, `afterUpdate`…) |
+| Özel rotalar ve controller’lar | `/api/plugins/<name>/` altında eklenti rotaları |
+| Cron görevleri | Eklenti görevleri (`[[jobs]]`) |
+| Özel alanlar | Eklenti özel alanları |
+| Admin widget’ları | Eklenti widget’ları veya yerleşik pano widget’ları |
+| Admin logosu, renkleri ve metinleri | `verdin.toml` içinde `[admin.branding]` |
+| `config/*.js` | `verdin.toml` ve ortam değişkenleri ([yapılandırma başvurusu](/tr/reference/configuration/)) |

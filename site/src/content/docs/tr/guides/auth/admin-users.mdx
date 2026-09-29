@@ -1,0 +1,169 @@
+---
+title: Admin kullanıcılar ve roller
+description: İlk admin’i oluşturun, diğerlerini davet edin, onlara roller verin, parolaları panelden veya CLI’dan sıfırlayın ve oturumları yönetin.
+sidebar:
+  order: 1
+  label: Admin kullanıcılar
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Admin’ler yönetim paneline oturum açan kişilerdir. Sitelerinizin ve uygulamalarınızın
+[son kullanıcılarından](/tr/guides/auth/end-users/) ayrıdırlar. Bu kılavuz ilk admin’i oluşturur,
+diğerlerini davet eder, onlara roller verir ve hesapları kilitlendiğinde yeniden girmelerine
+yardımcı olur.
+
+## Başlamadan önce
+
+- Verdin ortamda `VERDIN_ADMIN_JWT_SECRET` ve `VERDIN_TOKEN_PEPPER` değerlerine ihtiyaç duyar.
+  Bunları `verdin secrets` ile bir kez oluşturun.
+- Admin’leri yönetmek **Kullanıcıları yönet** (`users.manage`), rolleri yönetmek ise **Rolleri
+  yönet** (`roles.manage`) izni gerektirir. Bkz. [İzinler](/tr/reference/permissions/).
+- Davetler ve parola sıfırlamaları `[email]` üzerinden e-postayla gönderilir. Varsayılan `log`
+  sağlayıcısıyla e-postalar, bağlantılar dâhil, sunucu günlüğüne yazılır.
+
+## İlk admin’i oluşturma
+
+Yönetim panelini açın (varsayılan olarak `http://localhost:1337/admin/`). Hiç admin yokken panel
+ilkini ister; o kişi Super Admin olur. Parolalar 8 ile 128 karakter arasındadır.
+
+Tarayıcı olmadan CLI’ı veya API’yi kullanın:
+
+<Tabs>
+<TabItem label="CLI">
+
+```sh title="Terminal"
+verdin admin create --email you@example.com
+```
+
+Parola `VERDIN_ADMIN_PASSWORD`’dan gelir ya da standart girdiden okunur. Komut bir Super Admin
+oluşturur ve yalnızca ilki için değil, her zaman çalışır.
+
+</TabItem>
+<TabItem label="API">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/register-first-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+```
+
+Bu rota yalnızca hiç admin yokken çalışır.
+
+</TabItem>
+</Tabs>
+
+## Bir admin davet etme
+
+<Steps>
+
+1. **Ayarlar → Kullanıcılar**’ı açın ve **Kullanıcı ekle**’yi seçin.
+2. E-postayı ve isteğe bağlı olarak **Ad** ve **Soyad** alanlarını girin.
+3. Bir veya daha fazla **Roller** seçin.
+4. Bir davet göndermek için **Şimdi bir parola belirle** seçeneğini kapalı bırakın ya da
+   parolayı kendiniz belirlemek için açın.
+5. **Davet et**’i (veya parolayla **Kaydet**’i) seçin.
+
+</Steps>
+
+**Davet bağlantısı** diyaloğu bağlantıyı gösterir ve e-postayla gönderilip gönderilmediğini
+söyler. Gönderilmediyse, ki `log` sağlayıcısıyla her zaman böyledir, onu kendiniz paylaşın.
+Bağlantı 7 gün boyunca bir kez çalışır; davet edilen admin onu açar, bir parola seçer ve oturum
+açmış olur.
+
+Admin hiç oturum açmadığı sürece, satırındaki **Yeni davet bağlantısı** eski bağlantının yerini
+alır. Oturum açtıktan sonra erişimini bunun yerine parola sıfırlamayla geri kazanır.
+
+## Roller
+
+Verdin, Strapi gibi üç rol oluşturur:
+
+| Rol | Yapabildikleri |
+| --- | --- |
+| **Super Admin** | Her şey. İzinleri değiştirilemez. |
+| **Editor** | Tüm içeriği oluşturma, düzenleme, yayınlama ve silme; medya kütüphanesini yönetme; dağıtımları tetikleme; SEO, yönlendirmeler, menüler ve formları yönetme. |
+| **Author** | İçerik oluşturma ve kendi kayıtlarını ve dosyalarını düzenleme ve silme. Yayınlayamaz. |
+
+**Ayarlar → Roller** bölümünde **Yeni rol** ile daha fazlasını oluşturun. Her rol için şunları
+seçin:
+
+- **İçerik**: içerik tipi başına (veya **Tüm içerik tipleri**) **Okuma**, **Oluşturma**,
+  **Güncelleme**, **Silme** ve **Yayınlama** düzeyi: **Erişim yok**, **Kendi** (yalnızca
+  admin’in oluşturduğu kayıtlar) veya **Tümü**. **Alanlar** bir eylemi bazı alanlarla,
+  **Diller** ise bazı dillerle sınırlar.
+- **Medya kütüphanesi**: **Tüm dosyalar** veya **Kendi dosyaları** için dosya eylemleri.
+- **Ayarlar**: **Kullanıcıları yönet** veya **Denetim kayıtlarını okuma** gibi yönetim
+  alanlarına erişim.
+- **İki adımlı doğrulamayı zorunlu kıl**: bkz. [İki adımlı doğrulama](/tr/guides/auth/two-factor/).
+
+Birden fazla rolü olan bir admin, izinlerinin birleşimini alır. Tam liste
+[izin başvurusundadır](/tr/reference/permissions/).
+
+Super Admin rolünü yalnızca bir Super Admin verebilir ya da başka bir Super Admin’i
+düzenleyebilir, silebilir veya sıfırlayabilir.
+
+## Bir admin’i devre dışı bırakma veya kaldırma
+
+Admin’i **Ayarlar → Kullanıcılar** bölümünde düzenleyin ve **Aktif** seçeneğini kapatın: pasif
+kullanıcılar oturum açamaz. **Sil** hesabı kalıcı olarak kaldırır; bu durumda yorumları silinmiş
+bir admin tarafından yazılmış olarak görünür.
+
+## Parola sıfırlama
+
+- **Admin kendisi sıfırlar:** oturum açma sayfasındaki **Parolanızı mı unuttunuz?** bir saat
+  geçerli bir bağlantıyı e-postayla gönderir. Parola değiştiğinde hesabın tüm oturumları sona
+  erer.
+- **Başka bir admin belirler:** admin’i **Ayarlar → Kullanıcılar** bölümünde düzenleyin ve yeni
+  bir parola yazın. Mevcut parolayı korumak için alanı boş bırakın.
+- **Sunucudan:** kimse oturum açamadığında şunu çalıştırın
+
+  ```sh title="Terminal"
+  verdin admin reset-password --email you@example.com
+  ```
+
+  parola `VERDIN_ADMIN_PASSWORD` içinde veya standart girdide olacak şekilde. Komut parolayı
+  belirler, hesabın kilidini açar ve oturumlarını sonlandırır. İki adımlı doğrulamayı kaldırmaz:
+  ikinci faktörünü kaybeden bir admin’in onu [sıfırlaması](/tr/guides/auth/two-factor/) için
+  başka bir admin’e ihtiyacı vardır.
+
+## Oturum açma koruması
+
+- Arka arkaya 5 yanlış paroladan sonra hesap 15 dakika kilitlenir.
+- Oturum açma, kayıt ve yenileme istekleri istemci IP’si başına `[admin].auth_rate_limit`
+  (varsayılan dakikada 20) ile sınırlanır.
+- Bir admin oturumu, 30 gün süren bir yenileme çereziyle yenilenen 15 dakikalık bir erişim
+  token’ıdır. Çerez `verdin start` içinde `Secure`’dur; bkz. `[admin].secure_cookies`.
+
+Her admin oturum açtığı cihazları **Profil** sayfasındaki **Oturumlar** altında görür ve birini
+ya da diğerlerinin hepsini **Oturumu kapat** ile kapatabilir. Parolayı değiştirmek diğer tüm
+cihazların oturumunu kapatır.
+
+## Admin API
+
+Admin API için bir erişim token’ı almak üzere oturum açın:
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+# → { "data": { "user": {…}, "accessToken": "…", "accessTokenExpiresAt": "…" } }
+```
+
+| Rota | İzin | Yaptığı |
+| --- | --- | --- |
+| `GET /users`, `GET /users/{id}` | `users.manage` | Rolleriyle birlikte admin’ler. |
+| `POST /users` | `users.manage` | `{ email, firstname?, lastname?, roles: [ids], isActive?, password? }`. `password` olmadan yanıtın `meta` alanında `inviteUrl` ve `emailed` bulunur. |
+| `PUT /users/{id}`, `DELETE /users/{id}` | `users.manage` | Bir admin’i değiştirir veya kaldırır. |
+| `POST /users/{id}/invite` | `users.manage` | Hiç oturum açmamış admin’ler için yeni bir davet bağlantısı. |
+| `GET /roles`, `POST /roles`, `PUT /roles/{id}`, `DELETE /roles/{id}` | `roles.manage` | Roller ve izinleri. |
+| `POST /auth/forgot-password` | herkese açık | `{ email }`. Her zaman `204` yanıtını verir. |
+| `GET /auth/sessions`, `DELETE /auth/sessions/{id}` | oturum açmış | Oturumlarınız. |
+
+Tüm rotalar `/admin/api` altındadır. Bkz. [admin API](/tr/api/admin/).
+
+<Aside type="caution">
+Secret’lar asla `verdin.toml`’a girmez. Her iki secret’ı da yeniden başlatmalar ve örnekler
+arasında sabit tutun: `VERDIN_ADMIN_JWT_SECRET` erişim token’larını, son kullanıcıların JWT’lerini
+ve önizleme bağlantılarını imzalar; `VERDIN_TOKEN_PEPPER` ise API token’larını ve ikinci
+faktörleri korur (bkz. [API token’ları](/tr/guides/auth/api-tokens/)).
+</Aside>

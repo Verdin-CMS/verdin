@@ -1,0 +1,231 @@
+---
+title: Адаптивні зображення
+description: Віддавайте зображення потрібного розміру з форматами, які Verdin генерує під час завантаження, і трансформаціями на льоту за URL.
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin дає два способи віддати зображення в розмірі, потрібному сторінці:
+
+- **Адаптивні формати**, згенеровані один раз під час завантаження зображення (`thumbnail`,
+  `small`, `medium`, `large`), точно як у плагіні upload Strapi. Вони працюють із кожним
+  провайдером завантажень.
+- **Трансформації**, що рендеряться на запит за параметрами URL (`?preset=thumb` або
+  `?w=800&format=webp` з підписом) і кешуються на диску. Вони працюють із локальним
+  провайдером.
+
+Обидва способи є частиною медіатеки, яка завжди ввімкнена. Про завантаження й упорядкування
+файлів див. [Медіа](/uk/concepts/media/).
+
+## Адаптивні формати
+
+Коли завантажується зображення JPEG, PNG, WebP, TIFF чи BMP, Verdin записує його менші копії
+й перелічує їх у `formats` файлу:
+
+| Формат | Розмір |
+| --- | --- |
+| `thumbnail` | Вписується в 245 × 156 пікселів. |
+| `large` | 1000 пікселів завширшки. |
+| `medium` | 750 пікселів завширшки. |
+| `small` | 500 пікселів завширшки. |
+
+Формат пропускається, якщо зображення вже менше, тож зображення завширшки 600 пікселів отримує
+лише `thumbnail` і `small`. Копії зберігають формат оригіналу (JPEG кодуються з якістю 80) і
+його EXIF-орієнтацію. GIF не обробляються, бо можуть бути анімованими.
+
+Заповніть медіаполе через populate, щоб їх отримати. Приклади використовують медіаатрибут
+`cover` в Article; у прикладі блогу його немає, тож додайте його в конструкторі типів вмісту,
+щоб повторювати кроки.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?populate[cover]=true'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles {
+    title
+    cover { url width height alternativeText formats }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ populate: { cover: true } });
+const formats = data[0].cover?.formats; // Record<string, MediaFormat> | null
+```
+
+</TabItem>
+</Tabs>
+
+```json
+"cover": {
+  "url": "/uploads/team_4f1c2a.jpg",
+  "width": 2400,
+  "height": 1600,
+  "alternativeText": "The team at the office",
+  "formats": {
+    "thumbnail": { "url": "/uploads/thumbnail_team_4f1c2a.jpg", "width": 234, "height": 156 },
+    "large": { "url": "/uploads/large_team_4f1c2a.jpg", "width": 1000, "height": 667 },
+    "medium": { "url": "/uploads/medium_team_4f1c2a.jpg", "width": 750, "height": 500 },
+    "small": { "url": "/uploads/small_team_4f1c2a.jpg", "width": 500, "height": 333 }
+  }
+}
+```
+
+Побудуйте з них `srcset`. З локальним провайдером `url` — це шляхи на хості Verdin; додайте до
+них його origin:
+
+```ts
+const CMS = 'https://cms.example.com';
+
+function srcset(image: Media): string {
+  const sources = Object.values(image.formats ?? {}).map((f) => `${CMS}${f.url} ${f.width}w`);
+  return [...sources, `${CMS}${image.url} ${image.width}w`].join(', ');
+}
+```
+
+```html
+<img src="…/uploads/large_team_4f1c2a.jpg" srcset="…" sizes="(min-width: 60rem) 50vw, 100vw"
+     width="2400" height="1600" alt="The team at the office" />
+```
+
+### Зміна форматів
+
+Формати задаються в `[upload]` у `verdin.toml`:
+
+```toml title="verdin.toml"
+[upload]
+breakpoints = [{ name = "large", width = 1600 }, { name = "small", width = 640 }]
+# responsive_formats = false  # no copies at all
+# max_original_size = 3000    # scale larger originals down on upload (drops EXIF and GPS)
+```
+
+`breakpoints` — однойменне налаштування Strapi. Зміни застосовуються до нових завантажень;
+наявні файли зберігають свої формати. Усі ключі див. у [`[upload]`](/uk/reference/configuration/),
+зокрема `max_image_megapixels` — обмеження декодування, що захищає від декомпресійних бомб
+(типово 100 мегапікселів).
+
+## Трансформації
+
+З локальним провайдером Verdin сам віддає `/uploads/<file>` і може рендерити інші розміри й
+формати зображення на запит:
+
+```
+/uploads/team_4f1c2a.jpg?preset=thumb
+/uploads/team_4f1c2a.jpg?w=800&format=webp&s=<signature>
+```
+
+| Параметр | Значення |
+| --- | --- |
+| `w`, `h` | Ширина й висота в пікселях, від 1 до `max_size` (типово 4096). Якщо задано лише одне, інше визначається співвідношенням сторін. Якщо жодного — зображення зберігає розмір (зміна формату). |
+| `fit` | `cover` (типово) заповнює рамку й обрізає решту, тримаючи фокусну точку файлу в кадрі. `inside` вписує зображення в рамку. `fill` розтягує його до рамки. |
+| `format` | `jpeg` (або `jpg`), `png` чи `webp`. Вивід WebP без втрат. Без нього зображення зберігає формат (TIFF і BMP стають JPEG). |
+| `q` | Якість JPEG, від 1 до 100. Типово 80. |
+| `preset` | Іменована трансформація з конфігурації. Її не можна поєднувати з іншими параметрами. |
+| `s` | Підпис, коли параметри не є пресетом. |
+
+Зображення ніколи не збільшуються: зображення завширшки 600 пікселів, запитане з `w=1200`,
+повертається завширшки 600. Трансформації працюють із файлами JPEG, PNG, WebP, TIFF і BMP, але не
+з GIF.
+
+### Фокусна точка
+
+Редактори задають фокусну точку зображення в медіатеці: відкрийте файл і клацніть зображення
+(**Фокусна точка: клацніть зображення або скористайтеся клавішами зі стрілками, щоб її
+задати**). Обрізання з `fit=cover` тримають цю точку в кадрі, а її зміна скидає кешовані
+рендери файлу.
+
+### Пресети
+
+Пресети — це трансформації, які ви дозволяєте запитувати будь-кому. Визначайте їх у
+`[upload.transforms.presets]`:
+
+```toml title="verdin.toml"
+[upload.transforms.presets]
+thumb = { w = 300, h = 300 }
+card = { w = 640, h = 360, format = "webp" }
+hero = { w = 1600, h = 600, fit = "cover", format = "jpeg", q = 85 }
+```
+
+```html
+<img src="https://cms.example.com/uploads/team_4f1c2a.jpg?preset=card" alt="…" />
+```
+
+Невідомий пресет відповідає `400`.
+
+### Підписані параметри
+
+Будь-яка інша комбінація `w`, `h`, `fit`, `format` і `q` потребує підпису, щоб ніхто не міг
+змусити сервер рендерити (і зберігати) необмежену кількість варіантів. Задайте секрет у
+середовищі сервера й коду, що будує URL зображень:
+
+```sh title="Terminal"
+export VERDIN_IMAGE_SECRET="$(openssl rand -hex 32)"
+```
+
+Підпис `s` — це шістнадцятковий HMAC-SHA256 з ключем-секретом від `<file>?<canonical query>`.
+Канонічний запит перелічує задані вами параметри, крім `fit=cover` (типового), відсортовані за
+назвою (`fit`, `format`, `h`, `q`, `w`), з `jpeg` для JPEG:
+
+```ts title="src/image-url.ts"
+import { createHmac } from 'node:crypto';
+
+type Transform = { w?: number; h?: number; fit?: 'cover' | 'inside' | 'fill'; format?: 'jpeg' | 'png' | 'webp'; q?: number };
+
+export function imageUrl(cms: string, url: string, t: Transform): string {
+  const file = url.replace(/^\/uploads\//, '');
+  const params: [string, string][] = [];
+  if (t.fit && t.fit !== 'cover') params.push(['fit', t.fit]);
+  if (t.format) params.push(['format', t.format]);
+  if (t.h) params.push(['h', String(t.h)]);
+  if (t.q) params.push(['q', String(t.q)]);
+  if (t.w) params.push(['w', String(t.w)]);
+  const query = params.map(([k, v]) => `${k}=${v}`).join('&');
+  const s = createHmac('sha256', process.env.VERDIN_IMAGE_SECRET!).update(`${file}?${query}`).digest('hex');
+  return `${cms}/uploads/${file}?${query}&s=${s}`;
+}
+```
+
+Будуйте ці URL на сервері (або під час збірки): секрет не має потрапити в браузер. Без
+`VERDIN_IMAGE_SECRET` або з неправильним підписом запит відповідає `403`.
+
+<Aside type="caution">
+`[upload.transforms].allow_arbitrary = true` приймає будь-які параметри без підпису. Тоді кожен
+окремий URL рендериться й кешується, тож будь-хто може заповнити диск і навантажити CPU.
+Вмикайте це, лише коли сервер доступний тільки з довірених мереж.
+</Aside>
+
+### Кешування й обмеження
+
+- Рендери записуються в `[upload.transforms].cache_dir` (типово `.cache/transforms`) і далі
+  віддаються звідти. Каталог можна безпечно видаляти.
+- Заміна файлу чи переміщення його фокусної точки скидає його кешовані рендери.
+- Трансформовані відповіді кешуються браузерами й CDN на день
+  (`Cache-Control: public, max-age=86400`); звичайні файли — на рік, бо їхні назви ніколи не
+  змінюються.
+- Рендеринг виконується паралельно до кількості ядер CPU; решта запитів чекає.
+- Зображення, більші за `max_image_megapixels`, відхиляються (`422`).
+
+Задайте `[upload.transforms].enabled = false`, щоб вимкнути трансформації. Ключі див. у
+[`[upload.transforms]`](/uk/reference/configuration/).
+
+### З S3 та іншими провайдерами
+
+З провайдером S3 файли віддає бакет або його CDN, а не Verdin, тож параметри трансформацій
+нічого не роблять. Використовуйте адаптивні формати або сервіс зображень вашого CDN
+(наприклад, Cloudflare Images чи imgix) перед `public_url` бакета.
+
+У Strapi немає вбудованих трансформацій; його адаптивні формати й `breakpoints` поводяться так
+само, як у Verdin.

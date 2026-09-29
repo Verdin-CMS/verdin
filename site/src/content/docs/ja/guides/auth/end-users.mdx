@@ -1,0 +1,197 @@
+---
+title: エンドユーザー
+description: サイトの利用者が、メール確認、OAuth プロバイダー、ロールとともに、コンテンツ API を通じてサインアップ・ログインできるようにします。Strapi の users-permissions のルートを使います。
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+エンドユーザーは、管理パネルではなく、あなたのサイトやアプリにログインする人々です。Verdin は、サインアップ、ログイン、メール確認、パスワード再設定、OAuth プロバイダー、そしてコンテンツ API で何ができるかを決めるロールを提供します。ルートとペイロードは Strapi v5 の users-permissions プラグインと同じなので、既存のフロントエンドはそのまま動きます。
+
+## 始める前に
+
+<Steps>
+
+1. **設定 → 機能 → ユーザーと権限**をオンにする（デフォルトはオフ）か、**設定 → エンドユーザー → 設定**で**エンドユーザー**をオンにします。
+2. メール確認やパスワード再設定を使う場合は、`[email]` を設定します。
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend と Postmark は、キーを `VERDIN_EMAIL_API_KEY` から読み込みます。**設定 → 機能 → メール**に**テストメールを送信**があります。ローカルでの作業には、`docker/compose.dev.yml` に Mailpit（SMTP はポート 1025、受信箱は `http://localhost:8025`）が含まれています。
+
+3. `[server].public_url` を設定します。メール内のリンクと OAuth のコールバックがこれを使います。
+
+</Steps>
+
+アカウントとロールの管理には**エンドユーザーを管理**（`endusers.manage`）が必要です。設定タブ（サインアップ、プロバイダー、テンプレート）の変更には**機能の管理**（`features.manage`）が必要です。
+
+## サインアップとセッションを設定する
+
+**設定 → エンドユーザー → 設定**の**サインアップとセッション**で設定します。
+
+| 設定 | デフォルト | 効果 |
+| --- | --- | --- |
+| **サインアップを許可** | オン | 誰でもコンテンツ API からアカウントを作成できます。オフの場合、`register` は `400` を返します。 |
+| **メールアドレスを確認する** | オフ | 新しいユーザーは、ログインする前にメールで届いたリンクを開く必要があります。 |
+| **デフォルトロール** | Authenticated | 新しいアカウントのロール。 |
+| **セッション** | 有効期限が長い単一のトークン | **有効期限が長い単一のトークン**（Strapi の従来のモード）または**更新機能付きの短期トークン**。 |
+| **セッションの長さ（日数）** | 30 | 有効期限が長いトークンの有効期間。 |
+| **アクセストークンの有効期間（分）**、**リフレッシュトークンの有効期間（日）** | 30、30 | リフレッシュトークンを使う場合。 |
+
+**あなたのアプリのページ**で、**メール確認後**（アドレスが確認された後にユーザーが移動する先）と、**パスワード再設定ページ**（`?code=` を受け取って新しいパスワードを尋ねる、あなたのページ）を設定します。パスワード再設定には再設定ページが必要です。
+
+## ロールを設定する
+
+すべてのリクエストは、次のいずれかとして行われます。
+
+- **Public**: トークンのないリクエスト。その権限は**設定 → 公開アクセス**のものです。
+- **Authenticated**: 新しいアカウントに与えられる組み込みのロール。削除できません。
+- **カスタムロール**: **設定 → エンドユーザー → ロール**の**ロールを作成**で作成します。
+
+ロールの**権限**は、公開アクセスや API トークンと同じマトリクスを使います。コンテンツタイプごとの**検索**、**1件取得**、**作成**、**更新**、**削除**、**公開**、**下書きの閲覧**、そして**メディアライブラリ**と**ユーザー**（`/api/users` のルート）です。ログイン済みのユーザーが得るのは自分のロールの権限だけで、公開アクセスの権限は加わりません。ログイン済みのユーザーにも公開の読み取りが必要なら、そのロールにも許可してください。ロールを削除すると、そのユーザーは Authenticated に移ります。
+
+ユーザーとして操作するには、フロントエンドがそのユーザーの JWT を `Authorization: Bearer <jwt>` として送ります。API トークンは `vd_` で始まり、Verdin はそれで両者を区別します。
+
+## サインアップとログイン
+
+<Tabs>
+<TabItem label="登録">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   メール確認がオンの場合は { "user": … }
+```
+
+</TabItem>
+<TabItem label="ログイン">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` はメールアドレスかユーザー名です。
+
+</TabItem>
+<TabItem label="ユーザーとして読み取る">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+ブロックされたユーザー（"Your account has been blocked by an administrator"）と、確認がオンの場合の未確認のユーザー（"Your account email is not confirmed"）は、ログインを拒否されます。
+
+## トークンとセッション
+
+- **有効期限が長い単一のトークン**（`jwtManagement: "legacy-support"`）: JWT は<strong>セッションの長さ（日数）</strong>の間有効です。
+- **更新機能付きの短期トークン**（`jwtManagement: "refresh"`、Strapi 5 と同じ）: JWT は<strong>アクセストークンの有効期間（分）</strong>の間有効で、ログインの応答には `refreshToken` も含まれます。`{ refreshToken }` を付けて `POST /api/auth/refresh` を呼ぶと、新しい組が得られます。各リフレッシュトークンは 1 回だけ使え、使用済みのものを送るとセッション全体が終了します。`{ refreshToken }` を付けた `POST /api/auth/logout` で、意図的にセッションを終了します。
+- パスワードを変更または再設定すると、そのユーザーの以前のトークンは無効になります。ユーザーをブロックした場合も同じです。
+- ログイン、登録、再設定のリクエストは、クライアント IP ごとに 1 分あたり 20 回に制限されます。
+- パスワードは Argon2id で保存されます。Strapi からインポートしたアカウントは、次のログインで再ハッシュされるまで bcrypt のハッシュを保ちます。
+
+## メールアドレスの確認とパスワードの再設定
+
+**メールアドレスを確認する**をオンにすると、サインアップ時に `/api/auth/email-confirmation?confirmation=…` へのリンクがメールで送られます。リンクを開くとアカウントが確認され、**メール確認後**にリダイレクトされます。`{ email }` を付けた `POST /api/auth/send-email-confirmation` で、新しいリンクを送れます。
+
+パスワードを忘れた場合:
+
+<Steps>
+
+1. アプリが `{ email }` を付けて `POST /api/auth/forgot-password` を呼びます。アカウントが存在するかどうかにかかわらず、応答は同じです。
+2. ユーザーに、`?code=…` 付きの**パスワード再設定ページ**へのリンクを含むメールが届きます。コードは 1 時間有効です。
+3. あなたのページが `{ code, password, passwordConfirmation }` を付けて `POST /api/auth/reset-password` を呼び、`{ jwt, user }` を受け取ります。
+
+</Steps>
+
+ログイン済みのユーザーは、`POST /api/auth/change-password`（`{ currentPassword, password, passwordConfirmation }`）でパスワードを変更します。
+
+メールは**設定 → エンドユーザー → 設定 → メールテンプレート**で編集します。**メール確認**と**パスワード再設定**のそれぞれに、**件名**、**本文**、任意の <strong>HTML本文（任意）</strong>があります。プレースホルダー `{{username}}`、`{{email}}`、`{{url}}` を使え、HTML 本文では値が HTML エスケープされます。
+
+## OAuth プロバイダーでログインする
+
+GitHub、Google、Microsoft、Discord、Facebook、GitLab、LinkedIn には組み込みのプリセットがあります。それ以外の名前は汎用の OAuth 2 プロバイダーで、**認可URL**、**トークンURL**、**ユーザー情報URL**が必要です。Keycloak、Auth0、Okta は、realm やテナントの URL を使ってこの方法で動きます。Sign in with Apple には対応していません。
+
+<Steps>
+
+1. **設定 → エンドユーザー → 設定 → ログインプロバイダー**で、**GitHubを追加**（または他のプリセットか **OAuth 2プロバイダーを追加**）を選びます。
+2. プロバイダー側で、ダイアログに表示される**プロバイダーに登録するコールバックURL**を登録します: `https://cms.example.com/api/connect/github/callback`。
+3. **クライアントID**、任意の**スコープ**、そして**アプリへのリダイレクト**（ログイン後に `?access_token=` を受け取るフロントエンドのページ）を入力します。**有効**をオンにします。
+4. クライアントシークレットをサーバーの環境変数に入れて、再起動します。
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   変数名は `VERDIN_OAUTH_<PROVIDER>_SECRET` です。シークレットがデータベースに保存されることはありません。
+
+</Steps>
+
+ログインは Strapi の流れに従います。
+
+<Diagram
+  caption="エンドユーザーの OAuth ログイン"
+  code={`sequenceDiagram
+  participant B as ブラウザー
+  participant V as Verdin
+  participant P as プロバイダー
+  B->>V: GET /api/connect/github
+  V-->>B: プロバイダーへリダイレクト
+  B->>P: 同意
+  P-->>B: /api/connect/github/callback へリダイレクト
+  B->>V: コールバック
+  V-->>B: あなたのページへリダイレクト ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+OAuth の `state` は署名され、Cookie でブラウザーに結び付けられます。アカウントはメールアドレスで照合されます。別のプロバイダーやメールアドレスとパスワードのアカウントがすでに使っているメールアドレスは拒否されます（"Email is already taken."）。
+
+## 管理パネルでアカウントを管理する
+
+**設定 → エンドユーザー → ユーザー**にアカウントが一覧表示され、ユーザー名やメールアドレスで検索できます。**ユーザーを追加**、アカウントの編集（ユーザー名、メールアドレス、パスワード、ロール、**確認済み**、**ブロック済み**）、**ブロック**や**ブロック解除**、削除ができます。
+
+## ルート
+
+ルートは、コンテンツ API のプレフィックス（デフォルトは `/api`）配下にあります。リクエストとレスポンスの形は Strapi v5 に従います。
+
+| ルート | 動作 |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }`。メール確認がオンの場合は `{ user }`。 |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`。 |
+| `GET /auth/email-confirmation?confirmation=` | メールアドレスを確認し、リダイレクトするかユーザーを返します。 |
+| `POST /auth/send-email-confirmation` | `{ email }`: 新しい確認リンク。 |
+| `POST /auth/forgot-password` | `{ email }`: 再設定のリンクをメールで送ります。 |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`。 |
+| `POST /auth/change-password` | ログイン済み。`{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`。 |
+| `POST /auth/refresh`、`POST /auth/logout` | リフレッシュモードのみ: `{ refreshToken }`。 |
+| `GET /users/me` | ログイン中のユーザー。 |
+| `GET /users`、`GET /users/count`、`GET /users/{id}` | ユーザーに対する検索 / 1件取得が必要です。Strapi と同様に、`data` のエンベロープのないプレーンな JSON です。`populate=role` でロールが加わり、`_q=` でユーザー名とメールアドレスを検索し、`pagination[page]` と `pagination[pageSize]`（最大 100）でページをめくります。 |
+| `POST /users`、`PUT /users/{id}`、`DELETE /users/{id}` | ユーザーに対する作成 / 更新 / 削除が必要です。`{ username, email, password, confirmed, blocked, role }`。`role` はロールの ID です。 |
+| `GET /connect/{provider}` | OAuth のログインを開始します。 |
+| `GET /auth/{provider}/callback?access_token=` | プロバイダーのトークンを `{ jwt, user }` と交換します。 |
+
+`verdin import strapi` は、エンドユーザーをパスワード、カスタムロール、そして Public、Authenticated、カスタムロールの権限とともに移行します。[Strapi からの移行](/ja/migrate/from-strapi/)を参照してください。
+
+<Aside type="caution">
+**ユーザー**に対する作成、更新、削除を持つロールでは、そのメンバーがすべてのエンドユーザーのアカウントを管理できます。信頼できるロールや API トークンにだけ与えてください。
+</Aside>

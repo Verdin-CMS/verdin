@@ -1,0 +1,126 @@
+---
+title: القوائم
+description: ابنِ قوائم تنقّل من الروابط والإدخالات في لوحة الإدارة واعرضها على موقعك.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+تمنح ميزة **القوائم** المحررين أشجار تنقّل مسمّاة (ترويسة، وتذييل، وشريط جانبي)
+ترتبط بصفحات أو إدخالات أو مواقع أخرى. يجلب موقعك القائمة بالـ slug الخاص بها
+ويعرضها؛ وتتبع الروابط إلى الإدخالات حالة نشرها ومسارها.
+
+في Strapi يتطلب ذلك عادةً إضافة تنقّل أو نوع محتوى للقوائم مصنوعًا يدويًا؛ أما في
+Verdin فهو مدمج.
+
+## فعّلها
+
+في **الإعدادات ← الميزات**، فعّل **القوائم**، ثم اختر **إدارة القوائم** (أو انتقل إلى
+**الإعدادات ← القوائم**). تتطلب إدارة القوائم الصلاحية **إدارة SEO وإعادات التوجيه والقوائم والنماذج**
+(`site.manage`)، التي يملكها الدور المدمج Editor. راجع
+[الصلاحيات](/ar/reference/permissions/).
+
+لربط الإدخالات بالمسار، أعِدّ أيضًا أنماط المسارات في [SEO وخريطة الموقع](/ar/guides/frontend/seo-and-sitemap/).
+
+## ابنِ قائمة
+
+<Steps>
+
+1. في **الإعدادات ← القوائم**، اختر **قائمة جديدة**.
+2. امنحها اسمًا (مثل **التنقّل الرئيسي**) و**Slug** (`main`): أحرف صغيرة،
+   وأرقام وشرطات. تجلب المواقع القائمة بالـ slug الخاص بها.
+3. اختر **إضافة عنصر** واملأ العنصر:
+   - **التسمية**: نص الرابط، حتى 255 حرفًا.
+   - **يرتبط بـ**: **عنوان URL**، أو **إدخال**، أو **لا شيء (عنوان)**.
+   - **عنوان URL**: مسار (`/about`)، أو مرساة (`#team`)، أو رابط `http(s)` أو `mailto:` أو `tel:`.
+   - لإدخال، اختر **اختيار إدخال**: اختر **نوع المحتوى** إذا كان يمكن ربط عدة أنواع،
+     وابحث في الإدخالات واختر واحدًا.
+   - **يُفتح في**: **التبويب نفسه** أو **تبويب جديد**.
+4. اسحب العناصر لترتيبها وتداخلها، أو استخدم أزرارها. بلوحة المفاتيح، على مقبض
+   السحب: Alt+↑ وAlt+↓ تنقلان العنصر، وAlt+→ تجعله متداخلًا تحت العنصر الذي فوقه، وAlt+← تخرجه
+   منه.
+5. احفظ.
+
+</Steps>
+
+للقائمة 5 مستويات على الأكثر و500 عنصر.
+
+## اجلب قائمة
+
+تقرأ المواقع القائمة من `GET /api/_menus/{slug}`، دون رمز. أضف `?locale=` لـ
+المحتوى المترجم:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+كيف تُحَلّ روابط الإدخالات:
+
+- الإدخال غير المنشور، باللغة المطلوبة، يُستبعد من القائمة (مع
+  أبنائه). لا تسرّب القوائم المسودات أبدًا.
+- يأتي `entry.path` من نمط النوع في [SEO وخريطة الموقع](/ar/guides/frontend/seo-and-sitemap/)،
+  مملوءًا بحقول الإدخال واللغة. ويكون `null` عندما لا يكون للنوع نمط
+  أو لا يملؤه الإدخال.
+- عندما لا يملك العنصر `url` خاصًا به، يحصل على المسار كـ `url`، فلا تحتاج معظم المواقع
+  إلا إلى قراءة `url`.
+
+بدون `locale`، تُقرأ الإدخالات باللغة الافتراضية. تُرسل الاستجابة مع
+`Cache-Control: public, max-age=60`.
+
+## اعرضها
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+حذف قائمة يجعل `/api/_menus/{slug}` يجيب بـ `404`، وكذلك إيقاف الميزة.
+تعامل مع ذلك في موقعك، مثلًا بعدم عرض أي تنقّل.
+</Aside>
+
+## API الإدارة
+
+تستخدم لوحة الإدارة `/admin/api/site/menus` (`GET`، `POST`) و
+`/admin/api/site/menus/{id}` (`GET`، `PUT`، `DELETE`)، مع رمز وصول لمسؤول و
+`site.manage`. راجع [API الإدارة](/ar/api/admin/).

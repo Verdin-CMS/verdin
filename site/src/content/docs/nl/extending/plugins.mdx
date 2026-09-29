@@ -1,0 +1,134 @@
+---
+title: Plugins
+description: Wat Verdin-plugins kunnen, hoe de WebAssembly-sandbox en capabilities ze in toom houden, en hoe je ze installeert en aanzet.
+sidebar:
+  order: 1
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Plugins voegen gedrag toe aan Verdin zonder de server te wijzigen of opnieuw te bouwen. Een plugin
+is een WebAssembly-module met een manifest, neergezet in de map `plugins/` van het project. Deze
+pagina legt uit wat plugins kunnen en hoe je er een installeert; om er een te schrijven, volg je de
+[plugintutorial](/nl/extending/plugin-tutorial/), en de details zoek je op in de
+[pluginreferentie](/nl/extending/plugin-reference/).
+
+## Wat een plugin kan
+
+| Uitbreidingspunt | Waarvoor het dient |
+| --- | --- |
+| **Hooks op schrijfacties** | Voordat een item wordt aangemaakt, bijgewerkt, gepubliceerd, gedepubliceerd of verwijderd, of zijn concept wordt verworpen: de gegevens wijzigen of de schrijfactie met een melding weigeren. Na de schrijfactie: erop reageren (loggen, melden, synchroniseren). |
+| **Routes** | HTTP-endpoints serveren onder `/api/plugins/<name>/…`: een webhookontvanger, een berekende feed, een proxy naar een andere service. |
+| **Geplande jobs** | Een functie draaien volgens een cron-schema (UTC). |
+| **GraphQL-velden** | Velden `name(args: JSON): JSON` toevoegen aan `Query` of `Mutation`. |
+| **Dashboardwidgets** | Types widgets toevoegen aan het dashboard van het beheerpaneel, als Web Components. |
+| **Aangepaste velden** | Attributen een eigen editor in het beheerpaneel geven (een kleurkiezer, een kaart), als Web Components; de waarde wordt opgeslagen als gewoon attribuuttype. |
+| **Instellingen** | Een instellingenformulier declareren dat beheerders invullen in **Instellingen → Plugins**. |
+
+Een plugin leest en schrijft content via dezelfde Document Service als het beheerpaneel en de API,
+dus webhooks, geschiedenis, reviewfasen en validatie gelden voor zijn schrijfacties.
+
+<Aside type="note">
+Verdin-plugins zijn geen Strapi-plugins. Strapi-plugins zijn Node.js-pakketten met volledige
+toegang tot de server; Verdin draait geen JavaScript op de server. Aangepaste velden die door
+Strapi-schema's worden gedeclareerd (`customField`-attributen), laden zoals ze zijn, en een
+Verdin-plugin kan hun editor leveren.
+</Aside>
+
+## De sandbox
+
+Plugins draaien in een WebAssembly-sandbox ([Extism](https://extism.org), op Wasmtime). Een module
+heeft geen eigen bestanden, sockets of databaseverbinding. Alles wat hij buiten zijn eigen geheugen
+doet, gaat via een paar hostfuncties, en de server controleert elke aanroep tegen de
+**capabilities** die het manifest declareert:
+
+| Capability | Verleent |
+| --- | --- |
+| `read` | Items lezen van de vermelde contenttypes (of `*`). |
+| `write` | Items van de vermelde types aanmaken, bijwerken, publiceren, depubliceren en verwijderen (en ook lezen). |
+| `http` | HTTP-requests naar de vermelde hosts (`api.example.com`, `*.example.com`). |
+| `kv` | Een eigen key-value-store, in de database van Verdin. |
+
+<Diagram
+  caption="Aanroepen naar een plugin, en wat zijn hostaanroepen kunnen bereiken"
+  code={`flowchart LR
+    W[Schrijfacties] -->|hooks| M
+    R["/api/plugins/name/…"] --> M
+    J[Geplande jobs] --> M
+    M[WebAssembly-module] --> C{Capabilities}
+    C -->|read, write| D[(Content)]
+    C -->|kv| K[(Pluginopslag)]
+    C -->|http| H[Vermelde hosts]`}
+/>
+
+Elke aanroep heeft ook limieten: een tijdslimiet (standaard 5 seconden) en een geheugenlimiet
+(standaard 64 MB), ingesteld in het manifest. Een module die een trap veroorzaakt of te lang duurt,
+laat alleen die aanroep mislukken; Verdin bouwt hem bij de volgende aanroep opnieuw op.
+
+Wat de sandbox niet voor je beslist:
+
+- **Routes zijn openbaar.** Requests naar `/api/plugins/<name>/…` worden niet gecontroleerd tegen
+  **Openbare toegang** of de rechten van API-tokens. De plugin krijgt te horen wie aanroept
+  (iedereen, een API-token of een eindgebruiker) en moet dat controleren.
+- **Hooks zien alle schrijfacties naar hun types**, wat de capability `read` van de plugin ook is.
+- **Een falende before-hook blokkeert de schrijfactie niet.** Als de module crasht of een time-out
+  krijgt, wordt de fout gelogd en gaat de schrijfactie door. Alleen een expliciete weigering houdt
+  haar tegen.
+
+## Een plugin installeren
+
+<Steps>
+
+1. Zet de plugin in een eigen map onder `plugins/`, naast `verdin.toml`. Die bevat het manifest, de
+   module en, optioneel, de bestanden voor het beheerpaneel:
+
+   <FileTree>
+   - verdin.toml
+   - plugins/
+     - reading-time/
+       - plugin.toml
+       - plugin.wasm
+       - admin/ optioneel: Web Components voor het beheerpaneel
+         - index.js
+   - schema/
+   </FileTree>
+
+2. Herstart Verdin. Het laadt bij het opstarten elke `plugins/*/plugin.toml` en logt voor elk
+   `plugin found`. Een plugin die niet laadt (ongeldig manifest, ontbrekende module, dubbele
+   naam), wordt met de reden getoond in **Instellingen → Plugins**.
+
+3. Open in het beheerpaneel **Instellingen → Plugins**. Bekijk waar de plugin om vraagt onder
+   **Toegang**, **Hooks**, **Routes** en **Taken**, en zet hem daarna aan.
+
+4. Als de plugin instellingen heeft, open je **Instellingen** op zijn kaart, vul je ze in en sla je
+   ze op.
+
+</Steps>
+
+Geïnstalleerde plugins staan eerst uit. Een plugin aan- of uitzetten en zijn instellingen bewerken
+werkt meteen, op elke instantie (andere instanties pikken de wijziging op binnen
+`[server].sync_interval_secs`). Wijzigingen aan `plugin.toml` of de module vereisen een herstart.
+
+Plugins beheren vereist het recht `plugins.manage` (**Plugins beheren**). Zie de
+[rechtenreferentie](/nl/reference/permissions/).
+
+## `[plugins]` configureren
+
+```toml title="verdin.toml"
+[plugins]
+path = "plugins"   # directory of plugins, relative to verdin.toml
+run_jobs = true    # run scheduled jobs on this instance
+```
+
+Stel bij meerdere instanties `run_jobs = false` in op alle instanties op één na, zodat elke job één
+keer draait. Zie de [configuratiereferentie](/nl/reference/configuration/).
+
+## Beheer
+
+- **Eén aanroep tegelijk.** Elke plugin heeft één instantie en verwerkt één aanroep tegelijk, dus
+  een trage route vertraagt de hooks van die plugin. Houd functies kort.
+- **Logs.** Wat een plugin logt, gaat naar het serverlog en naar **Instellingen → Plugins →
+  Logs** (de laatste 200 regels, in het geheugen bewaard).
+- **Deploys.** Lever plugins mee met het project (in het image of het volume), net als het schema.
+  De schakelaars en instellingen staan in de database.

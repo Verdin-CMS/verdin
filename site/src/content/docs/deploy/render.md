@@ -21,7 +21,7 @@ Prerequisites: your Verdin project (with `schema/`) in a Git repository Render c
 ## 1. Add a Dockerfile and a configuration
 
 ```dockerfile title="Dockerfile"
-FROM ghcr.io/verdin-cms/verdin:0.9
+FROM ghcr.io/verdin-cms/verdin:0.10
 COPY verdin.toml /app/verdin.toml
 COPY schema /app/schema
 ```

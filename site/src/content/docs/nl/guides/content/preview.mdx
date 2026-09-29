@@ -1,0 +1,152 @@
+---
+title: Voorbeeld
+description: Open concepten op je site vanuit de item-editor met een kortlevend voorbeeldtoken, en laat je site het concept daarmee lezen.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Voorbeeld opent het concept van een item op je eigen site, voordat het is gepubliceerd. De editor
+bouwt een link op uit een URL-sjabloon per contenttype en voegt een kortlevend token toe waarmee
+je site dat ene concept kan lezen. Deze gids stelt de sjablonen en de kant van de site in.
+
+Om op tekst in het voorbeeld te klikken en naar het veld te springen, voeg je
+[Visueel bewerken](/nl/guides/frontend/visual-editing/) hieraan toe.
+
+## Voordat je begint
+
+- Zet **Instellingen → Functies → Voorbeeld** aan. Het staat standaard uit.
+- De instellingen van de functie wijzigen vereist **Functies beheren** (`features.manage`).
+- Een voorbeeld openen vereist leestoegang tot het item. Zie
+  [Rechten](/nl/reference/permissions/).
+
+## De voorbeeld-URL's instellen
+
+<Steps>
+
+1. Kies op de kaart **Voorbeeld** in **Instellingen → Functies** **Voorbeeld-URL’s instellen**.
+2. Vul onder **URL-sjablonen** de pagina van je site in die het concept van elk contenttype toont.
+   Laat een type leeg om het geen voorbeeld te geven.
+3. Wijzig eventueel **Geldigheid van de link (minuten)**: standaard 60, hoogstens 10080
+   (7 dagen).
+4. Sla op.
+
+</Steps>
+
+Een sjabloon is een `http`- of `https`-URL met placeholders tussen accolades:
+
+| Placeholder | Ingevuld met |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | Elk veld op het hoogste niveau van het concept. Onbekende placeholders worden leeg. |
+| `{documentId}`, `{uid}` | Het document-id en de uid van het contenttype. |
+| `{token}` | Het voorbeeldtoken. Zonder deze placeholder wordt het token toegevoegd als queryparameter `preview`. |
+
+Voor de artikelen van het voorbeeldproject:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+geeft `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+Dezelfde instellingen als JSON, zoals de functie ze opslaat (`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## Een voorbeeld openen
+
+Kies in de item-editor **Voorbeeld openen** om het concept op je site in een nieuw tabblad te
+openen, of **Naast elkaar** om het in een paneel naast het formulier te tonen, met de breedtes
+**Desktop**, **Tablet** en **Mobiel**. Het zijpaneel herlaadt na elke keer opslaan. Als het leeg
+blijft, weigert je site waarschijnlijk in een frame te worden ingesloten: gebruik
+**Openen in een nieuw tabblad**.
+
+## Het concept lezen op je site
+
+Je voorbeeldpagina haalt het token uit de URL en stuurt het terug naar de content-API in de header
+`x-verdin-preview`, met de vraag om het concept:
+
+<Diagram
+  caption="Een voorbeeldrequest"
+  code={`sequenceDiagram
+  participant E as Editor
+  participant V as Verdin
+  participant S as Je site
+  E->>V: Voorbeeld openen
+  V-->>E: URL met voorbeeldtoken
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: het concept`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+Het voorbeeldtoken wordt gelezen door de REST-content-API. Haal het concept op je voorbeeldpagina
+op via REST.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+Dezelfde header werkt op enkele types (`GET /api/<singularName>?status=draft`).
+
+Wat het token verleent:
+
+- Het laat de houder dat ene document lezen, concepten inbegrepen, totdat het verloopt.
+- Het kan geen andere documenten lezen, geen items opsommen en niets schrijven.
+- Responses op voorbeeldrequests worden nooit gecachet.
+
+<Aside type="caution">
+Iedereen met de link kan het concept lezen totdat het token verloopt. Houd de geldigheid kort, en
+deel voorbeeldlinks niet op openbare plekken.
+</Aside>
+
+Je voorbeeldpagina zoekt het item meestal op aan de hand van een veld zoals `slug`. Omdat het token
+op `documentId` leest, zet je `{documentId}` ook in het sjabloon, of houd je de vertaling van slug
+naar id aan jouw kant.
+
+## Admin-API
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` geeft de link voor de knop van de
+editor terug:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+Het vereist leestoegang tot het item, en antwoordt met `404` als de functie uit staat of het type
+geen sjabloon heeft.

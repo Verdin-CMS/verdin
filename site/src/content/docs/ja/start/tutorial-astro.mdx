@@ -1,0 +1,348 @@
+---
+title: 'チュートリアル: Astro でブログを作る'
+description: Verdin のサンプルスキーマを使って、型付きのクエリ、スラッグによる記事のページ、カテゴリー、任意の下書きのプレビューを備えた小さな Astro のブログを作ります。
+sidebar:
+  order: 3
+  label: Astro でブログ
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+このチュートリアルでは、Verdin からコンテンツを読む静的なブログを [Astro](https://astro.build) で作ります。記事を一覧にするホームページ、カテゴリー付きの `/articles/<slug>/` の記事ごとのページ、そして任意で、管理画面のプレビューのリンクから下書きを表示するページです。スキーマから生成した型とともに、型付きクライアント `@verdin/client` を使います。
+
+Astro 7.3（`create-astro` 5.2）と Node.js 22.12 以降、Verdin と `@verdin/client` 0.10 向けに書いています。[Next.js のチュートリアル](/ja/start/tutorial-nextjs/)では、同じブログを Next.js で作ります。
+
+## 始める前に
+
+`PATH` 上の `verdin` のバイナリ（[クイックスタート](/ja/start/quickstart/)を参照）、Node.js、Git が必要です。最終的に、Verdin のプロジェクト `cms` と Astro のサイト `blog` の 2 つのフォルダーが並びます。
+
+## 1. ブログのスキーマで Verdin を準備する
+
+リポジトリの [`examples/blog`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) プロジェクトはブログをモデル化しています。タイトル、`slug`、抜粋、Markdown の `body`、カテゴリー、タグを持つ記事に加えて、ホームページのシングルタイプといくつかのコンポーネントです。
+
+<Steps>
+
+1. Verdin のプロジェクトを作成し、サンプルのスキーマをコピーします。
+
+   ```sh title="Terminal"
+   git clone --depth 1 https://github.com/Verdin-CMS/verdin.git
+   verdin new cms
+   cp verdin/examples/blog/schema/content-types/{article,category,tag,homepage}.json cms/schema/content-types/
+   cp -r verdin/examples/blog/schema/components/* cms/schema/components/
+   ```
+
+2. 起動します。
+
+   ```sh title="Terminal"
+   cd cms
+   verdin dev
+   ```
+
+   最初の起動で、4 つのコンテンツタイプのテーブルが作成されます。
+
+3. [http://localhost:1337/admin/](http://localhost:1337/admin/) を開き、最初の管理者を作成します。
+
+4. **コレクション**で **Category** を開き、**新規エントリー**を選び、`News` と名前を付けて保存します。
+
+5. **Article** を開き、**新規エントリー**を選んで、タイトル、抜粋、Markdown の本文を入力します。`slug` はタイトルから生成されます。カテゴリーに `News` を選び、**公開**を選びます。同じようにして 2 つ目の記事を追加します。
+
+6. **設定 → 公開アクセス**を開き、**Article** と **Category** に**検索**と**1件取得**を許可して、**保存**を選びます。
+
+</Steps>
+
+API が応答することを確認します。
+
+```sh title="Terminal"
+curl 'localhost:1337/api/articles?populate=category'
+```
+
+<Aside>
+リレーションを populate するには、その対象への読み取り権限が必要です。**Category** に**検索**がないと、`populate=category` は ``invalid key `category` in populate`` とともに `400` を返します。
+</Aside>
+
+## 2. Astro のプロジェクトを作成する
+
+新しいターミナルで、`cms` の隣に作成します。
+
+```sh title="Terminal"
+npm create astro@latest blog -- --template minimal --no-git --yes
+cd blog
+npm install @verdin/client marked
+```
+
+[`marked`](https://marked.js.org) は、`body` フィールドの Markdown を HTML に変えます。
+
+## 3. 型を生成する
+
+`verdin types` はスキーマを読み、コンテンツタイプとコンポーネントごとに 1 つの TypeScript のインターフェースと、クライアント用のルートのマップ `VerdinSchema` を書き出します。`blog` から、Verdin のプロジェクトの設定を指定して実行します。
+
+```sh title="Terminal"
+verdin types -c ../cms/verdin.toml -o src/verdin-types.ts
+```
+
+ファイルには、特に次のものが含まれます。
+
+```ts title="src/verdin-types.ts"
+export interface Article extends DocumentBase {
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  body: string | null;
+  // …
+  category?: Category | null;
+  tags?: Tag[];
+}
+```
+
+リレーション、メディア、コンポーネントは、API が populate した場合にしか返さないので任意です。スキーマが変わるたびに、このコマンドを実行し直してください。
+
+## 4. Verdin に接続する
+
+Astro の型付きの環境変数で、サーバーの URL と任意の API トークンを宣言します。
+
+```js title="astro.config.mjs"
+// @ts-check
+import { defineConfig, envField } from 'astro/config';
+
+export default defineConfig({
+  env: {
+    schema: {
+      VERDIN_URL: envField.string({ context: 'server', access: 'public', default: 'http://localhost:1337' }),
+      VERDIN_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+    },
+  },
+});
+```
+
+トークンがない場合、クライアントは公開ロールとして読みます。これは手順 1 で公開したものです。代わりにトークンで読むには、**設定 → APIトークン**で**読み取り専用**のトークンを作成し、`.env` に `VERDIN_TOKEN=…` として書きます。
+
+クライアントを一度作成し、共有します。
+
+```ts title="src/lib/verdin.ts"
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+```
+
+これで `verdin.collection('articles')` はスキーマのルートだけを受け付け、その結果は `Article` として型付けされます。
+
+## 5. レイアウトを追加する
+
+スターターのページの HTML を、ページ間で共有するレイアウトに置き換えます。
+
+```astro title="src/layouts/Layout.astro"
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header><a href="/">My blog</a></header>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>
+```
+
+## 6. 記事を一覧にする
+
+```astro title="src/pages/index.astro"
+---
+import Layout from '../layouts/Layout.astro';
+import { verdin } from '../lib/verdin';
+
+const { data: articles } = await verdin.collection('articles').find({
+  fields: ['title', 'slug', 'excerpt', 'publishedAt'],
+  populate: { category: { fields: ['name'] } },
+  sort: ['publishedAt:desc'],
+});
+---
+
+<Layout title="My blog">
+  <h1>Articles</h1>
+  <ul>
+    {articles.map((article) => (
+      <li>
+        <a href={`/articles/${article.slug}/`}>{article.title}</a>
+        {article.category && <small> in {article.category.name}</small>}
+        {article.excerpt && <p>{article.excerpt}</p>}
+      </li>
+    ))}
+  </ul>
+</Layout>
+```
+
+このクエリは、Strapi v5 の形式の REST の呼び出し `GET /api/articles?fields[0]=title&…&populate[category][fields][0]=name&sort[0]=publishedAt:desc` です。`fields` でレスポンスを小さく保ち、`populate` で名前だけを持つカテゴリーを加えます。公開ロールは公開された記事だけを読みます。
+
+## 7. 記事ごとのページを追加する
+
+Astro は記事ごとに 1 つのページをビルドします。`getStaticPaths` がカテゴリー付きで記事を取得し、それぞれをそのページに渡します。
+
+```astro title="src/pages/articles/[slug].astro"
+---
+import type { GetStaticPaths } from 'astro';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { verdin } from '../../lib/verdin';
+
+export const getStaticPaths = (async () => {
+  const { data: articles } = await verdin.collection('articles').find({
+    populate: { category: true },
+    pagination: { pageSize: 100 },
+  });
+  return articles.map((article) => ({
+    params: { slug: article.slug },
+    props: { article },
+  }));
+}) satisfies GetStaticPaths;
+
+const { article } = Astro.props;
+const html = await marked.parse(article.body ?? '');
+---
+
+<Layout title={article.title}>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+`pageSize` の上限は `[api].max_page_size`（デフォルトは 100）です。記事がそれより多い場合は、`meta.pagination.pageCount` を使ってループでページを取得してください。
+
+<Aside type="caution">
+`marked` は HTML をサニタイズしません。自分の編集者が書く Markdown なら問題ありませんが、信頼できない人からコンテンツが来る可能性がある場合は、描画する前に HTML をサニタイズしてください。
+</Aside>
+
+## 8. 実行する
+
+```sh title="Terminal"
+npm run dev
+```
+
+[http://localhost:4321](http://localhost:4321) を開くと、一覧に公開した記事が表示され、それぞれがそのページにリンクしています。`npm run build` は静的サイトを `dist/` に書き出します。
+
+静的なビルドはコンテンツを一度だけ読みます。変更を公開するには、コンテンツが変わったときに、たとえば Webhook やデプロイフックからサイトを再ビルドしてください。[デプロイと CDN](/ja/guides/integrations/deploys-and-cdn/)を参照してください。
+
+プロジェクトは次のようになります。
+
+<FileTree>
+- blog/
+  - astro.config.mjs
+  - src/
+    - verdin-types.ts `verdin types` で生成
+    - lib/
+      - verdin.ts
+    - layouts/
+      - Layout.astro
+    - pages/
+      - index.astro
+      - articles/
+        - [slug].astro
+</FileTree>
+
+## 9. 任意: 下書きのプレビュー
+
+管理画面は、有効期間の短いプレビュートークンを使って、サイト上で下書きを開けます。トークンはその 1 件のドキュメントを下書きを含めて読めるだけで、それ以外は読めません。下書きはビルド後に変わるので、プレビューページはリクエストごとに描画され、そのためにアダプターが必要です。
+
+```sh title="Terminal"
+npx astro add node --yes
+```
+
+`x-verdin-preview` ヘッダーでプレビュートークンを送るクライアントを追加します。
+
+```ts title="src/lib/verdin.ts" ins={10-16}
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+
+/** A client that reads one draft with the preview token from the admin's link. */
+export function previewClient(previewToken: string) {
+  return createClient<VerdinSchema>({
+    url: VERDIN_URL,
+    headers: { 'x-verdin-preview': previewToken },
+  });
+}
+```
+
+次にページです。`prerender = false` でオンデマンドに描画します。トークンはクエリパラメーター `preview` として届きます。
+
+```astro title="src/pages/preview/[documentId].astro"
+---
+import { VerdinError } from '@verdin/client';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { previewClient } from '../../lib/verdin';
+
+export const prerender = false;
+
+const { documentId } = Astro.params;
+const token = Astro.url.searchParams.get('preview');
+if (!documentId || !token) {
+  return new Response('Missing preview token', { status: 401 });
+}
+
+let article;
+try {
+  ({ data: article } = await previewClient(token)
+    .collection('articles')
+    .findOne(documentId, { status: 'draft', populate: { category: true } }));
+} catch (error) {
+  if (error instanceof VerdinError) {
+    return new Response('This preview link has expired', { status: error.status });
+  }
+  throw error;
+}
+const html = await marked.parse(article.body ?? '');
+Astro.response.headers.set('cache-control', 'no-store');
+---
+
+<Layout title={`Preview: ${article.title}`}>
+  <p><strong>Draft preview</strong></p>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+プレビュートークンではエントリーを一覧できないので、このページはスラッグではなく `documentId` で下書きを探します。次に、ページの場所を Verdin に伝えます。
+
+<Steps>
+
+1. 管理画面で**設定 → 機能**を開き、**プレビュー**をオンにして、**プレビューURLを設定**を選びます。
+2. **Article** の URL テンプレートを `http://localhost:4321/preview/{documentId}` にして保存します。Verdin はトークンを `?preview=…` として付け加えます。
+3. 記事を開いて変更し、**下書きを保存**を選んでから、**プレビューを開く**を選びます。
+
+</Steps>
+
+ページに下書きが表示されます。リンクはデフォルトで 60 分間有効です。プレースホルダーと設定は[プレビュー](/ja/guides/content/preview/)を、プレビューから編集するには[ビジュアル編集](/ja/guides/frontend/visual-editing/)を参照してください。
+
+## 次のステップ
+
+- [型付きクライアント](/ja/guides/frontend/typed-client/): `@verdin/client` のすべてのメソッド。
+- [REST API](/ja/api/rest/): フィルター、ソート、ページネーション、`populate`。
+- [画像](/ja/guides/frontend/images/): メディアライブラリのレスポンシブなフォーマット。
+- [SEO とサイトマップ](/ja/guides/frontend/seo-and-sitemap/): `shared.seo` コンポーネントと Verdin のサイトマップ。

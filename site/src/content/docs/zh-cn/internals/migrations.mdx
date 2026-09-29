@@ -1,0 +1,97 @@
+---
+title: 迁移引擎
+description: Verdin 如何把 schema 变更转换为 DDL、按风险对每个步骤分类，以及如何在支持和不支持事务性 DDL 的引擎上安全地执行迁移计划。
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+本页介绍 `verdin-migrate` 如何让数据库与 schema 保持一致：它如何计算差异、如何为每个步骤评级，以及如何执行迁移计划，使得失败时你永远不必去猜测数据库处于什么状态。日常的工作流程（`verdin migrate plan`、`--allow`、重命名）请先阅读 [Schema 迁移](/zh-cn/concepts/schema-migrations/)；命令参数请参见 [CLI 参考](/zh-cn/reference/cli/)。
+
+## 流程
+
+<Diagram
+  caption="从 schema 文件到已执行的 DDL"
+  code={`flowchart LR
+  Files["schema/*.json"] -->|解析、校验| Schema
+  Schema -->|推导| Desired["DbModel<br/>期望"]
+  Snapshot[("vd_schema_snapshots")] --> Current["DbModel<br/>当前"]
+  Current --> Diff{"diff"}
+  Desired --> Diff
+  Diff -->|变更| Plan["针对该 Flavor 的计划<br/>步骤、风险、SQL、预检查"]
+  Plan -->|apply| Db[("数据库")]`}
+/>
+
+1. `verdin-schema` 解析并校验这些文件，得到一个 `Schema`。
+2. `derive_model`（`derive.rs`）把它转换为一个 `DbModel`：schema 所需的每个表、列、索引和外键，包括链接表和[平台表](/zh-cn/internals/storage/#平台表)。
+3. 从 `vd_schema_snapshots` 中读取上一次应用的模型。
+4. `diff`（`diff.rs`）比较这两个模型，返回一个 `Change` 列表以及重命名提示。
+5. `build_plan`（`plan.rs`）为所连接的 flavor 把每个变更渲染为 SQL、为其评级，并在需要时附加一个预检查。
+6. `apply`（`apply.rs`）执行该计划，然后把期望模型存储为新的快照。
+
+**快照存储的是物理模型，而不是 schema。** 当后续的 Verdin 版本从同一个 schema 推导出更多的表时（为新功能添加的链接表、新的平台表），diff 会在没有任何 schema 变更的情况下创建它们。
+
+**diff 针对快照运行，而不是针对实时数据库。** 这让它保持确定性，并避免了各引擎在报告自身结构时的差异。Verdin 不会内省数据库，因此不会检测到对表的手动修改（漂移）。
+
+在某个方言上渲染为相同 DDL 的变更不会产生任何步骤。例如，`string` → `text` 在 PostgreSQL 和 MySQL 上是一次类型变更，但在 SQLite 上两者都是 `text`，因此 SQLite 不会产生任何步骤。
+
+## 变更类别
+
+每个步骤都有一个风险等级（`diff.rs` 中的 `Risk`）。`apply` 只执行不超过你所允许等级的步骤；如果有步骤超过该等级，它会在执行任何操作之前拒绝整个计划。
+
+| 风险 | 变更 |
+|---|---|
+| **安全** | 创建表；添加可为空或带默认值的列；放宽列的限制（改为可为空，类型和默认值不变）；创建非唯一索引，或在新表上创建唯一索引；删除索引；重命名表或列 |
+| **有风险** | 添加不带默认值的 `NOT NULL` 列；以其他方式修改列的类型、可空性或默认值；为已有表添加唯一索引；在不删除列的情况下重建 SQLite 表 |
+| **破坏性** | 删除列；删除表；重建会删除列的 SQLite 表 |
+
+由于每个属性列都可以为空（参见[存储](/zh-cn/internals/storage/#系统列)），添加属性（包括必填属性）始终是安全的。`enumeration` 的值由应用程序检查，而不是由列检查，因此添加或删除一个值根本不会改变任何 DDL。
+
+**预检查**在计划的第一条语句之前运行，因此无法成功的有风险步骤会在数据库仍未被改动时就停止执行：
+
+| 步骤 | 预检查 |
+|---|---|
+| 已有表上的唯一索引 | 被索引的列中没有重复的非 NULL 值 |
+| 不带默认值的 `NOT NULL` 列 | 表中没有任何行 |
+| 列变为 `NOT NULL` | 该列中没有 NULL |
+
+**重命名。** 同一张表中删除了一列、又新增了一个列类型相同的列时，会被*建议*为一次重命名：`verdin migrate plan` 会输出类似 `--rename-column articles.title=headline` 的提示，内容类型构建器也会提供接受该建议的选项。它从不会被静默推断；不带该参数时，计划会删除旧列并添加新列。删除了一张表、又创建了一张列相同的表时，会以同样的方式得到 `--rename-table old=new` 提示。重命名是安全步骤，被重命名的表会带上它的链接表一起重命名。
+
+**SQLite 重建。** SQLite 无法修改列，因此当某张表有任何列修改时，规划器会把该表的所有列变更和索引变更替换为一次重建：以临时名称创建新结构，复制保留下来的列，删除旧表，重命名新表，重新创建索引。
+
+## 模式
+
+| 命令 | 发生什么 |
+|---|---|
+| `verdin start` | 有待处理的步骤时，启动会停止，并给出一条指向 `verdin migrate plan` 的提示。schema 文件是只读的。 |
+| `verdin start --migrate` | 待处理的**安全**步骤会在服务器启动之前执行；任何风险更高的步骤都会让启动停止。 |
+| `verdin dev` | 启动时执行安全步骤。`schema/` 上的文件监视器会在每次变更时重新加载：执行安全迁移并原地替换应用；风险更高的变更会记录到日志中，正在运行的应用保持不变。 |
+| 内容类型构建器（仅限 `verdin dev`） | `POST /schema/plan` 展示各步骤、其风险、SQL 以及重命名提示。`POST /schema/apply` 以用户确认的风险等级执行它们。 |
+| `verdin migrate plan` | 输出每个步骤及其风险、针对所连接方言的确切 SQL、计划所需的 `--allow` 等级，以及重命名提示。 |
+| `verdin migrate apply` | 执行计划。当计划中包含相应步骤时，需要 `--allow risky` 或 `--allow destructive`。 |
+
+构建器应用一次变更时，会先迁移，再写入 `schema/*.json`，然后替换应用。如果迁移失败，文件和正在运行的应用都保持不变。由于构建器的产出是文件，整个流程最终以一次 git 提交结束。
+
+## 在非事务性 DDL 下也能可靠执行
+
+PostgreSQL 和 SQLite 在事务中执行 DDL。MySQL 和 MariaDB 会在每条 DDL 语句上隐式提交，因此如果计划执行到一半失败，数据库就会处于两种状态之间。`apply` 能处理这两种情况。
+
+**在所有引擎上：**
+
+1. 在一个专用连接上获取迁移锁：PostgreSQL 上为 `pg_advisory_lock`；MySQL 和 MariaDB 上为 `GET_LOCK('verdin_migrate:<database>')`，最多等待 60 秒；SQLite 上由 `BEGIN IMMEDIATE` 让写入者串行化。在 SQLite 上，引擎还会在执行期间关闭 `foreign_keys`，这样表重建就不会级联影响链接表。
+2. 根据快照重新计算计划，并检查所允许的风险等级。
+3. 在第一条 DDL 语句之前运行所有预检查。
+
+**在 PostgreSQL 和 SQLite 上**，整个计划、新快照以及一行 `completed` 日志记录都在同一个事务中执行。失败时会全部回滚。
+
+**在 MySQL 和 MariaDB 上**，每个步骤都是单独的一条语句，进度会逐步记录：
+
+1. 以 `running` 状态把计划记录到 `vd_migrations_journal` 中（计划的哈希及其步骤）。
+2. 执行每个步骤，并在每步之后记录已完成的步骤数。
+3. 如果某个步骤失败，日志会保存该错误并保持 `running`。之后 `verdin migrate plan` 会报告这次被中断的执行、已应用了多少步骤以及最后一个错误。
+4. 下一次 `apply` 会重新计算计划。如果其哈希与日志一致，它就会从失败的步骤**继续**：在这些引擎上，单条 DDL 语句是原子的，因此失败的步骤会被重新执行。继续执行时会跳过预检查，因为之前的步骤已经改变了数据库。
+5. 如果 schema 在此期间发生了变化，哈希就会不同，`apply` 会拒绝执行，并要求你恢复制定该计划时所用的 schema。
+6. 最后一个步骤成功后，新快照和日志的 `completed` 状态会在一个事务中一起写入。
+
+计划哈希涵盖 flavor 和每一条语句，因此继续执行时运行的正是当初计划好的 SQL。

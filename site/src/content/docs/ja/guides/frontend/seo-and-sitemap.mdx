@@ -1,0 +1,153 @@
+---
+title: SEO とサイトマップ
+description: コンテンツタイプをサイトのパスに対応付け、公開されたすべてのエントリーの sitemap.xml を提供し、標準の SEO コンポーネントを追加します。
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**SEO とサイトマップ**の機能は、各エントリーがサイトのどこにあるかを Verdin に伝えます。それをもとに、公開されたすべてのエントリーの `sitemap.xml` を提供し、[メニュー](/ja/guides/frontend/menus/)にリンク先のエントリーのパスを渡し、メタタグ用の既製の `shared.seo` コンポーネントを提供します。
+
+これは、[リダイレクト](/ja/guides/frontend/redirects/)、[メニュー](/ja/guides/frontend/menus/)、[フォーム](/ja/guides/frontend/forms/)と並ぶ、4 つのサイト機能の 1 つです。Strapi はコミュニティのプラグイン（SEO、サイトマップ）で同じ範囲をカバーしていますが、Verdin では組み込まれています。
+
+## オンにする
+
+<Steps>
+
+1. **設定 → 機能**で **SEOとサイトマップ**をオンにします。
+2. そのカードで **SEOを設定**を選びます。
+3. **サイトURL**を入力します。`https://www.example.com` のような、サイトのオリジンです。サイトマップの URL はこれで始まります。
+4. **コンテンツタイプ**で、ページを持つ各型に**パスパターン**を設定します。パターンのない型はサイトマップに含まれません。必要なら、サイトマップ用に**更新頻度**と**優先度**（0〜1）を設定します。
+5. 保存し、**sitemap.xmlを開く**を選んで結果を確認します。
+
+</Steps>
+
+設定の変更には**機能の管理**の権限（`features.manage`）が必要です。[権限](/ja/reference/permissions/)を参照してください。
+
+## パスパターン
+
+パターンは `/` で始まるパスで、波かっこのプレースホルダーを含みます。
+
+| パターン | エントリー | パス |
+| --- | --- | --- |
+| `/blog/{slug}` | スラッグが `hello-world` の記事 | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | そのフランス語版 | `/fr/blog/bonjour` |
+| `/about` | Homepage シングルタイプ | `/about` |
+
+プレースホルダーは型の属性（通常は `slug` のような `uid`）と `{locale}` です。値は URL エンコードされます。プレースホルダーが空のエントリー（スラッグがないなど）はパスを持たず、サイトマップとメニューから除かれます。ダイアログには挿入できる属性が一覧され、不明な属性は拒否されます。
+
+設定は、機能の設定として次の形で保存されます。
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` は `always`、`hourly`、`daily`、`weekly`、`monthly`、`yearly`、`never` のいずれかです。
+
+## サイトマップ
+
+**サイトURL**を設定すると、Verdin は自身のホストのルートで `/sitemap.xml` を提供します（`https://cms.example.com/sitemap.xml`、API のプレフィックスの外側）。内容は次のとおりです。
+
+- 設定した型の、パターンが埋まる**公開された**すべてのエントリー。
+- 各エントリーの最終変更日時（`lastmod`）と、型の `changefreq` と `priority`。
+- 多言語化された型では、ロケールごとに 1 つの URL。`<xhtml:link rel="alternate" hreflang="…">` で互いにリンクされます。
+- 最大 50,000 件の URL（サイトマップファイルの上限）。
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+サイトマップは最大で 10 分ごとに構築され、`Cache-Control: public, max-age=600` 付きで送られるので、公開は 10 分以内に反映されます。
+
+検索エンジンは、サイトマップがサイトのホストにあることを期待します。リライトか、Verdin のサイトマップを取得する小さなルートで、サイトから提供してください。
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+その後、`robots.txt` に記載します: `Sitemap: https://www.example.com/sitemap.xml`。
+
+## SEO コンポーネント
+
+Verdin は、Strapi の SEO プラグインのフィールドを持つ `shared.seo` コンポーネントを提案します。
+
+| 属性 | 型 |
+| --- | --- |
+| `metaTitle` | string、必須、最大 60 文字 |
+| `metaDescription` | text、必須、最大 160 文字 |
+| `metaImage` | media（画像） |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+**SEOを設定**のダイアログで **SEOコンポーネントを追加**を選び、続いて**コンポーネントを作成**を選びます。作成するとスキーマが変わるので、このボタンは開発モード（`verdin dev`）で、**コンテンツタイプの管理**を持つ管理者にだけ表示されます。それ以外の場合、ダイアログには代わりにスキーマファイルに追加する属性が一覧されます。その後、コンテンツタイプビルダーで、ページを持つ各コンテンツタイプに `shared.seo` を使うコンポーネントのフィールドを追加します。
+
+<Aside type="tip">
+[AI アクション](/ja/guides/integrations/ai-actions/)がオンの場合、`metaTitle` と `metaDescription` のテキスト属性を持つコンポーネントには、エントリーからそれらを埋める**提案**ボタンが付きます。
+</Aside>
+
+## メタタグを出力する
+
+コンポーネントを populate し、ページの head にタグを書きます。
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+ブログのサンプルの `shared.seo` には `metaTitle` と `metaDescription` しかなく、提案されるコンポーネントが残りを追加します。プレビューページで[ビジュアル編集](/ja/guides/frontend/visual-editing/)を使う場合は、メタテキストの長さを測ったり比較したりする前に、見えない印を取り除いてください。

@@ -1,0 +1,319 @@
+---
+title: "מדריך: התוסף הראשון שלכם"
+description: בנו תוסף Verdin ב-Rust שממלא את זמן הקריאה של מאמר, רושם פרסומים ביומן ומגיש נתיב API קטן.
+sidebar:
+  order: 2
+  label: מדריך תוספים
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+במדריך הזה תבנו את **reading-time**, תוסף לדוגמת הבלוג. הוא:
+
+- ממלא את ה-`readingTime` של מאמר מתוך ה-`body` שלו בכל פעם שהגוף נכתב (before hook);
+- כותב שורה ליומן שלו כשמאמר מתפרסם (after hook);
+- מגיש את `GET /api/plugins/reading-time/stats` עם זמן הקריאה הממוצע (נתיב שקורא תוכן);
+- יש לו הגדרה **Words per minute**.
+
+זה לוקח בערך 20 דקות. כדי להבין מה הם תוספים ואיך ה-sandbox עובד, קראו קודם את
+[תוספים](/he/extending/plugins/).
+
+## לפני שמתחילים
+
+צריך:
+
+- פרויקט Verdin עם הסכמה של דוגמת הבלוג: העתיקו את
+  [`examples/blog/schema`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog/schema)
+  לפרויקט שנוצר עם `verdin new`, או הריצו את הדוגמה עצמה. התוסף משתמש במאפיינים `body`
+  (`richtext`) ו-`readingTime` (`integer`) של הסוג `article`.
+- Rust עם יעד ה-WebAssembly:
+
+  ```sh title="Terminal"
+  rustup target add wasm32-unknown-unknown
+  ```
+
+אפשר לכתוב תוספים בכל שפה שיש לה [Extism PDK](https://extism.org/docs/concepts/pdk)
+(JavaScript, Go, Zig, C ואחרות). המדריך הזה משתמש ב-Rust וב-`extism-pdk`.
+
+## יצירת ה-crate
+
+<Steps>
+
+1. צרו crate מסוג ספרייה, מחוץ לפרויקט ה-Verdin שלכם:
+
+   ```sh title="Terminal"
+   cargo new --lib reading-time
+   cd reading-time
+   ```
+
+2. החליפו את `Cargo.toml`. תוסף הוא `cdylib`; פרופיל ה-release שומר על מודול קטן.
+
+   ```toml title="Cargo.toml"
+   [package]
+   name = "reading-time"
+   version = "0.1.0"
+   edition = "2024"
+   publish = false
+
+   [lib]
+   crate-type = ["cdylib"]
+
+   [dependencies]
+   extism-pdk = "1.4.1"
+   serde_json = "1"
+
+   [profile.release]
+   opt-level = "s"
+   lto = true
+   strip = true
+   ```
+
+</Steps>
+
+## כתיבת הפונקציות
+
+כל פונקציה שהתוסף מייצא מקבלת JSON ומחזירה JSON. Verdin קורא להן עבור ה-hooks, הנתיבים
+והמשימות שהמניפסט מציין; הפונקציות קוראות בחזרה ל-Verdin דרך פונקציות מארח (`verdin_log`,
+`verdin_content`, `verdin_config`…).
+
+החליפו את `src/lib.rs`:
+
+```rust title="src/lib.rs"
+use extism_pdk::*;
+use serde_json::{Value, json};
+
+// Host functions Verdin provides (namespace `extism:host/user`).
+#[host_fn]
+extern "ExtismHost" {
+    fn verdin_log(input: Json<Value>);
+    fn verdin_content(input: Json<Value>) -> Json<Value>;
+    fn verdin_config() -> Json<Value>;
+}
+
+/// Minutes needed to read `text` at `per_minute` words a minute (at least 1).
+fn minutes(text: &str, per_minute: u64) -> u64 {
+    let words = text.split_whitespace().count() as u64;
+    words.div_ceil(per_minute.max(1)).max(1)
+}
+
+/// `beforeCreate` and `beforeUpdate` on articles: fills `readingTime` from `body`.
+#[plugin_fn]
+pub fn set_reading_time(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    // An update may leave the body out: then there is nothing to recompute.
+    let Some(body) = data["body"].as_str() else {
+        return Ok(Json(json!({})));
+    };
+    let config = unsafe { verdin_config()? }.0;
+    let per_minute = config["wordsPerMinute"].as_u64().unwrap_or(200);
+    data["readingTime"] = json!(minutes(body, per_minute));
+    Ok(Json(json!({ "data": data })))
+}
+
+/// `afterPublish` on articles: writes a line to the plugin's log.
+#[plugin_fn]
+pub fn log_publish(Json(input): Json<Value>) -> FnResult<()> {
+    let message = format!("published {}", input["documentId"].as_str().unwrap_or("?"));
+    unsafe { verdin_log(Json(json!({ "level": "info", "message": message })))? };
+    Ok(())
+}
+
+/// `GET /api/plugins/reading-time/stats`: the average reading time of published articles.
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    if request["method"] != "GET" || request["path"] != "/stats" {
+        return Ok(Json(json!({ "status": 404, "body": { "error": "not found" } })));
+    }
+    let found = unsafe {
+        verdin_content(Json(json!({
+            "op": "findMany",
+            "uid": "api::article",
+            "query": { "fields": ["readingTime"], "pagination": { "pageSize": 100 } }
+        })))?
+    }
+    .0;
+    if let Some(error) = found.get("error") {
+        return Ok(Json(json!({ "status": 500, "body": { "error": error } })));
+    }
+    let times: Vec<u64> = found["documents"]
+        .as_array()
+        .map(|documents| documents.iter().filter_map(|d| d["readingTime"].as_u64()).collect())
+        .unwrap_or_default();
+    let average = if times.is_empty() { 0.0 } else { times.iter().sum::<u64>() as f64 / times.len() as f64 };
+    Ok(Json(json!({
+        "status": 200,
+        "headers": { "cache-control": "max-age=60" },
+        "body": { "articles": times.len(), "averageMinutes": average }
+    })))
+}
+```
+
+מה כל פונקציה מחזירה:
+
+- **`set_reading_time`** הוא before hook. `{ "data": … }` מחליף את הנתונים שנכתבים; `{}`
+  משאיר אותם כמו שהם. הוא יכול גם להחזיר `{ "error": "…" }` כדי לדחות את הכתיבה עם 400.
+- **`log_publish`** הוא after hook: הפלט שלו נזנח.
+- **`handle`** מגיש כל בקשה תחת `/api/plugins/reading-time/`. הוא מקבל את הנתיב שאחרי
+  הקידומת הזו ועונה `{ status, headers, body }`.
+
+## בניית המודול
+
+```sh title="Terminal"
+cargo build --release --target wasm32-unknown-unknown
+```
+
+המודול הוא `target/wasm32-unknown-unknown/release/reading_time.wasm` (Cargo הופך את המקף
+לקו תחתון), בגודל של כ-120 KB.
+
+## כתיבת המניפסט
+
+<Steps>
+
+1. בפרויקט ה-Verdin שלכם, צרו את `plugins/reading-time/` והעתיקו לתוכה את המודול בשם
+   `plugin.wasm`:
+
+   ```sh title="Terminal"
+   mkdir -p plugins/reading-time
+   cp ../reading-time/target/wasm32-unknown-unknown/release/reading_time.wasm plugins/reading-time/plugin.wasm
+   ```
+
+2. לצדו, צרו את המניפסט. הוא נותן שם לתוסף, מבקש את מה שהפונקציות צריכות, ומחבר אותן
+   ל-hooks ולנתיבים:
+
+   ```toml title="plugins/reading-time/plugin.toml"
+   name = "reading-time"
+   version = "0.1.0"
+   description = "Fills an article's reading time from its body"
+
+   [capabilities]
+   read = ["api::article"]           # for the stats route
+
+   [[hooks]]
+   on = "beforeCreate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "beforeUpdate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "afterPublish"
+   uid = "api::article"
+   function = "log_publish"
+
+   [routes]
+   function = "handle"               # serves /api/plugins/reading-time/…
+
+   [[settings]]
+   key = "wordsPerMinute"
+   label = "Words per minute"
+   type = "integer"
+   min = 50
+   max = 1000
+   default = 200
+   ```
+
+   ה-hooks לא צריכים אף יכולת: הם משנים את הנתונים שהם מקבלים. רק הקריאה ל-`verdin_content`
+   של הנתיב קוראת תוכן, ולכן התוסף מבקש `read` על מאמרים ותו לא.
+
+</Steps>
+
+עכשיו הפרויקט נראה כך:
+
+<FileTree>
+- verdin.toml
+- .env
+- plugins/
+  - reading-time/
+    - plugin.toml
+    - plugin.wasm
+- schema/
+  - content-types/
+    - article.json
+    - …
+</FileTree>
+
+## הפעלה
+
+<Steps>
+
+1. הפעילו (או הפעילו מחדש) את השרת:
+
+   ```sh title="Terminal"
+   verdin dev
+   ```
+
+   ביומן מופיע `plugin found plugin=reading-time version=0.1.0`.
+
+2. פתחו את פאנל הניהול, ואז את **הגדרות ← תוספים**. הכרטיס **reading-time** מציג את הגישה
+   שלו (קורא מאמרים), את ה-hooks שלו ואת הנתיב שלו. הפעילו אותו.
+
+3. פתחו את **הגדרות** בכרטיס: הטופס מציג את **Words per minute** עם ברירת המחדל שלו, 200.
+   ערכים מחוץ לטווח 50 עד 1,000 נדחים. השאירו אותו כמו שהוא.
+
+</Steps>
+
+## נסו את זה
+
+<Steps>
+
+1. צרו מאמר עם גוף של כמה מאות מילים, בפאנל הניהול או דרך ה-API עם אסימון API:
+
+   ```sh title="Terminal"
+   curl -X POST http://localhost:1337/api/articles \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "data": { "title": "Hello plugins", "slug": "hello-plugins", "body": "…450 words…" } }'
+   ```
+
+   בתגובה יש `"readingTime": 3`: ‏450 מילים ב-200 מילים לדקה, מעוגל למעלה. לא שלחתם אותו;
+   ה-hook מילא אותו.
+
+2. עדכנו רק את הכותרת. `readingTime` נשאר: בנתוני העדכון אין `body`, ולכן ה-hook מחזיר `{}`.
+   עדכנו את הגוף, והוא מחושב מחדש.
+
+3. פרסמו את המאמר, ואז פתחו את **יומנים** בכרטיס של התוסף: מופיע בו
+   `published <documentId>`. (דרך ה-API, יצירה בלי `?status=draft` מפרסמת מיד, כך שהשורה
+   כבר שם.)
+
+4. קראו לנתיב:
+
+   ```sh title="Terminal"
+   curl -i http://localhost:1337/api/plugins/reading-time/stats
+   ```
+
+   ```text
+   HTTP/1.1 200 OK
+   content-type: application/json
+   cache-control: max-age=60
+
+   {"articles":1,"averageMinutes":3.0}
+   ```
+
+   הוא סופר מאמרים מפורסמים: `verdin_content` קורא גרסאות מפורסמות אלא אם השאילתה מבקשת
+   `status: "draft"`.
+
+</Steps>
+
+<Aside type="caution">
+הנתיב עונה לכל אחד: נתיבי תוספים לא מכוסים על ידי **גישה ציבורית**. כאן הוא מחזיר רק
+ממוצע, אבל נתיב שמחזיר או משנה תוכן חייב לבדוק בעצמו את `request.actor`
+(`{ "kind": "public" }`, `{ "kind": "token", "id": … }` או `{ "kind": "user", "id": … }`).
+</Aside>
+
+## שינויים
+
+- ערכו את הקוד, הריצו שוב `cargo build --release --target wasm32-unknown-unknown`, העתיקו
+  את המודול והפעילו מחדש את Verdin. המתג וההגדרות נשמרים.
+- גם שינויים ב-`plugin.toml` דורשים הפעלה מחדש. שינויי הגדרות חלים מיד.
+- אם קריאה נכשלת, השגיאה נמצאת ביומן השרת וב-**יומנים**. panic או חריגת זמן מכשילים רק את
+  הקריאה הזו; ב-before hook, הכתיבה ממשיכה בלי השינוי של התוסף.
+
+## הצעדים הבאים
+
+- הוסיפו [משימה מתוזמנת, שדה GraphQL או ווידג'ט לפאנל הניהול](/he/extending/plugin-reference/).
+- שמרו מצב בין קריאות עם היכולת `kv` ועם `verdin_kv_get` / `verdin_kv_set`.
+- תוסף הבדיקה של המאגר,
+  [`crates/verdin-plugins/tests/fixtures/sample`](https://github.com/Verdin-CMS/verdin/tree/main/crates/verdin-plugins/tests/fixtures/sample),
+  משתמש בכל פונקציות המארח.

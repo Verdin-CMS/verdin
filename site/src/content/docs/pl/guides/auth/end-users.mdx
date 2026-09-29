@@ -1,0 +1,252 @@
+---
+title: Użytkownicy końcowi
+description: Pozwól osobom korzystającym z twoich witryn rejestrować się i logować przez API treści, z potwierdzaniem e-maila, dostawcami OAuth i rolami, na trasach users-permissions ze Strapi.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Użytkownicy końcowi to osoby, które logują się do twojej witryny lub aplikacji, a nie do
+panelu administracyjnego. Verdin daje im rejestrację, logowanie, potwierdzanie e-maila,
+reset hasła, dostawców OAuth i role, które decydują, co mogą robić w API treści. Trasy
+i payloady to te z wtyczki users-permissions w Strapi v5, więc istniejące frontendy dalej
+działają.
+
+## Zanim zaczniesz
+
+<Steps>
+
+1. Włącz **Ustawienia → Funkcje → Użytkownicy i uprawnienia** (domyślnie wyłączone) albo
+   włącz **Użytkownicy końcowi** w **Ustawienia → Użytkownicy końcowi → Ustawienia**.
+2. Skonfiguruj `[email]`, jeśli używasz potwierdzania e-maila lub resetu hasła:
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend i Postmark odczytują klucz z `VERDIN_EMAIL_API_KEY`. **Ustawienia → Funkcje →
+   E-mail** ma **Wyślij e-mail testowy**. Do pracy lokalnej `docker/compose.dev.yml` zawiera
+   Mailpit (SMTP na porcie 1025, skrzynka pod `http://localhost:8025`).
+
+3. Ustaw `[server].public_url`: używają go linki w e-mailach i callbacki OAuth.
+
+</Steps>
+
+Zarządzanie kontami i rolami wymaga **Zarządzanie użytkownikami końcowymi**
+(`endusers.manage`). Zmiana karty ustawień (rejestracja, dostawcy, szablony) wymaga
+**Zarządzanie funkcjami** (`features.manage`).
+
+## Skonfiguruj rejestrację i sesje
+
+W **Ustawienia → Użytkownicy końcowi → Ustawienia**, w sekcji **Rejestracja i sesje**:
+
+| Ustawienie | Domyślnie | Efekt |
+| --- | --- | --- |
+| **Zezwól na rejestrację** | włączone | Każdy może utworzyć konto przez API treści. Wyłączone: `register` odpowiada `400`. |
+| **Potwierdzaj adresy e-mail** | wyłączone | Nowi użytkownicy muszą otworzyć link z e-maila, zanim będą mogli się zalogować. |
+| **Domyślna rola** | Authenticated | Rola nowych kont. |
+| **Sesje** | Jeden długożyjący token | **Jeden długożyjący token** (tryb zgodności ze Strapi) lub **Krótkie tokeny z odświeżaniem**. |
+| **Długość sesji (w dniach)** | 30 | Czas życia długożyjącego tokenu. |
+| **Czas życia tokena dostępu (w minutach)**, **Czas życia tokena odświeżającego (w dniach)** | 30, 30 | Z tokenami odświeżania. |
+
+W sekcji **Strony Twojej aplikacji** ustaw **Po potwierdzeniu adresu e-mail** (gdzie trafiają
+użytkownicy po potwierdzeniu adresu) i **Strona resetowania hasła** (twoja strona, która
+odbiera `?code=` i prosi o nowe hasło). Reset hasła wymaga strony resetowania.
+
+## Skonfiguruj role
+
+Każde żądanie jest wykonywane jako jedna z ról:
+
+- **Public**: żądania bez tokenu. Jej uprawnienia to te z **Ustawienia → Dostęp publiczny**.
+- **Authenticated**: wbudowana rola nadawana nowym kontom. Nie można jej usunąć.
+- **Role niestandardowe**: twórz je w **Ustawienia → Użytkownicy końcowi → Role** przyciskiem
+  **Utwórz rolę**.
+
+**Uprawnienia** roli używają tej samej macierzy co dostęp publiczny i tokeny API:
+**Wyszukaj**, **Pobierz jeden**, **Utwórz**, **Aktualizuj**, **Usuń**, **Opublikuj**
+i **Odczyt szkiców** dla każdego typu zawartości, **Biblioteki multimediów** i **Użytkowników**
+(trasy `/api/users`). Zalogowany użytkownik dostaje tylko uprawnienia swojej roli, a nie
+dodatkowo dostęp publiczny: jeśli zalogowani użytkownicy potrzebują publicznych odczytów,
+przyznaj je również roli. Usunięcie roli przenosi jej użytkowników do Authenticated.
+
+Aby działać jako użytkownik, frontend wysyła jego JWT jako `Authorization: Bearer <jwt>`.
+Tokeny API zaczynają się od `vd_`, i po tym Verdin je rozróżnia.
+
+## Rejestracja i logowanie
+
+<Tabs>
+<TabItem label="Rejestracja">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   albo { "user": … }, gdy potwierdzanie e-maila jest włączone
+```
+
+</TabItem>
+<TabItem label="Logowanie">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` to e-mail lub nazwa użytkownika.
+
+</TabItem>
+<TabItem label="Odczyt jako użytkownik">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+Logowanie jest odrzucane dla zablokowanych użytkowników („Your account has been blocked by an
+administrator”) oraz, przy włączonym potwierdzaniu, dla niepotwierdzonych („Your account
+email is not confirmed”).
+
+## Tokeny i sesje
+
+- **Jeden długożyjący token** (`jwtManagement: "legacy-support"`): JWT jest ważny przez
+  **Długość sesji (w dniach)**.
+- **Krótkie tokeny z odświeżaniem** (`jwtManagement: "refresh"`, jak w Strapi 5): JWT jest
+  ważny przez **Czas życia tokena dostępu (w minutach)**, a odpowiedzi logowania zawierają też
+  `refreshToken`. Wywołaj `POST /api/auth/refresh` z `{ refreshToken }`, aby dostać nową parę.
+  Każdy token odświeżania działa raz; przedstawienie zużytego kończy całą sesję.
+  `POST /api/auth/logout` z `{ refreshToken }` celowo ją kończy.
+- Zmiana lub reset hasła unieważnia wcześniejsze tokeny użytkownika, podobnie jak jego
+  zablokowanie.
+- Żądania logowania, rejestracji i resetu są ograniczone do 20 na minutę per IP klienta.
+- Hasła są przechowywane z Argon2id. Konta zaimportowane ze Strapi zachowują hash bcrypt do
+  następnego logowania, kiedy jest on ponownie hashowany.
+
+## Potwierdzanie adresów e-mail i reset haseł
+
+Z włączonym **Potwierdzaj adresy e-mail** rejestracja wysyła e-mailem link do
+`/api/auth/email-confirmation?confirmation=…`. Otwarcie go potwierdza konto i przekierowuje do
+**Po potwierdzeniu adresu e-mail**. `POST /api/auth/send-email-confirmation` z `{ email }`
+wysyła nowy link.
+
+Przy zapomnianym haśle:
+
+<Steps>
+
+1. Twoja aplikacja wywołuje `POST /api/auth/forgot-password` z `{ email }`. Odpowiedź jest
+   taka sama niezależnie od tego, czy konto istnieje.
+2. Użytkownik dostaje e-mail z linkiem do twojej **Strony resetowania hasła**, z `?code=…`.
+   Kod działa godzinę.
+3. Twoja strona wywołuje `POST /api/auth/reset-password` z
+   `{ code, password, passwordConfirmation }` i dostaje `{ jwt, user }`.
+
+</Steps>
+
+Zalogowani użytkownicy zmieniają hasło przez `POST /api/auth/change-password`
+(`{ currentPassword, password, passwordConfirmation }`).
+
+E-maile edytuje się w **Ustawienia → Użytkownicy końcowi → Ustawienia → Szablony e-maili**:
+**Temat**, **Treść** i opcjonalna **Treść HTML (opcjonalnie)** dla **Potwierdzenia e-maila**
+i **Resetu hasła**. Przyjmują symbole zastępcze `{{username}}`, `{{email}}` i `{{url}}`;
+w treści HTML wartości są escapowane.
+
+## Logowanie przez dostawców OAuth
+
+Wbudowane presety istnieją dla GitHub, Google, Microsoft, Discord, Facebook, GitLab
+i LinkedIn. Każda inna nazwa to ogólny dostawca OAuth 2, który potrzebuje **Adresu URL
+autoryzacji**, **Adresu URL tokenu** i **Adresu URL informacji o użytkowniku**: Keycloak,
+Auth0 i Okta działają w ten sposób z adresami URL twojego realmu lub tenantu. Logowanie przez
+Apple nie jest obsługiwane.
+
+<Steps>
+
+1. W **Ustawienia → Użytkownicy końcowi → Ustawienia → Dostawcy logowania** wybierz **Dodaj
+   GitHub** (albo inny preset, albo **Dodaj dostawcę OAuth 2**).
+2. U dostawcy zarejestruj **Adres URL wywołania zwrotnego do zarejestrowania u dostawcy**
+   pokazany w oknie: `https://cms.example.com/api/connect/github/callback`.
+3. Wpisz **Identyfikator klienta**, opcjonalne **Zakresy** i **Przekierowanie do Twojej
+   aplikacji**: stronę frontendu, która po zalogowaniu odbiera `?access_token=`. Włącz
+   **Włączony**.
+4. Umieść sekret klienta w środowisku serwera i zrestartuj:
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   Zmienna to `VERDIN_OAUTH_<PROVIDER>_SECRET`. Sekrety nigdy nie są przechowywane w bazie
+   danych.
+
+</Steps>
+
+Logowanie przebiega według schematu Strapi:
+
+<Diagram
+  caption="Logowanie OAuth użytkowników końcowych"
+  code={`sequenceDiagram
+  participant B as Przeglądarka
+  participant V as Verdin
+  participant P as Dostawca
+  B->>V: GET /api/connect/github
+  V-->>B: przekierowanie do dostawcy
+  B->>P: zgoda
+  P-->>B: przekierowanie do /api/connect/github/callback
+  B->>V: callback
+  V-->>B: przekierowanie do twojej strony ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+`state` OAuth jest podpisany i powiązany z przeglądarką ciasteczkiem. Konta są dopasowywane
+po e-mailu; e-mail użyty już przez innego dostawcę albo przez konto z e-mailem i hasłem jest
+odrzucany („Email is already taken.”).
+
+## Zarządzanie kontami w panelu administracyjnym
+
+**Ustawienia → Użytkownicy końcowi → Użytkownicy** wymienia konta, z wyszukiwaniem po nazwie
+użytkownika lub e-mailu. Możesz **Dodać użytkownika**, edytować konto (nazwa użytkownika,
+e-mail, hasło, rola, **Potwierdzony**, **Zablokowany**), je **Zablokować** lub
+**Odblokować** i usunąć.
+
+## Trasy
+
+Trasy znajdują się pod prefiksem API treści, domyślnie `/api`. Format żądań i odpowiedzi jest
+zgodny ze Strapi v5.
+
+| Trasa | Działanie |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }` albo `{ user }` przy włączonym potwierdzaniu e-maila. |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`. |
+| `GET /auth/email-confirmation?confirmation=` | Potwierdza e-mail, a potem przekierowuje lub zwraca użytkownika. |
+| `POST /auth/send-email-confirmation` | `{ email }`: nowy link potwierdzający. |
+| `POST /auth/forgot-password` | `{ email }`: wysyła e-mailem link resetu. |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/change-password` | Zalogowany. `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/refresh`, `POST /auth/logout` | Tylko w trybie odświeżania: `{ refreshToken }`. |
+| `GET /users/me` | Zalogowany użytkownik. |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | Wymaga Wyszukaj / Pobierz jeden na Użytkownikach. Zwykły JSON, bez koperty `data`, jak w Strapi. `populate=role` dodaje rolę, `_q=` przeszukuje nazwy użytkowników i e-maile, `pagination[page]` i `pagination[pageSize]` (najwyżej 100) stronicują. |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | Wymaga Utwórz / Aktualizuj / Usuń na Użytkownikach. `{ username, email, password, confirmed, blocked, role }`, z `role` jako identyfikatorem roli. |
+| `GET /connect/{provider}` | Rozpoczyna logowanie OAuth. |
+| `GET /auth/{provider}/callback?access_token=` | Wymienia token dostawcy na `{ jwt, user }`. |
+
+`verdin import strapi` przenosi użytkowników końcowych z ich hasłami, role niestandardowe
+oraz uprawnienia ról publicznej, uwierzytelnionej i niestandardowych. Zobacz
+[Migracja ze Strapi](/pl/migrate/from-strapi/).
+
+<Aside type="caution">
+Rola z Utwórz, Aktualizuj lub Usuń na **Użytkownikach** pozwala swoim członkom zarządzać
+każdym kontem użytkownika końcowego. Nadawaj ją tylko zaufanym rolom lub tokenom API.
+</Aside>

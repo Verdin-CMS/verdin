@@ -1,0 +1,148 @@
+---
+title: سرور MCP
+description: به Claude و دیگر عامل‌های هوش مصنوعی اجازه دهید از طریق Model Context Protocol و با مجوزهای یک توکن API، محتوای Verdin را بخوانند و ویرایش کنند.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin می‌تواند محتوای خود را از طریق
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP) در اختیار عامل‌های هوش مصنوعی
+بگذارد. Claude Code، Claude Desktop، Cursor یا هر کلاینت MCP دیگری را متصل کنید تا عامل بتواند
+نوع‌های محتوای شما را فهرست کند، مدخل‌ها را با فیلترهای REST API کوئری کند، و مدخل‌ها را بسازد،
+به‌روزرسانی یا منتشر کند، در محدودهٔ مجوزهای توکنی که به آن می‌دهید.
+
+Strapi v5 سرور MCP داخلی ندارد.
+
+## روشن کردن
+
+<Steps>
+
+1. در **تنظیمات ← قابلیت‌ها**، **سرور MCP** را روشن کنید. کارت آن **نقطهٔ پایانی**،
+   `https://cms.example.com/mcp`، را روی همان میزبان content API نشان می‌دهد.
+2. در **تنظیمات ← توکن‌های API**، **ایجاد توکن** را انتخاب کنید. **فقط‌خواندنی** را انتخاب کنید
+   مگر اینکه عامل باید بنویسد، یا **سفارشی** را تا فقط برخی نوع‌ها و کنش‌ها مجاز باشند. توکن را
+   کپی کنید: فقط یک بار نشان داده می‌شود. نگاه کنید به [توکن‌های API](/fa/guides/auth/api-tokens/).
+3. کلاینت خود را با نقطهٔ پایانی و توکن متصل کنید (پایین‌تر).
+
+</Steps>
+
+## اتصال یک کلاینت
+
+سرور با transport از نوع Streamable HTTP در MCP کار می‌کند. هر کلاینت به URL و یک هدر
+`Authorization: Bearer <token>` نیاز دارد.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+کارت **سرور MCP** این دستور را زیر **افزودن آن به Claude Code** دارد (**کپی دستور**)؛ `<token>`
+را با توکن API خود جایگزین کنید:
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+فایل پیکربندی Claude Desktop سرورهای محلی را اجرا می‌کند، بنابراین با
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) به نقطهٔ پایانی HTTP پل بزنید:
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+قالب‌های پیکربندی کلاینت‌ها تغییر می‌کنند؛ اگر کلیدی شناخته نشد، مستندات کلاینت خود را بررسی
+کنید. سپس از عامل چیزی شبیه این بپرسید: *«مقاله‌هایی را که این هفته در دستهٔ News منتشر
+شده‌اند فهرست کن»*.
+
+## ابزارها
+
+| ابزار | نیاز دارد | چه کاری انجام می‌دهد |
+| --- | --- | --- |
+| `list_content_types` | `find` یا `findOne` | نوع‌های محتوایی که فراخواننده می‌تواند بخواند، با گونه و ویژگی‌هایشان. |
+| `get_content_type` | `find` یا `findOne` | ویژگی‌های یک نوع محتوا: نوع‌ها، گزینه‌ها و روابط. |
+| `find_entries` | `find` | مدخل‌های یک نوع. `query` پارامترهای REST API را به‌صورت JSON می‌گیرد (`filters`، `sort`، `fields`، `populate`، `pagination`)؛ `status: "draft"` به `readDrafts` هم نیاز دارد. |
+| `get_entry` | `findOne` | یک مدخل بر اساس `documentId` (در نوع‌های تکی: بدون آن). |
+| `create_entry` | `create` | از `data` یک مدخل می‌سازد، مانند REST API. `status: "draft"` یک پیش‌نویس ذخیره می‌کند. |
+| `update_entry` | `update` | یک مدخل را به‌روزرسانی می‌کند (در نوع‌های تکی: بدون `documentId`). |
+| `delete_entry` | `delete` | یک مدخل را حذف می‌کند. |
+| `publish_entry`، `unpublish_entry` | `publish` | یک مدخل را منتشر یا از انتشار خارج می‌کند. |
+
+ابزارها `uid` (مانند `api::article`) و، برای نوع‌های بومی‌سازی‌شده، `locale` می‌گیرند. هر ابزار
+همان مجوزی را بررسی می‌کند که مسیر REST متناظرش بررسی می‌کند، و نوشتن‌ها از همان مسیر REST API
+می‌گذرند: اعتبارسنجی، هوک‌های افزونه، مرحله‌های بازبینی، وب‌هوک‌ها، تاریخچهٔ محتوا و گزارش‌های
+حسابرسی. یک عامل نمی‌تواند کاری انجام دهد که توکنش از طریق REST نمی‌تواند.
+
+برای کنش‌های content API نگاه کنید به [مجوزها](/fa/reference/permissions/).
+
+## احراز هویت
+
+نقطهٔ پایانی همان اعتبارنامه‌های content API را می‌پذیرد:
+
+- یک توکن API، انتخاب معمول برای عامل‌ها؛
+- JWT یک کاربر نهایی، برای عاملی که به‌جای یک کاربر واردشدهٔ اپلیکیشن شما عمل می‌کند؛
+- بدون هدر `Authorization`، برای مجوزهای نقش عمومی.
+
+یک توکن نامعتبر با `401` پاسخ می‌گیرد. سرور هیچ نشستی نگه نمی‌دارد و هیچ جریانی باز نمی‌کند:
+هر درخواست یک `POST` از نوع JSON-RPC است که با JSON پاسخ داده می‌شود (`GET` با `405` پاسخ
+می‌گیرد).
+
+### مبداهای مرورگر
+
+درخواست‌هایی که هدر `Origin` دارند، که مرورگرها می‌فرستند، رد می‌شوند مگر اینکه آن origin زیر
+**مبداهای مرورگری مجاز** در کارت **سرور MCP** فهرست شده باشد. این کار در برابر DNS rebinding
+محافظت می‌کند، که در آن یک صفحهٔ وب مرورگر را فریب می‌دهد تا سروری را در شبکهٔ شما فراخوانی کند.
+کلاینت‌های خط فرمان و دسکتاپ `Origin` نمی‌فرستند، بنابراین این فهرست معمولاً خالی است.
+
+<Aside type="caution">
+عاملی با توکن دسترسی کامل می‌تواند محتوا را حذف و منتشر کند. به عامل‌ها توکن‌های فقط‌خواندنی یا
+سفارشی بدهید که به آنچه لازم دارند محدود شده‌اند. برای پیش‌نویس‌هایی که یک عامل می‌نویسد، یک
+[گردش‌کار بازبینی](/fa/guides/content/review-workflows/) یک انسان را میان عامل و انتشار نگه
+می‌دارد.
+</Aside>
+
+برای اینکه در عوض به ویرایشگران درون پنل مدیریت کمک هوش مصنوعی بدهید (ترجمه، متن جایگزین،
+پیشنهادهای SEO)، نگاه کنید به [اقدامات هوش مصنوعی](/fa/guides/integrations/ai-actions/).

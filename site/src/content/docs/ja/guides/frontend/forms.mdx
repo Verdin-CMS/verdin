@@ -1,0 +1,129 @@
+---
+title: フォーム
+description: 管理パネルでお問い合わせや登録のフォームを定義し、サイトから送信し、送信内容を読んだりエクスポートしたりします。
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**フォーム**の機能は、フォームサービスなしでサイトのフォーム（お問い合わせ、ニュースレターの登録、イベントの申し込み）を扱います。編集者が管理パネルでフィールドを定義し、サイトがそれを表示して Verdin に送信すると、送信内容が検証、保存、メール送信され、CSV でエクスポートできます。
+
+## オンにする
+
+**設定 → 機能**で**フォーム**をオンにし、**フォームを管理**を選びます（または**設定 → フォーム**に移動します）。フォームの管理と送信内容の閲覧には、**SEO、リダイレクト、メニュー、フォームの管理**の権限（`site.manage`）が必要で、組み込みの Editor ロールはこれを持っています。[権限](/ja/reference/permissions/)を参照してください。
+
+通知メールを送るには、[`[email]`](/ja/reference/configuration/) でプロバイダーを設定してください。デフォルトの `log` プロバイダーでは、メールはサーバーのログにだけ書き込まれます。
+
+## フォームを作成する
+
+<Steps>
+
+1. **設定 → フォーム**で**新規フォーム**を選びます。
+2. 名前（**お問い合わせ**など）と**スラッグ**（`contact`）を付けます。スラッグはフォームの URL の一部になります。
+3. **フィールド**タブで、フィールドごとに**フィールドを追加**を選び、**ラベル**、**名前**、**タイプ**、**必須**、**プレースホルダー**、**最大長**を設定します。
+4. **設定**タブで、次を設定します。
+   - **通知先**: すべての送信内容を受け取るメールアドレス。
+   - **完了メッセージ**: 送信後にサイトに返されます。
+   - **スパム対策トラップ**: デフォルトでオン（[スパム](#スパム)を参照）。
+5. 保存します。**連携**タブに、公開エンドポイントとコピーできる例が表示されます。
+
+</Steps>
+
+| タイプ | 管理画面でのラベル | 受け付ける値 |
+| --- | --- | --- |
+| `text` | **テキスト** | 任意のテキスト。 |
+| `email` | **メール** | メールアドレス。 |
+| `textarea` | **長文テキスト** | 任意のテキスト。 |
+| `number` | **数値** | 数値。数値として保存されます。 |
+| `select` | **選択** | **選択肢**（1 行に 1 つ）のいずれか。 |
+| `checkbox` | **チェックボックス** | `true`、`on`、`1`、`yes` はチェックあり、それ以外はチェックなし。必須のチェックボックスはチェックされている必要があります。 |
+| `date` | **日付** | 任意のテキスト（`<input type="date">` を使ってください）。 |
+| `url` | **URL** | URL。 |
+| `tel` | **電話番号** | 任意のテキスト。 |
+
+フィールド名は英字で始まり、その後に英字、数字、`_` が続き、フォーム内で一意です。フォームのフィールドは 1〜50 個です。値は最大で**最大長**の文字数（デフォルトは 5,000、最大 20,000）です。
+
+## フォームを表示する
+
+`GET /api/_forms/{slug}` は定義を返すので、サイトは編集者が選んだフィールドを表示できます。
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+スパム対策トラップがオフの場合、`honeypot` は `null` です。定義は 1 分間キャッシュされます（`Cache-Control: public, max-age=60`）。
+
+## 送信する
+
+`POST /api/_forms/{slug}` は、値を JSON（フィールド、または `{ "data": { … } }`）か、通常のフォーム送信（`application/x-www-form-urlencoded`）で受け取ります。トークンは不要です。
+
+<Tabs syncKey="form">
+<TabItem label="HTML フォーム">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| 応答 | 発生条件 |
+| --- | --- |
+| `{ "data": { "message": … } }` 付きの `201` | 受け付けられました。`message` は**完了メッセージ**、または `Thank you!` です。 |
+| `400` `ValidationError` | 値がないか無効です。`details.errors` に、フィールドごとの `{ path, message }` が並びます。 |
+| `404` | そのスラッグのフォームがないか、機能がオフです。 |
+| `413` | 送信内容が 64 KB を超えています。 |
+| `429` | 同じ訪問者が 1 分間にこのフォームへ 10 回を超えて送信しました。 |
+
+値は前後の空白が取り除かれ、フィールドと照合されます。不明なフィールドは捨てられるので、訪問者が求めていないデータを追加することはできません。
+
+通常の HTML フォームの送信では、JSON の応答がそのままページとして表示されます。よりよい体験のためには、`fetch` で送信し、メッセージを自分で表示してください。ブラウザーから別のオリジンに送信するには、[`[api].cors_origins`](/ja/reference/configuration/) にサイトのオリジンが必要です。
+
+### スパム
+
+**スパム対策トラップ**がオンの場合は、フォームに非表示で空の `_gotcha` フィールドを追加してください。ボットはすべてのフィールドを埋めます。`_gotcha` が埋まった送信には、受け付けたとして（`201`）応答したうえで捨てるので、ボットは何も知ることができません。レート制限と組み合わせると、CAPTCHA なしでほとんどのフォームスパムを止められます。
+
+## 送信内容を読む
+
+フォームの**送信内容**タブには、訪問者が送ったものが**受信日時**とともに一覧されます。送信内容は削除でき、**CSVをエクスポート**ですべてをダウンロードできます。
+
+受け付けたすべての送信内容は、管理画面の送信内容へのリンク（[`[server].public_url`](/ja/reference/configuration/) から作られます）とともに、**通知先**のアドレスにもメールで送られます。
+
+<Aside type="note">
+Verdin は、各送信の値、訪問者のユーザーエージェント、そして IP アドレスそのものではなくその鍵付きハッシュを保存します。人を追跡せずに大量送信を見分けるにはこれで十分です。フォームを削除すると、その送信内容も削除されます。
+</Aside>
+
+## Admin API
+
+管理パネルは、管理者のアクセストークンと `site.manage` を使って、`/admin/api/site/forms` と `/admin/api/site/forms/{id}`、さらに `/admin/api/site/forms/{id}/submissions` と `…/submissions/export`（CSV）を利用します。[Admin API](/ja/api/admin/) を参照してください。

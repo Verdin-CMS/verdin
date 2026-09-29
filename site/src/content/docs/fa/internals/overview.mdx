@@ -1,0 +1,165 @@
+---
+title: نمای کلی معماری
+description: Verdin چگونه ساخته شده است، از اصول طراحی تا crateهایی که یک درخواست از آن‌ها عبور می‌کند، برای مشارکت‌کنندگانی که می‌خواهند کد را بخوانند یا تغییر دهند.
+sidebar:
+  order: 1
+  label: نمای کلی
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+این بخش برای کسانی است که روی خود Verdin کار می‌کنند. توضیح می‌دهد سرور و پنل مدیریت چگونه کنار هم قرار گرفته‌اند، چرا این‌گونه ساخته شده‌اند و از کجا باید خواندن کد را شروع کرد. برای استفاده از Verdin، به جای آن از [شروع سریع](/fa/start/quickstart/) آغاز کنید.
+
+Verdin یک CMS هدلس (headless) نوشته‌شده با Rust است که از Strapi v5 پیروی می‌کند: محتوا را به‌صورت بصری یا در فایل‌های JSON مدل می‌کنید و یک API از نوع REST و GraphQL به‌همراه یک پنل مدیریت می‌گیرید. به شکل یک فایل باینری واحد عرضه می‌شود که سرور، CLI و پنل مدیریت Angular را در خود دارد، و روی PostgreSQL، MySQL، MariaDB و SQLite اجرا می‌شود.
+
+## اهداف
+
+- **یک فایل باینری.** `verdin` سرور، CLI و پنل مدیریت جاسازی‌شده را در خود دارد. محیط production به Node.js و `node_modules` نیازی ندارد.
+- **راه‌اندازی سریع، مصرف حافظهٔ کم.**
+- **چهار پایگاه داده، یک مجموعهٔ تست.** PostgreSQL، MySQL، MariaDB و SQLite همگی درجه‌یک‌اند و همگی با همان تست‌ها پوشش داده می‌شوند.
+- **طرح‌واره به‌عنوان کد.** نوع‌های محتوا فایل‌های JSON هستند که آن‌ها را در git نسخه‌بندی می‌کنید.
+- **REST API سازگار با Strapi v5** هر جا که معقول باشد، تا فرانت‌اندهای موجود با تغییرات اندک منتقل شوند.
+- **همه‌چیز رایگان.** نسخهٔ سازمانی وجود ندارد: SSO، گزارش‌های حسابرسی، گردش‌کارهای بازبینی، بسته‌های انتشار و همهٔ قابلیت‌های دیگر برای همه عرضه می‌شوند.
+
+آنچه نسخه به نسخه عرضه شده و آنچه در ادامه می‌آید، در [نقشهٔ راه](/fa/project/roadmap/) آمده است.
+
+### آنچه هدف نیست
+
+- اجرای افزونه‌های JavaScript در Strapi. افزونه‌های Verdin ماژول‌های WebAssembly هستند ([افزونه‌ها](/fa/extending/plugins/) را ببینید).
+- خواندن پایگاه دادهٔ Strapi همان‌طور که هست. محتوا از طریق یک ابزار درون‌ریزی منتقل می‌شود ([مهاجرت از Strapi](/fa/migrate/from-strapi/) را ببینید).
+- render کردن صفحه‌ها. Verdin هدلس است.
+
+## اصول طراحی
+
+1. **طرح‌واره منبع حقیقت است.** جدول‌ها، اعتبارسنجی، APIهای REST و GraphQL، سند OpenAPI و فرم‌های پنل مدیریت همگی از آن مشتق می‌شوند.
+2. **هیچ شناسهٔ SQL هرگز از درخواست نمی‌آید.** نام جدول‌ها و ستون‌ها فقط از طرح‌وارهٔ اعتبارسنجی‌شده می‌آیند و هر مقدار یک پارامتر متصل (bound) است.
+3. **گویش‌ها (dialect) درجه‌یک‌اند.** «روی PostgreSQL کار می‌کند، MySQL بعداً» نداریم. هر قابلیت روی هر چهار موتور تست می‌شود.
+4. **امن به‌طور پیش‌فرض.** API محتوا تا وقتی مجوز ندهید بسته است، فیلدهای `private` هرگز نمایش داده نمی‌شوند و محدودیت‌های عمق و اندازهٔ کوئری همیشه فعال‌اند.
+5. **عملیات مخرب صریح‌اند.** حذف یک ستون یا جدول به تأیید شما نیاز دارد؛ هرگز به‌عنوان اثر جانبی رخ نمی‌دهد.
+6. **بدون حالت سراسری.** سرویس‌ها از طریق state در `axum` و سازنده‌ها منتقل می‌شوند؛ هیچ singletonی وجود ندارد.
+
+## تصویر کلی
+
+یک درخواست از طریق پشته‌ای کوچک از لایه‌های مشترک وارد فایل باینری می‌شود، به یکی از routerهای API می‌رسد و در Document Service (سرویس سند) پایان می‌یابد، که SQL را برای گویش متصل می‌سازد. رجیستری طرح‌واره، که از `schema/*.json` بارگذاری می‌شود، به همهٔ گام‌ها خوراک می‌دهد و موتور مهاجرت پایگاه داده را با آن هماهنگ نگه می‌دارد.
+
+<Diagram
+  caption="یک درخواست API محتوا و crateهایی که از آن‌ها عبور می‌کند"
+  code={`flowchart LR
+  Client["فرانت‌اند یا پنل مدیریت"] --> Layers["لایه‌های مشترک<br/>IP کلاینت، شناسهٔ درخواست، CORS، محدودیت‌ها"]
+  Layers --> Routers["verdin-api / verdin-graphql<br/>REST، API مدیریت، GraphQL، MCP"]
+  Routers --> Auth["verdin-auth<br/>توکن‌ها، نقش‌ها، مجوزها"]
+  Routers --> Query["verdin-query<br/>پارامترها به کوئری تایپ‌شده"]
+  Query --> Docs["verdin-content<br/>Document Service"]
+  Docs --> Db["verdin-db<br/>pool و Flavor"]
+  Db --> Engines[("PostgreSQL، MySQL،<br/>MariaDB، SQLite")]
+  Schema["verdin-schema<br/>schema/*.json"] --> Migrate["verdin-migrate<br/>diff، plan، apply"]
+  Migrate --> Db`}
+/>
+
+- **API محتوا** زیر `[api].prefix` (پیش‌فرض `/api`): مسیرهای REST برای هر نوع محتوا، بارگذاری‌ها و سند OpenAPI. [REST API](/fa/api/rest/) را ببینید.
+- **API مدیریت** زیر `{admin.path}/api` (پیش‌فرض `/admin/api`): هر کاری که پنل مدیریت انجام می‌دهد. [API مدیریت](/fa/api/admin/) را ببینید.
+- **GraphQL** در `/graphql` و **MCP** در `/mcp`، وقتی این قابلیت‌ها روشن باشند. آرگومان‌های GraphQL به همان درخت پارامتری ترجمه می‌شوند که parser در REST می‌خواند، بنابراین هر دو API قاعده‌های فیلتر، صفحه‌بندی، populate و مجوز را به اشتراک می‌گذارند.
+- **پنل مدیریت** زیر `[admin].path` (پیش‌فرض `/admin`)، که از فایل باینری یا از `[admin].assets_dir` ارائه می‌شود. [ساختار درونی پنل مدیریت](/fa/internals/admin-panel/) را ببینید.
+- **مسیرهای عملیاتی**: `/_health`، `/_ready`، و `/_metrics` وقتی متریک‌ها روشن باشند. [پایش](/fa/deploy/monitoring/) را ببینید.
+
+هر نوشتن، از هر APIای که آمده باشد، از [Document Service](/fa/internals/document-service/) عبور می‌کند. این سرویس داده‌ها را اعتبارسنجی می‌کند، ردیف‌ها و جدول‌های پیوند را در یک تراکنش می‌نویسد و سپس به شنونده‌ها (وب‌هوک‌ها، نمایهٔ جستجو، تاریخچه، بلادرنگ، گزارش حسابرسی) می‌گوید چه چیزی تغییر کرده است.
+
+وقتی قابلیت‌ها روشن یا خاموش می‌شوند، یا وقتی سازندهٔ نوع محتوا در `verdin dev` طرح‌واره را تغییر می‌دهد، کل router دوباره ساخته و در جای خود جایگزین می‌شود (با یک `ArcSwap`)، بدون راه‌اندازی دوباره.
+
+## پشتهٔ فناوری
+
+### سرور (Rust، ویرایش 2024)
+
+| حوزه | انتخاب | چرا |
+|---|---|---|
+| Runtime | `tokio` | runtime ناهمگام استاندارد |
+| HTTP | `axum`، `tower`، `tower-http` | middleware برای CORS، محدودیت بدنه، مهلت‌ها، شناسهٔ درخواست، tracing |
+| درایور SQL | `sqlx` (postgres، mysql، sqlite) | ناهمگام، pooling، TLS؛ MySQL و MariaDB یک درایور مشترک دارند؛ SQLite درون باینری کامپایل می‌شود |
+| ساخت SQL | سازنده‌های خود Verdin: DDL در `verdin-migrate`، DML در `verdin-query` و `verdin-content` | جدول‌ها را طرح‌واره تعریف می‌کند، پس SQL در زمان اجرا ساخته می‌شود. به هر حال کنترل دقیق برای هر گویش لازم است (`jsonb`، `datetime(3)`، collationهای باینری، NULLهای تایپ‌شده، قالب‌های متنی SQLite). نه ORM، نه `sea-query` |
+| رشته‌های کوئری | parser نشانه‌گذاری کروشه‌ای خودمان در `verdin-query` | `filters[title][$eq]=…` به سبک Strapi، با محدودیت عمق، طول و تعداد جفت‌ها |
+| JSON | `serde`، `serde_json` | — |
+| اعداد اعشاری | `rust_decimal` | بدون از دست رفتن دقت درون سرور |
+| تاریخ‌ها | `time` | — |
+| شناسهٔ سندها | `ulid` | قابل مرتب‌سازی، 26 نویسه، قابل حمل |
+| OpenAPI | تولیدکنندهٔ خودمان در `verdin-api` | یک مسیر و یک طرح‌واره برای هر نوع محتوا، ساخته‌شده از رجیستری |
+| GraphQL | `async-graphql` (طرح‌وارهٔ پویا) | ساخته‌شده از طرح‌وارهٔ محتوا |
+| احراز هویت | `argon2` (argon2id)، JWT از نوع HS256 روی `hmac` + `sha2` | چند خط HS256 از وارد کردن یک پشتهٔ RSA جلوگیری می‌کند |
+| پیکربندی | `figment` (TOML + محیط)، `dotenvy` | لایه‌بندی و بازنویسی برای هر محیط |
+| CLI | `clap` | — |
+| لاگ‌ها | `tracing`، `tracing-subscriber` | به‌طور پیش‌فرض خوانا برای انسان، JSON با `[log].format = "json"` |
+| محدودسازی نرخ | محدودکنندهٔ fixed-window خودمان در `verdin-api` | مسیرهای ورود و محدودیت‌های اختیاری API محتوا |
+| رسانه | `object_store`، `image`، `infer` | دیسک محلی یا ذخیره‌سازی سازگار با S3؛ قالب‌ها و تشخیص MIME |
+| جستجو | `tantivy` | نمایهٔ تمام‌متن اختیاری درون فایل باینری |
+| افزونه‌ها | `extism` | افزونه‌های WebAssembly |
+| ایمیل | `lettre`، `reqwest` | SMTP، Resend، Postmark |
+| جاسازی پنل مدیریت | `rust-embed` (feature `embed-admin`) | پنل مدیریت درون فایل باینری عرضه می‌شود |
+| پایش طرح‌واره | `notify` | بارگذاری دوباره در `verdin dev` |
+| خطاها | `thiserror` در کتابخانه‌ها، `anyhow` در فایل باینری | — |
+| تست‌ها | `cargo test`، `insta` (snapshotهای DDL) | [تست](/fa/internals/testing/) را ببینید |
+
+### پنل مدیریت (Angular)
+
+| حوزه | انتخاب |
+|---|---|
+| فریم‌ورک | Angular 22: کامپوننت‌های standalone، zoneless، signalها، مسیرهای lazy |
+| UI | spartan/ui (primitiveهای brain، کامپوننت‌های helm که در `src/app/shared/ui` کپی شده‌اند) روی Tailwind CSS v4 |
+| آیکون‌ها | `@ng-icons` با Lucide |
+| State | signalها در سرویس‌های injectable (بدون کتابخانهٔ store) |
+| فرم‌ها | Signal Forms (`@angular/forms/signals`) |
+| کلاینت API | نوع‌های دست‌نوشته (`core/types.ts`) و یک wrapper کوچک روی `HttpClient` (`core/api.ts`) |
+| ترجمه‌ها | Transloco با ICU MessageFormat از طریق FormatJS |
+| متن غنی | ویرایشگر Markdown با پیش‌نمایش (`marked`، `DOMPurify`)؛ فیلدهای `blocks` با TipTap |
+| تست‌ها | Vitest از طریق unit-test builder در Angular، Playwright برای تست end to end |
+
+### مستندات
+
+Astro با Starlight، در `site/`. اسکریپت `site/scripts/sync-docs.mjs` چند فایل Markdown را از `docs/` (نقشهٔ راه، راهنمای ترجمه) و `CHANGELOG.md` را هنگام ساخت (build) در بخش **پروژه** کپی می‌کند.
+
+## ساختار مخزن
+
+<FileTree>
+- Cargo.toml فضای کاری (نسخه، ویرایش، پروفایل release)
+- crates/
+  - verdin-schema/ مدل طرح‌واره، parser JSON، اعتبارسنجی، قاعده‌های نام‌گذاری
+  - verdin-db/ poolهای اتصال، تشخیص flavor و نسخه، مقدارهای تایپ‌شده
+  - verdin-migrate/ مدل فیزیکی، snapshot، diff، plan، اعمال همراه با journal، جدول‌های پلتفرم
+  - verdin-query/ تبدیل پارامترهای کوئری به کوئری تایپ‌شده، و SQL برای فیلترها و مرتب‌سازی‌ها
+  - verdin-content/ Document Service: اعتبارسنجی، پیش‌نویس و انتشار، روابط، کامپوننت‌ها، blocks، رویدادها
+  - verdin-auth/ کاربران مدیر، نشست‌ها، تأیید دومرحله‌ای و کلیدهای دسترسی، توکن‌های API، RBAC، مجوزهای عمومی
+  - verdin-upload/ کتابخانهٔ رسانه: ارائه‌دهنده‌های ذخیره‌سازی، فرادادهٔ فایل، قالب‌های تصویر
+  - verdin-email/ ارسال ایمیل: SMTP، Resend، Postmark و یک ارائه‌دهندهٔ log
+  - verdin-search/ نمایهٔ تمام‌متن Tantivy
+  - verdin-plugins/ افزونه‌های WebAssembly (Extism): هوک‌های سند، مسیرها، کارهای زمان‌بندی‌شده
+  - verdin-graphql/ GraphQL API تولیدشده از طرح‌واره
+  - verdin-api/ routerهای axum: API محتوا، API مدیریت، OpenAPI، MCP، بلادرنگ، وب‌هوک‌ها…
+  - verdin-testkit/ ابزارهای کمکی تست (یک پایگاه دادهٔ تازه برای هر تست)؛ منتشر نمی‌شود
+  - verdin/ فایل باینری: پیکربندی، راه‌اندازی، CLI، متریک‌ها، پنل مدیریت جاسازی‌شده
+- admin/ پنل مدیریت Angular
+- packages/
+  - client/ `@verdin/client`، کلاینت تایپ‌شدهٔ TypeScript
+- examples/
+  - blog/ پروژهٔ نمونه
+- docker/ `compose.dev.yml` (پایگاه‌های داده، RustFS، Mailpit) و ایمیج release
+- site/ همین سایت مستندات
+- docs/ نقشهٔ راه، راهنمای ترجمه و یادداشت‌های طراحی
+</FileTree>
+
+**قاعدهٔ وابستگی.** `verdin-schema` و `verdin-db` پایه‌اند. `verdin-migrate` و `verdin-query` روی آن‌ها ساخته می‌شوند، `verdin-content` روی این‌ها، و `verdin-auth`، `verdin-upload`، `verdin-search` و `verdin-plugins` روی لایه‌های زیرین خود. `verdin-api` و `verdin-graphql` نزدیک بالای ساختار قرار دارند و فایل باینری `verdin` به همه‌چیز وابسته است. Cargo چرخه را ممنوع می‌کند و کد `unsafe` در کل فضای کاری ممنوع است.
+
+## از کجا خواندن را شروع کنیم
+
+| برای فهمیدن | بخوانید |
+|---|---|
+| فایل باینری چگونه راه‌اندازی می‌شود و routerهایش را کنار هم می‌گذارد | `crates/verdin/src/cli.rs` (`start`)، سپس `crates/verdin/src/app.rs` |
+| قالب طرح‌واره و قاعده‌های اعتبارسنجی آن | `crates/verdin-schema/src/raw.rs`، `validate.rs`، `naming.rs` |
+| یک طرح‌واره چگونه به جدول تبدیل می‌شود | `crates/verdin-migrate/src/derive.rs`، سپس [ذخیره‌سازی](/fa/internals/storage/) |
+| مهاجرت‌ها | `crates/verdin-migrate/src/diff.rs`، `plan.rs`، `apply.rs`، و [موتور مهاجرت](/fa/internals/migrations/) |
+| handlerهای API محتوا | `crates/verdin-api/src/handlers.rs` و `lib.rs` |
+| پارامترهای کوئری | `crates/verdin-query/src/params.rs` (parser)، `parse.rs` (اعتبارسنجی)، `sql.rs` (SQL) |
+| خواندن‌ها و نوشتن‌ها | `crates/verdin-content/src/service.rs` و `input.rs`، و [Document Service](/fa/internals/document-service/) |
+| پنل مدیریت | `admin/src/app/app.routes.ts`، سپس `features/content/` و [ساختار درونی پنل مدیریت](/fa/internals/admin-panel/) |
+
+کد را در [GitHub](https://github.com/Verdin-CMS/verdin) مرور کنید. بقیهٔ این بخش به [ذخیره‌سازی](/fa/internals/storage/)، [لایهٔ پایگاه داده](/fa/internals/database/)، [مهاجرت‌ها](/fa/internals/migrations/)، [Document Service](/fa/internals/document-service/)، [پنل مدیریت](/fa/internals/admin-panel/)، [تست](/fa/internals/testing/) و [فهرست تصمیم‌ها](/fa/internals/decisions/) می‌پردازد.
+
+رفتارهایی که کاربر با آن‌ها سروکار دارد در جاهای دیگر مستند شده‌اند: پارامترهای کوئری در [REST API](/fa/api/rest/)، تنظیمات در [مرجع پیکربندی](/fa/reference/configuration/)، فرمان‌ها در [مرجع CLI](/fa/reference/cli/) و مقاوم‌سازی در [امنیت](/fa/deploy/security/).

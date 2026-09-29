@@ -1,0 +1,101 @@
+---
+title: 重定向
+description: 在管理后台中维护重定向列表，并在网站的中间件中应用它们。
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**重定向** 功能让编辑无需部署就能把旧路径指向新路径：他们在管理后台中维护列表，你的网站获取该列表并以重定向作出响应。Verdin 自己不会重定向访问者，因为访问者访问的是你的网站，而不是 CMS。
+
+## 开启
+
+在 **设置 → 功能** 中开启 **重定向**，然后选择 **管理重定向**（或者前往 **设置 → 重定向**）。管理重定向需要 **管理 SEO、重定向、菜单和表单** 权限（`site.manage`），内置的 Editor 角色拥有该权限。参见[权限](/zh-cn/reference/permissions/)。
+
+## 添加重定向
+
+<Steps>
+
+1. 在 **设置 → 重定向** 中选择 **添加重定向**。
+2. **来源**：旧路径，以 `/` 开头（例如 `/blog/2024/hello`）。
+3. **目标**：新路径，或者另一个网站上完整的 `http(s)` URL。
+4. **类型**：**301 · 永久**、**302 · 临时**、**307 · 临时（保留请求方法）** 或 **308 · 永久（保留请求方法）**。
+5. 保存。
+
+</Steps>
+
+Verdin 会拒绝永远无法生效的重定向：
+
+- 来自同一路径的第二条重定向；
+- 重定向到自身的路径；
+- 形成循环的链条（`/a` → `/b` → `/a`）。
+
+要一次添加大量重定向，请使用 **导入 CSV**，文件包含 `source`、`destination` 和 `status` 列。来源已存在的行会更新该重定向。**导出 CSV** 使用相同的格式，便于从其他 CMS 迁移或在电子表格中审查。
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## 在网站上应用
+
+网站通过 `GET /api/_redirects` 读取列表，无需令牌：
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+响应带有 `Cache-Control: public, max-age=60`，因此更改大约一分钟内就会同步到网站。请将请求路径与 `source` 进行精确匹配：
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+对于静态网站，请在构建时获取列表，并写入你的托管平台的重定向文件（Netlify 的 `_redirects`、Vercel 的 `vercel.json`、nginx map）。再结合[部署按钮](/zh-cn/guides/integrations/deploys-and-cdn/)或 [webhook](/zh-cn/guides/integrations/webhooks/)，编辑在修改重定向后就可以重新构建。
+
+<Aside type="note">
+API 前缀跟随 [`[api].prefix`](/zh-cn/reference/configuration/)。功能关闭时，`/api/_redirects` 返回 `404`。
+</Aside>
+
+## 管理 API
+
+管理后台使用 `/admin/api/site/redirects`（`GET`、`POST`）和 `/admin/api/site/redirects/{id}`（`PUT`、`DELETE`），需要管理员的访问令牌和 `site.manage`。参见[管理 API](/zh-cn/api/admin/)。

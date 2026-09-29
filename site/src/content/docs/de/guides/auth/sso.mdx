@@ -1,0 +1,166 @@
+---
+title: Single Sign-on
+description: Lass Admins sich über einen OpenID-Connect-Anbieter wie Microsoft Entra ID, Google Workspace, Okta oder Keycloak anmelden, mit Zuordnung von Gruppen zu Rollen.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Admins können sich über jeden OpenID-Connect-Anbieter anmelden: Microsoft Entra ID, Google
+Workspace, Okta, Auth0, Keycloak, Authentik, GitLab und andere. Jeder Anbieter bekommt einen
+Button auf der Anmeldeseite, und die Anmeldung mit Passwort funktioniert daneben weiter. Diese
+Anleitung registriert eine Anwendung, konfiguriert den Anbieter in Verdin und ordnet Gruppen
+Rollen zu.
+
+SSO ist in Strapi eine Enterprise-Funktion. In Verdin gehört es zum Open-Source-Kern. Für die
+Endnutzer deiner Websites siehe stattdessen
+[OAuth-Anmeldung für Endnutzer](/de/guides/auth/end-users/).
+
+## Bevor du anfängst
+
+- SSO zu konfigurieren braucht **Funktionen verwalten** (`features.manage`).
+- Setze `[server].public_url` auf die Adresse, unter der Admins Verdin erreichen, etwa
+  `https://cms.example.com`. Die Redirect-URI wird daraus gebaut.
+
+## Einrichten
+
+<Steps>
+
+1. **Registriere eine Anwendung** (einen „Web“-Client) beim Anbieter, mit dieser
+   Redirect-URI:
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>` ist die Anbieter-ID, die du in Schritt 3 wählst, etwa `corp`. Der Admin-Pfad folgt
+   `[admin].path`.
+
+2. **Leg das Client-Secret in die Umgebung** und starte Verdin neu:
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   Die Variable heißt `VERDIN_SSO_<ID>_SECRET`, mit der ID in Großbuchstaben und Unterstrichen
+   statt Bindestrichen. Öffentliche Clients (nur PKCE, kein Secret) brauchen keine Variable.
+
+3. **Füge den Anbieter hinzu.** Schalte **Einstellungen → Funktionen → Single Sign-on** ein,
+   wähle **Anbieter konfigurieren**, dann **Anbieter hinzufügen**, und füll aus:
+
+   - **ID**: Kleinbuchstaben, Ziffern und Bindestriche, bis zu 32 Zeichen.
+   - **Schaltflächentext**: erscheint auf der Anmeldeseite als „Weiter mit …“.
+   - **Aussteller-URL**: Verdin liest `/.well-known/openid-configuration` darunter. Sie muss
+     `https` verwenden, außer auf `localhost`.
+   - **Client-ID** und **Scopes** (standardmäßig `openid email profile`; `openid` ist Pflicht).
+
+   Der Dialog zeigt die **Beim Anbieter zu registrierende Weiterleitungs-URI** und den Namen
+   der Secret-Variablen. Speichere.
+
+4. **Probiere es aus**, in einem privaten Fenster: Die Anmeldeseite zeigt
+   **Weiter mit Corp account**.
+
+</Steps>
+
+## Wer sich anmelden darf, und mit welchen Rollen
+
+| Einstellung | JSON-Schlüssel | Wirkung |
+| --- | --- | --- |
+| **Erlaubte E-Mail-Domains** | `allowedDomains` | Nur diese E-Mail-Domains dürfen sich anmelden. Leer bedeutet: alle. |
+| **Konten bei der ersten Anmeldung erstellen** | `autoCreate` | Legt ein Admin-Konto an, wenn sich jemand zum ersten Mal anmeldet. Ohne diese Einstellung dürfen sich nur E-Mail-Adressen anmelden, die schon ein Konto haben. |
+| **Standardrollen** | `defaultRoles` | Rollencodes angelegter Konten, wenn die Rollenzuordnung keine ergibt. |
+| **Rollen-Claim** | `roleClaim` | Der Claim des ID-Tokens, der die Gruppen des Benutzers auflistet, etwa `groups` oder `roles`. |
+| **Rollenzuordnung** | `roleMap` | Welchen Rollencode jeder Claim-Wert ergibt. |
+| **Nicht verifizierten E-Mails vertrauen** | `trustUnverifiedEmail` | Akzeptiert E-Mail-Adressen, die der Anbieter nicht als verifiziert markiert. |
+| **Der Anbieter erzwingt MFA** | `providerMfa` | Fragt Admins nach diesem Anbieter nicht nach ihrem zweiten Faktor in Verdin. |
+
+- Ein Anbieter, der Konten anlegt, braucht Standardrollen oder eine Rollenzuordnung.
+- Keines von beiden kann die Rolle Super Admin vergeben; befördere Admins von Hand unter
+  **Einstellungen → Benutzer**.
+- Rollen werden nur beim Anlegen des Kontos gesetzt. Danach verwaltest du sie unter
+  **Einstellungen → Benutzer**.
+- Vor- und Nachname eines angelegten Kontos kommen aus den Claims `given_name` und
+  `family_name`.
+
+Derselbe Anbieter als JSON, so wie die Funktion ihn speichert (`PUT /admin/api/features/sso`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## Hinweise zu Anbietern
+
+- **Microsoft Entra ID** lässt `email_verified` in seinen ID-Tokens weg: Schalte dafür
+  **Nicht verifizierten E-Mails vertrauen** ein. Füge in der Token-Konfiguration der App den
+  Claim `groups` hinzu, um Gruppen zuzuordnen; seine Werte sind Gruppen-IDs.
+- **Google Workspace**: Der Aussteller ist `https://accounts.google.com`. Beschränke Anmeldungen
+  mit **Erlaubte E-Mail-Domains** auf deine Domain.
+- **Keycloak**: Der Aussteller ist die URL des Realms, `https://<host>/realms/<realm>`.
+
+## Zwei-Faktor-Authentifizierung
+
+Standardmäßig wird ein Admin, der in Verdin einen [zweiten Faktor](/de/guides/auth/two-factor/)
+hat, danach gefragt, nachdem der Anbieter ihn zurückgeschickt hat. Erzwingt der Anbieter schon
+MFA, schalte **Der Anbieter erzwingt MFA** ein, damit er nicht zweimal gefragt wird.
+
+## Wie es funktioniert
+
+<Diagram
+  caption="Eine SSO-Anmeldung"
+  code={`sequenceDiagram
+  participant B as Browser
+  participant V as Verdin
+  participant P as Anbieter
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: Weiterleitung mit state und PKCE-Challenge
+  B->>P: Anmeldung
+  P-->>B: Weiterleitung zum Callback mit Code
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: Code eintauschen (TLS)
+  V-->>B: Sitzungs-Cookie, Weiterleitung zu /admin/`}
+/>
+
+- Verdin nutzt den Authorization Code Flow mit PKCE (S256). Der `state` ist signiert und an ein
+  kurzlebiges `HttpOnly`-Cookie gebunden, und die `nonce` wird daraus abgeleitet.
+- Es prüft Aussteller, Audience (und `azp`, wenn es mehrere gibt), Ablauf und Nonce des
+  ID-Tokens. Es braucht einen Claim `email` mit `email_verified: true`, sofern nicht
+  **Nicht verifizierten E-Mails vertrauen** eingeschaltet ist.
+- Die Endpunkte des Anbieters müssen `https` verwenden.
+- Jede SSO-Anmeldung wird in den [Audit-Logs](/de/guides/content/audit-logs/) als
+  `admin.login` festgehalten, mit dem Anbieter.
+
+Scheitert eine Anmeldung, kehrt der Browser mit dem Grund („Single Sign-on fehlgeschlagen“) zur
+Anmeldeseite zurück, und der Grund wird ins Server-Log geschrieben. Häufige Gründe:
+
+| Grund | Lösung |
+| --- | --- |
+| the provider did not verify the email | Schalte **Nicht verifizierten E-Mails vertrauen** ein oder korrigiere den Claim beim Anbieter. |
+| this email domain may not sign in | Füge die Domain zu **Erlaubte E-Mail-Domains** hinzu. |
+| no admin account for this identity | Schalte **Konten bei der ersten Anmeldung erstellen** ein, oder leg den Admin vorher an. |
+| the sign-in request expired or was not started here | Fang auf der Anmeldeseite neu an, im selben Browser. |
+
+<Aside type="note">
+Ein deaktivierter Admin kann sich auch über SSO nicht anmelden.
+</Aside>

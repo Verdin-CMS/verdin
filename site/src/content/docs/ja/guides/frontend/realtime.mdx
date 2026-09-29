@@ -1,0 +1,122 @@
+---
+title: リアルタイム更新
+description: Verdin の Server-Sent Events を購読して、コンテンツが変わった瞬間にフロントエンドを更新します。
+sidebar:
+  order: 8
+  label: リアルタイム
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**リアルタイム**の機能がオンの場合、Verdin はエントリーやメディアファイルが変わるたびに小さなイベントを配信します。フロントエンドはストリームを購読し、変わったものを取得し直します。ライブブログ、スコアボード、再読み込みの要らないダッシュボードなどです。各購読者には、読み取りが許可されたコンテンツに関するイベントだけが届きます。
+
+このページでは、フロントエンドからストリームを使う方法を説明します。イベント名、ペイロード、ルールは[リアルタイム API のリファレンス](/ja/api/realtime/)にあります。Strapi v5 には対応する組み込みの機能がありません。
+
+## オンにする
+
+<Steps>
+
+1. **設定 → 機能**で**リアルタイム**をオンにします。
+2. 誰が購読するかを決めます。ストリームはコンテンツ API の権限を使います。
+   - 誰にでも購読させるには、**設定 → 公開アクセス**でその型に**検索**または**1件取得**を許可します。
+   - サーバーやアプリの場合は、それらの権限を持つ [API トークン](/ja/guides/auth/api-tokens/)を作成します（下書きだけのイベントを受け取るには**下書きの閲覧**も）。
+   - ログイン済みのエンドユーザーの場合は、その JWT も使えます（[エンドユーザー](/ja/guides/auth/end-users/)を参照）。
+
+</Steps>
+
+ストリームは `GET /api/_events` です。特定の型だけを受け取るには、カンマ区切りのコンテンツタイプの UID のリストを `?types=` に付けます（`plugin::upload` はメディアライブラリです）。
+
+```sh title="Terminal"
+curl -N "https://cms.example.com/api/_events?types=api::article,api::category"
+```
+
+```
+event: ready
+data: {}
+
+event: entry.publish
+data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","locale":"en"}
+```
+
+## ブラウザーから購読する
+
+イベントが運ぶのは ID で、コンテンツではありません。イベントのたびに、他の読み取りと同じ API と権限で、表示しているものを取得し直してください。
+
+<Tabs syncKey="auth">
+<TabItem label="公開">
+
+公開ロールなら、ブラウザーの `EventSource` で十分で、自動で再接続します。
+
+```js
+const CMS = 'https://cms.example.com';
+const events = new EventSource(`${CMS}/api/_events?types=api::article`);
+
+for (const name of ['entry.publish', 'entry.unpublish', 'entry.delete']) {
+  events.addEventListener(name, (event) => {
+    const { documentId } = JSON.parse(event.data);
+    refreshArticle(documentId);
+  });
+}
+
+events.addEventListener('lagged', () => refreshEverything());
+```
+
+</TabItem>
+<TabItem label="トークンあり">
+
+`EventSource` は `Authorization` ヘッダーを送れません。代わりに `fetch` でストリームを読み、終了したら再接続します。
+
+```js
+async function subscribe(token, onEvent) {
+  for (;;) {
+    try {
+      const response = await fetch(`${CMS}/api/_events?types=api::article`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) return; // token refused
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const name = block.match(/^event: (.*)$/m)?.[1];
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (name && data) onEvent(name, JSON.parse(data));
+        }
+      }
+    } catch {
+      // network error: retry below
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+```
+
+ヘッダーに対応した SSE クライアントのライブラリなら、どれでも使えます。
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution">
+ブラウザーのコードに入れたトークンは、ページを開いた誰もが読めます。ページが表示する型に限定した読み取り専用のトークンだけを含めるか、サーバーから購読して更新をブラウザーに転送してください。
+</Aside>
+
+別のオリジンのサイトからストリームを呼び出すには、そのオリジンが [`[api].cors_origins`](/ja/reference/configuration/) に必要です。
+
+## ストリームを健全に保つ
+
+- 最初のイベントは `ready` で、購読が有効になったことを示します。
+- ストリームは 1 時間で終了します。そのときは再接続してください。`EventSource` は自動で再接続し、再接続時にはトークンも再確認されるので、取り消されたトークンはイベントを受け取れなくなります。
+- `lagged` という名前のイベントは、クライアントの読み取りが遅すぎてイベントを逃したことを意味します。ページが表示しているものをすべて取得し直してください。
+- 下書きだけのイベント（下書きと公開を使う型での `entry.create`、`entry.update`、`entry.discard-draft`）が届くのは、**下書きの閲覧**を持つ呼び出し元だけです。公開サイトでは通常、`entry.publish`、`entry.unpublish`、`entry.delete` を受信します。
+
+## ロードバランサーの背後で
+
+イベントは、クライアントが接続しているインスタンスのものです。インスタンスが複数ある場合は、`/api/_events` にスティッキーセッションを使うか、リアルタイムのクライアントを 1 つのインスタンスに向けてください。[スケーリング](/ja/deploy/scaling/)を参照してください。
+
+管理パネルは、ライブ更新、プレゼンス、編集中のソフトロックのために専用のストリーム（`/admin/api/events`）を使います。[リアルタイム API のリファレンス](/ja/api/realtime/)を参照してください。

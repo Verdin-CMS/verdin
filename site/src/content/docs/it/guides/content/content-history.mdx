@@ -1,0 +1,92 @@
+---
+title: Cronologia dei contenuti
+description: Sfoglia le versioni salvate, pubblicate e con pubblicazione annullata di una voce e ripristinane una come bozza attuale.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Verdin conserva una versione di una voce ogni volta che viene creata, salvata, pubblicata,
+se ne annulla la pubblicazione o se ne scarta la bozza, da qualsiasi API. Questa guida mostra
+come trovare una vecchia versione e ripristinarla, quante versioni vengono conservate, e
+l'API admin corrispondente.
+
+La cronologia dei contenuti funziona come quella di Strapi, dove è una funzionalità a
+pagamento.
+
+## Prima di iniziare
+
+- **Impostazioni → Funzionalità → Cronologia dei contenuti** è attivo di default. Finché è
+  disattivato, non vengono registrate versioni e la cronologia non è disponibile.
+- Leggere la cronologia di una voce richiede l'accesso in lettura alla voce; ripristinare
+  richiede l'accesso in aggiornamento. Le restrizioni sui campi si applicano: vedi, e
+  ripristini, solo i campi che il tuo ruolo può leggere o aggiornare. Vedi
+  [Permessi](/it/reference/permissions/).
+
+## Ripristina una versione
+
+<Steps>
+
+1. Apri la voce e seleziona **Cronologia**.
+2. La lista **Versioni** mostra ogni versione con il suo evento (**Creato**, **Salvato**,
+   **Pubblicato**, **Pubblicazione annullata**, **Bozza scartata**), la data e chi l'ha
+   fatta. Le modifiche fatte tramite la content API mostrano **API** come autore.
+3. Seleziona una versione per vederne i campi.
+4. Seleziona **Ripristina** e conferma.
+
+</Steps>
+
+La versione sostituisce la bozza attuale; pubblicala poi quando sei pronto. Sui tipi senza
+bozza e pubblicazione, il ripristino aggiorna direttamente la voce.
+
+Cosa viene escluso quando ripristini:
+
+- I campi che non esistono più nello schema vengono elencati e non ripristinati.
+- I riferimenti a voci o file eliminati vengono scartati, e l'editor ti dice quali campi li
+  hanno persi.
+
+**Torna all’editor** riporta alla voce senza cambiare nulla.
+
+## Quante versioni vengono conservate
+
+Verdin conserva le `[history].max_versions` versioni più recenti di ogni voce e lingua (50 di
+default) e rimuove le più vecchie man mano che arrivano nuove versioni:
+
+```toml title="verdin.toml"
+[history]
+max_versions = 100
+```
+
+Ogni lingua di una voce localizzata ha la propria cronologia. Eliminare una voce, o una delle
+sue lingue, elimina anche le sue versioni. Vedi il
+[riferimento della configurazione](/it/reference/configuration/).
+
+<Aside type="note">
+A differenza di Strapi, dove la cronologia viene conservata per un certo numero di giorni,
+Verdin conserva un certo numero di versioni per voce, per quanto vecchie siano.
+</Aside>
+
+## API admin
+
+Tutte le route sono sotto `/admin/api`.
+
+| Route | Permesso | Fa |
+| --- | --- | --- |
+| `GET /history/{uid}/{documentId}?locale=&page=&pageSize=` | lettura della voce | Le versioni, dalla più recente, senza i loro dati (20 per pagina, al massimo 100). |
+| `GET /history/versions/{id}` | lettura della voce | Una versione con i suoi dati. |
+| `POST /history/versions/{id}/restore` | aggiornamento della voce | Ripristina la versione come bozza attuale. |
+
+La risposta del ripristino elenca cosa è stato scartato:
+
+```json
+{
+  "data": {
+    "documentId": "k3v9…",
+    "restored": 42,
+    "dropped": [{ "field": "tags", "count": 1 }]
+  }
+}
+```
+
+Le route rispondono `404` finché la funzionalità è disattivata.

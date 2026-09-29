@@ -1,0 +1,166 @@
+---
+title: Single sign-on
+description: Permetti agli admin di accedere con un provider OpenID Connect come Microsoft Entra ID, Google Workspace, Okta o Keycloak, con la mappatura dei gruppi sui ruoli.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Gli admin possono accedere tramite qualsiasi provider OpenID Connect: Microsoft Entra ID,
+Google Workspace, Okta, Auth0, Keycloak, Authentik, GitLab e altri. Ogni provider ottiene un
+pulsante nella pagina di accesso, e l'accesso con password continua a funzionare accanto.
+Questa guida registra un'applicazione, configura il provider in Verdin e mappa i gruppi sui
+ruoli.
+
+In Strapi l'SSO è una funzionalità Enterprise. In Verdin fa parte del core open source. Per
+gli utenti finali dei tuoi siti, vedi invece
+[Accesso OAuth per gli utenti finali](/it/guides/auth/end-users/).
+
+## Prima di iniziare
+
+- Configurare l'SSO richiede **Gestisci funzionalità** (`features.manage`).
+- Imposta `[server].public_url` all'indirizzo da cui gli admin raggiungono Verdin, come
+  `https://cms.example.com`. Il redirect URI viene costruito da lì.
+
+## Configurazione
+
+<Steps>
+
+1. **Registra un'applicazione** (un client "web") presso il provider, con questo redirect
+   URI:
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>` è l'id del provider che scegli al passaggio 3, come `corp`. Il path dell'admin segue
+   `[admin].path`.
+
+2. **Metti il client secret nell'ambiente** e riavvia Verdin:
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   La variabile è `VERDIN_SSO_<ID>_SECRET`, con l'id in maiuscolo e i trattini come
+   underscore. I client pubblici (solo PKCE, senza secret) non richiedono variabili.
+
+3. **Aggiungi il provider.** Attiva **Impostazioni → Funzionalità → Single sign-on**,
+   seleziona **Configura i provider**, poi **Aggiungi un provider** e compila:
+
+   - **ID**: lettere minuscole, cifre e trattini, fino a 32 caratteri.
+   - **Testo del pulsante**: mostrato nella pagina di accesso come "Continua con …".
+   - **URL dell’emittente**: Verdin legge `/.well-known/openid-configuration` sotto di esso.
+     Deve usare `https`, tranne che su `localhost`.
+   - **ID client** e **Scope** (`openid email profile` di default; `openid` è obbligatorio).
+
+   La finestra mostra l'**URI di reindirizzamento da registrare presso il provider** e il
+   nome della variabile del secret. Salva.
+
+4. **Provalo** in una finestra privata: la pagina di accesso mostra **Continua con Corp
+   account**.
+
+</Steps>
+
+## Chi può accedere, e con quali ruoli
+
+| Impostazione | Chiave JSON | Effetto |
+| --- | --- | --- |
+| **Domini email consentiti** | `allowedDomains` | Solo questi domini email possono accedere. Vuoto significa tutti. |
+| **Crea gli account al primo accesso** | `autoCreate` | Crea un account admin la prima volta che qualcuno accede. Senza, possono accedere solo le email che hanno già un account. |
+| **Ruoli predefiniti** | `defaultRoles` | Codici dei ruoli degli account creati quando la mappatura dei ruoli non ne assegna. |
+| **Claim del ruolo** | `roleClaim` | Il claim dell'ID token che elenca i gruppi dell'utente, come `groups` o `roles`. |
+| **Mappatura dei ruoli** | `roleMap` | Quale codice di ruolo assegna ogni valore del claim. |
+| **Considera attendibili le email non verificate** | `trustUnverifiedEmail` | Accetta le email che il provider non segna come verificate. |
+| **Il provider impone l'MFA** | `providerMfa` | Non chiedere agli admin il loro secondo fattore Verdin dopo questo provider. |
+
+- Un provider che crea account richiede ruoli predefiniti o una mappatura dei ruoli.
+- Nessuno dei due può assegnare il ruolo Super Admin; promuovi gli admin a mano in
+  **Impostazioni → Utenti**.
+- I ruoli vengono impostati solo alla creazione dell'account. Dopo, gestiscili in
+  **Impostazioni → Utenti**.
+- Nome e cognome di un account creato arrivano dai claim `given_name` e `family_name`.
+
+Lo stesso provider in JSON, come lo memorizza la funzionalità
+(`PUT /admin/api/features/sso`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## Note sui provider
+
+- **Microsoft Entra ID** omette `email_verified` dai suoi ID token: attiva **Considera
+  attendibili le email non verificate** per questo provider. Aggiungi il claim `groups` nella
+  configurazione dei token dell'app per mappare i gruppi; i suoi valori sono id di gruppo.
+- **Google Workspace**: l'emittente è `https://accounts.google.com`. Limita gli accessi al
+  tuo dominio con **Domini email consentiti**.
+- **Keycloak**: l'emittente è l'URL del realm, `https://<host>/realms/<realm>`.
+
+## Autenticazione a due fattori
+
+Di default, a un admin che ha un [secondo fattore](/it/guides/auth/two-factor/) Verdin viene
+chiesto dopo che il provider lo rimanda indietro. Quando il provider impone già l'MFA, attiva
+**Il provider impone l'MFA** così non gli viene chiesto due volte.
+
+## Come funziona
+
+<Diagram
+  caption="Un accesso SSO"
+  code={`sequenceDiagram
+  participant B as Browser
+  participant V as Verdin
+  participant P as Provider
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: redirect con state e challenge PKCE
+  B->>P: accesso
+  P-->>B: redirect al callback con il code
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: scambio del code (TLS)
+  V-->>B: cookie di sessione, redirect a /admin/`}
+/>
+
+- Verdin usa l'authorization code flow con PKCE (S256). Lo `state` è firmato e legato a un
+  cookie `HttpOnly` di breve durata, e il `nonce` ne deriva.
+- Verifica emittente, audience (e `azp` quando ce ne sono più di una), scadenza e nonce
+  dell'ID token. Richiede un claim `email` con `email_verified: true`, a meno che **Considera
+  attendibili le email non verificate** non sia attivo.
+- Gli endpoint del provider devono usare `https`.
+- Ogni accesso SSO viene registrato nei [log di audit](/it/guides/content/audit-logs/) come
+  `admin.login`, con il provider.
+
+Quando un accesso fallisce, il browser torna alla pagina di accesso con il motivo ("Single
+sign-on non riuscito"), e il motivo viene scritto nel log del server. I più comuni:
+
+| Motivo | Soluzione |
+| --- | --- |
+| the provider did not verify the email | Attiva **Considera attendibili le email non verificate**, o correggi il claim del provider. |
+| this email domain may not sign in | Aggiungi il dominio a **Domini email consentiti**. |
+| no admin account for this identity | Attiva **Crea gli account al primo accesso**, o crea prima l'admin. |
+| the sign-in request expired or was not started here | Ricomincia dalla pagina di accesso, nello stesso browser. |
+
+<Aside type="note">
+Nemmeno un admin disattivato può accedere tramite SSO.
+</Aside>

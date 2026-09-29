@@ -1,0 +1,263 @@
+---
+title: Endnutzer
+description: Lass die Menschen, die deine Websites nutzen, sich über die Content-API registrieren und anmelden, mit E-Mail-Bestätigung, OAuth-Anbietern und Rollen, über die users-permissions-Routen von Strapi.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Endnutzer sind die Menschen, die sich auf deiner Website oder in deiner App anmelden, nicht im
+Admin-Panel. Verdin gibt ihnen Registrierung, Anmeldung, E-Mail-Bestätigung, Passwort-Reset,
+OAuth-Anbieter und Rollen, die bestimmen, was sie in der Content-API dürfen. Routen und Payloads
+sind die des users-permissions-Plugins von Strapi v5, bestehende Frontends funktionieren also
+weiter.
+
+## Bevor du anfängst
+
+<Steps>
+
+1. Schalte **Einstellungen → Funktionen → Benutzer und Berechtigungen** ein (standardmäßig
+   aus), oder schalte **Endnutzer** unter **Einstellungen → Endnutzer → Einstellungen** ein.
+2. Richte `[email]` ein, wenn du E-Mail-Bestätigung oder Passwort-Reset nutzt:
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend und Postmark lesen ihren Schlüssel aus `VERDIN_EMAIL_API_KEY`.
+   **Einstellungen → Funktionen → E-Mail** bietet **Test-E-Mail senden**. Für die lokale Arbeit
+   enthält `docker/compose.dev.yml` Mailpit (SMTP auf Port 1025, Posteingang unter
+   `http://localhost:8025`).
+
+3. Setze `[server].public_url`: Links in E-Mails und OAuth-Callbacks verwenden es.
+
+</Steps>
+
+Konten und Rollen zu verwalten braucht **Endnutzer verwalten** (`endusers.manage`). Den Tab
+Einstellungen zu ändern (Registrierung, Anbieter, Vorlagen) braucht **Funktionen verwalten**
+(`features.manage`).
+
+## Registrierung und Sitzungen konfigurieren
+
+Unter **Einstellungen → Endnutzer → Einstellungen**, im Bereich
+**Registrierung und Sitzungen**:
+
+| Einstellung | Standard | Wirkung |
+| --- | --- | --- |
+| **Registrierung erlauben** | an | Jeder kann über die Content-API ein Konto anlegen. Aus: `register` antwortet mit `400`. |
+| **E-Mail-Adressen bestätigen** | aus | Neue Benutzer müssen einen per E-Mail verschickten Link öffnen, bevor sie sich anmelden können. |
+| **Standardrolle** | Authenticated | Die Rolle neuer Konten. |
+| **Sitzungen** | Ein langlebiges Token | **Ein langlebiges Token** (der Legacy-Modus von Strapi) oder **Kurzlebige Tokens mit Refresh-Token**. |
+| **Sitzungsdauer (Tage)** | 30 | Lebensdauer des langlebigen Tokens. |
+| **Gültigkeitsdauer des Zugriffstokens (Minuten)**, **Gültigkeitsdauer des Refresh-Tokens (Tage)** | 30, 30 | Mit Refresh-Tokens. |
+
+Unter **Die Seiten deiner App** legst du **Nach dem Bestätigen einer E-Mail** fest (wo Benutzer
+landen, sobald ihre Adresse bestätigt ist) und **Seite zum Zurücksetzen des Passworts** (deine
+Seite, die `?code=` entgegennimmt und nach einem neuen Passwort fragt). Der Passwort-Reset
+braucht diese Seite.
+
+## Rollen einrichten
+
+Jede Anfrage läuft als eine der folgenden:
+
+- **Public**: Anfragen ohne Token. Ihre Berechtigungen sind die unter
+  **Einstellungen → Öffentlicher Zugriff**.
+- **Authenticated**: die eingebaute Rolle, die neue Konten bekommen. Sie lässt sich nicht
+  löschen.
+- **Eigene Rollen**: Leg sie unter **Einstellungen → Endnutzer → Rollen** mit
+  **Rolle erstellen** an.
+
+Die **Berechtigungen** einer Rolle nutzen dieselbe Matrix wie öffentlicher Zugriff und
+API-Tokens: **Suchen**, **Einzeln abrufen**, **Erstellen**, **Aktualisieren**, **Löschen**,
+**Veröffentlichen** und **Entwürfe lesen** pro Inhaltstyp, die **Medienbibliothek** und
+**Benutzer** (die Routen `/api/users`). Ein angemeldeter Benutzer bekommt nur die
+Berechtigungen seiner Rolle, nicht zusätzlich den öffentlichen Zugriff: Gib öffentliche
+Lesezugriffe auch der Rolle, wenn angemeldete Benutzer sie brauchen. Wird eine Rolle gelöscht,
+wandern ihre Benutzer zu Authenticated.
+
+Um als Benutzer zu handeln, schickt das Frontend sein JWT als `Authorization: Bearer <jwt>`.
+API-Tokens beginnen mit `vd_`; daran unterscheidet Verdin die beiden.
+
+## Registrieren und anmelden
+
+<Tabs>
+<TabItem label="Registrieren">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   oder { "user": … }, wenn die E-Mail-Bestätigung an ist
+```
+
+</TabItem>
+<TabItem label="Anmelden">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` ist die E-Mail-Adresse oder der Benutzername.
+
+</TabItem>
+<TabItem label="Als Benutzer lesen">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+Die Anmeldung wird für gesperrte Benutzer abgelehnt („Your account has been blocked by an
+administrator“) und, bei eingeschalteter Bestätigung, für unbestätigte („Your account email is
+not confirmed“).
+
+## Tokens und Sitzungen
+
+- **Ein langlebiges Token** (`jwtManagement: "legacy-support"`): Das JWT gilt so lange wie
+  **Sitzungsdauer (Tage)**.
+- **Kurzlebige Tokens mit Refresh-Token** (`jwtManagement: "refresh"`, wie in Strapi 5): Das
+  JWT gilt so lange wie **Gültigkeitsdauer des Zugriffstokens (Minuten)**, und
+  Anmeldeantworten enthalten zusätzlich ein `refreshToken`. Ruf `POST /api/auth/refresh` mit
+  `{ refreshToken }` auf, um ein neues Paar zu bekommen. Jedes Refresh-Token funktioniert
+  einmal; wer ein benutztes vorlegt, beendet die ganze Sitzung. `POST /api/auth/logout` mit
+  `{ refreshToken }` beendet sie absichtlich.
+- Ändern oder Zurücksetzen eines Passworts widerruft die früheren Tokens des Benutzers, ebenso
+  das Sperren des Benutzers.
+- Anfragen zur Anmeldung, Registrierung und zum Reset sind auf 20 pro Minute und Client-IP
+  begrenzt.
+- Passwörter werden mit Argon2id gespeichert. Aus Strapi importierte Konten behalten ihren
+  bcrypt-Hash bis zur nächsten Anmeldung, bei der er neu gehasht wird.
+
+## E-Mail-Adressen bestätigen und Passwörter zurücksetzen
+
+Mit **E-Mail-Adressen bestätigen** schickt die Registrierung einen Link auf
+`/api/auth/email-confirmation?confirmation=…`. Wer ihn öffnet, bestätigt das Konto und wird zu
+**Nach dem Bestätigen einer E-Mail** weitergeleitet. `POST /api/auth/send-email-confirmation`
+mit `{ email }` schickt einen neuen Link.
+
+Bei einem vergessenen Passwort:
+
+<Steps>
+
+1. Deine App ruft `POST /api/auth/forgot-password` mit `{ email }` auf. Die Antwort ist
+   dieselbe, egal ob das Konto existiert.
+2. Der Benutzer bekommt eine E-Mail mit einem Link auf deine
+   **Seite zum Zurücksetzen des Passworts**, mit `?code=…`. Der Code gilt eine Stunde.
+3. Deine Seite ruft `POST /api/auth/reset-password` mit
+   `{ code, password, passwordConfirmation }` auf und bekommt `{ jwt, user }`.
+
+</Steps>
+
+Angemeldete Benutzer ändern ihr Passwort mit `POST /api/auth/change-password`
+(`{ currentPassword, password, passwordConfirmation }`).
+
+Die E-Mails bearbeitest du unter
+**Einstellungen → Endnutzer → Einstellungen → E-Mail-Vorlagen**: ein **Betreff**, eine
+**Nachricht** und ein optionaler **HTML-Inhalt (optional)** für **E-Mail-Bestätigung** und
+**Passwort zurücksetzen**. Sie kennen die Platzhalter `{{username}}`, `{{email}}` und
+`{{url}}`; im HTML-Inhalt werden die Werte HTML-maskiert.
+
+## Mit OAuth-Anbietern anmelden
+
+Eingebaute Voreinstellungen gibt es für GitHub, Google, Microsoft, Discord, Facebook, GitLab
+und LinkedIn. Jeder andere Name ist ein generischer OAuth-2-Anbieter, der seine
+**Autorisierungs-URL**, **Token-URL** und **Benutzerinfo-URL** braucht: Keycloak, Auth0 und
+Okta funktionieren so, mit den URLs deines Realms oder Tenants. Sign in with Apple wird nicht
+unterstützt.
+
+<Steps>
+
+1. Wähle unter **Einstellungen → Endnutzer → Einstellungen → Anmeldeanbieter**
+   **GitHub hinzufügen** (oder eine andere Voreinstellung, oder
+   **OAuth-2-Anbieter hinzufügen**).
+2. Registriere beim Anbieter die im Dialog angezeigte
+   **Beim Anbieter zu registrierende Callback-URL**:
+   `https://cms.example.com/api/connect/github/callback`.
+3. Gib die **Client-ID**, optional **Scopes** und **Weiterleitung zu deiner App** ein: die Seite
+   deines Frontends, die nach der Anmeldung `?access_token=` entgegennimmt. Schalte
+   **Aktiviert** ein.
+4. Leg das Client-Secret in die Umgebung des Servers und starte neu:
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   Die Variable heißt `VERDIN_OAUTH_<PROVIDER>_SECRET`. Secrets werden nie in der Datenbank
+   gespeichert.
+
+</Steps>
+
+Die Anmeldung folgt dem Ablauf von Strapi:
+
+<Diagram
+  caption="OAuth-Anmeldung für Endnutzer"
+  code={`sequenceDiagram
+  participant B as Browser
+  participant V as Verdin
+  participant P as Anbieter
+  B->>V: GET /api/connect/github
+  V-->>B: Weiterleitung zum Anbieter
+  B->>P: Zustimmung
+  P-->>B: Weiterleitung zu /api/connect/github/callback
+  B->>V: Callback
+  V-->>B: Weiterleitung zu deiner Seite ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+Der OAuth-`state` ist signiert und über ein Cookie an den Browser gebunden. Konten werden über
+die E-Mail-Adresse zugeordnet; eine E-Mail-Adresse, die schon ein anderer Anbieter oder ein
+Konto mit E-Mail und Passwort nutzt, wird abgelehnt („Email is already taken.“).
+
+## Konten im Admin-Panel verwalten
+
+**Einstellungen → Endnutzer → Benutzer** listet die Konten, mit Suche nach Benutzername oder
+E-Mail-Adresse. Du kannst mit **Benutzer hinzufügen** Konten anlegen, eines bearbeiten
+(Benutzername, E-Mail-Adresse, Passwort, Rolle, **Bestätigt**, **Gesperrt**), es **Sperren**
+oder **Entsperren** und es löschen.
+
+## Routen
+
+Die Routen liegen unter dem Präfix der Content-API, standardmäßig `/api`. Request- und
+Response-Formate folgen Strapi v5.
+
+| Route | Tut |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }`, oder `{ user }` bei eingeschalteter E-Mail-Bestätigung. |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`. |
+| `GET /auth/email-confirmation?confirmation=` | Bestätigt die E-Mail-Adresse und leitet dann weiter oder liefert den Benutzer. |
+| `POST /auth/send-email-confirmation` | `{ email }`: ein neuer Bestätigungslink. |
+| `POST /auth/forgot-password` | `{ email }`: schickt den Reset-Link per E-Mail. |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/change-password` | Angemeldet. `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/refresh`, `POST /auth/logout` | Nur im Refresh-Modus: `{ refreshToken }`. |
+| `GET /users/me` | Der angemeldete Benutzer. |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | Braucht Suchen / Einzeln abrufen auf Benutzer. Einfaches JSON ohne `data`-Hülle, wie in Strapi. `populate=role` ergänzt die Rolle, `_q=` durchsucht Benutzernamen und E-Mail-Adressen, `pagination[page]` und `pagination[pageSize]` (höchstens 100) blättern. |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | Braucht Erstellen / Aktualisieren / Löschen auf Benutzer. `{ username, email, password, confirmed, blocked, role }`, mit `role` als ID einer Rolle. |
+| `GET /connect/{provider}` | Startet eine OAuth-Anmeldung. |
+| `GET /auth/{provider}/callback?access_token=` | Tauscht das Token des Anbieters gegen `{ jwt, user }`. |
+
+`verdin import strapi` holt Endnutzer mit ihren Passwörtern, eigene Rollen und die
+Berechtigungen der Rollen Public, Authenticated und der eigenen Rollen herüber. Siehe
+[Von Strapi migrieren](/de/migrate/from-strapi/).
+
+<Aside type="caution">
+Eine Rolle mit Erstellen, Aktualisieren oder Löschen auf **Benutzer** lässt ihre Mitglieder
+jedes Endnutzer-Konto verwalten. Gib sie nur vertrauenswürdigen Rollen oder API-Tokens.
+</Aside>

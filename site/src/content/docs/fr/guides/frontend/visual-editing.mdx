@@ -1,0 +1,126 @@
+---
+title: Édition visuelle
+description: Permettez aux rédacteurs de cliquer sur du texte de votre page d’aperçu pour arriver sur le champ qui le contient dans le panneau d’administration.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+L’édition visuelle transforme votre page d’aperçu en carte du panneau d’administration : un
+rédacteur survole un titre, clique sur **Edit**, et l’entrée s’ouvre avec ce champ sélectionné.
+Elle s’appuie sur l’[Aperçu](/fr/guides/content/preview/) : configurez d’abord les URL d’aperçu,
+puis ajoutez les deux éléments ci-dessous à la page d’aperçu.
+
+Verdin cache une petite source map invisible dans chaque texte qu’il renvoie (une technique
+appelée *stega*), et un script d’overlay retrouve ces textes sur la page. Rien ne change dans vos
+composants : le texte marqué s’affiche comme n’importe quel autre.
+
+<Diagram code={`flowchart LR
+  A[Page d’aperçu] -- "x-verdin-stega: true" --> B[API de contenu]
+  B -- "texte + source map invisible" --> A
+  A -- "visual-editing.js : clic sur Edit" --> C[Champ du panneau d’administration]`} caption="La page demande les source maps, et l’overlay les transforme en liens vers les champs." />
+
+## Configuration
+
+<Steps>
+
+1. Activez **Aperçu** dans **Paramètres → Fonctionnalités**, choisissez
+   **Configurer les URL d’aperçu** et donnez à chaque type de contenu l’URL de la page qui
+   l’affiche. La section **Édition visuelle** de la même boîte de dialogue montre la balise de
+   script et l’en-tête pour votre serveur. Voir [Aperçu](/fr/guides/content/preview/).
+
+2. Sur la page d’aperçu, récupérez le contenu avec un jeton et l’en-tête
+   `x-verdin-stega: true`. Le jeton est le jeton d’aperçu de l’URL d’aperçu (`?preview=…`,
+   renvoyé sous la forme `x-verdin-preview`) ou un jeton d’API :
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. Chargez l’overlay sur la même page :
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   Le chemin suit [`[admin].path`](/fr/reference/configuration/) : `{path}/api/visual-editing.js`.
+
+</Steps>
+
+Avec le [client typé](/fr/guides/frontend/typed-client/), passez les deux en-têtes dans
+`headers` :
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+Les source maps ne sont ajoutées qu’aux réponses REST, pas à GraphQL : lisez le contenu d’aperçu
+via l’API REST.
+
+Survolez du texte marqué sur la page : il reçoit un contour vert et un bouton **Edit**. Dans
+l’aperçu côte à côte de l’administration (**Ouvrir l’aperçu** → **Côte à côte**), le bouton
+demande à l’administration d’ouvrir le champ sur place. Quand la page est ouverte seule, le
+bouton ouvre l’entrée dans un nouvel onglet.
+
+<Aside type="note">
+Les source maps ne sont ajoutées qu’aux requêtes `GET` qui envoient `x-verdin-stega: true`
+**et** un jeton (`Authorization` ou `x-verdin-preview`). Le trafic public et tout ce que votre CDN
+met en cache n’en contiennent jamais, et les réponses marquées sont envoyées avec
+`Cache-Control: private, no-store`.
+</Aside>
+
+## Ce qui est marqué
+
+| Marqué | Non marqué |
+| --- | --- |
+| Les attributs `string`, `text` et `richtext` | `uid`, `email`, `password`, `enumeration` |
+| Le premier texte de chaque bloc d’un attribut `blocks` | Les nombres, booléens, dates, JSON |
+| La même chose dans les composants et les zones dynamiques (`seo.metaTitle`, `blocks.2.title`) | Les chaînes vides |
+| Les relations peuplées, pointant vers l’entrée liée | Les champs de média |
+
+L’overlay lit aussi les marques dans les attributs `alt` et `title` : un texte marqué que vous
+placez dans l’un d’eux (un champ de légende utilisé comme `alt`, par exemple) reste cliquable.
+
+## Retirer les marques là où le texte sert de donnée
+
+Les marques sont des caractères invisibles ajoutés à la fin du texte. Là où vous utilisez une
+valeur comme donnée plutôt que de l’afficher (une clé, une URL, une comparaison, une vérification
+de la longueur d’un `<title>`), retirez-les d’abord :
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+Les champs qui sont par nature des données, comme les slugs `uid` et les énumérations, ne sont
+jamais marqués : le routage sur `slug` fonctionne donc tel quel.
+
+## Encodage d’une marque
+
+Pour les outils qui lisent eux-mêmes les marques : une marque est U+2064, suivi de chaque octet
+UTF-8 de
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+sous forme de quatre chiffres en base 4 (le plus significatif en premier) écrits avec U+200B,
+U+200C, U+200D et U+2060, puis U+2063. L’URL d’administration provient de
+[`[server].public_url`](/fr/reference/configuration/) et de `[admin].path`. L’overlay envoie
+`{ type: 'verdin:edit', href }` à la fenêtre parente avec `postMessage` ; l’administration n’y
+donne suite que s’il provient de l’origine de l’URL d’aperçu.

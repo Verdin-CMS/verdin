@@ -1,0 +1,129 @@
+---
+title: Menu
+description: Costruisci menu di navigazione fatti di link e voci nel pannello di amministrazione e mostrali sul tuo sito.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+La funzionalità **Menu** dà ai redattori alberi di navigazione con nome (un header, un
+footer, una barra laterale) che collegano pagine, voci o altri siti. Il tuo sito recupera un
+menu tramite il suo slug e lo mostra; i link alle voci seguono il loro stato di pubblicazione
+e il loro path.
+
+In Strapi questo di solito richiede un plugin di navigazione o un tipo di contenuto per i
+menu fatto a mano; in Verdin è integrato.
+
+## Attivala
+
+In **Impostazioni → Funzionalità**, attiva **Menu**, poi scegli **Gestisci i menu** (o vai su
+**Impostazioni → Menu**). Gestire i menu richiede il permesso **Gestisci SEO,
+reindirizzamenti, menu e moduli** (`site.manage`), che ha il ruolo predefinito Editor. Vedi
+[Permessi](/it/reference/permissions/).
+
+Per collegare le voci tramite path, configura anche i pattern dei path in
+[SEO e sitemap](/it/guides/frontend/seo-and-sitemap/).
+
+## Costruisci un menu
+
+<Steps>
+
+1. In **Impostazioni → Menu**, scegli **Nuovo menu**.
+2. Dagli un nome (come **Navigazione principale**) e uno **Slug** (`main`): lettere
+   minuscole, cifre e trattini. I siti recuperano il menu tramite il suo slug.
+3. Scegli **Aggiungi una voce** e compila la voce:
+   - **Etichetta**: il testo del link, fino a 255 caratteri.
+   - **Collega a**: **Un URL**, **Una voce**, o **Niente (un’intestazione)**.
+   - **URL**: un path (`/about`), un'ancora (`#team`), o un link `http(s)`, `mailto:` o
+     `tel:`.
+   - Per una voce di contenuto, scegli **Scegli una voce**: seleziona il **Tipo di
+     contenuto** se se ne possono collegare diversi, cerca tra le voci e selezionane una.
+   - **Si apre in**: **La stessa scheda** o **Una nuova scheda**.
+4. Trascina le voci per ordinarle e annidarle, o usa i loro pulsanti. Da tastiera, su una
+   maniglia di trascinamento: Alt+↑ e Alt+↓ spostano una voce, Alt+→ la annida sotto quella
+   sopra, Alt+← la porta fuori.
+5. Salva.
+
+</Steps>
+
+Un menu ha al massimo 5 livelli e 500 voci.
+
+## Recupera un menu
+
+I siti leggono un menu da `GET /api/_menus/{slug}`, senza token. Aggiungi `?locale=` per i
+contenuti localizzati:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+Come si risolvono i link alle voci:
+
+- Una voce non pubblicata, nella lingua richiesta, viene omessa dal menu (con i suoi figli).
+  I menu non espongono mai bozze.
+- `entry.path` deriva dal pattern del tipo in [SEO e sitemap](/it/guides/frontend/seo-and-sitemap/),
+  compilato con i campi della voce e la lingua. È `null` quando il tipo non ha un pattern o
+  la voce non lo compila.
+- Quando la voce di menu non ha un `url` proprio, riceve il path come `url`, quindi alla
+  maggior parte dei siti basta leggere `url`.
+
+Senza `locale`, le voci vengono lette nella lingua di default. La risposta viene inviata con
+`Cache-Control: public, max-age=60`.
+
+## Mostralo
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+Eliminare un menu fa rispondere `404` a `/api/_menus/{slug}`, come disattivare la
+funzionalità. Gestisci questo caso sul tuo sito, per esempio non mostrando la navigazione.
+</Aside>
+
+## API admin
+
+Il pannello di amministrazione usa `/admin/api/site/menus` (`GET`, `POST`) e
+`/admin/api/site/menus/{id}` (`GET`, `PUT`, `DELETE`), con l'access token di un admin e
+`site.manage`. Vedi [API admin](/it/api/admin/).

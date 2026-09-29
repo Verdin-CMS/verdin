@@ -1,0 +1,92 @@
+---
+title: Document Service
+description: Verdin でコンテンツを読み書きする唯一の内部 API、それがすべての書き込みで保証すること、そしてコンテンツ API のリクエストがそこに届くまでの経路を説明します。
+sidebar:
+  order: 5
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Document Service（`crates/verdin-content/src/service.rs` の `DocumentService`）は、コンテンツの行を読み書きする唯一のコードです。コンテンツ API、Admin API、GraphQL、MCP、プラグイン、インポート、サイトマップはすべてこれを通るので、どの API が呼び出しても、バリデーション、下書きと公開、リレーションのルール、イベントは同じように動きます。Strapi v5 の Document Service と同様に、行ではなく（`documentId` で識別される）ドキュメントを扱います。
+
+## API
+
+主なメソッド（簡略化しています。正確な型はソースを参照してください）:
+
+| メソッド | 動作 |
+|---|---|
+| `find_many(uid, &Query) -> Page` | ページ形式またはオフセット形式の `meta` 付きの、ドキュメントの 1 ページ |
+| `find_one(uid, document_id, &Query) -> Option<Json>` | クエリのステータスとロケールでの 1 件のドキュメント |
+| `single_document_id(uid)` | シングルタイプのドキュメント（存在する場合） |
+| `create(uid, &data, WriteOptions) -> String` | ドキュメントを作成し、その `documentId` を返します |
+| `update(uid, document_id, &data, WriteOptions)` | 下書き（または唯一のバージョン）の部分更新。必要ならロケールの新しいバージョンを作成します |
+| `delete(uid, document_id)` | 現在のロケールでの、ドキュメントのすべてのバージョンを削除します |
+| `publish(uid, document_id, actor)` | 下書きを公開バージョンにコピーします |
+| `unpublish(uid, document_id)` | 公開バージョンを削除します |
+| `discard_draft(uid, document_id)` | 下書きを公開バージョンで置き換えます |
+| `uid_availability(…)` | `uid` の値が空いているかどうかと、空いている候補 |
+| `document_locales`、`timeline`、`usage` など | 管理パネル用のヘルパー |
+
+`WriteOptions` には 2 つのフィールドがあります。`publish`（下書きと公開を使う型で、書き込み後に公開する）と `actor`（`created_by_id` / `updated_by_id` に記録される管理者）です。
+
+サービスはクローンのコストが低い値で、ビルダーメソッドで設定します。多言語化された型用の `in_locale(locale)`、`with_listener`、`with_hook`、`dry_run()`（書き込みを完全に検証してロールバックする。インポートのドライランで使う）、`without_plugin_hooks()`（プラグイン自身が行う書き込み用）です。
+
+サービスは、誰が呼び出しているかを知りません。権限は、呼び出しの前に API の層で適用されます。呼び出し元が持たないアクションを拒否し、クエリが populate やフィルターで通れる型を制限し、条件のフィルターをクエリに加えます（たとえば、管理者の **Author** ロールの「自分のエントリー」の条件は `created_by_id = <admin id>` になります）。フィルターは SQL の一部なので、ページネーションと件数は正確なままです。
+
+## すべての書き込みで行われること
+
+1. **フック。** まず `DocumentHook` が順に実行されます。レビューワークフローの段階、次にプラグインです。フックはデータを置き換えたり、書き込みを拒否したりでき、拒否は `400` になります。Strapi のライフサイクルの名前（`beforeCreate`、`beforeUpdate`、`beforeDelete`、`beforePublish`、`beforeUnpublish`、`beforeDiscardDraft`）を使います。
+2. **入力のバリデーション**（`input.rs`）: 不明なキー、システムフィールド（`id`、`documentId`、タイムスタンプ）、逆側（`mappedBy`）のリレーションはエラーです。すべての値は属性の型と制約（`min`、`max`、`minLength`、`maxLength`、`regex`、enumeration の値、リレーションの多重度、メディアの `allowedTypes`）で確認され、コンポーネントとダイナミックゾーンは再帰的に検証され、`password` の値は argon2 でハッシュされます。
+3. **参照。** 関連するドキュメントとメディアファイルが存在する必要があり、トランザクション内で確認されます。
+4. **行とリンク**を 1 つのトランザクションで処理します。行が挿入または更新され、次にそのリレーション、ポリモーフィック、メディアのリンクテーブルが書き直されます（位置は 1..n で振り直し）。`oneToOne` や `oneToMany` の対象をリンクすると、同じ状態の他のドキュメントからその対象が移動します。
+5. **必須フィールドとルール。** バージョンが公開されるとき、または下書きと公開を使わない型への書き込みのたびに、`required` の属性（コンポーネントとダイナミックゾーン内のものを含む）とフィールド間のバリデーションのルールが確認されます。失敗すると、書き込み全体がロールバックされます。
+6. **一意性**は、範囲を限定した一意インデックスで強制されます。違反はその属性に対応付けられ、競合なしに `ValidationError` として報告されます。
+7. **コミット、そしてイベント。** トランザクションがコミットされた後、サービスはすべての `DocumentListener` を、UID、`documentId`、ロケール、実行者を持つ `DocumentEvent`（`entry.create`、`entry.update`、`entry.publish`、`entry.unpublish`、`entry.discard-draft`、`entry.delete`）とともに呼び出します。
+
+バリデーションのエラーは Strapi の形式を使います。`{ path, message, name: "ValidationError" }` のリストで、`path` はデータ内を指します（`["seo", "metaTitle"]`、`["blocks", 2, "text"]`）。管理パネルはそれをフィールドに対応付けます。
+
+リスナーは、ハンドラーごとのコードなしに、派生した状態をコンテンツと同期させます。Webhook、コンテンツ履歴、レスポンスのキャッシュ、プラグインの書き込み後のフック、監査ログ、リアルタイムのイベント、コメントとタスク、「既読」の印、CDN のパージ、検索インデックスです。失敗したリスナーは自分のエラーをログに記録しますが、書き込みはすでに成功しています。リスナーはコミット後に実行されるので、ドライランがリスナーに届くことはありません。
+
+## 読み取り
+
+読み取りでは、リクエストされたステータスとロケールの行を選び、SQL でフィルターとソートを適用し、その後に求められたものを populate します。
+
+- **リレーション**は、連鎖する結合ではなく、リレーションと階層ごとに 1 回のバッチクエリ（`WHERE … IN (…)`、ID を 500 個ずつ）で読み込まれます。これにより、直積の爆発と N+1 クエリの両方を避けられます。エントリーとリレーションごとに populate される関連エントリーは最大 1,000 件で、件数は正確なままです。
+- 対象は元と同じバージョンで読まれます。公開されたドキュメントは公開された対象を、下書きは下書きを見ます。
+- **コンポーネントとダイナミックゾーン**は JSON カラムから取得され、その中のリレーションとメディアは同じバッチクエリで解決されます。
+- **`_q` による検索**は、`[search]` がオンなら Tantivy のインデックスを使い、そうでなければテキストフィールドに対して大文字小文字を区別しない `$containsi` を使います。
+
+出力の形（フラットなドキュメント、値の形式、`populate` の構文、制限）は [REST API](/ja/api/rest/) に記載されています。
+
+## コンテンツ API のリクエストのライフサイクル
+
+<Diagram
+  caption="GET /api/articles のリクエスト、ソケットからデータベースまで"
+  code={`sequenceDiagram
+  participant C as クライアント
+  participant L as 共有の層
+  participant H as handlers.rs
+  participant Q as verdin-query
+  participant D as Document Service
+  participant DB as データベース
+  C->>L: GET /api/articles?filters…
+  L->>H: クライアント IP、リクエスト ID、CORS、制限、キャッシュ
+  H->>H: pluralName でルーティング、トークンまたは公開ロールを認可
+  H->>Q: スキーマに照らして解析・検証
+  Q-->>H: 型付きの Query
+  H->>D: find_many(uid, query)
+  D->>DB: SELECT … WHERE … ORDER BY … LIMIT
+  D->>DB: populate するリレーションごとに 1 回のバッチクエリ
+  D-->>H: ドキュメントとページの meta
+  H-->>C: { data, meta }`}
+/>
+
+1. **共有の層**（外側から順に）: クライアントのアドレスを解決し（`X-Forwarded-For` は `[server].trusted_proxies` からのものだけを使う）、有効な場合はメトリクスがリクエストを数え、リクエスト ID を設定して `x-request-id` として伝え、トレーシングがスパンを開き、`[api].cors_origins` が設定されていればコンテンツ API と GraphQL に CORS を適用します。
+2. **コンテンツ API の層**: クライアントごとのレート制限、`ETag` と匿名の読み取りの任意のキャッシュ、ボディサイズの上限（`[server].body_limit`）とリクエストのタイムアウト、レスポンスへの CDN のキャッシュタグ。
+3. **ルーティング。** パスのセグメントを、コンテンツタイプの `pluralName`（コレクションタイプ）と `singularName`（シングルタイプ）の中から探します。不明な名前は `404` です。
+4. **認可**（`verdin-auth`）。`Authorization` ヘッダーがなければ公開ロール、`Bearer vd_…` なら API トークンです。無効または期限切れのトークンは `401` で、公開ロールになることはありません。ルートのアクション（`find`、`findOne`、`create`、`update`、`delete`、`publish`）がその型に許可されている必要があり、なければ `403` を返します。
+5. **クエリの解析**（`verdin-query`）。生のクエリ文字列を角かっこのツリー（最大 16 KB、12 階層、1,000 組）に解析し、次に型のフィールドで検証した型付きの `Query` にします。不明なフィールドや `private` なフィールドは `400` で、populate、リレーションのフィルター、リレーションのソートは、呼び出し元が読み取れる型に限られます。`?status=draft` を読むには `readDrafts` も必要です。
+6. **Document Service。** ハンドラーが `find_many`、`find_one`、`create`、`update`、`delete`、またはアクションを呼び出します。`?status=draft` のない書き込みは、下書きと公開を使う型では公開し（Strapi v5 の動作）、レスポンス用に書き込んだバージョンを読み直します。
+7. **レスポンス。** `{ "data": …, "meta": … }`。エラーは同じエンベロープで、`data: null` と `error` オブジェクトを使います。
+
+Admin API のルートも同じ経路をたどりますが、API トークンの代わりに管理者のセッション、コンテンツ API の許可の代わりに管理者の RBAC を使い、下書き優先のデフォルトです。下書きを読み、下書きだけを書き、公開は明示的なアクションです。GraphQL は手順 5 の前に引数を同じパラメーターツリーに変換するので、パーサー、制限、権限のルールを共有します。

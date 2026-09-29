@@ -1,0 +1,138 @@
+---
+title: İki adımlı doğrulama
+description: Admin hesaplarını bir kimlik doğrulayıcı uygulama veya geçiş anahtarlarıyla koruyun, rol başına ikinci faktör zorunlu kılın ve kaybedilen faktörleri kurtarın veya sıfırlayın.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+İki adımlı doğrulama paroladan sonra ikinci bir adım ekler: bir kimlik doğrulayıcı uygulamadan 6
+haneli bir kod ya da bir geçiş anahtarı (parmak izi, yüz, ekran kilidi veya güvenlik anahtarı).
+Bu kılavuz ikisini de kurar, bir rol için zorunlu kılar ve bir admin kendi faktörünü
+kaybettiğinde yapılacakları anlatır. Strapi’de yerleşik bir karşılığı yoktur.
+
+İki adımlı doğrulama admin’ler içindir. [Son kullanıcılar](/tr/guides/auth/end-users/) bir parola
+veya bir OAuth sağlayıcısıyla oturum açar.
+
+## Başlamadan önce
+
+- Açılacak bir özellik yoktur: her admin profilinde bir ikinci faktör kurabilir.
+- Geçiş anahtarları yönetim panelinin adresine bağlıdır. `[server].public_url`’i admin’lerin
+  açtığı adrese ayarlayın; örneğin `https://cms.example.com`. Tarayıcılar geçiş anahtarlarını
+  yalnızca `https://` üzerinden (ve `localhost`’ta) sunar.
+- `VERDIN_TOKEN_PEPPER`’ı sabit tutun: kimlik doğrulayıcı secret’ları ve kurtarma kodları onunla
+  korunur ve onu değiştirmek bunları kullanılamaz hâle getirir.
+
+## Bir kimlik doğrulayıcı uygulama kurma
+
+<Steps>
+
+1. **Profil** sayfanızı açın ve **İki adımlı doğrulama**’yı bulun.
+2. **Kimlik doğrulayıcı uygulama** altında **Kur**’u seçin ve parolanızı onaylayın.
+3. QR kodunu 1Password, Google Authenticator veya Authy gibi bir uygulamayla tarayın.
+   Tarayamıyorsanız altında gösterilen kurulum anahtarını girin.
+4. Uygulamanın gösterdiği **6 haneli kod**’u girin ve **Aç**’ı seçin.
+5. Verdin’in gösterdiği **kurtarma kodlarını** kaydedin: **İndir** ile indirin veya kopyalayın,
+   ardından **Kaydettim**’i seçin.
+
+</Steps>
+
+Kodlar standart TOTP şemasını izler (30 saniyelik adımlar, SHA-1, 6 hane). Saat kaymasına pay
+bırakmak için önceki veya sonraki adımın kodu da kabul edilir. Kodlar reddediliyorsa cihazınızın
+saatini denetleyin.
+
+## Bir geçiş anahtarı ekleme
+
+<Steps>
+
+1. **Geçiş anahtarları** altında **Geçiş anahtarı ekle**’yi seçin.
+2. Ona "MacBook Touch ID" gibi bir **Ad** verin ve parolanızı onaylayın.
+3. Tarayıcınızın istemini izleyin.
+
+</Steps>
+
+En fazla 20 geçiş anahtarı kaydedebilir ve **Kaldır** ile kaldırabilirsiniz. Geçiş anahtarları
+paroladan sonra gelen ikinci bir faktördür, onun yerini almaz.
+
+## Kurtarma kodları
+
+İlk faktörünüzü kurduğunuzda 10 kurtarma kodu alırsınız. Uygulamanızı veya geçiş anahtarlarınızı
+kaybederseniz her biri sizi bir kez oturum açtırır. Profil kaç tane kaldığını gösterir; **Yeni
+kodlar üret** hepsini değiştirir (eskileri çalışmayı durdurur).
+
+<Aside type="caution">
+Kodlar bir kez gösterilir. Onları bir parola yöneticisinde veya çevrimdışı bir yerde saklayın;
+kimlik doğrulayıcınızı tutan cihazın yanında değil.
+</Aside>
+
+## İkinci faktörle oturum açma
+
+<Diagram
+  caption="İki adımlı doğrulamayla oturum açma"
+  code={`flowchart LR
+  A[E-posta ve parola] --> B{İkinci faktör?}
+  B -->|hayır| S[Oturum açıldı]
+  B -->|evet| C[Kod, geçiş anahtarı veya kurtarma kodu]
+  C -->|5 dakika içinde| S`}
+/>
+
+Paroladan sonra oturum açma sayfası **Doğrulama kodu** ister. Yöntemi değiştirmek için **Bir
+geçiş anahtarı kullan** veya **Bir kurtarma kodu kullan**’ı seçin. Bitirmek için 5 dakikanız
+vardır; sonrasında parolanızı yeniden girin.
+
+## Bir rol için iki adımlı doğrulamayı zorunlu kılma
+
+<Steps>
+
+1. **Ayarlar → Roller**’i ve rolü açın.
+2. **İki adımlı doğrulamayı zorunlu kıl**’ı açın ve kaydedin.
+
+</Steps>
+
+İkinci faktörü olmayan üyelerden oturum açtıklarında bir tane kurmaları istenir. Bunu yapana
+kadar yalnızca profillerini açabilirler. **Ayarlar → Kullanıcılar** bölümünde satırlarında
+**2FA eksik** görünür; ikinci faktörü olan admin’lerde **2FA** görünür.
+
+Rolünüz bir ikinci faktör gerektirirken Verdin son faktörünüzü kaldırmayı reddeder: uygulamayı
+kapatmadan önce bir geçiş anahtarı ya da tek geçiş anahtarınızı kaldırmadan önce başka bir faktör
+ekleyin.
+
+## Başka bir admin’in ikinci faktörünü sıfırlama
+
+Bir admin cihazını ve kurtarma kodlarını kaybettiğinde:
+
+<Steps>
+
+1. **Ayarlar → Kullanıcılar**’ı açın ve admin’i bulun.
+2. **İki adımlı doğrulamayı sıfırla**’yı seçin ve onaylayın.
+
+</Steps>
+
+Bu, kimlik doğrulayıcı uygulamasını, geçiş anahtarlarını ve kurtarma kodlarını kaldırır; böylece
+yalnızca parolasıyla oturum açar. Rolü iki adımlı doğrulama gerektiriyorsa onu yeniden kurmalıdır.
+Bu işlem **Kullanıcıları yönet** gerektirir; başka bir Super Admin’i yalnızca bir Super Admin
+sıfırlayabilir.
+
+`verdin admin reset-password` yalnızca parolayı sıfırlar, ikinci faktörü sıfırlamaz.
+
+## Çoklu oturum açma
+
+[Çoklu oturum açma](/tr/guides/auth/sso/) üzerinden oturum açan admin’lerden de, sağlayıcı
+**Sağlayıcı MFA zorunlu kılıyor** olarak işaretlenmedikçe, Verdin ikinci faktörleri istenir.
+
+## Admin API
+
+Tüm rotalar `/admin/api` altındadır. Faktörleri değiştirenler `password` değerinizi alır.
+
+| Rota | Yaptığı |
+| --- | --- |
+| `POST /auth/login` | İkinci faktörle, bir oturum yerine `{ twoFactorRequired: true, twoFactorToken, methods }` yanıtını verir. |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }` (TOTP veya kurtarma kodu) ya da bir geçiş anahtarı için `{ twoFactorToken, challengeToken, credential }`. Oturumu döndürür. |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }`: geçiş anahtarı challenge’ı. |
+| `GET /auth/two-factor` | Faktörleriniz: `totp`, `passkeys`, `recoveryCodesLeft`, `required`. |
+| `POST /auth/two-factor/totp/setup`, `/totp/enable`, `/totp/disable` | Kimlik doğrulayıcı uygulamayı kurar (parola), açar (kod) ve kapatır (parola). |
+| `POST /auth/two-factor/recovery-codes` | Yeni kurtarma kodları. |
+| `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/{id}` | Geçiş anahtarlarını kaydeder ve kaldırır. |
+| `DELETE /users/{id}/two-factor` | Başka bir admin’in faktörlerini sıfırlar (`users.manage`). |

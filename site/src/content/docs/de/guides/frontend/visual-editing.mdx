@@ -1,0 +1,128 @@
+---
+title: Visuelles Bearbeiten
+description: Lass Redakteure Text auf deiner Vorschauseite anklicken und im Admin-Panel bei dem Feld landen, das ihn enthält.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Visuelles Bearbeiten macht aus deiner Vorschauseite eine Landkarte des Admin-Panels: Ein
+Redakteur fährt mit der Maus über eine Überschrift, klickt auf **Edit**, und der Eintrag öffnet
+sich mit diesem Feld im Fokus. Es baut auf der [Vorschau](/de/guides/content/preview/) auf:
+Richte zuerst die Vorschau-URLs ein und ergänze dann die beiden Bausteine unten auf der
+Vorschauseite.
+
+Verdin versteckt in jedem Text, den es zurückgibt, eine kleine, unsichtbare Source Map (eine als
+*Stega* bekannte Technik), und ein Overlay-Skript findet diese Texte auf der Seite. An deinen
+Komponenten ändert sich nichts: Der markierte Text wird wie jeder andere gerendert.
+
+<Diagram code={`flowchart LR
+  A[Vorschauseite] -- "x-verdin-stega: true" --> B[Content-API]
+  B -- "Text + unsichtbare Source Map" --> A
+  A -- "visual-editing.js: Klick auf Edit" --> C[Feld im Admin-Panel]`} caption="Die Seite fragt nach Source Maps, und das Overlay macht daraus Links zu Feldern." />
+
+## Einrichten
+
+<Steps>
+
+1. Schalte unter **Einstellungen → Funktionen** **Vorschau** ein, wähle
+   **Vorschau-URLs konfigurieren** und gib jedem Inhaltstyp die URL der Seite, die ihn
+   rendert. Der Abschnitt **Visuelles Bearbeiten** im selben Dialog zeigt das Script-Tag und
+   den Header für deinen Server. Siehe [Vorschau](/de/guides/content/preview/).
+
+2. Hol auf der Vorschauseite die Inhalte mit einem Token und dem Header
+   `x-verdin-stega: true`. Das Token ist das Vorschau-Token aus der Vorschau-URL
+   (`?preview=…`, zurückgeschickt als `x-verdin-preview`) oder ein API-Token:
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. Lade das Overlay auf derselben Seite:
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   Der Pfad folgt [`[admin].path`](/de/reference/configuration/): `{path}/api/visual-editing.js`.
+
+</Steps>
+
+Mit dem [typisierten Client](/de/guides/frontend/typed-client/) übergibst du beide Header in
+`headers`:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+Source Maps werden nur REST-Antworten hinzugefügt, nicht GraphQL: Lies Vorschauinhalte über die
+REST-API.
+
+Fahr auf der Seite mit der Maus über markierten Text: Er bekommt einen grünen Rahmen und einen
+Button **Edit**. In der Nebeneinander-Vorschau des Admin-Panels
+(**Vorschau öffnen** → **Nebeneinander**) bittet der Button das Admin-Panel, das Feld direkt
+dort zu öffnen. Ist die Seite für sich allein geöffnet, öffnet der Button den Eintrag in einem
+neuen Tab.
+
+<Aside type="note">
+Source Maps werden nur `GET`-Anfragen hinzugefügt, die `x-verdin-stega: true` **und** ein Token
+senden (`Authorization` oder `x-verdin-preview`). Öffentlicher Traffic und alles, was dein CDN
+cacht, tragen sie nie, und markierte Antworten werden mit `Cache-Control: private, no-store`
+gesendet.
+</Aside>
+
+## Was markiert wird
+
+| Markiert | Nicht markiert |
+| --- | --- |
+| Attribute vom Typ `string`, `text` und `richtext` | `uid`, `email`, `password`, `enumeration` |
+| Der erste Text jedes Blocks eines `blocks`-Attributs | Zahlen, Booleans, Datumswerte, JSON |
+| Dasselbe in Komponenten und Dynamic Zones (`seo.metaTitle`, `blocks.2.title`) | Leere Strings |
+| Geladene Relationen, mit Verweis auf den verknüpften Eintrag | Medienfelder |
+
+Das Overlay liest Markierungen auch in `alt`- und `title`-Attributen, ein markierter Text, den
+du in eines davon setzt (etwa ein Bildunterschriftsfeld als `alt`), bleibt also anklickbar.
+
+## Markierungen entfernen, wo Text Daten sind
+
+Die Markierungen sind unsichtbare Zeichen, die an den Text angehängt werden. Wo du einen Wert
+als Daten nutzt, statt ihn anzuzeigen (ein Schlüssel, eine URL, ein Vergleich, eine
+Längenprüfung für `<title>`), entferne sie vorher:
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+Felder, die ihrer Natur nach Daten sind, etwa `uid`-Slugs und Enumerationen, werden nie
+markiert, Routing über `slug` funktioniert also so, wie es ist.
+
+## Wie eine Markierung kodiert ist
+
+Für Tools, die die Markierungen selbst lesen: Eine Markierung ist U+2064, dann jedes UTF-8-Byte
+von
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+als vier Ziffern zur Basis 4 (höchstwertige zuerst), geschrieben mit U+200B, U+200C, U+200D und
+U+2060, dann U+2063. Die Admin-URL stammt aus
+[`[server].public_url`](/de/reference/configuration/) und `[admin].path`. Das Overlay schickt
+`{ type: 'verdin:edit', href }` mit `postMessage` an das Elternfenster; das Admin-Panel reagiert
+nur, wenn die Nachricht vom Origin der Vorschau-URL kommt.

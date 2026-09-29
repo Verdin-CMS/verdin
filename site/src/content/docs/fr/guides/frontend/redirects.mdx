@@ -1,0 +1,120 @@
+---
+title: Redirections
+description: Tenez une liste de redirections dans le panneau d’administration et appliquez-les dans le middleware de votre site.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+La fonctionnalité **Redirections** permet aux rédacteurs de rediriger d’anciens chemins vers de
+nouveaux sans déploiement : ils tiennent la liste dans le panneau d’administration, et votre site
+la récupère et répond avec la redirection. Verdin ne redirige pas lui-même les visiteurs, puisque
+ceux-ci arrivent sur votre site, pas sur le CMS.
+
+## L’activer
+
+Dans **Paramètres → Fonctionnalités**, activez **Redirections**, puis choisissez
+**Gérer les redirections** (ou allez dans **Paramètres → Redirections**). Gérer les redirections
+nécessite l’autorisation **Gérer le SEO, les redirections, les menus et les formulaires**
+(`site.manage`), dont dispose le rôle intégré Editor. Voir
+[Autorisations](/fr/reference/permissions/).
+
+## Ajouter des redirections
+
+<Steps>
+
+1. Dans **Paramètres → Redirections**, choisissez **Ajouter une redirection**.
+2. **Depuis** : l’ancien chemin, commençant par `/` (par exemple `/blog/2024/hello`).
+3. **Vers** : le nouveau chemin, ou une URL `http(s)` complète sur un autre site.
+4. **Type** : **301 · Permanente**, **302 · Temporaire**,
+   **307 · Temporaire (conserve la méthode)** ou **308 · Permanente (conserve la méthode)**.
+5. Enregistrez.
+
+</Steps>
+
+Verdin refuse une redirection qui ne pourrait jamais fonctionner :
+
+- une seconde redirection depuis le même chemin ;
+- un chemin qui redirige vers lui-même ;
+- une chaîne qui boucle (`/a` → `/b` → `/a`).
+
+Pour de nombreuses redirections à la fois, utilisez **Importer un CSV** avec les colonnes
+`source`, `destination` et `status`. Les lignes dont la source existe déjà mettent à jour cette
+redirection. **Exporter en CSV** écrit le même format, pratique pour une migration depuis un autre
+CMS ou une relecture dans un tableur.
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## Les appliquer sur votre site
+
+Les sites lisent la liste sur `GET /api/_redirects`, sans jeton :
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+La réponse est envoyée avec `Cache-Control: public, max-age=60` : une modification atteint donc
+les sites en une minute environ. Comparez exactement le chemin de la requête à `source` :
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+Pour un site statique, récupérez la liste au moment du build et écrivez le fichier de
+redirections de votre hébergeur (le `_redirects` de Netlify, le `vercel.json` de Vercel, une map
+nginx). Combinez cela avec un [bouton de déploiement](/fr/guides/integrations/deploys-and-cdn/)
+ou un [webhook](/fr/guides/integrations/webhooks/) pour que les rédacteurs puissent relancer un
+build après avoir modifié les redirections.
+
+<Aside type="note">
+Le préfixe de l’API suit [`[api].prefix`](/fr/reference/configuration/). Quand la
+fonctionnalité est désactivée, `/api/_redirects` répond `404`.
+</Aside>
+
+## API d’administration
+
+Le panneau d’administration utilise `/admin/api/site/redirects` (`GET`, `POST`) et
+`/admin/api/site/redirects/{id}` (`PUT`, `DELETE`), avec le jeton d’accès d’un administrateur et
+`site.manage`. Voir [API d’administration](/fr/api/admin/).

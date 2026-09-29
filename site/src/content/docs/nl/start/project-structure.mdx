@@ -1,0 +1,181 @@
+---
+title: Projectstructuur
+description: De bestanden die verdin new aanmaakt, de bestanden die Verdin tijdens het draaien toevoegt, en welke daarvan in git horen.
+sidebar:
+  order: 5
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+Een Verdin-project is een map met een configuratiebestand en het schema. Deze pagina somt op wat
+`verdin new` aanmaakt, wat de server tijdens het draaien toevoegt, en wat je commit.
+
+## Wat `verdin new` aanmaakt
+
+```sh title="Terminal"
+verdin new my-site
+```
+
+<FileTree>
+- my-site/
+  - verdin.toml projectconfiguratie
+  - .env geheimen en de database-URL, alleen door jou leesbaar
+  - .gitignore
+  - schema/
+    - content-types/ één JSON-bestand per contenttype
+    - components/ één map per componentcategorie
+  - data/ de SQLite-database (alleen met `--database sqlite`)
+</FileTree>
+
+De map mag niet bestaan of moet leeg zijn. De projectnaam in de database-URL komt uit de mapnaam,
+in kleine letters, met andere tekens vervangen door `_` (`My Site` wordt `my_site`).
+
+### `verdin.toml`
+
+De configuratie. Het gegenereerde bestand stelt de poort, het prefix en de paginagroottes van de
+content-API, en het adminpad in:
+
+```toml title="verdin.toml"
+[server]
+port = 1337
+# public_url = "https://cms.example.com"
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+
+[admin]
+path = "/admin"
+# secure_cookies = true
+```
+
+Elke sleutel heeft een standaardwaarde, dus het bestand mag leeg zijn of ontbreken. Onbekende
+sleutels stoppen de server met een fout. Elke sleutel kan vanuit de omgeving worden overschreven
+als `VERDIN_<SECTION>__<KEY>`, bijvoorbeeld `VERDIN_SERVER__PORT=8080`. Commando's lezen
+`verdin.toml` uit de huidige map; geef `-c <path>` mee of stel `VERDIN_CONFIG` in om een ander
+bestand te gebruiken. Paden in het bestand, zoals de schema- of uploadmap, zijn relatief ten
+opzichte van de map waarin het staat. Alle instellingen staan in de
+[configuratiereferentie](/nl/reference/configuration/).
+
+### `.env`
+
+```sh title=".env"
+# Lokale geheimen: houd dit bestand buiten versiebeheer.
+VERDIN_DATABASE_URL=sqlite://data/verdin.db
+VERDIN_ADMIN_JWT_SECRET=…
+VERDIN_TOKEN_PEPPER=…
+```
+
+`verdin new` vult twee willekeurige geheimen in en een database-URL voor de engine die je met
+`--database` hebt gekozen:
+
+| `--database` | Gegenereerde `VERDIN_DATABASE_URL` |
+| --- | --- |
+| `sqlite` (standaard) | `sqlite://data/verdin.db` |
+| `postgres` | `postgres://verdin:change-me@localhost:5432/<name>` |
+| `mysql`, `mariadb` | `mysql://verdin:change-me@localhost:3306/<name>` |
+
+Vervang voor PostgreSQL, MySQL en MariaDB de gebruiker en het wachtwoord. Relatieve SQLite-paden
+worden opgelost ten opzichte van de projectmap, niet van de map waarin je het commando draait.
+
+Elk commando laadt de `.env` naast `verdin.toml`; variabelen die al in de omgeving zijn ingesteld,
+winnen. Op Linux en macOS wordt het bestand aangemaakt als alleen leesbaar voor de eigenaar. Stel
+deze variabelen in productie in de secret store van je platform in, in plaats van een `.env`-bestand
+mee te leveren. De [Quickstart](/nl/start/quickstart/#2-geheimen) legt de twee geheimen uit.
+
+### `schema/`
+
+Het contentmodel, in het schemaformaat van Strapi:
+
+- `schema/content-types/<singularName>.json`, één bestand per collectie- of enkel type.
+- `schema/components/<category>/<name>.json`, één bestand per component; de uid van de component
+  is `<category>.<name>`.
+
+De contenttype-bouwer schrijft deze bestanden in `verdin dev`, en je kunt ze met de hand
+bewerken: `verdin dev` herlaadt als ze veranderen. Het schema van de voorbeeldblog ziet er zo uit:
+
+<FileTree>
+- schema/
+  - content-types/
+    - article.json
+    - category.json
+    - homepage.json enkel type
+    - tag.json
+  - components/
+    - blocks/
+      - hero.json `blocks.hero`
+      - quote.json `blocks.quote`
+    - shared/
+      - seo.json `shared.seo`
+</FileTree>
+
+De bestanden zijn de bron van waarheid: Verdin leidt er de databasetabellen, validatie, de REST- en
+GraphQL-API's, het OpenAPI-document, de TypeScript-types en de formulieren van het beheerpaneel uit
+af. Zie [Contentmodel](/nl/concepts/content-model/) en
+[Schemamigraties](/nl/concepts/schema-migrations/). De schemamap is `[schema].path` in
+`verdin.toml`, standaard `schema`.
+
+## Wat er verschijnt als Verdin draait
+
+<FileTree>
+- my-site/
+  - verdin.toml
+  - .env
+  - schema/
+  - data/
+    - verdin.db SQLite-database, met zijn bestanden `-wal` en `-shm`
+    - search/ full-text-index, als `[search].enabled` aan staat
+  - public/
+    - uploads/ bestanden van de mediabibliotheek, geserveerd op `/uploads`
+  - .cache/
+    - transforms/ geschaalde afbeeldingen, op verzoek opnieuw opgebouwd
+  - plugins/ WebAssembly-plugins, elk in een eigen map (jij maakt hem aan)
+  - strapi-id-map.json geschreven door `verdin import strapi`
+</FileTree>
+
+| Pad | Geschreven door | Instelling |
+| --- | --- | --- |
+| `data/verdin.db` | De server, met SQLite | `VERDIN_DATABASE_URL` |
+| `public/uploads/` | Uploads met de lokale provider (de standaard) | `[upload].provider` |
+| `.cache/transforms/` | Afbeeldingstransformaties die op `/uploads` worden aangevraagd | `[upload.transforms].cache_dir` |
+| `data/search/` | De full-text-index | `[search].dir` |
+| `plugins/` | Jij: elke plugin in een eigen map | `[plugins].path` |
+| `strapi-id-map.json` | `verdin import strapi`: Strapi-id's gekoppeld aan Verdin-id's | — |
+
+Met PostgreSQL, MySQL of MariaDB is er geen `data/verdin.db`: de content staat op de
+databaseserver. Met de S3-provider staan mediabestanden in de bucket en blijft `public/uploads`
+leeg.
+
+## Wat er in git hoort
+
+| Committen | Buiten git houden |
+| --- | --- |
+| `verdin.toml` | `.env` (geheimen) |
+| `schema/` (contenttypes en componenten) | `data/` (SQLite-database, zoekindex) |
+| `plugins/`, als je plugins gebruikt | `public/uploads/` (media) |
+| `.gitignore` | `.cache/` |
+
+De gegenereerde `.gitignore` dekt ze allemaal:
+
+```sh title=".gitignore"
+.env
+data/
+*.db
+*.db-*
+.cache/
+# Local media library ([upload.provider] dir).
+public/uploads/
+```
+
+Projecten die vóór 0.10 zijn aangemaakt, missen de regel `public/uploads/`: voeg hem toe.
+
+<Aside>
+Content en media zijn gegevens, geen code. Maak er back-ups van met `verdin export` of de eigen
+tools van je database in plaats van ze te committen; zie [Back-ups](/nl/deploy/backups/).
+</Aside>
+
+Commit het schema samen met de code die ervan afhangt, zoals de gegenereerde types van je
+frontend. Deploy in productie het gecommitte schema en draai `verdin start --migrate`: de
+contenttype-bouwer staat buiten `verdin dev` uit, dus het schema verandert alleen via je
+repository.

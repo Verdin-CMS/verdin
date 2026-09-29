@@ -1,0 +1,331 @@
+---
+title: "Tutorial: dein erstes Plugin"
+description: Bau in Rust ein Verdin-Plugin, das die Lesezeit eines Artikels ausfüllt, Veröffentlichungen protokolliert und eine kleine API-Route bereitstellt.
+sidebar:
+  order: 2
+  label: Plugin-Tutorial
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+In diesem Tutorial baust du **reading-time**, ein Plugin für das Blog-Beispiel. Es:
+
+- füllt das Feld `readingTime` eines Artikels aus seinem `body`, sobald der Text geschrieben
+  wird (ein Before-Hook);
+- schreibt eine Zeile in sein Log, wenn ein Artikel veröffentlicht wird (ein After-Hook);
+- stellt `GET /api/plugins/reading-time/stats` mit der durchschnittlichen Lesezeit bereit
+  (eine Route, die Inhalte liest);
+- hat eine Einstellung **Words per minute**.
+
+Das dauert etwa 20 Minuten. Was Plugins sind und wie die Sandbox funktioniert, liest du vorher
+unter [Plugins](/de/extending/plugins/).
+
+## Bevor du anfängst
+
+Du brauchst:
+
+- Ein Verdin-Projekt mit dem Schema des Blog-Beispiels: Kopiere
+  [`examples/blog/schema`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog/schema)
+  in ein Projekt, das du mit `verdin new` angelegt hast, oder starte das Beispiel selbst. Das
+  Plugin nutzt die Attribute `body` (`richtext`) und `readingTime` (`integer`) des Typs
+  `article`.
+- Rust mit dem WebAssembly-Target:
+
+  ```sh title="Terminal"
+  rustup target add wasm32-unknown-unknown
+  ```
+
+Plugins lassen sich in jeder Sprache mit einem [Extism PDK](https://extism.org/docs/concepts/pdk)
+schreiben (JavaScript, Go, Zig, C und andere). Dieses Tutorial nutzt Rust und `extism-pdk`.
+
+## Das Crate anlegen
+
+<Steps>
+
+1. Leg außerhalb deines Verdin-Projekts ein Library-Crate an:
+
+   ```sh title="Terminal"
+   cargo new --lib reading-time
+   cd reading-time
+   ```
+
+2. Ersetze `Cargo.toml`. Ein Plugin ist ein `cdylib`; das Release-Profil hält das Modul klein.
+
+   ```toml title="Cargo.toml"
+   [package]
+   name = "reading-time"
+   version = "0.1.0"
+   edition = "2024"
+   publish = false
+
+   [lib]
+   crate-type = ["cdylib"]
+
+   [dependencies]
+   extism-pdk = "1.4.1"
+   serde_json = "1"
+
+   [profile.release]
+   opt-level = "s"
+   lto = true
+   strip = true
+   ```
+
+</Steps>
+
+## Die Funktionen schreiben
+
+Jede Funktion, die das Plugin exportiert, nimmt JSON und gibt JSON zurück. Verdin ruft sie für
+die Hooks, Routen und Jobs auf, die das Manifest nennt; die Funktionen rufen Verdin über
+Host-Funktionen zurück (`verdin_log`, `verdin_content`, `verdin_config`…).
+
+Ersetze `src/lib.rs`:
+
+```rust title="src/lib.rs"
+use extism_pdk::*;
+use serde_json::{Value, json};
+
+// Host functions Verdin provides (namespace `extism:host/user`).
+#[host_fn]
+extern "ExtismHost" {
+    fn verdin_log(input: Json<Value>);
+    fn verdin_content(input: Json<Value>) -> Json<Value>;
+    fn verdin_config() -> Json<Value>;
+}
+
+/// Minutes needed to read `text` at `per_minute` words a minute (at least 1).
+fn minutes(text: &str, per_minute: u64) -> u64 {
+    let words = text.split_whitespace().count() as u64;
+    words.div_ceil(per_minute.max(1)).max(1)
+}
+
+/// `beforeCreate` and `beforeUpdate` on articles: fills `readingTime` from `body`.
+#[plugin_fn]
+pub fn set_reading_time(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    // An update may leave the body out: then there is nothing to recompute.
+    let Some(body) = data["body"].as_str() else {
+        return Ok(Json(json!({})));
+    };
+    let config = unsafe { verdin_config()? }.0;
+    let per_minute = config["wordsPerMinute"].as_u64().unwrap_or(200);
+    data["readingTime"] = json!(minutes(body, per_minute));
+    Ok(Json(json!({ "data": data })))
+}
+
+/// `afterPublish` on articles: writes a line to the plugin's log.
+#[plugin_fn]
+pub fn log_publish(Json(input): Json<Value>) -> FnResult<()> {
+    let message = format!("published {}", input["documentId"].as_str().unwrap_or("?"));
+    unsafe { verdin_log(Json(json!({ "level": "info", "message": message })))? };
+    Ok(())
+}
+
+/// `GET /api/plugins/reading-time/stats`: the average reading time of published articles.
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    if request["method"] != "GET" || request["path"] != "/stats" {
+        return Ok(Json(json!({ "status": 404, "body": { "error": "not found" } })));
+    }
+    let found = unsafe {
+        verdin_content(Json(json!({
+            "op": "findMany",
+            "uid": "api::article",
+            "query": { "fields": ["readingTime"], "pagination": { "pageSize": 100 } }
+        })))?
+    }
+    .0;
+    if let Some(error) = found.get("error") {
+        return Ok(Json(json!({ "status": 500, "body": { "error": error } })));
+    }
+    let times: Vec<u64> = found["documents"]
+        .as_array()
+        .map(|documents| documents.iter().filter_map(|d| d["readingTime"].as_u64()).collect())
+        .unwrap_or_default();
+    let average = if times.is_empty() { 0.0 } else { times.iter().sum::<u64>() as f64 / times.len() as f64 };
+    Ok(Json(json!({
+        "status": 200,
+        "headers": { "cache-control": "max-age=60" },
+        "body": { "articles": times.len(), "averageMinutes": average }
+    })))
+}
+```
+
+Was jede Funktion zurückgibt:
+
+- **`set_reading_time`** ist ein Before-Hook. `{ "data": … }` ersetzt die Daten, die geschrieben
+  werden; `{}` lässt sie, wie sie sind. Sie könnte auch `{ "error": "…" }` zurückgeben, um den
+  Schreibvorgang mit einem 400 abzulehnen.
+- **`log_publish`** ist ein After-Hook: Seine Ausgabe wird ignoriert.
+- **`handle`** bedient jede Anfrage unter `/api/plugins/reading-time/`. Sie bekommt den Pfad
+  nach diesem Präfix und antwortet mit `{ status, headers, body }`.
+
+## Das Modul bauen
+
+```sh title="Terminal"
+cargo build --release --target wasm32-unknown-unknown
+```
+
+Das Modul ist `target/wasm32-unknown-unknown/release/reading_time.wasm` (Cargo macht aus dem
+Bindestrich einen Unterstrich), etwa 120 KB groß.
+
+## Das Manifest schreiben
+
+<Steps>
+
+1. Leg in deinem Verdin-Projekt `plugins/reading-time/` an und kopiere das Modul als
+   `plugin.wasm` hinein:
+
+   ```sh title="Terminal"
+   mkdir -p plugins/reading-time
+   cp ../reading-time/target/wasm32-unknown-unknown/release/reading_time.wasm plugins/reading-time/plugin.wasm
+   ```
+
+2. Leg daneben das Manifest an. Es benennt das Plugin, fordert an, was die Funktionen brauchen,
+   und verbindet sie mit Hooks und Routen:
+
+   ```toml title="plugins/reading-time/plugin.toml"
+   name = "reading-time"
+   version = "0.1.0"
+   description = "Fills an article's reading time from its body"
+
+   [capabilities]
+   read = ["api::article"]           # for the stats route
+
+   [[hooks]]
+   on = "beforeCreate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "beforeUpdate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "afterPublish"
+   uid = "api::article"
+   function = "log_publish"
+
+   [routes]
+   function = "handle"               # serves /api/plugins/reading-time/…
+
+   [[settings]]
+   key = "wordsPerMinute"
+   label = "Words per minute"
+   type = "integer"
+   min = 50
+   max = 1000
+   default = 200
+   ```
+
+   Die Hooks brauchen keine Fähigkeit: Sie ändern die Daten, die sie bekommen. Nur der Aufruf
+   von `verdin_content` in der Route liest Inhalte, das Plugin fordert also `read` auf Artikeln
+   an und sonst nichts.
+
+</Steps>
+
+Das Projekt sieht jetzt so aus:
+
+<FileTree>
+- verdin.toml
+- .env
+- plugins/
+  - reading-time/
+    - plugin.toml
+    - plugin.wasm
+- schema/
+  - content-types/
+    - article.json
+    - …
+</FileTree>
+
+## Einschalten
+
+<Steps>
+
+1. Starte den Server (oder starte ihn neu):
+
+   ```sh title="Terminal"
+   verdin dev
+   ```
+
+   Das Log zeigt `plugin found plugin=reading-time version=0.1.0`.
+
+2. Öffne das Admin-Panel, dann **Einstellungen → Plugins**. Die Karte **reading-time** listet
+   ihren Zugriff (liest Artikel), ihre Hooks und ihre Route. Schalte sie ein.
+
+3. Öffne **Einstellungen** auf der Karte: Das Formular zeigt **Words per minute** mit dem
+   Standardwert 200. Werte außerhalb von 50 bis 1.000 werden abgelehnt. Lass den Wert, wie er
+   ist.
+
+</Steps>
+
+## Ausprobieren
+
+<Steps>
+
+1. Leg einen Artikel mit einem Text von ein paar hundert Wörtern an, im Admin-Panel oder über
+   die API mit einem API-Token:
+
+   ```sh title="Terminal"
+   curl -X POST http://localhost:1337/api/articles \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "data": { "title": "Hello plugins", "slug": "hello-plugins", "body": "…450 words…" } }'
+   ```
+
+   Die Antwort enthält `"readingTime": 3`: 450 Wörter bei 200 Wörtern pro Minute, aufgerundet.
+   Du hast den Wert nicht geschickt; der Hook hat ihn ausgefüllt.
+
+2. Ändere nur den Titel. `readingTime` bleibt: Die Daten des Updates enthalten kein `body`, also
+   gibt der Hook `{}` zurück. Ändere den Text, und der Wert wird neu berechnet.
+
+3. Veröffentliche den Artikel und öffne dann **Protokolle** auf der Karte des Plugins: Dort
+   steht `published <documentId>`. (Über die API veröffentlicht ein Create ohne
+   `?status=draft` sofort, die Zeile ist also schon da.)
+
+4. Ruf die Route auf:
+
+   ```sh title="Terminal"
+   curl -i http://localhost:1337/api/plugins/reading-time/stats
+   ```
+
+   ```text
+   HTTP/1.1 200 OK
+   content-type: application/json
+   cache-control: max-age=60
+
+   {"articles":1,"averageMinutes":3.0}
+   ```
+
+   Sie zählt veröffentlichte Artikel: `verdin_content` liest veröffentlichte Versionen, sofern
+   die Abfrage nicht `status: "draft"` verlangt.
+
+</Steps>
+
+<Aside type="caution">
+Die Route antwortet jedem: **Öffentlicher Zugriff** gilt nicht für Plugin-Routen. Hier liefert
+sie nur einen Durchschnitt, aber eine Route, die Inhalte zurückgibt oder ändert, muss
+`request.actor` (`{ "kind": "public" }`, `{ "kind": "token", "id": … }` oder
+`{ "kind": "user", "id": … }`) selbst prüfen.
+</Aside>
+
+## Ändern
+
+- Bearbeite den Code, führe `cargo build --release --target wasm32-unknown-unknown` erneut aus,
+  kopiere das Modul und starte Verdin neu. Schalter und Einstellungen bleiben erhalten.
+- Auch Änderungen an `plugin.toml` brauchen einen Neustart. Änderungen an den Einstellungen
+  gelten sofort.
+- Schlägt ein Aufruf fehl, steht der Fehler im Server-Log und unter **Protokolle**. Ein Panic
+  oder ein Timeout lässt nur diesen Aufruf scheitern; bei einem Before-Hook läuft der
+  Schreibvorgang ohne die Änderung des Plugins weiter.
+
+## Nächste Schritte
+
+- Füge einen [geplanten Job, ein GraphQL-Feld oder ein Admin-Widget](/de/extending/plugin-reference/)
+  hinzu.
+- Speichere Zustand zwischen Aufrufen mit der Fähigkeit `kv` und `verdin_kv_get` /
+  `verdin_kv_set`.
+- Das Test-Plugin des Repositorys,
+  [`crates/verdin-plugins/tests/fixtures/sample`](https://github.com/Verdin-CMS/verdin/tree/main/crates/verdin-plugins/tests/fixtures/sample),
+  nutzt jede Host-Funktion.

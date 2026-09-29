@@ -1,0 +1,127 @@
+---
+title: Edició visual
+description: Permet que els editors facin clic en un text de la teva pàgina de previsualització i arribin al camp que el conté al tauler d'administració.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+L'edició visual converteix la teva pàgina de previsualització en un mapa del tauler
+d'administració: un editor passa el ratolí per sobre d'un títol, fa clic a **Edit** i l'entrada
+s'obre amb aquell camp seleccionat. Es basa en la [previsualització](/ca/guides/content/preview/):
+configura primer els URL de previsualització i després afegeix a la pàgina de previsualització les
+dues peces de més avall.
+
+Verdin amaga un petit mapa de codi font invisible a cada text que retorna (una tècnica coneguda com
+a *stega*), i un script de superposició troba aquests textos a la pàgina. No canvia res als teus
+components: el text marcat es mostra com qualsevol altre.
+
+<Diagram code={`flowchart LR
+  A[Pàgina de previsualització] -- "x-verdin-stega: true" --> B[API de contingut]
+  B -- "text + mapa de codi font invisible" --> A
+  A -- "visual-editing.js: clic a Edit" --> C[Camp al tauler d'administració]`} caption="La pàgina demana mapes de codi font, i la superposició els converteix en enllaços als camps." />
+
+## Configura-ho
+
+<Steps>
+
+1. Activa **Previsualització** a **Configuració → Funcionalitats**, tria **Configura els URL de
+   previsualització** i dona a cada tipus de contingut l'URL de la pàgina que el mostra. La secció
+   **Edició visual** del mateix diàleg mostra l'etiqueta script i la capçalera per al teu servidor.
+   Consulta [Previsualització](/ca/guides/content/preview/).
+
+2. A la pàgina de previsualització, obtén el contingut amb un token i la capçalera
+   `x-verdin-stega: true`. El token és el token de previsualització de l'URL de previsualització
+   (`?preview=…`, reenviat com a `x-verdin-preview`) o un token d'API:
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. Carrega la superposició a la mateixa pàgina:
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   El camí segueix [`[admin].path`](/ca/reference/configuration/): `{path}/api/visual-editing.js`.
+
+</Steps>
+
+Amb el [client tipat](/ca/guides/frontend/typed-client/), passa totes dues capçaleres a `headers`:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+Els mapes de codi font només s'afegeixen a les respostes REST, no a GraphQL: llegeix el contingut
+de previsualització a través de l'API REST.
+
+Passa el ratolí per sobre d'un text marcat de la pàgina: rep un contorn verd i un botó **Edit**.
+Dins de la previsualització costat a costat de l'administració (**Obre la previsualització** →
+**Costat a costat**), el botó demana a l'administració que obri el camp allà mateix. Quan la pàgina
+està oberta sola, el botó obre l'entrada en una pestanya nova.
+
+<Aside type="note">
+Els mapes de codi font només s'afegeixen a les peticions `GET` que envien `x-verdin-stega: true`
+**i** un token (`Authorization` o `x-verdin-preview`). El trànsit públic i tot el que desa la teva
+CDN a la memòria cau mai no els porten, i les respostes marcades s'envien amb
+`Cache-Control: private, no-store`.
+</Aside>
+
+## Què es marca
+
+| Es marca | No es marca |
+| --- | --- |
+| Els atributs `string`, `text` i `richtext` | `uid`, `email`, `password`, `enumeration` |
+| El primer text de cada bloc d'un atribut `blocks` | Nombres, booleans, dates, JSON |
+| El mateix dins de components i zones dinàmiques (`seo.metaTitle`, `blocks.2.title`) | Cadenes buides |
+| Les relacions poblades, que apunten a l'entrada relacionada | Camps de multimèdia |
+
+La superposició també llegeix les marques dels atributs `alt` i `title`, de manera que un text
+marcat que posis en un d'aquests (un camp de llegenda fet servir com a `alt`, per exemple) continua
+sent clicable.
+
+## Elimina les marques on el text són dades
+
+Les marques són caràcters invisibles afegits al final del text. On facis servir un valor com a
+dada en lloc de mostrar-lo (una clau, un URL, una comparació, una comprovació de la longitud d'un
+`<title>`), elimina-les primer:
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+Els camps que per naturalesa són dades, com els slugs `uid` i les enumeracions, mai no es marquen,
+de manera que l'encaminament per `slug` funciona tal qual.
+
+## Com es codifica una marca
+
+Per a les eines que llegeixen les marques elles mateixes: una marca és U+2064, després cada byte
+UTF-8 de
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+com a quatre dígits en base 4 (el més significatiu primer) escrits amb U+200B, U+200C, U+200D i
+U+2060, i després U+2063. L'URL de l'administració surt de
+[`[server].public_url`](/ca/reference/configuration/) i `[admin].path`. La superposició envia
+`{ type: 'verdin:edit', href }` a la finestra pare amb `postMessage`; l'administració només hi
+actua quan prové de l'origen de l'URL de previsualització.

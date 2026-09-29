@@ -1,0 +1,137 @@
+---
+title: 内容本地化
+description: 添加语言区域、把内容类型设为本地化、在管理后台中翻译条目，以及通过 API 读写各个语言区域。
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+本地化内容类型为每个条目的每个语言区域保留一个版本。本指南介绍如何添加你要发布的语言区域、为某个类型开启本地化、在管理后台中翻译条目，以及通过 API 读写各个语言区域。其背后的模型（共享字段、本地化类型之间的关联）请参见[国际化](/zh-cn/concepts/internationalization/)。
+
+本地化是核心的一部分：没有需要开启的功能。它的工作方式与 Strapi v5 的 i18n 插件相同，并接受同样的 `locale` 参数。
+
+## 开始之前
+
+- 添加、重命名或删除语言区域需要 **管理语言**（`locales.manage`）。
+- 要把某个类型设为本地化，需要在 **内容类型构建器**（`verdin dev`）中或在 `schema/content-types/<name>.json` 中编辑其 schema。
+- 编辑所需的内容权限请参见[权限](/zh-cn/reference/permissions/)。
+
+## 添加语言区域
+
+首次启动时会创建英语（`en`）作为默认语言区域。未指定语言区域的请求会使用默认语言区域，新条目也从它开始。
+
+<Steps>
+
+1. 打开 **设置 → 国际化**，选择 **添加语言**。
+2. 输入 **代码**：小写的语言代码，可以带地区或书写系统，例如 `fr`、`pt-BR` 或 `zh-Hans`。名称会自动填写，也可以修改。
+3. 如果不带语言区域的请求应当使用它，请勾选 **设为默认语言**，然后保存。
+
+</Steps>
+
+之后如需更改默认语言区域，请在另一个语言区域上选择 **设为默认**。默认语言区域不能被删除。
+
+<Aside type="caution" title="删除语言区域会删除其条目">
+删除一个语言区域会永久删除以该语言区域写入的所有条目，涵盖所有内容类型，包括已发布版本。对话框会要求你输入语言区域代码以确认。
+</Aside>
+
+## 把内容类型设为本地化
+
+在 **内容类型构建器** 中打开该类型，并在其设置中开启 **本地化**。然后逐个字段决定哪些值因语言区域而异：关闭了 **本地化** 的字段保存一个由所有语言区域共享的值。
+
+在 schema 文件中实现同样的设置，以示例项目的 `article` 类型为例：
+
+```json title="schema/content-types/article.json" {6,9}
+{
+  "kind": "collectionType",
+  "singularName": "article",
+  "pluralName": "articles",
+  "displayName": "Article",
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "title": { "type": "string", "required": true },
+    "readingTime": { "type": "integer", "pluginOptions": { "i18n": { "localized": false } } }
+  }
+}
+```
+
+共享字段的行为：
+
+- 在某个语言区域中保存共享字段，会把它写入所有语言区域的草稿。
+- 发布某个语言区域时，会把它的共享字段复制到其他语言区域的已发布版本。
+- 关联和媒体字段也可以共享。
+
+没有 `pluginOptions.i18n.localized` 的类型不是本地化类型，会忽略 `locale` 参数。修改类型的本地化设置属于 schema 变更：部署之前请用 `verdin migrate plan` 检查迁移。
+
+## 在管理后台中翻译条目
+
+<Steps>
+
+1. 打开条目，在编辑器顶部的 **语言** 切换器中选择目标语言。还没有版本的语言区域会显示 **尚未创建**。
+2. 编辑器会提示该条目在此语言区域中还没有版本，保存后即会创建。共享字段已经显示其值。
+3. 要从已有的译文开始，请在该提示中选择 **从其他语言填充**。在 **复制自** 中选择来源，然后选择 **复制字段**。它会把本地化字段（包括关联和媒体）复制到表单中。此时还没有保存任何内容。
+4. 编辑字段，然后选择 **保存草稿** 或 **发布**。每个语言区域都有自己的草稿和已发布版本。
+
+</Steps>
+
+列表视图中也有同样的 **语言** 切换器：它每次列出一个语言区域中的版本。在编辑器中删除只会移除当前语言区域的版本；其他语言区域会保留。
+
+开启 **AI 操作** 功能后，编辑器还可以根据另一个语言区域的草稿翻译文本字段。参见 [AI 操作](/zh-cn/guides/integrations/ai-actions/)。
+
+## 把编辑限定于部分语言区域
+
+角色的内容权限可以只涵盖部分语言区域。在 **设置 → 角色** 中打开该角色，找到内容类型并选择 **语言**。选择 **仅这些语言** 并勾选它们。拥有该角色的管理员无法读取或修改其他语言区域中的版本；**语言** 切换器会把这些语言区域显示为 “（无权访问）”。
+
+## 通过 API 读写语言区域
+
+在任何 REST 请求中加上 `locale`，或者在 GraphQL 中将其作为参数传入。不传时使用默认语言区域。未知的语言区域会返回 `400` 错误。
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+# 读取法语版本
+curl 'http://localhost:1337/api/articles?locale=fr'
+
+# 创建或更新文档的法语版本
+curl -X PUT 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"data":{"title":"Bonjour"}}'
+
+# 只删除法语版本
+curl -X DELETE 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(locale: "fr") {
+    documentId
+    title
+    locale
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ locale: 'fr' });
+```
+
+</TabItem>
+</Tabs>
+
+预期行为：
+
+- 当文档还没有某个语言区域的版本时，带 `locale` 的 `PUT` 会创建该版本。
+- 本地化类型的响应包含 `locale`。所有版本共享同一个 `documentId`。
+- `DELETE` 只删除所请求语言区域的版本（未指定时为默认语言区域）。当文档不再有任何语言区域时，指向它的链接才会被删除。
+- 当本地化类型链接到另一个本地化类型时，读取会在同一语言区域中解析目标，通过关联的过滤也是如此。非本地化的目标由所有语言区域共享。
+- webhook 负载和历史版本都会记录语言区域。
+
+与 Strapi 不同，内容 API 没有 `/api/i18n/locales` 路由。语言区域在管理 API 的 `GET /admin/api/i18n/locales` 中列出，并通过 `POST`、`PUT /admin/api/i18n/locales/{code}` 和 `DELETE /admin/api/i18n/locales/{code}` 管理（`locales.manage`）。

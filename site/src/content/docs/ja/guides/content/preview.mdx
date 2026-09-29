@@ -1,0 +1,135 @@
+---
+title: プレビュー
+description: 有効期間の短いプレビュートークンを使ってエントリーエディターからサイト上で下書きを開き、サイトがそのトークンで下書きを読めるようにします。
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+プレビューは、公開前のエントリーの下書きを、あなた自身のサイトで開きます。エディターは、コンテンツタイプごとの URL テンプレートからリンクを組み立て、サイトがその 1 件の下書きを読めるようにする有効期間の短いトークンを付けます。このガイドでは、テンプレートとサイト側を設定します。
+
+プレビュー上のテキストをクリックしてそのフィールドに移動するには、これに加えて[ビジュアル編集](/ja/guides/frontend/visual-editing/)を追加してください。
+
+## 始める前に
+
+- **設定 → 機能 → プレビュー**をオンにします。デフォルトではオフです。
+- 機能の設定を変更するには**機能の管理**（`features.manage`）が必要です。
+- プレビューを開くには、エントリーへの読み取り権限が必要です。[権限](/ja/reference/permissions/)を参照してください。
+
+## プレビューの URL を設定する
+
+<Steps>
+
+1. **設定 → 機能**の**プレビュー**のカードで、**プレビューURLを設定**を選びます。
+2. **URLテンプレート**に、各コンテンツタイプの下書きを表示するサイトのページを入力します。プレビューを持たせない型は空のままにします。
+3. 必要なら、<strong>リンクの有効期間（分）</strong>を変更します。デフォルトは 60、最大は 10080（7 日）です。
+4. 保存します。
+
+</Steps>
+
+テンプレートは、波かっこのプレースホルダーを含む `http` または `https` の URL です。
+
+| プレースホルダー | 入る値 |
+| --- | --- |
+| `{slug}`、`{title}`、`{locale}` など | 下書きの任意のトップレベルのフィールド。不明なプレースホルダーは空になります。 |
+| `{documentId}`、`{uid}` | ドキュメント ID とコンテンツタイプの UID。 |
+| `{token}` | プレビュートークン。このプレースホルダーがない場合、トークンはクエリパラメーター `preview` として追加されます。 |
+
+サンプルプロジェクトの記事の場合:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+これは `https://example.com/blog/hello-world?locale=en&preview=<token>` になります。
+
+機能が保存する形式（`PUT /admin/api/features/preview`）で、同じ設定を JSON で表すと次のようになります。
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## プレビューを開く
+
+エントリーエディターで**プレビューを開く**を選ぶと、サイト上の下書きが新しいタブで開きます。**左右に並べて表示**を選ぶと、フォームの隣のパネルに、**デスクトップ**、**タブレット**、**モバイル**の幅で表示されます。横のパネルは保存のたびに再読み込みされます。空白のままの場合は、サイトがフレームへの埋め込みを拒否している可能性が高いので、**新しいタブで開く**を使ってください。
+
+## サイトで下書きを読む
+
+プレビューページは URL からトークンを取り出し、`x-verdin-preview` ヘッダーに入れてコンテンツ API に送り返し、下書きを要求します。
+
+<Diagram
+  caption="プレビューのリクエスト"
+  code={`sequenceDiagram
+  participant E as エディター
+  participant V as Verdin
+  participant S as あなたのサイト
+  E->>V: プレビューを開く
+  V-->>E: プレビュートークン付きの URL
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: 下書き`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+プレビュートークンを読むのは REST のコンテンツ API です。プレビューページでは、REST で下書きを取得してください。
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+同じヘッダーはシングルタイプでも使えます（`GET /api/<singularName>?status=draft`）。
+
+トークンが許可すること:
+
+- トークンの持ち主は、期限が切れるまで、その 1 件のドキュメントを下書きを含めて読めます。
+- 他のドキュメントの読み取り、エントリーの一覧、書き込みはできません。
+- プレビューのリクエストへのレスポンスがキャッシュされることはありません。
+
+<Aside type="caution">
+リンクを持つ人は誰でも、トークンの期限が切れるまで下書きを読めます。有効期間は短くし、プレビューのリンクを公開の場所で共有しないでください。
+</Aside>
+
+プレビューページは通常、`slug` のようなフィールドでエントリーを探します。トークンは `documentId` で読むので、テンプレートにも `{documentId}` を入れるか、スラッグから ID への変換をサイト側で行ってください。
+
+## Admin API
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` は、エディターのボタン用のリンクを返します。
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+エントリーへの読み取り権限が必要で、機能がオフの場合や型にテンプレートがない場合は `404` を返します。

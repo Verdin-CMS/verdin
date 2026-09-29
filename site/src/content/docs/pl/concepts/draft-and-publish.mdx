@@ -1,0 +1,133 @@
+---
+title: "Szkice i publikacja"
+description: "Dokumenty, ich szkice i opublikowane wersje, stany, przez które przechodzi wpis, oraz jak każde API je odczytuje i zapisuje."
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Szkice i publikacja pozwalają redaktorom pracować nad dokumentem bez zmieniania tego, co
+pokazuje twoja witryna, i opublikować go, gdy będzie gotowy. Ta strona wyjaśnia model:
+dokumenty, wersje, akcje przenoszące treść między nimi i to, jak traktuje je każde API.
+Działa to tak jak w Strapi v5.
+
+Włącz to dla danego typu zawartości w jego schemacie:
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+Gdy brakuje `options.draftAndPublish`, funkcja jest wyłączona.
+
+## Dokumenty i wersje
+
+**Dokument** to jeden wpis, identyfikowany przez `documentId`. Ze szkicami i publikacją
+dokument ma do dwóch **wersji**:
+
+- **szkic**, który zmienia każda edycja, oraz
+- wersję **opublikowaną**, którą API treści serwuje domyślnie.
+
+W typie [lokalizowanym](/pl/concepts/internationalization/) każdy język ma własny szkic
+i własną opublikowaną wersję, a wszystkie mają wspólny `documentId`.
+
+Typy bez szkiców i publikacji mają jedną wersję na język, zawsze opublikowaną: każdy zapis
+zmienia to, co widzą czytelnicy.
+
+## Stany
+
+Panel administracyjny pokazuje stan każdego wpisu na liście i w edytorze:
+
+| Stan | Szkic | Opublikowana wersja | Co widzą czytelnicy opublikowanej treści |
+| --- | --- | --- | --- |
+| **Szkic** | tak | brak | Nic: dokument nie jest widoczny. |
+| **Opublikowany** | taki sam jak opublikowana | tak | Opublikowaną wersję. |
+| **Zmodyfikowany** | zmieniony od ostatniej publikacji | tak | Opublikowaną wersję, bez nowych zmian. |
+
+<Diagram
+  caption="Stany dokumentu ze szkicami i publikacją oraz akcje między nimi"
+  code={`stateDiagram-v2
+    [*] --> Draft: utwórz
+    Draft --> Published: opublikuj
+    Published --> Modified: zapisz
+    Modified --> Published: opublikuj lub odrzuć zmiany
+    Published --> Draft: cofnij publikację
+    Modified --> Draft: cofnij publikację`}
+/>
+
+Akcje przenoszą dokument między tymi stanami:
+
+| Akcja | Efekt | Z → do |
+| --- | --- | --- |
+| Zapisz | Zapisuje szkic. | Szkic → Szkic, Opublikowany → Zmodyfikowany |
+| **Opublikuj** | Kopiuje szkic do opublikowanej wersji, tworząc ją w razie potrzeby. | Szkic lub Zmodyfikowany → Opublikowany |
+| **Cofnij publikację** | Usuwa opublikowaną wersję; szkic zostaje. | Opublikowany lub Zmodyfikowany → Szkic |
+| **Odrzuć zmiany** | Zastępuje szkic kopią opublikowanej wersji. | Zmodyfikowany → Opublikowany |
+| Usuń | Usuwa wszystkie wersje (w typach lokalizowanych wersje w żądanym języku). | dowolny → brak |
+
+Publikacja odbywa się w jednej transakcji. Sprawdza na szkicu pola `required` i
+[reguły między polami](/pl/concepts/content-model/#walidacje-między-polami) typu; nieudane
+sprawdzenie niczego nie publikuje. Do tego momentu szkice mogą być niekompletne i łamać te
+reguły.
+
+`publishedAt` w szkicach wynosi `null`. Opublikowana wersja zawiera czas ostatniej
+publikacji.
+
+## Relacje i multimedia podążają za wersją
+
+Każda wersja ma własne powiązania relacji i multimediów, a publikacja kopiuje powiązania
+szkicu do opublikowanej wersji. Powiązania wskazują dokumenty i są rozwiązywane
+w odczytywanej wersji: opublikowany artykuł pokazuje opublikowaną wersję swojej kategorii,
+a szkic pokazuje szkic kategorii. Jeśli publikacja kategorii zostanie cofnięta, zniknie ona
+z opublikowanego artykułu do czasu ponownej publikacji, bez przepisywania żadnego powiązania.
+Zobacz [Relacje](/pl/concepts/relations/#powiązanie-przez-dokument-nie-przez-wiersz).
+
+Komponenty i strefy dynamiczne są częścią wiersza, więc publikacja kopiuje je bez zmian.
+
+## Odczyt szkiców i opublikowanej treści
+
+| API | Domyślnie odczytuje | Aby odczytać szkice |
+| --- | --- | --- |
+| [REST](/pl/api/rest/#status) | Opublikowane wersje | `?status=draft`, co wymaga uprawnienia **Odczyt szkiców** |
+| [GraphQL](/pl/api/graphql/) | Opublikowane wersje | `status: DRAFT`, z tym samym uprawnieniem |
+| [API administracyjne](/pl/api/admin/) | Szkice | `?status=published` |
+
+Odczyt szkiców to osobne uprawnienie (`readDrafts`), aby token czytający treść twojej witryny
+nie mógł czytać nieopublikowanej pracy. Tokeny API tylko do odczytu nigdy nie czytają szkiców.
+
+Aby odróżnić dokumenty według tego, czy kiedykolwiek zostały opublikowane, filtruj przez
+`hasPublishedVersion`: `?status=draft&hasPublishedVersion=false` wymienia dokumenty, które
+nigdy nie zostały opublikowane.
+
+## Zapis przez API
+
+Przy zapisach API działają jak w Strapi v5:
+
+- `create` i `update` w **REST i GraphQL** zapisują szkic **i go publikują**, chyba że żądanie
+  prosi o `status=draft` (`status: DRAFT` w GraphQL). Nieudana publikacja wycofuje całe
+  żądanie.
+- **Panel administracyjny i API administracyjne** zapisują tylko szkice. Publikacja jest
+  zawsze jawną akcją.
+
+API REST ma też jawne akcje, których Strapi nie oferuje przez REST:
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+Wymagają uprawnienia **Opublikuj** na danym typie. Zobacz [API REST](/pl/api/rest/#akcje).
+
+## Inne funkcje, które publikują
+
+- [Wydania](/pl/guides/content/releases/) grupują dokumenty i publikują je albo cofają ich
+  publikację razem, od razu lub w wybranym terminie.
+- [Przepływy recenzji](/pl/guides/content/review-workflows/) mogą wymagać określonego etapu,
+  zanim dokument będzie można opublikować.
+- Publikacja i jej cofnięcie wysyłają [zdarzenia webhooków](/pl/api/webhooks/)
+  `entry.publish` i `entry.unpublish` oraz [zdarzenia czasu rzeczywistego](/pl/api/realtime/).
+  Zapisy szkicu wysyłają `entry.update`, które przez kanał czasu rzeczywistego otrzymują tylko
+  wywołujący uprawnieni do odczytu szkiców.

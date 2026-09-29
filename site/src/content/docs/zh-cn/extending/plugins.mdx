@@ -1,0 +1,105 @@
+---
+title: 插件
+description: Verdin 插件能做什么、WebAssembly 沙箱和能力如何约束它们，以及如何安装和开启插件。
+sidebar:
+  order: 1
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+插件可以在不修改、不重新构建服务器的情况下为 Verdin 添加功能。插件是一个带有清单的 WebAssembly 模块，放在项目的 `plugins/` 目录中即可。本页介绍插件能做什么以及如何安装；如果要编写插件，请参照[插件教程](/zh-cn/extending/plugin-tutorial/)，详细信息请查阅[插件参考](/zh-cn/extending/plugin-reference/)。
+
+## 插件能做什么
+
+| 扩展点 | 用途 |
+| --- | --- |
+| **写入钩子** | 在条目被创建、更新、发布、取消发布、删除或其草稿被丢弃之前，修改数据或以一条消息拒绝写入。写入之后对其做出响应（记录日志、发送通知、同步）。 |
+| **路由** | 在 `/api/plugins/<name>/…` 下提供 HTTP 端点：webhook 接收器、计算生成的 feed、到其他服务的代理。 |
+| **定时任务** | 按 cron 计划（UTC）运行某个函数。 |
+| **GraphQL 字段** | 向 `Query` 或 `Mutation` 添加 `name(args: JSON): JSON` 字段。 |
+| **仪表盘小组件** | 以 Web Components 的形式向管理后台仪表盘添加小组件类型。 |
+| **自定义字段** | 以 Web Components 的形式为属性提供管理后台中的自定义编辑器（颜色选择器、地图）；值以常规属性类型存储。 |
+| **设置** | 声明一个设置表单，由管理员在 **设置 → 插件** 中填写。 |
+
+插件通过与管理后台和 API 相同的 Document Service 读写内容，因此 webhook、历史记录、审核阶段和校验同样适用于插件的写入。
+
+<Aside type="note">
+Verdin 插件不是 Strapi 插件。Strapi 插件是拥有服务器完全访问权限的 Node.js 包；而 Verdin 不在服务器上运行任何 JavaScript。Strapi schema 声明的自定义字段（`customField` 属性）会原样加载，Verdin 插件可以为它们提供编辑器。
+</Aside>
+
+## 沙箱
+
+插件运行在 WebAssembly 沙箱中（[Extism](https://extism.org)，基于 Wasmtime）。模块没有自己的文件、套接字或数据库连接。它在自身内存之外所做的一切都要经过少数几个宿主函数，服务器会对照清单中声明的**能力**检查每一次调用：
+
+| 能力 | 授予 |
+| --- | --- |
+| `read` | 读取所列内容类型（或 `*`）的条目。 |
+| `write` | 创建、更新、发布、取消发布和删除所列类型的条目（也可以读取）。 |
+| `http` | 向所列主机（`api.example.com`、`*.example.com`）发送 HTTP 请求。 |
+| `kv` | 一个属于自己的键值存储，位于 Verdin 的数据库中。 |
+
+<Diagram
+  caption="对插件的调用，以及其宿主调用能够访问的内容"
+  code={`flowchart LR
+    W[写入] -->|钩子| M
+    R["/api/plugins/name/…"] --> M
+    J[定时任务] --> M
+    M[WebAssembly 模块] --> C{能力}
+    C -->|read, write| D[(内容)]
+    C -->|kv| K[(插件存储)]
+    C -->|http| H[所列主机]`}
+/>
+
+每次调用还有限制：时间限制（默认 5 秒）和内存限制（默认 64 MB），在清单中设置。发生 trap 或超时的模块只会让那一次调用失败；Verdin 会在下一次调用时重建它。
+
+沙箱不会替你决定的事项：
+
+- **路由是公开的。** 发往 `/api/plugins/<name>/…` 的请求不会按 **公开访问** 或 API 令牌权限进行检查。插件会收到调用者的身份（任何人、API 令牌或终端用户），并且必须自行检查。
+- **钩子能看到其类型上的所有写入**，与插件的 `read` 能力无关。
+- **失败的 before 钩子不会阻止写入。** 如果模块崩溃或超时，错误会被记录，写入照常进行。只有显式的拒绝才能阻止写入。
+
+## 安装插件
+
+<Steps>
+
+1. 把插件放在 `plugins/` 下它自己的目录中，与 `verdin.toml` 同级。该目录包含清单、模块，以及可选的管理后台文件：
+
+   <FileTree>
+   - verdin.toml
+   - plugins/
+     - reading-time/
+       - plugin.toml
+       - plugin.wasm
+       - admin/ 可选：用于管理后台的 Web Components
+         - index.js
+   - schema/
+   </FileTree>
+
+2. 重启 Verdin。它在启动时加载每个 `plugins/*/plugin.toml`，并为每个插件记录 `plugin found`。加载失败的插件（清单无效、模块缺失、名称重复）会在 **设置 → 插件** 中列出并注明原因。
+
+3. 在管理后台中打开 **设置 → 插件**。在 **访问权限**、**钩子**、**路由** 和 **任务** 下查看插件申请的内容，然后开启它。
+
+4. 如果插件有设置项，打开其卡片上的 **设置**，填写并保存。
+
+</Steps>
+
+已安装的插件初始为关闭状态。开关插件和编辑其设置会立即在每个实例上生效（其他实例会在 `[server].sync_interval_secs` 内获取变更）。修改 `plugin.toml` 或模块需要重启。
+
+管理插件需要 `plugins.manage` 权限（**管理插件**）。参见[权限参考](/zh-cn/reference/permissions/)。
+
+## 配置 `[plugins]`
+
+```toml title="verdin.toml"
+[plugins]
+path = "plugins"   # directory of plugins, relative to verdin.toml
+run_jobs = true    # run scheduled jobs on this instance
+```
+
+有多个实例时，除一个实例外，在其他实例上都设置 `run_jobs = false`，这样每个任务只运行一次。参见[配置参考](/zh-cn/reference/configuration/)。
+
+## 运维
+
+- **同一时间只处理一次调用。** 每个插件只有一个实例，同一时间只处理一次调用，因此慢路由会拖慢该插件的钩子。请让函数保持简短。
+- **日志。** 插件记录的内容会写入服务器日志以及 **设置 → 插件 → 日志**（最近 200 行，保存在内存中）。
+- **部署。** 像 schema 一样，让插件随项目一起发布（放在镜像或卷中）。开关状态和设置保存在数据库中。

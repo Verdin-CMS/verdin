@@ -1,0 +1,113 @@
+---
+title: Denetim kayıtları
+description: Kimin neyi ne zaman değiştirdiğini görün, denetim kayıtlarını yönetim panelinde veya API’de filtreleyin ve girdilerin ne kadar süre tutulacağını ayarlayın.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Denetim kayıtları kimin neyi ne zaman değiştirdiğini kaydeder: içerik, medya, oturum açmalar ve
+yönetim panelinde yapılan her değişiklik. Bu kılavuz nelerin kaydedildiğini, kayıtların nasıl
+filtreleneceğini ve ne kadar süre tutulduklarını gösterir.
+
+Denetim kayıtları Strapi’de bir Enterprise özelliğidir. Verdin’de açık kaynak çekirdeğin
+parçasıdır.
+
+## Başlamadan önce
+
+- **Ayarlar → Özellikler → Denetim kayıtları** varsayılan olarak açıktır. Kapatmak yeni
+  eylemlerin kaydedilmesini durdurur; mevcut girdiler okunabilir kalır.
+- Kayıtları okumak **Denetim kayıtlarını okuma** (`audit.read`) gerektirir. Bkz.
+  [İzinler](/tr/reference/permissions/).
+
+## Neler kaydedilir
+
+| Alan | Eylemler | Notlar |
+| --- | --- | --- |
+| İçerik | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | Her API’den: yönetim paneli, REST, GraphQL ve eklentiler. Dil ayrıntılardadır. |
+| İnceleme iş akışları | `entry.stage`, `entry.assign` | Aşama değişiklikleri ve atamalar. |
+| Medya | `media.create`, `media.update`, `media.delete` | Dosyaların yüklenmesi, değiştirilmesi ve silinmesi. Dosya adı ayrıntılardadır. |
+| Oturum açmalar | `admin.login` | Parola ve ilk admin oturum açmaları (hesabın ikinci faktörü varsa ondan sonra kaydedilir) ve sağlayıcıyla birlikte SSO oturum açmaları. |
+| Admin değişiklikleri | `{METHOD} {route}`, örneğin `PUT /roles/{id}` | Admin API’deki her başarılı yazma: kullanıcılar, roller, API token’ları, ayarlar, özellikler, webhook’lar, diller, eklentiler, sürümler… Rotanın parametreleri ayrıntılardadır. |
+
+Her girdinin bir zamanı, bir yapanı, bir eylemi, bir hedefi (bir içerik tipi uid’si,
+`plugin::upload.file` veya `roles` gibi admin kaynağı), hedefin kimliği, ayrıntıları ve istekler
+için istemcinin IP adresi vardır.
+
+Yapan şunlardan biridir:
+
+- **Yönetici**: günlükte adı geçen, oturum açmış bir admin.
+- **API**: bir API token’ı, bir son kullanıcının token’ı veya herkese açık erişimle içerik API’si
+  ya da GraphQL üzerinden yapılan bir değişiklik.
+- **Sistem**: oturum açmış bir admin olmadan yapılan bir admin API yazması.
+
+Bir reverse proxy arkasında, kayıtların proxy’nin adresi yerine istemcinin adresini göstermesi
+için `[server].trusted_proxies`’i ayarlayın. Bkz.
+[yapılandırma başvurusu](/tr/reference/configuration/).
+
+## Kayıtları filtreleme
+
+<Steps>
+
+1. **Ayarlar → Denetim kayıtları**’nı açın.
+2. Bir **Hızlı filtreler** ön ayarı (**İçerik**, **Medya**, **Girişler**) kullanın ya da
+   filtreleri doldurun:
+   - **Eylem**: `entry.publish` gibi tam bir eylem veya `entry.*` gibi `*` ile biten bir önek.
+   - **Yapan**: bir admin veya **Herkes**.
+   - **Hedef**: `api::article` gibi bir içerik tipi uid’si.
+   - **Başlangıç** ve **Bitiş**: bir tarih aralığı. Saatsiz bir tarih o günün tamamını içerir.
+3. **Uygula**’yı seçin. Bir satır için kaydedilen her şeyi görmek üzere satırdaki
+   **Ayrıntılar**’ı açın.
+
+</Steps>
+
+## API’yi sorgulama
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+Girdiler en yeniden başlayarak gelir; varsayılan olarak sayfa başına 50, en fazla 200:
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` ve `to` ISO 8601 tarihleri veya tarih-saatleri alır; başka herhangi bir şey `400`
+hatasıdır.
+
+## Girdilerin ne kadar tutulacağını ayarlama
+
+`[audit].retention_days` değerinden eski girdiler günde bir kez silinir. Varsayılan 90 gündür.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+Denetim girdilerini veritabanınızın tutması gerekenden daha uzun süre saklamak için onları
+yukarıdaki API ile düzenli olarak kendi depolamanıza kopyalayın.
+</Aside>

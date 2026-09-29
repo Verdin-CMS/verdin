@@ -1,0 +1,113 @@
+---
+title: 双因素认证
+description: 用验证器应用或通行密钥保护管理员账户，按角色强制要求第二因素，以及恢复或重置丢失的因素。
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+双因素认证会在密码之后增加第二个步骤：来自验证器应用的 6 位数验证码，或者一个通行密钥（指纹、面容、屏幕锁或安全密钥）。本指南介绍如何设置这两种方式、如何让某个角色必须使用它们，以及管理员丢失第二因素时该怎么办。Strapi 没有内置的对应功能。
+
+双因素认证面向管理员。[终端用户](/zh-cn/guides/auth/end-users/)使用密码或 OAuth 提供商登录。
+
+## 开始之前
+
+- 没有需要开启的功能：每位管理员都可以在自己的个人资料中设置第二因素。
+- 通行密钥与管理后台的地址绑定。请把 `[server].public_url` 设置为管理员打开的地址，例如 `https://cms.example.com`。浏览器只会在 `https://`（以及 `localhost`）下提供通行密钥。
+- 保持 `VERDIN_TOKEN_PEPPER` 不变：验证器密钥和恢复代码都由它保护，更换它会导致这些都无法使用。
+
+## 设置验证器应用
+
+<Steps>
+
+1. 打开你的 **个人资料**，找到 **双重验证**。
+2. 在 **验证器应用** 下选择 **设置**，并确认你的密码。
+3. 用 1Password、Google Authenticator 或 Authy 等应用扫描二维码。如果无法扫描，请输入二维码下方显示的设置密钥。
+4. 输入应用显示的 **6 位数验证码**，然后选择 **开启**。
+5. 保存 Verdin 显示的 **恢复代码**：**下载** 或复制它们，然后选择 **我已保存**。
+
+</Steps>
+
+验证码遵循标准的 TOTP 方案（30 秒步长、SHA-1、6 位数）。为了容许时钟偏差，前一个或后一个步长的验证码也会被接受。如果验证码被拒绝，请检查设备上的时间。
+
+## 添加通行密钥
+
+<Steps>
+
+1. 在 **通行密钥** 下选择 **添加通行密钥**。
+2. 为它设置一个 **名称**，例如 “MacBook Touch ID”，并确认你的密码。
+3. 按照浏览器的提示操作。
+
+</Steps>
+
+最多可以注册 20 个通行密钥，并通过 **移除** 删除它们。通行密钥是密码之后的第二因素，而不是密码的替代品。
+
+## 恢复代码
+
+设置第一个因素时，你会获得 10 个恢复代码。如果你丢失了应用或通行密钥，每个恢复代码都可以让你登录一次。个人资料中会显示剩余数量；**生成新代码** 会替换全部代码（旧代码随即失效）。
+
+<Aside type="caution">
+这些代码只显示一次。请把它们保存在密码管理器中或离线保存，不要与存放验证器的设备放在一起。
+</Aside>
+
+## 使用第二因素登录
+
+<Diagram
+  caption="使用双因素认证登录"
+  code={`flowchart LR
+  A[邮箱和密码] --> B{第二因素？}
+  B -->|否| S[已登录]
+  B -->|是| C[验证码、通行密钥或恢复代码]
+  C -->|5 分钟内| S`}
+/>
+
+输入密码后，登录页会要求输入 **验证码**。选择 **使用通行密钥** 或 **使用恢复代码** 可以切换方式。你有 5 分钟时间完成；超时后需要重新输入密码。
+
+## 为角色强制要求双因素认证
+
+<Steps>
+
+1. 打开 **设置 → 角色** 及该角色。
+2. 开启 **要求启用双重验证** 并保存。
+
+</Steps>
+
+没有第二因素的成员在登录时会被要求设置一个。在完成设置之前，他们只能打开自己的个人资料。在 **设置 → 用户** 中，他们所在的行显示 **缺少 2FA**；已拥有第二因素的管理员显示 **2FA**。
+
+当你的角色要求第二因素时，Verdin 会拒绝移除你的最后一个因素：请先添加一个通行密钥再关闭应用，或者先添加另一个因素再移除你唯一的通行密钥。
+
+## 重置其他管理员的第二因素
+
+当某位管理员丢失了设备和恢复代码时：
+
+<Steps>
+
+1. 打开 **设置 → 用户**，找到该管理员。
+2. 选择 **重置双重验证** 并确认。
+
+</Steps>
+
+这会移除其验证器应用、通行密钥和恢复代码，于是他们只用密码即可登录。如果其角色要求双因素认证，他们必须重新设置。此操作需要 **管理用户**；只有 Super Admin 才能重置另一个 Super Admin。
+
+`verdin admin reset-password` 只重置密码，不重置第二因素。
+
+## 单点登录
+
+通过[单点登录](/zh-cn/guides/auth/sso/)登录的管理员同样会被要求提供其 Verdin 第二因素，除非该提供商被标记为 **提供方强制 MFA**。
+
+## 管理 API
+
+所有路由都位于 `/admin/api` 下。修改因素的路由需要提供你的 `password`。
+
+| 路由 | 作用 |
+| --- | --- |
+| `POST /auth/login` | 设置了第二因素时，返回 `{ twoFactorRequired: true, twoFactorToken, methods }` 而不是会话。 |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }`（TOTP 或恢复代码），或者使用通行密钥时为 `{ twoFactorToken, challengeToken, credential }`。返回会话。 |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }`：通行密钥质询。 |
+| `GET /auth/two-factor` | 你的因素：`totp`、`passkeys`、`recoveryCodesLeft`、`required`。 |
+| `POST /auth/two-factor/totp/setup`、`/totp/enable`、`/totp/disable` | 设置（需要密码）、开启（需要验证码）和关闭（需要密码）验证器应用。 |
+| `POST /auth/two-factor/recovery-codes` | 新的恢复代码。 |
+| `POST /auth/two-factor/passkeys/options`、`POST /auth/two-factor/passkeys`、`DELETE /auth/two-factor/passkeys/{id}` | 注册和移除通行密钥。 |
+| `DELETE /users/{id}/two-factor` | 重置其他管理员的因素（`users.manage`）。 |

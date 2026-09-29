@@ -1,0 +1,182 @@
+---
+title: ساختار پروژه
+description: فایل‌هایی که verdin new می‌سازد، فایل‌هایی که Verdin هنگام اجرا اضافه می‌کند، و اینکه کدام‌یک در git قرار می‌گیرند.
+sidebar:
+  order: 5
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+یک پروژهٔ Verdin پوشه‌ای است با یک فایل پیکربندی و طرح‌واره (schema). این صفحه فهرست می‌کند
+که `verdin new` چه چیزهایی می‌سازد، سرور هنگام اجرا چه اضافه می‌کند، و چه چیزهایی را باید commit کنید.
+
+## آنچه `verdin new` می‌سازد
+
+```sh title="Terminal"
+verdin new my-site
+```
+
+<FileTree>
+- my-site/
+  - verdin.toml پیکربندی پروژه
+  - .env کلیدهای محرمانه و URL پایگاه داده، فقط برای شما خواندنی
+  - .gitignore
+  - schema/
+    - content-types/ یک فایل JSON برای هر نوع محتوا
+    - components/ یک پوشه برای هر دستهٔ کامپوننت
+  - data/ پایگاه دادهٔ SQLite (فقط با `--database sqlite`)
+</FileTree>
+
+پوشه نباید وجود داشته باشد یا باید خالی باشد. نام پروژه در URL پایگاه داده از نام پوشه
+گرفته می‌شود، با حروف کوچک، و نویسه‌های دیگر با `_` جایگزین می‌شوند
+(`My Site` به `my_site` تبدیل می‌شود).
+
+### `verdin.toml`
+
+پیکربندی. فایل تولیدشده پورت، پیشوند API محتوا و اندازهٔ صفحه‌ها، و مسیر پنل مدیریت را
+تنظیم می‌کند:
+
+```toml title="verdin.toml"
+[server]
+port = 1337
+# public_url = "https://cms.example.com"
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+
+[admin]
+path = "/admin"
+# secure_cookies = true
+```
+
+هر کلید یک مقدار پیش‌فرض دارد، پس فایل می‌تواند خالی باشد یا اصلاً وجود نداشته باشد. کلیدهای
+ناشناخته سرور را با خطا متوقف می‌کنند. هر کلید را می‌توان از محیط به‌صورت
+`VERDIN_<SECTION>__<KEY>` بازنویسی کرد، مثلاً `VERDIN_SERVER__PORT=8080`. فرمان‌ها
+`verdin.toml` را از پوشهٔ جاری می‌خوانند؛ برای استفاده از فایل دیگری `-c <path>` را بدهید یا
+`VERDIN_CONFIG` را تنظیم کنید. مسیرهای داخل فایل، مانند پوشهٔ طرح‌واره یا پوشهٔ بارگذاری‌ها، نسبت
+به پوشه‌ای هستند که فایل در آن قرار دارد. همهٔ تنظیمات در
+[مرجع پیکربندی](/fa/reference/configuration/) آمده‌اند.
+
+### `.env`
+
+```sh title=".env"
+# Local secrets: keep this file out of version control.
+VERDIN_DATABASE_URL=sqlite://data/verdin.db
+VERDIN_ADMIN_JWT_SECRET=…
+VERDIN_TOKEN_PEPPER=…
+```
+
+`verdin new` دو کلید محرمانهٔ تصادفی و یک URL پایگاه داده برای موتوری که با `--database`
+انتخاب کرده‌اید پر می‌کند:
+
+| `--database` | `VERDIN_DATABASE_URL` تولیدشده |
+| --- | --- |
+| `sqlite` (پیش‌فرض) | `sqlite://data/verdin.db` |
+| `postgres` | `postgres://verdin:change-me@localhost:5432/<name>` |
+| `mysql`، `mariadb` | `mysql://verdin:change-me@localhost:3306/<name>` |
+
+برای PostgreSQL، MySQL و MariaDB نام کاربری و گذرواژه را عوض کنید. مسیرهای نسبی SQLite نسبت
+به پوشهٔ پروژه تعیین می‌شوند، نه پوشه‌ای که فرمان را از آن اجرا می‌کنید.
+
+هر فرمان فایل `.env` کنار `verdin.toml` را بارگذاری می‌کند؛ متغیرهایی که از قبل در محیط تنظیم
+شده‌اند اولویت دارند. در Linux و macOS فایل طوری ساخته می‌شود که فقط مالکش بتواند آن را بخواند.
+در محیط تولید، به‌جای فرستادن یک فایل `.env`، این متغیرها را در انبار کلیدهای محرمانهٔ پلتفرم
+خود تنظیم کنید. [شروع سریع](/fa/start/quickstart/#2-کلیدهای-محرمانه) دو کلید محرمانه را توضیح می‌دهد.
+
+### `schema/`
+
+مدل محتوا، با قالب طرح‌وارهٔ Strapi:
+
+- `schema/content-types/<singularName>.json`، یک فایل برای هر نوع مجموعه‌ای یا نوع تکی.
+- `schema/components/<category>/<name>.json`، یک فایل برای هر کامپوننت؛ uid کامپوننت
+  `<category>.<name>` است.
+
+سازندهٔ نوع محتوا این فایل‌ها را در `verdin dev` می‌نویسد، و خودتان هم می‌توانید آن‌ها را با دست
+ویرایش کنید: `verdin dev` با تغییر آن‌ها دوباره بارگذاری می‌شود. طرح‌وارهٔ وبلاگ نمونه چنین
+است:
+
+<FileTree>
+- schema/
+  - content-types/
+    - article.json
+    - category.json
+    - homepage.json نوع تکی
+    - tag.json
+  - components/
+    - blocks/
+      - hero.json `blocks.hero`
+      - quote.json `blocks.quote`
+    - shared/
+      - seo.json `shared.seo`
+</FileTree>
+
+این فایل‌ها منبع حقیقت هستند: Verdin جدول‌های پایگاه داده، اعتبارسنجی، APIهای REST و
+GraphQL، سند OpenAPI، نوع‌های TypeScript و فرم‌های پنل مدیریت را از آن‌ها استخراج می‌کند. ببینید:
+[مدل محتوا](/fa/concepts/content-model/) و
+[مهاجرت طرح‌واره](/fa/concepts/schema-migrations/). پوشهٔ طرح‌واره `[schema].path` در
+`verdin.toml` است که به‌طور پیش‌فرض `schema` است.
+
+## آنچه هنگام اجرای Verdin پدیدار می‌شود
+
+<FileTree>
+- my-site/
+  - verdin.toml
+  - .env
+  - schema/
+  - data/
+    - verdin.db پایگاه دادهٔ SQLite، با فایل‌های `-wal` و `-shm`
+    - search/ نمایهٔ تمام‌متن، وقتی `[search].enabled` روشن باشد
+  - public/
+    - uploads/ فایل‌های کتابخانهٔ رسانه، که در `/uploads` ارائه می‌شوند
+  - .cache/
+    - transforms/ تصویرهای تغییراندازه‌یافته، که در صورت نیاز دوباره ساخته می‌شوند
+  - plugins/ افزونه‌های WebAssembly، هر کدام در یک پوشه (خودتان آن را می‌سازید)
+  - strapi-id-map.json نوشته‌شده توسط `verdin import strapi`
+</FileTree>
+
+| مسیر | نوشته‌شده توسط | تنظیم |
+| --- | --- | --- |
+| `data/verdin.db` | سرور، با SQLite | `VERDIN_DATABASE_URL` |
+| `public/uploads/` | بارگذاری‌ها با provider محلی (پیش‌فرض) | `[upload].provider` |
+| `.cache/transforms/` | تبدیل‌های تصویری که در `/uploads` درخواست می‌شوند | `[upload.transforms].cache_dir` |
+| `data/search/` | نمایهٔ تمام‌متن | `[search].dir` |
+| `plugins/` | شما: هر افزونه در پوشهٔ خودش | `[plugins].path` |
+| `strapi-id-map.json` | `verdin import strapi`: نگاشت شناسه‌های Strapi به شناسه‌های Verdin | — |
+
+با PostgreSQL، MySQL یا MariaDB فایل `data/verdin.db` وجود ندارد: محتوا در سرور پایگاه داده
+قرار دارد. با provider مربوط به S3، فایل‌های رسانه در bucket قرار می‌گیرند و `public/uploads`
+خالی می‌ماند.
+
+## چه چیزهایی در git قرار می‌گیرند
+
+| commit کنید | بیرون از git نگه دارید |
+| --- | --- |
+| `verdin.toml` | `.env` (کلیدهای محرمانه) |
+| `schema/` (نوع‌های محتوا و کامپوننت‌ها) | `data/` (پایگاه دادهٔ SQLite، نمایهٔ جستجو) |
+| `plugins/`، اگر از افزونه استفاده می‌کنید | `public/uploads/` (رسانه) |
+| `.gitignore` | `.cache/` |
+
+فایل `.gitignore` تولیدشده همهٔ آن‌ها را پوشش می‌دهد:
+
+```sh title=".gitignore"
+.env
+data/
+*.db
+*.db-*
+.cache/
+# Local media library ([upload.provider] dir).
+public/uploads/
+```
+
+پروژه‌هایی که پیش از 0.10 ساخته شده‌اند خط `public/uploads/` را ندارند: آن را اضافه کنید.
+
+<Aside>
+محتوا و رسانه داده هستند، نه کد. به‌جای commit کردن، با `verdin export` یا ابزارهای خود
+پایگاه داده از آن‌ها نسخهٔ پشتیبان بگیرید؛ ببینید [پشتیبان‌گیری](/fa/deploy/backups/).
+</Aside>
+
+طرح‌واره را همراه با کدی که به آن وابسته است commit کنید، مثلاً نوع‌های تولیدشدهٔ فرانت‌اندتان.
+در محیط تولید، طرح‌وارهٔ commit‌شده را مستقر کنید و `verdin start --migrate` را اجرا کنید:
+سازندهٔ نوع محتوا بیرون از `verdin dev` خاموش است، پس طرح‌واره فقط از طریق مخزن شما تغییر می‌کند.

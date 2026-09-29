@@ -1,0 +1,71 @@
+---
+title: 搜索
+description: 使用 _q 搜索条目，并开启 Tantivy 全文索引，以获得按相关度排序且不区分重音的结果。
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+与 Strapi 一样，内容 API 和管理后台使用 `_q` 参数搜索条目。默认情况下，`_q` 匹配包含这些词的文本字段。开启 `[search]` 索引后，会使用服务器内置的全文引擎（Tantivy）对结果进行排序。本指南介绍这两种方式，以及何时使用索引。
+
+## 使用 `_q` 搜索
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/api/articles' --data-urlencode '_q=rust cms'
+```
+
+`_q` 可以与其他参数组合使用：`filters`、`status`、`locale`、`pagination`、`fields` 和 `populate`。管理后台列表中的搜索框发送的也是这个参数。
+
+搜索哪些字段：
+
+- 文本字段：`string`、`text`、`richtext`、`email`、`uid` 和 `enumeration`。
+- 使用索引时，还包括 `blocks`、组件和动态区域中的文本。
+- 从不搜索 private 字段或密码。
+
+`_q` 是一个 REST 参数。GraphQL 和 TypeScript 客户端的查询选项没有搜索参数；请在那里使用 `$containsi` 过滤。
+
+## 不使用索引
+
+没有 `[search]` 时，`_q` 会匹配任意文本字段中包含完整搜索文本的条目，忽略大小写，与 Strapi 的 `$containsi` 相同。结果按常规排序。这无需任何设置，适用于所有数据库，但它会扫描整张表，也不会按相关度排序。
+
+## 开启全文索引
+
+<Steps>
+
+1. 在 `verdin.toml` 中启用索引：
+
+   ```toml title="verdin.toml"
+   [search]
+   enabled = true
+   ```
+
+2. 重启 Verdin。它会在后台根据所有条目构建索引；在索引就绪之前，`_q` 会回退为 `$containsi`。
+
+</Steps>
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `enabled` | `false` | 使用全文索引对 `_q` 的结果排序。 |
+| `dir` | `"data/search"` | 索引目录，相对于项目。 |
+| `memory_mb` | `50` | 建立索引的内存预算，单位为 MB。 |
+
+参见[配置参考](/zh-cn/reference/configuration/)。
+
+索引的匹配方式：
+
+- 词语按任何非字母、非数字的字符拆分，转为小写并去除重音，因此 `cafe` 能找到 `Café`。
+- 每个词都必须匹配。最后一个词还会作为前缀匹配，因此用户输入时就能看到结果。
+- 标题（该类型的第一个文本字段）的权重加倍。
+- 不带 `sort` 时，结果按匹配度从高到低排列。带 `sort` 时，匹配结果按你指定的方式排序。每次搜索最多考虑 1,000 个匹配项。
+- 草稿和已发布版本，以及各个语言区域，会按照 `status` 和 `locale` 分别搜索。
+
+索引会跟踪来自任何 API 的每一次写入。当 schema 改变了可搜索字段，或者索引目录缺失时，索引会被重建。
+
+## 多个实例
+
+索引位于实例的磁盘上，只跟踪该实例的写入。运行多个实例时，一个实例上的写入不会进入其他实例的索引。请只在一个实例上提供搜索，或者在部署后通过在启动前删除索引目录来重建索引。参见[扩缩容](/zh-cn/deploy/scaling/)。
+
+<Aside type="tip">
+索引目录可以放心删除。请不要把它纳入备份和版本控制；Verdin 会根据数据库重建它。
+</Aside>

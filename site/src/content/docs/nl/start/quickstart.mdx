@@ -1,0 +1,266 @@
+---
+title: Quickstart
+description: Draai Verdin met Docker of de binary, maak de eerste beheerder aan, modelleer een contenttype en lees het uit de API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Deze pagina brengt je in ongeveer tien minuten van niets naar een eerste API-response: start
+Verdin, maak de eerste beheerder aan, modelleer een contenttype, stel het open voor het publiek en
+lees het via REST, GraphQL of de TypeScript-client.
+
+Je hebt [Docker](https://docs.docker.com/get-docker/) nodig of een machine die de binary `verdin`
+kan draaien (Linux, macOS of Windows op x86-64, Linux of macOS op ARM64).
+
+## 1. Verdin starten
+
+<Tabs syncKey="install">
+  <TabItem label="Docker">
+
+Genereer de geheimen één keer en start daarna het image in ontwikkelmodus:
+
+```sh title="Terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+Het volume `verdin-data` bevat de SQLite-database (`/data/verdin.db`), de geüploade media
+(`/data/uploads`) en, in `dev`, de schemabestanden die de contenttype-bouwer schrijft
+(`/data/schema`).
+
+  </TabItem>
+  <TabItem label="Binary">
+
+Download het archief voor je platform van de
+[releasepagina](https://github.com/Verdin-CMS/verdin/releases), pak het uit en zet `verdin` in je
+`PATH`. Het beheerpaneel is in de binary ingebouwd.
+
+Maak een project aan en start het in ontwikkelmodus:
+
+```sh title="Terminal"
+verdin new my-site            # verdin.toml, schema/, .env met nieuwe geheimen, SQLite
+cd my-site
+verdin dev
+```
+
+`verdin new` neemt `--database sqlite|postgres|mysql|mariadb` (standaard SQLite) om de database te
+kiezen waarnaar de gegenereerde `.env` wijst. Pas voor PostgreSQL, MySQL en MariaDB
+`VERDIN_DATABASE_URL` in `.env` aan je server aan voordat je `verdin dev` draait.
+[Projectstructuur](/nl/start/project-structure/) beschrijft elk bestand dat het aanmaakt.
+
+  </TabItem>
+</Tabs>
+
+Als het log `verdin listening` toont, antwoordt de server op poort 1337. De eerste start maakt de
+databasetabellen aan.
+
+## 2. Geheimen
+
+Verdin heeft twee geheimen nodig, elk minstens 32 bytes lang:
+
+| Variabele | Wat het beschermt |
+| --- | --- |
+| `VERDIN_ADMIN_JWT_SECRET` | Ondertekent beheerderssessies. |
+| `VERDIN_TOKEN_PEPPER` | Hasht API-tokens en beschermt tweefactorgeheimen en herstelcodes. |
+
+`verdin secrets` drukt nieuwe waarden af, en `verdin new` schrijft ze in `.env`. Geheimen komen
+alleen uit de omgeving, nooit uit `verdin.toml`, en de server start niet zonder. Het bestand `.env`
+naast `verdin.toml` wordt bij het starten geladen; variabelen die al in de omgeving zijn
+ingesteld, winnen.
+
+<Aside type="caution">
+Genereer de geheimen één keer per installatie en bewaar ze. Een nieuwe `VERDIN_ADMIN_JWT_SECRET`
+maakt huidige inlogtokens ongeldig, net als open voorbeeldlinks en OAuth-logins die nog bezig zijn
+(het beheerpaneel vernieuwt zijn sessie zelf); een nieuwe `VERDIN_TOKEN_PEPPER` maakt elk API-token
+en elke tweefactorinstelling ongeldig. Houd `.env` en `verdin.env` buiten versiebeheer.
+</Aside>
+
+## 3. De eerste beheerder aanmaken
+
+Open [http://localhost:1337/admin/](http://localhost:1337/admin/). Zolang er geen beheerder
+bestaat, toont het beheerpaneel **Welkom bij Verdin**: vul je naam, e-mailadres en een wachtwoord
+van minstens 8 tekens in en kies daarna **Account aanmaken**. Dit eerste account is een
+Super Admin met alle rechten.
+
+Je kunt beheerders ook vanaf de opdrachtregel aanmaken; zie
+[Beheerders vanaf de opdrachtregel](#beheerders-vanaf-de-opdrachtregel).
+
+## 4. Een contenttype modelleren
+
+<Steps>
+
+1. Open in de zijbalk de **Contenttype-bouwer** en kies **Nieuw contenttype**.
+2. Stel **Weergavenaam** in op `Article`. Verdin vult **Enkelvoudige naam (API-id)** met `article`
+   en **Meervoudige naam (route)** met `articles`; de route is de URL van het type in de API.
+   Laat **Soort** op **Collectie** staan.
+3. Kies **Veld toevoegen**, kies **Korte tekst**, noem het `title`, en kies **Klaar**.
+4. Kies **Opslaan**. **Migratie controleren** toont de databasestappen met hun SQL; kies
+   **Toepassen**.
+
+</Steps>
+
+Verdin schrijft het type naar `schema/content-types/article.json` en maakt de tabel ervan aan. De
+bouwer is alleen beschikbaar in `verdin dev`: in productie komt het schema uit je bestanden. Zie
+[Contentmodel](/nl/concepts/content-model/) voor veldtypes en opties.
+
+Voeg nu een item toe: open **Article** onder **Collecties**, kies **Nieuw item**, vul de titel in
+en kies **Publiceren**. Nieuwe types hebben **Concept en publicatie** aan, dus hun items blijven
+concepten, onzichtbaar voor de openbare API, totdat ze worden gepubliceerd.
+
+## 5. Openstellen voor het publiek
+
+De content-API is dicht totdat je openbare rechten verleent of API-tokens aanmaakt. Open
+**Instellingen → Openbare toegang**, sta **Zoeken** en **Eén zoeken** toe voor **Article**, en
+kies **Opslaan**.
+
+Om zonder openbare toegang te lezen, maak je een token aan in **Instellingen → API-tokens** en
+stuur je het mee als `Authorization: Bearer <token>`. Zie [API-tokens](/nl/guides/auth/api-tokens/)
+en [Rechten](/nl/concepts/permissions/).
+
+## 6. Een eerste request doen
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl localhost:1337/api/articles
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "documentId": "01m3p88agn712n02wb8kkpe94p",
+      "title": "Hello Verdin",
+      "createdAt": "2026-09-29T09:34:39.637Z",
+      "updatedAt": "2026-09-29T09:34:39.637Z",
+      "publishedAt": "2026-09-29T09:34:39.637Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+De response heeft de platte vorm van Strapi v5. Filters, sorteren, paginering en `populate`
+gebruiken dezelfde queryparameters; zie de [REST-API](/nl/api/rest/).
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+Zet **Instellingen → Functies → GraphQL** aan. `POST /graphql` serveert dan een schema dat uit je
+contenttypes is gegenereerd, met dezelfde rechten als de REST-API:
+
+```sh title="Terminal"
+curl localhost:1337/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+```json
+{ "data": { "articles": [{ "documentId": "01m3p88agn712n02wb8kkpe94p", "title": "Hello Verdin" }] } }
+```
+
+Zie de [GraphQL-API](/nl/api/graphql/).
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+Genereer types uit het schema en installeer de client in je frontendproject:
+
+```sh title="Terminal"
+verdin types -o src/verdin-types.ts   # in het Verdin-project
+npm install @verdin/client            # in het frontendproject
+```
+
+Met Docker kan het image de types afdrukken uit het schema in het volume:
+`docker run --rm -v verdin-data:/data ghcr.io/verdin-cms/verdin types > src/verdin-types.ts`.
+
+```ts title="src/articles.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+
+const { data } = await verdin.collection('articles').find({ sort: ['publishedAt:desc'] });
+console.log(data.map((article) => article.title));
+```
+
+Zie [Getypeerde client](/nl/guides/frontend/typed-client/).
+
+  </TabItem>
+</Tabs>
+
+Vanaf hier bouwen de tutorials voor [Astro](/nl/start/tutorial-astro/) en
+[Next.js](/nl/start/tutorial-nextjs/) een blogfrontend op dezelfde API.
+
+## Ontwikkel- en productiemodus
+
+| Commando | Gebruik het voor |
+| --- | --- |
+| `verdin dev` | Ontwikkeling: veilige migraties worden automatisch toegepast, de contenttype-bouwer kan de schemabestanden bewerken, en de server herlaadt als ze veranderen. |
+| `verdin start` | Productie. Het weigert te draaien zolang de database achterloopt op het schema. |
+| `verdin start --migrate` | Productie, met het toepassen van openstaande veilige migraties vóór het starten. Dit is het standaardcommando van het Docker-image. |
+
+Refresh-cookies zijn `Secure` in `verdin start` en niet in `verdin dev`, dus inloggen op een
+`start`-server vereist HTTPS. Stel `VERDIN_ADMIN__SECURE_COOKIES=false` in om `start` via gewoon
+HTTP uit te proberen.
+
+Houd het schema in productie in versiebeheer en mount het alleen-lezen. Met Docker:
+
+```sh title="Terminal"
+docker run -p 1337:1337 --env-file verdin.env \
+  -e VERDIN_DATABASE_URL=postgres://user:pass@db:5432/verdin \
+  -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
+```
+
+De [productiechecklist](/nl/deploy/production-checklist/) behandelt de rest.
+
+## Schema en migraties
+
+Contenttypes staan in `schema/content-types/<singularName>.json` en componenten in
+`schema/components/<category>/<name>.json`, in het formaat van Strapi. Als de bestanden
+veranderen, plant Verdin een migratie:
+
+```sh title="Terminal"
+verdin schema check                      # elk schemabestand valideren
+verdin migrate plan                      # stappen, risiconiveau en exacte SQL
+verdin migrate apply                     # alleen veilige stappen
+verdin migrate apply --allow risky       # ook typewijzigingen en nieuwe uniciteitsbeperkingen
+verdin migrate apply --allow destructive # ook verwijderde kolommen en tabellen
+verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
+```
+
+Op MySQL en MariaDB, die geen transactionele DDL hebben, gaat een onderbroken migratie bij de
+volgende `migrate apply` verder vanaf de mislukte stap. Zie
+[Schemamigraties](/nl/concepts/schema-migrations/).
+
+## Beheerders vanaf de opdrachtregel
+
+```sh title="Terminal"
+verdin admin create --email other@example.com      # wachtwoord uit VERDIN_ADMIN_PASSWORD of stdin
+verdin admin reset-password --email you@example.com
+```
+
+`admin create` maakt een Super Admin aan. `reset-password` ontgrendelt ook het account en beëindigt
+zijn sessies. Beide vereisen dat de database up-to-date is met het schema.
+
+## Andere commando's
+
+| Commando | Wat het doet |
+| --- | --- |
+| `verdin types -o src/verdin-types.ts` | Schrijft TypeScript-definities van de content-API (naar standard output zonder `-o`). |
+| `verdin import strapi <export>` | Importeert een Strapi-project; zie [Migreren vanaf Strapi](/nl/migrate/from-strapi/). |
+| `verdin export <file.tar.gz>` | Schrijft het schema, de content en de media naar een archief; `verdin import verdin` leest het terug. |
+| `verdin version` | Drukt de versie af. |
+
+Elk commando neemt `-c, --config <path>` (standaard `verdin.toml`, of `VERDIN_CONFIG`). De
+[CLI-referentie](/nl/reference/cli/) somt elk commando en elke vlag op, en de
+[configuratiereferentie](/nl/reference/configuration/) elke instelling.
+
+## Healthchecks
+
+`GET /_health` antwoordt zolang het proces draait. `GET /_ready` controleert ook de database en
+antwoordt met 503 als die niet bereikbaar is: richt load balancers daarop (zie
+[Schalen](/nl/deploy/scaling/)).

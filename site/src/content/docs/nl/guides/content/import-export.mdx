@@ -1,0 +1,123 @@
+---
+title: Items importeren en exporteren
+description: Exporteer de items van een lijst naar CSV of JSON, en maak items aan of werk ze bij vanuit een CSV- of JSON-bestand, eerst met een proefrun.
+sidebar:
+  order: 9
+  label: Importeren en exporteren
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+De beheerlijst van elk contenttype exporteert zijn items naar CSV of JSON, en importeert ze terug
+uit hetzelfde soort bestand: om veel items in een spreadsheet te corrigeren, een productcatalogus
+in te laden, of items tussen projecten te kopiëren. Deze gids behandelt beide richtingen en het
+bestandsformaat.
+
+Dit is voor items van één contenttype tegelijk. Om een heel project te verhuizen, zie
+[`verdin export` en `verdin import verdin`](/nl/reference/cli/). Om vanaf Strapi over te stappen,
+zie [Migreren vanaf Strapi](/nl/migrate/from-strapi/).
+
+## Voordat je begint
+
+- Exporteren vereist leestoegang tot het contenttype. Alleen de velden die je rol mag lezen,
+  worden geëxporteerd.
+- Importeren vereist toegang om aan te maken, om bij te werken, of beide: rijen die items aanmaken,
+  hebben aanmaken nodig, rijen die ze bijwerken, bijwerken. De geïmporteerde rijen publiceren
+  vereist ook publiceren. Zie [Rechten](/nl/reference/permissions/).
+
+## Items exporteren
+
+<Steps>
+
+1. Open de lijst van het contenttype en stel hem in zoals je de export wilt: filters, zoeken,
+   sorteren, status en locale.
+2. Kies **Exporteren** en daarna **Exporteren als CSV** of **Exporteren als JSON**.
+
+</Steps>
+
+Het bestand bevat de items die de lijst toont, met zijn filters, zoekopdracht en sortering, over
+alle pagina's, tot 50.000 items. Elke rij begint met `documentId`, gevolgd door de velden.
+
+## Items importeren
+
+<Steps>
+
+1. Open de lijst van het contenttype en kies **Importeren**.
+2. Kies een **Bestand**: een `.csv`-bestand met een kopregel, of een `.json`-bestand met een lijst
+   objecten, tot 1 MB.
+3. Kies onder **Kolommen** het veld waar elke kolom in komt. Kolommen die net zo heten als een veld,
+   zijn al gekoppeld. Kies **Overslaan** om een kolom weg te laten, en **Document-ID (bijwerken)**
+   voor de kolom die bestaande items noemt.
+4. Zet eventueel **Geïmporteerde items publiceren** aan. Anders worden ze als concept opgeslagen.
+5. Kies **Controleren**. Verdin controleert elke rij, inclusief beperkingen en verwijzingen, zonder
+   iets te schrijven, en meldt welke rijen het zou aanmaken, bijwerken of weigeren.
+6. Corrigeer het bestand zo nodig, en kies daarna **Importeren**.
+
+</Steps>
+
+Hoe rijen worden geschreven:
+
+- Een rij met een `documentId` werkt dat item bij; de andere maken nieuwe items aan.
+- Rijen worden één voor één geschreven. Een rij die faalt, wordt gemeld met zijn veld en het
+  probleem, en overgeslagen; de andere worden nog steeds geschreven.
+- Het rapport toont tot 100 rijen met fouten, en de kolommen die met geen enkel veld
+  overeenkwamen.
+- Een import neemt hoogstens 5.000 rijen. Splits grotere bestanden.
+- Items worden geschreven in de huidige locale van de lijst.
+
+<Aside type="caution">
+Een import haalt je rijen door dezelfde validatie als de editor, maar er is geen ongedaan maken.
+Draai eerst **Controleren**, en exporteer de lijst vóór een grote update zodat je hem kunt
+herstellen. Met [contentgeschiedenis](/nl/guides/content/content-history/) aan behoudt elk
+bijgewerkt item zijn vorige versie.
+</Aside>
+
+## Bestandsformaat
+
+Velden gebruiken dezelfde vormen als het schrijfformaat van de content-API:
+
+| Veld | Waarde |
+| --- | --- |
+| Tekst, getallen, booleans, datums | Zoals in de API (`true`/`false`, ISO 8601-datums). |
+| Relaties | `documentId`s van de gerelateerde items. |
+| Media | Bestands-id's uit de mediabibliotheek. |
+| Polymorfe relaties | `uid:documentId`, bijvoorbeeld `api::article:k3v9…`. |
+| Componenten, dynamische zones, blocks en JSON | JSON. |
+
+In CSV worden lijsten (meerdere relaties of bestanden) samengevoegd met `|`.
+
+```csv title="articles.csv"
+documentId,title,slug,featured,tags
+,Hello world,hello-world,true,t1a2b3|t4c5d6
+k3v9x8…,Updated title,updated-title,false,
+```
+
+Dezelfde rijen als JSON:
+
+```json title="articles.json"
+[
+  { "title": "Hello world", "slug": "hello-world", "featured": true, "tags": ["t1a2b3", "t4c5d6"] },
+  { "documentId": "k3v9x8…", "title": "Updated title", "slug": "updated-title", "featured": false }
+]
+```
+
+Een export van een lijst is altijd een geldig importbestand voor hetzelfde contenttype.
+
+## Admin-API
+
+- `GET /admin/api/content/{uid}/export?format=csv` (of `json`) neemt de queryparameters van de
+  lijst: `filters`, `_q`, `sort`, `status` en `locale`.
+- `POST /admin/api/content/{uid}/import?locale=` neemt de inhoud van het bestand als string:
+
+```json
+{
+  "format": "csv",
+  "data": "title,slug\nHello world,hello-world\n",
+  "mapping": { "slug": "slug", "notes": null },
+  "dryRun": true,
+  "publish": false
+}
+```
+
+`mapping` koppelt een kolom aan een veld; `null` slaat de kolom over, en niet-gekoppelde kolommen
+behouden hun naam. De request-body wordt begrensd door `[server].body_limit` (standaard 1 MB).

@@ -1,0 +1,79 @@
+---
+title: Digest per i redattori
+description: Ricevi un'email giornaliera con le voci cambiate dall'ultima volta che le hai guardate, e scegli quale istanza la invia.
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Il digest per i redattori è un'email giornaliera che dice a ogni admin quante voci sono
+cambiate dall'ultima volta che le ha guardate, per tipo di contenuto. È disattivato per tutti
+finché ogni admin non lo attiva. Questa guida copre il lato admin, le impostazioni del server
+e il funzionamento con più istanze.
+
+## Come funziona "non visto"
+
+Una voce diventa non vista per te quando qualcun altro la modifica, da qualsiasi API. Torna a
+essere vista quando la apri. Gli stessi contrassegni guidano i badge **nuovi** della barra
+laterale (disattivali con **Mostra i badge delle novità**) e il widget **Non ancora viste**
+della home.
+
+## Attiva il digest
+
+<Steps>
+
+1. Apri il tuo **Profilo** (o il menu delle preferenze nella barra superiore).
+2. Sotto **Preferenze**, attiva **Email giornaliera delle modifiche non viste**.
+
+</Steps>
+
+L'interruttore imposta la preferenza `"digest": "daily"` sul tuo account
+(`PUT /admin/api/users/me/preferences`). Disattivalo allo stesso modo.
+
+Cosa ricevi:
+
+- Un messaggio con il numero di voci non viste per ogni tipo di contenuto che puoi leggere, e
+  un link al pannello di amministrazione.
+- Niente nei giorni in cui non c'è nulla di nuovo.
+- Solo finché il tuo account è attivo.
+
+## Impostazioni del server
+
+Il digest viene inviato a `[digest].hour_utc`, tramite `[email]`:
+
+```toml title="verdin.toml"
+[email]
+provider = "smtp"
+from = "Verdin <no-reply@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+
+[digest]
+hour_utc = 7    # 0–23, UTC; 8 by default
+```
+
+| Chiave | Default | Descrizione |
+| --- | --- | --- |
+| `[digest].enabled` | `true` | Invia il digest da questa istanza. |
+| `[digest].hour_utc` | `8` | Ora (UTC) in cui parte il digest. |
+
+Il link nell'email usa `[server].public_url`; impostalo quando Verdin gira dietro un proxy.
+Con il provider email di default `log`, i messaggi vengono solo scritti nel log del server.
+Vedi il [riferimento della configurazione](/it/reference/configuration/).
+
+## Più istanze
+
+Ogni istanza con `[digest].enabled = true` prova a inviare il digest all'ora impostata. La
+prima che prende in carico la giornata nel database lo invia, e le altre saltano quel
+giorno, così gli admin ricevono una sola email. Per tenere il job su un'istanza nota, imposta
+`enabled = false` sulle altre:
+
+```sh title="Terminal"
+VERDIN_DIGEST__ENABLED=false verdin start
+```
+
+<Aside type="note">
+Il digest è un'aggiunta di Verdin; Strapi non ha un equivalente.
+</Aside>

@@ -1,0 +1,266 @@
+---
+title: Szybki start
+description: Uruchom Verdin w Dockerze lub z binarki, utwórz pierwszego administratora, zamodeluj typ zawartości i odczytaj go z API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Ta strona prowadzi od zera do pierwszej odpowiedzi API w około dziesięć minut: uruchom
+Verdin, utwórz pierwszego administratora, zamodeluj typ zawartości, udostępnij go publicznie
+i odczytaj przez REST, GraphQL lub klienta TypeScript.
+
+Potrzebujesz [Dockera](https://docs.docker.com/get-docker/) albo maszyny, która może
+uruchomić binarkę `verdin` (Linux, macOS lub Windows na x86-64, Linux lub macOS na ARM64).
+
+## 1. Uruchom Verdin
+
+<Tabs syncKey="install">
+  <TabItem label="Docker">
+
+Wygeneruj sekrety raz, a potem uruchom obraz w trybie deweloperskim:
+
+```sh title="Terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+Wolumen `verdin-data` przechowuje bazę SQLite (`/data/verdin.db`), przesłane multimedia
+(`/data/uploads`) i, w `dev`, pliki schematu zapisywane przez kreator typów zawartości
+(`/data/schema`).
+
+  </TabItem>
+  <TabItem label="Binary">
+
+Pobierz archiwum dla swojej platformy ze
+[strony wydań](https://github.com/Verdin-CMS/verdin/releases), rozpakuj je i umieść
+`verdin` w `PATH`. Panel administracyjny jest wbudowany w binarkę.
+
+Utwórz szkielet projektu i uruchom go w trybie deweloperskim:
+
+```sh title="Terminal"
+verdin new my-site            # verdin.toml, schema/, .env z nowymi sekretami, SQLite
+cd my-site
+verdin dev
+```
+
+`verdin new` przyjmuje `--database sqlite|postgres|mysql|mariadb` (domyślnie SQLite), aby
+wybrać bazę danych, na którą wskazuje wygenerowany `.env`. Dla PostgreSQL, MySQL i MariaDB
+dopasuj `VERDIN_DATABASE_URL` w `.env` do swojego serwera, zanim uruchomisz `verdin dev`.
+[Struktura projektu](/pl/start/project-structure/) opisuje każdy tworzony plik.
+
+  </TabItem>
+</Tabs>
+
+Gdy log pokaże `verdin listening`, serwer odpowiada na porcie 1337. Pierwsze uruchomienie
+tworzy tabele bazy danych.
+
+## 2. Sekrety
+
+Verdin potrzebuje dwóch sekretów, każdy o długości co najmniej 32 bajtów:
+
+| Zmienna | Co chroni |
+| --- | --- |
+| `VERDIN_ADMIN_JWT_SECRET` | Podpisuje sesje administratorów. |
+| `VERDIN_TOKEN_PEPPER` | Hashuje tokeny API i chroni sekrety drugiego składnika oraz kody odzyskiwania. |
+
+`verdin secrets` wypisuje nowe wartości, a `verdin new` zapisuje je do `.env`. Sekrety
+pochodzą tylko ze środowiska, nigdy z `verdin.toml`, a serwer nie startuje bez nich. Plik
+`.env` obok `verdin.toml` jest wczytywany przy starcie; zmienne już ustawione w środowisku
+mają pierwszeństwo.
+
+<Aside type="caution">
+Wygeneruj sekrety raz na instalację i je zachowaj. Nowy `VERDIN_ADMIN_JWT_SECRET` unieważnia
+bieżące tokeny logowania, otwarte linki podglądu i trwające logowania OAuth (panel
+administracyjny sam odnawia swoją sesję); nowy `VERDIN_TOKEN_PEPPER` unieważnia każdy token
+API i każdą konfigurację dwuskładnikową. Trzymaj `.env` i `verdin.env` poza kontrolą wersji.
+</Aside>
+
+## 3. Utwórz pierwszego administratora
+
+Otwórz [http://localhost:1337/admin/](http://localhost:1337/admin/). Dopóki nie istnieje
+żaden administrator, panel pokazuje **Witaj w Verdin**: wpisz imię, e-mail i hasło o długości
+co najmniej 8 znaków, a potem wybierz **Utwórz konto**. To pierwsze konto to Super Admin ze
+wszystkimi uprawnieniami.
+
+Administratorów możesz też tworzyć z wiersza poleceń; zobacz
+[Administratorzy z wiersza poleceń](#administratorzy-z-wiersza-poleceń).
+
+## 4. Zamodeluj typ zawartości
+
+<Steps>
+
+1. W pasku bocznym otwórz **Kreator typów zawartości** i wybierz **Nowy typ zawartości**.
+2. Ustaw **Nazwę wyświetlaną** na `Article`. Verdin wypełnia **Nazwa w liczbie pojedynczej
+   (API ID)** wartością `article`, a **Nazwa w liczbie mnogiej (ścieżka)** wartością
+   `articles`; ścieżka to URL typu w API. Zostaw **Rodzaj** na **Kolekcja**.
+3. Wybierz **Dodaj pole**, wybierz **Krótki tekst**, nazwij je `title` i wybierz **Gotowe**.
+4. Wybierz **Zapisz**. **Przejrzyj migrację** wymienia kroki bazy danych z ich SQL; wybierz
+   **Zastosuj**.
+
+</Steps>
+
+Verdin zapisuje typ do `schema/content-types/article.json` i tworzy jego tabelę. Kreator
+jest dostępny tylko w `verdin dev`: w produkcji schemat pochodzi z twoich plików. Typy pól
+i opcje opisuje [Model treści](/pl/concepts/content-model/).
+
+Teraz dodaj wpis: otwórz **Article** w sekcji **Kolekcje**, wybierz **Nowy wpis**, wypełnij
+tytuł i wybierz **Opublikuj**. Nowe typy mają włączone **Szkic i publikacja**, więc ich wpisy
+pozostają szkicami, niewidocznymi dla publicznego API, dopóki nie zostaną opublikowane.
+
+## 5. Udostępnij publicznie
+
+API treści jest zamknięte, dopóki nie przyznasz uprawnień publicznych lub nie utworzysz
+tokenów API. Otwórz **Ustawienia → Dostęp publiczny**, zezwól na **Wyszukaj** i **Pobierz
+jeden** dla **Article** i wybierz **Zapisz**.
+
+Aby czytać bez dostępu publicznego, utwórz token w **Ustawienia → Tokeny API** i wysyłaj go
+jako `Authorization: Bearer <token>`. Zobacz [Tokeny API](/pl/guides/auth/api-tokens/)
+i [Uprawnienia](/pl/concepts/permissions/).
+
+## 6. Wykonaj pierwsze żądanie
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl localhost:1337/api/articles
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "documentId": "01m3p88agn712n02wb8kkpe94p",
+      "title": "Hello Verdin",
+      "createdAt": "2026-09-29T09:34:39.637Z",
+      "updatedAt": "2026-09-29T09:34:39.637Z",
+      "publishedAt": "2026-09-29T09:34:39.637Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+Odpowiedź ma płaski kształt ze Strapi v5. Filtry, sortowanie, paginacja i `populate` używają
+tych samych parametrów zapytania; zobacz [API REST](/pl/api/rest/).
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+Włącz **Ustawienia → Funkcje → GraphQL**. `POST /graphql` serwuje wtedy schemat generowany
+z twoich typów zawartości, z tymi samymi uprawnieniami co API REST:
+
+```sh title="Terminal"
+curl localhost:1337/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+```json
+{ "data": { "articles": [{ "documentId": "01m3p88agn712n02wb8kkpe94p", "title": "Hello Verdin" }] } }
+```
+
+Zobacz [API GraphQL](/pl/api/graphql/).
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+Wygeneruj typy ze schematu i zainstaluj klienta w projekcie frontendu:
+
+```sh title="Terminal"
+verdin types -o src/verdin-types.ts   # w projekcie Verdin
+npm install @verdin/client            # w projekcie frontendu
+```
+
+W Dockerze obraz może wypisać typy ze schematu w wolumenie:
+`docker run --rm -v verdin-data:/data ghcr.io/verdin-cms/verdin types > src/verdin-types.ts`.
+
+```ts title="src/articles.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+
+const { data } = await verdin.collection('articles').find({ sort: ['publishedAt:desc'] });
+console.log(data.map((article) => article.title));
+```
+
+Zobacz [Typowany klient](/pl/guides/frontend/typed-client/).
+
+  </TabItem>
+</Tabs>
+
+Dalej samouczki [Astro](/pl/start/tutorial-astro/) i [Next.js](/pl/start/tutorial-nextjs/)
+budują frontend bloga na tym samym API.
+
+## Tryb deweloperski i produkcyjny
+
+| Polecenie | Do czego |
+| --- | --- |
+| `verdin dev` | Rozwój: bezpieczne migracje stosują się automatycznie, kreator typów zawartości może edytować pliki schematu, a serwer przeładowuje się, gdy się zmieniają. |
+| `verdin start` | Produkcja. Odmawia działania, gdy baza danych jest w tyle za schematem. |
+| `verdin start --migrate` | Produkcja, ze stosowaniem oczekujących bezpiecznych migracji przed startem. To domyślne polecenie obrazu Docker. |
+
+Ciasteczka odświeżania są `Secure` w `verdin start`, a w `verdin dev` nie, więc logowanie do
+serwera `start` wymaga HTTPS. Aby wypróbować `start` przez zwykłe HTTP, ustaw
+`VERDIN_ADMIN__SECURE_COOKIES=false`.
+
+W produkcji trzymaj schemat w kontroli wersji i montuj go tylko do odczytu. W Dockerze:
+
+```sh title="Terminal"
+docker run -p 1337:1337 --env-file verdin.env \
+  -e VERDIN_DATABASE_URL=postgres://user:pass@db:5432/verdin \
+  -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
+```
+
+Resztę opisuje [lista kontrolna produkcji](/pl/deploy/production-checklist/).
+
+## Schemat i migracje
+
+Typy zawartości znajdują się w `schema/content-types/<singularName>.json`, a komponenty
+w `schema/components/<category>/<name>.json`, w formacie Strapi. Gdy pliki się zmieniają,
+Verdin planuje migrację:
+
+```sh title="Terminal"
+verdin schema check                      # waliduje każdy plik schematu
+verdin migrate plan                      # kroki, poziom ryzyka i dokładny SQL
+verdin migrate apply                     # tylko bezpieczne kroki
+verdin migrate apply --allow risky       # także zmiany typów i nowe ograniczenia unikalności
+verdin migrate apply --allow destructive # także usunięte kolumny i tabele
+verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
+```
+
+W MySQL i MariaDB, które nie mają transakcyjnego DDL, przerwana migracja jest wznawiana od
+nieudanego kroku przy następnym `migrate apply`. Zobacz
+[Migracje schematu](/pl/concepts/schema-migrations/).
+
+## Administratorzy z wiersza poleceń
+
+```sh title="Terminal"
+verdin admin create --email other@example.com      # hasło z VERDIN_ADMIN_PASSWORD lub stdin
+verdin admin reset-password --email you@example.com
+```
+
+`admin create` tworzy Super Admina. `reset-password` dodatkowo odblokowuje konto i kończy
+jego sesje. Oba wymagają, aby baza danych była aktualna względem schematu.
+
+## Inne polecenia
+
+| Polecenie | Co robi |
+| --- | --- |
+| `verdin types -o src/verdin-types.ts` | Zapisuje definicje TypeScript API treści (bez `-o` na standardowe wyjście). |
+| `verdin import strapi <export>` | Importuje projekt Strapi; zobacz [Migracja ze Strapi](/pl/migrate/from-strapi/). |
+| `verdin export <file.tar.gz>` | Zapisuje schemat, treść i multimedia do archiwum; `verdin import verdin` je odczytuje. |
+| `verdin version` | Wypisuje wersję. |
+
+Każde polecenie przyjmuje `-c, --config <path>` (domyślnie `verdin.toml` albo
+`VERDIN_CONFIG`). [Dokumentacja CLI](/pl/reference/cli/) wymienia każde polecenie i flagę,
+a [dokumentacja konfiguracji](/pl/reference/configuration/) każde ustawienie.
+
+## Kontrole stanu
+
+`GET /_health` odpowiada, dopóki proces działa. `GET /_ready` sprawdza też bazę danych
+i odpowiada 503, gdy nie może się z nią połączyć: kieruj na nie load balancery (zobacz
+[Skalowanie](/pl/deploy/scaling/)).

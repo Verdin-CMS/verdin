@@ -1,0 +1,180 @@
+---
+title: SEO i mapa witryny
+description: Mapuj typy zawartości na ścieżki swojej witryny, serwuj sitemap.xml ze wszystkimi opublikowanymi wpisami i dodaj standardowy komponent SEO.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Funkcja **SEO i mapa witryny** mówi Verdin, gdzie w twojej witrynie znajduje się każdy wpis.
+Na tej podstawie serwuje `sitemap.xml` ze wszystkimi opublikowanymi wpisami, daje
+[menu](/pl/guides/frontend/menus/) ścieżki wpisów, do których prowadzą, i oferuje gotowy
+komponent `shared.seo` na meta tagi.
+
+To jedna z czterech funkcji witryny, obok [przekierowań](/pl/guides/frontend/redirects/),
+[menu](/pl/guides/frontend/menus/) i [formularzy](/pl/guides/frontend/forms/). Strapi
+pokrywa ten sam obszar wtyczkami społeczności (SEO, sitemap); w Verdin jest to wbudowane.
+
+## Włącz funkcję
+
+<Steps>
+
+1. W **Ustawienia → Funkcje** włącz **SEO i mapa witryny**.
+2. Na jej karcie wybierz **Skonfiguruj SEO**.
+3. Wpisz **Adres URL strony**: origin twojej witryny, np. `https://www.example.com`. Od niego
+   zaczynają się URL-e w mapie witryny.
+4. W sekcji **Typy zawartości** nadaj każdemu typowi, który ma strony, **Wzorzec ścieżki**.
+   Typy bez wzorca nie trafiają do mapy witryny. Opcjonalnie ustaw **Częstotliwość zmian**
+   i **Priorytet** (od 0 do 1) dla mapy witryny.
+5. Zapisz, a potem wybierz **Otwórz sitemap.xml**, aby sprawdzić wynik.
+
+</Steps>
+
+Zmiana ustawień wymaga uprawnienia **Zarządzanie funkcjami** (`features.manage`). Zobacz
+[Uprawnienia](/pl/reference/permissions/).
+
+## Wzorce ścieżek
+
+Wzorzec to ścieżka zaczynająca się od `/`, z symbolami zastępczymi w nawiasach klamrowych:
+
+| Wzorzec | Wpis | Ścieżka |
+| --- | --- | --- |
+| `/blog/{slug}` | Artykuł ze slugiem `hello-world` | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | Jego francuska wersja | `/fr/blog/bonjour` |
+| `/about` | Pojedynczy typ Homepage | `/about` |
+
+Symbole zastępcze to atrybuty typu (zwykle `uid`, np. `slug`) i `{locale}`. Wartości są
+kodowane w URL. Wpis, którego symbol zastępczy jest pusty (np. brak sluga), nie ma ścieżki
+i jest pomijany w mapie witryny i w menu. Okno wymienia atrybuty, które możesz wstawić,
+i odrzuca nieznane.
+
+Ustawienia są przechowywane jako ustawienia funkcji, w takiej postaci:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` to jedno z `always`, `hourly`, `daily`, `weekly`, `monthly`, `yearly` lub
+`never`.
+
+## Mapa witryny
+
+Z ustawionym **Adresem URL strony** Verdin serwuje `/sitemap.xml` w katalogu głównym
+własnego hosta (`https://cms.example.com/sitemap.xml`, poza prefiksem API), z:
+
+- każdym **opublikowanym** wpisem skonfigurowanych typów, którego wzorzec się wypełnia;
+- ostatnią zmianą każdego wpisu (`lastmod`) oraz `changefreq` i `priority` typu;
+- w typach lokalizowanych jednym URL na język, powiązanym z pozostałymi przez
+  `<xhtml:link rel="alternate" hreflang="…">`;
+- najwyżej 50 000 URL-i, czyli limitem pliku mapy witryny.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+Mapa witryny jest budowana najwyżej co dziesięć minut i wysyłana
+z `Cache-Control: public, max-age=600`, więc publikacja pojawia się w ciągu dziesięciu minut.
+
+Wyszukiwarki oczekują mapy witryny na hoście twojej witryny. Serwuj ją stamtąd przez rewrite
+albo małą trasę, która pobiera mapę z Verdin:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+Potem wpisz ją do `robots.txt`: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## Komponent SEO
+
+Verdin proponuje komponent `shared.seo` z polami wtyczki SEO ze Strapi:
+
+| Atrybut | Typ |
+| --- | --- |
+| `metaTitle` | string, wymagany, najwyżej 60 znaków |
+| `metaDescription` | text, wymagany, najwyżej 160 znaków |
+| `metaImage` | media (obrazy) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+W oknie **Skonfiguruj SEO** wybierz **Dodaj komponent SEO**, a potem **Utwórz komponent**.
+Utworzenie go zmienia schemat, więc przycisk jest dostępny w trybie deweloperskim
+(`verdin dev`) dla administratorów z **Zarządzanie typami zawartości**; w przeciwnym razie
+okno wymienia atrybuty, które trzeba dodać w plikach schematu. Potem w kreatorze typów
+zawartości dodaj pole komponentu używające `shared.seo` do każdego typu zawartości, który ma
+strony.
+
+<Aside type="tip">
+Z włączonymi [działaniami AI](/pl/guides/integrations/ai-actions/) komponent, który ma
+atrybuty tekstowe `metaTitle` i `metaDescription`, dostaje przycisk **Zasugeruj**, który
+wypełnia je na podstawie wpisu.
+</Aside>
+
+## Wyrenderuj meta tagi
+
+Wypełnij komponent przez populate i zapisz tagi w sekcji head strony:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+`shared.seo` z przykładowego bloga ma tylko `metaTitle` i `metaDescription`; proponowany
+komponent dodaje resztę. Jeśli strona podglądu używa
+[edycji wizualnej](/pl/guides/frontend/visual-editing/), usuń niewidoczne znaczniki przed
+mierzeniem lub porównywaniem meta tekstów.

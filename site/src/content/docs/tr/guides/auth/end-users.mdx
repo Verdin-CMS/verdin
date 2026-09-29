@@ -1,0 +1,250 @@
+---
+title: Son kullanıcılar
+description: Sitelerinizi kullanan kişilerin Strapi’nin users-permissions rotalarını kullanarak, e-posta onayı, OAuth sağlayıcıları ve rollerle içerik API’si üzerinden kaydolmasını ve oturum açmasını sağlayın.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Son kullanıcılar, yönetim paneline değil sitenize veya uygulamanıza oturum açan kişilerdir.
+Verdin onlara kayıt, oturum açma, e-posta onayı, parola sıfırlama, OAuth sağlayıcıları ve içerik
+API’sinde neler yapabileceklerini belirleyen roller sağlar. Rotalar ve payload’lar Strapi v5’in
+users-permissions eklentisininkilerdir; bu yüzden mevcut frontend’ler çalışmaya devam eder.
+
+## Başlamadan önce
+
+<Steps>
+
+1. **Ayarlar → Özellikler → Kullanıcılar ve izinler**’i açın (varsayılan olarak kapalıdır) ya da
+   **Ayarlar → Son kullanıcılar → Ayarlar** bölümünde **Son kullanıcılar**’ı açın.
+2. E-posta onayı veya parola sıfırlama kullanıyorsanız `[email]`’i ayarlayın:
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend ve Postmark anahtarlarını `VERDIN_EMAIL_API_KEY`’den okur. **Ayarlar → Özellikler →
+   E-posta** bölümünde **Test e-postası gönder** bulunur. Yerel çalışma için
+   `docker/compose.dev.yml` Mailpit’i içerir (1025 portunda SMTP, gelen kutusu
+   `http://localhost:8025` adresinde).
+
+3. `[server].public_url`’i ayarlayın: e-postalardaki bağlantılar ve OAuth callback’leri onu
+   kullanır.
+
+</Steps>
+
+Hesapları ve rolleri yönetmek **Son kullanıcıları yönet** (`endusers.manage`) gerektirir. Ayarlar
+sekmesini (kayıt, sağlayıcılar, şablonlar) değiştirmek **Özellikleri yönet** (`features.manage`)
+gerektirir.
+
+## Kayıt ve oturumları yapılandırma
+
+**Ayarlar → Son kullanıcılar → Ayarlar** bölümünde, **Kayıt ve oturumlar** altında:
+
+| Ayar | Varsayılan | Etkisi |
+| --- | --- | --- |
+| **Kayıt olmaya izin ver** | açık | Herkes içerik API’si üzerinden bir hesap oluşturabilir. Kapalı: `register` `400` yanıtını verir. |
+| **E-posta adreslerini onayla** | kapalı | Yeni kullanıcılar oturum açabilmeden önce e-postayla gönderilen bir bağlantıyı açmalıdır. |
+| **Varsayılan rol** | Authenticated | Yeni hesapların rolü. |
+| **Oturumlar** | Tek, uzun ömürlü bir token | **Tek, uzun ömürlü bir token** (Strapi’nin eski modu) veya **Yenilemeli kısa token’lar**. |
+| **Oturum süresi (gün)** | 30 | Uzun ömürlü token’ın ömrü. |
+| **Erişim token’ı ömrü (dakika)**, **Yenileme token’ı ömrü (gün)** | 30, 30 | Yenileme token’larıyla. |
+
+**Uygulamanızın sayfaları** altında **Bir e-posta onaylandıktan sonra** (kullanıcıların adresleri
+onaylandıktan sonra gittikleri yer) ve **Parola sıfırlama sayfası** (`?code=` alan ve yeni bir
+parola isteyen sayfanız) değerlerini ayarlayın. Parola sıfırlama, sıfırlama sayfasını gerektirir.
+
+## Rolleri ayarlama
+
+Her istek şunlardan biri olarak yapılır:
+
+- **Public**: token’sız istekler. İzinleri **Ayarlar → Herkese açık erişim** içindekilerdir.
+- **Authenticated**: yeni hesaplara verilen yerleşik rol. Silinemez.
+- **Özel roller**: bunları **Ayarlar → Son kullanıcılar → Roller** bölümünde **Rol oluştur** ile
+  oluşturun.
+
+Bir rolün **İzinler** bölümü herkese açık erişim ve API token’larıyla aynı matrisi kullanır:
+içerik tipi başına **Listele**, **Tekini getir**, **Oluştur**, **Güncelle**, **Sil**, **Yayınla**
+ve **Taslakları oku**, **Medya kütüphanesi** ve **Kullanıcılar** (`/api/users` rotaları). Oturum
+açmış bir kullanıcı yalnızca rolünün izinlerini alır, ayrıca herkese açık erişimi almaz: oturum
+açmış kullanıcıların ihtiyacı varsa herkese açık okumaları role de verin. Bir rolü silmek
+kullanıcılarını Authenticated’a taşır.
+
+Bir kullanıcı adına hareket etmek için frontend onun JWT’sini `Authorization: Bearer <jwt>`
+olarak gönderir. API token’ları `vd_` ile başlar; Verdin ikisini bu şekilde ayırt eder.
+
+## Kaydolma ve oturum açma
+
+<Tabs>
+<TabItem label="Kayıt">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   veya e-posta onayı açıkken { "user": … }
+```
+
+</TabItem>
+<TabItem label="Oturum açma">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` e-posta veya kullanıcı adıdır.
+
+</TabItem>
+<TabItem label="Kullanıcı olarak okuma">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+Oturum açma engellenmiş kullanıcılar için ("Your account has been blocked by an administrator")
+ve onay açıkken onaylanmamış olanlar için ("Your account email is not confirmed") reddedilir.
+
+## Token’lar ve oturumlar
+
+- **Tek, uzun ömürlü bir token** (`jwtManagement: "legacy-support"`): JWT, **Oturum süresi
+  (gün)** kadar geçerlidir.
+- **Yenilemeli kısa token’lar** (`jwtManagement: "refresh"`, Strapi 5’teki gibi): JWT **Erişim
+  token’ı ömrü (dakika)** kadar geçerlidir ve oturum açma yanıtları ayrıca bir `refreshToken`
+  taşır. Yeni bir çift almak için `{ refreshToken }` ile `POST /api/auth/refresh` çağırın. Her
+  yenileme token’ı bir kez çalışır; kullanılmış birini sunmak tüm oturumu sonlandırır.
+  `{ refreshToken }` ile `POST /api/auth/logout` oturumu bilerek sonlandırır.
+- Bir parolayı değiştirmek veya sıfırlamak kullanıcının önceki token’larını iptal eder;
+  kullanıcıyı engellemek de öyle.
+- Oturum açma, kayıt ve sıfırlama istekleri istemci IP’si başına dakikada 20 ile sınırlıdır.
+- Parolalar Argon2id ile saklanır. Strapi’den içe aktarılan hesaplar, bir sonraki oturum
+  açmalarına kadar bcrypt hash’lerini korur; o sırada yeniden hash’lenir.
+
+## E-posta adreslerini onaylama ve parolaları sıfırlama
+
+**E-posta adreslerini onayla** açıkken kayıt, `/api/auth/email-confirmation?confirmation=…`
+adresine giden bir bağlantıyı e-postayla gönderir. Bağlantıyı açmak hesabı onaylar ve **Bir
+e-posta onaylandıktan sonra** adresine yönlendirir. `{ email }` ile
+`POST /api/auth/send-email-confirmation` yeni bir bağlantı gönderir.
+
+Unutulan bir parola için:
+
+<Steps>
+
+1. Uygulamanız `{ email }` ile `POST /api/auth/forgot-password` çağırır. Hesap var olsa da olmasa
+   da yanıt aynıdır.
+2. Kullanıcı, `?code=…` ile **Parola sıfırlama sayfanıza** giden bir bağlantı içeren bir e-posta
+   alır. Kod bir saat geçerlidir.
+3. Sayfanız `{ code, password, passwordConfirmation }` ile `POST /api/auth/reset-password`
+   çağırır ve `{ jwt, user }` alır.
+
+</Steps>
+
+Oturum açmış kullanıcılar parolalarını `POST /api/auth/change-password`
+(`{ currentPassword, password, passwordConfirmation }`) ile değiştirir.
+
+E-postalar **Ayarlar → Son kullanıcılar → Ayarlar → E-posta şablonları** bölümünde düzenlenir:
+**E-posta onayı** ve **Parola sıfırlama** için bir **Konu**, bir **Mesaj** ve isteğe bağlı bir
+**HTML gövdesi (isteğe bağlı)**. `{{username}}`, `{{email}}` ve `{{url}}` yer tutucularını
+alırlar; değerler HTML gövdesinde HTML’e göre kaçışlanır.
+
+## OAuth sağlayıcılarıyla oturum açma
+
+GitHub, Google, Microsoft, Discord, Facebook, GitLab ve LinkedIn için yerleşik ön ayarlar vardır.
+Diğer her ad, **Yetkilendirme URL’si**, **Token URL’si** ve **Kullanıcı bilgisi URL’si**
+gerektiren genel bir OAuth 2 sağlayıcısıdır: Keycloak, Auth0 ve Okta, realm’inizin veya
+tenant’ınızın URL’leriyle bu şekilde çalışır. Sign in with Apple desteklenmez.
+
+<Steps>
+
+1. **Ayarlar → Son kullanıcılar → Ayarlar → Giriş sağlayıcıları** bölümünde **GitHub ekle**’yi
+   (veya başka bir ön ayarı ya da **OAuth 2 sağlayıcısı ekle**’yi) seçin.
+2. Sağlayıcıda, diyalogda gösterilen **Sağlayıcıya kaydedilecek geri çağırma URL’si** değerini
+   kaydedin: `https://cms.example.com/api/connect/github/callback`.
+3. **İstemci kimliği**, isteğe bağlı **Kapsamlar** ve **Uygulamanıza yönlendirme** değerlerini
+   girin: oturum açtıktan sonra `?access_token=` alan frontend sayfanız. **Etkin**’i açın.
+4. İstemci secret’ını sunucunun ortamına koyun ve yeniden başlatın:
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   Değişken `VERDIN_OAUTH_<PROVIDER>_SECRET` biçimindedir. Secret’lar asla veritabanında
+   saklanmaz.
+
+</Steps>
+
+Oturum açma Strapi’nin akışını izler:
+
+<Diagram
+  caption="Son kullanıcılar için OAuth ile oturum açma"
+  code={`sequenceDiagram
+  participant B as Tarayıcı
+  participant V as Verdin
+  participant P as Sağlayıcı
+  B->>V: GET /api/connect/github
+  V-->>B: sağlayıcıya yönlendirme
+  B->>P: onay
+  P-->>B: /api/connect/github/callback adresine yönlendirme
+  B->>V: callback
+  V-->>B: sayfanıza yönlendirme ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+OAuth `state` değeri imzalanır ve bir çerezle tarayıcıya bağlanır. Hesaplar e-postaya göre
+eşleştirilir; başka bir sağlayıcı ya da e-posta ve parolalı bir hesap tarafından zaten kullanılan
+bir e-posta reddedilir ("Email is already taken.").
+
+## Yönetim panelinde hesapları yönetme
+
+**Ayarlar → Son kullanıcılar → Kullanıcılar**, hesapları kullanıcı adına veya e-postaya göre
+aramayla listeler. **Kullanıcı ekle** ile hesap ekleyebilir, birini düzenleyebilir (kullanıcı adı,
+e-posta, parola, rol, **Onaylandı**, **Engellendi**), **Engelle** veya **Engeli kaldır** ile
+engelleyebilir ya da engelini kaldırabilir ve silebilirsiniz.
+
+## Rotalar
+
+Rotalar içerik API’si öneki altında bulunur, varsayılan olarak `/api`. İstek ve yanıt biçimleri
+Strapi v5’i izler.
+
+| Rota | Yaptığı |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }` veya e-posta onayı açıkken `{ user }`. |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`. |
+| `GET /auth/email-confirmation?confirmation=` | E-postayı onaylar, ardından yönlendirir veya kullanıcıyı döndürür. |
+| `POST /auth/send-email-confirmation` | `{ email }`: yeni bir onay bağlantısı. |
+| `POST /auth/forgot-password` | `{ email }`: sıfırlama bağlantısını e-postayla gönderir. |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/change-password` | Oturum açmış. `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/refresh`, `POST /auth/logout` | Yalnızca yenileme modu: `{ refreshToken }`. |
+| `GET /users/me` | Oturum açmış kullanıcı. |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | Kullanıcılar üzerinde Listele / Tekini getir gerektirir. Strapi gibi düz JSON, `data` zarfı yok. `populate=role` rolü ekler, `_q=` kullanıcı adlarında ve e-postalarda arar, `pagination[page]` ve `pagination[pageSize]` (en fazla 100) sayfalar arasında gezer. |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | Kullanıcılar üzerinde Oluştur / Güncelle / Sil gerektirir. `{ username, email, password, confirmed, blocked, role }`; `role` bir rol kimliğidir. |
+| `GET /connect/{provider}` | Bir OAuth oturum açmasını başlatır. |
+| `GET /auth/{provider}/callback?access_token=` | Sağlayıcının token’ını `{ jwt, user }` ile değiştirir. |
+
+`verdin import strapi`, son kullanıcıları parolalarıyla, özel rolleri ve public, authenticated ve
+özel rollerin izinlerini getirir. Bkz. [Strapi’den geçiş](/tr/migrate/from-strapi/).
+
+<Aside type="caution">
+**Kullanıcılar** üzerinde Oluştur, Güncelle veya Sil yetkisi olan bir rol, üyelerinin tüm son
+kullanıcı hesaplarını yönetmesine izin verir. Onu yalnızca güvenilir rollere veya API token’larına
+verin.
+</Aside>

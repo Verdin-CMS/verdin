@@ -1,0 +1,156 @@
+---
+title: Vorschau
+description: Öffne Entwürfe aus dem Eintragseditor auf deiner Website, mit einem kurzlebigen Vorschau-Token, und lass deine Website den Entwurf damit lesen.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Die Vorschau öffnet den Entwurf eines Eintrags auf deiner eigenen Website, bevor er
+veröffentlicht ist. Der Editor baut einen Link aus einer URL-Vorlage pro Inhaltstyp und hängt
+ein kurzlebiges Token an, mit dem deine Website genau diesen einen Entwurf lesen darf. Diese
+Anleitung richtet die Vorlagen und die Seite der Website ein.
+
+Um in der Vorschau auf Text zu klicken und zu seinem Feld zu springen, ergänze
+[Visuelles Bearbeiten](/de/guides/frontend/visual-editing/).
+
+## Bevor du anfängst
+
+- Schalte **Einstellungen → Funktionen → Vorschau** ein. Standardmäßig ist sie aus.
+- Die Einstellungen der Funktion zu ändern braucht **Funktionen verwalten**
+  (`features.manage`).
+- Eine Vorschau zu öffnen braucht Lesezugriff auf den Eintrag. Siehe
+  [Berechtigungen](/de/reference/permissions/).
+
+## Die Vorschau-URLs einrichten
+
+<Steps>
+
+1. Wähle auf der Karte **Vorschau** unter **Einstellungen → Funktionen**
+   **Vorschau-URLs konfigurieren**.
+2. Gib unter **URL-Vorlagen** für jeden Inhaltstyp die Seite deiner Website ein, die seinen
+   Entwurf zeigt. Lass einen Typ leer, damit er keine Vorschau bekommt.
+3. Ändere optional **Gültigkeit des Links (Minuten)**: standardmäßig 60, höchstens 10080
+   (7 Tage).
+4. Speichere.
+
+</Steps>
+
+Eine Vorlage ist eine `http`- oder `https`-URL mit Platzhaltern in geschweiften Klammern:
+
+| Platzhalter | Gefüllt mit |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | Einem beliebigen Feld des Entwurfs auf oberster Ebene. Unbekannte Platzhalter werden leer. |
+| `{documentId}`, `{uid}` | Der ID des Dokuments und der UID des Inhaltstyps. |
+| `{token}` | Dem Vorschau-Token. Ohne diesen Platzhalter wird das Token als Query-Parameter `preview` angehängt. |
+
+Für die Artikel des Beispielprojekts ergibt
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+die URL `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+Dieselben Einstellungen als JSON, so wie die Funktion sie speichert
+(`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## Eine Vorschau öffnen
+
+Wähle im Eintragseditor **Vorschau öffnen**, um den Entwurf in einem neuen Tab auf deiner
+Website zu öffnen, oder **Nebeneinander**, um ihn in einem Panel neben dem Formular zu zeigen,
+mit den Breiten **Desktop**, **Tablet** und **Mobil**. Das Panel lädt nach jedem Speichern neu.
+Bleibt es leer, verweigert deine Website vermutlich die Einbettung in einen Frame: Nimm dann
+**In neuem Tab öffnen**.
+
+## Den Entwurf auf deiner Website lesen
+
+Deine Vorschauseite nimmt das Token aus der URL und schickt es im Header `x-verdin-preview` an
+die Content-API zurück, mit der Bitte um den Entwurf:
+
+<Diagram
+  caption="Eine Vorschau-Anfrage"
+  code={`sequenceDiagram
+  participant E as Editor
+  participant V as Verdin
+  participant S as Deine Website
+  E->>V: Vorschau öffnen
+  V-->>E: URL mit Vorschau-Token
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: der Entwurf`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+Das Vorschau-Token liest die REST-Content-API. Hol den Entwurf auf deiner Vorschauseite über
+REST.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+Derselbe Header funktioniert bei Single Types (`GET /api/<singularName>?status=draft`).
+
+Was das Token erlaubt:
+
+- Sein Inhaber darf genau dieses eine Dokument lesen, Entwürfe eingeschlossen, bis es abläuft.
+- Es kann keine anderen Dokumente lesen, keine Einträge auflisten und nichts schreiben.
+- Antworten auf Vorschau-Anfragen werden nie gecacht.
+
+<Aside type="caution">
+Jeder mit dem Link kann den Entwurf lesen, bis das Token abläuft. Halte die Gültigkeit kurz, und
+teile Vorschaulinks nicht an öffentlichen Orten.
+</Aside>
+
+Deine Vorschauseite sucht den Eintrag meist über ein Feld wie `slug`. Da das Token über die
+`documentId` liest, nimm auch `{documentId}` in die Vorlage auf, oder behalte die Zuordnung von
+Slug zu ID auf deiner Seite.
+
+## Admin-API
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` liefert den Link für den Button
+im Editor:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+Die Route braucht Lesezugriff auf den Eintrag und antwortet mit `404`, wenn die Funktion aus
+ist oder der Typ keine Vorlage hat.

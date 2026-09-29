@@ -1,0 +1,127 @@
+---
+title: Edición visual
+description: Permite que los editores hagan clic en un texto de tu página de vista previa y lleguen al campo que lo contiene en el panel de administración.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+La edición visual convierte tu página de vista previa en un mapa del panel de administración: un
+editor pasa el ratón por un titular, hace clic en **Edit** y la entrada se abre con ese campo
+enfocado. Se apoya en la [vista previa](/es/guides/content/preview/): configura primero las URLs
+de vista previa y después añade a la página de vista previa las dos piezas que se explican a
+continuación.
+
+Verdin oculta un pequeño source map invisible en cada texto que devuelve (una técnica conocida
+como *stega*), y un script de superposición encuentra esos textos en la página. En tus
+componentes no cambia nada: el texto marcado se muestra como cualquier otro.
+
+<Diagram code={`flowchart LR
+  A[Página de vista previa] -- "x-verdin-stega: true" --> B[API de contenido]
+  B -- "texto + source map invisible" --> A
+  A -- "visual-editing.js: clic en Edit" --> C[Campo en el panel de administración]`} caption="La página pide source maps, y la superposición los convierte en enlaces a los campos." />
+
+## Configúrala
+
+<Steps>
+
+1. Activa **Vista previa** en **Configuración → Funcionalidades**, elige
+   **Configurar las URL de vista previa** y da a cada tipo de contenido la URL de la página que
+   lo muestra. La sección **Edición visual** del mismo diálogo muestra la etiqueta script y la
+   cabecera para tu servidor. Consulta [Vista previa](/es/guides/content/preview/).
+
+2. En la página de vista previa, pide el contenido con un token y la cabecera
+   `x-verdin-stega: true`. El token es el token de vista previa de la URL de vista previa
+   (`?preview=…`, devuelto como `x-verdin-preview`) o un token de API:
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. Carga la superposición en la misma página:
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   La ruta sigue a [`[admin].path`](/es/reference/configuration/):
+   `{path}/api/visual-editing.js`.
+
+</Steps>
+
+Con el [cliente tipado](/es/guides/frontend/typed-client/), pasa las dos cabeceras en `headers`:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+Los source maps solo se añaden a las respuestas REST, no a GraphQL: lee el contenido de la vista
+previa a través de la API REST.
+
+Pasa el ratón por un texto marcado de la página: aparece con un contorno verde y un botón
+**Edit**. Dentro de la vista previa en paralelo del panel (**Abrir vista previa** →
+**En paralelo**), el botón pide al panel que abra el campo ahí mismo. Cuando la página está
+abierta por su cuenta, el botón abre la entrada en una pestaña nueva.
+
+<Aside type="note">
+Los source maps solo se añaden a las peticiones `GET` que envían `x-verdin-stega: true` **y** un
+token (`Authorization` o `x-verdin-preview`). El tráfico público y todo lo que cachea tu CDN
+nunca los llevan, y las respuestas marcadas se envían con `Cache-Control: private, no-store`.
+</Aside>
+
+## Qué se marca
+
+| Se marca | No se marca |
+| --- | --- |
+| Los atributos `string`, `text` y `richtext` | `uid`, `email`, `password`, `enumeration` |
+| El primer texto de cada bloque de un atributo `blocks` | Números, booleanos, fechas, JSON |
+| Lo mismo dentro de componentes y zonas dinámicas (`seo.metaTitle`, `blocks.2.title`) | Cadenas vacías |
+| Las relaciones populadas, que apuntan a la entrada relacionada | Los campos de medios |
+
+La superposición también lee las marcas de los atributos `alt` y `title`, así que un texto
+marcado que pongas en uno de ellos (por ejemplo, un campo de pie de foto usado como `alt`) sigue
+siendo clicable.
+
+## Quita las marcas donde el texto es un dato
+
+Las marcas son caracteres invisibles añadidos al final del texto. Donde uses un valor como dato
+en lugar de mostrarlo (una clave, una URL, una comparación, una comprobación de la longitud del
+`<title>`), quítalas antes:
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+Los campos que son datos por naturaleza, como los slugs `uid` y las enumeraciones, nunca se
+marcan, así que el enrutado por `slug` funciona tal cual.
+
+## Cómo se codifica una marca
+
+Para las herramientas que leen las marcas por su cuenta: una marca es U+2064, seguido de cada
+byte UTF-8 de
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+como cuatro dígitos en base 4 (el más significativo primero) escritos con U+200B, U+200C, U+200D
+y U+2060, y después U+2063. La URL del panel sale de
+[`[server].public_url`](/es/reference/configuration/) y de `[admin].path`. La superposición
+envía `{ type: 'verdin:edit', href }` a la ventana padre con `postMessage`; el panel solo actúa
+si viene del origen de la URL de vista previa.

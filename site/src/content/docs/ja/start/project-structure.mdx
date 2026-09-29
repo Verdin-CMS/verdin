@@ -1,0 +1,155 @@
+---
+title: プロジェクトの構成
+description: verdin new が作成するファイル、Verdin が実行中に追加するファイル、そしてそのうち git に含めるべきものを説明します。
+sidebar:
+  order: 5
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+Verdin のプロジェクトは、設定ファイルとスキーマを持つディレクトリです。このページでは、`verdin new` が作成するもの、サーバーが実行中に追加するもの、そしてコミットすべきものを一覧にします。
+
+## `verdin new` が作成するもの
+
+```sh title="Terminal"
+verdin new my-site
+```
+
+<FileTree>
+- my-site/
+  - verdin.toml プロジェクトの設定
+  - .env シークレットとデータベースの URL。あなただけが読めます
+  - .gitignore
+  - schema/
+    - content-types/ コンテンツタイプごとに 1 つの JSON ファイル
+    - components/ コンポーネントのカテゴリーごとに 1 つのフォルダー
+  - data/ SQLite のデータベース（`--database sqlite` の場合のみ）
+</FileTree>
+
+ディレクトリは存在しないか、空である必要があります。データベースの URL に入るプロジェクト名はディレクトリ名から作られ、小文字にされ、その他の文字は `_` に置き換えられます（`My Site` は `my_site` になります）。
+
+### `verdin.toml`
+
+設定です。生成されるファイルは、ポート、コンテンツ API のプレフィックスとページサイズ、管理画面のパスを設定します。
+
+```toml title="verdin.toml"
+[server]
+port = 1337
+# public_url = "https://cms.example.com"
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+
+[admin]
+path = "/admin"
+# secure_cookies = true
+```
+
+すべてのキーにデフォルトがあるので、ファイルは空でも、なくてもかまいません。不明なキーがあると、サーバーはエラーで停止します。どのキーも、環境変数 `VERDIN_<SECTION>__<KEY>`（たとえば `VERDIN_SERVER__PORT=8080`）で上書きできます。コマンドは現在のディレクトリの `verdin.toml` を読みます。別のファイルを使うには `-c <path>` を渡すか、`VERDIN_CONFIG` を設定してください。スキーマやアップロードのディレクトリなど、ファイル内のパスは、そのファイルを含むディレクトリからの相対パスです。すべての設定は[設定のリファレンス](/ja/reference/configuration/)にあります。
+
+### `.env`
+
+```sh title=".env"
+# ローカルのシークレット: このファイルはバージョン管理に含めないこと。
+VERDIN_DATABASE_URL=sqlite://data/verdin.db
+VERDIN_ADMIN_JWT_SECRET=…
+VERDIN_TOKEN_PEPPER=…
+```
+
+`verdin new` は、2 つのランダムなシークレットと、`--database` で選んだエンジン用のデータベースの URL を書き込みます。
+
+| `--database` | 生成される `VERDIN_DATABASE_URL` |
+| --- | --- |
+| `sqlite`（デフォルト） | `sqlite://data/verdin.db` |
+| `postgres` | `postgres://verdin:change-me@localhost:5432/<name>` |
+| `mysql`、`mariadb` | `mysql://verdin:change-me@localhost:3306/<name>` |
+
+PostgreSQL、MySQL、MariaDB では、ユーザーとパスワードを置き換えてください。SQLite の相対パスは、コマンドを実行したディレクトリではなく、プロジェクトのディレクトリを基準に解決されます。
+
+すべてのコマンドは `verdin.toml` の隣の `.env` を読み込みます。環境ですでに設定されている変数が優先されます。Linux と macOS では、ファイルは所有者だけが読めるように作成されます。本番環境では、`.env` ファイルを配布する代わりに、プラットフォームのシークレットストアでこれらの変数を設定してください。2 つのシークレットについては[クイックスタート](/ja/start/quickstart/#2-シークレット)で説明しています。
+
+### `schema/`
+
+Strapi のスキーマ形式で書かれたコンテンツモデルです。
+
+- `schema/content-types/<singularName>.json`: コレクションタイプまたはシングルタイプごとに 1 つのファイル。
+- `schema/components/<category>/<name>.json`: コンポーネントごとに 1 つのファイル。コンポーネントの UID は `<category>.<name>` です。
+
+`verdin dev` ではコンテンツタイプビルダーがこれらのファイルを書き込み、手で編集することもできます。変更されると `verdin dev` が再読み込みします。ブログのサンプルのスキーマは次のようになっています。
+
+<FileTree>
+- schema/
+  - content-types/
+    - article.json
+    - category.json
+    - homepage.json シングルタイプ
+    - tag.json
+  - components/
+    - blocks/
+      - hero.json `blocks.hero`
+      - quote.json `blocks.quote`
+    - shared/
+      - seo.json `shared.seo`
+</FileTree>
+
+これらのファイルが唯一の正です。Verdin は、データベースのテーブル、バリデーション、REST と GraphQL の API、OpenAPI ドキュメント、TypeScript の型、管理画面のフォームを、ここから導き出します。[コンテンツモデル](/ja/concepts/content-model/)と[スキーマのマイグレーション](/ja/concepts/schema-migrations/)を参照してください。スキーマのディレクトリは `verdin.toml` の `[schema].path` で、デフォルトは `schema` です。
+
+## Verdin の実行時に現れるもの
+
+<FileTree>
+- my-site/
+  - verdin.toml
+  - .env
+  - schema/
+  - data/
+    - verdin.db SQLite のデータベースと、その `-wal` と `-shm` のファイル
+    - search/ `[search].enabled` がオンの場合の全文インデックス
+  - public/
+    - uploads/ メディアライブラリのファイル。`/uploads` で提供されます
+  - .cache/
+    - transforms/ リサイズした画像。必要に応じて再生成されます
+  - plugins/ WebAssembly のプラグイン。プラグインごとに 1 つのフォルダー（自分で作成します）
+  - strapi-id-map.json `verdin import strapi` が書き出します
+</FileTree>
+
+| パス | 書き込むもの | 設定 |
+| --- | --- | --- |
+| `data/verdin.db` | SQLite を使うサーバー | `VERDIN_DATABASE_URL` |
+| `public/uploads/` | ローカルプロバイダー（デフォルト）でのアップロード | `[upload].provider` |
+| `.cache/transforms/` | `/uploads` で要求された画像の変換 | `[upload.transforms].cache_dir` |
+| `data/search/` | 全文インデックス | `[search].dir` |
+| `plugins/` | あなた（プラグインごとにフォルダー） | `[plugins].path` |
+| `strapi-id-map.json` | `verdin import strapi`: Strapi の ID と Verdin の ID の対応 | — |
+
+PostgreSQL、MySQL、MariaDB では `data/verdin.db` はありません。コンテンツはデータベースサーバーにあります。S3 プロバイダーでは、メディアファイルはバケットにあり、`public/uploads` は空のままです。
+
+## git に含めるもの
+
+| コミットする | git に含めない |
+| --- | --- |
+| `verdin.toml` | `.env`（シークレット） |
+| `schema/`（コンテンツタイプとコンポーネント） | `data/`（SQLite のデータベース、検索インデックス） |
+| プラグインを使う場合は `plugins/` | `public/uploads/`（メディア） |
+| `.gitignore` | `.cache/` |
+
+生成される `.gitignore` は、これらすべてをカバーしています。
+
+```sh title=".gitignore"
+.env
+data/
+*.db
+*.db-*
+.cache/
+# ローカルのメディアライブラリ（[upload.provider] の dir）。
+public/uploads/
+```
+
+0.10 より前に作成したプロジェクトには `public/uploads/` の行がないので、追加してください。
+
+<Aside>
+コンテンツとメディアはコードではなくデータです。コミットするのではなく、`verdin export` やデータベース自身のツールでバックアップしてください。[バックアップ](/ja/deploy/backups/)を参照してください。
+</Aside>
+
+スキーマは、フロントエンドの生成した型など、それに依存するコードと一緒にコミットしてください。本番環境では、コミットしたスキーマをデプロイして `verdin start --migrate` を実行します。`verdin dev` 以外ではコンテンツタイプビルダーはオフなので、スキーマはリポジトリを通じてしか変わりません。

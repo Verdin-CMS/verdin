@@ -1,0 +1,173 @@
+---
+title: Usuários administradores e funções
+description: Crie o primeiro administrador, convide outros, atribua funções a eles, redefina senhas pelo painel ou pela CLI e gerencie as sessões.
+sidebar:
+  order: 1
+  label: Usuários administradores
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Os administradores são as pessoas que fazem login no painel de administração. Eles são
+separados dos [usuários finais](/pt-br/guides/auth/end-users/) dos seus sites e apps. Este guia
+cria o primeiro administrador, convida os outros, atribui funções a eles e os ajuda a voltar
+quando ficam trancados do lado de fora.
+
+## Antes de começar
+
+- O Verdin precisa de `VERDIN_ADMIN_JWT_SECRET` e `VERDIN_TOKEN_PEPPER` no ambiente. Gere-os uma
+  vez com `verdin secrets`.
+- Gerenciar administradores exige **Gerenciar usuários** (`users.manage`); gerenciar funções
+  exige **Gerenciar funções** (`roles.manage`). Veja [Permissões](/pt-br/reference/permissions/).
+- Os convites e as redefinições de senha são enviados por e-mail via `[email]`. Com o provedor
+  padrão `log`, os e-mails, links incluídos, são gravados no log do servidor.
+
+## Crie o primeiro administrador
+
+Abra o painel de administração (`http://localhost:1337/admin/` por padrão). Enquanto não
+existir nenhum administrador, ele pede o primeiro, que se torna Super Admin. As senhas têm de 8
+a 128 caracteres.
+
+Sem navegador, use a CLI ou a API:
+
+<Tabs>
+<TabItem label="CLI">
+
+```sh title="Terminal"
+verdin admin create --email you@example.com
+```
+
+A senha vem de `VERDIN_ADMIN_PASSWORD` ou é lida da entrada padrão. O comando cria um Super
+Admin e funciona a qualquer momento, não apenas para o primeiro.
+
+</TabItem>
+<TabItem label="API">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/register-first-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+```
+
+Esta rota só funciona enquanto não existir nenhum administrador.
+
+</TabItem>
+</Tabs>
+
+## Convide um administrador
+
+<Steps>
+
+1. Abra **Configurações → Usuários** e selecione **Adicionar usuário**.
+2. Informe o e-mail e, opcionalmente, **Nome** e **Sobrenome**.
+3. Escolha uma ou mais **Funções**.
+4. Deixe **Definir uma senha agora** desativado para enviar um convite, ou ative-o para definir
+   você mesmo a senha.
+5. Selecione **Convidar** (ou **Salvar**, com uma senha).
+
+</Steps>
+
+A caixa de diálogo **Link de convite** mostra o link e diz se ele foi enviado por e-mail.
+Compartilhe-o você mesmo quando não tiver sido, o que sempre acontece com o provedor `log`. O
+link funciona uma única vez, durante 7 dias; o administrador convidado o abre, escolhe uma senha
+e já entra com login feito.
+
+Enquanto o administrador nunca tiver feito login, **Novo link de convite** na linha dele
+substitui o link antigo. Depois que ele fizer login, recupera o acesso com uma redefinição de
+senha.
+
+## Funções
+
+O Verdin cria três funções, como o Strapi:
+
+| Função | Pode |
+| --- | --- |
+| **Super Admin** | Tudo. As suas permissões não podem ser alteradas. |
+| **Editor** | Criar, editar, publicar e excluir todo o conteúdo; gerenciar a biblioteca de mídia; disparar deploys; gerenciar SEO, redirecionamentos, menus e formulários. |
+| **Author** | Criar conteúdo e editar e excluir as suas próprias entradas e os seus próprios arquivos. Não pode publicar. |
+
+Crie outras em **Configurações → Funções** com **Nova função**. Para cada função, escolha:
+
+- **Conteúdo**: por tipo de conteúdo (ou **Todos os tipos de conteúdo**), o nível de **Ler**,
+  **Criar**, **Atualizar**, **Excluir** e **Publicar**: **Sem acesso**, **Próprias** (apenas as
+  entradas que o administrador criou) ou **Todas**. **Campos** limita uma ação a alguns campos,
+  e **Idiomas** a alguns idiomas.
+- **Biblioteca de mídia**: as ações de arquivos, para **Todos os arquivos** ou
+  **Arquivos próprios**.
+- **Configurações**: o acesso às áreas de administração, como **Gerenciar usuários** ou
+  **Ler logs de auditoria**.
+- **Exigir autenticação de dois fatores**: veja
+  [Autenticação de dois fatores](/pt-br/guides/auth/two-factor/).
+
+Um administrador com várias funções recebe a união das permissões delas. A lista completa está
+na [referência de permissões](/pt-br/reference/permissions/).
+
+Somente um Super Admin pode conceder a função Super Admin, ou editar, excluir ou redefinir outro
+Super Admin.
+
+## Desative ou remova um administrador
+
+Edite o administrador em **Configurações → Usuários** e desative **Ativo**: os usuários inativos
+não conseguem fazer login. **Excluir** remove a conta de vez; os comentários dele passam a
+aparecer como escritos por um administrador excluído.
+
+## Redefina uma senha
+
+- **O próprio administrador a redefine:** **Esqueceu a senha?** na página de login envia por
+  e-mail um link que funciona por uma hora. Todas as sessões da conta terminam quando a senha
+  muda.
+- **Outro administrador a define:** edite o administrador em **Configurações → Usuários** e
+  digite uma nova senha. Deixe o campo vazio para manter a atual.
+- **Pelo servidor:** quando ninguém consegue fazer login, rode
+
+  ```sh title="Terminal"
+  verdin admin reset-password --email you@example.com
+  ```
+
+  com a senha em `VERDIN_ADMIN_PASSWORD` ou na entrada padrão. Ele define a senha, desbloqueia a
+  conta e encerra as suas sessões. Ele não remove a autenticação de dois fatores: um
+  administrador que perdeu o segundo fator precisa que outro administrador o
+  [redefina](/pt-br/guides/auth/two-factor/).
+
+## Proteção do login
+
+- Depois de 5 senhas erradas seguidas, a conta fica bloqueada por 15 minutos.
+- As requisições de login, cadastro e renovação são limitadas por IP do cliente por
+  `[admin].auth_rate_limit` (20 por minuto por padrão).
+- Uma sessão de administração é um token de acesso de 15 minutos renovado com um cookie de
+  renovação que dura 30 dias. O cookie é `Secure` com `verdin start`; veja
+  `[admin].secure_cookies`.
+
+Cada administrador vê os seus dispositivos conectados em **Sessões**, no seu **Perfil**, e pode
+usar **Sair** em um deles ou em todos os outros. Mudar a senha desconecta todos os outros
+dispositivos.
+
+## API de administração
+
+Faça login para obter um token de acesso para a API de administração:
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+# → { "data": { "user": {…}, "accessToken": "…", "accessTokenExpiresAt": "…" } }
+```
+
+| Rota | Permissão | Faz |
+| --- | --- | --- |
+| `GET /users`, `GET /users/{id}` | `users.manage` | Os administradores com as suas funções. |
+| `POST /users` | `users.manage` | `{ email, firstname?, lastname?, roles: [ids], isActive?, password? }`. Sem `password`, o `meta` da resposta tem `inviteUrl` e `emailed`. |
+| `PUT /users/{id}`, `DELETE /users/{id}` | `users.manage` | Altera ou remove um administrador. |
+| `POST /users/{id}/invite` | `users.manage` | Um novo link de convite, para administradores que nunca fizeram login. |
+| `GET /roles`, `POST /roles`, `PUT /roles/{id}`, `DELETE /roles/{id}` | `roles.manage` | As funções e as suas permissões. |
+| `POST /auth/forgot-password` | pública | `{ email }`. Sempre responde `204`. |
+| `GET /auth/sessions`, `DELETE /auth/sessions/{id}` | com login | As suas sessões. |
+
+Todas as rotas ficam em `/admin/api`. Veja a [API de administração](/pt-br/api/admin/).
+
+<Aside type="caution">
+Os segredos nunca vão no `verdin.toml`. Mantenha os dois segredos estáveis entre
+reinicializações e instâncias: `VERDIN_ADMIN_JWT_SECRET` assina os tokens de acesso, os JWTs dos
+usuários finais e os links de pré-visualização, e `VERDIN_TOKEN_PEPPER` protege os tokens de API
+e os segundos fatores (veja [Tokens de API](/pt-br/guides/auth/api-tokens/)).
+</Aside>

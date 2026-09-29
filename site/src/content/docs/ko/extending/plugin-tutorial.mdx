@@ -1,0 +1,316 @@
+---
+title: "튜토리얼: 첫 플러그인"
+description: 글의 읽기 시간을 채우고, 게시를 로그에 남기고, 작은 API 라우트를 제공하는 Verdin 플러그인을 Rust로 만듭니다.
+sidebar:
+  order: 2
+  label: 플러그인 튜토리얼
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+이 튜토리얼에서는 blog 예제용 플러그인 **reading-time**을 만듭니다. 이 플러그인은 다음을 합니다.
+
+- 본문을 쓸 때마다 글의 `body`로 `readingTime`을 채웁니다(before 훅).
+- 글이 게시되면 로그에 한 줄을 씁니다(after 훅).
+- 평균 읽기 시간을 담은 `GET /api/plugins/reading-time/stats`를 제공합니다(콘텐츠를 읽는 라우트).
+- **Words per minute** 설정을 가집니다.
+
+약 20분이 걸립니다. 플러그인이 무엇이고 샌드박스가 어떻게 동작하는지는 먼저 [플러그인](/ko/extending/plugins/)을
+읽으세요.
+
+## 시작하기 전에
+
+다음이 필요합니다.
+
+- blog 예제의 스키마를 가진 Verdin 프로젝트:
+  [`examples/blog/schema`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog/schema)를
+  `verdin new`로 만든 프로젝트에 복사하거나, 예제 자체를 실행하세요. 플러그인은 `article` 타입의
+  `body`(`richtext`)와 `readingTime`(`integer`) 속성을 씁니다.
+- WebAssembly 타깃을 추가한 Rust:
+
+  ```sh title="Terminal"
+  rustup target add wasm32-unknown-unknown
+  ```
+
+플러그인은 [Extism PDK](https://extism.org/docs/concepts/pdk)가 있는 어떤 언어로든 작성할 수 있습니다
+(JavaScript, Go, Zig, C 등). 이 튜토리얼은 Rust와 `extism-pdk`를 씁니다.
+
+## 크레이트 만들기
+
+<Steps>
+
+1. Verdin 프로젝트 밖에서 라이브러리 크레이트를 만듭니다.
+
+   ```sh title="Terminal"
+   cargo new --lib reading-time
+   cd reading-time
+   ```
+
+2. `Cargo.toml`을 바꿉니다. 플러그인은 `cdylib`이며, release 프로필은 모듈을 작게 유지합니다.
+
+   ```toml title="Cargo.toml"
+   [package]
+   name = "reading-time"
+   version = "0.1.0"
+   edition = "2024"
+   publish = false
+
+   [lib]
+   crate-type = ["cdylib"]
+
+   [dependencies]
+   extism-pdk = "1.4.1"
+   serde_json = "1"
+
+   [profile.release]
+   opt-level = "s"
+   lto = true
+   strip = true
+   ```
+
+</Steps>
+
+## 함수 작성
+
+플러그인이 내보내는 모든 함수는 JSON을 받고 JSON을 반환합니다. Verdin은 매니페스트가 지정한 훅, 라우트,
+작업에 대해 이 함수들을 호출하고, 함수는 호스트 함수(`verdin_log`, `verdin_content`, `verdin_config`…)로
+Verdin을 다시 호출합니다.
+
+`src/lib.rs`를 바꿉니다.
+
+```rust title="src/lib.rs"
+use extism_pdk::*;
+use serde_json::{Value, json};
+
+// Host functions Verdin provides (namespace `extism:host/user`).
+#[host_fn]
+extern "ExtismHost" {
+    fn verdin_log(input: Json<Value>);
+    fn verdin_content(input: Json<Value>) -> Json<Value>;
+    fn verdin_config() -> Json<Value>;
+}
+
+/// Minutes needed to read `text` at `per_minute` words a minute (at least 1).
+fn minutes(text: &str, per_minute: u64) -> u64 {
+    let words = text.split_whitespace().count() as u64;
+    words.div_ceil(per_minute.max(1)).max(1)
+}
+
+/// `beforeCreate` and `beforeUpdate` on articles: fills `readingTime` from `body`.
+#[plugin_fn]
+pub fn set_reading_time(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    // An update may leave the body out: then there is nothing to recompute.
+    let Some(body) = data["body"].as_str() else {
+        return Ok(Json(json!({})));
+    };
+    let config = unsafe { verdin_config()? }.0;
+    let per_minute = config["wordsPerMinute"].as_u64().unwrap_or(200);
+    data["readingTime"] = json!(minutes(body, per_minute));
+    Ok(Json(json!({ "data": data })))
+}
+
+/// `afterPublish` on articles: writes a line to the plugin's log.
+#[plugin_fn]
+pub fn log_publish(Json(input): Json<Value>) -> FnResult<()> {
+    let message = format!("published {}", input["documentId"].as_str().unwrap_or("?"));
+    unsafe { verdin_log(Json(json!({ "level": "info", "message": message })))? };
+    Ok(())
+}
+
+/// `GET /api/plugins/reading-time/stats`: the average reading time of published articles.
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    if request["method"] != "GET" || request["path"] != "/stats" {
+        return Ok(Json(json!({ "status": 404, "body": { "error": "not found" } })));
+    }
+    let found = unsafe {
+        verdin_content(Json(json!({
+            "op": "findMany",
+            "uid": "api::article",
+            "query": { "fields": ["readingTime"], "pagination": { "pageSize": 100 } }
+        })))?
+    }
+    .0;
+    if let Some(error) = found.get("error") {
+        return Ok(Json(json!({ "status": 500, "body": { "error": error } })));
+    }
+    let times: Vec<u64> = found["documents"]
+        .as_array()
+        .map(|documents| documents.iter().filter_map(|d| d["readingTime"].as_u64()).collect())
+        .unwrap_or_default();
+    let average = if times.is_empty() { 0.0 } else { times.iter().sum::<u64>() as f64 / times.len() as f64 };
+    Ok(Json(json!({
+        "status": 200,
+        "headers": { "cache-control": "max-age=60" },
+        "body": { "articles": times.len(), "averageMinutes": average }
+    })))
+}
+```
+
+각 함수가 반환하는 것:
+
+- <strong>`set_reading_time`</strong>은 before 훅입니다. `{ "data": … }`는 쓸 데이터를 대체하고, `{}`는 그대로 둡니다.
+  `{ "error": "…" }`를 반환해 400으로 쓰기를 거부할 수도 있습니다.
+- <strong>`log_publish`</strong>는 after 훅이며 출력은 무시됩니다.
+- <strong>`handle`</strong>은 `/api/plugins/reading-time/` 아래의 모든 요청을 처리합니다. 그 접두사 뒤의 경로를 받고
+  `{ status, headers, body }`로 응답합니다.
+
+## 모듈 빌드
+
+```sh title="Terminal"
+cargo build --release --target wasm32-unknown-unknown
+```
+
+모듈은 `target/wasm32-unknown-unknown/release/reading_time.wasm`입니다(Cargo가 대시를 밑줄로 바꿉니다).
+크기는 약 120 KB입니다.
+
+## 매니페스트 작성
+
+<Steps>
+
+1. Verdin 프로젝트에 `plugins/reading-time/`을 만들고 모듈을 `plugin.wasm`으로 복사합니다.
+
+   ```sh title="Terminal"
+   mkdir -p plugins/reading-time
+   cp ../reading-time/target/wasm32-unknown-unknown/release/reading_time.wasm plugins/reading-time/plugin.wasm
+   ```
+
+2. 그 옆에 매니페스트를 만듭니다. 플러그인 이름을 정하고, 함수에 필요한 것을 요청하고, 함수를 훅과 라우트에
+   연결합니다.
+
+   ```toml title="plugins/reading-time/plugin.toml"
+   name = "reading-time"
+   version = "0.1.0"
+   description = "Fills an article's reading time from its body"
+
+   [capabilities]
+   read = ["api::article"]           # for the stats route
+
+   [[hooks]]
+   on = "beforeCreate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "beforeUpdate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "afterPublish"
+   uid = "api::article"
+   function = "log_publish"
+
+   [routes]
+   function = "handle"               # serves /api/plugins/reading-time/…
+
+   [[settings]]
+   key = "wordsPerMinute"
+   label = "Words per minute"
+   type = "integer"
+   min = 50
+   max = 1000
+   default = 200
+   ```
+
+   훅에는 기능 선언이 필요 없습니다. 받은 데이터를 바꿀 뿐이기 때문입니다. 콘텐츠를 읽는 것은 라우트의
+   `verdin_content` 호출뿐이므로, 플러그인은 글에 대한 `read`만 요청합니다.
+
+</Steps>
+
+이제 프로젝트는 다음과 같습니다.
+
+<FileTree>
+- verdin.toml
+- .env
+- plugins/
+  - reading-time/
+    - plugin.toml
+    - plugin.wasm
+- schema/
+  - content-types/
+    - article.json
+    - …
+</FileTree>
+
+## 켜기
+
+<Steps>
+
+1. 서버를 시작(또는 재시작)합니다.
+
+   ```sh title="Terminal"
+   verdin dev
+   ```
+
+   로그에 `plugin found plugin=reading-time version=0.1.0`이 나옵니다.
+
+2. 관리자 패널을 열고 **설정 → 플러그인**으로 갑니다. **reading-time** 카드에 접근 권한(글 읽기), 훅, 라우트가
+   나열됩니다. 켜세요.
+
+3. 카드에서 **설정**을 엽니다. 폼에 기본값 200인 **Words per minute**가 나옵니다. 50~1,000을 벗어난 값은
+   거부됩니다. 그대로 두세요.
+
+</Steps>
+
+## 사용해 보기
+
+<Steps>
+
+1. 관리자 패널에서, 또는 API 토큰으로 API를 통해 몇백 단어짜리 본문을 가진 글을 만듭니다.
+
+   ```sh title="Terminal"
+   curl -X POST http://localhost:1337/api/articles \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "data": { "title": "Hello plugins", "slug": "hello-plugins", "body": "…450 words…" } }'
+   ```
+
+   응답에 `"readingTime": 3`이 있습니다. 450단어를 분당 200단어로 나누고 올림한 값입니다. 여러분이 보내지
+   않았는데 훅이 채웠습니다.
+
+2. 제목만 수정합니다. `readingTime`은 그대로입니다. 수정 데이터에 `body`가 없으므로 훅이 `{}`를 반환합니다.
+   본문을 수정하면 다시 계산됩니다.
+
+3. 글을 게시한 뒤 플러그인 카드에서 **로그**를 엽니다. `published <documentId>`가 보입니다. (API에서는
+   `?status=draft` 없는 생성이 바로 게시하므로 이 줄이 이미 있습니다.)
+
+4. 라우트를 호출합니다.
+
+   ```sh title="Terminal"
+   curl -i http://localhost:1337/api/plugins/reading-time/stats
+   ```
+
+   ```text
+   HTTP/1.1 200 OK
+   content-type: application/json
+   cache-control: max-age=60
+
+   {"articles":1,"averageMinutes":3.0}
+   ```
+
+   게시된 글을 셉니다. `verdin_content`는 쿼리가 `status: "draft"`를 요청하지 않으면 게시된 버전을 읽습니다.
+
+</Steps>
+
+<Aside type="caution">
+이 라우트는 누구에게나 응답합니다. 플러그인 라우트는 **공개 접근**의 적용을 받지 않습니다. 여기서는 평균만
+반환하지만, 콘텐츠를 반환하거나 바꾸는 라우트는 `request.actor`(`{ "kind": "public" }`,
+`{ "kind": "token", "id": … }`, `{ "kind": "user", "id": … }`)를 직접 확인해야 합니다.
+</Aside>
+
+## 수정하기
+
+- 코드를 편집하고, `cargo build --release --target wasm32-unknown-unknown`을 다시 실행하고, 모듈을 복사하고,
+  Verdin을 재시작하세요. 스위치와 설정은 유지됩니다.
+- `plugin.toml`을 바꿔도 재시작이 필요합니다. 설정 변경은 즉시 적용됩니다.
+- 호출이 실패하면 오류는 서버 로그와 **로그**에 있습니다. panic이나 타임아웃은 그 호출만 실패시킵니다. before
+  훅이라면 플러그인의 변경 없이 쓰기가 진행됩니다.
+
+## 다음 단계
+
+- [예약 작업, GraphQL 필드, 관리자 위젯](/ko/extending/plugin-reference/)을 추가해 보세요.
+- `kv` 기능과 `verdin_kv_get` / `verdin_kv_set`으로 호출 사이에 상태를 저장하세요.
+- 저장소의 테스트 플러그인
+  [`crates/verdin-plugins/tests/fixtures/sample`](https://github.com/Verdin-CMS/verdin/tree/main/crates/verdin-plugins/tests/fixtures/sample)은
+  모든 호스트 함수를 씁니다.

@@ -1,0 +1,142 @@
+---
+title: Autenticação de dois fatores
+description: Proteja as contas de administração com um aplicativo autenticador ou chaves de acesso, exija um segundo fator por função e recupere ou redefina fatores perdidos.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+A autenticação de dois fatores adiciona uma segunda etapa depois da senha: um código de 6 dígitos
+de um aplicativo autenticador, ou uma chave de acesso (impressão digital, rosto, bloqueio de tela
+ou chave de segurança). Este guia configura as duas, as torna obrigatórias para uma função e
+explica o que fazer quando um administrador perde a sua. O Strapi não tem equivalente
+integrado.
+
+A autenticação de dois fatores é para os administradores. Os
+[usuários finais](/pt-br/guides/auth/end-users/) fazem login com uma senha ou com um provedor
+OAuth.
+
+## Antes de começar
+
+- Não há recurso para ativar: todo administrador pode configurar um segundo fator no seu perfil.
+- As chaves de acesso ficam vinculadas ao endereço do painel de administração. Defina
+  `[server].public_url` com o endereço que os administradores abrem, como
+  `https://cms.example.com`. Os navegadores só oferecem chaves de acesso via `https://` (e em
+  `localhost`).
+- Mantenha o `VERDIN_TOKEN_PEPPER` estável: os segredos de autenticador e os códigos de
+  recuperação são protegidos com ele, e trocá-lo os torna inutilizáveis.
+
+## Configure um aplicativo autenticador
+
+<Steps>
+
+1. Abra o seu **Perfil** e encontre **Autenticação de dois fatores**.
+2. Em **Aplicativo autenticador**, selecione **Configurar** e confirme a sua senha.
+3. Escaneie o QR code com um app como 1Password, Google Authenticator ou Authy. Se não conseguir
+   escanear, digite a chave de configuração mostrada abaixo dele.
+4. Digite o **Código de 6 dígitos** que o app mostra e selecione **Ativar**.
+5. Guarde os **códigos de recuperação** que o Verdin mostra: use **Baixar** ou copie-os, e então
+   selecione **Eu os salvei**.
+
+</Steps>
+
+Os códigos seguem o esquema TOTP padrão (passos de 30 segundos, SHA-1, 6 dígitos). Um código do
+passo anterior ou do seguinte também é aceito, para tolerar diferenças de relógio. Se os códigos
+forem recusados, confira o horário do seu dispositivo.
+
+## Adicione uma chave de acesso
+
+<Steps>
+
+1. Em **Chaves de acesso**, selecione **Adicionar uma chave de acesso**.
+2. Dê a ela um **Nome**, como "MacBook Touch ID", e confirme a sua senha.
+3. Siga o pedido do seu navegador.
+
+</Steps>
+
+Você pode registrar até 20 chaves de acesso e removê-las com **Remover**. As chaves de acesso são
+um segundo fator depois da senha, não um substituto dela.
+
+## Códigos de recuperação
+
+Você recebe 10 códigos de recuperação ao configurar o seu primeiro fator. Cada um permite fazer
+login uma vez se você perder o app ou as chaves de acesso. O perfil mostra quantos restam;
+**Gerar novos códigos** substitui todos (os antigos param de funcionar).
+
+<Aside type="caution">
+Os códigos são exibidos uma única vez. Guarde-os em um gerenciador de senhas ou em algum lugar
+offline, não ao lado do dispositivo que tem o seu autenticador.
+</Aside>
+
+## Login com um segundo fator
+
+<Diagram
+  caption="Login com autenticação de dois fatores"
+  code={`flowchart LR
+  A[E-mail e senha] --> B{Segundo fator?}
+  B -->|não| S[Login feito]
+  B -->|sim| C[Código, chave de acesso ou código de recuperação]
+  C -->|em até 5 minutos| S`}
+/>
+
+Depois da senha, a página de login pede o **Código de autenticação**. Escolha **Usar uma chave de
+acesso** ou **Usar um código de recuperação** para trocar de método. Você tem 5 minutos para
+concluir; depois disso, digite a sua senha de novo.
+
+## Exija a autenticação de dois fatores para uma função
+
+<Steps>
+
+1. Abra **Configurações → Funções** e a função.
+2. Ative **Exigir autenticação de dois fatores** e salve.
+
+</Steps>
+
+Os membros sem segundo fator são convidados a configurar um quando fazem login. Até fazerem isso,
+só conseguem abrir o seu perfil. Em **Configurações → Usuários**, a linha deles mostra
+**2FA ausente**; os administradores que têm um segundo fator mostram **2FA**.
+
+Enquanto a sua função exigir um segundo fator, o Verdin se recusa a remover o seu último:
+adicione uma chave de acesso antes de desativar o app, ou outro fator antes de remover a sua
+única chave de acesso.
+
+## Redefina o segundo fator de outro administrador
+
+Quando um administrador perde o seu dispositivo e os seus códigos de recuperação:
+
+<Steps>
+
+1. Abra **Configurações → Usuários** e encontre o administrador.
+2. Selecione **Redefinir dois fatores** e confirme.
+
+</Steps>
+
+Isso remove o aplicativo autenticador, as chaves de acesso e os códigos de recuperação dele,
+então ele faz login apenas com a senha. Se a função dele exigir a autenticação de dois fatores,
+ele precisa configurá-la de novo. Isso exige **Gerenciar usuários**; apenas um Super Admin pode
+redefinir outro Super Admin.
+
+O `verdin admin reset-password` redefine apenas a senha, não o segundo fator.
+
+## Login único
+
+Os administradores que fazem login via [login único](/pt-br/guides/auth/sso/) também precisam
+informar o seu segundo fator do Verdin, a menos que o provedor esteja marcado com **O provedor
+exige MFA**.
+
+## API de administração
+
+Todas as rotas ficam em `/admin/api`. As que alteram os fatores recebem a sua `password`.
+
+| Rota | Faz |
+| --- | --- |
+| `POST /auth/login` | Com um segundo fator, responde `{ twoFactorRequired: true, twoFactorToken, methods }` em vez de uma sessão. |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }` (TOTP ou código de recuperação), ou `{ twoFactorToken, challengeToken, credential }` para uma chave de acesso. Responde com a sessão. |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }`: o desafio da chave de acesso. |
+| `GET /auth/two-factor` | Os seus fatores: `totp`, `passkeys`, `recoveryCodesLeft`, `required`. |
+| `POST /auth/two-factor/totp/setup`, `/totp/enable`, `/totp/disable` | Configura (senha), ativa (código) e desativa (senha) o aplicativo autenticador. |
+| `POST /auth/two-factor/recovery-codes` | Novos códigos de recuperação. |
+| `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/{id}` | Registra e remove chaves de acesso. |
+| `DELETE /users/{id}/two-factor` | Redefine os fatores de outro administrador (`users.manage`). |

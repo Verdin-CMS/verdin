@@ -1,0 +1,252 @@
+---
+title: Eindgebruikers
+description: Laat de mensen die je sites gebruiken zich registreren en inloggen via de content-API, met e-mailbevestiging, OAuth-providers en rollen, via de users-permissions-routes van Strapi.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Eindgebruikers zijn de mensen die inloggen op je site of app, niet op het beheerpaneel. Verdin
+geeft ze registratie, inloggen, e-mailbevestiging, wachtwoordherstel, OAuth-providers en rollen
+die bepalen wat ze in de content-API kunnen doen. De routes en payloads zijn die van de
+users-permissions-plugin van Strapi v5, dus bestaande frontends blijven werken.
+
+## Voordat je begint
+
+<Steps>
+
+1. Zet **Instellingen → Functies → Gebruikers en rechten** aan (het staat standaard uit), of zet
+   **Eindgebruikers** aan in **Instellingen → Eindgebruikers → Instellingen**.
+2. Stel `[email]` in als je e-mailbevestiging of wachtwoordherstel gebruikt:
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend en Postmark lezen hun sleutel uit `VERDIN_EMAIL_API_KEY`. **Instellingen → Functies →
+   E-mail** heeft **Testmail versturen**. Voor lokaal werk bevat `docker/compose.dev.yml` Mailpit
+   (SMTP op poort 1025, inbox op `http://localhost:8025`).
+
+3. Stel `[server].public_url` in: links in e-mails en OAuth-callbacks gebruiken het.
+
+</Steps>
+
+Accounts en rollen beheren vereist **Eindgebruikers beheren** (`endusers.manage`). Het tabblad met
+instellingen wijzigen (registratie, providers, sjablonen) vereist **Functies beheren**
+(`features.manage`).
+
+## Registratie en sessies configureren
+
+In **Instellingen → Eindgebruikers → Instellingen**, onder **Registratie en sessies**:
+
+| Instelling | Standaard | Effect |
+| --- | --- | --- |
+| **Registratie toestaan** | aan | Iedereen kan via de content-API een account aanmaken. Uit: `register` antwoordt met `400`. |
+| **E-mailadressen bevestigen** | uit | Nieuwe gebruikers moeten een gemailde link openen voordat ze kunnen inloggen. |
+| **Standaardrol** | Authenticated | De rol van nieuwe accounts. |
+| **Sessies** | Eén langlevende token | **Eén langlevende token** (de legacymodus van Strapi) of **Korte tokens met vernieuwing**. |
+| **Sessieduur (dagen)** | 30 | Levensduur van het langlevende token. |
+| **Levensduur van het toegangstoken (minuten)**, **Levensduur van het refreshtoken (dagen)** | 30, 30 | Met refresh tokens. |
+
+Stel onder **Pagina’s van je app** in: **Na het bevestigen van een e-mailadres** (waar gebruikers
+terechtkomen zodra hun adres is bevestigd) en **Pagina voor wachtwoord opnieuw instellen** (je
+pagina die `?code=` ontvangt en om een nieuw wachtwoord vraagt). Wachtwoordherstel vereist de
+herstelpagina.
+
+## Rollen instellen
+
+Elk request wordt gedaan als een van:
+
+- **Public**: requests zonder token. De rechten ervan zijn die van **Instellingen → Openbare
+  toegang**.
+- **Authenticated**: de ingebouwde rol die nieuwe accounts krijgen. Die kan niet worden
+  verwijderd.
+- **Aangepaste rollen**: maak ze aan in **Instellingen → Eindgebruikers → Rollen** met **Rol
+  aanmaken**.
+
+De **Rechten** van een rol gebruiken dezelfde matrix als openbare toegang en API-tokens:
+**Zoeken**, **Eén zoeken**, **Aanmaken**, **Bijwerken**, **Verwijderen**, **Publiceren** en
+**Concepten lezen** per contenttype, de **Mediabibliotheek**, en **Gebruikers** (de routes
+`/api/users`). Een ingelogde gebruiker krijgt alleen de rechten van zijn rol, niet ook die van
+openbare toegang: verleen openbare leesrechten ook aan de rol als ingelogde gebruikers ze nodig
+hebben. Een rol verwijderen verplaatst zijn gebruikers naar Authenticated.
+
+Om als gebruiker te handelen, stuurt de frontend zijn JWT mee als `Authorization: Bearer <jwt>`.
+API-tokens beginnen met `vd_`, en zo houdt Verdin de twee uit elkaar.
+
+## Registreren en inloggen
+
+<Tabs>
+<TabItem label="Registreren">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   of { "user": … } als e-mailbevestiging aan staat
+```
+
+</TabItem>
+<TabItem label="Inloggen">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` is het e-mailadres of de gebruikersnaam.
+
+</TabItem>
+<TabItem label="Lezen als de gebruiker">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+Inloggen wordt geweigerd voor geblokkeerde gebruikers ("Your account has been blocked by an
+administrator") en, met bevestiging aan, voor onbevestigde gebruikers ("Your account email is not
+confirmed").
+
+## Tokens en sessies
+
+- **Eén langlevende token** (`jwtManagement: "legacy-support"`): de JWT is geldig gedurende
+  **Sessieduur (dagen)**.
+- **Korte tokens met vernieuwing** (`jwtManagement: "refresh"`, zoals in Strapi 5): de JWT is
+  geldig gedurende **Levensduur van het toegangstoken (minuten)**, en inlogantwoorden bevatten ook
+  een `refreshToken`. Roep `POST /api/auth/refresh` aan met `{ refreshToken }` om een nieuw paar te
+  krijgen. Elk refresh token werkt één keer; wie een gebruikt token aanbiedt, beëindigt de hele
+  sessie. `POST /api/auth/logout` met `{ refreshToken }` beëindigt haar bewust.
+- Een wachtwoord wijzigen of resetten trekt de eerdere tokens van de gebruiker in, net als de
+  gebruiker blokkeren.
+- Requests voor inloggen, registreren en herstellen zijn begrensd tot 20 per minuut per client-IP.
+- Wachtwoorden worden opgeslagen met Argon2id. Accounts die uit Strapi zijn geïmporteerd, behouden
+  hun bcrypt-hash tot hun volgende login, waarbij ze opnieuw worden gehasht.
+
+## E-mailadressen bevestigen en wachtwoorden herstellen
+
+Met **E-mailadressen bevestigen** aan mailt de registratie een link naar
+`/api/auth/email-confirmation?confirmation=…`. Die openen bevestigt het account en stuurt door naar
+**Na het bevestigen van een e-mailadres**. `POST /api/auth/send-email-confirmation` met
+`{ email }` stuurt een nieuwe link.
+
+Voor een vergeten wachtwoord:
+
+<Steps>
+
+1. Je app roept `POST /api/auth/forgot-password` aan met `{ email }`. Het antwoord is hetzelfde,
+   of het account nu bestaat of niet.
+2. De gebruiker krijgt een e-mail met een link naar je **Pagina voor wachtwoord opnieuw
+   instellen**, met `?code=…`. De code werkt een uur.
+3. Je pagina roept `POST /api/auth/reset-password` aan met
+   `{ code, password, passwordConfirmation }` en krijgt `{ jwt, user }`.
+
+</Steps>
+
+Ingelogde gebruikers wijzigen hun wachtwoord met `POST /api/auth/change-password`
+(`{ currentPassword, password, passwordConfirmation }`).
+
+De e-mails bewerk je in **Instellingen → Eindgebruikers → Instellingen → E-mailsjablonen**: een
+**Onderwerp**, een **Bericht** en een optionele **HTML-inhoud (optioneel)** voor
+**E-mailbevestiging** en **Wachtwoord opnieuw instellen**. Ze accepteren de placeholders
+`{{username}}`, `{{email}}` en `{{url}}`; waarden worden in de HTML-inhoud HTML-escaped.
+
+## Inloggen met OAuth-providers
+
+Er zijn ingebouwde presets voor GitHub, Google, Microsoft, Discord, Facebook, GitLab en LinkedIn.
+Elke andere naam is een generieke OAuth 2-provider die zijn **Autorisatie-URL**, **Token-URL** en
+**Gebruikersinfo-URL** nodig heeft: Keycloak, Auth0 en Okta werken zo, met de URL's van je realm of
+tenant. Inloggen met Apple wordt niet ondersteund.
+
+<Steps>
+
+1. Kies in **Instellingen → Eindgebruikers → Instellingen → Aanmeldproviders** **GitHub
+   toevoegen** (of een andere preset, of **OAuth 2-provider toevoegen**).
+2. Registreer bij de provider de **Callback-URL om te registreren bij de provider** die de dialoog
+   toont: `https://cms.example.com/api/connect/github/callback`.
+3. Vul de **Client-ID** in, optioneel **Scopes**, en **Doorverwijzen naar je app**: de pagina van
+   je frontend die na het inloggen `?access_token=` ontvangt. Zet **Ingeschakeld** aan.
+4. Zet het clientgeheim in de omgeving van de server en herstart:
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   De variabele is `VERDIN_OAUTH_<PROVIDER>_SECRET`. Geheimen worden nooit in de database
+   opgeslagen.
+
+</Steps>
+
+Het inloggen volgt de flow van Strapi:
+
+<Diagram
+  caption="OAuth-login voor eindgebruikers"
+  code={`sequenceDiagram
+  participant B as Browser
+  participant V as Verdin
+  participant P as Provider
+  B->>V: GET /api/connect/github
+  V-->>B: redirect naar de provider
+  B->>P: toestemming
+  P-->>B: redirect naar /api/connect/github/callback
+  B->>V: callback
+  V-->>B: redirect naar je pagina ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+De OAuth-`state` is ondertekend en met een cookie aan de browser gebonden. Accounts worden op
+e-mailadres gekoppeld; een e-mailadres dat al door een andere provider wordt gebruikt, of door een
+account met e-mail en wachtwoord, wordt geweigerd ("Email is already taken.").
+
+## Accounts beheren in het beheerpaneel
+
+**Instellingen → Eindgebruikers → Gebruikers** toont de accounts, met zoeken op gebruikersnaam of
+e-mailadres. Je kunt **Gebruiker toevoegen**, er een bewerken (gebruikersnaam, e-mailadres,
+wachtwoord, rol, **Bevestigd**, **Geblokkeerd**), hem **Blokkeren** of **Deblokkeren**, en hem
+verwijderen.
+
+## Routes
+
+De routes staan onder het prefix van de content-API, standaard `/api`. De vormen van requests en
+responses volgen Strapi v5.
+
+| Route | Doet |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }`, of `{ user }` met e-mailbevestiging aan. |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`. |
+| `GET /auth/email-confirmation?confirmation=` | Bevestigt het e-mailadres en stuurt daarna door of geeft de gebruiker terug. |
+| `POST /auth/send-email-confirmation` | `{ email }`: een nieuwe bevestigingslink. |
+| `POST /auth/forgot-password` | `{ email }`: mailt de herstellink. |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/change-password` | Ingelogd. `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/refresh`, `POST /auth/logout` | Alleen in refreshmodus: `{ refreshToken }`. |
+| `GET /users/me` | De ingelogde gebruiker. |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | Vereist Zoeken / Eén zoeken op Gebruikers. Gewone JSON, zonder `data`-envelop, zoals Strapi. `populate=role` voegt de rol toe, `_q=` zoekt in gebruikersnamen en e-mailadressen, `pagination[page]` en `pagination[pageSize]` (hoogstens 100) bladeren. |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | Vereist Aanmaken / Bijwerken / Verwijderen op Gebruikers. `{ username, email, password, confirmed, blocked, role }`, met `role` als rol-id. |
+| `GET /connect/{provider}` | Start een OAuth-login. |
+| `GET /auth/{provider}/callback?access_token=` | Wisselt het token van de provider in voor `{ jwt, user }`. |
+
+`verdin import strapi` neemt eindgebruikers mee met hun wachtwoorden, aangepaste rollen en de
+rechten van de rollen public, authenticated en de aangepaste rollen. Zie
+[Migreren vanaf Strapi](/nl/migrate/from-strapi/).
+
+<Aside type="caution">
+Een rol met Aanmaken, Bijwerken of Verwijderen op **Gebruikers** laat zijn leden elk
+eindgebruikersaccount beheren. Geef hem alleen aan vertrouwde rollen of API-tokens.
+</Aside>

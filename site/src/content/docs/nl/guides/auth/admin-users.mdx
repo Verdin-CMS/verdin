@@ -1,0 +1,165 @@
+---
+title: Beheerders en rollen
+description: Maak de eerste beheerder aan, nodig anderen uit, geef ze rollen, reset wachtwoorden vanuit het paneel of de CLI, en beheer sessies.
+sidebar:
+  order: 1
+  label: Beheerders
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Beheerders zijn de mensen die inloggen op het beheerpaneel. Ze staan los van de
+[eindgebruikers](/nl/guides/auth/end-users/) van je sites en apps. Deze gids maakt de eerste
+beheerder aan, nodigt de anderen uit, geeft ze rollen en helpt ze weer binnen als ze zijn
+buitengesloten.
+
+## Voordat je begint
+
+- Verdin heeft `VERDIN_ADMIN_JWT_SECRET` en `VERDIN_TOKEN_PEPPER` in de omgeving nodig. Genereer
+  ze één keer met `verdin secrets`.
+- Beheerders beheren vereist **Gebruikers beheren** (`users.manage`); rollen beheren vereist
+  **Rollen beheren** (`roles.manage`). Zie [Rechten](/nl/reference/permissions/).
+- Uitnodigingen en wachtwoordherstel worden gemaild via `[email]`. Met de standaardprovider `log`
+  worden de e-mails, inclusief links, naar het serverlog geschreven.
+
+## De eerste beheerder aanmaken
+
+Open het beheerpaneel (standaard `http://localhost:1337/admin/`). Zolang er geen beheerder
+bestaat, vraagt het om de eerste, die Super Admin wordt. Wachtwoorden hebben 8 tot 128 tekens.
+
+Zonder browser gebruik je de CLI of de API:
+
+<Tabs>
+<TabItem label="CLI">
+
+```sh title="Terminal"
+verdin admin create --email you@example.com
+```
+
+Het wachtwoord komt uit `VERDIN_ADMIN_PASSWORD`, of wordt van standard input gelezen. Het commando
+maakt een Super Admin aan en werkt op elk moment, niet alleen voor de eerste.
+
+</TabItem>
+<TabItem label="API">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/register-first-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+```
+
+Deze route werkt alleen zolang er geen beheerder bestaat.
+
+</TabItem>
+</Tabs>
+
+## Een beheerder uitnodigen
+
+<Steps>
+
+1. Open **Instellingen → Gebruikers** en kies **Gebruiker toevoegen**.
+2. Vul het e-mailadres in, en optioneel **Voornaam** en **Achternaam**.
+3. Kies een of meer **Rollen**.
+4. Laat **Nu een wachtwoord instellen** uit om een uitnodiging te sturen, of zet het aan om het
+   wachtwoord zelf in te stellen.
+5. Kies **Uitnodigen** (of **Opslaan** met een wachtwoord).
+
+</Steps>
+
+De dialoog **Uitnodigingslink** toont de link en zegt of die is gemaild. Deel hem zelf als dat niet
+zo is, wat met de provider `log` altijd het geval is. De link werkt één keer, gedurende 7 dagen; de
+uitgenodigde beheerder opent hem, kiest een wachtwoord en is ingelogd.
+
+Zolang de beheerder nooit is ingelogd, vervangt **Nieuwe uitnodigingslink** op zijn rij de oude
+link. Zodra hij is ingelogd, krijgt hij toegang terug via wachtwoordherstel.
+
+## Rollen
+
+Verdin maakt drie rollen aan, net als Strapi:
+
+| Rol | Kan |
+| --- | --- |
+| **Super Admin** | Alles. De rechten ervan kunnen niet worden gewijzigd. |
+| **Editor** | Alle content aanmaken, bewerken, publiceren en verwijderen; de mediabibliotheek beheren; deploys starten; SEO, redirects, menu's en formulieren beheren. |
+| **Author** | Content aanmaken, en de eigen items en bestanden bewerken en verwijderen. Kan niet publiceren. |
+
+Maak er meer aan in **Instellingen → Rollen** met **Nieuwe rol**. Kies voor elke rol:
+
+- **Content**: per contenttype (of **Alle contenttypes**) het niveau van **Lezen**,
+  **Aanmaken**, **Bijwerken**, **Verwijderen** en **Publiceren**: **Geen toegang**, **Eigen**
+  (alleen items die de beheerder heeft aangemaakt) of **Alle**. **Velden** beperkt een actie tot
+  bepaalde velden, en **Talen** tot bepaalde locales.
+- **Mediabibliotheek**: de bestandsacties, voor **Alle bestanden** of **Eigen bestanden**.
+- **Instellingen**: toegang tot de beheergebieden, zoals **Gebruikers beheren** of **Auditlogs
+  lezen**.
+- **Tweefactorauthenticatie vereisen**: zie [Tweefactorauthenticatie](/nl/guides/auth/two-factor/).
+
+Een beheerder met meerdere rollen krijgt de vereniging van hun rechten. De volledige lijst staat
+in de [rechtenreferentie](/nl/reference/permissions/).
+
+Alleen een Super Admin kan de rol Super Admin toekennen, of een andere Super Admin bewerken,
+verwijderen of resetten.
+
+## Een beheerder deactiveren of verwijderen
+
+Bewerk de beheerder in **Instellingen → Gebruikers** en zet **Actief** uit: inactieve gebruikers
+kunnen niet inloggen. **Verwijderen** verwijdert het account definitief; zijn opmerkingen worden
+dan getoond als geschreven door een verwijderde beheerder.
+
+## Een wachtwoord resetten
+
+- **De beheerder reset het zelf:** **Wachtwoord vergeten?** op de inlogpagina mailt een link die
+  een uur werkt. Elke sessie van het account eindigt zodra het wachtwoord verandert.
+- **Een andere beheerder stelt het in:** bewerk de beheerder in **Instellingen → Gebruikers** en
+  typ een nieuw wachtwoord. Laat het veld leeg om het huidige te behouden.
+- **Vanaf de server:** als niemand kan inloggen, draai je
+
+  ```sh title="Terminal"
+  verdin admin reset-password --email you@example.com
+  ```
+
+  met het wachtwoord in `VERDIN_ADMIN_PASSWORD` of op standard input. Het stelt het wachtwoord in,
+  ontgrendelt het account en beëindigt zijn sessies. Het verwijdert geen
+  tweefactorauthenticatie: een beheerder die zijn tweede factor kwijt is, heeft een andere
+  beheerder nodig om [die te resetten](/nl/guides/auth/two-factor/).
+
+## Bescherming bij het inloggen
+
+- Na 5 verkeerde wachtwoorden op rij wordt het account 15 minuten vergrendeld.
+- Requests voor inloggen, registreren en refresh worden per client-IP begrensd door
+  `[admin].auth_rate_limit` (standaard 20 per minuut).
+- Een beheerderssessie is een access token van 15 minuten, vernieuwd met een refresh-cookie die
+  30 dagen geldig is. De cookie is `Secure` in `verdin start`; zie `[admin].secure_cookies`.
+
+Elke beheerder ziet zijn ingelogde apparaten onder **Sessies** in zijn **Profiel**, en kan één of
+alle andere apparaten **Uitloggen**. Het wachtwoord wijzigen logt elk ander apparaat uit.
+
+## Admin-API
+
+Log in om een access token voor de admin-API te krijgen:
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+# → { "data": { "user": {…}, "accessToken": "…", "accessTokenExpiresAt": "…" } }
+```
+
+| Route | Recht | Doet |
+| --- | --- | --- |
+| `GET /users`, `GET /users/{id}` | `users.manage` | Beheerders met hun rollen. |
+| `POST /users` | `users.manage` | `{ email, firstname?, lastname?, roles: [ids], isActive?, password? }`. Zonder `password` bevat de `meta` van het antwoord `inviteUrl` en `emailed`. |
+| `PUT /users/{id}`, `DELETE /users/{id}` | `users.manage` | Een beheerder wijzigen of verwijderen. |
+| `POST /users/{id}/invite` | `users.manage` | Een nieuwe uitnodigingslink, voor beheerders die nooit zijn ingelogd. |
+| `GET /roles`, `POST /roles`, `PUT /roles/{id}`, `DELETE /roles/{id}` | `roles.manage` | Rollen en hun rechten. |
+| `POST /auth/forgot-password` | openbaar | `{ email }`. Antwoordt altijd met `204`. |
+| `GET /auth/sessions`, `DELETE /auth/sessions/{id}` | ingelogd | Je sessies. |
+
+Alle routes staan onder `/admin/api`. Zie de [admin-API](/nl/api/admin/).
+
+<Aside type="caution">
+Geheimen horen nooit in `verdin.toml`. Houd beide geheimen stabiel over herstarts en instanties
+heen: `VERDIN_ADMIN_JWT_SECRET` ondertekent access tokens, de JWT's van eindgebruikers en
+voorbeeldlinks, en `VERDIN_TOKEN_PEPPER` beschermt API-tokens en tweede factoren (zie
+[API-tokens](/nl/guides/auth/api-tokens/)).
+</Aside>

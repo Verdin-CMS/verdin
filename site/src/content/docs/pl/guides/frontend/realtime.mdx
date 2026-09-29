@@ -1,0 +1,146 @@
+---
+title: Aktualizacje w czasie rzeczywistym
+description: Odświeżaj frontend w chwili zmiany treści, subskrybując zdarzenia server-sent events z Verdin.
+sidebar:
+  order: 8
+  label: Czas rzeczywisty
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Z włączoną funkcją **Czas rzeczywisty** Verdin przesyła strumieniowo małe zdarzenie za każdym
+razem, gdy zmienia się wpis lub plik multimediów. Frontend subskrybuje strumień i pobiera
+ponownie to, co się zmieniło: blog na żywo, tablica wyników, pulpit, który nigdy nie wymaga
+przeładowania. Każdy subskrybent otrzymuje tylko zdarzenia dotyczące treści, którą może
+czytać.
+
+Ta strona pokazuje, jak używać strumienia z frontendu. Nazwy zdarzeń, payloady i reguły są
+w [dokumentacji API czasu rzeczywistego](/pl/api/realtime/). Strapi v5 nie ma wbudowanego
+odpowiednika.
+
+## Włącz funkcję
+
+<Steps>
+
+1. W **Ustawienia → Funkcje** włącz **Czas rzeczywisty**.
+2. Zdecyduj, kto subskrybuje. Strumień używa uprawnień API treści:
+   - dla wszystkich zezwól na **Wyszukaj** lub **Pobierz jeden** na typach w
+     **Ustawienia → Dostęp publiczny**;
+   - dla serwera lub aplikacji utwórz [token API](/pl/guides/auth/api-tokens/) z tymi
+     uprawnieniami (i **Odczyt szkiców**, aby otrzymywać zdarzenia dotyczące tylko szkiców);
+   - dla zalogowanych użytkowników końcowych działa też ich JWT (zobacz
+     [Użytkownicy końcowi](/pl/guides/auth/end-users/)).
+
+</Steps>
+
+Strumień to `GET /api/_events`. Dodaj `?types=` z listą UID-ów typów zawartości oddzielonych
+przecinkami, aby otrzymywać tylko te (`plugin::upload` to biblioteka multimediów):
+
+```sh title="Terminal"
+curl -N "https://cms.example.com/api/_events?types=api::article,api::category"
+```
+
+```
+event: ready
+data: {}
+
+event: entry.publish
+data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","locale":"en"}
+```
+
+## Subskrypcja z przeglądarki
+
+Zdarzenia niosą identyfikatory, nie treść. Przy każdym zdarzeniu pobierz ponownie to, co
+pokazujesz, przez to samo API i z tymi samymi uprawnieniami co przy każdym innym odczycie.
+
+<Tabs syncKey="auth">
+<TabItem label="Publicznie">
+
+Z rolą publiczną wystarczy przeglądarkowy `EventSource`, który sam się ponownie łączy:
+
+```js
+const CMS = 'https://cms.example.com';
+const events = new EventSource(`${CMS}/api/_events?types=api::article`);
+
+for (const name of ['entry.publish', 'entry.unpublish', 'entry.delete']) {
+  events.addEventListener(name, (event) => {
+    const { documentId } = JSON.parse(event.data);
+    refreshArticle(documentId);
+  });
+}
+
+events.addEventListener('lagged', () => refreshEverything());
+```
+
+</TabItem>
+<TabItem label="Z tokenem">
+
+`EventSource` nie może wysłać nagłówka `Authorization`. Zamiast tego czytaj strumień przez
+`fetch` i łącz się ponownie, gdy się skończy:
+
+```js
+async function subscribe(token, onEvent) {
+  for (;;) {
+    try {
+      const response = await fetch(`${CMS}/api/_events?types=api::article`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) return; // token refused
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const name = block.match(/^event: (.*)$/m)?.[1];
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (name && data) onEvent(name, JSON.parse(data));
+        }
+      }
+    } catch {
+      // network error: retry below
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+```
+
+Działa też każda biblioteka klienta SSE, która obsługuje nagłówki.
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution">
+Token w kodzie przeglądarki może odczytać każdy, kto otworzy stronę. Dostarczaj tylko token
+tylko do odczytu ograniczony do typów, które pokazuje strona, albo subskrybuj ze swojego
+serwera i przekazuj aktualizacje do przeglądarki.
+</Aside>
+
+Wywoływanie strumienia z witryny na innym originie wymaga tego originu w
+[`[api].cors_origins`](/pl/reference/configuration/).
+
+## Utrzymuj strumień w dobrym stanie
+
+- Pierwsze zdarzenie to `ready`: subskrypcja działa.
+- Strumień kończy się po godzinie. Połącz się wtedy ponownie: `EventSource` robi to
+  automatycznie, a ponowne połączenie przy okazji sprawdza token, więc unieważniony token
+  przestaje dostawać zdarzenia.
+- Zdarzenie `lagged` oznacza, że klient czytał za wolno i pominął zdarzenia. Pobierz ponownie
+  wszystko, co pokazuje strona.
+- Zdarzenia dotyczące tylko szkiców (`entry.create`, `entry.update` i `entry.discard-draft`
+  w typach ze szkicami i publikacją) docierają tylko do wywołujących z **Odczyt szkiców**.
+  Publiczna witryna zwykle nasłuchuje `entry.publish`, `entry.unpublish` i `entry.delete`.
+
+## Za load balancerem
+
+Zdarzenia dotyczą instancji, z którą klient jest połączony. Przy kilku instancjach używaj
+sesji sticky dla `/api/_events` albo kieruj klientów czasu rzeczywistego na jedną instancję.
+Zobacz [Skalowanie](/pl/deploy/scaling/).
+
+Panel administracyjny używa własnego strumienia (`/admin/api/events`) do aktualizacji na
+żywo, obecności i miękkich blokad podczas edycji; zobacz
+[dokumentację API czasu rzeczywistego](/pl/api/realtime/).

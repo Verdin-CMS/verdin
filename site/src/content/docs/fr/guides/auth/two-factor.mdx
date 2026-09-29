@@ -1,0 +1,146 @@
+---
+title: Authentification à deux facteurs
+description: Protégez les comptes d’administration avec une application d’authentification ou des passkeys, exigez un second facteur par rôle, et récupérez ou réinitialisez les facteurs perdus.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+L’authentification à deux facteurs ajoute une seconde étape après le mot de passe : un code à
+6 chiffres issu d’une application d’authentification, ou une passkey (empreinte digitale,
+visage, verrouillage de l’écran ou clé de sécurité). Ce guide configure les deux, les rend
+obligatoires pour un rôle, et explique quoi faire quand un administrateur perd les siens. Strapi
+n’a pas d’équivalent intégré.
+
+L’authentification à deux facteurs concerne les administrateurs. Les
+[utilisateurs finaux](/fr/guides/auth/end-users/) se connectent avec un mot de passe ou un
+fournisseur OAuth.
+
+## Avant de commencer
+
+- Il n’y a aucune fonctionnalité à activer : chaque administrateur peut configurer un second
+  facteur dans son profil.
+- Les passkeys sont liées à l’adresse du panneau d’administration. Définissez
+  `[server].public_url` sur l’adresse qu’ouvrent les administrateurs, par exemple
+  `https://cms.example.com`. Les navigateurs ne proposent les passkeys qu’en `https://` (et sur
+  `localhost`).
+- Gardez `VERDIN_TOKEN_PEPPER` stable : les secrets d’application d’authentification et les
+  codes de récupération sont protégés avec lui, et le changer les rend inutilisables.
+
+## Configurer une application d’authentification
+
+<Steps>
+
+1. Ouvrez votre **Profil** et repérez **Authentification à deux facteurs**.
+2. Sous **Application d’authentification**, sélectionnez **Configurer** et confirmez votre mot
+   de passe.
+3. Scannez le QR code avec une application comme 1Password, Google Authenticator ou Authy. Si
+   vous ne pouvez pas le scanner, saisissez la clé de configuration affichée en dessous.
+4. Saisissez le **Code à 6 chiffres** affiché par l’application et sélectionnez **Activer**.
+5. Conservez les **codes de récupération** que Verdin affiche : **Téléchargez**-les ou
+   copiez-les, puis sélectionnez **Je les ai enregistrés**.
+
+</Steps>
+
+Les codes suivent le schéma TOTP standard (pas de 30 secondes, SHA-1, 6 chiffres). Un code du
+pas précédent ou suivant est aussi accepté, pour tolérer la dérive des horloges. Si les codes
+sont refusés, vérifiez l’heure de votre appareil.
+
+## Ajouter une passkey
+
+<Steps>
+
+1. Sous **Clés d’accès**, sélectionnez **Ajouter une clé d’accès**.
+2. Donnez-lui un **Nom**, comme « MacBook Touch ID », et confirmez votre mot de passe.
+3. Suivez les instructions de votre navigateur.
+
+</Steps>
+
+Vous pouvez enregistrer jusqu’à 20 passkeys et les retirer avec **Supprimer**. Les passkeys sont
+un second facteur après le mot de passe, pas un remplacement.
+
+## Codes de récupération
+
+Vous recevez 10 codes de récupération quand vous configurez votre premier facteur. Chacun vous
+connecte une fois si vous perdez votre application ou vos passkeys. Le profil indique combien il
+en reste ; **Générer de nouveaux codes** les remplace tous (les anciens cessent de fonctionner).
+
+<Aside type="caution">
+Les codes ne sont affichés qu’une fois. Stockez-les dans un gestionnaire de mots de passe ou
+hors ligne, pas à côté de l’appareil qui contient votre application d’authentification.
+</Aside>
+
+## Se connecter avec un second facteur
+
+<Diagram
+  caption="Connexion avec l’authentification à deux facteurs"
+  code={`flowchart LR
+  A[E-mail et mot de passe] --> B{Second facteur ?}
+  B -->|non| S[Connecté]
+  B -->|oui| C[Code, passkey ou code de récupération]
+  C -->|en moins de 5 minutes| S`}
+/>
+
+Après le mot de passe, la page de connexion demande le **Code d’authentification**. Choisissez
+**Utiliser une clé d’accès** ou **Utiliser un code de récupération** pour changer de méthode.
+Vous avez 5 minutes pour terminer ; passé ce délai, saisissez à nouveau votre mot de passe.
+
+## Exiger l’authentification à deux facteurs pour un rôle
+
+<Steps>
+
+1. Ouvrez **Paramètres → Rôles**, puis le rôle.
+2. Activez **Exiger l’authentification à deux facteurs** et enregistrez.
+
+</Steps>
+
+Les membres sans second facteur sont invités à en configurer un à la connexion. Tant qu’ils ne
+l’ont pas fait, ils ne peuvent ouvrir que leur profil. Dans **Paramètres → Utilisateurs**, leur
+ligne affiche **2FA manquante** ; les administrateurs qui ont un second facteur affichent
+**2FA**.
+
+Tant que votre rôle exige un second facteur, Verdin refuse de supprimer votre dernier facteur :
+ajoutez une passkey avant de désactiver l’application, ou un autre facteur avant de supprimer
+votre unique passkey.
+
+## Réinitialiser le second facteur d’un autre administrateur
+
+Quand un administrateur perd son appareil et ses codes de récupération :
+
+<Steps>
+
+1. Ouvrez **Paramètres → Utilisateurs** et trouvez l’administrateur.
+2. Sélectionnez **Réinitialiser la double authentification** et confirmez.
+
+</Steps>
+
+Cela supprime son application d’authentification, ses passkeys et ses codes de récupération :
+il se connecte alors avec son seul mot de passe. Si son rôle exige l’authentification à deux
+facteurs, il doit la configurer à nouveau. Cette action nécessite **Gérer les utilisateurs** ;
+seul un Super Admin peut réinitialiser un autre Super Admin.
+
+`verdin admin reset-password` ne réinitialise que le mot de passe, pas le second facteur.
+
+## Authentification unique
+
+Les administrateurs qui se connectent via l’[authentification unique](/fr/guides/auth/sso/) se
+voient aussi demander leur second facteur Verdin, sauf si le fournisseur est marqué
+**Le fournisseur impose la MFA**.
+
+## API d’administration
+
+Toutes les routes sont sous `/admin/api`. Celles qui modifient des facteurs prennent votre
+`password`.
+
+| Route | Effet |
+| --- | --- |
+| `POST /auth/login` | Avec un second facteur, répond `{ twoFactorRequired: true, twoFactorToken, methods }` au lieu d’une session. |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }` (code TOTP ou de récupération), ou `{ twoFactorToken, challengeToken, credential }` pour une passkey. Répond la session. |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }` : le challenge de la passkey. |
+| `GET /auth/two-factor` | Vos facteurs : `totp`, `passkeys`, `recoveryCodesLeft`, `required`. |
+| `POST /auth/two-factor/totp/setup`, `/totp/enable`, `/totp/disable` | Configure (mot de passe), active (code) et désactive (mot de passe) l’application d’authentification. |
+| `POST /auth/two-factor/recovery-codes` | De nouveaux codes de récupération. |
+| `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/{id}` | Enregistre et supprime des passkeys. |
+| `DELETE /users/{id}/two-factor` | Réinitialise les facteurs d’un autre administrateur (`users.manage`). |

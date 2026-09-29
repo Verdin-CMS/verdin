@@ -1,0 +1,115 @@
+---
+title: Releases
+description: Regroupez des entrées et publiez-les ou dépubliez-les ensemble, immédiatement ou à une date planifiée.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Une release (appelée **Versions** dans le panneau d’administration) regroupe des entrées qui sont
+mises en ligne, ou retirées, ensemble : un lancement de produit, une campagne, un lot de
+traductions. Vous la publiez à la main ou vous lui donnez une date. Ce guide crée une release, y
+ajoute des entrées, l’exécute et présente l’API d’administration.
+
+Les releases fonctionnent comme les Releases de Strapi, qui font partie des offres payantes de
+Strapi.
+
+## Avant de commencer
+
+- **Paramètres → Fonctionnalités → Versions** est activé par défaut. Tant qu’il est désactivé,
+  la page **Versions** et les routes ne sont pas disponibles, et les releases planifiées
+  attendent.
+- Gérer les releases nécessite **Gérer les versions** (`releases.manage`).
+- Ajouter une entrée nécessite aussi **Publier** sur son type de contenu, et le type doit
+  utiliser [brouillon et publication](/fr/concepts/draft-and-publish/).
+
+## Créer une release
+
+<Steps>
+
+1. Ouvrez **Versions** dans la barre latérale et sélectionnez **Nouvelle version**.
+2. Saisissez un **Nom**.
+3. Éventuellement, définissez **Publier le (facultatif)** : la date et l’heure, dans votre fuseau
+   horaire, auxquelles la release s’exécute. Sans date, la release attend que vous la publiiez.
+4. Sélectionnez **Créer**.
+
+</Steps>
+
+## Ajouter des entrées
+
+<Steps>
+
+1. Ouvrez une entrée dans l’éditeur. Le panneau **Versions** liste les releases qui la
+   contiennent.
+2. Sélectionnez **Ajouter à une version**.
+3. Choisissez la **Version** et, sous **À l’exécution de la version**, choisissez **Publier** ou
+   **Dépublier**.
+4. Sélectionnez **Ajouter**.
+
+</Steps>
+
+Pour les types localisés, seule la version dans la langue actuelle de l’éditeur est ajoutée.
+Ajoutez chaque langue que vous voulez inclure dans la release. Ajouter une entrée déjà présente
+dans la release remplace son action.
+
+La page de la release liste ses entrées avec leur type de contenu et leur action. Retirez-en une
+avec le bouton de sa ligne.
+
+## Publier la release
+
+- **Maintenant :** ouvrez la release et sélectionnez **Publier maintenant**.
+- **À sa date :** une tâche en arrière-plan vérifie toutes les 30 secondes et exécute les releases
+  arrivées à échéance, au nom de l’administrateur qui les a créées.
+
+<Diagram
+  caption="Statuts d’une release"
+  code={`flowchart LR
+  P[En attente] -->|Publier maintenant ou date atteinte| R[En cours]
+  R -->|toutes les actions ont réussi| D[Terminée]
+  R -->|des actions ont échoué| F[Échec]`}
+/>
+
+Chaque action enregistre si elle a réussi. Quand l’une échoue, par exemple parce que l’entrée a
+été supprimée ou ne passe pas la validation, les autres actions s’exécutent quand même et la
+release se termine en **Échec**, avec l’erreur de chaque action en échec sur sa ligne.
+
+<Aside type="caution">
+Une release exécutée ne peut plus être modifiée. Pour relancer les actions en échec, ajoutez ces
+entrées à une nouvelle release.
+</Aside>
+
+Une release est publiée d’un bloc : elle n’attend pas les
+[étapes de relecture](/fr/guides/content/review-workflows/). Si un workflow exige une étape pour
+publier, les entrées hors de cette étape échouent comme toute autre publication.
+
+Les webhooks peuvent s’abonner à **Version publiée** (`releases.publish`), envoyé quand une
+release s’exécute. Voir [Webhooks](/fr/guides/integrations/webhooks/).
+
+## API d’administration
+
+Toutes les routes sont sous `/admin/api` et nécessitent `releases.manage`.
+
+```http
+GET    /admin/api/releases?status=pending
+POST   /admin/api/releases                    { "name": "Launch", "scheduledAt": "2026-10-01T08:00:00Z" }
+GET    /admin/api/releases/{id}
+PUT    /admin/api/releases/{id}               { "name": "Launch", "scheduledAt": null }
+DELETE /admin/api/releases/{id}
+POST   /admin/api/releases/{id}/actions       { "uid": "api::article", "documentId": "…", "locale": "fr", "action": "publish" }
+DELETE /admin/api/releases/{id}/actions/{actionId}
+POST   /admin/api/releases/{id}/publish
+GET    /admin/api/content/{uid}/{documentId}/releases
+```
+
+- `status` vaut `pending`, `running`, `done` ou `failed` ; chaque action a ses propres `status`
+  et `error`.
+- Modifier une release qui n’est plus en attente, y ajouter des entrées ou la publier répond
+  `409`.
+- `action` vaut `publish` ou `unpublish`. Ajouter une action nécessite aussi `content.publish`
+  sur le type. La langue est résolue au moment de l’ajout de l’action : un changement ultérieur
+  de la langue par défaut ne la déplace donc pas.
+- Supprimer une release supprime sa liste d’entrées. Les entrées elles-mêmes ne changent pas.
+- `GET /content/{uid}/{documentId}/releases` nécessite l’accès en lecture à l’entrée et renvoie
+  une liste vide aux administrateurs sans `releases.manage`.

@@ -1,0 +1,269 @@
+---
+title: Inici ràpid
+description: Executa Verdin amb Docker o amb el binari, crea el primer administrador, modela un tipus de contingut i llegeix-lo des de l'API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Aquesta pàgina et porta del no-res a una primera resposta de l'API en uns deu minuts: inicia
+Verdin, crea el primer administrador, modela un tipus de contingut, obre'l al públic i llegeix-lo
+per REST, GraphQL o el client TypeScript.
+
+Necessites [Docker](https://docs.docker.com/get-docker/) o una màquina que pugui executar el binari
+`verdin` (Linux, macOS o Windows en x86-64, Linux o macOS en ARM64).
+
+## 1. Inicia Verdin
+
+<Tabs syncKey="install">
+  <TabItem label="Docker">
+
+Genera els secrets un sol cop i després inicia la imatge en mode de desenvolupament:
+
+```sh title="Terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+El volum `verdin-data` conté la base de dades SQLite (`/data/verdin.db`), la multimèdia pujada
+(`/data/uploads`) i, a `dev`, els fitxers d'esquema que escriu el constructor de tipus de contingut
+(`/data/schema`).
+
+  </TabItem>
+  <TabItem label="Binary">
+
+Baixa l'arxiu per a la teva plataforma de la
+[pàgina de versions](https://github.com/Verdin-CMS/verdin/releases), extreu-lo i posa `verdin` al
+teu `PATH`. El tauler d'administració està integrat al binari.
+
+Crea l'estructura d'un projecte i inicia'l en mode de desenvolupament:
+
+```sh title="Terminal"
+verdin new my-site            # verdin.toml, schema/, .env amb secrets nous, SQLite
+cd my-site
+verdin dev
+```
+
+`verdin new` accepta `--database sqlite|postgres|mysql|mariadb` (SQLite per defecte) per triar la
+base de dades a la qual apunta el `.env` generat. Per a PostgreSQL, MySQL i MariaDB, edita
+`VERDIN_DATABASE_URL` a `.env` perquè coincideixi amb el teu servidor abans d'executar
+`verdin dev`. [Estructura del projecte](/ca/start/project-structure/) descriu tots els fitxers que
+crea.
+
+  </TabItem>
+</Tabs>
+
+Quan el registre mostra `verdin listening`, el servidor respon al port 1337. El primer inici crea
+les taules de la base de dades.
+
+## 2. Secrets
+
+Verdin necessita dos secrets, cadascun d'almenys 32 bytes:
+
+| Variable | Què protegeix |
+| --- | --- |
+| `VERDIN_ADMIN_JWT_SECRET` | Signa les sessions d'administració. |
+| `VERDIN_TOKEN_PEPPER` | Fa el hash dels tokens d'API i protegeix els secrets de dos factors i els codis de recuperació. |
+
+`verdin secrets` imprimeix valors nous, i `verdin new` els escriu a `.env`. Els secrets només
+provenen de l'entorn, mai de `verdin.toml`, i el servidor no s'inicia sense ells. El fitxer `.env`
+que hi ha al costat de `verdin.toml` es carrega en iniciar; les variables ja definides a l'entorn
+tenen prioritat.
+
+<Aside type="caution">
+Genera els secrets un sol cop per instal·lació i conserva'ls. Un `VERDIN_ADMIN_JWT_SECRET` nou
+anul·la els tokens d'inici de sessió actuals, els enllaços de previsualització oberts i els inicis
+de sessió OAuth en curs (el tauler d'administració renova la seva sessió sol); un
+`VERDIN_TOKEN_PEPPER` nou invalida tots els tokens d'API i totes les configuracions de dos factors.
+Mantén `.env` i `verdin.env` fora del control de versions.
+</Aside>
+
+## 3. Crea el primer administrador
+
+Obre [http://localhost:1337/admin/](http://localhost:1337/admin/). Mentre no hi ha cap
+administrador, el tauler mostra **Et donem la benvinguda a Verdin**: introdueix el teu nom, el
+correu electrònic i una contrasenya d'almenys 8 caràcters, i després selecciona **Crea el compte**.
+Aquest primer compte és un Super Admin amb tots els permisos.
+
+També pots crear administradors des de la línia d'ordres; consulta
+[Usuaris administradors des de la línia d'ordres](#usuaris-administradors-des-de-la-línia-dordres).
+
+## 4. Modela un tipus de contingut
+
+<Steps>
+
+1. A la barra lateral, obre **Constructor de tipus de contingut** i selecciona **Tipus de
+   contingut nou**.
+2. Defineix **Nom visible** com a `Article`. Verdin omple **Nom en singular (ID d’API)** amb
+   `article` i **Nom en plural (ruta)** amb `articles`; la ruta és l'URL del tipus a l'API. Deixa
+   **Classe** a **Col·lecció**.
+3. Selecciona **Afegeix un camp**, tria **Text curt**, anomena'l `title` i selecciona **Fet**.
+4. Selecciona **Desa**. **Revisa la migració** llista els passos de la base de dades amb el seu
+   SQL; selecciona **Aplica**.
+
+</Steps>
+
+Verdin escriu el tipus a `schema/content-types/article.json` i en crea la taula. El constructor
+només està disponible a `verdin dev`: en producció, l'esquema prové dels teus fitxers. Consulta
+[Model de contingut](/ca/concepts/content-model/) per als tipus de camp i les opcions.
+
+Ara afegeix una entrada: obre **Article** a **Col·leccions**, selecciona **Entrada nova**, omple el
+títol i selecciona **Publica**. Els tipus nous tenen **Esborrany i publicació** activat, de manera
+que les seves entrades es queden com a esborranys, invisibles per a l'API pública, fins que es
+publiquen.
+
+## 5. Obre'l al públic
+
+L'API de contingut està tancada fins que concedeixes permisos públics o crees tokens d'API. Obre
+**Configuració → Accés públic**, permet **Cerca** i **Cerca’n un** per a **Article** i selecciona
+**Desa**.
+
+Per llegir sense accés públic, crea un token a **Configuració → Tokens d’API** i envia'l com a
+`Authorization: Bearer <token>`. Consulta [Tokens d'API](/ca/guides/auth/api-tokens/) i
+[Permisos](/ca/concepts/permissions/).
+
+## 6. Fes una primera petició
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl localhost:1337/api/articles
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "documentId": "01m3p88agn712n02wb8kkpe94p",
+      "title": "Hello Verdin",
+      "createdAt": "2026-09-29T09:34:39.637Z",
+      "updatedAt": "2026-09-29T09:34:39.637Z",
+      "publishedAt": "2026-09-29T09:34:39.637Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+La resposta té la forma plana de Strapi v5. Els filtres, l'ordenació, la paginació i `populate`
+fan servir els mateixos paràmetres de consulta; consulta l'[API REST](/ca/api/rest/).
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+Activa **Configuració → Funcionalitats → GraphQL**. Aleshores `POST /graphql` serveix un esquema
+generat a partir dels teus tipus de contingut, amb els mateixos permisos que l'API REST:
+
+```sh title="Terminal"
+curl localhost:1337/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+```json
+{ "data": { "articles": [{ "documentId": "01m3p88agn712n02wb8kkpe94p", "title": "Hello Verdin" }] } }
+```
+
+Consulta l'[API GraphQL](/ca/api/graphql/).
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+Genera els tipus a partir de l'esquema i instal·la el client al teu projecte de frontend:
+
+```sh title="Terminal"
+verdin types -o src/verdin-types.ts   # al projecte Verdin
+npm install @verdin/client            # al projecte de frontend
+```
+
+Amb Docker, la imatge pot imprimir els tipus a partir de l'esquema del volum:
+`docker run --rm -v verdin-data:/data ghcr.io/verdin-cms/verdin types > src/verdin-types.ts`.
+
+```ts title="src/articles.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+
+const { data } = await verdin.collection('articles').find({ sort: ['publishedAt:desc'] });
+console.log(data.map((article) => article.title));
+```
+
+Consulta [Client tipat](/ca/guides/frontend/typed-client/).
+
+  </TabItem>
+</Tabs>
+
+A partir d'aquí, els tutorials d'[Astro](/ca/start/tutorial-astro/) i de
+[Next.js](/ca/start/tutorial-nextjs/) construeixen un frontend de blog sobre la mateixa API.
+
+## Mode de desenvolupament i de producció
+
+| Ordre | Fes-la servir per a |
+| --- | --- |
+| `verdin dev` | Desenvolupament: les migracions segures s'apliquen automàticament, el constructor de tipus de contingut pot editar els fitxers d'esquema i el servidor es recarrega quan canvien. |
+| `verdin start` | Producció. Es nega a executar-se mentre la base de dades va per darrere de l'esquema. |
+| `verdin start --migrate` | Producció, aplicant les migracions segures pendents abans d'iniciar. És l'ordre per defecte de la imatge Docker. |
+
+Les galetes de refresc són `Secure` a `verdin start` i no a `verdin dev`, de manera que iniciar la
+sessió en un servidor `start` necessita HTTPS. Per provar `start` per HTTP pla, defineix
+`VERDIN_ADMIN__SECURE_COOKIES=false`.
+
+En producció, guarda l'esquema al control de versions i munta'l en només lectura. Amb Docker:
+
+```sh title="Terminal"
+docker run -p 1337:1337 --env-file verdin.env \
+  -e VERDIN_DATABASE_URL=postgres://user:pass@db:5432/verdin \
+  -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
+```
+
+La [llista de comprovació per a producció](/ca/deploy/production-checklist/) cobreix la resta.
+
+## Esquema i migracions
+
+Els tipus de contingut viuen a `schema/content-types/<singularName>.json` i els components a
+`schema/components/<category>/<name>.json`, en el format de Strapi. Quan els fitxers canvien, Verdin
+planifica una migració:
+
+```sh title="Terminal"
+verdin schema check                      # valida tots els fitxers d'esquema
+verdin migrate plan                      # passos, nivell de risc i SQL exacte
+verdin migrate apply                     # només passos segurs
+verdin migrate apply --allow risky       # també canvis de tipus i restriccions d'unicitat noves
+verdin migrate apply --allow destructive # també columnes i taules eliminades
+verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
+```
+
+A MySQL i MariaDB, que no tenen DDL transaccional, una migració interrompuda continua des del pas
+que ha fallat al següent `migrate apply`. Consulta [Migracions d'esquema](/ca/concepts/schema-migrations/).
+
+## Usuaris administradors des de la línia d'ordres
+
+```sh title="Terminal"
+verdin admin create --email other@example.com      # contrasenya de VERDIN_ADMIN_PASSWORD o de stdin
+verdin admin reset-password --email you@example.com
+```
+
+`admin create` crea un Super Admin. `reset-password` també desbloqueja el compte i en tanca les
+sessions. Totes dues necessiten que la base de dades estigui al dia amb l'esquema.
+
+## Altres ordres
+
+| Ordre | Què fa |
+| --- | --- |
+| `verdin types -o src/verdin-types.ts` | Escriu definicions TypeScript de l'API de contingut (a la sortida estàndard sense `-o`). |
+| `verdin import strapi <export>` | Importa un projecte de Strapi; consulta [Migrar des de Strapi](/ca/migrate/from-strapi/). |
+| `verdin export <file.tar.gz>` | Escriu l'esquema, el contingut i la multimèdia en un arxiu; `verdin import verdin` el torna a llegir. |
+| `verdin version` | Imprimeix la versió. |
+
+Totes les ordres accepten `-c, --config <path>` (per defecte `verdin.toml`, o `VERDIN_CONFIG`). La
+[referència de la CLI](/ca/reference/cli/) llista totes les ordres i els indicadors, i la
+[referència de configuració](/ca/reference/configuration/) totes les opcions.
+
+## Comprovacions de salut
+
+`GET /_health` respon mentre el procés està en marxa. `GET /_ready` també comprova la base de dades
+i respon 503 quan no hi pot arribar: apunta-hi els balancejadors de càrrega (consulta
+[Escalat](/ca/deploy/scaling/)).

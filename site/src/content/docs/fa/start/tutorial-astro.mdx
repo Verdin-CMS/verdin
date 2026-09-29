@@ -1,0 +1,388 @@
+---
+title: 'آموزش: یک وبلاگ با Astro'
+description: یک وبلاگ کوچک Astro روی طرح‌وارهٔ نمونهٔ Verdin بسازید، با کوئری‌های تایپ‌شده، صفحهٔ هر مقاله بر اساس slug، دسته‌ها و پیش‌نمایش اختیاری پیش‌نویس‌ها.
+sidebar:
+  order: 3
+  label: وبلاگ با Astro
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+در این آموزش یک وبلاگ ایستا با [Astro](https://astro.build) می‌سازید که محتوایش را از Verdin
+می‌خواند: یک صفحهٔ اصلی که مقاله‌ها را فهرست می‌کند، یک صفحه برای هر مقاله در
+`/articles/<slug>/` همراه با دسته‌اش، و در صورت تمایل صفحه‌ای که پیش‌نویس‌ها را از پیوند
+پیش‌نمایش پنل مدیریت نشان می‌دهد. از کلاینت تایپ‌شدهٔ `@verdin/client` با نوع‌هایی که از
+طرح‌واره تولید شده‌اند استفاده می‌کنید.
+
+نوشته‌شده برای Astro 7.3 (`create-astro` 5.2) و Node.js 22.12 یا بالاتر، با Verdin و
+`@verdin/client` 0.10. [آموزش Next.js](/fa/start/tutorial-nextjs/) همین وبلاگ را با Next.js
+می‌سازد.
+
+## پیش از شروع
+
+به فایل باینری `verdin` در `PATH` (ببینید [شروع سریع](/fa/start/quickstart/))، Node.js و Git
+نیاز دارید. در پایان دو پوشه کنار هم خواهید داشت: `cms`، پروژهٔ Verdin، و `blog`، سایت Astro.
+
+## 1. راه‌اندازی Verdin با طرح‌وارهٔ وبلاگ
+
+پروژهٔ [`examples/blog`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) در مخزن
+یک وبلاگ را مدل می‌کند: مقاله‌هایی با عنوان، یک `slug`، خلاصه، یک `body` به Markdown، دسته و
+برچسب‌ها، به‌علاوهٔ یک نوع تکی homepage و چند کامپوننت.
+
+<Steps>
+
+1. یک پروژهٔ Verdin بسازید و طرح‌وارهٔ نمونه را در آن کپی کنید:
+
+   ```sh title="Terminal"
+   git clone --depth 1 https://github.com/Verdin-CMS/verdin.git
+   verdin new cms
+   cp verdin/examples/blog/schema/content-types/{article,category,tag,homepage}.json cms/schema/content-types/
+   cp -r verdin/examples/blog/schema/components/* cms/schema/components/
+   ```
+
+2. آن را اجرا کنید:
+
+   ```sh title="Terminal"
+   cd cms
+   verdin dev
+   ```
+
+   نخستین اجرا جدول‌های چهار نوع محتوا را می‌سازد.
+
+3. [http://localhost:1337/admin/](http://localhost:1337/admin/) را باز کنید و نخستین مدیر را بسازید.
+
+4. زیر **مجموعه‌ها**، **Category** را باز کنید، **مدخل جدید** را انتخاب کنید، نامش را `News`
+   بگذارید و ذخیره کنید.
+
+5. **Article** را باز کنید، **مدخل جدید** را انتخاب کنید و یک عنوان، یک خلاصه و یک متن به
+   Markdown وارد کنید. `slug` از روی عنوان تولید می‌شود. `News` را به‌عنوان دسته انتخاب کنید و
+   **انتشار** را بزنید. مقالهٔ دومی را هم به همین شکل اضافه کنید.
+
+6. **تنظیمات ← دسترسی عمومی** را باز کنید، **یافتن** و **یافتن یکی** را برای **Article** و
+   **Category** مجاز کنید و **ذخیره** را انتخاب کنید.
+
+</Steps>
+
+بررسی کنید که API پاسخ می‌دهد:
+
+```sh title="Terminal"
+curl 'localhost:1337/api/articles?populate=category'
+```
+
+<Aside>
+populate کردن یک رابطه به دسترسی خواندن روی مقصد آن نیاز دارد. بدون **یافتن** روی **Category**،
+`populate=category` با `400` و پیام ``invalid key `category` in populate`` پاسخ می‌دهد.
+</Aside>
+
+## 2. ساختن پروژهٔ Astro
+
+در یک ترمینال تازه، کنار `cms`:
+
+```sh title="Terminal"
+npm create astro@latest blog -- --template minimal --no-git --yes
+cd blog
+npm install @verdin/client marked
+```
+
+[`marked`](https://marked.js.org) محتوای Markdown فیلد `body` را به HTML تبدیل می‌کند.
+
+## 3. تولید نوع‌ها
+
+`verdin types` طرح‌واره را می‌خواند و برای هر نوع محتوا و کامپوننت یک interface در TypeScript
+می‌نویسد، به‌علاوهٔ یک نگاشت `VerdinSchema` از مسیرها برای کلاینت. آن را از پوشهٔ `blog` اجرا کنید
+و به پیکربندی پروژهٔ Verdin اشاره دهید:
+
+```sh title="Terminal"
+verdin types -c ../cms/verdin.toml -o src/verdin-types.ts
+```
+
+فایل، از جمله، شامل این است:
+
+```ts title="src/verdin-types.ts"
+export interface Article extends DocumentBase {
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  body: string | null;
+  // …
+  category?: Category | null;
+  tags?: Tag[];
+}
+```
+
+روابط، رسانه‌ها و کامپوننت‌ها اختیاری هستند، چون API آن‌ها را فقط وقتی populate کنید
+برمی‌گرداند. هر بار که طرح‌واره تغییر کرد، فرمان را دوباره اجرا کنید.
+
+## 4. اتصال به Verdin
+
+URL سرور و یک توکن API اختیاری را در محیط تایپ‌شدهٔ Astro اعلام کنید:
+
+```js title="astro.config.mjs"
+// @ts-check
+import { defineConfig, envField } from 'astro/config';
+
+export default defineConfig({
+  env: {
+    schema: {
+      VERDIN_URL: envField.string({ context: 'server', access: 'public', default: 'http://localhost:1337' }),
+      VERDIN_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+    },
+  },
+});
+```
+
+بدون توکن، کلاینت با نقش عمومی می‌خواند، همان چیزی که در گام 1 باز کردید. برای خواندن با توکن،
+یک توکن **فقط‌خواندنی** در **تنظیمات ← توکن‌های API** بسازید و آن را به‌صورت `VERDIN_TOKEN=…` در
+`.env` قرار دهید.
+
+کلاینت را یک بار بسازید و به اشتراک بگذارید:
+
+```ts title="src/lib/verdin.ts"
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+```
+
+اکنون `verdin.collection('articles')` فقط مسیرهای طرح‌وارهٔ شما را می‌پذیرد و نتایجش از نوع
+`Article` هستند.
+
+## 5. افزودن یک layout
+
+HTML صفحهٔ آغازین را با یک layout که صفحه‌ها در آن مشترک‌اند جایگزین کنید:
+
+```astro title="src/layouts/Layout.astro"
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header><a href="/">My blog</a></header>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>
+```
+
+## 6. فهرست کردن مقاله‌ها
+
+```astro title="src/pages/index.astro"
+---
+import Layout from '../layouts/Layout.astro';
+import { verdin } from '../lib/verdin';
+
+const { data: articles } = await verdin.collection('articles').find({
+  fields: ['title', 'slug', 'excerpt', 'publishedAt'],
+  populate: { category: { fields: ['name'] } },
+  sort: ['publishedAt:desc'],
+});
+---
+
+<Layout title="My blog">
+  <h1>Articles</h1>
+  <ul>
+    {articles.map((article) => (
+      <li>
+        <a href={`/articles/${article.slug}/`}>{article.title}</a>
+        {article.category && <small> in {article.category.name}</small>}
+        {article.excerpt && <p>{article.excerpt}</p>}
+      </li>
+    ))}
+  </ul>
+</Layout>
+```
+
+این کوئری همان فراخوانی REST
+`GET /api/articles?fields[0]=title&…&populate[category][fields][0]=name&sort[0]=publishedAt:desc`
+با قالب Strapi v5 است. `fields` پاسخ را کوچک نگه می‌دارد و `populate` دسته را فقط با نامش اضافه
+می‌کند. نقش عمومی فقط مقاله‌های منتشرشده را می‌خواند.
+
+## 7. افزودن یک صفحه برای هر مقاله
+
+Astro برای هر مقاله یک صفحه می‌سازد. `getStaticPaths` مقاله‌ها را همراه با دسته‌شان دریافت
+می‌کند و هر کدام را به صفحهٔ خودش می‌دهد:
+
+```astro title="src/pages/articles/[slug].astro"
+---
+import type { GetStaticPaths } from 'astro';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { verdin } from '../../lib/verdin';
+
+export const getStaticPaths = (async () => {
+  const { data: articles } = await verdin.collection('articles').find({
+    populate: { category: true },
+    pagination: { pageSize: 100 },
+  });
+  return articles.map((article) => ({
+    params: { slug: article.slug },
+    props: { article },
+  }));
+}) satisfies GetStaticPaths;
+
+const { article } = Astro.props;
+const html = await marked.parse(article.body ?? '');
+---
+
+<Layout title={article.title}>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+`pageSize` با `[api].max_page_size` محدود می‌شود (به‌طور پیش‌فرض 100). اگر مقاله‌های بیشتری
+دارید، صفحه‌ها را در یک حلقه با استفاده از `meta.pagination.pageCount` دریافت کنید.
+
+<Aside type="caution">
+`marked` HTML را پاک‌سازی نمی‌کند. برای Markdown که ویراستاران خودتان می‌نویسند این مشکلی
+ندارد؛ اگر محتوا ممکن است از افراد غیرقابل‌اعتماد بیاید، HTML را پیش از رندر پاک‌سازی کنید.
+</Aside>
+
+## 8. اجرای آن
+
+```sh title="Terminal"
+npm run dev
+```
+
+[http://localhost:4321](http://localhost:4321) را باز کنید: فهرست، مقاله‌های منتشرشدهٔ شما را
+نشان می‌دهد و هر کدام به صفحهٔ خودش پیوند دارد. `npm run build` سایت ایستا را در `dist/`
+می‌نویسد.
+
+یک ساخت (build) ایستا محتوا را یک بار می‌خواند. برای انتشار تغییرات، هر بار که محتوا تغییر کرد
+سایت را دوباره بسازید، مثلاً از طریق یک وب‌هوک یا یک deploy hook؛ ببینید
+[استقرار و CDN](/fa/guides/integrations/deploys-and-cdn/).
+
+پروژهٔ شما اکنون چنین است:
+
+<FileTree>
+- blog/
+  - astro.config.mjs
+  - src/
+    - verdin-types.ts تولیدشده توسط `verdin types`
+    - lib/
+      - verdin.ts
+    - layouts/
+      - Layout.astro
+    - pages/
+      - index.astro
+      - articles/
+        - [slug].astro
+</FileTree>
+
+## 9. اختیاری: پیش‌نمایش پیش‌نویس‌ها
+
+پنل مدیریت می‌تواند یک پیش‌نویس را با یک توکن پیش‌نمایش کوتاه‌عمر روی سایت شما باز کند. این
+توکن فقط همان یک سند را، پیش‌نویس‌ها را هم، می‌خواند و نه چیز دیگری. چون پیش‌نویس‌ها پس از
+ساخت تغییر می‌کنند، صفحهٔ پیش‌نمایش در هر درخواست رندر می‌شود که به یک adapter نیاز دارد:
+
+```sh title="Terminal"
+npx astro add node --yes
+```
+
+کلاینتی اضافه کنید که توکن پیش‌نمایش را در هدر `x-verdin-preview` بفرستد:
+
+```ts title="src/lib/verdin.ts" ins={10-16}
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+
+/** A client that reads one draft with the preview token from the admin's link. */
+export function previewClient(previewToken: string) {
+  return createClient<VerdinSchema>({
+    url: VERDIN_URL,
+    headers: { 'x-verdin-preview': previewToken },
+  });
+}
+```
+
+سپس صفحه. `prerender = false` آن را در لحظهٔ درخواست رندر می‌کند؛ توکن به‌صورت پارامتر کوئری
+`preview` می‌رسد:
+
+```astro title="src/pages/preview/[documentId].astro"
+---
+import { VerdinError } from '@verdin/client';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { previewClient } from '../../lib/verdin';
+
+export const prerender = false;
+
+const { documentId } = Astro.params;
+const token = Astro.url.searchParams.get('preview');
+if (!documentId || !token) {
+  return new Response('Missing preview token', { status: 401 });
+}
+
+let article;
+try {
+  ({ data: article } = await previewClient(token)
+    .collection('articles')
+    .findOne(documentId, { status: 'draft', populate: { category: true } }));
+} catch (error) {
+  if (error instanceof VerdinError) {
+    return new Response('This preview link has expired', { status: error.status });
+  }
+  throw error;
+}
+const html = await marked.parse(article.body ?? '');
+Astro.response.headers.set('cache-control', 'no-store');
+---
+
+<Layout title={`Preview: ${article.title}`}>
+  <p><strong>Draft preview</strong></p>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+یک توکن پیش‌نمایش نمی‌تواند مدخل‌ها را فهرست کند، پس صفحه پیش‌نویس را با `documentId` پیدا
+می‌کند نه با slug. حالا به Verdin بگویید صفحه کجاست:
+
+<Steps>
+
+1. در پنل مدیریت، **تنظیمات ← قابلیت‌ها** را باز کنید، **پیش‌نمایش** را روشن کنید و
+   **پیکربندی نشانی‌های پیش‌نمایش** را انتخاب کنید.
+2. قالب URL مربوط به **Article** را `http://localhost:4321/preview/{documentId}` بگذارید و
+   ذخیره کنید. Verdin توکن را به‌صورت `?preview=…` به انتها اضافه می‌کند.
+3. یک مقاله را باز کنید، تغییرش دهید و **ذخیرهٔ پیش‌نویس** را انتخاب کنید، سپس
+   **باز کردن پیش‌نمایش** را انتخاب کنید.
+
+</Steps>
+
+صفحه پیش‌نویس را نشان می‌دهد. پیوندها به‌طور پیش‌فرض 60 دقیقه اعتبار دارند. برای جای‌نگهدارها
+و تنظیمات [پیش‌نمایش](/fa/guides/content/preview/) را ببینید، و برای ویرایش از داخل پیش‌نمایش
+[ویرایش دیداری](/fa/guides/frontend/visual-editing/) را.
+
+## گام‌های بعدی
+
+- [کلاینت تایپ‌شده](/fa/guides/frontend/typed-client/): همهٔ متدهای `@verdin/client`.
+- [REST API](/fa/api/rest/): فیلترها، مرتب‌سازی، صفحه‌بندی و `populate`.
+- [تصاویر](/fa/guides/frontend/images/): قالب‌های واکنش‌گرای کتابخانهٔ رسانه.
+- [SEO و نقشهٔ سایت](/fa/guides/frontend/seo-and-sitemap/): کامپوننت `shared.seo` و
+  نقشهٔ سایت Verdin.

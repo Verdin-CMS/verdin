@@ -1,0 +1,327 @@
+---
+title: "آموزش: نخستین افزونهٔ شما"
+description: یک افزونهٔ Verdin با Rust بسازید که زمان مطالعهٔ مقاله را پر می‌کند، انتشارها را لاگ می‌کند و یک مسیر API کوچک ارائه می‌دهد.
+sidebar:
+  order: 2
+  label: آموزش افزونه
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+در این آموزش **reading-time** را می‌سازید، افزونه‌ای برای نمونهٔ blog. این افزونه:
+
+- هر بار که `body` یک مقاله نوشته می‌شود، `readingTime` آن را از روی `body` پر می‌کند (یک هوک
+  پیش از نوشتن)؛
+- وقتی مقاله‌ای منتشر می‌شود، یک خط در لاگ خود می‌نویسد (یک هوک پس از نوشتن)؛
+- `GET /api/plugins/reading-time/stats` را با میانگین زمان مطالعه ارائه می‌دهد (مسیری که محتوا
+  را می‌خواند)؛
+- یک تنظیم **Words per minute** دارد.
+
+حدود 20 دقیقه طول می‌کشد. برای اینکه بدانید افزونه‌ها چه هستند و سندباکس چگونه کار می‌کند،
+ابتدا [افزونه‌ها](/fa/extending/plugins/) را بخوانید.
+
+## پیش از شروع
+
+به این‌ها نیاز دارید:
+
+- یک پروژهٔ Verdin با طرح‌وارهٔ (schema) نمونهٔ blog: پوشهٔ
+  [`examples/blog/schema`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog/schema)
+  را در پروژه‌ای که با `verdin new` ساخته‌اید کپی کنید، یا خود نمونه را اجرا کنید. افزونه از
+  ویژگی‌های `body` (`richtext`) و `readingTime` (`integer`) در نوع `article` استفاده می‌کند.
+- Rust همراه با target مربوط به WebAssembly:
+
+  ```sh title="Terminal"
+  rustup target add wasm32-unknown-unknown
+  ```
+
+افزونه‌ها را می‌توان با هر زبانی که یک [Extism PDK](https://extism.org/docs/concepts/pdk) دارد
+نوشت (JavaScript، Go، Zig، C و دیگران). این آموزش از Rust و `extism-pdk` استفاده می‌کند.
+
+## ساخت crate
+
+<Steps>
+
+1. یک crate کتابخانه‌ای، بیرون از پروژهٔ Verdin خود، بسازید:
+
+   ```sh title="Terminal"
+   cargo new --lib reading-time
+   cd reading-time
+   ```
+
+2. `Cargo.toml` را جایگزین کنید. افزونه یک `cdylib` است؛ پروفایل release ماژول را کوچک
+   نگه می‌دارد.
+
+   ```toml title="Cargo.toml"
+   [package]
+   name = "reading-time"
+   version = "0.1.0"
+   edition = "2024"
+   publish = false
+
+   [lib]
+   crate-type = ["cdylib"]
+
+   [dependencies]
+   extism-pdk = "1.4.1"
+   serde_json = "1"
+
+   [profile.release]
+   opt-level = "s"
+   lto = true
+   strip = true
+   ```
+
+</Steps>
+
+## نوشتن توابع
+
+هر تابعی که افزونه صادر می‌کند JSON می‌گیرد و JSON برمی‌گرداند. Verdin آن‌ها را برای هوک‌ها،
+مسیرها و کارهای زمان‌بندی‌شده‌ای که مانیفست نام می‌برد فراخوانی می‌کند؛ توابع هم از طریق توابع
+میزبان (`verdin_log`، `verdin_content`، `verdin_config`…) Verdin را فراخوانی می‌کنند.
+
+`src/lib.rs` را جایگزین کنید:
+
+```rust title="src/lib.rs"
+use extism_pdk::*;
+use serde_json::{Value, json};
+
+// Host functions Verdin provides (namespace `extism:host/user`).
+#[host_fn]
+extern "ExtismHost" {
+    fn verdin_log(input: Json<Value>);
+    fn verdin_content(input: Json<Value>) -> Json<Value>;
+    fn verdin_config() -> Json<Value>;
+}
+
+/// Minutes needed to read `text` at `per_minute` words a minute (at least 1).
+fn minutes(text: &str, per_minute: u64) -> u64 {
+    let words = text.split_whitespace().count() as u64;
+    words.div_ceil(per_minute.max(1)).max(1)
+}
+
+/// `beforeCreate` and `beforeUpdate` on articles: fills `readingTime` from `body`.
+#[plugin_fn]
+pub fn set_reading_time(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    // An update may leave the body out: then there is nothing to recompute.
+    let Some(body) = data["body"].as_str() else {
+        return Ok(Json(json!({})));
+    };
+    let config = unsafe { verdin_config()? }.0;
+    let per_minute = config["wordsPerMinute"].as_u64().unwrap_or(200);
+    data["readingTime"] = json!(minutes(body, per_minute));
+    Ok(Json(json!({ "data": data })))
+}
+
+/// `afterPublish` on articles: writes a line to the plugin's log.
+#[plugin_fn]
+pub fn log_publish(Json(input): Json<Value>) -> FnResult<()> {
+    let message = format!("published {}", input["documentId"].as_str().unwrap_or("?"));
+    unsafe { verdin_log(Json(json!({ "level": "info", "message": message })))? };
+    Ok(())
+}
+
+/// `GET /api/plugins/reading-time/stats`: the average reading time of published articles.
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    if request["method"] != "GET" || request["path"] != "/stats" {
+        return Ok(Json(json!({ "status": 404, "body": { "error": "not found" } })));
+    }
+    let found = unsafe {
+        verdin_content(Json(json!({
+            "op": "findMany",
+            "uid": "api::article",
+            "query": { "fields": ["readingTime"], "pagination": { "pageSize": 100 } }
+        })))?
+    }
+    .0;
+    if let Some(error) = found.get("error") {
+        return Ok(Json(json!({ "status": 500, "body": { "error": error } })));
+    }
+    let times: Vec<u64> = found["documents"]
+        .as_array()
+        .map(|documents| documents.iter().filter_map(|d| d["readingTime"].as_u64()).collect())
+        .unwrap_or_default();
+    let average = if times.is_empty() { 0.0 } else { times.iter().sum::<u64>() as f64 / times.len() as f64 };
+    Ok(Json(json!({
+        "status": 200,
+        "headers": { "cache-control": "max-age=60" },
+        "body": { "articles": times.len(), "averageMinutes": average }
+    })))
+}
+```
+
+آنچه هر تابع برمی‌گرداند:
+
+- **`set_reading_time`** یک هوک پیش از نوشتن است. `{ "data": … }` داده‌ای را که نوشته می‌شود
+  جایگزین می‌کند؛ `{}` آن را همان‌طور که هست باقی می‌گذارد. همچنین می‌تواند
+  `{ "error": "…" }` برگرداند تا نوشتن را با یک 400 رد کند.
+- **`log_publish`** یک هوک پس از نوشتن است: خروجی آن نادیده گرفته می‌شود.
+- **`handle`** به همهٔ درخواست‌های زیر `/api/plugins/reading-time/` پاسخ می‌دهد. مسیر پس از
+  آن پیشوند را دریافت می‌کند و با `{ status, headers, body }` پاسخ می‌دهد.
+
+## ساخت ماژول
+
+```sh title="Terminal"
+cargo build --release --target wasm32-unknown-unknown
+```
+
+ماژول در `target/wasm32-unknown-unknown/release/reading_time.wasm` است (Cargo خط تیره را به
+زیرخط تبدیل می‌کند)، حدود 120 KB.
+
+## نوشتن مانیفست
+
+<Steps>
+
+1. در پروژهٔ Verdin خود، `plugins/reading-time/` را بسازید و ماژول را با نام `plugin.wasm`
+   در آن کپی کنید:
+
+   ```sh title="Terminal"
+   mkdir -p plugins/reading-time
+   cp ../reading-time/target/wasm32-unknown-unknown/release/reading_time.wasm plugins/reading-time/plugin.wasm
+   ```
+
+2. کنار آن، مانیفست را بسازید. مانیفست افزونه را نام‌گذاری می‌کند، آنچه توابع لازم دارند را
+   درخواست می‌کند و آن‌ها را به هوک‌ها و مسیرها وصل می‌کند:
+
+   ```toml title="plugins/reading-time/plugin.toml"
+   name = "reading-time"
+   version = "0.1.0"
+   description = "Fills an article's reading time from its body"
+
+   [capabilities]
+   read = ["api::article"]           # for the stats route
+
+   [[hooks]]
+   on = "beforeCreate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "beforeUpdate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "afterPublish"
+   uid = "api::article"
+   function = "log_publish"
+
+   [routes]
+   function = "handle"               # serves /api/plugins/reading-time/…
+
+   [[settings]]
+   key = "wordsPerMinute"
+   label = "Words per minute"
+   type = "integer"
+   min = 50
+   max = 1000
+   default = 200
+   ```
+
+   هوک‌ها به هیچ قابلیتی (capability) نیاز ندارند: داده‌ای را که به آن‌ها داده می‌شود تغییر
+   می‌دهند. فقط فراخوانی `verdin_content` در مسیر محتوا را می‌خواند، بنابراین افزونه فقط
+   `read` را روی مقاله‌ها درخواست می‌کند و نه چیز دیگری.
+
+</Steps>
+
+اکنون پروژه این شکل را دارد:
+
+<FileTree>
+- verdin.toml
+- .env
+- plugins/
+  - reading-time/
+    - plugin.toml
+    - plugin.wasm
+- schema/
+  - content-types/
+    - article.json
+    - …
+</FileTree>
+
+## روشن کردن
+
+<Steps>
+
+1. سرور را راه‌اندازی (یا دوباره راه‌اندازی) کنید:
+
+   ```sh title="Terminal"
+   verdin dev
+   ```
+
+   لاگ `plugin found plugin=reading-time version=0.1.0` را نشان می‌دهد.
+
+2. پنل مدیریت را باز کنید، سپس **تنظیمات ← افزونه‌ها**. کارت **reading-time** دسترسی‌های آن
+   (خواندن مقاله‌ها)، هوک‌ها و مسیر آن را فهرست می‌کند. آن را روشن کنید.
+
+3. روی کارت، **تنظیمات** را باز کنید: فرم، **Words per minute** را با مقدار پیش‌فرض آن، 200،
+   نشان می‌دهد. مقادیر خارج از بازهٔ 50 تا 1,000 رد می‌شوند. آن را همان‌طور که هست بگذارید.
+
+</Steps>
+
+## امتحان کنید
+
+<Steps>
+
+1. یک مقاله با بدنه‌ای چندصدکلمه‌ای بسازید، در پنل مدیریت یا از طریق API با یک توکن API:
+
+   ```sh title="Terminal"
+   curl -X POST http://localhost:1337/api/articles \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "data": { "title": "Hello plugins", "slug": "hello-plugins", "body": "…450 words…" } }'
+   ```
+
+   پاسخ `"readingTime": 3` دارد: 450 کلمه با سرعت 200 کلمه در دقیقه، رو به بالا گرد شده.
+   شما آن را نفرستادید؛ هوک آن را پر کرد.
+
+2. فقط عنوان را به‌روزرسانی کنید. `readingTime` تغییر نمی‌کند: دادهٔ به‌روزرسانی `body` ندارد،
+   پس هوک `{}` برمی‌گرداند. بدنه را به‌روزرسانی کنید تا دوباره محاسبه شود.
+
+3. مقاله را منتشر کنید، سپس **گزارش‌ها** را روی کارت افزونه باز کنید: `published <documentId>`
+   را نشان می‌دهد. (از طریق API، ایجاد بدون `?status=draft` بلافاصله منتشر می‌کند، پس آن خط از
+   قبل آنجاست.)
+
+4. مسیر را فراخوانی کنید:
+
+   ```sh title="Terminal"
+   curl -i http://localhost:1337/api/plugins/reading-time/stats
+   ```
+
+   ```text
+   HTTP/1.1 200 OK
+   content-type: application/json
+   cache-control: max-age=60
+
+   {"articles":1,"averageMinutes":3.0}
+   ```
+
+   مقاله‌های منتشرشده را می‌شمارد: `verdin_content` نسخه‌های منتشرشده را می‌خواند، مگر اینکه
+   کوئری `status: "draft"` بخواهد.
+
+</Steps>
+
+<Aside type="caution">
+این مسیر به همه پاسخ می‌دهد: مسیرهای افزونه تحت پوشش **دسترسی عمومی** نیستند. اینجا فقط یک
+میانگین برمی‌گرداند، اما مسیری که محتوا را برمی‌گرداند یا تغییر می‌دهد باید خودش
+`request.actor` را بررسی کند (`{ "kind": "public" }`، `{ "kind": "token", "id": … }` یا
+`{ "kind": "user", "id": … }`).
+</Aside>
+
+## تغییر دادن
+
+- کد را ویرایش کنید، دوباره `cargo build --release --target wasm32-unknown-unknown` را اجرا
+  کنید، ماژول را کپی کنید و Verdin را دوباره راه‌اندازی کنید. وضعیت روشن/خاموش و تنظیمات حفظ
+  می‌شوند.
+- تغییرات `plugin.toml` هم به راه‌اندازی دوباره نیاز دارند. تغییرات تنظیمات بی‌درنگ اعمال می‌شوند.
+- اگر فراخوانی‌ای شکست بخورد، خطا در لاگ سرور و در **گزارش‌ها** است. یک panic یا timeout فقط
+  همان فراخوانی را ناموفق می‌کند؛ در هوک پیش از نوشتن، نوشتن بدون تغییر افزونه ادامه می‌یابد.
+
+## گام‌های بعدی
+
+- یک [کار زمان‌بندی‌شده، یک فیلد GraphQL یا یک ویجت پنل مدیریت](/fa/extending/plugin-reference/)
+  اضافه کنید.
+- با قابلیت `kv` و `verdin_kv_get` / `verdin_kv_set` وضعیت را میان فراخوانی‌ها نگه دارید.
+- افزونهٔ تستی مخزن،
+  [`crates/verdin-plugins/tests/fixtures/sample`](https://github.com/Verdin-CMS/verdin/tree/main/crates/verdin-plugins/tests/fixtures/sample)،
+  از همهٔ توابع میزبان استفاده می‌کند.

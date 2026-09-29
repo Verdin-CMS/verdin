@@ -1,0 +1,90 @@
+---
+title: Cerca
+description: Cerca entrades amb _q, i activa l'índex de text complet Tantivy per obtenir resultats ordenats per rellevància i sense distingir accents.
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+L'API de contingut i el tauler d'administració cerquen entrades amb el paràmetre `_q`, com a
+Strapi. Per defecte, `_q` coincideix amb els camps de text que contenen les paraules. Activa
+l'índex `[search]` per ordenar els resultats amb un motor de text complet (Tantivy) integrat al
+servidor. Aquesta guia mostra totes dues opcions i quan cal fer servir l'índex.
+
+## Cerca amb `_q`
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/api/articles' --data-urlencode '_q=rust cms'
+```
+
+`_q` es combina amb els altres paràmetres: `filters`, `status`, `locale`, `pagination`, `fields` i
+`populate`. El quadre de cerca de la llista d'administració envia el mateix paràmetre.
+
+Quins camps es cerquen:
+
+- Camps de text: `string`, `text`, `richtext`, `email`, `uid` i `enumeration`.
+- Amb l'índex, també el text dins de `blocks`, components i zones dinàmiques.
+- Mai els camps privats ni les contrasenyes.
+
+`_q` és un paràmetre REST. GraphQL i les opcions de consulta del client TypeScript no tenen cap
+argument de cerca; fes-hi servir un filtre `$containsi`.
+
+## Sense l'índex
+
+Sense `[search]`, `_q` coincideix amb les entrades on algun camp de text conté tot el text de
+cerca, sense distingir majúscules, com el `$containsi` de Strapi. Els resultats segueixen
+l'ordenació habitual. No cal configurar res i funciona amb totes les bases de dades, però recorre
+tota la taula i no ordena per rellevància.
+
+## Activa l'índex de text complet
+
+<Steps>
+
+1. Activa l'índex a `verdin.toml`:
+
+   ```toml title="verdin.toml"
+   [search]
+   enabled = true
+   ```
+
+2. Reinicia Verdin. Construeix l'índex en segon pla a partir de totes les entrades; fins que no
+   està a punt, `_q` torna a fer servir `$containsi`.
+
+</Steps>
+
+| Clau | Per defecte | Descripció |
+| --- | --- | --- |
+| `enabled` | `false` | Ordena `_q` amb l'índex de text complet. |
+| `dir` | `"data/search"` | Directori de l'índex, relatiu al projecte. |
+| `memory_mb` | `50` | Memòria disponible per indexar, en megabytes. |
+
+Consulta la [referència de configuració](/ca/reference/configuration/).
+
+Com fa les coincidències l'índex:
+
+- Les paraules se separen per tot el que no és una lletra o un dígit, es passen a minúscules i se
+  n'eliminen els accents, de manera que `cafe` troba `Café`.
+- Totes les paraules han de coincidir. L'última paraula també coincideix com a prefix, de manera
+  que els resultats apareixen mentre algú escriu.
+- El títol (el primer camp de text del tipus) compta el doble.
+- Sense `sort`, els resultats arriben amb la millor coincidència primer. Amb un `sort`, les
+  coincidències s'ordenen a la teva manera. Es consideren com a màxim 1.000 coincidències per
+  cerca.
+- Els esborranys i les versions publicades, i cada idioma, es cerquen per separat, segons `status`
+  i `locale`.
+
+L'índex segueix totes les escriptures de qualsevol API. Es reconstrueix quan l'esquema canvia els
+camps cercables, i quan falta el seu directori.
+
+## Diverses instàncies
+
+L'índex viu al disc de la instància i segueix les escriptures d'aquesta instància. Quan executes
+diverses instàncies, les escriptures en una no arriben a l'índex de les altres. Mantén la cerca en
+una sola instància, o reconstrueix-lo després d'un desplegament eliminant el directori de l'índex
+abans de l'inici. Consulta [Escalat](/ca/deploy/scaling/).
+
+<Aside type="tip">
+El directori de l'índex es pot eliminar sense risc. Mantén-lo fora de les còpies de seguretat i del
+control de versions; Verdin el reconstrueix a partir de la base de dades.
+</Aside>

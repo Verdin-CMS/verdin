@@ -1,0 +1,191 @@
+---
+title: Webhooks
+description: Roep je eigen endpoints aan als content of media verandert, controleer dat afleveringen van Verdin komen, en ga om met nieuwe pogingen.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Webhooks sturen een HTTP-`POST` naar een URL van jou als content of media verandert: een statische
+site opnieuw bouwen, een cache wissen, een zoekindex synchroniseren, een bericht in een chat
+plaatsen. Afleveringen worden in de wachtrij gezet, ondertekend, opnieuw geprobeerd en gelogd.
+
+Deze pagina loopt door het instellen en ontvangen van een webhook. De events, payloads en headers
+staan in de [webhookreferentie](/nl/api/webhooks/).
+
+## Aanzetten
+
+De functie **Webhooks** staat standaard aan; je kunt hem uitzetten in **Instellingen → Functies**.
+Webhooks beheren vereist het recht **Webhooks beheren** (`webhooks.manage`). Zie
+[Rechten](/nl/reference/permissions/).
+
+## Een webhook aanmaken
+
+<Steps>
+
+1. Ga naar **Instellingen → Webhooks** en kies **Nieuwe webhook**.
+2. Geef hem onder **Algemeen** een **Naam** en de **URL** die Verdin moet aanroepen.
+3. Kies onder **Gebeurtenissen** de events die een aflevering veroorzaken: **Items** (aanmaken,
+   bijwerken, publiceren, publicatie ongedaan maken, concept verwerpen, verwijderen), **Media**,
+   **Releases** (**Release gepubliceerd**) en **Reviewworkflows** (**Fase van item gewijzigd**).
+4. Houd onder **Contenttypen** **Alle contenttypen** aan of kies er een paar. Dit filtert alleen
+   item-events; media-events worden hoe dan ook verzonden.
+5. Voeg onder **Headers** de headers toe die je endpoint nodig heeft, zoals een
+   `authorization`-token (**Header toevoegen**). `content-type`, `host` en de headers
+   `x-verdin-*` stelt Verdin zelf in.
+6. Laat onder **Ondertekenen** **Afleveringen ondertekenen** aan staan (de standaard).
+7. Kies **Aanmaken**. Verdin toont het ondertekeningsgeheim (`whsec_…`) één keer: kopieer het naar
+   de configuratie van je endpoint.
+
+</Steps>
+
+**Ingeschakeld** zet een webhook uit zonder hem te verwijderen. Uitgeschakelde webhooks ontvangen
+geen events, maar kunnen nog wel worden getest.
+
+## Testen
+
+Kies **Testgebeurtenis verzenden** op de webhook. Verdin stuurt meteen:
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+De aflevering verschijnt in het **Afleveringslogboek** van de webhook met haar status, HTTP-status,
+duur en het begin van de response-body. Open een aflevering voor de volledige payload en de fout,
+als die er is.
+
+Om tijdens het ontwikkelen webhooks op je eigen machine te ontvangen, draai je de server met
+`verdin dev`: dat staat `localhost`-URL's toe, die `verdin start` weigert (zie
+[Beveiliging](#beveiliging)).
+
+## Een aflevering ontvangen
+
+Een aflevering is een `POST` met een JSON-body en deze headers:
+
+| Header | Waarde |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | De eventnaam, zoals `entry.publish`. |
+| `x-verdin-delivery` | Het id van de aflevering. Het blijft gelijk bij nieuwe pogingen: gebruik het om duplicaten te negeren. |
+| `x-verdin-signature` | `t=<unix seconds>,v1=<hex>`, bij ondertekende webhooks. |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+Antwoord snel, met een willekeurige `2xx`-status. Doe traag werk (een volledige rebuild) na het
+antwoorden, of zet het in een wachtrij: een aflevering die langer duurt dan de time-out (standaard
+10 seconden), telt als mislukt.
+
+### De handtekening verifiëren
+
+`v1` is de HMAC-SHA256 van `"<t>.<raw body>"`, met het geheim van de webhook als sleutel. Zo
+controleer je een aflevering:
+
+1. Bereken de HMAC opnieuw over de **ruwe** request-body, niet over opnieuw geserialiseerde JSON.
+2. Vergelijk hem in constante tijd met `v1`.
+3. Weiger tijdstempels die ouder zijn dan een paar minuten, zodat een onderschepte aflevering niet
+   opnieuw kan worden afgespeeld.
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+Bewaar met Express de ruwe body: `app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)`
+en geef `req.body.toString()` mee.
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+`crypto.subtle.verify` vergelijkt in constante tijd.
+
+</TabItem>
+</Tabs>
+
+**Secret vernieuwen** geeft een nieuw geheim uit (één keer getoond); het oude werkt meteen niet
+meer. **Ondertekenen stoppen** verwijdert het geheim en verstuurt afleveringen zonder handtekening.
+
+## Nieuwe pogingen
+
+Afleveringen worden in de database opgeslagen wanneer de wijziging wordt vastgelegd en door een
+worker op de achtergrond verstuurd, dus een traag endpoint vertraagt redacteuren nooit.
+
+- **Succes:** elk `2xx`-antwoord.
+- **Mislukking:** al het andere, inclusief redirects (die niet worden gevolgd), verbindingsfouten en
+  time-outs.
+- **Nieuwe pogingen:** een mislukte aflevering wordt opnieuw geprobeerd na 30 seconden,
+  2 minuten, 10 minuten, 1 uur en 6 uur. Daarna wordt hij gemarkeerd als **Mislukt**.
+
+Kies **Opnieuw proberen** bij een aflevering in het logboek om haar nu opnieuw te versturen. Het
+logboek wordt 30 dagen bewaard. Omdat nieuwe pogingen dezelfde `x-verdin-delivery` hergebruiken,
+maak je je handler idempotent: sla de id's op die je hebt verwerkt, of maak het werk veilig om te
+herhalen.
+
+## Beveiliging
+
+Met `verdin start` mogen webhook-URL's niet wijzen naar loopback-, privé-, link-local- of andere
+gereserveerde adressen, inclusief hostnamen die naar zo'n adres resolven. Zo kan een beheerder
+webhooks niet gebruiken om interne services te bereiken (SSRF). Inloggegevens in de URL
+(`https://user:pass@…`) worden geweigerd; stuur ze in plaats daarvan in een header.
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+Zie [`[webhooks]`](/nl/reference/configuration/).
+
+## Komend van Strapi
+
+De webhooks van Verdin volgen de events en payloads van Strapi, met deze verschillen:
+
+- afleveringen worden ondertekend, opnieuw geprobeerd en gelogd;
+- een webhook kan worden beperkt tot bepaalde contenttypes;
+- `entry.draft-discard` van Strapi heet `entry.discard-draft`.
+
+Om een statische site vanuit het beheerpaneel met een knop opnieuw te bouwen in plaats van bij elke
+wijziging, zie [Deploys en CDN](/nl/guides/integrations/deploys-and-cdn/).

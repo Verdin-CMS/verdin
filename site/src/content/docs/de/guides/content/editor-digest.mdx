@@ -1,0 +1,79 @@
+---
+title: Redaktions-Digest
+description: Bekomm eine tägliche E-Mail mit den Einträgen, die sich seit deinem letzten Blick darauf geändert haben, und wähle, welche Instanz sie verschickt.
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Der Redaktions-Digest ist eine tägliche E-Mail, die jedem Admin sagt, wie viele Einträge sich
+seit seinem letzten Blick darauf geändert haben, pro Inhaltstyp. Er ist für alle aus, bis jeder
+Admin ihn für sich einschaltet. Diese Anleitung behandelt die Seite der Admins, die
+Servereinstellungen und das Zusammenspiel mit mehreren Instanzen.
+
+## Wie „ungesehen“ funktioniert
+
+Ein Eintrag wird für dich ungesehen, wenn jemand anderes ihn ändert, aus jeder API. Wieder
+gesehen ist er, sobald du ihn öffnest. Dieselben Markierungen steuern die **Neu**-Badges in der
+Seitenleiste (abschaltbar mit **Hinweise auf Neues anzeigen**) und das Widget
+**Noch nicht gesehen** auf der Startseite.
+
+## Den Digest einschalten
+
+<Steps>
+
+1. Öffne dein **Profil** (oder das Einstellungsmenü in der oberen Leiste).
+2. Schalte unter **Einstellungen** **Tägliche E-Mail mit ungesehenen Änderungen** ein.
+
+</Steps>
+
+Der Schalter setzt die Einstellung `"digest": "daily"` in deinem Konto
+(`PUT /admin/api/users/me/preferences`). Auf dieselbe Weise schaltest du ihn aus.
+
+Was du bekommst:
+
+- Eine Nachricht mit der Zahl der ungesehenen Einträge pro Inhaltstyp, den du lesen darfst, und
+  einem Link zum Admin-Panel.
+- Nichts an Tagen, an denen es nichts Neues gibt.
+- Nur, solange dein Konto aktiv ist.
+
+## Servereinstellungen
+
+Der Digest wird um `[digest].hour_utc` über `[email]` verschickt:
+
+```toml title="verdin.toml"
+[email]
+provider = "smtp"
+from = "Verdin <no-reply@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+
+[digest]
+hour_utc = 7    # 0–23, UTC; 8 by default
+```
+
+| Schlüssel | Standard | Beschreibung |
+| --- | --- | --- |
+| `[digest].enabled` | `true` | Den Digest von dieser Instanz aus verschicken. |
+| `[digest].hour_utc` | `8` | Stunde (UTC), zu der der Digest rausgeht. |
+
+Der Link in der E-Mail nutzt `[server].public_url`; setze es, wenn Verdin hinter einem Proxy
+läuft. Mit dem Standard-E-Mail-Provider `log` werden die Nachrichten nur ins Server-Log
+geschrieben. Siehe die [Konfigurationsreferenz](/de/reference/configuration/).
+
+## Mehrere Instanzen
+
+Jede Instanz mit `[digest].enabled = true` versucht, den Digest zur eingestellten Stunde zu
+verschicken. Die erste, die den Tag in der Datenbank beansprucht, verschickt ihn, und die
+anderen überspringen diesen Tag, Admins bekommen also eine E-Mail. Um den Job auf einer
+bestimmten Instanz zu halten, setze auf den anderen `enabled = false`:
+
+```sh title="Terminal"
+VERDIN_DIGEST__ENABLED=false verdin start
+```
+
+<Aside type="note">
+Der Digest ist eine Ergänzung von Verdin; Strapi hat kein Gegenstück.
+</Aside>

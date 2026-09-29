@@ -1,0 +1,134 @@
+---
+title: Fluxos de revisió
+description: Mou les entrades per etapes de revisió, assigna-les a revisors, limita qui les pot moure i exigeix una etapa abans de publicar.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Un flux de revisió és una llista ordenada d'etapes, com *To do*, *In review* i *Ready*, per les
+quals passen les entrades d'alguns tipus de contingut abans de publicar-se. Aquesta guia en
+configura un, mou i assigna entrades, i mostra l'API d'administració corresponent.
+
+A Strapi, els fluxos de revisió són una funcionalitat Enterprise. A Verdin formen part del nucli de
+codi obert.
+
+## Abans de començar
+
+- Activa **Configuració → Funcionalitats → Fluxos de revisió**. Està desactivat per defecte.
+- Configurar fluxos necessita **Gestiona els fluxos de revisió** (`workflows.manage`).
+- Moure i assignar una entrada necessita accés d'actualització a l'entrada. Consulta
+  [Permisos](/ca/reference/permissions/).
+
+## Crea un flux
+
+<Steps>
+
+1. Obre **Configuració → Fluxos de revisió** i selecciona **Nou flux**.
+2. Dona-li un **Nom**.
+3. A **Tipus de contingut**, tria els tipus les entrades dels quals el segueixen. Un tipus segueix
+   com a màxim un flux.
+4. A **Etapes**, llista les etapes en ordre. Cadascuna té un **Nom de l’etapa** i un **Color**. Fes
+   servir **Afegeix etapa** per afegir-ne més, i els botons de fletxa per reordenar-les. Les
+   entrades noves comencen a la primera etapa.
+5. Opcionalment, tria **Rols que poden moure entrades a aquesta etapa** en una etapa. Si no hi ha
+   cap rol seleccionat, qualsevol que pugui actualitzar l'entrada ho pot fer.
+6. Opcionalment, defineix **Etapa necessària per publicar**. Aleshores les entrades només es poden
+   publicar mentre són en aquesta etapa. **Qualsevol etapa** no afecta la publicació.
+7. Desa.
+
+</Steps>
+
+<Diagram
+  caption="Un flux editorial amb una etapa necessària per publicar"
+  code={`flowchart LR
+  A[To do] --> B[In review] --> C[Ready]
+  C -->|publicació permesa| P((Publicat))
+  A -.->|publicació rebutjada| X[400]`}
+/>
+
+Les entrades que existien abans que el seu tipus s'unís al flux són a la primera etapa.
+
+Quan canvies un flux més endavant:
+
+- Treure una etapa torna les seves entrades a la primera etapa.
+- Treure un tipus de contingut del flux buida les etapes de les seves entrades.
+- Eliminar el flux buida les etapes i les assignacions de les seves entrades.
+
+## Mou i assigna entrades
+
+L'editor d'entrades mostra un panell **Revisió** amb l'**Etapa** i l'**Assignat a**.
+
+- Tria una altra **Etapa** per moure l'entrada. Les etapes reservades a altres rols no es poden
+  triar, i el panell ho indica. Els administradors amb **Gestiona els fluxos de revisió** sempre
+  poden moure entrades.
+- Tria un **Assignat a** entre els administradors actius que poden llegir el tipus de contingut, o
+  selecciona **Elimina l’assignació**. Qualsevol que pugui actualitzar l'entrada la pot assignar.
+- Quan el flux té una etapa necessària, el panell indica a quina etapa ha d'arribar l'entrada
+  abans que **Publica** funcioni.
+
+La vista de llista mostra una columna **Etapa**, i la pàgina d'inici llista les entrades que tens
+assignades a **Assignades a mi**. Els tipus localitzats mantenen una etapa per idioma.
+
+## Què bloqueja l'etapa de publicació
+
+L'etapa necessària s'aplica a totes les maneres de publicar: el tauler d'administració, REST,
+GraphQL, els llançaments i els connectors. Una publicació d'una entrada fora d'aquesta etapa falla
+amb `400`:
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+A Strapi, el requisit d'etapa només s'aplica al tauler d'administració. Els rols de les etapes
+també són diferents: a Verdin limiten qui mou entrades *cap a* una etapa.
+
+## Registres d'auditoria i webhooks
+
+- Els canvis d'etapa i les assignacions queden enregistrats als
+  [registres d'auditoria](/ca/guides/content/audit-logs/) com a `entry.stage` i `entry.assign`.
+- Els webhooks es poden subscriure a **Etapa de l’entrada canviada**
+  (`review-workflows.updateEntryStage`). Consulta [Webhooks](/ca/guides/integrations/webhooks/).
+
+## API d'administració
+
+Totes les rutes són sota `/admin/api` i accepten un token d'accés d'administrador.
+
+| Ruta | Permís | Fa |
+| --- | --- | --- |
+| `GET /review-workflows`, `GET /review-workflows/{id}` | `workflows.manage` | Fluxos amb les seves etapes. |
+| `POST /review-workflows`, `PUT /review-workflows/{id}` | `workflows.manage` | Crea o substitueix un flux (cos a sota). |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | Les entrades dels seus tipus perden les etapes. |
+| `GET /content/{uid}/{documentId}/review?locale=` | llegir l'entrada | Etapa, persona assignada i les etapes a què pots moure l'entrada (`canMoveTo`). |
+| `PUT /content/{uid}/{documentId}/review?locale=` | actualitzar l'entrada | `{ "stageId": 3, "assigneeId": 7 }`. Tots dos camps són opcionals; `"assigneeId": null` elimina l'assignació. |
+| `GET /content/{uid}/review?documentIds=a,b` | llegir el tipus | Etapes de fins a 200 entrades, amb el flux a `meta.workflow`. |
+| `GET /review/assigned` | sessió iniciada | Les entrades que tens assignades. |
+| `GET /review/assignees?uid=` | actualitzar el tipus | Administradors actius que poden llegir el tipus. |
+| `GET /review/roles` | `workflows.manage` | Codis i noms de rols, per als rols de les etapes. |
+
+Un flux tal com s'envia a `POST` i `PUT`:
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- Un flux té d'1 a 50 etapes amb noms únics i colors `#rrggbb`.
+- `publishStage` anomena una de les etapes; deixa-la fora si no n'hi ha cap.
+- Envia les etapes existents amb el seu `id` perquè les seves entrades es quedin on són. Les etapes
+  sense `id` són noves.
+
+<Aside type="note">
+Desactivar la funcionalitat amaga les etapes i deixa de fer complir l'etapa de publicació. Els
+fluxos i les etapes de les entrades es conserven per quan la tornis a activar.
+</Aside>

@@ -1,0 +1,96 @@
+---
+title: Verdin — Rust üzerinde büyüyen headless CMS
+description: Rust ile yazılmış açık kaynak headless CMS. Strapi v5 uyumlu API’ler, tek bir ikili dosya, PostgreSQL, MySQL, MariaDB ve SQLite.
+template: splash
+editUrl: false
+tableOfContents: false
+lastUpdated: false
+hero:
+  title: <span class="metal">Rust</span> üzerinde büyüyen headless CMS.
+  tagline: Strapi v5 uyumlu API’ler ve editörleriniz için bir yönetim paneli, yaklaşık 25 MB’lık tek bir ikili dosyada. Açık kaynak ve eksiksiz — enterprise sürümü yok.
+  actions:
+    - text: Başlayın
+      link: /tr/start/quickstart/
+      icon: right-arrow
+    - text: Strapi’den geliyorsanız
+      link: /tr/migrate/from-strapi/
+      variant: minimal
+---
+
+import { Card, CardGrid, Code, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Nameplate from '../../../components/landing/Nameplate.astro';
+
+<Nameplate />
+
+## Üç komutla Strapi’den
+
+Strapi projesini dışa aktarın, yeni bir Verdin projesine içe aktarın, başlatın. İçerik tipleri,
+taslakları ve dilleriyle kayıtlar, ilişkiler ve medya kütüphanesi taşınır; içerik API’si biçimini
+korur, bu yüzden frontend çalışmaya devam eder.
+
+```sh title="Terminal"
+npx strapi export --no-encrypt -f my-export        # Strapi projesinde
+verdin new my-site && cd my-site && verdin import strapi ../my-export.tar.gz
+verdin dev                                         # http://localhost:1337/admin
+```
+
+<LinkCard
+  title="Bir Strapi projesini içe aktarma"
+  description="Neler içe aktarılır, kimlik eşlemesi ve sonrasında neleri denetlemeniz gerekir."
+  href="/tr/migrate/from-strapi/"
+/>
+
+## İçeriğinizi zaten yaptığınız gibi okuyun
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+    ```sh
+    curl 'localhost:1337/api/articles?filters[title][$containsi]=rust&populate=category&sort=publishedAt:desc'
+    ```
+  </TabItem>
+  <TabItem label="GraphQL">
+    ```graphql
+    query {
+      articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"]) {
+        documentId
+        title
+        category { name }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```ts
+    import { createClient } from '@verdin/client';
+    import type { VerdinSchema } from './verdin-types'; // verdin types -o src/verdin-types.ts
+
+    const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+    const { data } = await verdin.collection('articles').find({
+      filters: { title: { $containsi: 'rust' } },
+      populate: { category: true },
+      sort: ['publishedAt:desc'],
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## Editörlerin ve geliştiricilerin elde ettikleri
+
+<CardGrid>
+  <Card title="Dosyalarda şema, okunabilir migrasyonlar" icon="document">
+    İçerik tipleri, git’te tutulan Strapi biçiminde JSON dosyalarıdır. Her şema değişikliği,
+    çalışmadan önce bir risk düzeyi ve tam SQL ile bir migrasyon planına dönüşür.
+  </Card>
+  <Card title="Editörlerin sevdiği bir yönetim paneli" icon="pencil">
+    Taslaklar ve yayınlama, içerik geçmişi, sürümler, inceleme iş akışları, yorumlar ve canlı
+    presence, kendi sitenizde görsel düzenleme — 18 dilde.
+  </Card>
+  <Card title="Ek ücretli olmayan güvenlik" icon="approve-check">
+    SSO, geçiş anahtarlarıyla iki adımlı oturum açma, alanlara ve dillere kadar inen roller,
+    denetim kayıtları ve API token’ları; hepsi açık kaynak projede.
+  </Card>
+  <Card title="Güvenle genişletin" icon="puzzle">
+    WebAssembly eklentileri yazmalara bağlanır, rotalar, görevler ve admin widget’ları ekler ve
+    yalnızca bildirdiklerine ulaşır.
+  </Card>
+</CardGrid>

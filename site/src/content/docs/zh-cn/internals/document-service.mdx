@@ -1,0 +1,92 @@
+---
+title: Document Service
+description: Verdin 中读写内容的唯一内部 API、它在每次写入时提供的保证，以及内容 API 请求到达它所经过的路径。
+sidebar:
+  order: 5
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Document Service（`crates/verdin-content/src/service.rs` 中的 `DocumentService`）是唯一读写内容行的代码。内容 API、管理 API、GraphQL、MCP、插件、导入以及站点地图都通过它，因此无论调用来自哪个 API，校验、草稿与发布、关联规则和事件的行为都是一致的。与 Strapi v5 的 Document Service 一样，它以文档（由 `documentId` 标识）而不是行为操作单位。
+
+## API
+
+主要方法（已简化；确切的类型请查看源码）：
+
+| 方法 | 作用 |
+|---|---|
+| `find_many(uid, &Query) -> Page` | 一页文档，`meta` 采用页码或偏移量形式 |
+| `find_one(uid, document_id, &Query) -> Option<Json>` | 查询的状态和语言区域中的一个文档 |
+| `single_document_id(uid)` | 单一类型的文档（如果存在） |
+| `create(uid, &data, WriteOptions) -> String` | 创建一个文档并返回其 `documentId` |
+| `update(uid, document_id, &data, WriteOptions)` | 部分更新草稿（或唯一的版本）；必要时创建新的语言区域版本 |
+| `delete(uid, document_id)` | 删除该文档在当前语言区域中的所有版本 |
+| `publish(uid, document_id, actor)` | 把草稿复制到已发布版本上 |
+| `unpublish(uid, document_id)` | 删除已发布版本 |
+| `discard_draft(uid, document_id)` | 用已发布版本替换草稿 |
+| `uid_availability(…)` | 某个 `uid` 值是否可用，并给出一个可用的建议值 |
+| `document_locales`、`timeline`、`usage`…… | 供管理后台使用的辅助方法 |
+
+`WriteOptions` 有两个字段：`publish`（在启用草稿与发布的类型上，写入后发布）和 `actor`（记录在 `created_by_id` / `updated_by_id` 中的管理员）。
+
+该服务是一个克隆开销很低的值，通过构建器方法进行配置：`in_locale(locale)` 用于本地化类型，`with_listener`、`with_hook`、`dry_run()`（完整校验一次写入然后回滚，用于导入的试运行）以及 `without_plugin_hooks()`（用于插件自己执行的写入）。
+
+它并不知道调用者是谁。权限由 API 层在调用之前应用：拒绝调用方没有权限的操作，限制查询可以 populate 或用于过滤的类型，并向查询添加条件过滤（例如管理后台 **Author** 角色的“自己的条目”条件会变成 `created_by_id = <admin id>`）。过滤是 SQL 的一部分，因此分页和计数保持精确。
+
+## 每次写入都会做什么
+
+1. **钩子。** `DocumentHook` 最先按顺序运行：先是审核工作流阶段，然后是插件。钩子可以替换数据或拒绝写入，拒绝时会变为 `400`。它们使用 Strapi 的生命周期名称（`beforeCreate`、`beforeUpdate`、`beforeDelete`、`beforePublish`、`beforeUnpublish`、`beforeDiscardDraft`）。
+2. **校验输入**（`input.rs`）：未知的键、系统字段（`id`、`documentId`、时间戳）以及关联的反向（`mappedBy`）一侧都是错误；每个值都会对照其属性类型和约束进行检查（`min`、`max`、`minLength`、`maxLength`、`regex`、枚举值、关联基数、媒体的 `allowedTypes`）；组件和动态区域会被递归校验；`password` 值使用 argon2 哈希。
+3. **引用。** 关联文档和媒体文件必须存在，在事务内部检查。
+4. **行和链接**，在一个事务中完成：插入或更新该行，然后重写其关联、多态和媒体链接表（位置重新编号为 1..n）。链接一个 `oneToOne` 或 `oneToMany` 目标时，会把它从处于相同状态的其他文档中移走。
+5. **必填字段和规则。** 当某个版本变为已发布时，或者对未启用草稿与发布的类型的每次写入时，都会检查 `required` 属性（包括组件和动态区域中的属性）以及跨字段校验规则。失败会回滚整个写入。
+6. **唯一性**由限定范围的唯一索引强制执行。冲突会被映射回其属性，并以 `ValidationError` 报告，没有竞态问题。
+7. **先提交，再触发事件。** 事务提交后，服务会用一个 `DocumentEvent`（`entry.create`、`entry.update`、`entry.publish`、`entry.unpublish`、`entry.discard-draft`、`entry.delete`）调用每个 `DocumentListener`，其中携带 uid、`documentId`、语言区域和操作者。
+
+校验错误使用 Strapi 的格式：一个 `{ path, message, name: "ValidationError" }` 列表，其中 `path` 指向数据内部（`["seo", "metaTitle"]`、`["blocks", 2, "text"]`）。管理后台会把它们映射回对应的字段。
+
+监听器让派生状态与内容保持同步，而无需在每个处理器中编写代码：webhook、内容历史、响应缓存、插件的写入后钩子、审计日志、实时事件、评论和任务、“已查看”标记、CDN 清除以及搜索索引。失败的监听器会记录自己的错误；写入此时已经成功。由于监听器在提交之后运行，试运行永远不会触达它们。
+
+## 读取
+
+一次读取会选择所请求状态和语言区域中的行，在 SQL 中应用过滤和排序，然后 populate 所请求的内容：
+
+- **关联**通过批量查询加载，每个关联每一层一次查询（`WHERE … IN (…)`，每批 500 个 id），从不使用级联 join。这样既避免了笛卡尔积爆炸，也避免了 N+1 查询。每个条目的每个关联最多 populate 1,000 个关联条目；计数保持精确。
+- 目标以与源相同的版本读取：已发布的文档看到已发布的目标，草稿看到草稿。
+- **组件和动态区域**来自它们的 JSON 列；其中的关联和媒体通过同样的批量查询解析。
+- **`_q` 搜索**在开启 `[search]` 时使用 Tantivy 索引，否则对文本字段执行不区分大小写的 `$containsi`。
+
+输出的形式（扁平文档、值的格式、`populate` 语法、限制）请参见 [REST API](/zh-cn/api/rest/)。
+
+## 内容 API 请求的生命周期
+
+<Diagram
+  caption="一个 GET /api/articles 请求，从套接字到数据库"
+  code={`sequenceDiagram
+  participant C as 客户端
+  participant L as 共享层
+  participant H as handlers.rs
+  participant Q as verdin-query
+  participant D as Document Service
+  participant DB as 数据库
+  C->>L: GET /api/articles?filters…
+  L->>H: 客户端 IP、请求 id、CORS、限制、缓存
+  H->>H: 按 pluralName 路由，授权令牌或公开角色
+  H->>Q: 解析并对照 schema 校验
+  Q-->>H: 类型化的 Query
+  H->>D: find_many(uid, query)
+  D->>DB: SELECT … WHERE … ORDER BY … LIMIT
+  D->>DB: 每个被 populate 的关联一次批量查询
+  D-->>H: 文档和分页 meta
+  H-->>C: { data, meta }`}
+/>
+
+1. **共享层**（从最外层开始）：解析客户端地址（只信任来自 `[server].trusted_proxies` 的 `X-Forwarded-For`），开启指标时统计该请求，设置请求 id 并以 `x-request-id` 传播，tracing 打开一个 span，设置了 `[api].cors_origins` 时对内容 API 和 GraphQL 应用 CORS。
+2. **内容 API 层**：按客户端的速率限制、`ETag` 以及可选的匿名读取缓存、请求体大小限制（`[server].body_limit`）和请求超时、响应上的 CDN 缓存标签。
+3. **路由。** 在内容类型的 `pluralName`（集合类型）和 `singularName`（单一类型）中查找路径段。未知的名称返回 `404`。
+4. **授权**（`verdin-auth`）。没有 `Authorization` 请求头表示公开角色；`Bearer vd_…` 是 API 令牌。无效或过期的令牌返回 `401`，绝不会变成公开角色。该类型必须授予了路由对应的操作（`find`、`findOne`、`create`、`update`、`delete`、`publish`），否则返回 `403`。
+5. **查询解析**（`verdin-query`）。原始查询字符串会被解析为一棵方括号树（最多 16 KB、12 层、1,000 对），然后解析为一个对照该类型字段校验过的类型化 `Query`：未知字段和 `private` 字段返回 `400`，populate、关联过滤和关联排序被限定于调用方有权读取的类型。读取 `?status=draft` 还需要 `readDrafts`。
+6. **Document Service。** 处理器调用 `find_many`、`find_one`、`create`、`update`、`delete` 或某个操作。在启用草稿与发布的类型上，不带 `?status=draft` 的写入会发布（Strapi v5 的行为），并读回写入后的版本作为响应。
+7. **响应。** `{ "data": …, "meta": … }`。错误使用同样的包裹结构，其中 `data: null`，并带有一个 `error` 对象。
+
+管理 API 路由走同样的路径，只是使用管理员会话而不是 API 令牌，使用管理员 RBAC 而不是内容 API 授权，并且默认以草稿为先：它们读取草稿、只写入草稿，发布是一个显式操作。GraphQL 会在第 5 步之前把它的参数转换为同样的参数树，因此它共用解析器、限制和权限规则。

@@ -1,0 +1,110 @@
+---
+title: "草稿与发布"
+description: "文档及其草稿版本和已发布版本、条目经历的各种状态，以及各个 API 如何读写它们。"
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+草稿与发布让编辑可以在不改变网站展示内容的情况下编辑文档，准备好之后再发布。本页介绍其模型：文档、版本、在版本之间移动内容的操作，以及各个 API 如何对待它们。它的工作方式与 Strapi v5 相同。
+
+在内容类型的 schema 中按类型开启：
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+缺少 `options.draftAndPublish` 时即为关闭。
+
+## 文档和版本
+
+一个**文档**就是一个条目，由其 `documentId` 标识。启用草稿与发布后，一个文档最多有两个**版本**：
+
+- **草稿**，每次编辑都会改变它；
+- **已发布**版本，内容 API 默认提供的就是它。
+
+在[本地化](/zh-cn/concepts/internationalization/)类型上，每个语言区域都有自己的草稿和已发布版本，它们共享同一个 `documentId`。
+
+未启用草稿与发布的类型在每个语言区域只有一个版本，并且始终是已发布的：每次写入都会改变读者看到的内容。
+
+## 状态
+
+管理后台会在列表和编辑器中显示每个条目的状态：
+
+| 状态 | 草稿 | 已发布版本 | 已发布内容的读者看到的内容 |
+| --- | --- | --- | --- |
+| **草稿** | 有 | 无 | 什么都看不到：该文档不可见。 |
+| **已发布** | 与已发布版本相同 | 有 | 已发布版本。 |
+| **已修改** | 自上次发布后有改动 | 有 | 已发布版本，不含新的改动。 |
+
+<Diagram
+  caption="启用草稿与发布的文档的状态，以及状态之间的操作"
+  code={`stateDiagram-v2
+    state "草稿" as Draft
+    state "已发布" as Published
+    state "已修改" as Modified
+    [*] --> Draft: 创建
+    Draft --> Published: 发布
+    Published --> Modified: 保存
+    Modified --> Published: 发布或放弃更改
+    Published --> Draft: 取消发布
+    Modified --> Draft: 取消发布`}
+/>
+
+这些操作会让文档在各状态之间转换：
+
+| 操作 | 作用 | 从 → 到 |
+| --- | --- | --- |
+| 保存 | 写入草稿。 | 草稿 → 草稿，已发布 → 已修改 |
+| **发布** | 把草稿复制到已发布版本上，必要时创建该版本。 | 草稿或已修改 → 已发布 |
+| **取消发布** | 删除已发布版本；草稿保留。 | 已发布或已修改 → 草稿 |
+| **放弃更改** | 用已发布版本的副本替换草稿。 | 已修改 → 已发布 |
+| 删除 | 删除所有版本（在本地化类型上，删除所请求语言区域的版本）。 | 任意 → 不复存在 |
+
+发布在一个事务中执行。它会在草稿上检查 `required` 字段和该类型的[跨字段规则](/zh-cn/concepts/content-model/#跨字段校验)；检查失败则什么都不会发布。在此之前，草稿可以不完整，也可以违反这些规则。
+
+草稿上的 `publishedAt` 为 `null`。已发布版本记录的是它最后一次发布的时间。
+
+## 关联和媒体跟随版本
+
+每个版本都有自己的关联和媒体链接，发布时会把草稿的链接复制到已发布版本。链接指向文档，并在正在读取的版本中解析：已发布的文章显示其分类的已发布版本，草稿则显示分类的草稿。如果分类被取消发布，它就会从已发布的文章中消失，直到再次发布，整个过程不需要重写任何链接。参见[关联](/zh-cn/concepts/relations/#按文档关联而不是按行)。
+
+组件和动态区域是行的一部分，因此发布时会原样复制它们。
+
+## 读取草稿和已发布内容
+
+| API | 默认读取 | 读取草稿的方式 |
+| --- | --- | --- |
+| [REST](/zh-cn/api/rest/#状态) | 已发布版本 | `?status=draft`，需要 **读取草稿** 权限 |
+| [GraphQL](/zh-cn/api/graphql/) | 已发布版本 | `status: DRAFT`，需要同样的权限 |
+| [管理 API](/zh-cn/api/admin/) | 草稿 | `?status=published` |
+
+读取草稿是一个独立的权限（`readDrafts`），这样读取网站内容的令牌就无法读取尚未发布的内容。只读 API 令牌永远不会读取草稿。
+
+要按文档是否发布过来区分它们，请使用 `hasPublishedVersion` 过滤：`?status=draft&hasPublishedVersion=false` 列出从未发布过的文档。
+
+## 通过 API 写入
+
+在写入方面，各 API 遵循 Strapi v5：
+
+- **REST 和 GraphQL** 的 `create` 和 `update` 会写入草稿**并将其发布**，除非请求指定了 `status=draft`（GraphQL 中为 `status: DRAFT`）。发布失败会回滚整个请求。
+- **管理后台和管理 API** 只保存草稿。发布始终是一个显式操作。
+
+REST API 还提供显式的操作，而 Strapi 并没有通过 REST 提供这些操作：
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+它们需要该类型上的 **发布** 权限。参见 [REST API](/zh-cn/api/rest/#操作)。
+
+## 其他会发布内容的功能
+
+- [发布计划](/zh-cn/guides/content/releases/)把多个文档归为一组，立即或在指定日期一起发布或取消发布。
+- [审核工作流](/zh-cn/guides/content/review-workflows/)可以要求文档在发布前必须处于某个阶段。
+- 发布和取消发布会发送 `entry.publish` 和 `entry.unpublish` [webhook 事件](/zh-cn/api/webhooks/)以及[实时事件](/zh-cn/api/realtime/)。保存草稿会发送 `entry.update`，通过实时功能只有有权读取草稿的调用方才会收到。

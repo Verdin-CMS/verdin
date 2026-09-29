@@ -1,0 +1,196 @@
+---
+title: 响应式图片
+description: 以合适的尺寸提供图片：使用 Verdin 在上传时生成的格式，以及通过 URL 实时转换。
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin 提供两种方式，让图片以页面所需的尺寸提供：
+
+- **响应式格式**，在图片上传时一次性生成（`thumbnail`、`small`、`medium`、`large`），与 Strapi 的上传插件完全相同。它们适用于所有上传提供方。
+- **转换**，根据 URL 参数按请求渲染（`?preset=thumb`，或者带签名的 `?w=800&format=webp`），并缓存在磁盘上。它们适用于本地提供方。
+
+两者都属于始终开启的媒体库。上传和整理文件请参见[媒体](/zh-cn/concepts/media/)。
+
+## 响应式格式
+
+上传 JPEG、PNG、WebP、TIFF 或 BMP 图片时，Verdin 会写入若干较小的副本，并在文件的 `formats` 中列出它们：
+
+| 格式 | 尺寸 |
+| --- | --- |
+| `thumbnail` | 适配 245 × 156 像素以内。 |
+| `large` | 宽 1000 像素。 |
+| `medium` | 宽 750 像素。 |
+| `small` | 宽 500 像素。 |
+
+如果图片本身已经更小，就会跳过该格式，因此一张宽 600 像素的图片只会得到 `thumbnail` 和 `small`。副本保留原图的格式（JPEG 以质量 80 编码）及其 EXIF 方向。GIF 不做处理，因为它们可能是动图。
+
+populate 媒体字段即可获取这些格式。示例使用 Article 上的一个 `cover` 媒体属性；示例博客中没有这个属性，如需跟着操作，请在内容类型构建器中添加一个。
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?populate[cover]=true'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles {
+    title
+    cover { url width height alternativeText formats }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ populate: { cover: true } });
+const formats = data[0].cover?.formats; // Record<string, MediaFormat> | null
+```
+
+</TabItem>
+</Tabs>
+
+```json
+"cover": {
+  "url": "/uploads/team_4f1c2a.jpg",
+  "width": 2400,
+  "height": 1600,
+  "alternativeText": "The team at the office",
+  "formats": {
+    "thumbnail": { "url": "/uploads/thumbnail_team_4f1c2a.jpg", "width": 234, "height": 156 },
+    "large": { "url": "/uploads/large_team_4f1c2a.jpg", "width": 1000, "height": 667 },
+    "medium": { "url": "/uploads/medium_team_4f1c2a.jpg", "width": 750, "height": 500 },
+    "small": { "url": "/uploads/small_team_4f1c2a.jpg", "width": 500, "height": 333 }
+  }
+}
+```
+
+用它们构建一个 `srcset`。使用本地提供方时，`url` 是 Verdin 主机上的路径；请为其加上主机的源：
+
+```ts
+const CMS = 'https://cms.example.com';
+
+function srcset(image: Media): string {
+  const sources = Object.values(image.formats ?? {}).map((f) => `${CMS}${f.url} ${f.width}w`);
+  return [...sources, `${CMS}${image.url} ${image.width}w`].join(', ');
+}
+```
+
+```html
+<img src="…/uploads/large_team_4f1c2a.jpg" srcset="…" sizes="(min-width: 60rem) 50vw, 100vw"
+     width="2400" height="1600" alt="The team at the office" />
+```
+
+### 修改格式
+
+这些格式来自 `verdin.toml` 中的 `[upload]`：
+
+```toml title="verdin.toml"
+[upload]
+breakpoints = [{ name = "large", width = 1600 }, { name = "small", width = 640 }]
+# responsive_formats = false  # no copies at all
+# max_original_size = 3000    # scale larger originals down on upload (drops EXIF and GPS)
+```
+
+`breakpoints` 与 Strapi 中的同名设置相同。修改只对新上传的文件生效；现有文件保留已有的格式。所有键请参见 [`[upload]`](/zh-cn/reference/configuration/)，其中包括 `max_image_megapixels`，即用于防范解压炸弹的解码限制（默认 1 亿像素）。
+
+## 转换
+
+使用本地提供方时，Verdin 自己提供 `/uploads/<file>`，并可以按请求渲染图片的其他尺寸和格式：
+
+```
+/uploads/team_4f1c2a.jpg?preset=thumb
+/uploads/team_4f1c2a.jpg?w=800&format=webp&s=<signature>
+```
+
+| 参数 | 取值 |
+| --- | --- |
+| `w`、`h` | 宽度和高度，单位为像素，范围从 1 到 `max_size`（默认 4096）。只设置其中一个时，另一个按宽高比计算。两个都不设置时，图片保持原尺寸（用于转换格式）。 |
+| `fit` | `cover`（默认）填满整个框并裁掉多余部分，同时让文件的焦点保持在视野中。`inside` 让图片完整放入框内。`fill` 把图片拉伸到框的大小。 |
+| `format` | `jpeg`（或 `jpg`）、`png` 或 `webp`。WebP 输出是无损的。不设置时图片保持原格式（TIFF 和 BMP 会变为 JPEG）。 |
+| `q` | JPEG 质量，范围从 1 到 100。默认 80。 |
+| `preset` | 配置中的一个具名转换。不能与其他参数组合使用。 |
+| `s` | 签名，当参数不是预设时需要。 |
+
+图片永远不会被放大：一张宽 600 像素的图片以 `w=1200` 请求时，返回的仍是 600 像素。转换适用于 JPEG、PNG、WebP、TIFF 和 BMP 文件，不适用于 GIF。
+
+### 焦点
+
+编辑在媒体库中设置图片的焦点：打开文件并点击图片（**焦点：点击图片或使用方向键进行设置**）。`fit=cover` 裁剪时会让该点保持在视野中，修改焦点会丢弃该文件已缓存的渲染结果。
+
+### 预设
+
+预设是你允许任何人请求的转换。在 `[upload.transforms.presets]` 中定义它们：
+
+```toml title="verdin.toml"
+[upload.transforms.presets]
+thumb = { w = 300, h = 300 }
+card = { w = 640, h = 360, format = "webp" }
+hero = { w = 1600, h = 600, fit = "cover", format = "jpeg", q = 85 }
+```
+
+```html
+<img src="https://cms.example.com/uploads/team_4f1c2a.jpg?preset=card" alt="…" />
+```
+
+未知的预设返回 `400`。
+
+### 签名参数
+
+`w`、`h`、`fit`、`format` 和 `q` 的任何其他组合都需要签名，这样就没有人能让服务器渲染（并存储）数量无限的变体。请在服务器以及构建图片 URL 的代码所在的环境中设置一个密钥：
+
+```sh title="Terminal"
+export VERDIN_IMAGE_SECRET="$(openssl rand -hex 32)"
+```
+
+签名 `s` 是以该密钥对 `<file>?<canonical query>` 计算出的十六进制 HMAC-SHA256。规范查询列出你设置的参数（`fit=cover` 这一默认值除外），按名称排序（`fit`、`format`、`h`、`q`、`w`），JPEG 写作 `jpeg`：
+
+```ts title="src/image-url.ts"
+import { createHmac } from 'node:crypto';
+
+type Transform = { w?: number; h?: number; fit?: 'cover' | 'inside' | 'fill'; format?: 'jpeg' | 'png' | 'webp'; q?: number };
+
+export function imageUrl(cms: string, url: string, t: Transform): string {
+  const file = url.replace(/^\/uploads\//, '');
+  const params: [string, string][] = [];
+  if (t.fit && t.fit !== 'cover') params.push(['fit', t.fit]);
+  if (t.format) params.push(['format', t.format]);
+  if (t.h) params.push(['h', String(t.h)]);
+  if (t.q) params.push(['q', String(t.q)]);
+  if (t.w) params.push(['w', String(t.w)]);
+  const query = params.map(([k, v]) => `${k}=${v}`).join('&');
+  const s = createHmac('sha256', process.env.VERDIN_IMAGE_SECRET!).update(`${file}?${query}`).digest('hex');
+  return `${cms}/uploads/${file}?${query}&s=${s}`;
+}
+```
+
+请在服务器上（或构建时）生成这些 URL：密钥绝不能到达浏览器。没有设置 `VERDIN_IMAGE_SECRET`，或者签名错误时，请求返回 `403`。
+
+<Aside type="caution">
+`[upload.transforms].allow_arbitrary = true` 会接受任何不带签名的参数。这样每个不同的 URL 都会被渲染并缓存，任何人都可以塞满磁盘、占用 CPU。只有在服务器仅能从受信任网络访问时才开启它。
+</Aside>
+
+### 缓存和限制
+
+- 渲染结果写入 `[upload.transforms].cache_dir`（默认为 `.cache/transforms`），之后从那里提供。该目录可以放心删除。
+- 替换文件或移动其焦点会丢弃其已缓存的渲染结果。
+- 转换后的响应会被浏览器和 CDN 缓存一天（`Cache-Control: public, max-age=86400`）；普通文件缓存一年，因为它们的名称永远不会改变。
+- 渲染并行执行，最多与 CPU 核心数相同；更多的请求需要等待。
+- 超过 `max_image_megapixels` 的图片会被拒绝（`422`）。
+
+设置 `[upload.transforms].enabled = false` 即可关闭转换。各个键请参见 [`[upload.transforms]`](/zh-cn/reference/configuration/)。
+
+### 使用 S3 和其他提供方
+
+使用 S3 提供方时，文件由存储桶或其 CDN 提供，而不是由 Verdin 提供，因此转换参数不起作用。请使用响应式格式，或者在存储桶的 `public_url` 前使用 CDN 的图片服务（例如 Cloudflare Images 或 imgix）。
+
+Strapi 没有内置的转换功能；它的响应式格式和 `breakpoints` 与 Verdin 的行为相同。

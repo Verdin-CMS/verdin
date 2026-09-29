@@ -1,0 +1,33 @@
+---
+title: Playground da API
+description: Envie requisições do navegador para a API de conteúdo do projeto de blog de exemplo, contra o seu Verdin local.
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+Experimente a API de conteúdo do [projeto de blog de exemplo](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+sem escrever código. As requisições vão do seu navegador para o servidor escolhido em **Server**,
+por padrão `http://localhost:1337`.
+
+Para respondê-las, rode o projeto de exemplo localmente e permita as requisições:
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- Crie o primeiro administrador em [localhost:1337/admin](http://localhost:1337/admin/) e adicione alguns artigos.
+- Permita `find` e `findOne` em **Configurações → Acesso público**, ou
+  cole um token de API em **Authentication**.
+- O playground roda na origem deste site, então o servidor precisa aceitá-la: adicione-a a
+  `[api].cors_origins` no `verdin.toml` (veja [Configuração](/pt-br/reference/configuration/)).
+
+O seu próprio projeto tem a mesma referência para o próprio schema em `/api/docs` assim que
+**Documentação pública** estiver ativada em **Configurações → Recursos → Documentação da API**.
+
+<Playground />

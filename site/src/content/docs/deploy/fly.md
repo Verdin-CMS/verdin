@@ -25,7 +25,7 @@ In the project directory, add a `Dockerfile` that copies your configuration and 
 into the official image (see [Your own image](/deploy/docker/)):
 
 ```dockerfile title="Dockerfile"
-FROM ghcr.io/verdin-cms/verdin:0.9
+FROM ghcr.io/verdin-cms/verdin:0.10
 COPY verdin.toml /app/verdin.toml
 COPY schema /app/schema
 ```
@@ -109,7 +109,7 @@ temporary Machine without volumes, which would not work for SQLite anyway.)
 4. Set Verdin's secrets and the database URL:
 
    ```sh frame="terminal"
-   docker run --rm ghcr.io/verdin-cms/verdin:0.9 secrets | fly secrets import
+   docker run --rm ghcr.io/verdin-cms/verdin:0.10 secrets | fly secrets import
    fly secrets set VERDIN_DATABASE_URL='postgres://<user>:<password>@<host>:5432/<db>?sslmode=require'
    ```
 

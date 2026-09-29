@@ -1,0 +1,175 @@
+---
+title: Usuarios administradores y roles
+description: Crea el primer administrador, invita a los demás, asígnales roles, restablece contraseñas desde el panel o la CLI y gestiona las sesiones.
+sidebar:
+  order: 1
+  label: Usuarios administradores
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Los administradores son las personas que inician sesión en el panel de administración. Son
+distintos de los [usuarios finales](/es/guides/auth/end-users/) de tus sitios y aplicaciones.
+Esta guía crea el primer administrador, invita a los demás, les asigna roles y les ayuda a
+recuperar el acceso cuando se quedan fuera.
+
+## Antes de empezar
+
+- Verdin necesita `VERDIN_ADMIN_JWT_SECRET` y `VERDIN_TOKEN_PEPPER` en el entorno. Genéralos una
+  vez con `verdin secrets`.
+- Gestionar administradores necesita **Gestionar usuarios** (`users.manage`); gestionar roles
+  necesita **Gestionar roles** (`roles.manage`). Consulta
+  [Permisos](/es/reference/permissions/).
+- Las invitaciones y los restablecimientos de contraseña se envían por correo a través de
+  `[email]`. Con el proveedor `log` por defecto, los correos, enlaces incluidos, se escriben en
+  el log del servidor.
+
+## Crea el primer administrador
+
+Abre el panel de administración (`http://localhost:1337/admin/` por defecto). Mientras no exista
+ningún administrador, te pide el primero, que se convierte en Super Admin. Las contraseñas tienen
+de 8 a 128 caracteres.
+
+Sin navegador, usa la CLI o la API:
+
+<Tabs>
+<TabItem label="CLI">
+
+```sh title="Terminal"
+verdin admin create --email you@example.com
+```
+
+La contraseña se lee de `VERDIN_ADMIN_PASSWORD` o de la entrada estándar. El comando crea un
+Super Admin y funciona en cualquier momento, no solo para el primero.
+
+</TabItem>
+<TabItem label="API">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/register-first-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+```
+
+Esta ruta solo funciona mientras no exista ningún administrador.
+
+</TabItem>
+</Tabs>
+
+## Invita a un administrador
+
+<Steps>
+
+1. Abre **Configuración → Usuarios** y selecciona **Añadir usuario**.
+2. Introduce el correo electrónico y, opcionalmente, el **Nombre** y los **Apellidos**.
+3. Elige uno o varios **Roles**.
+4. Deja desactivado **Poner una contraseña ahora** para enviar una invitación, o actívalo para
+   poner tú la contraseña.
+5. Selecciona **Invitar** (o **Guardar** si has puesto contraseña).
+
+</Steps>
+
+El diálogo **Enlace de invitación** muestra el enlace e indica si se ha enviado por correo.
+Compártelo tú si no se ha enviado, que es lo que pasa siempre con el proveedor `log`. El enlace
+funciona una sola vez, durante 7 días; el administrador invitado lo abre, elige una contraseña y
+queda con la sesión iniciada.
+
+Mientras el administrador no haya iniciado sesión nunca, **Nuevo enlace de invitación** en su
+fila sustituye el enlace anterior. Una vez que ha iniciado sesión, recupera el acceso con un
+restablecimiento de contraseña.
+
+## Roles
+
+Verdin crea tres roles, como Strapi:
+
+| Rol | Puede |
+| --- | --- |
+| **Super Admin** | Todo. Sus permisos no se pueden cambiar. |
+| **Editor** | Crear, editar, publicar y eliminar todo el contenido; gestionar la biblioteca de medios; lanzar despliegues; gestionar SEO, redirecciones, menús y formularios. |
+| **Author** | Crear contenido, y editar y eliminar sus propias entradas y archivos. No puede publicar. |
+
+Crea más en **Configuración → Roles** con **Nuevo rol**. Para cada rol, elige:
+
+- **Contenido**: por tipo de contenido (o **Todos los tipos de contenido**), el nivel de
+  **Leer**, **Crear**, **Actualizar**, **Eliminar** y **Publicar**: **Sin acceso**,
+  **Propias** (solo las entradas que ha creado el administrador) o **Todas**. **Campos** limita
+  una acción a algunos campos, e **Idiomas**, a algunos idiomas.
+- **Biblioteca de medios**: las acciones sobre archivos, para **Todos los archivos** o
+  **Archivos propios**.
+- **Configuración**: el acceso a las áreas de administración, como **Gestionar usuarios** o
+  **Leer los registros de auditoría**.
+- **Requerir autenticación de dos factores**: consulta
+  [Autenticación de dos factores](/es/guides/auth/two-factor/).
+
+Un administrador con varios roles obtiene la unión de sus permisos. La lista completa está en la
+[referencia de permisos](/es/reference/permissions/).
+
+Solo un Super Admin puede asignar el rol Super Admin, o editar, eliminar o restablecer a otro
+Super Admin.
+
+## Desactivar o eliminar un administrador
+
+Edita el administrador en **Configuración → Usuarios** y desactiva **Activo**: los usuarios
+inactivos no pueden iniciar sesión. **Eliminar** borra la cuenta definitivamente; sus
+comentarios aparecen entonces como escritos por un administrador eliminado.
+
+## Restablecer una contraseña
+
+- **La restablece el propio administrador:** **¿Has olvidado la contraseña?** en la página de
+  inicio de sesión envía por correo un enlace que funciona durante una hora. Todas las sesiones
+  de la cuenta terminan cuando cambia la contraseña.
+- **La pone otro administrador:** edita el administrador en **Configuración → Usuarios** y
+  escribe una contraseña nueva. Deja el campo vacío para mantener la actual.
+- **Desde el servidor:** cuando nadie puede iniciar sesión, ejecuta
+
+  ```sh title="Terminal"
+  verdin admin reset-password --email you@example.com
+  ```
+
+  con la contraseña en `VERDIN_ADMIN_PASSWORD` o en la entrada estándar. Pone la contraseña,
+  desbloquea la cuenta y cierra sus sesiones. No quita la autenticación de dos factores: un
+  administrador que ha perdido su segundo factor necesita que otro administrador lo
+  [restablezca](/es/guides/auth/two-factor/).
+
+## Protección del inicio de sesión
+
+- Tras 5 contraseñas incorrectas seguidas, la cuenta se bloquea durante 15 minutos.
+- Las peticiones de inicio de sesión, registro y refresco se limitan por IP de cliente con
+  `[admin].auth_rate_limit` (20 por minuto por defecto).
+- Una sesión de administración es un token de acceso de 15 minutos que se renueva con una cookie
+  de refresco que dura 30 días. La cookie es `Secure` en `verdin start`; consulta
+  `[admin].secure_cookies`.
+
+Cada administrador ve sus dispositivos con sesión iniciada en **Sesiones**, dentro de su
+**Perfil**, y puede **Cerrar sesión** en uno o en todos los demás. Cambiar la contraseña cierra
+la sesión en todos los demás dispositivos.
+
+## API de administración
+
+Inicia sesión para obtener un token de acceso a la API de administración:
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+# → { "data": { "user": {…}, "accessToken": "…", "accessTokenExpiresAt": "…" } }
+```
+
+| Ruta | Permiso | Hace |
+| --- | --- | --- |
+| `GET /users`, `GET /users/{id}` | `users.manage` | Administradores con sus roles. |
+| `POST /users` | `users.manage` | `{ email, firstname?, lastname?, roles: [ids], isActive?, password? }`. Sin `password`, el `meta` de la respuesta tiene `inviteUrl` y `emailed`. |
+| `PUT /users/{id}`, `DELETE /users/{id}` | `users.manage` | Cambia o elimina un administrador. |
+| `POST /users/{id}/invite` | `users.manage` | Un nuevo enlace de invitación, para administradores que nunca han iniciado sesión. |
+| `GET /roles`, `POST /roles`, `PUT /roles/{id}`, `DELETE /roles/{id}` | `roles.manage` | Roles y sus permisos. |
+| `POST /auth/forgot-password` | público | `{ email }`. Siempre responde `204`. |
+| `GET /auth/sessions`, `DELETE /auth/sessions/{id}` | sesión iniciada | Tus sesiones. |
+
+Todas las rutas están bajo `/admin/api`. Consulta la [API de administración](/es/api/admin/).
+
+<Aside type="caution">
+Los secretos nunca van en `verdin.toml`. Mantén los dos secretos estables entre reinicios e
+instancias: `VERDIN_ADMIN_JWT_SECRET` firma los tokens de acceso, los JWT de los usuarios
+finales y los enlaces de vista previa, y `VERDIN_TOKEN_PEPPER` protege los tokens de API y los
+segundos factores (consulta [Tokens de API](/es/guides/auth/api-tokens/)).
+</Aside>

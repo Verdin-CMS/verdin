@@ -1,0 +1,210 @@
+---
+title: פריסות ו-CDN
+description: תנו לעורכים כפתור פריסה לאתר הסטטי שלכם, עקבו אחרי ה-builds שלו, ונקו את ה-CDN שלכם כשהתוכן משתנה.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+שני כלים לאתרים ששומרים במטמון את מה ש-Verdin מגיש:
+
+- **פריסות** מוסיפות כפתור **פריסה** לכותרת של פאנל הניהול. הוא קורא ל-build hook של האתר
+  שלכם (Netlify, Vercel, Cloudflare Pages או כל CI), והספק מדווח בחזרה איך ה-build מתקדם.
+- **ניקוי CDN** מתייג תגובות של API התוכן לפי סוג תוכן ומנקה את התגיות האלה ב-Cloudflare,
+  ב-Fastly או בנקודת קצה משלכם כשתוכן משתנה באופן ציבורי.
+
+שניהם חלק מהליבה: אין מתג תכונה. פריסות מוגדרות ב-**הגדרות ← פריסות**; ה-CDN ב-`verdin.toml`.
+
+## פריסות
+
+<Diagram code={`sequenceDiagram
+  participant E as עורך
+  participant V as Verdin
+  participant P as ספק ה-build
+  E->>V: פריסה
+  V->>P: POST build hook
+  P-->>V: callback: building
+  P-->>V: callback: ready (url)
+  V-->>E: "אתר הייצור פרוס"`} caption="כפתור הפריסה קורא ל-build hook; הספק מדווח בחזרה לכתובת ה-callback." />
+
+### הוספת יעד
+
+<Steps>
+
+1. אצל הספק שלכם, צרו build hook לאתר והעתיקו את הכתובת שלו (Netlify: **Build hooks**;
+   Vercel: **Deploy Hooks**; Cloudflare Pages: **Deploy hooks**; CI: כל כתובת שמתחילה
+   pipeline ב-`POST`).
+2. ב-Verdin, עברו ל-**הגדרות ← פריסות** ובחרו **הוספת יעד**.
+3. תנו לו **שם** (כמו **אתר הייצור**) והדביקו את **כתובת ה-Build Hook**.
+4. שמרו. כתובת ה-hook היא סוד: מעכשיו מוצג רק ה-host שלה. כדי לכוון את היעד ל-hook אחר,
+   השתמשו ב**החלפת הכתובת**.
+
+</Steps>
+
+מנהלים שיכולים לפרוס רואים עכשיו **פריסה** בכותרת. עם כמה יעדים, הוא פותח תפריט **פריסה
+אל**. אחרי האישור, Verdin שולח:
+
+```http
+POST <build hook URL>
+content-type: application/json
+
+{ "trigger": "verdin", "triggeredBy": "editor@example.com" }
+```
+
+יעד נפרס לכל היותר כל 10 שניות, כך שלחיצה כפולה לא מתחילה שני builds. הבקשה חורגת מהזמן אחרי
+15 שניות ולא עוקבת אחרי הפניות. hook שעונה במשהו שאינו `2xx` נרשם כ**נדחתה**.
+
+### דיווח על מצבי ה-build בחזרה
+
+בלי callback, פריסה נשארת במצב **הופעלה**. כדי לראות **בבנייה**, **מוכן** ו**שגיאה** בפאנל
+הניהול, וקישור לאתר שנפרס, תנו לספק את כתובת ה-callback של היעד: בחרו בכפתור **כתובת
+Callback** של היעד והעתיקו אותה.
+
+<Tabs syncKey="deploy-provider">
+<TabItem label="Netlify">
+
+ב-**Site configuration → Build & deploy → Deploy notifications**, הוסיפו outgoing webhook
+עבור **Deploy started**, **Deploy succeeded** ו-**Deploy failed**, עם כתובת ה-callback.
+
+</TabItem>
+<TabItem label="Vercel">
+
+ב-**Team settings → Webhooks**, צרו webhook לאירועים `deployment.created`,
+`deployment.succeeded` ו-`deployment.error`, עם כתובת ה-callback.
+
+</TabItem>
+<TabItem label="CI אחר">
+
+שלחו `POST` של JSON עם `status` (`building`, `ready` או `error`) ובאופן אופציונלי ה-`url`
+שנפרס ו-`message`:
+
+```sh title="Terminal"
+curl -X POST "$VERDIN_CALLBACK_URL" -H 'content-type: application/json' \
+  -d '{ "status": "ready", "url": "https://www.example.com" }'
+```
+
+</TabItem>
+</Tabs>
+
+Verdin מבין את ה-`state` של Netlify, את ה-`type` של Vercel ו-`status` פשוט, ומעדכן את הפריסה
+האחרונה של היעד. הוא עונה `204`, או `404` כשהכתובת שגויה. כתובת ה-callback היא
+`{public_url}{admin path}/api/deploy/callback/{id}/{secret}`, לכן הגדירו את
+[`[server].public_url`](/he/reference/configuration/) לכתובת שהספקים יכולים להגיע אליה.
+
+<Aside type="caution">
+כתובת ה-callback מכילה סוד: כל מי שיש לו אותה יכול לדווח על מצבי פריסה של היעד הזה. היא לא
+יכולה להתחיל פריסות או לקרוא משהו.
+</Aside>
+
+**היסטוריית פריסות** מפרטת את 50 הפריסות האחרונות, מהחדשה לישנה, עם היעד, זמן ההתחלה, הסטטוס,
+סטטוס ה-HTTP של ה-hook וההודעה של הספק. מחיקת יעד מוחקת את ההיסטוריה שלו, לא את ה-build hook.
+
+### הרשאות
+
+| הרשאה | מתירה |
+| --- | --- |
+| **הפעלת פריסות** (`deploy.trigger`) | הכפתור **פריסה** בכותרת. לתפקיד המובנה Editor יש אותה. |
+| **ניהול יעדי פריסה וה-CDN** (`deploy.manage`) | **הגדרות ← פריסות**: יעדים, כתובות callback וניקויי CDN. |
+
+ראו [הרשאות](/he/reference/permissions/). כתובות build hook עוקבות אחרי אותם כללי כתובות כמו
+[webhooks](/he/guides/integrations/webhooks/): עם `verdin start` הן לא יכולות להפנות לרשתות
+פרטיות אלא אם [`[webhooks].allow_private_networks`](/he/reference/configuration/) מתיר זאת.
+
+### פריסה בכל שינוי במקום זאת
+
+הכפתור מתאים לאתרים שנבנים מחדש לפי דרישה. כדי לבנות מחדש בכל פרסום, צרו
+[webhook](/he/guides/integrations/webhooks/) עבור `entry.publish` ו-`entry.unpublish` עם ה-build
+hook ככתובת שלו. לקבוצת שינויים מתוזמנת, פרסמו אותם עם [מהדורה](/he/guides/content/releases/)
+וחברו את ה-webhook ל-`releases.publish`.
+
+## ניקוי CDN
+
+כש-CDN שומר במטמון את API התוכן, הוא מגיש תוכן ישן עד שהמטמון פג. עם `[cdn]` מוגדר, Verdin
+מתייג את התגובות שלו ומנקה את התגיות הנכונות כשהתוכן משתנה, כך שאפשר לשמור במטמון לזמן רב.
+
+### איך התיוג עובד
+
+כל `GET` מוצלח של API התוכן נושא `vd` (הכול), `vd-<singularName>` (סוג התוכן) ואת התגית של
+כל סוג שהמסמכים שלו יכולים לבצע לו populate: יעדי קשרים, גם בתוך רכיבים ואזורים דינמיים,
+ובהמשך הקשרים שלהם עצמם. עבור המאמרים של דוגמת הבלוג, בשני פורמטי הכותרות:
+
+```http
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
+```
+
+סוג עם קשר פולימורפי יכול להגיע לכל סוג, ולכן התגובות שלו נושאות את התגית של כל הסוגים.
+
+Cloudflare קורא את `Cache-Tag`, Fastly קורא את `Surrogate-Key`. כשתוכן משתנה באופן ציבורי,
+Verdin מנקה את התגית של הסוג:
+
+- פרסום, ביטול פרסום או מחיקה של רשומה;
+- כל כתיבה לסוג בלי טיוטה ופרסום (הכתיבות שלו ציבוריות מיד).
+
+שמירת טיוטה לא מנקה כלום, כי טיוטות לא מוגשות לציבור. שינויים בתוך שנייה (`debounce_ms`)
+מקובצים לניקוי אחד, וניקוי שנכשל מנוסה שוב פעמיים.
+
+### הגדרה
+
+<Tabs syncKey="cdn">
+<TabItem label="Cloudflare">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "cloudflare"
+zone_id = "023e105f4ecef8ad9ca31a8372d0c353"
+```
+
+`VERDIN_CDN_TOKEN` הוא אסימון API עם ההרשאה **Cache Purge** על ה-zone.
+
+</TabItem>
+<TabItem label="Fastly">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "fastly"
+service_id = "SU1Z0isxPaozGVKXdv0eY"
+```
+
+`VERDIN_CDN_TOKEN` הוא אסימון API של Fastly שמורשה לנקות את השירות.
+
+</TabItem>
+<TabItem label="Webhook">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "webhook"
+url = "https://purge.example.com/verdin"
+```
+
+Verdin שולח `POST { "tags": ["vd-article"] }`, עם `Authorization: Bearer <VERDIN_CDN_TOKEN>`
+כשהאסימון מוגדר. השתמשו בזה עבור CDN אחר, reverse proxy או API ה-revalidation של ה-framework
+שלכם.
+
+</TabItem>
+</Tabs>
+
+```sh title="Terminal"
+export VERDIN_CDN_TOKEN=...
+```
+
+Verdin בודק את הקטע בהפעלה ומסרב לרוץ בלי ה-`zone_id`, ה-`service_id`, ה-`url` או האסימון
+שהספק צריך. ראו את [`[cdn]`](/he/reference/configuration/).
+
+ה-CDN שלכם עדיין מחליט מה לשמור במטמון: הגדירו כלל מטמון לנתיבי ה-API (למשל `/api/*` בבקשות
+`GET` אנונימיות) עם TTL ארוך בקצה. השאירו מחוץ למטמון בקשות מאומתות, קריאות של תצוגה מקדימה
+ואת `/api/_events`.
+
+### בדיקה וניקוי ידני
+
+הקטע **CDN** ב-**הגדרות ← פריסות** מציג את הספק ואת **ניקויים אחרונים** (**נוקה** או
+**נכשל**, עם התגיות). **ניקוי הכול** מסיר כל תגובה שמתויגת `vd`.
+
+מכיוון שהתגובות נושאות את התגיות של הסוגים שהן יכולות לבצע להם populate, שינוי שם של קטגוריה
+מנקה גם את רשימות המאמרים השמורות שעשויות לכלול אותה, בין אם הבקשה ביקשה `populate` ובין אם
+לא.
+
+המטמון בזיכרון של Verdin עצמו ([`[api].cache_ttl_secs`](/he/reference/configuration/)) נפרד:
+הוא מתרוקן בכל שינוי.

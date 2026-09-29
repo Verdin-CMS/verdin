@@ -1,0 +1,92 @@
+---
+title: Recherche
+description: Recherchez des entrées avec _q, et activez l’index plein texte Tantivy pour des résultats classés et insensibles aux accents.
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+L’API de contenu et le panneau d’administration recherchent des entrées avec le paramètre `_q`,
+comme dans Strapi. Par défaut, `_q` correspond aux champs texte qui contiennent les mots. Activez
+l’index `[search]` pour classer les résultats avec un moteur plein texte (Tantivy) intégré au
+serveur. Ce guide présente les deux et quand utiliser l’index.
+
+## Rechercher avec `_q`
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/api/articles' --data-urlencode '_q=rust cms'
+```
+
+`_q` se combine avec les autres paramètres : `filters`, `status`, `locale`, `pagination`,
+`fields` et `populate`. Le champ de recherche de la liste de l’administration envoie le même
+paramètre.
+
+Les champs sur lesquels porte la recherche :
+
+- Les champs texte : `string`, `text`, `richtext`, `email`, `uid` et `enumeration`.
+- Avec l’index, aussi le texte dans les `blocks`, les composants et les zones dynamiques.
+- Jamais les champs privés ni les mots de passe.
+
+`_q` est un paramètre REST. GraphQL et les options de requête du client TypeScript n’ont pas
+d’argument de recherche ; utilisez-y un filtre `$containsi`.
+
+## Sans l’index
+
+Sans `[search]`, `_q` correspond aux entrées dont un champ texte contient l’intégralité du texte
+recherché, sans tenir compte de la casse, comme le `$containsi` de Strapi. Les résultats suivent
+le tri habituel. Cela ne demande aucune configuration et fonctionne sur toutes les bases de
+données, mais parcourt la table et ne classe pas les résultats.
+
+## Activer l’index plein texte
+
+<Steps>
+
+1. Activez l’index dans `verdin.toml` :
+
+   ```toml title="verdin.toml"
+   [search]
+   enabled = true
+   ```
+
+2. Redémarrez Verdin. Il construit l’index en arrière-plan à partir de toutes les entrées ; tant
+   qu’il n’est pas prêt, `_q` se rabat sur `$containsi`.
+
+</Steps>
+
+| Clé | Valeur par défaut | Description |
+| --- | --- | --- |
+| `enabled` | `false` | Classe `_q` avec l’index plein texte. |
+| `dir` | `"data/search"` | Répertoire de l’index, relatif au projet. |
+| `memory_mb` | `50` | Budget mémoire de l’indexation, en mégaoctets. |
+
+Voir la [référence de configuration](/fr/reference/configuration/).
+
+Comment l’index établit les correspondances :
+
+- Les mots sont découpés sur tout ce qui n’est pas une lettre ou un chiffre, mis en minuscules et
+  débarrassés de leurs accents : `cafe` trouve donc `Café`.
+- Chaque mot doit correspondre. Le dernier mot correspond aussi comme préfixe, si bien que des
+  résultats apparaissent pendant la saisie.
+- Le titre (le premier champ texte du type) compte double.
+- Sans `sort`, les résultats arrivent par pertinence décroissante. Avec un `sort`, les
+  correspondances sont triées selon votre choix. Au plus 1 000 correspondances sont prises en
+  compte par recherche.
+- Les brouillons et les versions publiées, ainsi que chaque langue, sont recherchés séparément,
+  selon `status` et `locale`.
+
+L’index suit chaque écriture depuis n’importe quelle API. Il est reconstruit quand le schéma
+modifie les champs recherchables, et quand son répertoire est absent.
+
+## Plusieurs instances
+
+L’index réside sur le disque de l’instance et suit les écritures de cette instance. Quand vous
+exécutez plusieurs instances, les écritures sur l’une n’atteignent pas l’index des autres.
+Gardez la recherche sur une seule instance, ou reconstruisez l’index après un déploiement en
+supprimant son répertoire avant le démarrage. Voir
+[Exécuter plusieurs instances](/fr/deploy/scaling/).
+
+<Aside type="tip">
+Le répertoire de l’index peut être supprimé sans risque. Gardez-le hors des sauvegardes et du
+contrôle de version ; Verdin le reconstruit à partir de la base de données.
+</Aside>

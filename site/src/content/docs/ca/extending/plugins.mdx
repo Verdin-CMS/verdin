@@ -1,0 +1,135 @@
+---
+title: Connectors
+description: Què poden fer els connectors de Verdin, com els mantenen continguts el sandbox WebAssembly i les capacitats, i com instal·lar-los i activar-los.
+sidebar:
+  order: 1
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Els connectors (plugins) afegeixen comportament a Verdin sense canviar ni reconstruir el
+servidor. Un connector és un mòdul WebAssembly amb un manifest, deixat al directori `plugins/`
+del projecte. Aquesta pàgina explica què poden fer els connectors i com instal·lar-ne un; per
+escriure'n un, segueix el [tutorial de connectors](/ca/extending/plugin-tutorial/), i consulta els
+detalls a la [referència de connectors](/ca/extending/plugin-reference/).
+
+## Què pot fer un connector
+
+| Punt d'extensió | Per a què serveix |
+| --- | --- |
+| **Hooks en les escriptures** | Abans que una entrada es creï, s'actualitzi, es publiqui, es despubliqui, s'elimini o se'n descarti l'esborrany, canviar les dades o rebutjar l'escriptura amb un missatge. Després de l'escriptura, reaccionar-hi (registrar, notificar, sincronitzar). |
+| **Rutes** | Servir endpoints HTTP sota `/api/plugins/<name>/…`: un receptor de webhooks, un feed calculat, un proxy a un altre servei. |
+| **Tasques programades** | Executar una funció segons una programació cron (UTC). |
+| **Camps GraphQL** | Afegir camps `name(args: JSON): JSON` a `Query` o `Mutation`. |
+| **Widgets del tauler d'inici** | Afegir tipus de widgets al tauler d'inici de l'administració, com a Web Components. |
+| **Camps personalitzats** | Donar als atributs un editor personalitzat a l'administració (un selector de color, un mapa), com a Web Components; el valor es desa com un tipus d'atribut normal. |
+| **Configuració** | Declarar un formulari de configuració que els administradors omplen a **Configuració → Connectors**. |
+
+Un connector llegeix i escriu contingut a través del mateix Document Service que l'administració
+i l'API, de manera que els webhooks, l'historial, les etapes de revisió i la validació s'apliquen
+a les seves escriptures.
+
+<Aside type="note">
+Els connectors de Verdin no són connectors de Strapi. Els connectors de Strapi són paquets
+Node.js amb accés complet al servidor; Verdin no executa JavaScript al servidor. Els camps
+personalitzats declarats pels esquemes de Strapi (atributs `customField`) es carreguen tal qual,
+i un connector de Verdin en pot proporcionar l'editor.
+</Aside>
+
+## El sandbox
+
+Els connectors s'executen en un sandbox WebAssembly ([Extism](https://extism.org), sobre
+Wasmtime). Un mòdul no té fitxers, sòcols ni cap connexió pròpia a la base de dades. Tot el que
+fa fora de la seva pròpia memòria passa per unes quantes funcions de l'amfitrió, i el servidor
+comprova cada crida amb les **capacitats** que declara el manifest:
+
+| Capacitat | Concedeix |
+| --- | --- |
+| `read` | Llegir entrades dels tipus de contingut llistats (o `*`). |
+| `write` | Crear, actualitzar, publicar, despublicar i eliminar entrades dels tipus llistats (i també llegir-les). |
+| `http` | Peticions HTTP als hosts llistats (`api.example.com`, `*.example.com`). |
+| `kv` | Un magatzem clau-valor propi, a la base de dades de Verdin. |
+
+<Diagram
+  caption="Crides a un connector, i què poden abastar les seves crides a l'amfitrió"
+  code={`flowchart LR
+    W[Escriptures] -->|hooks| M
+    R["/api/plugins/name/…"] --> M
+    J[Tasques programades] --> M
+    M[Mòdul WebAssembly] --> C{Capacitats}
+    C -->|read, write| D[(Contingut)]
+    C -->|kv| K[(Emmagatzematge del connector)]
+    C -->|http| H[Hosts llistats]`}
+/>
+
+Cada crida també té límits: un límit de temps (5 segons per defecte) i un límit de memòria
+(64 MB per defecte), definits al manifest. Un mòdul que fa un trap o s'esgota el temps només fa
+fallar aquella crida; Verdin el reconstrueix a la crida següent.
+
+El que el sandbox no decideix per tu:
+
+- **Les rutes són públiques.** Les peticions a `/api/plugins/<name>/…` no es comproven amb
+  l'**Accés públic** ni amb els permisos dels tokens d'API. El connector rep qui fa la crida
+  (qualsevol, un token d'API o un usuari final) i l'ha de comprovar.
+- **Els hooks veuen totes les escriptures dels seus tipus**, sigui quina sigui la capacitat
+  `read` del connector.
+- **Un hook previ que falla no bloqueja l'escriptura.** Si el mòdul peta o s'esgota el temps,
+  l'error es registra i l'escriptura continua. Només un rebuig explícit l'atura.
+
+## Instal·la un connector
+
+<Steps>
+
+1. Posa el connector al seu propi directori dins de `plugins/`, al costat de `verdin.toml`.
+   Conté el manifest, el mòdul i, opcionalment, els fitxers del tauler d'administració:
+
+   <FileTree>
+   - verdin.toml
+   - plugins/
+     - reading-time/
+       - plugin.toml
+       - plugin.wasm
+       - admin/ opcional: Web Components per al tauler d'administració
+         - index.js
+   - schema/
+   </FileTree>
+
+2. Reinicia Verdin. Carrega tots els `plugins/*/plugin.toml` en iniciar-se i registra
+   `plugin found` per a cadascun. Un connector que no es pot carregar (manifest no vàlid, mòdul
+   que falta, nom duplicat) es llista a **Configuració → Connectors** amb el motiu.
+
+3. Al tauler d'administració, obre **Configuració → Connectors**. Revisa què demana el connector
+   a **Accés**, **Hooks**, **Rutes** i **Tasques**, i després activa'l.
+
+4. Si el connector té configuració, obre **Configuració** a la seva targeta, omple-la i desa.
+
+</Steps>
+
+Els connectors instal·lats comencen desactivats. Activar un connector i editar-ne la
+configuració tenen efecte a l'instant, a totes les instàncies (les altres instàncies recullen el
+canvi dins de `[server].sync_interval_secs`). Els canvis a `plugin.toml` o al mòdul necessiten un
+reinici.
+
+Gestionar connectors necessita el permís `plugins.manage` (**Gestiona els connectors**). Consulta
+la [referència de permisos](/ca/reference/permissions/).
+
+## Configura `[plugins]`
+
+```toml title="verdin.toml"
+[plugins]
+path = "plugins"   # directory of plugins, relative to verdin.toml
+run_jobs = true    # run scheduled jobs on this instance
+```
+
+Amb diverses instàncies, defineix `run_jobs = false` a totes excepte una, perquè cada tasca
+s'executi un sol cop. Consulta la [referència de configuració](/ca/reference/configuration/).
+
+## Operació
+
+- **Una crida alhora.** Cada connector té una instància i gestiona una crida alhora, de manera
+  que una ruta lenta endarrereix els hooks d'aquell connector. Mantén les funcions curtes.
+- **Registres.** El que registra un connector va al registre del servidor i a **Configuració →
+  Connectors → Registres** (les últimes 200 línies, guardades a la memòria).
+- **Desplegaments.** Distribueix els connectors amb el projecte (a la imatge o al volum), com
+  l'esquema. Els interruptors i la configuració viuen a la base de dades.

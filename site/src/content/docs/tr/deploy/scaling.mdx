@@ -1,0 +1,115 @@
+---
+title: Birden fazla örnek çalıştırma
+description: Bir projenin birden fazla Verdin örneğini bir yük dengeleyicinin arkasında çalıştırın — veritabanı üzerinden neleri paylaştıkları, neyin örnek başına kaldığı ve değiştirilecek ayarlar.
+sidebar:
+  order: 8
+  label: Birden fazla örnek
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Verdin durumunu veritabanında tutar; bu yüzden erişilebilirlik veya yük için aynı projenin
+birden fazla örneğini bir yük dengeleyicinin arkasında çalıştırabilirsiniz. Bu sayfa örneklerin
+neleri paylaştığını, her birinin kendine neleri sakladığını ve önemli ayarları listeler.
+
+<Diagram
+  caption="Örnekler veritabanını ve medya depolamayı paylaşır; önbellekler, hız sınırları ve olay akışları her örnekte kalır."
+  code={`flowchart LR
+  LB[Yük dengeleyici] --> A[Örnek 1]
+  LB --> B[Örnek 2]
+  LB --> C[Örnek 3]
+  A --> DB[(Veritabanı)]
+  B --> DB
+  C --> DB
+  A --> S3[(S3 medya)]
+  B --> S3
+  C --> S3`}
+/>
+
+## Kontrol listesi
+
+- **Paylaşılan bir veritabanı.** PostgreSQL, MySQL veya MariaDB. SQLite tek bir makinedeki bir
+  dosyadır ve birden fazla örnekle çalışmaz.
+- **Her yerde aynı yapılandırma.** Her örnek aynı `verdin.toml`, şema dosyalarını ve secret’ları
+  (`VERDIN_ADMIN_JWT_SECRET`, `VERDIN_TOKEN_PEPPER`, `VERDIN_SSO_<ID>_SECRET`…) kullanır.
+  Farklı secret’larla, bir örnekte oluşturulan oturumlar ve API token’ları diğerleri tarafından
+  reddedilir.
+- **Üretim modu.** `verdin dev` değil, `verdin start` çalıştırın. Şemayı geliştirmede
+  değiştirin, commit edin ve dağıtım başına bir kez migre edin.
+- **Paylaşılan medya depolama.** S3 sağlayıcısını (`[upload] provider = { name = "s3", … }`)
+  kullanın ya da yerel sağlayıcı için aynı volume’ü her örneğe bağlayın.
+- **Sağlık denetimleri.** Yük dengeleyiciyi, veritabanına ulaşılamadığında `503` yanıtını veren
+  `GET /_ready` adresine yönlendirin. `GET /_health` yalnızca sürecin ayakta olduğunu söyler;
+  onu canlılık için kullanın.
+- **Eklenti görevleri tek örnekte.** Biri dışındaki her örnekte
+  `[plugins].run_jobs = false` ayarlayın; aksi hâlde her örnek zamanlanmış görevleri çalıştırır.
+- **Örnek başına metrikler.** `[metrics].enabled = true` ile her örnek kendi `/_metrics`
+  adresini sunar; her birini scrape edin.
+
+## Birden fazla örnekle migrasyonlar
+
+`verdin start --migrate`’i her örnekte aynı anda çalıştırmak güvenlidir. Her migrasyon
+çalıştırması veritabanında bir kilit tutar (PostgreSQL’de advisory lock, MySQL ve MariaDB’de
+`GET_LOCK`, 60 saniyeye kadar bekleyerek); böylece ilk örnek adımları uygular ve diğerleri
+veritabanını güncel bulur.
+
+Kademeli (rolling) bir dağıtım sırasında eski sürümün örnekleri bir süre migre edilmiş
+veritabanına karşı çalışmaya devam eder. Güvenli adımlar tablolar oluşturur, nullable veya
+varsayılan değerli sütunlar ve indeksler ekler, metin sütunlarını genişletir veya enum değerleri
+ekler; eski sürüm bunları fark etmez. Riskli veya yıkıcı adımları (`verdin migrate apply --allow
+risky|destructive`), eski şemanın hiçbir örneği veriye ihtiyaç duymadığında ayrı bir dağıtımda
+uygulayın. Bkz. [Şema migrasyonları](/tr/concepts/schema-migrations/).
+
+## Paylaşılanlar
+
+| Ne | Nasıl |
+| --- | --- |
+| Admin oturumları, API token’ları, izinler | Veritabanında; sticky session gerekmez. |
+| Özellik anahtarları, eklenti anahtarları, diller, inceleme iş akışları | Veritabanında. Her örnek bunları her `[server].sync_interval_secs` (10 sn) aralığında yeniden okur; böylece bir örnekte yapılan değişiklik bu gecikme içinde diğerlerine ulaşır. |
+| Webhook teslimleri | Veritabanındaki bir kuyruk. Bir örnek bir teslimi göndermeden önce üstlenir; böylece her biri bir kez gider. |
+| Zamanlanmış sürümler | Çalışmadan önce veritabanında üstlenilir; böylece her biri bir kez çalışır. |
+| Günlük özet | Her günün çalıştırması veritabanında üstlenilir; böylece admin’ler tek bir e-posta alır. |
+| Geçiş anahtarı challenge’ları | Harcanan challenge’lar veritabanına kaydedilir; böylece her biri örnekler arasında bir kez yanıtlanır. |
+| Denetim kaydı budama | Her örnekte çalışır; eski satırları iki kez silmek zararsızdır. |
+| Eklenti anahtar-değer deposu | Veritabanında. |
+
+## Her örnekte kalanlar
+
+- **Hız sınırları** her örnek tarafından ayrı sayılır. `n` örnekle bir istemci dakikada `n` kez
+  `[api].public_rate_limit` kadar istek yapabilir. Gerekirse yük dengeleyicide küresel bir sınır
+  uygulayın.
+- **Anonim yanıt önbelleği** (`[api].cache_ttl_secs`). Bir yazma, onu yapan örneğin önbelleğini
+  boşaltır; diğerleri kendi girdilerinin süresi dolana kadar önceki yanıtı sunabilir. TTL’i
+  birkaç saniyede veya `0`’da tutun.
+- **Gerçek zamanlı olaylar ve presence**, istemcinin bağlı olduğu örneğe aittir. Olay akışları
+  için sticky session kullanın (bkz. [Gerçek zamanlı](/tr/guides/frontend/realtime/)).
+- **Arama dizini** (`[search]`) örneğin diskinde bulunur ve yalnızca o örneğin yaptığı yazmaları
+  izler. Onu tek bir örnekte etkinleştirin ve `_q` isteklerini oraya yönlendirin ya da
+  diğerlerinin boş bir dizin diziniyle yeniden başlayana kadar geride kalmasını kabul edin.
+- **Görsel dönüştürmeleri** (`[upload.transforms]`) örnek başına `cache_dir` altında önbelleğe
+  alınır. Bunları paylaşmak için `/uploads` önüne bir CDN koyun.
+- **Zamanlanmış eklenti görevleri**: yukarıdaki `run_jobs`’a bakın.
+
+## Ayarlar
+
+```toml title="verdin.toml"
+[server]
+# How often to read settings that other instances changed; 0 turns it off.
+sync_interval_secs = 10
+
+[plugins]
+# Run the plugins' scheduled jobs here (true on one instance only).
+run_jobs = true
+
+[api]
+# Short-lived when each instance keeps its own cache.
+cache_ttl_secs = 5
+```
+
+`run_jobs`’u örnek başına `VERDIN_PLUGINS__RUN_JOBS=false` ile ayarlayın.
+
+## Veritabanı bağlantıları
+
+Her örnek en fazla `[database].pool_max` bağlantı (varsayılan 10) açar. Migrasyonlar, yedekler
+ve bakım için pay bırakarak `örnekler × pool_max` değerini sunucunun sınırının altında tutun.
+PostgreSQL’in varsayılan sınırı 100 bağlantıdır.

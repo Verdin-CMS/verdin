@@ -1,0 +1,174 @@
+---
+title: 部署与 CDN
+description: 为编辑提供静态网站的部署按钮、跟踪其构建，并在内容变化时清除 CDN 缓存。
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+面向缓存 Verdin 所提供内容的网站的两个工具：
+
+- **部署** 会在管理后台顶部栏中放置一个 **部署** 按钮。它会调用你的网站的构建钩子（Netlify、Vercel、Cloudflare Pages 或任何 CI），服务商会回报构建的进展。
+- **CDN 清除** 会按内容类型为内容 API 的响应打上标签，并在内容发生公开变更时，在 Cloudflare、Fastly 或你自己的端点上清除这些标签。
+
+两者都是核心的一部分：没有功能开关。部署在 **设置 → 部署** 中设置；CDN 在 `verdin.toml` 中设置。
+
+## 部署
+
+<Diagram code={`sequenceDiagram
+  participant E as 编辑
+  participant V as Verdin
+  participant P as 构建服务商
+  E->>V: 部署
+  V->>P: POST 构建钩子
+  P-->>V: 回调：building
+  P-->>V: 回调：ready (url)
+  V-->>E: "生产环境网站 已部署"`} caption="部署按钮调用构建钩子；服务商向回调 URL 回报进展。" />
+
+### 添加目标
+
+<Steps>
+
+1. 在你的服务商处为网站创建一个构建钩子并复制其 URL（Netlify：**Build hooks**；Vercel：**Deploy Hooks**；Cloudflare Pages：**Deploy hooks**；CI：任何在收到 `POST` 时启动流水线的 URL）。
+2. 在 Verdin 中前往 **设置 → 部署**，选择 **添加目标**。
+3. 为它设置一个 **名称**（例如 **生产环境网站**），并粘贴 **构建钩子 URL**。
+4. 保存。钩子 URL 是一个密钥：此后只会显示其主机名。要让目标指向另一个钩子，请使用 **替换 URL**。
+
+</Steps>
+
+有权部署的管理员现在会在顶部栏中看到 **部署**。有多个目标时，它会打开一个 **部署到** 菜单。确认后，Verdin 会发送：
+
+```http
+POST <build hook URL>
+content-type: application/json
+
+{ "trigger": "verdin", "triggeredBy": "editor@example.com" }
+```
+
+一个目标最多每 10 秒部署一次，因此双击不会启动两次构建。请求在 15 秒后超时，并且不会跟随重定向。返回非 `2xx` 响应的钩子会被记录为 **已拒绝**。
+
+### 回报构建状态
+
+没有回调时，部署会一直停留在 **已触发**。要在管理后台中看到 **构建中**、**就绪** 和 **错误**，以及已部署网站的链接，请把目标的回调 URL 提供给服务商：选择该目标的 **回调 URL** 按钮并复制它。
+
+<Tabs syncKey="deploy-provider">
+<TabItem label="Netlify">
+
+在 **Site configuration → Build & deploy → Deploy notifications** 中，为 **Deploy started**、**Deploy succeeded** 和 **Deploy failed** 添加一个使用该回调 URL 的外发 webhook。
+
+</TabItem>
+<TabItem label="Vercel">
+
+在 **Team settings → Webhooks** 中，为 `deployment.created`、`deployment.succeeded` 和 `deployment.error` 事件创建一个使用该回调 URL 的 webhook。
+
+</TabItem>
+<TabItem label="其他 CI">
+
+以 `POST` 发送带有 `status`（`building`、`ready` 或 `error`）的 JSON，还可以附带已部署的 `url` 和一条 `message`：
+
+```sh title="Terminal"
+curl -X POST "$VERDIN_CALLBACK_URL" -H 'content-type: application/json' \
+  -d '{ "status": "ready", "url": "https://www.example.com" }'
+```
+
+</TabItem>
+</Tabs>
+
+Verdin 能够理解 Netlify 的 `state`、Vercel 的 `type` 以及普通的 `status`，并更新该目标最近一次的部署。它返回 `204`；URL 错误时返回 `404`。回调 URL 为 `{public_url}{admin path}/api/deploy/callback/{id}/{secret}`，因此请把 [`[server].public_url`](/zh-cn/reference/configuration/) 设置为服务商可以访问的地址。
+
+<Aside type="caution">
+回调 URL 中包含一个密钥：任何拿到它的人都可以为该目标回报部署状态。它不能启动部署，也不能读取任何内容。
+</Aside>
+
+**部署历史** 列出最近 50 次部署，从新到旧排列，包括目标、开始时间、状态、钩子的 HTTP 状态码以及服务商的消息。删除目标会删除其历史记录，但不会删除构建钩子。
+
+### 权限
+
+| 权限 | 允许 |
+| --- | --- |
+| **触发部署**（`deploy.trigger`） | 顶部栏中的 **部署** 按钮。内置的 Editor 角色拥有该权限。 |
+| **管理部署目标和 CDN**（`deploy.manage`） | **设置 → 部署**：目标、回调 URL 和 CDN 清除。 |
+
+参见[权限](/zh-cn/reference/permissions/)。构建钩子 URL 遵循与 [webhook](/zh-cn/guides/integrations/webhooks/) 相同的地址规则：在 `verdin start` 下，除非 [`[webhooks].allow_private_networks`](/zh-cn/reference/configuration/) 允许，否则它们不能指向私有网络。
+
+### 改为每次变更时部署
+
+该按钮适合按需重新构建的网站。如果要在每次发布时重新构建，请为 `entry.publish` 和 `entry.unpublish` 创建一个以构建钩子为 URL 的 [webhook](/zh-cn/guides/integrations/webhooks/)。对于按计划批量发布的变更，请用[发布计划](/zh-cn/guides/content/releases/)发布它们，并把 webhook 挂接到 `releases.publish`。
+
+## CDN 清除
+
+当 CDN 缓存内容 API 时，它会在缓存过期之前一直提供旧内容。设置 `[cdn]` 后，Verdin 会为其响应打上标签，并在内容变化时清除相应的标签，因此你可以设置很长的缓存时间。
+
+### 标签的工作方式
+
+内容 API 的每个成功 `GET` 都带有 `vd`（全部）、`vd-<singularName>`（内容类型），以及其文档可以 populate 的每个类型的标签：关联目标，也包括组件和动态区域中的关联目标，并继续沿着它们自己的关联追踪下去。对于博客示例中的文章，两种响应头格式如下：
+
+```http
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
+```
+
+带有多态关联的类型可以访问任何类型，因此其响应会带有所有类型的标签。
+
+Cloudflare 读取 `Cache-Tag`，Fastly 读取 `Surrogate-Key`。当内容发生公开变更时，Verdin 会清除该类型的标签：
+
+- 发布、取消发布或删除条目；
+- 对未启用草稿与发布的类型的任何写入（其写入会立即公开）。
+
+保存草稿不会清除任何缓存，因为草稿不会公开提供。一秒之内（`debounce_ms`）的变更会合并为一次清除，失败的清除会重试两次。
+
+### 配置
+
+<Tabs syncKey="cdn">
+<TabItem label="Cloudflare">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "cloudflare"
+zone_id = "023e105f4ecef8ad9ca31a8372d0c353"
+```
+
+`VERDIN_CDN_TOKEN` 是一个在该区域上拥有 **Cache Purge** 权限的 API 令牌。
+
+</TabItem>
+<TabItem label="Fastly">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "fastly"
+service_id = "SU1Z0isxPaozGVKXdv0eY"
+```
+
+`VERDIN_CDN_TOKEN` 是一个允许清除该服务的 Fastly API 令牌。
+
+</TabItem>
+<TabItem label="Webhook">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "webhook"
+url = "https://purge.example.com/verdin"
+```
+
+Verdin 会发送 `POST { "tags": ["vd-article"] }`，设置了令牌时还会带上 `Authorization: Bearer <VERDIN_CDN_TOKEN>`。可将其用于其他 CDN、反向代理或框架的重新验证 API。
+
+</TabItem>
+</Tabs>
+
+```sh title="Terminal"
+export VERDIN_CDN_TOKEN=...
+```
+
+Verdin 会在启动时检查该部分，如果缺少提供方所需的 `zone_id`、`service_id`、`url` 或令牌，就会拒绝运行。参见 [`[cdn]`](/zh-cn/reference/configuration/)。
+
+缓存什么仍由你的 CDN 决定：请为 API 路径设置一条缓存规则（例如针对匿名 `GET` 的 `/api/*`），并设置较长的边缘 TTL。请把已认证的请求、预览读取和 `/api/_events` 排除在缓存之外。
+
+### 检查和手动清除
+
+**设置 → 部署** 中的 **CDN** 部分会显示提供方和 **最近的清除记录**（**已清除** 或 **失败**，以及标签）。**清除全部缓存** 会丢弃所有带有 `vd` 标签的响应。
+
+由于响应带有它们可以 populate 的类型的标签，重命名一个分类时，也会清除可能包含该分类的已缓存文章列表，无论请求是否要求了 `populate`。
+
+Verdin 自身的内存缓存（[`[api].cache_ttl_secs`](/zh-cn/reference/configuration/)）是独立的：每次变更时都会被清空。

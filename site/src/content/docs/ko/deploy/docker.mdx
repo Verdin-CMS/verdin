@@ -1,0 +1,381 @@
+---
+title: Docker
+description: 공식 이미지로 Docker 또는 Docker Compose에서 Verdin을 실행합니다. PostgreSQL, MySQL, MariaDB, SQLite를 쓰고, 스키마는 읽기 전용으로 마운트하며, 미디어는 볼륨이나 S3에 둡니다.
+sidebar:
+  order: 3
+---
+
+import { Aside, FileTree, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+공식 이미지는 관리자 패널이 내장된 Verdin 서버 하나를 실행합니다. 이 페이지에서는 이미지에 무엇이
+들어 있는지, 데이터베이스별 Compose 파일, 자체 설정을 추가하는 방법을 다룹니다. 다른 플랫폼 페이지도
+이 내용을 바탕으로 합니다.
+
+## 이미지
+
+`ghcr.io/verdin-cms/verdin`은 릴리스마다 `linux/amd64`와 `linux/arm64`용으로 게시되며, 전체 버전
+(`0.10.0`), 마이너 버전(`0.10`), `latest` 태그가 붙습니다. 프로덕션에서는 마이너 버전을 고정하세요. 0.x
+마이너 릴리스는 동작이 바뀔 수 있습니다([업그레이드](/ko/migrate/upgrading/) 참고).
+
+| | |
+| --- | --- |
+| 베이스 | Distroless (`gcr.io/distroless/static-debian12:nonroot`): 셸, 패키지 관리자, `curl` 없음. |
+| 사용자 | `nonroot` (uid와 gid `65532`). |
+| 엔트리포인트 | `/usr/local/bin/verdin` |
+| 기본 명령 | `start --migrate`: 대기 중인 safe 마이그레이션을 적용한 뒤 서비스합니다. |
+| 포트 | `1337` |
+| 볼륨 | `/data`: SQLite 데이터베이스, 로컬 업로드, `dev`에서는 스키마. |
+| 설정 | `/app/verdin.toml` (`VERDIN_CONFIG=/app/verdin.toml`). |
+
+내장 설정은 다음과 같습니다.
+
+```toml title="/app/verdin.toml"
+[server]
+host = "0.0.0.0"
+port = 1337
+
+[schema]
+path = "/data/schema"
+
+[log]
+format = "json"
+
+[upload.transforms]
+cache_dir = "/data/.cache/transforms"
+
+[search]
+dir = "/data/search"
+```
+
+그리고 `VERDIN_DATABASE_URL=sqlite:///data/verdin.db`입니다. 로컬 업로드 프로바이더가 기본으로 쓰는
+`/app/public/uploads`는 `/data/uploads`로 가는 링크입니다. 모든 키는 `VERDIN_<SECTION>__<KEY>` 변수로
+덮어쓸 수 있습니다([설정 레퍼런스](/ko/reference/configuration/) 참고).
+
+## 사용해 보기
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+`dev`는 콘텐츠 타입 빌더를 켜며, 빌더는 스키마를 볼륨의 `/data/schema`에 씁니다.
+`http://localhost:1337/admin/`을 열고 첫 관리자를 등록하세요. 프로덕션에서는 아래처럼 스키마를 저장소에
+두고 기본 명령인 `start --migrate`를 실행하세요.
+
+## Compose로 실행
+
+커밋한 스키마를 Compose 파일 옆에 둡니다.
+
+<FileTree>
+- compose.yaml
+- .env              Compose용 데이터베이스 비밀번호
+- verdin.env        `verdin secrets`로 만든 시크릿
+- schema/
+  - content-types/
+  - components/
+</FileTree>
+
+<Steps>
+
+1. 시크릿을 한 번 생성하고 버전 관리에서 제외하세요.
+
+   ```sh frame="terminal"
+   docker run --rm ghcr.io/verdin-cms/verdin:0.10 secrets > verdin.env
+   echo "DB_PASSWORD=$(openssl rand -hex 24)" > .env
+   ```
+
+2. 데이터베이스에 맞게 `compose.yaml`을 작성합니다. `https://cms.example.com`을 브라우저가 사용할 주소로
+   바꾸세요.
+
+   <Tabs syncKey="db">
+   <TabItem label="PostgreSQL">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD}@db:5432/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: postgres:17
+       restart: unless-stopped
+       environment:
+         POSTGRES_USER: verdin
+         POSTGRES_PASSWORD: ${DB_PASSWORD}
+         POSTGRES_DB: verdin
+       volumes:
+         - db-data:/var/lib/postgresql/data
+       healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U verdin -d verdin"]
+         interval: 5s
+         retries: 20
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   </TabItem>
+   <TabItem label="MySQL">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: mysql://verdin:${DB_PASSWORD}@db:3306/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: mysql:8.4
+       restart: unless-stopped
+       environment:
+         MYSQL_USER: verdin
+         MYSQL_PASSWORD: ${DB_PASSWORD}
+         MYSQL_DATABASE: verdin
+         MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+       volumes:
+         - db-data:/var/lib/mysql
+       healthcheck:
+         test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+         interval: 5s
+         retries: 30
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   </TabItem>
+   <TabItem label="MariaDB">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: mysql://verdin:${DB_PASSWORD}@db:3306/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: mariadb:11.4
+       restart: unless-stopped
+       environment:
+         MARIADB_USER: verdin
+         MARIADB_PASSWORD: ${DB_PASSWORD}
+         MARIADB_DATABASE: verdin
+         MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+       volumes:
+         - db-data:/var/lib/mysql
+       healthcheck:
+         test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+         interval: 5s
+         retries: 30
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   MariaDB는 `mysql://` URL을 씁니다. Verdin이 연결된 서버를 감지합니다.
+
+   </TabItem>
+   <TabItem label="SQLite">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         # The image's default; the file lives in the volume.
+         VERDIN_DATABASE_URL: sqlite:///data/verdin.db
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+
+   volumes:
+     verdin-data:
+   ```
+
+   SQLite에서는 컨테이너를 하나만 실행하세요. 데이터베이스는 볼륨 안의 파일입니다.
+
+   </TabItem>
+   </Tabs>
+
+   `@`, `:`, `/` 같은 문자가 들어간 비밀번호는 URL에서 퍼센트 인코딩해야 합니다. 위의 `openssl rand -hex`
+   비밀번호는 인코딩이 필요 없습니다.
+
+3. 시작하고 로그를 따라갑니다.
+
+   ```sh frame="terminal"
+   docker compose up -d
+   docker compose logs -f verdin
+   ```
+
+   처음 시작하면 모든 테이블이 만들어집니다. `verdin listening`이 나올 때까지 기다리세요.
+
+4. 바로 `/admin/`에서 첫 관리자를 등록하거나, 명령줄에서 등록합니다(비밀번호를 묻습니다).
+
+   ```sh frame="terminal"
+   docker compose exec -it verdin verdin admin create --email you@example.com
+   ```
+
+</Steps>
+
+포트 1337 앞에 TLS를 종료하는 리버스 프록시(Caddy, nginx, Traefik 또는 로드 밸런서)를 두고,
+`VERDIN_SERVER__TRUSTED_PROXIES`에 등록하세요. Compose 네트워크에서 프록시 주소는 Docker의 사설 대역에
+있습니다. `'["172.16.0.0/12"]'`는 Docker의 기본 네트워크를 포함하지만, `docker network inspect`로 실제
+네트워크를 확인하세요.
+
+## 볼륨
+
+| 경로 | 담는 것 | 참고 |
+| --- | --- | --- |
+| `/data` | SQLite 데이터베이스, 로컬 업로드(`/data/uploads`) | 이름 있는 볼륨은 이미지의 소유권(`65532`)을 유지합니다. 바인드 마운트는 uid `65532`가 쓸 수 있어야 합니다. |
+| `/data/schema` | 스키마 파일 | `start`에서는 커밋한 스키마를 읽기 전용(`:ro`)으로 마운트하세요. `dev`에는 쓰기 가능해야 합니다. |
+
+이미지는 그 밖의 곳에는 쓰지 않습니다. 이미지 변환 캐시와 검색 인덱스도 볼륨 안에 있습니다
+(`/data/.cache/transforms`, `/data/search`). 0.10 이전 이미지는 이 둘을 `nonroot` 사용자가 쓸 수 없는
+`/app` 아래에 두었습니다. 그런 이미지에서는 `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR`와 `VERDIN_SEARCH__DIR`를
+`/data` 아래 경로로 설정하세요.
+
+업로드는 저장되기 전에 시스템 임시 디렉터리(`/tmp`)로 스트리밍됩니다.
+
+## 헬스 체크
+
+이미지는 [`verdin healthcheck`](/ko/reference/cli/)를 실행하는 `HEALTHCHECK`를 선언합니다. 루프백
+인터페이스에서 `/_health`를 요청하므로 `docker ps`가 컨테이너를 `healthy`로 표시하고, Compose의
+`depends_on: condition: service_healthy`가 동작합니다. 이미지에는 셸이나 `curl`이 없습니다. Compose 검사를
+직접 작성하려면 같은 방식으로 바이너리를 호출하세요.
+
+```yaml
+healthcheck:
+  test: ["CMD", "/usr/local/bin/verdin", "healthcheck"]
+  interval: 30s
+```
+
+프록시, 로드 밸런서, 오케스트레이터는 `GET /_ready`(데이터베이스가 응답하면 200, 아니면 503)와 liveness용
+`GET /_health`를 호출해야 합니다. [모니터링](/ko/deploy/monitoring/)을 참고하세요.
+
+## 자체 설정 파일
+
+환경 변수로 S3 업로드 프로바이더를 포함한 대부분의 설정을 할 수 있습니다
+(`VERDIN_UPLOAD__PROVIDER__NAME=s3`, `VERDIN_UPLOAD__PROVIDER__BUCKET`,
+`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`, …. 0.10 이전에는 이미지에 내장된 `dir` 키 때문에 실패했습니다).
+설정을 버전 관리되는 파일 하나에 두고 싶다면 설정 파일을 쓰세요.
+
+컨테이너용 `verdin.toml`을 작성합니다.
+
+```toml title="verdin.toml"
+[server]
+host = "0.0.0.0"
+port = 1337
+public_url = "https://cms.example.com"
+trusted_proxies = ["172.16.0.0/12"]
+
+[schema]
+path = "/data/schema"
+
+[log]
+format = "json"
+
+[upload]
+provider = { name = "s3", bucket = "media", region = "auto",
+             endpoint = "https://<account>.r2.cloudflarestorage.com",
+             public_url = "https://media.example.com" }
+
+[email]
+provider = "smtp"
+from = "Verdin <cms@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+username = "cms@example.com"
+```
+
+그리고 내장 설정 위에 마운트합니다.
+
+```yaml title="compose.yaml"
+services:
+  verdin:
+    # …as above
+    environment:
+      VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD}@db:5432/verdin
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+    volumes:
+      - verdin-data:/data
+      - ./verdin.toml:/app/verdin.toml:ro
+      - ./schema:/data/schema:ro
+```
+
+시크릿은 파일에 넣지 마세요. `VERDIN_EMAIL_SMTP_PASSWORD`, `AWS_*` 등은 환경 변수에 둡니다.
+
+## 자체 이미지
+
+파일을 마운트할 수 없는 플랫폼(Fly.io, Render, Railway, 대부분의 Kubernetes 환경)에서는 공식 이미지
+위에 설정과 스키마를 담은 작은 이미지를 빌드하세요. 그러면 배포할 때마다 커밋한 스키마가 정확히
+배포됩니다.
+
+```dockerfile title="Dockerfile"
+FROM ghcr.io/verdin-cms/verdin:0.10
+COPY verdin.toml /app/verdin.toml
+COPY schema /app/schema
+# Plugins, if you use them: COPY plugins /app/plugins
+```
+
+이 `verdin.toml`에는 `[schema] path = "schema"`를 둡니다(경로는 파일 기준 상대 경로이므로
+`/app/schema`). 파일은 root 소유이며 서버에는 읽기 전용이고, 이것이 `verdin start`에 필요한 상태입니다.
+
+이 파일은 내장 설정을 통째로 대체합니다. 내장 설정에서 계속 쓰려는 키(`host`, `[log] format = "json"`,
+변환 캐시와 검색 인덱스의 `/data` 경로)를 다시 적으세요. 로컬 업로드 프로바이더의 기본 디렉터리인
+`public/uploads`는 이미 볼륨을 가리킵니다.
+
+<Aside type="caution">
+위처럼 파일 이름을 지정해서 복사하세요. 절대 `COPY . /app`을 쓰지 마세요. 시크릿이 담긴 `.env`가 이미지에
+들어갑니다.
+</Aside>
+
+## 소스에서 이미지 빌드
+
+저장소의 `Dockerfile`은 관리자 패널과 서버를 빌드합니다.
+
+```sh frame="terminal"
+git clone https://github.com/Verdin-CMS/verdin && cd verdin
+docker build -t verdin .
+```
+
+베이스로 `gcr.io/distroless/cc-debian12:nonroot`를 쓰며, 그 밖에는 게시된 이미지와 같게 동작합니다.

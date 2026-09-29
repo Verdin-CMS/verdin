@@ -1,0 +1,187 @@
+---
+title: Webhooks
+description: استدعِ نقاط النهاية الخاصة بك عندما يتغير المحتوى أو الوسائط، وتحقق من أن عمليات التسليم تأتي من Verdin، وتعامل مع إعادة المحاولة.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+ترسل الـ webhooks طلب HTTP `POST` إلى عنوان URL خاص بك عندما يتغير المحتوى أو الوسائط: إعادة بناء
+موقع ثابت، أو تفريغ ذاكرة مؤقتة، أو مزامنة فهرس بحث، أو النشر في محادثة. تُدرج عمليات التسليم في طابور،
+وتُوقَّع، ويُعاد إرسالها، وتُسجَّل.
+
+تشرح هذه الصفحة خطوة بخطوة إعداد webhook واستقباله. الأحداث والحمولات والترويسات
+مسرودة في [مرجع الـ webhooks](/ar/api/webhooks/).
+
+## فعّلها
+
+ميزة **Webhooks** مفعّلة افتراضيًا؛ ويمكنك إيقافها في **الإعدادات ← الميزات**.
+تتطلب إدارة الـ webhooks الصلاحية **إدارة الـ webhooks** (`webhooks.manage`). راجع
+[الصلاحيات](/ar/reference/permissions/).
+
+## أنشئ webhook
+
+<Steps>
+
+1. انتقل إلى **الإعدادات ← Webhooks** واختر **webhook جديد**.
+2. تحت **عام**، امنحه **الاسم** و**عنوان URL** الذي يجب أن يستدعيه Verdin.
+3. تحت **الأحداث**، اختر الأحداث التي تطلق عملية تسليم: **الإدخالات** (الإنشاء، والتحديث،
+   والنشر، وإلغاء النشر، وتجاهل المسودة، والحذف)، و**الوسائط**، و**حزم النشر** (**تم نشر
+   الحزمة**) و**مسارات المراجعة** (**تغيّرت مرحلة الإدخال**).
+4. تحت **أنواع المحتوى**، أبقِ **جميع أنواع المحتوى** أو اختر بعضها. هذا يصفّي
+   أحداث الإدخالات فقط؛ وتُرسل أحداث الوسائط في كل الأحوال.
+5. تحت **الترويسات**، أضف أي ترويسات تحتاجها نقطة النهاية الخاصة بك، مثل رمز `authorization`
+   (**إضافة ترويسة**). يعيّن Verdin الترويسات `content-type` و`host` و`x-verdin-*`.
+6. تحت **التوقيع**، أبقِ **توقيع عمليات التسليم** مفعّلًا (الافتراضي).
+7. اختر **إنشاء**. يعرض Verdin سرّ التوقيع (`whsec_…`) مرة واحدة: انسخه إلى
+   تهيئة نقطة النهاية الخاصة بك.
+
+</Steps>
+
+يوقف **مفعّل** الـ webhook دون حذفه. لا تتلقى الـ webhooks المعطّلة أي
+أحداث لكن يمكن اختبارها.
+
+## اختبره
+
+اختر **إرسال حدث تجريبي** على الـ webhook. يرسل Verdin فورًا:
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+يظهر التسليم في **سجل التسليم** الخاص بالـ webhook مع حالته، وحالة HTTP،
+والمدة، وبداية جسم الاستجابة. افتح تسليمًا لترى الحمولة الكاملة و
+الخطأ، إن وُجد.
+
+لاستقبال الـ webhooks على جهازك أثناء التطوير، شغّل الخادم بـ `verdin dev`:
+فهو يسمح بعناوين `localhost`، التي يرفضها `verdin start` (راجع [الأمان](#الأمان)).
+
+## استقبل تسليمًا
+
+التسليم طلب `POST` بجسم JSON وهذه الترويسات:
+
+| الترويسة | القيمة |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | اسم الحدث، مثل `entry.publish`. |
+| `x-verdin-delivery` | معرّف التسليم. يبقى كما هو عبر إعادات المحاولة: استخدمه لتجاهل التكرارات. |
+| `x-verdin-signature` | `t=<unix seconds>,v1=<hex>`، في الـ webhooks الموقّعة. |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+أجب بأي حالة `2xx`، وبسرعة. نفّذ العمل البطيء (إعادة بناء كاملة) بعد الإجابة، أو
+ضعه في طابور: التسليم الذي يستغرق أطول من المهلة (10 ثوانٍ افتراضيًا) يُحسب
+فاشلًا.
+
+### تحقق من التوقيع
+
+`v1` هو HMAC-SHA256 لـ `"<t>.<raw body>"`، بمفتاح هو سرّ الـ webhook. للتحقق من
+تسليم:
+
+1. أعِد حساب HMAC على جسم الطلب **الخام**، لا على JSON معاد تسلسله.
+2. قارنه بـ `v1` في زمن ثابت.
+3. ارفض الطوابع الزمنية الأقدم من بضع دقائق، حتى لا يمكن إعادة تشغيل تسليم تم التقاطه.
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+مع Express، احتفظ بالجسم الخام: `app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)`
+ومرّر `req.body.toString()`.
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+يقارن `crypto.subtle.verify` في زمن ثابت.
+
+</TabItem>
+</Tabs>
+
+يصدر **تدوير السرّ** سرًا جديدًا (يُعرض مرة واحدة)؛ ويتوقف القديم عن العمل فورًا.
+ويحذف **إيقاف التوقيع** السرّ ويرسل عمليات التسليم دون توقيع.
+
+## إعادة المحاولة
+
+تُخزَّن عمليات التسليم في قاعدة البيانات عند اعتماد التغيير ويرسلها عامل
+في الخلفية، فلا تبطئ نقطة النهاية البطيئة المحررين أبدًا.
+
+- **النجاح:** أي إجابة `2xx`.
+- **الإخفاق:** أي شيء آخر، بما في ذلك إعادات التوجيه (فهي لا تُتبع)، وأخطاء
+  الاتصال، وانتهاء المهلة.
+- **إعادة المحاولة:** يُعاد تسليم فاشل بعد 30 ثانية، ودقيقتين، و10 دقائق،
+  وساعة، و6 ساعات. بعد ذلك يُعلَّم بـ **فشل**.
+
+اختر **إعادة المحاولة** على تسليم في السجل لإرساله مرة أخرى الآن. يُحتفظ بالسجل لمدة 30
+يومًا. لأن إعادات المحاولة تستخدم `x-verdin-delivery` نفسه، اجعل معالجك متساوي الأثر (idempotent): خزّن
+المعرّفات التي عالجتها، أو اجعل العمل آمنًا للتكرار.
+
+## الأمان
+
+مع `verdin start`، لا يجوز أن تشير عناوين URL للـ webhooks إلى عناوين loopback أو خاصة أو link-local أو
+عناوين محجوزة أخرى، بما في ذلك أسماء المضيفين التي تُحَلّ إلى أحدها. يمنع هذا المسؤول من
+استخدام الـ webhooks للوصول إلى خدمات داخلية (SSRF). تُرفض بيانات الاعتماد في عنوان URL
+(`https://user:pass@…`)؛ أرسلها في ترويسة بدلًا من ذلك.
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+راجع [`[webhooks]`](/ar/reference/configuration/).
+
+## القدوم من Strapi
+
+تتبع الـ webhooks في Verdin أحداث Strapi وحمولاته، مع هذه الاختلافات:
+
+- عمليات التسليم موقّعة، ويُعاد إرسالها، وتُسجَّل؛
+- يمكن حصر الـ webhook في بعض أنواع المحتوى؛
+- اسم `entry.draft-discard` في Strapi هو `entry.discard-draft`.
+
+لإعادة بناء موقع ثابت من لوحة الإدارة بزر بدلًا من ذلك مع كل تغيير، راجع
+[النشر وCDN](/ar/guides/integrations/deploys-and-cdn/).

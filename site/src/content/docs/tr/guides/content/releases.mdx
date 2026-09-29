@@ -1,0 +1,110 @@
+---
+title: Sürümler
+description: Kayıtları gruplayın ve hemen ya da zamanlanmış bir tarihte birlikte yayınlayın veya yayından kaldırın.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Bir sürüm (release), birlikte yayına giren veya yayından kalkan kayıtları gruplar: bir ürün
+lansmanı, bir kampanya, bir çeviri kümesi. Onu elle yayınlarsınız ya da bir tarih verirsiniz. Bu
+kılavuz bir sürüm oluşturur, kayıt ekler, onu çalıştırır ve admin API’yi gösterir.
+
+Sürümler, Strapi’nin ücretli planlarının parçası olan Strapi Releases gibi çalışır.
+
+## Başlamadan önce
+
+- **Ayarlar → Özellikler → Sürümler** varsayılan olarak açıktır. Kapalıyken **Sürümler** sayfası
+  ve rotaları kullanılamaz ve zamanlanmış sürümler bekler.
+- Sürümleri yönetmek **Sürümleri yönet** (`releases.manage`) gerektirir.
+- Bir kayıt eklemek ayrıca içerik tipinde **Yayınla** gerektirir ve tip
+  [taslak ve yayınlama](/tr/concepts/draft-and-publish/) kullanmalıdır.
+
+## Bir sürüm oluşturma
+
+<Steps>
+
+1. Kenar çubuğunda **Sürümler**’i açın ve **Yeni sürüm**’ü seçin.
+2. Bir **Ad** girin.
+3. İsteğe bağlı olarak **Yayın tarihi (isteğe bağlı)** değerini ayarlayın: sürümün çalışacağı,
+   kendi saat diliminizdeki tarih ve saat. Tarih olmadan sürüm siz yayınlayana kadar bekler.
+4. **Oluştur**’u seçin.
+
+</Steps>
+
+## Kayıt ekleme
+
+<Steps>
+
+1. Düzenleyicide bir kayıt açın. **Sürümler** paneli kaydın içinde bulunduğu sürümleri listeler.
+2. **Sürüme ekle**’yi seçin.
+3. **Sürüm**’ü seçin ve **Sürüm çalıştığında** altında **Yayınla** veya **Yayından kaldır**’ı
+   seçin.
+4. **Ekle**’yi seçin.
+
+</Steps>
+
+Yerelleştirilmiş tiplerde yalnızca düzenleyicinin mevcut dilindeki sürüm eklenir. Yayınlamak
+istediğiniz her dili ekleyin. Sürümde zaten bulunan bir kaydı eklemek onun eylemini değiştirir.
+
+Sürüm sayfası kayıtlarını içerik tipleri ve eylemleriyle listeler. Birini satırındaki düğmeyle
+kaldırın.
+
+## Sürümü yayınlama
+
+- **Hemen:** sürümü açın ve **Şimdi yayınla**’yı seçin.
+- **Tarihinde:** bir arka plan görevi her 30 saniyede bir denetler ve zamanı gelen sürümleri,
+  onları oluşturan admin adına çalıştırır.
+
+<Diagram
+  caption="Sürüm durumları"
+  code={`flowchart LR
+  P[Bekliyor] -->|Şimdi yayınla veya tarih geldi| R[Çalışıyor]
+  R -->|tüm eylemler başarılı| D[Tamamlandı]
+  R -->|bazı eylemler başarısız| F[Başarısız]`}
+/>
+
+Her eylem başarılı olup olmadığını kaydeder. Biri başarısız olduğunda, örneğin kayıt silindiği
+veya doğrulamadan geçemediği için, diğer eylemler yine çalışır ve sürüm, başarısız her eylemin
+hatası satırında olacak şekilde **Başarısız** olarak biter.
+
+<Aside type="caution">
+Çalışmış bir sürüm artık değiştirilemez. Başarısız eylemleri yeniden denemek için o kayıtları yeni
+bir sürüme ekleyin.
+</Aside>
+
+Bir sürüm bir bütün olarak yayınlanır: [inceleme aşamalarını](/tr/guides/content/review-workflows/)
+beklemez. Bir iş akışı yayınlamak için bir aşama gerektiriyorsa o aşamanın dışındaki kayıtlar
+diğer tüm yayınlamalar gibi başarısız olur.
+
+Webhook’lar, bir sürüm çalıştığında gönderilen **Sürüm yayınlandı** (`releases.publish`) olayına
+abone olabilir. Bkz. [Webhook’lar](/tr/guides/integrations/webhooks/).
+
+## Admin API
+
+Tüm rotalar `/admin/api` altındadır ve `releases.manage` gerektirir.
+
+```http
+GET    /admin/api/releases?status=pending
+POST   /admin/api/releases                    { "name": "Launch", "scheduledAt": "2026-10-01T08:00:00Z" }
+GET    /admin/api/releases/{id}
+PUT    /admin/api/releases/{id}               { "name": "Launch", "scheduledAt": null }
+DELETE /admin/api/releases/{id}
+POST   /admin/api/releases/{id}/actions       { "uid": "api::article", "documentId": "…", "locale": "fr", "action": "publish" }
+DELETE /admin/api/releases/{id}/actions/{actionId}
+POST   /admin/api/releases/{id}/publish
+GET    /admin/api/content/{uid}/{documentId}/releases
+```
+
+- `status` değeri `pending`, `running`, `done` veya `failed`’dır; her eylemin kendi `status` ve
+  `error` değerleri vardır.
+- Artık beklemede olmayan bir sürümü değiştirmek, ona eklemek veya onu yayınlamak `409` yanıtını
+  verir.
+- `action` değeri `publish` veya `unpublish`’tir. Bir eylem eklemek ayrıca tipte `content.publish`
+  gerektirir. Dil, eylem eklendiğinde çözümlenir; bu yüzden varsayılan dilin sonradan
+  değiştirilmesi onu taşımaz.
+- Bir sürümü silmek kayıt listesini siler. Kayıtların kendisi değişmez.
+- `GET /content/{uid}/{documentId}/releases` kayda okuma erişimi gerektirir ve `releases.manage`
+  yetkisi olmayan admin’lere boş bir liste döndürür.

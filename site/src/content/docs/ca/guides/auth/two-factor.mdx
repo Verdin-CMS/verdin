@@ -1,0 +1,140 @@
+---
+title: Autenticació de dos factors
+description: Protegeix els comptes d'administració amb una app d'autenticació o claus d'accés, exigeix un segon factor per rol, i recupera o restableix els factors perduts.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+L'autenticació de dos factors afegeix un segon pas després de la contrasenya: un codi de 6 xifres
+d'una app d'autenticació, o una clau d'accés (empremta dactilar, cara, bloqueig de pantalla o clau
+de seguretat). Aquesta guia configura totes dues opcions, les fa obligatòries per a un rol i
+explica què cal fer quan un administrador perd les seves. Strapi no té cap equivalent integrat.
+
+L'autenticació de dos factors és per als administradors. Els [usuaris finals](/ca/guides/auth/end-users/)
+inicien la sessió amb una contrasenya o un proveïdor OAuth.
+
+## Abans de començar
+
+- No cal activar cap funcionalitat: tots els administradors poden configurar un segon factor al
+  seu perfil.
+- Les claus d'accés estan lligades a l'adreça del tauler d'administració. Defineix
+  `[server].public_url` amb l'adreça que obren els administradors, com ara
+  `https://cms.example.com`. Els navegadors només ofereixen claus d'accés per `https://` (i a
+  `localhost`).
+- Mantén estable `VERDIN_TOKEN_PEPPER`: els secrets d'autenticació i els codis de recuperació
+  estan protegits amb ell, i canviar-lo els fa inservibles.
+
+## Configura una app d'autenticació
+
+<Steps>
+
+1. Obre el teu **Perfil** i busca **Autenticació de dos factors**.
+2. A **App d’autenticació**, selecciona **Configura** i confirma la contrasenya.
+3. Escaneja el codi QR amb una app com 1Password, Google Authenticator o Authy. Si no el pots
+   escanejar, introdueix la clau de configuració que es mostra a sota.
+4. Introdueix el **Codi de 6 xifres** que mostra l'app i selecciona **Activa**.
+5. Desa els **codis de recuperació** que mostra Verdin: fes **Descarrega** o copia'ls, i després
+   selecciona **Ja els he desat**.
+
+</Steps>
+
+Els codis segueixen l'esquema TOTP estàndard (intervals de 30 segons, SHA-1, 6 xifres). També
+s'accepta un codi de l'interval anterior o del següent, per permetre la deriva del rellotge. Si es
+rebutgen els codis, comprova l'hora del teu dispositiu.
+
+## Afegeix una clau d'accés
+
+<Steps>
+
+1. A **Claus d’accés**, selecciona **Afegeix una clau d’accés**.
+2. Dona-li un **Nom**, com ara «MacBook Touch ID», i confirma la contrasenya.
+3. Segueix les indicacions del navegador.
+
+</Steps>
+
+Pots registrar fins a 20 claus d'accés i treure-les amb **Treu**. Les claus d'accés són un segon
+factor després de la contrasenya, no la substitueixen.
+
+## Codis de recuperació
+
+Reps 10 codis de recuperació quan configures el primer factor. Cadascun et permet iniciar la sessió
+un cop si perds l'app o les claus d'accés. El perfil mostra quants en queden; **Genera codis nous**
+els substitueix tots (els antics deixen de funcionar).
+
+<Aside type="caution">
+Els codis es mostren un sol cop. Guarda'ls en un gestor de contrasenyes o en algun lloc fora de
+línia, no al costat del dispositiu que té l'autenticador.
+</Aside>
+
+## Inicia la sessió amb un segon factor
+
+<Diagram
+  caption="Inici de sessió amb autenticació de dos factors"
+  code={`flowchart LR
+  A[Correu i contrasenya] --> B{Segon factor?}
+  B -->|no| S[Sessió iniciada]
+  B -->|sí| C[Codi, clau d'accés o codi de recuperació]
+  C -->|en 5 minuts| S`}
+/>
+
+Després de la contrasenya, la pàgina d'inici de sessió demana el **Codi d’autenticació**. Tria
+**Fes servir una clau d’accés** o **Fes servir un codi de recuperació** per canviar de mètode.
+Tens 5 minuts per acabar; després, torna a introduir la contrasenya.
+
+## Exigeix l'autenticació de dos factors per a un rol
+
+<Steps>
+
+1. Obre **Configuració → Rols** i el rol.
+2. Activa **Requereix autenticació de dos factors** i desa.
+
+</Steps>
+
+Als membres sense segon factor se'ls demana que en configurin un quan inicien la sessió. Fins que
+no ho facin, només poden obrir el seu perfil. A **Configuració → Usuaris**, la seva fila mostra
+**Sense 2FA**; els administradors que tenen un segon factor mostren **2FA**.
+
+Mentre el teu rol exigeix un segon factor, Verdin es nega a treure't l'últim: afegeix una clau
+d'accés abans de desactivar l'app, o un altre factor abans de treure la teva única clau d'accés.
+
+## Restableix el segon factor d'un altre administrador
+
+Quan un administrador perd el dispositiu i els codis de recuperació:
+
+<Steps>
+
+1. Obre **Configuració → Usuaris** i busca l'administrador.
+2. Selecciona **Restableix el dos factors** i confirma.
+
+</Steps>
+
+Això elimina la seva app d'autenticació, les claus d'accés i els codis de recuperació, de manera
+que inicia la sessió només amb la contrasenya. Si el seu rol exigeix l'autenticació de dos
+factors, l'ha de tornar a configurar. Necessita **Gestiona els usuaris**; només un Super Admin
+pot restablir un altre Super Admin.
+
+`verdin admin reset-password` només restableix la contrasenya, no el segon factor.
+
+## Inici de sessió únic
+
+Als administradors que inicien la sessió amb l'[inici de sessió únic](/ca/guides/auth/sso/)
+també se'ls demana el segon factor de Verdin, tret que el proveïdor estigui marcat amb **El
+proveïdor exigeix MFA**.
+
+## API d'administració
+
+Totes les rutes són sota `/admin/api`. Les que canvien factors demanen la teva `password`.
+
+| Ruta | Fa |
+| --- | --- |
+| `POST /auth/login` | Amb un segon factor, respon `{ twoFactorRequired: true, twoFactorToken, methods }` en lloc d'una sessió. |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }` (TOTP o codi de recuperació), o `{ twoFactorToken, challengeToken, credential }` per a una clau d'accés. Respon amb la sessió. |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }`: el repte de la clau d'accés. |
+| `GET /auth/two-factor` | Els teus factors: `totp`, `passkeys`, `recoveryCodesLeft`, `required`. |
+| `POST /auth/two-factor/totp/setup`, `/totp/enable`, `/totp/disable` | Configura (contrasenya), activa (codi) i desactiva (contrasenya) l'app d'autenticació. |
+| `POST /auth/two-factor/recovery-codes` | Codis de recuperació nous. |
+| `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/{id}` | Registra i treu claus d'accés. |
+| `DELETE /users/{id}/two-factor` | Restableix els factors d'un altre administrador (`users.manage`). |

@@ -22,7 +22,7 @@ migrarse con pocos cambios.
   cualquier frontend: Astro, Next.js, una aplicación móvil.
 - **Equipos que usan Strapi** y quieren la misma API con menos consumo de recursos, o
   necesitan funciones que Strapi reserva para sus planes de pago. Verdin no tiene edición
-  enterprise: SSO, registros de auditoría, flujos de revisión y releases forman parte del
+  enterprise: SSO, registros de auditoría, flujos de revisión y lanzamientos forman parte del
   proyecto de código abierto.
 - **Editores**, que disponen de borradores, publicación, historial y vistas previas en un
   panel de administración disponible en 18 idiomas.
@@ -38,8 +38,8 @@ panel de administración. En producción no hay runtime de Node.js ni `node_modu
 | Modelo de contenido | Tipos de colección, tipos únicos, componentes, zonas dinámicas, relaciones, medios y texto enriquecido en Markdown o en el formato de bloques de Strapi. El esquema son archivos JSON dentro de tu proyecto. |
 | Cambios de esquema | Cada cambio se convierte en un plan de migración con un nivel de riesgo y el SQL exacto. Los pasos destructivos solo se ejecutan si los permites. |
 | APIs | REST bajo `/api` con los parámetros de Strapi v5 (`filters`, `populate`, `sort`, `pagination`), un endpoint GraphQL opcional, un documento OpenAPI y un cliente TypeScript tipado. |
-| Edición | Borrador y publicación, contenido localizado, historial de contenido, releases, flujos de revisión, comentarios y tareas, presencia en tiempo real, vista previa y edición visual en tu propio sitio. |
-| Acceso | Roles de administración con detalle hasta campos e idiomas, tokens de API, permisos de acceso público, SSO con OpenID Connect, inicio de sesión en dos pasos con passkeys, registros de auditoría. |
+| Edición | Borrador y publicación, contenido localizado, historial de contenido, lanzamientos, flujos de revisión, comentarios y tareas, presencia en tiempo real, vista previa y edición visual en tu propio sitio. |
+| Acceso | Roles de administración con detalle hasta campos e idiomas, tokens de API, permisos de acceso público, SSO con OpenID Connect, autenticación de dos factores con passkeys, registros de auditoría. |
 | Funciones para el sitio | Búsqueda de texto completo, sitemap, redirecciones, menús y formularios, webhooks, actualizaciones en tiempo real. |
 | Extensión | Plugins WebAssembly que intervienen en las escrituras, añaden rutas y tareas, y aportan widgets al panel y campos personalizados, limitados a las capacidades que declaran. |
 
@@ -79,7 +79,7 @@ panel de administración. En producción no hay runtime de Node.js ni `node_modu
 - **Dependes de plugins de Strapi o de código de servidor propio en JavaScript.** Verdin no
   puede ejecutarlos; tendrías que reescribirlos como plugins WebAssembly o llevar esa lógica
   a otra parte.
-- **Necesitas una versión 1.0 estable.** Verdin está en la 0.9: las versiones menores
+- **Necesitas una versión 1.0 estable.** Verdin está en la 0.10: las versiones menores
   todavía pueden cambiar la configuración y el comportamiento. Lee
   [Actualizar de versión](/es/migrate/upgrading/) antes de cada una.
 - **Quieres que el CMS renderice tus páginas.** Verdin es headless; combínalo con un

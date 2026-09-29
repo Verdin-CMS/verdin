@@ -1,0 +1,143 @@
+---
+title: Gerçek zamanlı güncellemeler
+description: Verdin’in server-sent events akışına abone olarak içerik değiştiği anda frontend’inizi yenileyin.
+sidebar:
+  order: 8
+  label: Gerçek zamanlı
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**Gerçek zamanlı** özelliği açıkken Verdin, bir kayıt veya medya dosyası her değiştiğinde küçük bir
+olay akışı gönderir. Bir frontend akışa abone olur ve değişeni yeniden getirir: canlı bir blog, bir
+skor tablosu, hiç yeniden yükleme gerektirmeyen bir pano. Her abone yalnızca okuyabildiği içerikle
+ilgili olayları alır.
+
+Bu sayfa akışın bir frontend’den nasıl kullanılacağını gösterir. Olay adları, payload’lar ve
+kurallar [gerçek zamanlı API başvurusundadır](/tr/api/realtime/). Strapi v5’te yerleşik bir
+karşılığı yoktur.
+
+## Açma
+
+<Steps>
+
+1. **Ayarlar → Özellikler** bölümünde **Gerçek zamanlı**’yı açın.
+2. Kimin abone olacağına karar verin. Akış içerik API’sinin izinlerini kullanır:
+   - herkes için, **Ayarlar → Herkese açık erişim** bölümünde tiplerde **Listele** veya **Tekini
+     getir**’e izin verin;
+   - bir sunucu veya uygulama için bu izinlerle (ve yalnızca taslak olaylarını almak için
+     **Taslakları oku** ile) bir [API token’ı](/tr/guides/auth/api-tokens/) oluşturun;
+   - oturum açmış son kullanıcılar için onların JWT’si de çalışır (bkz.
+     [Son kullanıcılar](/tr/guides/auth/end-users/)).
+
+</Steps>
+
+Akış `GET /api/_events` adresidir. Yalnızca belirli içerik tiplerini almak için virgülle ayrılmış
+içerik tipi uid’leriyle `?types=` ekleyin (`plugin::upload` medya kütüphanesidir):
+
+```sh title="Terminal"
+curl -N "https://cms.example.com/api/_events?types=api::article,api::category"
+```
+
+```
+event: ready
+data: {}
+
+event: entry.publish
+data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","locale":"en"}
+```
+
+## Bir tarayıcıdan abone olma
+
+Olaylar içerik değil kimlik taşır. Her olayda gösterdiğinizi, diğer her okumayla aynı API ve
+izinler üzerinden yeniden getirin.
+
+<Tabs syncKey="auth">
+<TabItem label="Herkese açık">
+
+Public rolüyle tarayıcının `EventSource`’u yeterlidir ve kendiliğinden yeniden bağlanır:
+
+```js
+const CMS = 'https://cms.example.com';
+const events = new EventSource(`${CMS}/api/_events?types=api::article`);
+
+for (const name of ['entry.publish', 'entry.unpublish', 'entry.delete']) {
+  events.addEventListener(name, (event) => {
+    const { documentId } = JSON.parse(event.data);
+    refreshArticle(documentId);
+  });
+}
+
+events.addEventListener('lagged', () => refreshEverything());
+```
+
+</TabItem>
+<TabItem label="Token ile">
+
+`EventSource` bir `Authorization` başlığı gönderemez. Akışı bunun yerine `fetch` ile okuyun ve sona
+erdiğinde yeniden bağlanın:
+
+```js
+async function subscribe(token, onEvent) {
+  for (;;) {
+    try {
+      const response = await fetch(`${CMS}/api/_events?types=api::article`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) return; // token refused
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const name = block.match(/^event: (.*)$/m)?.[1];
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (name && data) onEvent(name, JSON.parse(data));
+        }
+      }
+    } catch {
+      // network error: retry below
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+```
+
+Başlıkları destekleyen herhangi bir SSE istemci kütüphanesi de çalışır.
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution">
+Tarayıcı kodundaki bir token, sayfayı açan herkes tarafından okunabilir. Yalnızca sayfanın
+gösterdiği tiplerle sınırlı salt okunur bir token gönderin ya da sunucunuzdan abone olup
+güncellemeleri tarayıcıya iletin.
+</Aside>
+
+Akışı başka bir origin’deki bir siteden çağırmak, o origin’in
+[`[api].cors_origins`](/tr/reference/configuration/) içinde olmasını gerektirir.
+
+## Akışı sağlıklı tutma
+
+- İlk olay `ready`’dir: abonelik canlıdır.
+- Bir akış bir saat sonra sona erer. O zaman yeniden bağlanın: `EventSource` bunu otomatik yapar ve
+  yeniden bağlanmak token’ı da yeniden denetler; böylece iptal edilmiş bir token olay almayı bırakır.
+- `lagged` adlı bir olay, istemcinin çok yavaş okuduğu ve olayları kaçırdığı anlamına gelir.
+  Sayfanın gösterdiği her şeyi yeniden getirin.
+- Yalnızca taslak olayları (taslak ve yayınlama kullanan tiplerde `entry.create`, `entry.update` ve
+  `entry.discard-draft`) yalnızca **Taslakları oku** yetkisi olan çağıranlara ulaşır. Herkese açık
+  bir site genellikle `entry.publish`, `entry.unpublish` ve `entry.delete`’i dinler.
+
+## Yük dengeleyicinin arkasında
+
+Olaylar, istemcinin bağlı olduğu örneğe aittir. Birden fazla örnekle `/api/_events` için sticky
+session kullanın ya da gerçek zamanlı istemcileri tek bir örneğe yönlendirin. Bkz.
+[Ölçekleme](/tr/deploy/scaling/).
+
+Yönetim paneli, düzenleme sırasında canlı güncellemeler, presence ve yumuşak kilitler için kendi
+akışını (`/admin/api/events`) kullanır; bkz. [gerçek zamanlı API başvurusu](/tr/api/realtime/).

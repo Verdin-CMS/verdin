@@ -1,0 +1,150 @@
+---
+title: אסימוני API
+description: צרו אסימוני API לקריאה בלבד, עם גישה מלאה או מותאמים אישית עבור API התוכן, חדשו או מחקו אותם, ושמרו על ה-pepper של האסימונים.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+אסימוני API מאפשרים לאתרים, לאפליקציות ולסקריפטים שלכם לקרוא ל-API התוכן עם יותר גישה ממה
+שיש לציבור. המדריך הזה יוצר אסימון, בוחר את הגישה שלו, משתמש בו, ומחליף אותו כשהוא דולף.
+האסימונים עובדים כמו אסימוני ה-API של Strapi.
+
+API התוכן סגור כברירת מחדל: בלי אסימון, בקשות מקבלות רק את מה ש-**הגדרות ← גישה ציבורית**
+מתיר, וזה כלום עד שתעניקו.
+
+## לפני שמתחילים
+
+- ניהול אסימונים דורש **ניהול אסימוני API** (`tokens.manage`). ראו
+  [הרשאות](/he/reference/permissions/).
+- `VERDIN_TOKEN_PEPPER` חייב להיות מוגדר; ראו [היכן ה-pepper חשוב](#היכן-ה-pepper-חשוב).
+
+## יצירת אסימון
+
+<Steps>
+
+1. פתחו את **הגדרות ← אסימוני API** ובחרו **יצירת אסימון**.
+2. הזינו **שם** ובאופן אופציונלי **תיאור**.
+3. בחרו את ה**סוג**:
+
+   | סוג | מתיר |
+   | --- | --- |
+   | **קריאה בלבד** | חיפוש וחיפוש פריט אחד על כל סוג תוכן, גרסאות מפורסמות בלבד. |
+   | **גישה מלאה** | כל פעולה על כל סוג תוכן ועל ספריית המדיה. |
+   | **מותאם אישית** | רק הפעולות שתסמנו ב**הרשאות**. |
+
+4. בחרו מתי הוא פג, ב**תפוגה**: **אף פעם**, או בעוד 7, 30 או 90 ימים.
+5. לאסימון מותאם אישית, סמנו את הפעולות תחת **הרשאות**, לכל סוג תוכן: **חיפוש**,
+   **חיפוש פריט אחד**, **יצירה**, **עדכון**, **מחיקה**, **פרסום** ו**קריאת טיוטות**. השורה
+   **ספריית המדיה** מכסה העלאות, והשורה **משתמשים** את נתיבי `/api/users` של
+   [משתמשי קצה](/he/guides/auth/end-users/).
+6. בחרו **יצירה**, ואז העתיקו את האסימון. זו הפעם היחידה שהוא מוצג.
+
+</Steps>
+
+האסימונים מתחילים ב-`vd_`. הרשימה מציגה את התווים הראשונים של כל אחד, מתי נעשה בו שימוש
+לאחרונה ומתי הוא פג.
+
+## שימוש באסימון
+
+שלחו אותו כ-bearer token:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'http://localhost:1337/api/articles?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/graphql \
+  -H "Authorization: Bearer $VERDIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({
+  url: 'http://localhost:1337',
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+</TabItem>
+</Tabs>
+
+- הגישה של אסימון מחליפה את הגישה הציבורית; היא לא מתווספת אליה. אסימון מותאם בלי **חיפוש**
+  על סוג לא יכול להציג את הרשימה שלו, גם כשהציבור יכול.
+- קריאת טיוטות (`?status=draft`) דורשת **קריאת טיוטות**; אסימונים לקריאה בלבד אף פעם לא
+  רואים טיוטות.
+- אסימונים לא מוכרים ואסימונים שפג תוקפם מקבלים `401`. פעולות מחוץ לגישה של האסימון מקבלות
+  `403`.
+- `[api].token_rate_limit` מגביל בקשות לכל אסימון ולדקה (כבוי כברירת מחדל).
+- אותם אסימונים מאשרים גישה ל-GraphQL ול[שרת ה-MCP](/he/guides/integrations/mcp/).
+
+<Aside type="caution">
+אסימון בדפדפן גלוי לכל מבקר. השתמשו באסימונים רק משרתים, משלבי build ומאפליקציות פרטיות;
+לדפים ציבוריים, העניקו את מה שהם צריכים ב-**הגדרות ← גישה ציבורית**.
+</Aside>
+
+## חידוש או מחיקה של אסימון
+
+- **יצירה מחדש** בשורה של אסימון יוצרת מפתח חדש עם אותו שם, סוג והרשאות. המפתח הנוכחי מפסיק
+  לעבוד מיד, כך שאפליקציות שמשתמשות בו מקבלות שגיאות עד שתעדכנו אותן.
+- **מחיקה** מסירה את האסימון; לקוחות שמשתמשים בו מאבדים את הגישה.
+
+עשו אחד מהשניים ברגע שאסימון עלול היה לדלוף.
+
+## היכן ה-pepper חשוב
+
+Verdin אף פעם לא שומר אסימונים. הוא שומר hash עם מפתח (HMAC-SHA256) של כל אחד, עם
+`VERDIN_TOKEN_PEPPER` כמפתח, כך שעותק של מסד הנתונים לבדו לא מאפשר לאף אחד להשתמש בהם. אותו
+pepper מגן על:
+
+- אסימוני API.
+- סודות אפליקציית האימות וקודי השחזור של המנהלים ([אימות
+  דו-שלבי](/he/guides/auth/two-factor/)).
+- כתובות ה-IP המגובבות שנשמרות עם הגשות של טפסים.
+
+צרו את ה-pepper פעם אחת עם `verdin secrets`, השאירו אותו מחוץ ל-`verdin.toml` ולגיבויים של
+מסד הנתונים, ותנו לכל מופע את אותו ערך.
+
+<Aside type="caution" title="שינוי ה-pepper">
+עם pepper אחר, כל אסימוני ה-API מפסיקים לעבוד, וכך גם אפליקציות האימות וקודי השחזור של כל
+המנהלים. שנו אותו רק אם הוא דלף, ואז צרו אסימונים חדשים ואפסו את האימות הדו-שלבי של כל מנהל.
+מפתחות גישה וסיסמאות לא מושפעים.
+</Aside>
+
+## API הניהול
+
+כל הנתיבים נמצאים תחת `/admin/api` ודורשים `tokens.manage`.
+
+```http
+GET    /admin/api/api-tokens
+POST   /admin/api/api-tokens                  { "name": "Website", "kind": "custom", "expiresInDays": 90,
+                                                "permissions": [{ "subject": "api::article", "action": "find" }] }
+GET    /admin/api/api-tokens/{id}
+PUT    /admin/api/api-tokens/{id}             { "name": "…", "description": null, "kind": "read-only", "permissions": [...] }
+POST   /admin/api/api-tokens/{id}/regenerate
+DELETE /admin/api/api-tokens/{id}
+```
+
+- `kind` הוא `read-only`, `full-access` או `custom`; `expiresInDays` אופציונלי (אף פעם לא פג)
+  ואי אפשר לשנות אותו אחר כך.
+- `permissions` מפרט זוגות `{ subject, action }`. `subject` הוא UID של סוג תוכן,
+  `plugin::upload` (ספריית המדיה) או `plugin::users-permissions.user`; `action` הוא `find`,
+  `findOne`, `create`, `update`, `delete`, `publish` או `readDrafts`. `publish`
+  ו-`readDrafts` לא חלים על שני הנושאים האחרונים.
+- `POST /api-tokens` ו-`/regenerate` מחזירים את המפתח פעם אחת, כ-`accessKey`.
+
+הגישה הציבורית משתמשת באותם זוגות: `PUT /admin/api/public-permissions`
+`{ "permissions": [...] }`, שדורש **ניהול תפקידים** (`roles.manage`).

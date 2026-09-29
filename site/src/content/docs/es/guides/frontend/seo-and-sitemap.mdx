@@ -1,0 +1,180 @@
+---
+title: SEO y mapa del sitio
+description: Asocia los tipos de contenido a las rutas de tu sitio, sirve un sitemap.xml con todas las entradas publicadas y añade un componente SEO estándar.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+La funcionalidad **SEO y mapa del sitio** le dice a Verdin dónde vive cada entrada en tu sitio. A
+partir de ahí sirve un `sitemap.xml` con todas las entradas publicadas, da a los
+[menús](/es/guides/frontend/menus/) las rutas de las entradas que enlazan y ofrece un componente
+`shared.seo` listo para usar para las etiquetas meta.
+
+Es una de las cuatro funcionalidades para el sitio, junto con las
+[redirecciones](/es/guides/frontend/redirects/), los [menús](/es/guides/frontend/menus/) y los
+[formularios](/es/guides/frontend/forms/). Strapi cubre lo mismo con plugins de la comunidad (SEO,
+sitemap); en Verdin viene integrado.
+
+## Actívala
+
+<Steps>
+
+1. En **Configuración → Funcionalidades**, activa **SEO y mapa del sitio**.
+2. En su tarjeta, elige **Configurar el SEO**.
+3. Introduce la **URL del sitio**: el origen de tu sitio, como `https://www.example.com`. Las
+   URLs del sitemap empiezan por ella.
+4. En **Tipos de contenido**, da a cada tipo que tiene páginas un **Patrón de ruta**. Los tipos
+   sin patrón quedan fuera del sitemap. Opcionalmente, define una **Frecuencia de cambio** y una
+   **Prioridad** (de 0 a 1) para el sitemap.
+5. Guarda y elige **Abrir sitemap.xml** para comprobar el resultado.
+
+</Steps>
+
+Cambiar los ajustes necesita el permiso **Gestionar funcionalidades** (`features.manage`).
+Consulta [Permisos](/es/reference/permissions/).
+
+## Patrones de ruta
+
+Un patrón es una ruta que empieza por `/`, con marcadores entre llaves:
+
+| Patrón | Entrada | Ruta |
+| --- | --- | --- |
+| `/blog/{slug}` | Artículo con el slug `hello-world` | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | Su versión en francés | `/fr/blog/bonjour` |
+| `/about` | El tipo único Homepage | `/about` |
+
+Los marcadores son los atributos del tipo (normalmente un `uid` como `slug`) y `{locale}`. Los
+valores se codifican para URL. Una entrada cuyo marcador está vacío (por ejemplo, sin slug) no
+tiene ruta, y queda fuera del sitemap y de los menús. El diálogo enumera los atributos que puedes
+insertar y rechaza los desconocidos.
+
+Los ajustes se guardan como ajustes de la funcionalidad, con esta forma:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` es uno de `always`, `hourly`, `daily`, `weekly`, `monthly`, `yearly` o `never`.
+
+## El sitemap
+
+Con una **URL del sitio** definida, Verdin sirve `/sitemap.xml` en la raíz de su propio host
+(`https://cms.example.com/sitemap.xml`, fuera del prefijo de la API), con:
+
+- todas las entradas **publicadas** de los tipos configurados cuyo patrón se rellena;
+- el último cambio de cada entrada (`lastmod`), y el `changefreq` y la `priority` del tipo;
+- en los tipos localizados, una URL por idioma, enlazadas entre sí con
+  `<xhtml:link rel="alternate" hreflang="…">`;
+- como máximo 50.000 URLs, el límite de un archivo de sitemap.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+El sitemap se construye como mucho cada diez minutos y se envía con
+`Cache-Control: public, max-age=600`, así que una publicación aparece en menos de diez minutos.
+
+Los buscadores esperan el sitemap en el host de tu sitio. Sírvelo desde ahí con un rewrite o una
+pequeña ruta que pida el de Verdin:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+Después inclúyelo en tu `robots.txt`: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## El componente SEO
+
+Verdin propone un componente `shared.seo` con los campos del plugin de SEO de Strapi:
+
+| Atributo | Tipo |
+| --- | --- |
+| `metaTitle` | string, obligatorio, como máximo 60 caracteres |
+| `metaDescription` | text, obligatorio, como máximo 160 caracteres |
+| `metaImage` | media (imágenes) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+En el diálogo **Configurar el SEO**, elige **Añadir el componente SEO** y después
+**Crear el componente**. Crearlo cambia el esquema, así que el botón aparece en modo desarrollo
+(`verdin dev`) para los administradores con **Gestionar tipos de contenido**; si no, el diálogo
+enumera los atributos que debes añadir en tus archivos de esquema. Después, añade en el
+constructor de tipos de contenido un campo de componente con `shared.seo` a cada tipo de
+contenido que tenga páginas.
+
+<Aside type="tip">
+Con las [acciones de IA](/es/guides/integrations/ai-actions/) activadas, un componente que tiene
+los atributos de texto `metaTitle` y `metaDescription` recibe un botón **Sugerir** que los
+rellena a partir de la entrada.
+</Aside>
+
+## Muestra las etiquetas meta
+
+Popula el componente y escribe las etiquetas en el head de tu página:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+El `shared.seo` del blog de ejemplo solo tiene `metaTitle` y `metaDescription`; el componente
+propuesto añade el resto. Si la página de vista previa usa la
+[edición visual](/es/guides/frontend/visual-editing/), quita las marcas invisibles antes de medir
+o comparar los textos meta.

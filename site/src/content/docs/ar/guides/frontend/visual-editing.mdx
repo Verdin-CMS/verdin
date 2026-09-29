@@ -1,0 +1,122 @@
+---
+title: التحرير المرئي
+description: اسمح للمحررين بالنقر على نص في صفحة المعاينة والوصول إلى الحقل الذي يحتويه في لوحة الإدارة.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+يحوّل التحرير المرئي صفحة المعاينة إلى خريطة للوحة الإدارة: يمرّر المحرر المؤشر فوق
+عنوان، وينقر **Edit**، فيُفتح الإدخال مع التركيز على ذلك الحقل. وهو يبني على
+[المعاينة](/ar/guides/content/preview/): أعِدّ عناوين URL للمعاينة أولًا، ثم أضف الجزأين
+أدناه إلى صفحة المعاينة.
+
+يخفي Verdin خريطة مصدر صغيرة غير مرئية في كل نص يعيده (تقنية تُعرف بـ
+*stega*)، ويعثر سكربت الطبقة التراكبية (overlay) على تلك النصوص في الصفحة. لا يتغير شيء في
+مكوّناتك: يُعرض النص المعلَّم كأي نص آخر.
+
+<Diagram code={`flowchart LR
+  A[صفحة المعاينة] -- "x-verdin-stega: true" --> B[API المحتوى]
+  B -- "نص + خريطة مصدر غير مرئية" --> A
+  A -- "visual-editing.js: النقر على Edit" --> C[حقل لوحة الإدارة]`} caption="تطلب الصفحة خرائط المصدر، وتحوّلها الطبقة التراكبية إلى روابط إلى الحقول." />
+
+## أعِدّه
+
+<Steps>
+
+1. فعّل **المعاينة** في **الإعدادات ← الميزات**، واختر **إعداد عناوين URL للمعاينة** و
+   امنح كل نوع محتوى عنوان URL للصفحة التي تعرضه. يعرض قسم **التحرير المرئي**
+   في نافذة الحوار نفسها وسم السكربت والترويسة لخادمك. راجع
+   [المعاينة](/ar/guides/content/preview/).
+
+2. في صفحة المعاينة، اجلب المحتوى برمز وبالترويسة `x-verdin-stega: true`.
+   الرمز هو رمز المعاينة من عنوان URL للمعاينة (`?preview=…`، الذي يُعاد في
+   `x-verdin-preview`) أو رمز API:
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. حمّل الطبقة التراكبية في الصفحة نفسها:
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   يتبع المسار [`[admin].path`](/ar/reference/configuration/): `{path}/api/visual-editing.js`.
+
+</Steps>
+
+مع [العميل المُنمَّط](/ar/guides/frontend/typed-client/)، مرّر الترويستين في `headers`:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+لا تُضاف خرائط المصدر إلا إلى استجابات REST، لا إلى GraphQL: اقرأ محتوى المعاينة
+عبر REST API.
+
+مرّر المؤشر فوق نص معلَّم في الصفحة: يحصل على إطار أخضر وزر **Edit**. داخل
+المعاينة جنبًا إلى جنب في لوحة الإدارة (**فتح المعاينة** ← **جنبًا إلى جنب**)، يطلب الزر من
+المسؤول فتح الحقل في المكان نفسه. وعندما تكون الصفحة مفتوحة بمفردها، يفتح الزر
+الإدخال في تبويب جديد.
+
+<Aside type="note">
+لا تُضاف خرائط المصدر إلا إلى طلبات `GET` التي ترسل `x-verdin-stega: true` **و**
+رمزًا (`Authorization` أو `x-verdin-preview`). لا تحملها أبدًا الحركة العامة ولا أي شيء يخزّنه الـ CDN مؤقتًا،
+وتُرسل الاستجابات المعلَّمة مع `Cache-Control: private, no-store`.
+</Aside>
+
+## ما الذي يُعلَّم
+
+| يُعلَّم | لا يُعلَّم |
+| --- | --- |
+| سمات `string` و`text` و`richtext` | `uid`، `email`، `password`، `enumeration` |
+| النص الأول من كل كتلة في سمة `blocks` | الأرقام، والقيم المنطقية، والتواريخ، وJSON |
+| الشيء نفسه داخل المكوّنات والمناطق الديناميكية (`seo.metaTitle`، `blocks.2.title`) | السلاسل الفارغة |
+| العلاقات المُعبّأة، مشيرةً إلى الإدخال المرتبط | حقول الوسائط |
+
+تقرأ الطبقة التراكبية أيضًا العلامات في السمتين `alt` و`title`، فيبقى النص المعلَّم الذي تضعه في
+إحداهما (حقل تعليق يُستخدم كـ `alt` مثلًا) قابلًا للنقر.
+
+## أزِل العلامات حيث يكون النص بيانات
+
+العلامات محارف غير مرئية تُلحق بالنص. حيث تستخدم قيمة كبيانات
+بدلًا من عرضها (مفتاح، أو عنوان URL، أو مقارنة، أو التحقق من طول `<title>`)، أزِلها
+أولًا:
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+الحقول التي هي بيانات بطبيعتها، مثل slugs من نوع `uid` والتعدادات، لا تُعلَّم أبدًا،
+لذا يعمل التوجيه حسب `slug` كما هو.
+
+## كيف تُرمَّز العلامة
+
+للأدوات التي تقرأ العلامات بنفسها: العلامة هي U+2064، ثم كل بايت UTF-8 من
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+على شكل أربعة أرقام بالأساس 4 (الأكثر أهمية أولًا) مكتوبة بـ U+200B وU+200C وU+200D و
+U+2060، ثم U+2063. يأتي عنوان URL للإدارة من [`[server].public_url`](/ar/reference/configuration/)
+و`[admin].path`. ترسل الطبقة التراكبية `{ type: 'verdin:edit', href }` إلى النافذة الأم
+عبر `postMessage`؛ ولا تتصرف لوحة الإدارة بناءً عليها إلا عندما تأتي من مصدر عنوان URL للمعاينة.

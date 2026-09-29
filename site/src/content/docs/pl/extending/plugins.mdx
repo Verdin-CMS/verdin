@@ -1,0 +1,134 @@
+---
+title: Wtyczki
+description: Co potrafią wtyczki Verdin, jak piaskownica WebAssembly i capabilities utrzymują je w ryzach oraz jak je instalować i włączać.
+sidebar:
+  order: 1
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Wtyczki dodają do Verdin nowe zachowania bez zmieniania i przebudowywania serwera. Wtyczka
+to moduł WebAssembly z manifestem, wrzucony do katalogu `plugins/` projektu. Ta strona
+wyjaśnia, co potrafią wtyczki i jak je instalować; aby napisać własną, przejdź przez
+[samouczek wtyczek](/pl/extending/plugin-tutorial/), a szczegółów szukaj w
+[dokumentacji wtyczek](/pl/extending/plugin-reference/).
+
+## Co potrafi wtyczka
+
+| Punkt rozszerzenia | Do czego służy |
+| --- | --- |
+| **Hooki przy zapisach** | Zanim wpis zostanie utworzony, zaktualizowany, opublikowany, wycofany z publikacji, usunięty albo jego szkic odrzucony, zmień dane lub odrzuć zapis z komunikatem. Po zapisie zareaguj na niego (log, powiadomienie, synchronizacja). |
+| **Trasy** | Serwuj endpointy HTTP pod `/api/plugins/<name>/…`: odbiornik webhooków, wyliczany feed, proxy do innej usługi. |
+| **Zaplanowane zadania** | Uruchamiaj funkcję według harmonogramu cron (UTC). |
+| **Pola GraphQL** | Dodawaj pola `name(args: JSON): JSON` do `Query` lub `Mutation`. |
+| **Widżety pulpitu** | Dodawaj typy widżetów do pulpitu panelu, jako Web Components. |
+| **Pola niestandardowe** | Dawaj atrybutom własny edytor w panelu (wybór koloru, mapa), jako Web Components; wartość jest przechowywana jako zwykły typ atrybutu. |
+| **Ustawienia** | Deklaruj formularz ustawień, który administratorzy wypełniają w **Ustawienia → Wtyczki**. |
+
+Wtyczka czyta i zapisuje treść przez ten sam Document Service co panel i API, więc do jej
+zapisów stosują się webhooki, historia, etapy recenzji i walidacja.
+
+<Aside type="note">
+Wtyczki Verdin nie są wtyczkami Strapi. Wtyczki Strapi to pakiety Node.js z pełnym dostępem
+do serwera; Verdin nie uruchamia na serwerze JavaScriptu. Pola niestandardowe zadeklarowane
+w schematach Strapi (atrybuty `customField`) ładują się bez zmian, a wtyczka Verdin może
+dostarczyć ich edytor.
+</Aside>
+
+## Piaskownica
+
+Wtyczki działają w piaskownicy WebAssembly ([Extism](https://extism.org), na Wasmtime). Moduł
+nie ma plików, gniazd ani własnego połączenia z bazą danych. Wszystko, co robi poza własną
+pamięcią, przechodzi przez kilka funkcji hosta, a serwer sprawdza każde wywołanie względem
+**capabilities** zadeklarowanych w manifeście:
+
+| Capability | Daje |
+| --- | --- |
+| `read` | Odczyt wpisów wymienionych typów zawartości (lub `*`). |
+| `write` | Tworzenie, aktualizację, publikację, cofanie publikacji i usuwanie wpisów wymienionych typów (a także ich odczyt). |
+| `http` | Żądania HTTP do wymienionych hostów (`api.example.com`, `*.example.com`). |
+| `kv` | Własny magazyn klucz-wartość w bazie danych Verdin. |
+
+<Diagram
+  caption="Wywołania wtyczki i to, do czego sięgają jej wywołania hosta"
+  code={`flowchart LR
+    W[Zapisy] -->|hooki| M
+    R["/api/plugins/name/…"] --> M
+    J[Zaplanowane zadania] --> M
+    M[Moduł WebAssembly] --> C{Capabilities}
+    C -->|read, write| D[(Treść)]
+    C -->|kv| K[(Magazyn wtyczki)]
+    C -->|http| H[Wymienione hosty]`}
+/>
+
+Każde wywołanie ma też limity: limit czasu (domyślnie 5 sekund) i limit pamięci (domyślnie
+64 MB), ustawiane w manifeście. Moduł, który zgłosi trap lub przekroczy czas, zawodzi tylko
+w tym wywołaniu; Verdin odtwarza go przy następnym.
+
+Czego piaskownica nie rozstrzyga za ciebie:
+
+- **Trasy są publiczne.** Żądania do `/api/plugins/<name>/…` nie są sprawdzane względem
+  **Dostępu publicznego** ani uprawnień tokenów API. Wtyczka otrzymuje informację, kto
+  wywołuje (ktokolwiek, token API lub użytkownik końcowy), i musi to sprawdzić.
+- **Hooki widzą wszystkie zapisy do swoich typów**, niezależnie od capability `read`
+  wtyczki.
+- **Nieudany hook „before” nie blokuje zapisu.** Jeśli moduł się wysypie lub przekroczy czas,
+  błąd jest logowany, a zapis przebiega dalej. Zatrzymuje go tylko jawna odmowa.
+
+## Zainstaluj wtyczkę
+
+<Steps>
+
+1. Umieść wtyczkę we własnym katalogu w `plugins/`, obok `verdin.toml`. Zawiera on manifest,
+   moduł i opcjonalnie pliki panelu administracyjnego:
+
+   <FileTree>
+   - verdin.toml
+   - plugins/
+     - reading-time/
+       - plugin.toml
+       - plugin.wasm
+       - admin/ opcjonalnie: Web Components dla panelu administracyjnego
+         - index.js
+   - schema/
+   </FileTree>
+
+2. Zrestartuj Verdin. Przy starcie ładuje każdy `plugins/*/plugin.toml` i dla każdego
+   loguje `plugin found`. Wtyczka, której nie udało się załadować (niepoprawny manifest,
+   brak modułu, zduplikowana nazwa), jest wymieniona w **Ustawienia → Wtyczki** z podaniem
+   przyczyny.
+
+3. W panelu administracyjnym otwórz **Ustawienia → Wtyczki**. Przejrzyj, o co prosi wtyczka,
+   w sekcjach **Dostęp**, **Hooki**, **Trasy** i **Zadania**, a potem ją włącz.
+
+4. Jeśli wtyczka ma ustawienia, otwórz **Ustawienia** na jej karcie, wypełnij je i zapisz.
+
+</Steps>
+
+Zainstalowane wtyczki są na początku wyłączone. Przełączenie wtyczki i edycja jej ustawień
+działają od razu, na każdej instancji (pozostałe instancje przejmują zmianę w ciągu
+`[server].sync_interval_secs`). Zmiany w `plugin.toml` lub module wymagają restartu.
+
+Zarządzanie wtyczkami wymaga uprawnienia `plugins.manage` (**Zarządzanie wtyczkami**).
+Zobacz [dokumentację uprawnień](/pl/reference/permissions/).
+
+## Skonfiguruj `[plugins]`
+
+```toml title="verdin.toml"
+[plugins]
+path = "plugins"   # directory of plugins, relative to verdin.toml
+run_jobs = true    # run scheduled jobs on this instance
+```
+
+Przy kilku instancjach ustaw `run_jobs = false` na wszystkich poza jedną, aby każde zadanie
+uruchamiało się raz. Zobacz [dokumentację konfiguracji](/pl/reference/configuration/).
+
+## Eksploatacja
+
+- **Jedno wywołanie naraz.** Każda wtyczka ma jedną instancję i obsługuje jedno wywołanie
+  naraz, więc wolna trasa opóźnia hooki tej wtyczki. Utrzymuj funkcje krótkie.
+- **Logi.** To, co loguje wtyczka, trafia do logu serwera i do **Ustawienia → Wtyczki →
+  Logi** (ostatnie 200 linii, przechowywane w pamięci).
+- **Wdrożenia.** Dostarczaj wtyczki razem z projektem (w obrazie lub na wolumenie), tak jak
+  schemat. Przełączniki i ustawienia są przechowywane w bazie danych.

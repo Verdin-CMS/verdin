@@ -1,0 +1,156 @@
+---
+title: KI-Aktionen
+description: Gib Redakteuren KI-Hilfe im Admin-Panel (Übersetzung, Alternativtext, Zusammenfassungen und SEO-Metadaten) mit dem Modellanbieter deiner Wahl.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+KI-Aktionen ergänzen das Admin-Panel um vier Helfer: einen Eintrag aus einer anderen Sprache
+übersetzen, Alternativtext für ein Bild schreiben, einen langen Text in ein kurzes Feld
+zusammenfassen und SEO-Metadaten vorschlagen. Sie nutzen einen Modellanbieter, den du
+konfigurierst (Anthropic, OpenAI oder einen lokalen Server wie Ollama), mit deinem eigenen
+Schlüssel.
+
+Jede Aktion liefert einen Vorschlag, der das Formular füllt. Gespeichert wird nichts, bis der
+Redakteur ihn geprüft und gespeichert hat, und jede Aktion lässt sich rückgängig machen.
+
+## Einrichten
+
+KI-Aktionen brauchen einen Anbieter in `verdin.toml` und die eingeschaltete Funktion.
+
+<Steps>
+
+1. Füge einen Abschnitt `[ai]` hinzu und gib dem Server den Schlüssel in `VERDIN_AI_KEY`:
+
+   <Tabs syncKey="ai-provider">
+   <TabItem label="Anthropic">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "anthropic"
+   # model = "claude-sonnet-5"   # the default
+   ```
+
+   </TabItem>
+   <TabItem label="OpenAI">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai"
+   model = "gpt-4.1-mini"        # required: name the model you want
+   ```
+
+   </TabItem>
+   <TabItem label="Lokal (Ollama)">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai-compatible"
+   base_url = "http://localhost:11434/v1"
+   model = "llama3.2-vision"
+   ```
+
+   Lokale Server brauchen kein `VERDIN_AI_KEY`. LM Studio, vLLM und andere Server mit
+   OpenAI-kompatibler API funktionieren genauso.
+
+   </TabItem>
+   </Tabs>
+
+   ```sh title="Terminal"
+   export VERDIN_AI_KEY=sk-...
+   ```
+
+2. Starte Verdin neu. Es verweigert den Start, wenn der Abschnitt unvollständig ist: ein
+   fehlender Schlüssel oder ein fehlendes `model` bzw. `base_url`, wo der Anbieter es braucht.
+3. Schalte unter **Einstellungen → Funktionen** **KI-Aktionen** ein.
+
+</Steps>
+
+| Schlüssel | Standard | Beschreibung |
+| --- | --- | --- |
+| `provider` | `"none"` | `anthropic`, `openai` oder `openai-compatible`. |
+| `model` | `claude-sonnet-5` für `anthropic` | Das Modell. Pflicht für die anderen Anbieter. |
+| `base_url` | Die des Anbieters | Ein anderer Endpunkt: ein Proxy oder ein lokaler Server (Pflicht für `openai-compatible`). |
+| `max_tokens` | `2048` | Längste Antwort, in Tokens. |
+
+Siehe [`[ai]`](/de/reference/configuration/). Ist die Funktion eingeschaltet, aber kein
+Abschnitt `[ai]` vorhanden, zeigt das Admin-Panel
+**KI-Aktionen sind auf diesem Server nicht verfügbar.**
+
+Die Aktion für Alternativtext schickt Bilder; wähle also ein Modell, das Bilder akzeptiert, wenn
+du sie nutzen willst.
+
+## Was die Aktionen tun
+
+### Einen Eintrag übersetzen
+
+Im Editor eines lokalisierten Eintrags öffnet **Aus _locale_ übersetzen…** den Dialog
+**Mit KI übersetzen**. Wähle unter **Übersetzen aus** die Ausgangssprache und dann
+**Übersetzen**. Die Textfelder des gespeicherten Entwurfs dieser Sprache (Strings, Texte, Rich
+Text, Blocks und der Text in Komponenten und Dynamic Zones) werden in die aktuelle Sprache
+übersetzt und ersetzen diese Felder im Formular.
+
+- Zwischen Sprachen geteilte Felder bleiben unberührt.
+- Ungespeicherte Änderungen in der Ausgangssprache sind nicht enthalten: Speichere sie vorher.
+- Markdown, HTML, URLs, IDs und Blocktypen bleiben, wie sie sind.
+- Die übersetzten Felder sind markiert; prüfe sie und speichere dann, oder wähle
+  **Übersetzung rückgängig machen**.
+
+Das braucht die Berechtigung, den Eintrag in der Zielsprache zu ändern und in der
+Ausgangssprache zu lesen.
+
+### Alternativtext schreiben
+
+Öffne in der Medienbibliothek ein Bild und wähle **Alternativtext generieren**. Das Modell
+beschreibt das Bild (bis zu etwa 125 Zeichen) in der Sprache der Standardsprache und füllt die
+Bildunterschrift, wenn sie leer ist. Das funktioniert mit JPEG-, PNG-, WebP- und GIF-Bildern und
+schickt das Format `small` oder `medium`, wenn es eines gibt, damit große Originale nicht zum
+Anbieter hochgeladen werden. Braucht die Schreibberechtigung der Medienbibliothek (auf der
+Datei, bei **Eigene Dateien**).
+
+### In ein Feld zusammenfassen
+
+Textfelder mit einem Namen wie eine Zusammenfassung (`description`, `summary`, `excerpt`,
+`abstract`, `intro`, `introduction`, `lead`, `teaser`) bekommen einen Button
+**_field_ zusammenfassen**, wenn der Eintrag ein Rich-Text- oder Blocks-Feld hat oder ein
+Textfeld namens `body`, `content`, `text` oder `article`. Im Beispiel-Blog bekommt **Excerpt**
+den Button **Body zusammenfassen**. Die Zusammenfassung passt in die Maximallänge des Felds.
+
+### SEO-Metadaten vorschlagen
+
+Eine Komponente mit den Textattributen `metaTitle` und `metaDescription`, etwa das
+[vorgeschlagene `shared.seo`](/de/guides/frontend/seo-and-sitemap/), bekommt einen Button
+**Vorschlagen**. Er füllt Meta-Titel, Beschreibung und, falls die Komponente eines hat,
+`keywords` aus dem gespeicherten Entwurf des Eintrags.
+
+## Limits
+
+- Jeder Admin darf 30 KI-Anfragen pro Minute stellen; weitere werden mit
+  **Zu viele KI-Anfragen. Warte eine Minute und versuche es erneut.** beantwortet.
+- Zusammenfassungen und SEO-Vorschläge senden höchstens 40.000 Zeichen Text.
+- Eine Anfrage an den Anbieter läuft nach 120 Sekunden in ein Timeout.
+
+## Datenschutz
+
+<Aside type="caution">
+KI-Aktionen schicken Inhalte an den Anbieter, den du konfigurierst: die Felder, die übersetzt,
+zusammengefasst oder beschrieben werden, und bei Alternativtext die Bilder. Wähle einen
+Anbieter und einen Tarif, den deine Organisation für diese Inhalte erlaubt, prüfe seine
+Bedingungen zur Datenaufbewahrung und denk über ein lokales Modell (`openai-compatible`) für
+Inhalte nach, die dein Netz nicht verlassen dürfen.
+</Aside>
+
+- Anfragen gehen vom Verdin-Server zum Anbieter; der Schlüssel erreicht nie den Browser.
+- Gesendet wird nur die Eingabe der Aktion: die Textfelder des Eintrags, der
+  zusammenzufassende Text oder ein Bild samt Dateiname. Private Attribute und andere Einträge
+  nicht.
+- Aktionen lesen nur, was der Admin ohnehin lesen darf, und Vorschläge werden nicht
+  gespeichert.
+
+Das Admin-Panel zeigt, welches Modell geantwortet hat
+(**Vorschläge von _model_ (_provider_).**).
+
+Um KI-Agenten außerhalb des Admin-Panels Inhalte lesen und schreiben zu lassen, siehe
+[MCP-Server](/de/guides/integrations/mcp/).

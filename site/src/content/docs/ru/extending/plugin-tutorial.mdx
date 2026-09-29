@@ -1,0 +1,326 @@
+---
+title: "Руководство: ваш первый плагин"
+description: Создайте плагин Verdin на Rust, который вычисляет время чтения статьи, записывает публикации в журнал и отдаёт небольшой API-маршрут.
+sidebar:
+  order: 2
+  label: Руководство по плагину
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+В этом руководстве вы создадите **reading-time** — плагин для примера блога. Он:
+
+- заполняет `readingTime` статьи по её `body` при каждой записи тела (хук «до»);
+- пишет строку в свой журнал, когда статья публикуется (хук «после»);
+- отдаёт `GET /api/plugins/reading-time/stats` со средним временем чтения (маршрут, который
+  читает контент);
+- имеет настройку **Words per minute**.
+
+Это займёт около 20 минут. Что такое плагины и как устроена песочница, сначала прочитайте в
+разделе [Плагины](/ru/extending/plugins/).
+
+## Перед началом
+
+Вам понадобятся:
+
+- Проект Verdin со схемой примера блога: скопируйте
+  [`examples/blog/schema`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog/schema)
+  в проект, созданный через `verdin new`, или запустите сам пример. Плагин использует
+  атрибуты `body` (`richtext`) и `readingTime` (`integer`) типа `article`.
+- Rust с целевой платформой WebAssembly:
+
+  ```sh title="Terminal"
+  rustup target add wasm32-unknown-unknown
+  ```
+
+Плагины можно писать на любом языке, для которого есть
+[Extism PDK](https://extism.org/docs/concepts/pdk) (JavaScript, Go, Zig, C и другие). В этом
+руководстве используются Rust и `extism-pdk`.
+
+## Создайте крейт
+
+<Steps>
+
+1. Создайте библиотечный крейт вне проекта Verdin:
+
+   ```sh title="Terminal"
+   cargo new --lib reading-time
+   cd reading-time
+   ```
+
+2. Замените `Cargo.toml`. Плагин — это `cdylib`; профиль release делает модуль маленьким.
+
+   ```toml title="Cargo.toml"
+   [package]
+   name = "reading-time"
+   version = "0.1.0"
+   edition = "2024"
+   publish = false
+
+   [lib]
+   crate-type = ["cdylib"]
+
+   [dependencies]
+   extism-pdk = "1.4.1"
+   serde_json = "1"
+
+   [profile.release]
+   opt-level = "s"
+   lto = true
+   strip = true
+   ```
+
+</Steps>
+
+## Напишите функции
+
+Каждая функция, которую экспортирует плагин, принимает JSON и возвращает JSON. Verdin вызывает
+их для хуков, маршрутов и заданий, указанных в манифесте; функции обращаются к Verdin через
+функции хоста (`verdin_log`, `verdin_content`, `verdin_config`…).
+
+Замените `src/lib.rs`:
+
+```rust title="src/lib.rs"
+use extism_pdk::*;
+use serde_json::{Value, json};
+
+// Host functions Verdin provides (namespace `extism:host/user`).
+#[host_fn]
+extern "ExtismHost" {
+    fn verdin_log(input: Json<Value>);
+    fn verdin_content(input: Json<Value>) -> Json<Value>;
+    fn verdin_config() -> Json<Value>;
+}
+
+/// Minutes needed to read `text` at `per_minute` words a minute (at least 1).
+fn minutes(text: &str, per_minute: u64) -> u64 {
+    let words = text.split_whitespace().count() as u64;
+    words.div_ceil(per_minute.max(1)).max(1)
+}
+
+/// `beforeCreate` and `beforeUpdate` on articles: fills `readingTime` from `body`.
+#[plugin_fn]
+pub fn set_reading_time(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    // An update may leave the body out: then there is nothing to recompute.
+    let Some(body) = data["body"].as_str() else {
+        return Ok(Json(json!({})));
+    };
+    let config = unsafe { verdin_config()? }.0;
+    let per_minute = config["wordsPerMinute"].as_u64().unwrap_or(200);
+    data["readingTime"] = json!(minutes(body, per_minute));
+    Ok(Json(json!({ "data": data })))
+}
+
+/// `afterPublish` on articles: writes a line to the plugin's log.
+#[plugin_fn]
+pub fn log_publish(Json(input): Json<Value>) -> FnResult<()> {
+    let message = format!("published {}", input["documentId"].as_str().unwrap_or("?"));
+    unsafe { verdin_log(Json(json!({ "level": "info", "message": message })))? };
+    Ok(())
+}
+
+/// `GET /api/plugins/reading-time/stats`: the average reading time of published articles.
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    if request["method"] != "GET" || request["path"] != "/stats" {
+        return Ok(Json(json!({ "status": 404, "body": { "error": "not found" } })));
+    }
+    let found = unsafe {
+        verdin_content(Json(json!({
+            "op": "findMany",
+            "uid": "api::article",
+            "query": { "fields": ["readingTime"], "pagination": { "pageSize": 100 } }
+        })))?
+    }
+    .0;
+    if let Some(error) = found.get("error") {
+        return Ok(Json(json!({ "status": 500, "body": { "error": error } })));
+    }
+    let times: Vec<u64> = found["documents"]
+        .as_array()
+        .map(|documents| documents.iter().filter_map(|d| d["readingTime"].as_u64()).collect())
+        .unwrap_or_default();
+    let average = if times.is_empty() { 0.0 } else { times.iter().sum::<u64>() as f64 / times.len() as f64 };
+    Ok(Json(json!({
+        "status": 200,
+        "headers": { "cache-control": "max-age=60" },
+        "body": { "articles": times.len(), "averageMinutes": average }
+    })))
+}
+```
+
+Что возвращает каждая функция:
+
+- **`set_reading_time`** — хук «до». `{ "data": … }` заменяет записываемые данные; `{}`
+  оставляет их как есть. Он также мог бы вернуть `{ "error": "…" }`, чтобы отклонить запись с
+  кодом 400.
+- **`log_publish`** — хук «после»: его вывод игнорируется.
+- **`handle`** обслуживает все запросы под `/api/plugins/reading-time/`. Он получает путь
+  после этого префикса и отвечает `{ status, headers, body }`.
+
+## Соберите модуль
+
+```sh title="Terminal"
+cargo build --release --target wasm32-unknown-unknown
+```
+
+Модуль — это `target/wasm32-unknown-unknown/release/reading_time.wasm` (Cargo превращает
+дефис в подчёркивание), около 120 КБ.
+
+## Напишите манифест
+
+<Steps>
+
+1. В проекте Verdin создайте `plugins/reading-time/` и скопируйте туда модуль как
+   `plugin.wasm`:
+
+   ```sh title="Terminal"
+   mkdir -p plugins/reading-time
+   cp ../reading-time/target/wasm32-unknown-unknown/release/reading_time.wasm plugins/reading-time/plugin.wasm
+   ```
+
+2. Рядом создайте манифест. Он задаёт имя плагина, запрашивает то, что нужно функциям, и
+   связывает их с хуками и маршрутами:
+
+   ```toml title="plugins/reading-time/plugin.toml"
+   name = "reading-time"
+   version = "0.1.0"
+   description = "Fills an article's reading time from its body"
+
+   [capabilities]
+   read = ["api::article"]           # for the stats route
+
+   [[hooks]]
+   on = "beforeCreate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "beforeUpdate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "afterPublish"
+   uid = "api::article"
+   function = "log_publish"
+
+   [routes]
+   function = "handle"               # serves /api/plugins/reading-time/…
+
+   [[settings]]
+   key = "wordsPerMinute"
+   label = "Words per minute"
+   type = "integer"
+   min = 50
+   max = 1000
+   default = 200
+   ```
+
+   Хукам возможности не нужны: они меняют данные, которые им передали. Контент читает только
+   вызов `verdin_content` в маршруте, поэтому плагин запрашивает `read` для статей и больше
+   ничего.
+
+</Steps>
+
+Теперь проект выглядит так:
+
+<FileTree>
+- verdin.toml
+- .env
+- plugins/
+  - reading-time/
+    - plugin.toml
+    - plugin.wasm
+- schema/
+  - content-types/
+    - article.json
+    - …
+</FileTree>
+
+## Включите плагин
+
+<Steps>
+
+1. Запустите (или перезапустите) сервер:
+
+   ```sh title="Terminal"
+   verdin dev
+   ```
+
+   В логе появится `plugin found plugin=reading-time version=0.1.0`.
+
+2. Откройте админ-панель, затем **Настройки → Плагины**. Карточка **reading-time** показывает
+   его доступ (читает статьи), хуки и маршрут. Включите его.
+
+3. Откройте **Настройки** на карточке: форма показывает **Words per minute** со значением по
+   умолчанию 200. Значения вне диапазона от 50 до 1000 отклоняются. Оставьте как есть.
+
+</Steps>
+
+## Проверьте
+
+<Steps>
+
+1. Создайте статью с телом в несколько сотен слов — в админ-панели или через API с
+   API-токеном:
+
+   ```sh title="Terminal"
+   curl -X POST http://localhost:1337/api/articles \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "data": { "title": "Hello plugins", "slug": "hello-plugins", "body": "…450 words…" } }'
+   ```
+
+   В ответе есть `"readingTime": 3`: 450 слов при 200 словах в минуту с округлением вверх. Вы
+   это поле не передавали — его заполнил хук.
+
+2. Обновите только заголовок. `readingTime` не меняется: в данных обновления нет `body`,
+   поэтому хук возвращает `{}`. Обновите тело — и значение пересчитается.
+
+3. Опубликуйте статью, затем откройте **Журнал** на карточке плагина: там будет
+   `published <documentId>`. (Через API создание без `?status=draft` сразу публикует запись,
+   поэтому строка уже там.)
+
+4. Вызовите маршрут:
+
+   ```sh title="Terminal"
+   curl -i http://localhost:1337/api/plugins/reading-time/stats
+   ```
+
+   ```text
+   HTTP/1.1 200 OK
+   content-type: application/json
+   cache-control: max-age=60
+
+   {"articles":1,"averageMinutes":3.0}
+   ```
+
+   Он считает опубликованные статьи: `verdin_content` читает опубликованные версии, если
+   запрос не просит `status: "draft"`.
+
+</Steps>
+
+<Aside type="caution">
+Маршрут отвечает любому: на маршруты плагинов **Публичный доступ** не распространяется. Здесь
+он возвращает только среднее значение, но маршрут, который возвращает или меняет контент,
+должен сам проверять `request.actor` (`{ "kind": "public" }`, `{ "kind": "token", "id": … }`
+или `{ "kind": "user", "id": … }`).
+</Aside>
+
+## Внесите изменения
+
+- Отредактируйте код, снова выполните `cargo build --release --target wasm32-unknown-unknown`,
+  скопируйте модуль и перезапустите Verdin. Переключатель и настройки сохраняются.
+- Изменения `plugin.toml` тоже требуют перезапуска. Изменения настроек применяются сразу.
+- Если вызов падает, ошибка появляется в логе сервера и в **Журнале**. Паника или тайм-аут
+  проваливают только этот вызов; для хука «до» запись продолжается без изменений плагина.
+
+## Что дальше
+
+- Добавьте [запланированное задание, поле GraphQL или виджет админки](/ru/extending/plugin-reference/).
+- Храните состояние между вызовами с возможностью `kv` и `verdin_kv_get` /
+  `verdin_kv_set`.
+- Тестовый плагин репозитория,
+  [`crates/verdin-plugins/tests/fixtures/sample`](https://github.com/Verdin-CMS/verdin/tree/main/crates/verdin-plugins/tests/fixtures/sample),
+  использует все функции хоста.

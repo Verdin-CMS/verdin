@@ -1,0 +1,79 @@
+---
+title: Resum per als editors
+description: Rep un correu diari amb les entrades que han canviat des de l'última vegada que les vas mirar, i tria quina instància l'envia.
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+El resum per als editors és un correu diari que diu a cada administrador quantes entrades han
+canviat des de l'última vegada que les va mirar, per tipus de contingut. Està desactivat per a
+tothom fins que cada administrador l'activa. Aquesta guia explica la part de l'administrador, la
+configuració del servidor i com funciona amb diverses instàncies.
+
+## Com funciona el «no vist»
+
+Una entrada passa a ser no vista per a tu quan algú altre la canvia, des de qualsevol API. Torna a
+ser vista quan l'obres. Les mateixes marques controlen les insígnies de novetat de la barra lateral
+(desactiva-les amb **Mostra les insígnies de novetats**) i el widget **Encara no vistes** de la
+pàgina d'inici.
+
+## Activa el resum
+
+<Steps>
+
+1. Obre el teu **Perfil** (o el menú de preferències de la barra superior).
+2. A **Preferències**, activa **Correu diari de canvis no vistos**.
+
+</Steps>
+
+L'interruptor defineix la preferència `"digest": "daily"` al teu compte
+(`PUT /admin/api/users/me/preferences`). Desactiva'l de la mateixa manera.
+
+Què reps:
+
+- Un missatge amb el nombre d'entrades no vistes per cada tipus de contingut que pots llegir, i un
+  enllaç al tauler d'administració.
+- Res els dies que no hi ha res de nou.
+- Només mentre el teu compte està actiu.
+
+## Configuració del servidor
+
+El resum s'envia a `[digest].hour_utc`, a través d'`[email]`:
+
+```toml title="verdin.toml"
+[email]
+provider = "smtp"
+from = "Verdin <no-reply@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+
+[digest]
+hour_utc = 7    # 0–23, UTC; 8 by default
+```
+
+| Clau | Per defecte | Descripció |
+| --- | --- | --- |
+| `[digest].enabled` | `true` | Envia el resum des d'aquesta instància. |
+| `[digest].hour_utc` | `8` | Hora (UTC) en què surt el resum. |
+
+L'enllaç del correu fa servir `[server].public_url`; defineix-la quan Verdin s'executi darrere d'un
+proxy. Amb el proveïdor de correu per defecte `log`, els missatges només s'escriuen al registre del
+servidor. Consulta la [referència de configuració](/ca/reference/configuration/).
+
+## Diverses instàncies
+
+Cada instància amb `[digest].enabled = true` intenta enviar el resum a l'hora definida. La primera
+que reclama el dia a la base de dades l'envia, i les altres se salten aquell dia, de manera que els
+administradors reben un sol correu. Per mantenir la tasca en una instància coneguda, defineix
+`enabled = false` a les altres:
+
+```sh title="Terminal"
+VERDIN_DIGEST__ENABLED=false verdin start
+```
+
+<Aside type="note">
+El resum és una addició de Verdin; Strapi no té cap equivalent.
+</Aside>

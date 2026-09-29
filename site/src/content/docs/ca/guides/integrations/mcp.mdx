@@ -1,0 +1,149 @@
+---
+title: Servidor MCP
+description: Permet que Claude i altres agents d'IA llegeixin i editin contingut de Verdin a través del Model Context Protocol, amb els permisos d'un token d'API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin pot servir el seu contingut a agents d'IA a través del
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP). Connecta-hi Claude Code, Claude
+Desktop, Cursor o qualsevol altre client MCP, i l'agent podrà llistar els teus tipus de contingut,
+consultar entrades amb els filtres de l'API REST i crear, actualitzar o publicar entrades, dins
+dels permisos del token que li donis.
+
+Strapi v5 no té cap servidor MCP integrat.
+
+## Activa'l
+
+<Steps>
+
+1. A **Configuració → Funcionalitats**, activa **Servidor MCP**. La seva targeta mostra
+   l'**Endpoint**, `https://cms.example.com/mcp`, al mateix host que l'API de contingut.
+2. A **Configuració → Tokens d’API**, tria **Crea un token**. Tria **Només lectura** tret que
+   l'agent hagi d'escriure, o **Personalitzat** per permetre només alguns tipus i accions. Copia
+   el token: es mostra un sol cop. Consulta [Tokens d'API](/ca/guides/auth/api-tokens/).
+3. Connecta el teu client amb l'endpoint i el token (a sota).
+
+</Steps>
+
+## Connecta un client
+
+El servidor parla el transport Streamable HTTP de MCP. Tots els clients necessiten l'URL i una
+capçalera `Authorization: Bearer <token>`.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+La targeta **Servidor MCP** té aquesta ordre a **Afegeix-lo a Claude Code** (**Copia l’ordre**);
+substitueix `<token>` pel teu token d'API:
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+El fitxer de configuració de Claude Desktop inicia servidors locals, així que fes de pont cap a
+l'endpoint HTTP amb [`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Els formats de configuració dels clients canvien; consulta la documentació del teu client si no
+reconeix alguna clau. Després demana a l'agent alguna cosa com *«Llista els articles publicats
+aquesta setmana a la categoria News»*.
+
+## Eines
+
+| Eina | Necessita | Què fa |
+| --- | --- | --- |
+| `list_content_types` | `find` o `findOne` | Els tipus de contingut que pot llegir el client, amb el seu tipus i els seus atributs. |
+| `get_content_type` | `find` o `findOne` | Els atributs d'un tipus de contingut: tipus, opcions i relacions. |
+| `find_entries` | `find` | Entrades d'un tipus. `query` accepta els paràmetres de l'API REST com a JSON (`filters`, `sort`, `fields`, `populate`, `pagination`); `status: "draft"` també necessita `readDrafts`. |
+| `get_entry` | `findOne` | Una entrada per `documentId` (tipus únics: sense). |
+| `create_entry` | `create` | Crea una entrada a partir de `data`, com a l'API REST. `status: "draft"` desa un esborrany. |
+| `update_entry` | `update` | Actualitza una entrada (tipus únics: sense `documentId`). |
+| `delete_entry` | `delete` | Elimina una entrada. |
+| `publish_entry`, `unpublish_entry` | `publish` | Publica o despublica una entrada. |
+
+Les eines accepten `uid` (com ara `api::article`) i, per als tipus localitzats, `locale`. Cada eina
+comprova el mateix permís que la ruta REST corresponent, i les escriptures passen pel mateix camí
+que l'API REST: validació, hooks de connectors, etapes de revisió, webhooks, historial de contingut
+i registres d'auditoria. Un agent no pot fer res que el seu token no pugui fer per REST.
+
+Consulta [Permisos](/ca/reference/permissions/) per a les accions de l'API de contingut.
+
+## Autenticació
+
+L'endpoint accepta les mateixes credencials que l'API de contingut:
+
+- un token d'API, l'opció habitual per als agents;
+- el JWT d'un usuari final, per a un agent que actua com un usuari amb sessió iniciada de la teva
+  aplicació;
+- cap capçalera `Authorization`, per als permisos del rol públic.
+
+Un token no vàlid respon `401`. El servidor no guarda sessions ni obre fluxos: cada petició és un
+`POST` JSON-RPC que es respon amb JSON (`GET` respon `405`).
+
+### Orígens de navegador
+
+Les peticions que porten una capçalera `Origin`, que envien els navegadors, es rebutgen tret que
+l'origen estigui llistat a **Orígens de navegador permesos** a la targeta **Servidor MCP**. Això
+protegeix contra el DNS rebinding, en què una pàgina web enganya el navegador perquè cridi un
+servidor de la teva xarxa. Els clients de línia d'ordres i d'escriptori no envien cap `Origin`, així
+que la llista sol estar buida.
+
+<Aside type="caution">
+Un agent amb un token d'accés complet pot eliminar i publicar contingut. Dona als agents tokens de
+només lectura o personalitzats, limitats al que necessiten. Per als esborranys que escriu un agent,
+un [flux de revisió](/ca/guides/content/review-workflows/) manté una persona entre l'agent i la
+publicació.
+</Aside>
+
+Per donar als editors ajuda d'IA dins del tauler d'administració (traducció, text alternatiu,
+suggeriments SEO), consulta [Accions d'IA](/ca/guides/integrations/ai-actions/).

@@ -1,0 +1,103 @@
+---
+title: Opmerkingen en taken
+description: Bespreek items in threads, plaats opmerkingen bij afzonderlijke velden, vermeld andere beheerders en wijs taken met vervaldatums toe.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Beheerders kunnen een item bespreken in threads met opmerkingen, een opmerking bij één veld
+plaatsen, elkaar vermelden en taken met vervaldatums toewijzen, zonder de editor te verlaten. Deze
+gids behandelt beide, wie wat kan, en de admin-API. Strapi heeft geen equivalent.
+
+## Voordat je begint
+
+- **Instellingen → Functies → Opmerkingen en taken** staat standaard aan.
+- Leestoegang tot het contenttype van een item is genoeg om de opmerkingen en taken ervan te lezen
+  en te schrijven.
+- Vermelde beheerders en toegewezenen van taken worden gemaild via `[email]`. Met de
+  standaardprovider `log` gaan de e-mails alleen naar het serverlog. Zie de
+  [configuratiereferentie](/nl/reference/configuration/).
+
+## Een opmerking bij een item plaatsen
+
+<Steps>
+
+1. Open het item en kies **Opmerkingen**. De knop toont het aantal open threads.
+2. Schrijf op het tabblad **Opmerkingen** in **Nieuwe opmerking**. Typ `@` om een beheerder te
+   vermelden.
+3. Kies **Plaatsen**, of druk op Control of Command en Enter.
+
+</Steps>
+
+Om een opmerking bij één veld te plaatsen, gebruik je de opmerkingknop naast het veld
+(**Opmerking bij**, gevolgd door de naam van het veld). Threads bij een veld worden getoond onder
+**Over** dat veld; **Alles tonen** toont weer elke thread.
+
+In een thread kun je:
+
+- **Reageren**.
+- Hem **Oplossen** als de discussie klaar is, en later **Heropenen**. Opgeloste threads gaan naar
+  **Opgeloste threads**. Alleen de eerste opmerking van een thread lost hem op.
+- **Opmerking bewerken** bij je eigen opmerkingen.
+- **Opmerking verwijderen** of **Thread verwijderen** bij je eigen opmerkingen. Een Super Admin kan
+  elke opmerking verwijderen.
+
+Opmerkingen worden bij gelokaliseerde types per locale bewaard, en bevatten tot 10.000 tekens.
+
+## Een beheerder vermelden
+
+Vermelde beheerders krijgen een e-mail met de opmerking en een link naar het item, zolang ze het
+kunnen lezen. Je wordt nooit gemaild als je jezelf vermeldt.
+
+## Een taak toewijzen
+
+<Steps>
+
+1. Open het tabblad **Taken** van hetzelfde paneel en kies **Nieuwe taak**.
+2. Vul een **Titel** in, en optioneel een **Beschrijving**, iemand bij **Toegewezen aan** en een
+   **Vervaldatum**. De toegewezene moet het item kunnen lezen.
+3. Kies **Taak aanmaken**.
+
+</Steps>
+
+De toegewezene wordt gemaild, tenzij hij de taak aan zichzelf heeft toegewezen. Taken voorbij hun
+vervaldatum worden als achterstallig getoond. Markeer een taak als klaar vanuit zijn rij.
+
+De maker en de toegewezene van een taak kunnen hem wijzigen of afronden. Alleen de maker
+verwijdert hem. Een Super Admin kan beide bij elke taak.
+
+Om je open taken over alle items heen te zien, voeg je de widget **Mijn taken** toe aan de
+startpagina: kies **Aanpassen** en daarna **Widget toevoegen**.
+
+## Live samenwerken
+
+Als een andere beheerder een opmerking of taak toevoegt, oplost of verwijdert op het item dat jij
+open hebt, meldt het paneel **Opmerkingen zijn bijgewerkt.** of **Taken zijn bijgewerkt.** en toont
+het de wijziging.
+
+## Admin-API
+
+Alle routes staan onder `/admin/api`. `uid`, `documentId` en `locale` noemen het item.
+
+| Route | Doet |
+| --- | --- |
+| `GET /comments?uid=&documentId=&locale=` | De threads van het item met hun reacties. |
+| `POST /comments` | `{ uid, documentId, locale?, field?, parentId?, body }`. `parentId` maakt er een reactie van. |
+| `PUT /comments/{id}` | `{ body }`. Alleen je eigen opmerkingen. |
+| `DELETE /comments/{id}` | Je eigen opmerkingen, of elke opmerking als Super Admin. |
+| `POST /comments/{id}/resolve`, `POST /comments/{id}/reopen` | Op de eerste opmerking van een thread. |
+| `GET /tasks?uid=&documentId=&locale=` | De taken van het item. |
+| `GET /tasks?mine=true&status=open` | Je taken, over de items heen die je nog kunt lezen. |
+| `POST /tasks` | `{ uid, documentId, locale?, title, description?, assigneeId?, dueDate? }`, met `dueDate` als `YYYY-MM-DD`. |
+| `PUT /tasks/{id}` | Maker of toegewezene. Een of meer van `title`, `description`, `assigneeId`, `dueDate` (`null` leegt ze), en `status` (`open` of `done`). |
+| `DELETE /tasks/{id}` | Alleen de maker (of een Super Admin). |
+
+In de body van een opmerking wordt een vermelding geschreven als `@[Name](user:12)`, waarbij `12`
+het id van de beheerder is.
+
+<Aside type="note">
+De routes antwoorden met `404` zolang de functie uit staat. Als je hem uitzet, worden de
+opmerkingen en taken verborgen; ze blijven bewaard voor als je hem weer aanzet.
+</Aside>

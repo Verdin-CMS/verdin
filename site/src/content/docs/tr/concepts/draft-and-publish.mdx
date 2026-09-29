@@ -1,0 +1,131 @@
+---
+title: "Taslak ve yayınlama"
+description: "Belgeler, taslak ve yayınlanmış sürümleri, bir kaydın geçtiği durumlar ve her API’nin bunları nasıl okuyup yazdığı."
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Taslak ve yayınlama, editörlerin sitenizin gösterdiğini değiştirmeden bir belge üzerinde
+çalışmasını ve hazır olduğunda yayınlamasını sağlar. Bu sayfa modeli açıklar: belgeler,
+sürümler, içeriği bunlar arasında taşıyan eylemler ve her API’nin bunları nasıl ele aldığı.
+Strapi v5’teki gibi çalışır.
+
+Her içerik tipi için şemasında açın:
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+`options.draftAndPublish` yoksa kapalıdır.
+
+## Belgeler ve sürümler
+
+Bir **belge**, `documentId` ile tanımlanan tek bir kayıttır. Taslak ve yayınlama ile bir
+belgenin en fazla iki **sürümü** olur:
+
+- her düzenlemenin değiştirdiği bir **taslak** ve
+- içerik API’sinin varsayılan olarak sunduğu bir **yayınlanmış** sürüm.
+
+[Yerelleştirilmiş](/tr/concepts/internationalization/) bir tipte her dilin kendi taslağı ve
+yayınlanmış sürümü vardır; hepsi aynı `documentId`’yi paylaşır.
+
+Taslak ve yayınlama kullanmayan tiplerde dil başına her zaman yayınlanmış olan tek bir sürüm
+vardır: her yazma okuyucuların gördüğünü değiştirir.
+
+## Durumlar
+
+Yönetim paneli her kaydın durumunu listede ve düzenleyicide gösterir:
+
+| Durum | Taslak | Yayınlanmış sürüm | Yayınlanmış içeriğin okuyucularının gördüğü |
+| --- | --- | --- | --- |
+| **Taslak** | evet | yok | Hiçbir şey: belge görünür değildir. |
+| **Yayınlandı** | yayınlanmışla aynı | evet | Yayınlanmış sürüm. |
+| **Değiştirildi** | son yayınlamadan beri değişti | evet | Yeni değişiklikler olmadan yayınlanmış sürüm. |
+
+<Diagram
+  caption="Taslak ve yayınlama kullanan bir belgenin durumları ve aralarındaki eylemler"
+  code={`stateDiagram-v2
+    [*] --> Draft: oluştur
+    Draft --> Published: yayınla
+    Published --> Modified: kaydet
+    Modified --> Published: yayınla veya değişiklikleri at
+    Published --> Draft: yayından kaldır
+    Modified --> Draft: yayından kaldır`}
+/>
+
+Eylemler bir belgeyi bu durumlar arasında taşır:
+
+| Eylem | Etkisi | Nereden → nereye |
+| --- | --- | --- |
+| Kaydet | Taslağı yazar. | Taslak → Taslak, Yayınlandı → Değiştirildi |
+| **Yayınla** | Taslağı, gerekirse oluşturarak yayınlanmış sürümün üzerine kopyalar. | Taslak veya Değiştirildi → Yayınlandı |
+| **Yayından kaldır** | Yayınlanmış sürümü siler; taslak kalır. | Yayınlandı veya Değiştirildi → Taslak |
+| **Değişiklikleri at** | Taslağı yayınlanmış sürümün bir kopyasıyla değiştirir. | Değiştirildi → Yayınlandı |
+| Sil | Tüm sürümleri (yerelleştirilmiş tiplerde istenen dilinkileri) kaldırır. | herhangi → yok |
+
+Yayınlama tek bir transaction içinde çalışır. Taslak üzerinde `required` alanları ve tipin
+[alanlar arası kurallarını](/tr/concepts/content-model/#alanlar-arası-doğrulamalar) denetler;
+başarısız bir denetim hiçbir şey yayınlamaz. Taslaklar o zamana kadar eksik olabilir ve bu
+kuralları ihlal edebilir.
+
+Taslaklarda `publishedAt` `null`’dır. Yayınlanmış sürüm son yayınlandığı zamanı taşır.
+
+## İlişkiler ve medya sürümü izler
+
+Her sürümün kendi ilişki ve medya bağlantıları vardır ve yayınlama, taslağın bağlantılarını
+yayınlanmış sürüme kopyalar. Bağlantılar belgelere işaret eder ve okunan sürümde çözümlenir:
+yayınlanmış bir makale kategorisinin yayınlanmış sürümünü, bir taslak ise kategorinin
+taslağını gösterir. Kategori yayından kaldırılırsa, hiçbir bağlantı yeniden yazılmadan, yeniden
+yayınlanana kadar yayınlanmış makaleden kaybolur. Bkz.
+[İlişkiler](/tr/concepts/relations/#satıra-göre-değil-belgeye-göre-bağlı).
+
+Bileşenler ve dinamik bölgeler satırın parçasıdır, bu yüzden yayınlama onları olduğu gibi
+kopyalar.
+
+## Taslakları ve yayınlanmış içeriği okuma
+
+| API | Varsayılan olarak okur | Taslakları okumak için |
+| --- | --- | --- |
+| [REST](/tr/api/rest/#durum) | Yayınlanmış sürümler | **Taslakları oku** iznini gerektiren `?status=draft` |
+| [GraphQL](/tr/api/graphql/) | Yayınlanmış sürümler | Aynı izinle `status: DRAFT` |
+| [Admin API](/tr/api/admin/) | Taslaklar | `?status=published` |
+
+Taslakları okumak ayrı bir izindir (`readDrafts`); böylece sitenizin içeriğini okuyan bir
+token yayınlanmamış çalışmaları okuyamaz. Salt okunur API token’ları asla taslak okumaz.
+
+Belgeleri hiç yayınlanıp yayınlanmadıklarına göre ayırmak için `hasPublishedVersion` ile
+filtreleyin: `?status=draft&hasPublishedVersion=false` hiç yayınlanmamış belgeleri listeler.
+
+## API’ler üzerinden yazma
+
+API’ler yazmalarda Strapi v5’i izler:
+
+- **REST ve GraphQL** `create` ve `update`, istek `status=draft` (GraphQL’de `status: DRAFT`)
+  istemedikçe taslağı yazar **ve yayınlar**. Başarısız bir yayınlama tüm isteği geri alır.
+- **Yönetim paneli ve admin API** yalnızca taslakları kaydeder. Yayınlama her zaman açık bir
+  eylemdir.
+
+REST API’nin ayrıca Strapi’nin REST üzerinden sunmadığı açık eylemleri vardır:
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+Bunlar tip üzerinde **Yayınla** iznini gerektirir. Bkz. [REST API](/tr/api/rest/#eylemler).
+
+## Yayınlayan diğer özellikler
+
+- [Sürümler](/tr/guides/content/releases/) belgeleri gruplandırır ve bunları hemen veya bir
+  tarihte birlikte yayınlar ya da yayından kaldırır.
+- [İnceleme iş akışları](/tr/guides/content/review-workflows/), bir belgenin yayınlanabilmesi
+  için bir aşama gerektirebilir.
+- Yayınlama ve yayından kaldırma, `entry.publish` ve `entry.unpublish`
+  [webhook olaylarını](/tr/api/webhooks/) ve [gerçek zamanlı olayları](/tr/api/realtime/)
+  gönderir. Bir taslağın kaydedilmesi `entry.update` gönderir; bunu gerçek zamanlı olarak
+  yalnızca taslakları okumaya yetkili çağıranlar alır.

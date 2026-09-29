@@ -1,0 +1,168 @@
+---
+title: Inicio de sesión único
+description: Permite que los administradores inicien sesión con un proveedor OpenID Connect como Microsoft Entra ID, Google Workspace, Okta o Keycloak, con asignación de grupos a roles.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Los administradores pueden iniciar sesión a través de cualquier proveedor OpenID Connect:
+Microsoft Entra ID, Google Workspace, Okta, Auth0, Keycloak, Authentik, GitLab y otros. Cada
+proveedor tiene un botón en la página de inicio de sesión, y el inicio de sesión con contraseña
+sigue funcionando a su lado. Esta guía registra una aplicación, configura el proveedor en Verdin
+y asigna grupos a roles.
+
+El SSO es una funcionalidad Enterprise en Strapi. En Verdin forma parte del núcleo de código
+abierto. Para los usuarios finales de tus sitios, consulta en su lugar
+[Inicio de sesión OAuth para usuarios finales](/es/guides/auth/end-users/).
+
+## Antes de empezar
+
+- Configurar el SSO necesita **Gestionar funcionalidades** (`features.manage`).
+- Define `[server].public_url` con la dirección a la que acceden a Verdin los administradores,
+  como `https://cms.example.com`. La URI de redirección se construye a partir de ella.
+
+## Configúralo
+
+<Steps>
+
+1. **Registra una aplicación** (un cliente "web") en el proveedor, con esta URI de redirección:
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>` es el id del proveedor que eliges en el paso 3, como `corp`. La ruta del panel sigue a
+   `[admin].path`.
+
+2. **Pon el secreto del cliente en el entorno** y reinicia Verdin:
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   La variable es `VERDIN_SSO_<ID>_SECRET`, con el id en mayúsculas y los guiones como guiones
+   bajos. Los clientes públicos (solo PKCE, sin secreto) no necesitan variable.
+
+3. **Añade el proveedor.** Activa **Configuración → Funcionalidades → Inicio de sesión único**,
+   selecciona **Configurar proveedores**, después **Añadir un proveedor** y rellena:
+
+   - **Id**: letras minúsculas, dígitos y guiones, hasta 32 caracteres.
+   - **Texto del botón**: se muestra en la página de inicio de sesión como "Continuar con …".
+   - **URL del emisor**: Verdin lee `/.well-known/openid-configuration` bajo ella. Debe usar
+     `https`, salvo en `localhost`.
+   - **Id de cliente** y **Ámbitos** (`openid email profile` por defecto; `openid` es
+     obligatorio).
+
+   El diálogo muestra la **URI de redirección que registrar en el proveedor** y el nombre de la
+   variable del secreto. Guarda.
+
+4. **Pruébalo** en una ventana privada: la página de inicio de sesión muestra
+   **Continuar con Corp account**.
+
+</Steps>
+
+## Quién puede iniciar sesión, y con qué roles
+
+| Ajuste | Clave JSON | Efecto |
+| --- | --- | --- |
+| **Dominios de correo permitidos** | `allowedDomains` | Solo estos dominios de correo pueden iniciar sesión. Vacío significa cualquiera. |
+| **Crear cuentas en el primer inicio de sesión** | `autoCreate` | Crea una cuenta de administrador la primera vez que alguien inicia sesión. Sin él, solo pueden iniciar sesión los correos que ya tienen cuenta. |
+| **Roles por defecto** | `defaultRoles` | Códigos de rol de las cuentas creadas cuando la asignación de roles no da ninguno. |
+| **Claim de roles** | `roleClaim` | El claim del ID token que enumera los grupos del usuario, como `groups` o `roles`. |
+| **Asignación de roles** | `roleMap` | Qué código de rol da cada valor del claim. |
+| **Confiar en emails no verificados** | `trustUnverifiedEmail` | Acepta los correos que el proveedor no marca como verificados. |
+| **El proveedor exige MFA** | `providerMfa` | No pide a los administradores su segundo factor de Verdin después de este proveedor. |
+
+- Un proveedor que crea cuentas necesita roles por defecto o una asignación de roles.
+- Ninguno de los dos puede dar el rol Super Admin; asciende a los administradores a mano en
+  **Configuración → Usuarios**.
+- Los roles solo se asignan al crear la cuenta. Después, gestiónalos en
+  **Configuración → Usuarios**.
+- El nombre y los apellidos de una cuenta creada salen de los claims `given_name` y
+  `family_name`.
+
+El mismo proveedor en JSON, tal como lo guarda la funcionalidad (`PUT /admin/api/features/sso`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## Notas sobre los proveedores
+
+- **Microsoft Entra ID** omite `email_verified` en sus ID tokens: activa
+  **Confiar en emails no verificados** para él. Añade el claim `groups` en la configuración de
+  tokens de la aplicación para asignar grupos; sus valores son ids de grupo.
+- **Google Workspace**: el emisor es `https://accounts.google.com`. Limita los inicios de sesión
+  a tu dominio con **Dominios de correo permitidos**.
+- **Keycloak**: el emisor es la URL del realm, `https://<host>/realms/<realm>`.
+
+## Autenticación de dos factores
+
+Por defecto, a un administrador que tiene un [segundo factor](/es/guides/auth/two-factor/) de
+Verdin se le pide después de que el proveedor lo devuelva. Si el proveedor ya exige MFA, activa
+**El proveedor exige MFA** para que no se le pida dos veces.
+
+## Cómo funciona
+
+<Diagram
+  caption="Un inicio de sesión con SSO"
+  code={`sequenceDiagram
+  participant B as Navegador
+  participant V as Verdin
+  participant P as Proveedor
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: redirección con state y desafío PKCE
+  B->>P: inicio de sesión
+  P-->>B: redirección al callback con el código
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: intercambio del código (TLS)
+  V-->>B: cookie de sesión, redirección a /admin/`}
+/>
+
+- Verdin usa el flujo de código de autorización con PKCE (S256). El `state` va firmado y ligado
+  a una cookie `HttpOnly` de vida corta, y el `nonce` se deriva de él.
+- Comprueba el emisor, la audiencia (y `azp` cuando hay varias), la caducidad y el nonce del ID
+  token. Necesita un claim `email` con `email_verified: true`, salvo que
+  **Confiar en emails no verificados** esté activado.
+- Los endpoints del proveedor deben usar `https`.
+- Cada inicio de sesión con SSO queda en los
+  [registros de auditoría](/es/guides/content/audit-logs/) como `admin.login`, con el
+  proveedor.
+
+Cuando un inicio de sesión falla, el navegador vuelve a la página de inicio de sesión con el
+motivo ("El inicio de sesión único ha fallado"), y el motivo se escribe en el log del servidor.
+Los más habituales:
+
+| Motivo | Solución |
+| --- | --- |
+| the provider did not verify the email | Activa **Confiar en emails no verificados**, o corrige el claim del proveedor. |
+| this email domain may not sign in | Añade el dominio a **Dominios de correo permitidos**. |
+| no admin account for this identity | Activa **Crear cuentas en el primer inicio de sesión**, o crea antes el administrador. |
+| the sign-in request expired or was not started here | Vuelve a empezar desde la página de inicio de sesión, en el mismo navegador. |
+
+<Aside type="note">
+Un administrador desactivado tampoco puede iniciar sesión mediante SSO.
+</Aside>

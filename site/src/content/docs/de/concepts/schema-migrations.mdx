@@ -1,0 +1,154 @@
+---
+title: "Schemamigrationen"
+description: "Wie Verdin Schemaänderungen in Datenbankmigrationen umwandelt: der Plan, Risikostufen, was verdin dev und verdin start tun, Umbenennungen und --allow."
+sidebar:
+  order: 7
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Wenn du eine Schemadatei änderst, muss die Datenbank folgen: Ein neues Attribut braucht eine
+Spalte, eine neue Relation eine Verknüpfungstabelle. Verdin berechnet diese Migration für dich,
+zeigt sie dir vor der Ausführung und löscht nie Daten, ohne dass du es sagst. Diese Seite
+erklärt, wie.
+
+## Vom Schema zum Plan
+
+Verdin verlangt nie, dass du eine Migration schreibst. Es vergleicht zwei Modelle der
+Datenbank:
+
+1. **Soll**: abgeleitet aus deinen `schema/*.json`-Dateien, mit jeder Tabelle, Spalte und
+   jedem Index, die sie brauchen (einschließlich Verknüpfungstabellen und der eigenen Tabellen
+   von Verdin).
+2. **Ist**: das Modell, das die letzte Migration hinterlassen hat, als Snapshot in der
+   Datenbank gespeichert.
+
+Der Unterschied ist ein **Plan**: eine Liste von Schritten, jeder mit seinem SQL für deine
+Datenbank und einer Risikostufe. Weil der Plan aus dem gespeicherten Snapshot entsteht statt
+aus einer Untersuchung der Datenbank, ist er deterministisch und auf jedem Dialekt gleich.
+Änderungen, die auf deiner Datenbank dasselbe SQL ergeben, etwa `integer` zu `biginteger` auf
+SQLite, erzeugen keinen Schritt.
+
+<Diagram
+  caption="Wie eine Schemaänderung zur Migration wird"
+  code={`flowchart LR
+    F[schema/*.json] --> D[Soll-Modell]
+    S[(Gespeicherter Snapshot)] --> C[Ist-Modell]
+    D --> X{Diff}
+    C --> X
+    X --> P[Plan: Schritte, Risiko, SQL]
+    P --> A[apply --allow]
+    A --> B[(Datenbank und neuer Snapshot)]`}
+/>
+
+`verdin migrate plan` gibt ihn aus. Hier wurde das Attribut `excerpt` des Blogs in
+`article.json` in `summary` umbenannt:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [safe] add column articles.summary
+       ALTER TABLE "articles" ADD COLUMN "summary" text
+  2. [destructive] drop column articles.excerpt
+       ALTER TABLE "articles" DROP COLUMN "excerpt"
+
+requires: verdin migrate apply --allow destructive
+
+possible renames (pass them to keep the data):
+  --rename-column articles.excerpt=summary
+```
+
+## Risikostufen
+
+| Risiko | Schritte | Warum |
+| --- | --- | --- |
+| **Sicher** (`safe`) | Tabelle anlegen, Spalte hinzufügen, nicht eindeutigen Index hinzufügen oder entfernen, Tabelle oder Spalte umbenennen. | Kann keine Daten verlieren und nicht an bestehenden Zeilen scheitern. |
+| **Riskant** (`risky`) | Typ einer Spalte ändern, eindeutigen Index zu einer bestehenden Tabelle hinzufügen, eine SQLite-Tabelle neu aufbauen (SQLite kann Spalten nicht direkt ändern). | Kann an bestehenden Daten scheitern (Duplikate, nicht umwandelbare Werte) oder sie umschreiben. |
+| **Destruktiv** (`destructive`) | Spalte oder Tabelle entfernen. | Löscht Daten. |
+
+Jede Attributspalte ist nullable (`required` wird beim Veröffentlichen geprüft), Attribute
+hinzuzufügen ist also immer sicher, ob Pflicht oder nicht. `"unique": true` für den Titel der
+Blog-Artikel ist riskant, weil sich bestehende Titel wiederholen können:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [risky] create unique index articles_title_uq
+       CREATE UNIQUE INDEX "articles_title_uq" ON "articles" ("title", "locale", "publication_state")
+
+requires: verdin migrate apply --allow risky
+```
+
+Bevor die erste Anweisung läuft, führt Verdin für jeden riskanten Schritt, der scheitern kann,
+eine Prüfung aus, etwa eine Suche nach Duplikaten vor einem eindeutigen Index, und bricht mit
+einer Meldung ab, wenn eine davon ein Problem findet. Zu diesem Zeitpunkt hat sich nichts
+geändert.
+
+## Einen Plan anwenden
+
+`verdin migrate apply` führt die ausstehenden Schritte aus. Es nimmt das höchste Risiko, das du
+akzeptierst:
+
+```sh title="Terminal"
+verdin migrate apply                        # nur sichere Schritte (Standard)
+verdin migrate apply --allow risky          # auch Typänderungen und eindeutige Indizes
+verdin migrate apply --allow destructive    # auch Löschungen
+```
+
+Liegt ein Schritt über dem erlaubten Risiko, läuft nichts:
+
+```text title="Terminal"
+$ verdin migrate apply
+Error: these steps need explicit approval:
+  create unique index articles_title_uq (risky)
+```
+
+Eine Migration nimmt eine Sperre, sodass nie zwei Instanzen gleichzeitig migrieren. Auf
+PostgreSQL und SQLite läuft der ganze Plan in einer Transaktion: Ein Fehler macht alles
+rückgängig. MySQL und MariaDB committen jede DDL-Anweisung für sich, deshalb hält Verdin seinen
+Fortschritt Schritt für Schritt in einem Journal fest. Behebe nach einem Fehler die Ursache und
+führe `verdin migrate apply` erneut aus: Es setzt beim fehlgeschlagenen Schritt fort, wenn der
+Plan unverändert ist, und verweigert, wenn sich das Schema zwischendurch geändert hat.
+
+## Umbenennungen
+
+Ein entferntes und ein neues Attribut sehen aus wie ein Löschen und ein Hinzufügen, wobei die
+Daten der Spalte verloren gingen. Verdin rät nie eine Umbenennung. Es schlägt eine vor, wenn
+eine Spalte verschwindet und eine Spalte desselben Typs in derselben Tabelle auftaucht (oder
+eine Tabelle verschwindet und eine mit denselben Spalten auftaucht), und du bestätigst sie
+ausdrücklich:
+
+```text title="Terminal"
+$ verdin migrate apply --rename-column articles.excerpt=summary
+applied 1 step
+```
+
+- `--rename-column TABLE.OLD=NEW` benennt eine Spalte um; `TABLE` ist die Tabelle des
+  Inhaltstyps (sein `collectionName`).
+- `--rename-table OLD=NEW` benennt eine Tabelle um. Die Verknüpfungstabellen des Typs werden
+  mit umbenannt.
+- Übergib dieselben Flags an `migrate plan`, um das Ergebnis vorab zu sehen.
+
+Umbenennungen sind sichere Schritte. Der Content-Type Builder bietet in seinem Dialog dieselben
+Vorschläge an.
+
+## `verdin dev` und `verdin start`
+
+| | `verdin dev` | `verdin start` |
+| --- | --- | --- |
+| Beim Start | Wendet ausstehende sichere Schritte an. Hält an, wenn andere Schritte ausstehen. | Verweigert den Start, solange ein Schritt aussteht, außer du übergibst `--migrate`, das vorher die sicheren Schritte anwendet. |
+| Schemaänderungen im laufenden Betrieb | Der **Content-Type Builder** zeigt den Plan mit Risiken und Umbenennungsvorschlägen und wendet ihn an, wenn du bestätigst, riskantere Schritte eingeschlossen. Änderungen von Hand (oder ein `git pull`) erkennt ein File-Watcher: Sichere Pläne werden angewendet und die App lädt neu; andere werden protokolliert, und die laufende App bleibt, wie sie war. | Das Schema ist schreibgeschützt. Deploye die neuen Dateien und migriere. |
+
+Der Builder migriert zuerst die Datenbank, schreibt dann die Schemadateien und lädt danach
+Content-API, Admin-API, GraphQL und OpenAPI-Dokument ohne Neustart neu. Scheitert die
+Migration, bleiben die Dateien und die laufende App, wie sie waren.
+
+In Produktion führst du `verdin migrate plan` gegen eine Kopie der Datenbank aus und dann
+`verdin migrate apply` mit dem Risiko, das du akzeptierst, bevor du die neue Version startest.
+Siehe [Aktualisieren](/de/migrate/upgrading/) und [Backups](/de/deploy/backups/).
+
+## Im Vergleich zu Strapi
+
+Strapi synchronisiert die Datenbank beim Start mit dem Schema, ohne zu zeigen, was es tun wird.
+Verdin plant zuerst, zeigt das SQL, wendet ungefragt nur sichere Schritte an und verlangt
+`--allow` für alles, was scheitern oder Daten löschen kann.

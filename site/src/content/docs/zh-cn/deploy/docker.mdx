@@ -1,0 +1,352 @@
+---
+title: Docker
+description: 通过 Docker 或 Docker Compose 运行官方镜像中的 Verdin，搭配 PostgreSQL、MySQL、MariaDB 或 SQLite，以只读方式挂载 schema，媒体存放在卷或 S3 上。
+sidebar:
+  order: 3
+---
+
+import { Aside, FileTree, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+官方镜像运行一个内置管理后台的 Verdin 服务器。本页介绍镜像包含什么、针对每种数据库的 Compose 文件，以及如何添加你自己的配置。其他平台的页面都以此为基础。
+
+## 镜像
+
+`ghcr.io/verdin-cms/verdin` 在每次发布时都会针对 `linux/amd64` 和 `linux/arm64` 发布，标签包括完整版本号（`0.9.1`）、次版本号（`0.9`）和 `latest`。生产环境中请固定到某个次版本：0.x 的次版本可能改变行为（参见[升级](/zh-cn/migrate/upgrading/)）。
+
+| | |
+| --- | --- |
+| 基础镜像 | Distroless（`gcr.io/distroless/static-debian12:nonroot`）：没有 shell，没有包管理器，没有 `curl`。 |
+| 用户 | `nonroot`（uid 和 gid 均为 `65532`）。 |
+| 入口点 | `/usr/local/bin/verdin` |
+| 默认命令 | `start --migrate`：先执行待处理的安全迁移，然后提供服务。 |
+| 端口 | `1337` |
+| 卷 | `/data`：SQLite 数据库、本地上传文件，以及 `dev` 模式下的 schema。 |
+| 配置 | `/app/verdin.toml`（`VERDIN_CONFIG=/app/verdin.toml`）。 |
+
+内置配置：
+
+```toml title="/app/verdin.toml"
+[server]
+host = "0.0.0.0"
+port = 1337
+
+[schema]
+path = "/data/schema"
+
+[log]
+format = "json"
+
+[upload.transforms]
+cache_dir = "/data/.cache/transforms"
+
+[search]
+dir = "/data/search"
+```
+
+以及 `VERDIN_DATABASE_URL=sqlite:///data/verdin.db`。本地上传提供方默认写入的 `/app/public/uploads` 是指向 `/data/uploads` 的链接。任何键都可以用 `VERDIN_<SECTION>__<KEY>` 变量覆盖（参见[配置参考](/zh-cn/reference/configuration/)）。
+
+## 试用
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+`dev` 会启用内容类型构建器，它把 schema 写入卷中的 `/data/schema`。打开 `http://localhost:1337/admin/` 并注册第一个管理员。在生产环境中，请把 schema 保存在代码仓库中，并像下文那样运行默认的 `start --migrate`。
+
+## 使用 Compose 运行
+
+把你提交的 schema 放在 Compose 文件旁边：
+
+<FileTree>
+- compose.yaml
+- .env              数据库密码，供 Compose 使用
+- verdin.env        来自 `verdin secrets` 的密钥
+- schema/
+  - content-types/
+  - components/
+</FileTree>
+
+<Steps>
+
+1. 生成一次密钥，并且不要纳入版本控制：
+
+   ```sh frame="terminal"
+   docker run --rm ghcr.io/verdin-cms/verdin:0.10 secrets > verdin.env
+   echo "DB_PASSWORD=$(openssl rand -hex 24)" > .env
+   ```
+
+2. 为你的数据库编写 `compose.yaml`。把 `https://cms.example.com` 替换为浏览器将要使用的地址。
+
+   <Tabs syncKey="db">
+   <TabItem label="PostgreSQL">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD}@db:5432/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: postgres:17
+       restart: unless-stopped
+       environment:
+         POSTGRES_USER: verdin
+         POSTGRES_PASSWORD: ${DB_PASSWORD}
+         POSTGRES_DB: verdin
+       volumes:
+         - db-data:/var/lib/postgresql/data
+       healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U verdin -d verdin"]
+         interval: 5s
+         retries: 20
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   </TabItem>
+   <TabItem label="MySQL">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: mysql://verdin:${DB_PASSWORD}@db:3306/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: mysql:8.4
+       restart: unless-stopped
+       environment:
+         MYSQL_USER: verdin
+         MYSQL_PASSWORD: ${DB_PASSWORD}
+         MYSQL_DATABASE: verdin
+         MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+       volumes:
+         - db-data:/var/lib/mysql
+       healthcheck:
+         test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+         interval: 5s
+         retries: 30
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   </TabItem>
+   <TabItem label="MariaDB">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: mysql://verdin:${DB_PASSWORD}@db:3306/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: mariadb:11.4
+       restart: unless-stopped
+       environment:
+         MARIADB_USER: verdin
+         MARIADB_PASSWORD: ${DB_PASSWORD}
+         MARIADB_DATABASE: verdin
+         MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+       volumes:
+         - db-data:/var/lib/mysql
+       healthcheck:
+         test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+         interval: 5s
+         retries: 30
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   MariaDB 使用 `mysql://` URL；Verdin 会自动识别所连接的服务器。
+
+   </TabItem>
+   <TabItem label="SQLite">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         # The image's default; the file lives in the volume.
+         VERDIN_DATABASE_URL: sqlite:///data/verdin.db
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+
+   volumes:
+     verdin-data:
+   ```
+
+   使用 SQLite 时，只运行一个容器：数据库是其卷中的一个文件。
+
+   </TabItem>
+   </Tabs>
+
+   包含 `@`、`:` 或 `/` 等字符的密码必须在 URL 中进行百分号编码；上面用 `openssl rand -hex` 生成的密码不需要编码。
+
+3. 启动并跟踪日志：
+
+   ```sh frame="terminal"
+   docker compose up -d
+   docker compose logs -f verdin
+   ```
+
+   首次启动会创建所有表。等待出现 `verdin listening`。
+
+4. 立即在 `/admin/` 注册第一个管理员，或者通过命令行注册（会提示输入密码）：
+
+   ```sh frame="terminal"
+   docker compose exec -it verdin verdin admin create --email you@example.com
+   ```
+
+</Steps>
+
+在 1337 端口前放置一个终止 TLS 的反向代理（Caddy、nginx、Traefik 或你的负载均衡器），并把它列在 `VERDIN_SERVER__TRUSTED_PROXIES` 中。在 Compose 网络中，代理的地址位于 Docker 的私有地址段内；`'["172.16.0.0/12"]'` 涵盖了 Docker 的默认网络，但请用 `docker network inspect` 检查你的网络。
+
+## 卷
+
+| 路径 | 存放内容 | 说明 |
+| --- | --- | --- |
+| `/data` | SQLite 数据库、本地上传文件（`/data/uploads`） | 命名卷会保留镜像中的属主（`65532`）。绑定挂载必须对 uid `65532` 可写。 |
+| `/data/schema` | schema 文件 | 使用 `start` 时，以只读方式（`:ro`）挂载你提交的 schema。`dev` 需要它可写。 |
+
+镜像不会写入其他任何位置：图片转换缓存和搜索索引也在卷中（`/data/.cache/transforms`、`/data/search`）。0.10 之前的镜像把这两者放在 `/app` 下，而 `nonroot` 用户无法写入该目录；对于这些版本，请把 `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR` 和 `VERDIN_SEARCH__DIR` 设置为 `/data` 下的路径。
+
+上传内容在存储之前会以流的方式写入系统临时目录（`/tmp`）。
+
+## 健康检查
+
+镜像声明了一个运行 [`verdin healthcheck`](/zh-cn/reference/cli/) 的 `HEALTHCHECK`：它在回环接口上请求 `/_health`，因此 `docker ps` 会显示容器为 `healthy`，Compose 的 `depends_on: condition: service_healthy` 也能正常工作。镜像中没有 shell 或 `curl`；如果要编写自己的 Compose 检查，请以同样的方式调用二进制文件：
+
+```yaml
+healthcheck:
+  test: ["CMD", "/usr/local/bin/verdin", "healthcheck"]
+  interval: 30s
+```
+
+代理、负载均衡器和编排系统应调用 `GET /_ready`（数据库有响应时返回 200，否则返回 503），存活检查则调用 `GET /_health`。参见[监控](/zh-cn/deploy/monitoring/)。
+
+## 你自己的配置文件
+
+环境变量可以覆盖大多数设置，包括 S3 上传提供方（`VERDIN_UPLOAD__PROVIDER__NAME=s3`、`VERDIN_UPLOAD__PROVIDER__BUCKET`、`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`……；在 0.10 之前，镜像内置的 `dir` 键会导致这种方式失败）。如果你更希望把设置放在一个受版本控制的文件中，请使用配置文件。
+
+为容器编写一个 `verdin.toml`：
+
+```toml title="verdin.toml"
+[server]
+host = "0.0.0.0"
+port = 1337
+public_url = "https://cms.example.com"
+trusted_proxies = ["172.16.0.0/12"]
+
+[schema]
+path = "/data/schema"
+
+[log]
+format = "json"
+
+[upload]
+provider = { name = "s3", bucket = "media", region = "auto",
+             endpoint = "https://<account>.r2.cloudflarestorage.com",
+             public_url = "https://media.example.com" }
+
+[email]
+provider = "smtp"
+from = "Verdin <cms@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+username = "cms@example.com"
+```
+
+然后把它挂载到内置配置的位置上：
+
+```yaml title="compose.yaml"
+services:
+  verdin:
+    # …as above
+    environment:
+      VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD}@db:5432/verdin
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+    volumes:
+      - verdin-data:/data
+      - ./verdin.toml:/app/verdin.toml:ro
+      - ./schema:/data/schema:ro
+```
+
+不要把密钥放在文件中：`VERDIN_EMAIL_SMTP_PASSWORD`、`AWS_*` 等仍然放在环境变量中。
+
+## 你自己的镜像
+
+在无法挂载文件的平台上（Fly.io、Render、Railway、大多数 Kubernetes 环境），请基于官方镜像构建一个小镜像，把你的配置和 schema 放进去。这样每次部署都会带上你提交的确切 schema：
+
+```dockerfile title="Dockerfile"
+FROM ghcr.io/verdin-cms/verdin:0.10
+COPY verdin.toml /app/verdin.toml
+COPY schema /app/schema
+# Plugins, if you use them: COPY plugins /app/plugins
+```
+
+并在该 `verdin.toml` 中设置 `[schema] path = "schema"`（路径相对于该文件，因此即 `/app/schema`）。这些文件属于 root，对服务器只读，这正是 `verdin start` 所需要的。
+
+你的文件会完全替换内置配置。请重复写上你仍需要的键（`host`、`[log] format = "json"`，以及转换缓存和搜索索引的 `/data` 路径）。本地上传提供方的默认目录 `public/uploads` 已经指向卷中。
+
+<Aside type="caution">
+请像上面那样按名称复制文件。绝不要使用 `COPY . /app`：那会把带有密钥的 `.env` 打包进镜像。
+</Aside>
+
+## 从源码构建镜像
+
+代码仓库中的 `Dockerfile` 会构建管理后台和服务器：
+
+```sh frame="terminal"
+git clone https://github.com/Verdin-CMS/verdin && cd verdin
+docker build -t verdin .
+```
+
+它以 `gcr.io/distroless/cc-debian12:nonroot` 为基础镜像；除此之外，其行为与发布的镜像相同。

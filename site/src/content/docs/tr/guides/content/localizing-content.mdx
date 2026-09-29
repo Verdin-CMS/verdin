@@ -1,0 +1,172 @@
+---
+title: İçeriği yerelleştirme
+description: Dil ekleyin, bir içerik tipini yerelleştirilmiş yapın, kayıtları yönetim panelinde çevirin ve her dili API üzerinden okuyun veya yazın.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Yerelleştirilmiş bir içerik tipi her kaydın dil başına bir sürümünü tutar. Bu kılavuz yayın
+yaptığınız dilleri ekler, bir tip için yerelleştirmeyi açar, kayıtları yönetim panelinde çevirir
+ve her dili API üzerinden okur veya yazar. Arkasındaki model (paylaşılan alanlar,
+yerelleştirilmiş tipler arasındaki ilişkiler) için bkz.
+[Uluslararasılaştırma](/tr/concepts/internationalization/).
+
+Yerelleştirme çekirdeğin parçasıdır: açılacak bir özellik yoktur. Strapi v5’in i18n eklentisi
+gibi çalışır ve aynı `locale` parametresini alır.
+
+## Başlamadan önce
+
+- Dil eklemek, yeniden adlandırmak veya silmek için **Dilleri yönet** (`locales.manage`)
+  gerekir.
+- Bir tipi yerelleştirilmiş yapmak için şemasını **İçerik Tipi Oluşturucu**’da (`verdin dev`)
+  veya `schema/content-types/<name>.json` içinde düzenlersiniz.
+- Editörlerin ihtiyaç duyduğu içerik izinleri için bkz. [İzinler](/tr/reference/permissions/).
+
+## Dilleri ekleme
+
+İlk başlatma, varsayılan dil olarak İngilizceyi (`en`) oluşturur. Dil belirtmeyen istekler
+varsayılanı kullanır ve yeni kayıtlar onda başlar.
+
+<Steps>
+
+1. **Ayarlar → Uluslararasılaştırma**’yı açın ve **Dil ekle**’yi seçin.
+2. Bir **Kod** girin: isteğe bağlı olarak bir bölge veya yazı sistemiyle birlikte küçük harfli
+   bir dil kodu, örneğin `fr`, `pt-BR` veya `zh-Hans`. Ad sizin için doldurulur ve
+   değiştirilebilir.
+3. Dil belirtmeyen isteklerin onu kullanması gerekiyorsa **Varsayılan dil yap**’ı işaretleyin,
+   ardından kaydedin.
+
+</Steps>
+
+Varsayılanı daha sonra değiştirmek için başka bir dilde **Varsayılan olarak ayarla**’yı seçin.
+Varsayılan dil silinemez.
+
+<Aside type="caution" title="Bir dili silmek kayıtlarını siler">
+Bir dili silmek, o dilde yazılmış her kaydı, her içerik tipinde, yayınlanmış sürümler dâhil kalıcı
+olarak siler. Diyalog onaylamak için dil kodunu yazmanızı ister.
+</Aside>
+
+## Bir içerik tipini yerelleştirilmiş yapma
+
+**İçerik Tipi Oluşturucu**’da tipi açın ve ayarlarında **Yerelleştirilmiş**’i açın. Ardından alan
+alan hangi değerlerin dile göre farklı olduğuna karar verin: **Yerelleştirilmiş** kapalı olan bir
+alan, tüm dillerin paylaştığı tek bir değer tutar.
+
+Aynı şey şema dosyasında, örnek projenin `article` tipi için:
+
+```json title="schema/content-types/article.json" {6,9}
+{
+  "kind": "collectionType",
+  "singularName": "article",
+  "pluralName": "articles",
+  "displayName": "Article",
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "title": { "type": "string", "required": true },
+    "readingTime": { "type": "integer", "pluginOptions": { "i18n": { "localized": false } } }
+  }
+}
+```
+
+Paylaşılan alanlar nasıl davranır:
+
+- Paylaşılan bir alanı bir dilde kaydetmek onu tüm dillerin taslaklarına yazar.
+- Bir dili yayınlamak onun paylaşılan alanlarını diğer dillerin yayınlanmış sürümlerine kopyalar.
+- İlişkiler ve medya alanları da paylaşılabilir.
+
+`pluginOptions.i18n.localized` içermeyen tipler yerelleştirilmemiştir ve `locale`
+parametrelerini yok sayar. Bir tipin yerelleştirmesini değiştirmek bir şema değişikliğidir:
+dağıtmadan önce migrasyonu `verdin migrate plan` ile gözden geçirin.
+
+## Yönetim panelinde bir kaydı çevirme
+
+<Steps>
+
+1. Kaydı açın ve düzenleyicinin üst kısmındaki **Dil** seçicisinden hedef dili seçin. Sürümü
+   olmayan diller **Henüz oluşturulmadı** gösterir.
+2. Düzenleyici, kaydın o dilde henüz bir sürümü olmadığını ve kaydetmenin onu oluşturacağını
+   söyler. Paylaşılan alanlar değerlerini zaten gösterir.
+3. Mevcut bir çeviriden başlamak için o bildirimde **Başka bir dilden doldur**’u seçin.
+   **Şuradan kopyala** içinde kaynağı seçin ve **Alanları kopyala**’yı seçin. Bu, ilişkiler ve
+   medya dâhil yerelleştirilmiş alanları forma kopyalar. Henüz hiçbir şey kaydedilmez.
+4. Alanları düzenleyin, ardından **Taslağı kaydet** veya **Yayınla**. Her dilin kendi taslağı ve
+   yayınlanmış sürümü vardır.
+
+</Steps>
+
+Liste görünümünde de aynı **Dil** seçicisi bulunur: sürümleri aynı anda tek bir dilde listeler.
+Düzenleyiciden silmek yalnızca mevcut dildeki sürümü kaldırır; diğer diller korunur.
+
+**AI eylemleri** özelliği açıkken düzenleyici metin alanlarını başka bir dilin taslağından da
+çevirebilir. Bkz. [AI eylemleri](/tr/guides/integrations/ai-actions/).
+
+## Editörleri bazı dillerle sınırlama
+
+Bir rolün içerik izinleri yalnızca bazı dilleri kapsayabilir. **Ayarlar → Roller** bölümünde rolü
+açın, içerik tipini bulun ve **Diller**’i seçin. **Yalnızca bu diller**’i seçin ve dilleri
+işaretleyin. Bu role sahip admin’ler diğer dillerdeki sürümleri okuyamaz veya değiştiremez;
+**Dil** seçicisi bu dilleri "(erişim yok)" olarak gösterir.
+
+## API üzerinden dilleri okuma ve yazma
+
+Herhangi bir REST isteğine `locale` ekleyin ya da GraphQL’de argüman olarak geçin. Belirtilmezse
+varsayılan dil kullanılır. Bilinmeyen bir dil `400` hatasıdır.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+# Fransızca sürümleri oku
+curl 'http://localhost:1337/api/articles?locale=fr'
+
+# Bir belgenin Fransızca sürümünü oluştur veya güncelle
+curl -X PUT 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"data":{"title":"Bonjour"}}'
+
+# Yalnızca Fransızca sürümü sil
+curl -X DELETE 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(locale: "fr") {
+    documentId
+    title
+    locale
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ locale: 'fr' });
+```
+
+</TabItem>
+</Tabs>
+
+Beklenecekler:
+
+- `locale` ile `PUT`, belgenin henüz o dilde sürümü yoksa o dilin sürümünü oluşturur.
+- Yerelleştirilmiş tiplerin yanıtları `locale` içerir. Tüm sürümler aynı `documentId`’yi
+  paylaşır.
+- `DELETE` yalnızca istenen dildeki sürümü kaldırır (belirtilmezse varsayılan dil). Belgeye
+  işaret eden bağlantılar, hiçbir dil kalmadığında kaldırılır.
+- Yerelleştirilmiş bir tip başka bir yerelleştirilmiş tipe bağlandığında okumalar hedefi aynı
+  dilde çözümler ve ilişkiler üzerinden yapılan filtreler de aynısını yapar. Yerelleştirilmemiş
+  hedefler tüm diller tarafından paylaşılır.
+- Webhook payload’ları ve geçmiş sürümleri dili kaydeder.
+
+Strapi’nin aksine içerik API’sinde `/api/i18n/locales` rotası yoktur. Diller admin API’de
+`GET /admin/api/i18n/locales` adresinde listelenir ve `POST`,
+`PUT /admin/api/i18n/locales/{code}` ve `DELETE /admin/api/i18n/locales/{code}` ile yönetilir
+(`locales.manage`).

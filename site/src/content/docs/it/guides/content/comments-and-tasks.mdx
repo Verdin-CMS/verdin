@@ -1,0 +1,105 @@
+---
+title: Commenti e attività
+description: Discuti le voci in thread, commenta singoli campi, menziona altri admin e assegna attività con scadenza.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Gli admin possono discutere una voce in thread di commenti, commentare un campo, menzionarsi
+a vicenda e assegnare attività con scadenza, senza uscire dall'editor. Questa guida copre
+entrambe le cose, chi può fare cosa, e l'API admin. Strapi non ha un equivalente.
+
+## Prima di iniziare
+
+- **Impostazioni → Funzionalità → Commenti e attività** è attivo di default.
+- Poter leggere il tipo di contenuto di una voce basta per leggere e scrivere i suoi
+  commenti e le sue attività.
+- Gli admin menzionati e gli assegnatari delle attività ricevono un'email tramite `[email]`.
+  Con il provider di default `log`, le email finiscono solo nel log del server. Vedi il
+  [riferimento della configurazione](/it/reference/configuration/).
+
+## Commenta una voce
+
+<Steps>
+
+1. Apri la voce e seleziona **Commenti**. Il pulsante mostra il numero di thread aperti.
+2. Nella scheda **Commenti**, scrivi in **Nuovo commento**. Digita `@` per menzionare un
+   admin.
+3. Seleziona **Commenta**, o premi Control o Command e Invio.
+
+</Steps>
+
+Per commentare un campo, usa il pulsante dei commenti accanto al campo (**Commenta**, seguito
+dal nome del campo). I thread di un campo vengono mostrati sotto **Su** quel campo;
+**Mostra tutti** elenca di nuovo tutti i thread.
+
+In un thread puoi:
+
+- **Rispondi**.
+- **Risolvi** quando la discussione è finita, e **Riapri** in seguito. I thread risolti
+  passano in **Thread risolti**. Solo il primo commento di un thread lo risolve.
+- **Modifica commento** sui tuoi commenti.
+- **Elimina commento** o **Elimina thread** sui tuoi commenti. Un Super Admin può eliminare
+  qualsiasi commento.
+
+Sui tipi localizzati i commenti sono conservati per lingua, e contengono fino a 10.000
+caratteri.
+
+## Menziona un admin
+
+Gli admin menzionati ricevono un'email con il commento e un link alla voce, purché possano
+leggerla. Non ricevi mai un'email quando menzioni te stesso.
+
+## Assegna un'attività
+
+<Steps>
+
+1. Apri la scheda **Attività** dello stesso pannello e seleziona **Nuova attività**.
+2. Inserisci un **Titolo**, e opzionalmente una **Descrizione**, un **Assegnato a** e una
+   **Scadenza**. L'assegnatario deve poter leggere la voce.
+3. Seleziona **Crea attività**.
+
+</Steps>
+
+L'assegnatario riceve un'email, a meno che non si sia assegnato l'attività da solo. Le
+attività oltre la scadenza vengono mostrate come scadute. Segna un'attività come completata
+dalla sua riga.
+
+Il creatore e l'assegnatario di un'attività possono modificarla o completarla. Solo il suo
+creatore la elimina. Un Super Admin può fare entrambe le cose su qualsiasi attività.
+
+Per vedere le tue attività aperte su tutte le voci, aggiungi il widget **Le mie attività**
+alla home: seleziona **Personalizza**, poi **Aggiungi widget**.
+
+## Lavorare insieme in tempo reale
+
+Quando un altro admin aggiunge, risolve o elimina un commento o un'attività sulla voce che
+hai aperta, il pannello dice **I commenti sono stati aggiornati.** o **Le attività sono
+state aggiornate.** e mostra la modifica.
+
+## API admin
+
+Tutte le route sono sotto `/admin/api`. `uid`, `documentId` e `locale` indicano la voce.
+
+| Route | Fa |
+| --- | --- |
+| `GET /comments?uid=&documentId=&locale=` | I thread della voce con le loro risposte. |
+| `POST /comments` | `{ uid, documentId, locale?, field?, parentId?, body }`. `parentId` crea una risposta. |
+| `PUT /comments/{id}` | `{ body }`. Solo i tuoi commenti. |
+| `DELETE /comments/{id}` | I tuoi commenti, o qualsiasi commento come Super Admin. |
+| `POST /comments/{id}/resolve`, `POST /comments/{id}/reopen` | Sul primo commento di un thread. |
+| `GET /tasks?uid=&documentId=&locale=` | Le attività della voce. |
+| `GET /tasks?mine=true&status=open` | Le tue attività, sulle voci che puoi ancora leggere. |
+| `POST /tasks` | `{ uid, documentId, locale?, title, description?, assigneeId?, dueDate? }`, con `dueDate` come `YYYY-MM-DD`. |
+| `PUT /tasks/{id}` | Creatore o assegnatario. Uno qualsiasi tra `title`, `description`, `assigneeId`, `dueDate` (`null` li svuota), e `status` (`open` o `done`). |
+| `DELETE /tasks/{id}` | Solo il creatore (o un Super Admin). |
+
+Nel corpo di un commento, una menzione si scrive `@[Name](user:12)`, dove `12` è l'id
+dell'admin.
+
+<Aside type="note">
+Le route rispondono `404` finché la funzionalità è disattivata. Disattivarla nasconde
+commenti e attività; vengono conservati per quando la riattivi.
+</Aside>

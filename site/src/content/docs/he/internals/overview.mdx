@@ -1,0 +1,165 @@
+---
+title: סקירת הארכיטקטורה
+description: איך Verdin בנוי, מעקרונות התכנון ועד ה-crates שבקשה עוברת דרכם, לתורמים שרוצים לקרוא או לשנות את הקוד.
+sidebar:
+  order: 1
+  label: סקירה
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+החלק הזה מיועד לאנשים שעובדים על Verdin עצמו. הוא מסביר איך השרת ופאנל הניהול מורכבים, למה הם בנויים כך, ומאיפה להתחיל לקרוא את הקוד. כדי להשתמש ב-Verdin, התחילו במקום זאת ב[התחלה מהירה](/he/start/quickstart/).
+
+Verdin הוא CMS headless שנכתב ב-Rust ועוקב אחרי Strapi v5: ממדלים תוכן באופן חזותי או בקובצי JSON, ומקבלים REST ו-GraphQL API ופאנל ניהול. הוא מופץ כקובץ בינארי אחד שמכיל את השרת, ה-CLI ופאנל הניהול ב-Angular, והוא רץ על PostgreSQL, MySQL, MariaDB ו-SQLite.
+
+## מטרות
+
+- **קובץ בינארי אחד.** `verdin` מכיל את השרת, ה-CLI ופאנל הניהול המוטמע. בייצור אין צורך ב-Node.js ולא ב-`node_modules`.
+- **עלייה מהירה, צריכת זיכרון קטנה.**
+- **ארבעה מסדי נתונים, חבילת בדיקות אחת.** PostgreSQL, MySQL, MariaDB ו-SQLite הם כולם אזרחים מדרגה ראשונה וכולם מכוסים על ידי אותן בדיקות.
+- **סכמה כקוד.** סוגי התוכן הם קובצי JSON שמנהלים להם גרסאות ב-git.
+- **REST API תואם ל-Strapi v5** בכל מקום סביר, כך שפרונטאנדים קיימים עוברים עם מעט שינויים.
+- **הכול חינמי.** אין מהדורת Enterprise: SSO, יומני ביקורת, תהליכי בקרה, מהדורות וכל תכונה אחרת זמינים לכולם.
+
+מה שיצא גרסה אחר גרסה, ומה מגיע בהמשך, נמצא ב[מפת הדרכים](/he/project/roadmap/).
+
+### מה לא במטרות
+
+- הרצת תוספי ה-JavaScript של Strapi. תוספי Verdin הם מודולי WebAssembly (ראו [תוספים](/he/extending/plugins/)).
+- קריאת מסד נתונים של Strapi כמו שהוא. התוכן עובר דרך מייבא (ראו [מעבר מ-Strapi](/he/migrate/from-strapi/)).
+- רינדור דפים. Verdin הוא headless.
+
+## עקרונות תכנון
+
+1. **הסכמה היא מקור האמת.** טבלאות, אימות, ה-REST וה-GraphQL APIs, מסמך ה-OpenAPI והטפסים של פאנל הניהול נגזרים כולם ממנה.
+2. **אף מזהה SQL לא מגיע אף פעם מבקשה.** שמות טבלאות ועמודות מגיעים רק מהסכמה המאומתת, וכל ערך הוא פרמטר קשור.
+3. **דיאלקטים הם אזרחים מדרגה ראשונה.** אין "עובד ב-PostgreSQL, MySQL בהמשך". כל תכונה נבדקת בכל ארבעת המנועים.
+4. **מאובטח כברירת מחדל.** API התוכן סגור עד שמעניקים הרשאות, שדות `private` אף פעם לא נחשפים, ומגבלות העומק והגודל של שאילתות תמיד פעילות.
+5. **פעולות הרסניות הן מפורשות.** הסרת עמודה או טבלה דורשת את האישור שלכם; היא אף פעם לא קורית כתופעת לוואי.
+6. **אין מצב גלובלי.** השירותים מועברים דרך ה-state של `axum` ודרך בנאים; אין singletons.
+
+## התמונה הכוללת
+
+בקשה נכנסת לקובץ הבינארי דרך מחסנית קטנה של שכבות משותפות, מגיעה לאחד מנתבי ה-API, ומסתיימת ב-Document Service, שבונה SQL לדיאלקט המחובר. מאגר הסכמה, שנטען מ-`schema/*.json`, מזין כל שלב, ומנוע ההגירות שומר על מסד הנתונים מיושר איתו.
+
+<Diagram
+  caption="בקשה ל-API התוכן, וה-crates שהיא עוברת דרכם"
+  code={`flowchart LR
+  Client["פרונטאנד או פאנל ניהול"] --> Layers["שכבות משותפות<br/>IP של הלקוח, מזהה בקשה, CORS, מגבלות"]
+  Layers --> Routers["verdin-api / verdin-graphql<br/>REST, API הניהול, GraphQL, MCP"]
+  Routers --> Auth["verdin-auth<br/>אסימונים, תפקידים, הרשאות"]
+  Routers --> Query["verdin-query<br/>פרמטרים לשאילתה עם טיפוסים"]
+  Query --> Docs["verdin-content<br/>Document Service"]
+  Docs --> Db["verdin-db<br/>pool ו-Flavor"]
+  Db --> Engines[("PostgreSQL, MySQL,<br/>MariaDB, SQLite")]
+  Schema["verdin-schema<br/>schema/*.json"] --> Migrate["verdin-migrate<br/>diff, plan, apply"]
+  Migrate --> Db`}
+/>
+
+- **API התוכן** תחת `[api].prefix` (ברירת המחדל `/api`): נתיבי REST לכל סוג תוכן, העלאות ומסמך ה-OpenAPI. ראו את ה-[REST API](/he/api/rest/).
+- **API הניהול** תחת `{admin.path}/api` (ברירת המחדל `/admin/api`): כל מה שפאנל הניהול עושה. ראו את [API הניהול](/he/api/admin/).
+- **GraphQL** ב-`/graphql` ו-**MCP** ב-`/mcp`, כשהתכונות האלה פעילות. הארגומנטים של GraphQL מתורגמים לאותו עץ פרמטרים שמפרש ה-REST קורא, כך ששני ה-APIs חולקים מסננים, עימוד, populate וכללי הרשאות.
+- **פאנל הניהול** תחת `[admin].path` (ברירת המחדל `/admin`), שמוגש מהקובץ הבינארי או מ-`[admin].assets_dir`. ראו את [הפנים של פאנל הניהול](/he/internals/admin-panel/).
+- **נתיבים תפעוליים**: `/_health`, `/_ready`, ו-`/_metrics` כשהמדדים פעילים. ראו [ניטור](/he/deploy/monitoring/).
+
+כל כתיבה עוברת דרך ה-[Document Service](/he/internals/document-service/), לא משנה מאיזה API היא הגיעה. הוא מאמת את הנתונים, כותב את השורות ואת טבלאות הקישור בטרנזקציה אחת, ואז מודיע למאזינים (webhooks, אינדקס חיפוש, היסטוריה, זמן אמת, יומן ביקורת) מה השתנה.
+
+כשתכונות מופעלות או מכובות, או כשבונה סוגי התוכן משנה את הסכמה ב-`verdin dev`, כל הנתב נבנה מחדש ומוחלף במקום (`ArcSwap`), בלי הפעלה מחדש.
+
+## ערימת הטכנולוגיות
+
+### שרת (Rust, edition 2024)
+
+| תחום | בחירה | למה |
+|---|---|---|
+| Runtime | `tokio` | ה-runtime האסינכרוני הסטנדרטי |
+| HTTP | `axum`, `tower`, `tower-http` | Middleware ל-CORS, מגבלות גוף, זמני המתנה, מזהי בקשות, tracing |
+| מנהל התקן SQL | `sqlx` (postgres, mysql, sqlite) | אסינכרוני, pooling, TLS; MySQL ו-MariaDB חולקים מנהל התקן אחד; SQLite מהודר פנימה |
+| בניית SQL | הבונים של Verdin עצמו: DDL ב-`verdin-migrate`, DML ב-`verdin-query` וב-`verdin-content` | הטבלאות מוגדרות על ידי הסכמה, ולכן ה-SQL נבנה בזמן ריצה. בכל מקרה צריך שליטה מדויקת לכל דיאלקט (`jsonb`, `datetime(3)`, collations בינאריים, NULLs עם טיפוס, פורמטי טקסט של SQLite). בלי ORM, בלי `sea-query` |
+| מחרוזות שאילתה | מפרש כתיב סוגריים משלנו ב-`verdin-query` | `filters[title][$eq]=…` בסגנון Strapi, עם מגבלות עומק, אורך וזוגות |
+| JSON | `serde`, `serde_json` | — |
+| מספרים עשרוניים | `rust_decimal` | בלי אובדן דיוק בתוך השרת |
+| תאריכים | `time` | — |
+| מזהי מסמכים | `ulid` | ניתנים למיון, 26 תווים, ניידים |
+| OpenAPI | מחולל משלנו ב-`verdin-api` | נתיב וסכמה אחד לכל סוג תוכן, שנבנים מהמאגר |
+| GraphQL | `async-graphql` (סכמה דינמית) | נבנה מסכמת התוכן |
+| אימות | `argon2` (argon2id), JWT מסוג HS256 על `hmac` + `sha2` | כמה שורות של HS256 חוסכות משיכה של מחסנית RSA |
+| תצורה | `figment` (TOML + סביבה), `dotenvy` | שכבות ודריסות לפי סביבה |
+| CLI | `clap` | — |
+| יומנים | `tracing`, `tracing-subscriber` | קריא לאדם כברירת מחדל, JSON עם `[log].format = "json"` |
+| הגבלת קצב | מגביל fixed-window משלנו ב-`verdin-api` | נתיבי התחברות והגבלות אופציונליות ל-API התוכן |
+| מדיה | `object_store`, `image`, `infer` | דיסק מקומי או אחסון תואם S3; פורמטים וזיהוי MIME |
+| חיפוש | `tantivy` | אינדקס טקסט מלא אופציונלי בתוך הקובץ הבינארי |
+| תוספים | `extism` | תוספי WebAssembly |
+| דוא"ל | `lettre`, `reqwest` | SMTP, Resend, Postmark |
+| הטמעת פאנל הניהול | `rust-embed` (התכונה `embed-admin`) | פאנל הניהול מופץ בתוך הקובץ הבינארי |
+| מעקב אחרי הסכמה | `notify` | טעינות מחדש ב-`verdin dev` |
+| שגיאות | `thiserror` בספריות, `anyhow` בקובץ הבינארי | — |
+| בדיקות | `cargo test`, `insta` (תמונות מצב של DDL) | ראו [בדיקות](/he/internals/testing/) |
+
+### פאנל הניהול (Angular)
+
+| תחום | בחירה |
+|---|---|
+| Framework | Angular 22: standalone components, zoneless, signals, נתיבים בטעינה עצלה |
+| ממשק | spartan/ui (פרימיטיבים של brain, רכיבי helm שמועתקים ל-`src/app/shared/ui`) על Tailwind CSS v4 |
+| אייקונים | `@ng-icons` עם Lucide |
+| מצב | Signals בשירותים הניתנים להזרקה (בלי ספריית store) |
+| טפסים | Signal Forms (`@angular/forms/signals`) |
+| לקוח API | טיפוסים שנכתבו ידנית (`core/types.ts`) ועטיפה קטנה מעל `HttpClient` (`core/api.ts`) |
+| תרגומים | Transloco עם ICU MessageFormat דרך FormatJS |
+| טקסט עשיר | עורך Markdown עם תצוגה מקדימה (`marked`, `DOMPurify`); שדות `blocks` עם TipTap |
+| בדיקות | Vitest דרך ה-unit-test builder של Angular, Playwright מקצה לקצה |
+
+### תיעוד
+
+Astro עם Starlight, ב-`site/`. `site/scripts/sync-docs.mjs` מעתיק כמה קובצי Markdown מ-`docs/` (מפת הדרכים, מדריך התרגום) ואת `CHANGELOG.md` לחלק **Project** בזמן הבנייה.
+
+## מבנה המאגר
+
+<FileTree>
+- Cargo.toml ה-workspace (גרסה, edition, פרופיל release)
+- crates/
+  - verdin-schema/ מודל הסכמה, מפרש JSON, אימות, כללי שמות
+  - verdin-db/ pools של חיבורים, זיהוי flavor וגרסה, ערכים עם טיפוסים
+  - verdin-migrate/ מודל פיזי, תמונת מצב, diff, plan, apply עם יומן, טבלאות הפלטפורמה
+  - verdin-query/ פרמטרי שאילתה לשאילתה עם טיפוסים, ו-SQL למסננים ולמיון
+  - verdin-content/ Document Service: אימות, טיוטה ופרסום, קשרים, רכיבים, blocks, אירועים
+  - verdin-auth/ משתמשי ניהול, סשנים, אימות דו-שלבי ומפתחות גישה, אסימוני API, RBAC, הרשאות ציבוריות
+  - verdin-upload/ ספריית המדיה: ספקי אחסון, מטא-נתונים של קבצים, פורמטים של תמונות
+  - verdin-email/ שליחת דוא"ל: SMTP, Resend, Postmark וספק log
+  - verdin-search/ אינדקס טקסט מלא של Tantivy
+  - verdin-plugins/ תוספי WebAssembly (Extism): hooks של מסמכים, נתיבים, משימות מתוזמנות
+  - verdin-graphql/ GraphQL API שנוצר מהסכמה
+  - verdin-api/ נתבי axum: API התוכן, API הניהול, OpenAPI, MCP, זמן אמת, webhooks…
+  - verdin-testkit/ כלי עזר לבדיקות (מסד נתונים חדש לכל בדיקה); לא מתפרסם
+  - verdin/ הקובץ הבינארי: תצורה, bootstrap, CLI, מדדים, פאנל ניהול מוטמע
+- admin/ פאנל הניהול ב-Angular
+- packages/
+  - client/ `@verdin/client`, לקוח ה-TypeScript עם הטיפוסים
+- examples/
+  - blog/ פרויקט לדוגמה
+- docker/ `compose.dev.yml` (מסדי נתונים, RustFS, Mailpit) ואימג' ה-release
+- site/ אתר התיעוד הזה
+- docs/ מפת הדרכים, מדריך התרגום והערות תכנון
+</FileTree>
+
+**כלל התלויות.** `verdin-schema` ו-`verdin-db` הם הבסיס. `verdin-migrate` ו-`verdin-query` בנויים עליהם, `verdin-content` עליהם, ו-`verdin-auth`, `verdin-upload`, `verdin-search` ו-`verdin-plugins` על השכבות שמתחתיהם. `verdin-api` ו-`verdin-graphql` יושבים קרוב לראש, והקובץ הבינארי `verdin` תלוי בכול. Cargo אוסר מעגלים, וקוד `unsafe` אסור בכל ה-workspace.
+
+## מאיפה להתחיל לקרוא
+
+| כדי להבין | קראו |
+|---|---|
+| איך הקובץ הבינארי עולה ומרכיב את הנתבים שלו | `crates/verdin/src/cli.rs` (`start`), ואז `crates/verdin/src/app.rs` |
+| פורמט הסכמה וכללי האימות שלו | `crates/verdin-schema/src/raw.rs`, `validate.rs`, `naming.rs` |
+| איך סכמה הופכת לטבלאות | `crates/verdin-migrate/src/derive.rs`, ואז [אחסון](/he/internals/storage/) |
+| הגירות | `crates/verdin-migrate/src/diff.rs`, `plan.rs`, `apply.rs`, ו[מנוע ההגירות](/he/internals/migrations/) |
+| handlers של API התוכן | `crates/verdin-api/src/handlers.rs` ו-`lib.rs` |
+| פרמטרי שאילתה | `crates/verdin-query/src/params.rs` (מפרש), `parse.rs` (אימות), `sql.rs` (SQL) |
+| קריאות וכתיבות | `crates/verdin-content/src/service.rs` ו-`input.rs`, ו-[Document Service](/he/internals/document-service/) |
+| פאנל הניהול | `admin/src/app/app.routes.ts`, ואז `features/content/` ו[הפנים של פאנל הניהול](/he/internals/admin-panel/) |
+
+עיינו בקוד ב-[GitHub](https://github.com/Verdin-CMS/verdin). שאר החלק הזה מכסה [אחסון](/he/internals/storage/), את [שכבת מסד הנתונים](/he/internals/database/), [הגירות](/he/internals/migrations/), את ה-[Document Service](/he/internals/document-service/), את [פאנל הניהול](/he/internals/admin-panel/), [בדיקות](/he/internals/testing/) ואת [יומן ההחלטות](/he/internals/decisions/).
+
+ההתנהגות שפונה למשתמש מתועדת במקומות אחרים: פרמטרי שאילתה ב-[REST API](/he/api/rest/), הגדרות ב[תיעוד התצורה](/he/reference/configuration/), פקודות ב[תיעוד ה-CLI](/he/reference/cli/), והקשחה ב[אבטחה](/he/deploy/security/).

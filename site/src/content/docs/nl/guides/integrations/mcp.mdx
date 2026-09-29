@@ -1,0 +1,147 @@
+---
+title: MCP-server
+description: Laat Claude en andere AI-agents Verdin-content lezen en bewerken via het Model Context Protocol, met de rechten van een API-token.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin kan zijn content aan AI-agents aanbieden via het
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP). Verbind Claude Code, Claude
+Desktop, Cursor of een andere MCP-client, en de agent kan je contenttypes opsommen, items bevragen
+met de filters van de REST-API, en items aanmaken, bijwerken of publiceren, binnen de rechten van
+het token dat je hem geeft.
+
+Strapi v5 heeft geen ingebouwde MCP-server.
+
+## Aanzetten
+
+<Steps>
+
+1. Zet in **Instellingen → Functies** **MCP-server** aan. De kaart ervan toont het **Endpoint**,
+   `https://cms.example.com/mcp`, op dezelfde host als de content-API.
+2. Kies in **Instellingen → API-tokens** **Token aanmaken**. Kies **Alleen lezen**, tenzij de agent
+   moet schrijven, of **Aangepast** om alleen bepaalde types en acties toe te staan. Kopieer het
+   token: het wordt één keer getoond. Zie [API-tokens](/nl/guides/auth/api-tokens/).
+3. Verbind je client met het endpoint en het token (hieronder).
+
+</Steps>
+
+## Een client verbinden
+
+De server spreekt het Streamable HTTP-transport van MCP. Elke client heeft de URL nodig en een
+header `Authorization: Bearer <token>`.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+De kaart **MCP-server** heeft dit commando onder **Toevoegen aan Claude Code**
+(**Opdracht kopiëren**); vervang `<token>` door je API-token:
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+Het configuratiebestand van Claude Desktop start lokale servers, dus maak een brug naar het
+HTTP-endpoint met [`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Configuratieformaten van clients veranderen; raadpleeg de documentatie van je client als een
+sleutel niet wordt herkend. Vraag de agent daarna bijvoorbeeld *"Som de artikelen op die deze week
+in de categorie News zijn gepubliceerd"*.
+
+## Tools
+
+| Tool | Vereist | Wat hij doet |
+| --- | --- | --- |
+| `list_content_types` | `find` of `findOne` | De contenttypes die de aanroeper mag lezen, met hun soort en attributen. |
+| `get_content_type` | `find` of `findOne` | De attributen van een contenttype: types, opties en relaties. |
+| `find_entries` | `find` | Items van een type. `query` neemt de parameters van de REST-API als JSON (`filters`, `sort`, `fields`, `populate`, `pagination`); `status: "draft"` vereist ook `readDrafts`. |
+| `get_entry` | `findOne` | Eén item op `documentId` (enkele types: zonder). |
+| `create_entry` | `create` | Maakt een item aan uit `data`, zoals in de REST-API. `status: "draft"` slaat een concept op. |
+| `update_entry` | `update` | Werkt een item bij (enkele types: zonder `documentId`). |
+| `delete_entry` | `delete` | Verwijdert een item. |
+| `publish_entry`, `unpublish_entry` | `publish` | Publiceert een item of maakt de publicatie ongedaan. |
+
+Tools nemen `uid` (zoals `api::article`) en, bij gelokaliseerde types, `locale`. Elke tool
+controleert hetzelfde recht als de bijbehorende REST-route, en schrijfacties volgen hetzelfde pad
+als de REST-API: validatie, plugin-hooks, reviewfasen, webhooks, contentgeschiedenis en auditlogs.
+Een agent kan niets wat zijn token via REST niet kan.
+
+Zie [Rechten](/nl/reference/permissions/) voor de acties van de content-API.
+
+## Authenticatie
+
+Het endpoint neemt dezelfde inloggegevens als de content-API:
+
+- een API-token, de gebruikelijke keuze voor agents;
+- de JWT van een eindgebruiker, voor een agent die handelt als ingelogde gebruiker van je app;
+- geen header `Authorization`, voor de rechten van de openbare rol.
+
+Een ongeldig token antwoordt met `401`. De server houdt geen sessies bij en opent geen streams:
+elk request is een JSON-RPC-`POST` die met JSON wordt beantwoord (`GET` antwoordt met `405`).
+
+### Browserorigins
+
+Requests met een header `Origin`, die browsers meesturen, worden geweigerd, tenzij de origin
+vermeld staat onder **Toegestane browserorigins** op de kaart **MCP-server**. Dit beschermt tegen
+DNS-rebinding, waarbij een webpagina de browser verleidt een server op je netwerk aan te roepen.
+Opdrachtregel- en desktopclients sturen geen `Origin` mee, dus de lijst is meestal leeg.
+
+<Aside type="caution">
+Een agent met een token met volledige toegang kan content verwijderen en publiceren. Geef agents
+tokens met alleen-lezen of aangepaste tokens die beperkt zijn tot wat ze nodig hebben. Voor
+concepten die een agent schrijft, houdt een [reviewworkflow](/nl/guides/content/review-workflows/)
+een mens tussen de agent en het publiceren.
+</Aside>
+
+Om redacteuren in plaats daarvan AI-hulp in het beheerpaneel te geven (vertaling, alt-tekst,
+SEO-suggesties), zie [AI-acties](/nl/guides/integrations/ai-actions/).

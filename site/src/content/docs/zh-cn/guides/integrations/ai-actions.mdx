@@ -1,0 +1,118 @@
+---
+title: AI 操作
+description: 使用你选择的模型提供商，在管理后台中为编辑提供 AI 帮助（翻译、替代文本、摘要和 SEO 元数据）。
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+AI 操作为管理后台添加了四个助手：根据另一个语言区域翻译条目、为图片撰写替代文本、把长文本总结到一个短字段中，以及建议 SEO 元数据。它们使用你配置的模型提供商（Anthropic、OpenAI，或者 Ollama 之类的本地服务器），并使用你自己的密钥。
+
+每个操作都会返回一个填入表单的建议。在编辑检查并保存之前，什么都不会被保存，而且每个操作都可以撤销。
+
+## 设置
+
+AI 操作既需要在 `verdin.toml` 中配置提供商，也需要开启该功能。
+
+<Steps>
+
+1. 添加一个 `[ai]` 部分，并通过 `VERDIN_AI_KEY` 把密钥提供给服务器：
+
+   <Tabs syncKey="ai-provider">
+   <TabItem label="Anthropic">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "anthropic"
+   # model = "claude-sonnet-5"   # the default
+   ```
+
+   </TabItem>
+   <TabItem label="OpenAI">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai"
+   model = "gpt-4.1-mini"        # required: name the model you want
+   ```
+
+   </TabItem>
+   <TabItem label="本地（Ollama）">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai-compatible"
+   base_url = "http://localhost:11434/v1"
+   model = "llama3.2-vision"
+   ```
+
+   本地服务器不需要 `VERDIN_AI_KEY`。LM Studio、vLLM 以及其他提供 OpenAI 兼容 API 的服务器用法相同。
+
+   </TabItem>
+   </Tabs>
+
+   ```sh title="Terminal"
+   export VERDIN_AI_KEY=sk-...
+   ```
+
+2. 重启 Verdin。当该部分不完整时（缺少密钥，或者在提供商需要时缺少 `model` 或 `base_url`），它会拒绝启动。
+3. 在 **设置 → 功能** 中开启 **AI 操作**。
+
+</Steps>
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `provider` | `"none"` | `anthropic`、`openai` 或 `openai-compatible`。 |
+| `model` | `anthropic` 为 `claude-sonnet-5` | 模型。其他提供商必须设置。 |
+| `base_url` | 提供商的默认端点 | 其他端点：代理或本地服务器（`openai-compatible` 必须设置）。 |
+| `max_tokens` | `2048` | 回答的最大长度，单位为 token。 |
+
+参见 [`[ai]`](/zh-cn/reference/configuration/)。功能已开启但没有 `[ai]` 部分时，管理后台会显示 **此服务器不支持 AI 操作。**
+
+替代文本操作会发送图片，因此如果要使用它，请选择一个接受图片的模型。
+
+## 各操作的作用
+
+### 翻译条目
+
+在本地化条目的编辑器中，**从 _locale_ 翻译…** 会打开 **使用 AI 翻译**。在 **翻译自** 中选择语言区域，然后选择 **翻译**。该语言区域已保存草稿中的文本字段（字符串、文本、富文本、blocks，以及组件和动态区域中的文本）会被翻译为当前语言区域，并替换表单中的这些字段。
+
+- 在语言区域之间共享的字段保持不变。
+- 源语言区域中未保存的更改不会被包含：请先保存它。
+- Markdown、HTML、URL、id 和区块类型会原样保留。
+- 被翻译的字段会被标记出来；请检查后保存，或者选择 **撤销翻译**。
+
+此操作需要在目标语言区域中更新该条目的权限，以及在源语言区域中读取它的权限。
+
+### 撰写替代文本
+
+在媒体库中打开一张图片并选择 **生成替代文本**。模型会用默认语言区域的语言描述该图片（最多约 125 个字符），并在说明文字为空时一并填写。它适用于 JPEG、PNG、WebP 和 GIF 图片；如果存在 `small` 或 `medium` 格式，则发送该格式，因此不会把过大的原图上传给提供商。需要媒体库的更新权限（对于 **自己的文件**，则是对该文件的权限）。
+
+### 总结到字段中
+
+名称类似摘要的文本字段（`description`、`summary`、`excerpt`、`abstract`、`intro`、`introduction`、`lead`、`teaser`），在条目拥有富文本或 blocks 字段，或者拥有名为 `body`、`content`、`text` 或 `article` 的文本字段时，会获得一个 **总结 _field_** 按钮。在示例博客中，**Excerpt** 会获得 **总结 Body**。摘要会符合该字段的最大长度。
+
+### 建议 SEO 元数据
+
+带有 `metaTitle` 和 `metaDescription` 文本属性的组件，例如[推荐的 `shared.seo`](/zh-cn/guides/frontend/seo-and-sitemap/)，会获得一个 **建议** 按钮。它会根据条目已保存的草稿填写 meta 标题、描述，以及（如果组件有的话）`keywords`。
+
+## 限制
+
+- 每位管理员每分钟最多可以发出 30 个 AI 请求；超出时会显示 **AI 请求过多。请稍等一分钟后重试。**
+- 摘要和 SEO 建议最多发送 40,000 个字符的文本。
+- 发往提供商的请求在 120 秒后超时。
+
+## 隐私
+
+<Aside type="caution">
+AI 操作会把内容发送给你配置的提供商：正在翻译、总结或描述的字段，以及用于生成替代文本的图片。请选择你的组织允许处理这些内容的提供商和套餐，检查其数据保留条款；对于不能离开你的网络的内容，请考虑使用本地模型（`openai-compatible`）。
+</Aside>
+
+- 请求从 Verdin 服务器发往提供商；密钥永远不会到达浏览器。
+- 只发送操作的输入：条目的文本字段、要总结的文本，或者一张图片及其文件名。private 属性和其他条目不会被发送。
+- 操作只读取管理员本来就能读取的内容，建议也不会被存储。
+
+管理后台会显示由哪个模型给出回答（**由 _model_（_provider_）提供建议。**）。
+
+如果要让管理后台之外的 AI 智能体读写内容，请参见 [MCP 服务器](/zh-cn/guides/integrations/mcp/)。

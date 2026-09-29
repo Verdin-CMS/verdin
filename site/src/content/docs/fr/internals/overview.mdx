@@ -1,0 +1,165 @@
+---
+title: Vue d’ensemble de l’architecture
+description: Comment Verdin est construit, de ses principes de conception aux crates que traverse une requête, pour les contributeurs qui veulent lire ou modifier le code.
+sidebar:
+  order: 1
+  label: Vue d’ensemble
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Cette section s’adresse aux personnes qui travaillent sur Verdin lui-même. Elle explique comment le serveur et le panneau d’administration sont assemblés, pourquoi ils sont construits ainsi, et par où commencer la lecture du code. Pour utiliser Verdin, commencez plutôt par le [démarrage rapide](/fr/start/quickstart/).
+
+Verdin est un CMS headless écrit en Rust qui suit Strapi v5 : vous modélisez le contenu visuellement ou dans des fichiers JSON, et vous obtenez une API REST et GraphQL ainsi qu’un panneau d’administration. Il est livré sous la forme d’un seul binaire qui contient le serveur, la CLI et le panneau d’administration Angular, et il fonctionne sur PostgreSQL, MySQL, MariaDB et SQLite.
+
+## Objectifs
+
+- **Un seul binaire.** `verdin` contient le serveur, la CLI et le panneau d’administration intégré. La production n’a besoin ni de Node.js ni de `node_modules`.
+- **Démarrage rapide, faible empreinte mémoire.**
+- **Quatre bases de données, une seule suite de tests.** PostgreSQL, MySQL, MariaDB et SQLite sont tous pris en charge à part entière et tous couverts par les mêmes tests.
+- **Le schéma comme code.** Les types de contenu sont des fichiers JSON que vous versionnez dans git.
+- **Une API REST compatible avec Strapi v5** partout où c’est raisonnable, pour que les frontends existants migrent avec peu de modifications.
+- **Tout est gratuit.** Il n’y a pas d’édition entreprise : SSO, journaux d’audit, workflows de relecture, releases et toutes les autres fonctionnalités sont livrés pour tout le monde.
+
+Ce qui a été livré version après version, et ce qui arrive ensuite, figure dans la [feuille de route](/fr/project/roadmap/).
+
+### Non-objectifs
+
+- Exécuter les plugins JavaScript de Strapi. Les plugins Verdin sont des modules WebAssembly (voir [Plugins](/fr/extending/plugins/)).
+- Lire une base de données Strapi telle quelle. Le contenu est repris via un importateur (voir [Migrer depuis Strapi](/fr/migrate/from-strapi/)).
+- Générer des pages. Verdin est headless.
+
+## Principes de conception
+
+1. **Le schéma est la source de vérité.** Les tables, la validation, les API REST et GraphQL, le document OpenAPI et les formulaires de l’administration en sont tous dérivés.
+2. **Aucun identifiant SQL ne provient jamais d’une requête.** Les noms de tables et de colonnes proviennent uniquement du schéma validé, et chaque valeur est un paramètre lié.
+3. **Les dialectes sont pris en charge à part entière.** Pas de « fonctionne sur PostgreSQL, MySQL plus tard ». Chaque fonctionnalité est testée sur les quatre moteurs.
+4. **Sécurisé par défaut.** L’API de contenu est fermée tant que vous n’accordez pas d’autorisations, les champs `private` ne sont jamais exposés, et les limites de profondeur et de taille des requêtes sont toujours actives.
+5. **Les opérations destructives sont explicites.** Supprimer une colonne ou une table nécessite votre approbation ; cela n’arrive jamais comme effet de bord.
+6. **Pas d’état global.** Les services sont transmis via l’état d’`axum` et les constructeurs ; il n’y a pas de singletons.
+
+## Vue générale
+
+Une requête entre dans le binaire par une petite pile de couches partagées, atteint l’un des routeurs d’API, et aboutit au Document Service, qui construit le SQL pour le dialecte connecté. Le registre de schéma, chargé depuis `schema/*.json`, alimente chaque étape, et le moteur de migration maintient la base de données en accord avec lui.
+
+<Diagram
+  caption="Une requête de l’API de contenu, et les crates qu’elle traverse"
+  code={`flowchart LR
+  Client["Frontend ou panneau d’administration"] --> Layers["Couches partagées<br/>IP du client, identifiant de requête, CORS, limites"]
+  Layers --> Routers["verdin-api / verdin-graphql<br/>REST, API d’administration, GraphQL, MCP"]
+  Routers --> Auth["verdin-auth<br/>jetons, rôles, accès"]
+  Routers --> Query["verdin-query<br/>paramètres vers requête typée"]
+  Query --> Docs["verdin-content<br/>Document Service"]
+  Docs --> Db["verdin-db<br/>pool et Flavor"]
+  Db --> Engines[("PostgreSQL, MySQL,<br/>MariaDB, SQLite")]
+  Schema["verdin-schema<br/>schema/*.json"] --> Migrate["verdin-migrate<br/>diff, plan, apply"]
+  Migrate --> Db`}
+/>
+
+- **API de contenu** sous `[api].prefix` (`/api` par défaut) : routes REST par type de contenu, téléversements et document OpenAPI. Voir l’[API REST](/fr/api/rest/).
+- **API d’administration** sous `{admin.path}/api` (`/admin/api` par défaut) : tout ce que fait le panneau d’administration. Voir l’[API d’administration](/fr/api/admin/).
+- **GraphQL** sur `/graphql` et **MCP** sur `/mcp`, quand ces fonctionnalités sont activées. Les arguments GraphQL sont traduits dans le même arbre de paramètres que lit le parseur REST : les deux API partagent donc les filtres, la pagination, le populate et les règles d’autorisation.
+- **Panneau d’administration** sous `[admin].path` (`/admin` par défaut), servi depuis le binaire ou depuis `[admin].assets_dir`. Voir le [fonctionnement interne du panneau d’administration](/fr/internals/admin-panel/).
+- **Routes d’exploitation** : `/_health`, `/_ready`, et `/_metrics` quand les métriques sont activées. Voir [Supervision](/fr/deploy/monitoring/).
+
+Chaque écriture passe par le [Document Service](/fr/internals/document-service/), quelle que soit l’API dont elle provient. Il valide les données, écrit les lignes et les tables de liaison dans une seule transaction, puis indique aux listeners (webhooks, index de recherche, historique, temps réel, journal d’audit) ce qui a changé.
+
+Quand des fonctionnalités sont activées ou désactivées, ou quand le constructeur de types de contenu modifie le schéma sous `verdin dev`, tout le routeur est reconstruit et remplacé sur place (un `ArcSwap`), sans redémarrage.
+
+## Pile technique
+
+### Serveur (Rust, édition 2024)
+
+| Domaine | Choix | Pourquoi |
+|---|---|---|
+| Runtime | `tokio` | Le runtime asynchrone standard |
+| HTTP | `axum`, `tower`, `tower-http` | Middleware pour CORS, limites de corps, délais, identifiants de requête, tracing |
+| Pilote SQL | `sqlx` (postgres, mysql, sqlite) | Asynchrone, pooling, TLS ; MySQL et MariaDB partagent un pilote ; SQLite est compilé dans le binaire |
+| Construction du SQL | Les constructeurs propres à Verdin : DDL dans `verdin-migrate`, DML dans `verdin-query` et `verdin-content` | Les tables sont définies par le schéma, le SQL est donc construit à l’exécution. Un contrôle exact par dialecte est de toute façon nécessaire (`jsonb`, `datetime(3)`, collations binaires, NULL typés, formats textuels de SQLite). Pas d’ORM, pas de `sea-query` |
+| Chaînes de requête | Parseur maison de notation à crochets dans `verdin-query` | Le `filters[title][$eq]=…` à la Strapi, avec des limites de profondeur, de longueur et de nombre de paires |
+| JSON | `serde`, `serde_json` | — |
+| Décimaux | `rust_decimal` | Aucune perte de précision dans le serveur |
+| Dates | `time` | — |
+| Identifiants de documents | `ulid` | Triables, 26 caractères, portables |
+| OpenAPI | Générateur maison dans `verdin-api` | Un chemin et un schéma par type de contenu, construits à partir du registre |
+| GraphQL | `async-graphql` (schéma dynamique) | Construit à partir du schéma de contenu |
+| Authentification | `argon2` (argon2id), JWT HS256 sur `hmac` + `sha2` | Quelques lignes de HS256 évitent d’embarquer une pile RSA |
+| Configuration | `figment` (TOML + environnement), `dotenvy` | Superposition et surcharges par environnement |
+| CLI | `clap` | — |
+| Logs | `tracing`, `tracing-subscriber` | Lisibles par défaut, JSON avec `[log].format = "json"` |
+| Limitation de débit | Limiteur à fenêtre fixe maison dans `verdin-api` | Routes de connexion et limites facultatives de l’API de contenu |
+| Médias | `object_store`, `image`, `infer` | Disque local ou stockage compatible S3 ; formats et détection du type MIME |
+| Recherche | `tantivy` | Index plein texte facultatif intégré au binaire |
+| Plugins | `extism` | Plugins WebAssembly |
+| E-mail | `lettre`, `reqwest` | SMTP, Resend, Postmark |
+| Intégration de l’administration | `rust-embed` (feature `embed-admin`) | Le panneau d’administration est livré dans le binaire |
+| Surveillance du schéma | `notify` | Rechargements sous `verdin dev` |
+| Erreurs | `thiserror` dans les bibliothèques, `anyhow` dans le binaire | — |
+| Tests | `cargo test`, `insta` (snapshots de DDL) | Voir [Tests](/fr/internals/testing/) |
+
+### Panneau d’administration (Angular)
+
+| Domaine | Choix |
+|---|---|
+| Framework | Angular 22 : composants standalone, zoneless, signals, routes chargées à la demande |
+| Interface | spartan/ui (primitives brain, composants helm copiés dans `src/app/shared/ui`) sur Tailwind CSS v4 |
+| Icônes | `@ng-icons` avec Lucide |
+| État | Signals dans des services injectables (pas de bibliothèque de store) |
+| Formulaires | Signal Forms (`@angular/forms/signals`) |
+| Client d’API | Types écrits à la main (`core/types.ts`) et petite surcouche au-dessus de `HttpClient` (`core/api.ts`) |
+| Traductions | Transloco avec ICU MessageFormat via FormatJS |
+| Texte enrichi | Éditeur Markdown avec aperçu (`marked`, `DOMPurify`) ; champs `blocks` avec TipTap |
+| Tests | Vitest via le builder de tests unitaires d’Angular, Playwright de bout en bout |
+
+### Documentation
+
+Astro avec Starlight, dans `site/`. `site/scripts/sync-docs.mjs` copie au moment du build quelques fichiers Markdown de `docs/` (feuille de route, guide de traduction) et `CHANGELOG.md` dans la section **Projet**.
+
+## Organisation du dépôt
+
+<FileTree>
+- Cargo.toml le workspace (version, édition, profil de release)
+- crates/
+  - verdin-schema/ modèle de schéma, parseur JSON, validation, règles de nommage
+  - verdin-db/ pools de connexions, détection de la variante et de la version, valeurs typées
+  - verdin-migrate/ modèle physique, instantané, diff, plan, application journalisée, tables de la plateforme
+  - verdin-query/ paramètres de requête vers une requête typée, et SQL des filtres et des tris
+  - verdin-content/ Document Service : validation, brouillon et publication, relations, composants, blocks, événements
+  - verdin-auth/ administrateurs, sessions, double authentification et passkeys, jetons d’API, RBAC, accès publics
+  - verdin-upload/ médiathèque : fournisseurs de stockage, métadonnées des fichiers, formats d’image
+  - verdin-email/ envoi d’e-mails : SMTP, Resend, Postmark et un fournisseur log
+  - verdin-search/ index plein texte Tantivy
+  - verdin-plugins/ plugins WebAssembly (Extism) : hooks de documents, routes, tâches planifiées
+  - verdin-graphql/ API GraphQL générée à partir du schéma
+  - verdin-api/ routeurs axum : API de contenu, API d’administration, OpenAPI, MCP, temps réel, webhooks…
+  - verdin-testkit/ utilitaires de test (une base de données neuve par test) ; non publié
+  - verdin/ le binaire : configuration, amorçage, CLI, métriques, administration intégrée
+- admin/ panneau d’administration Angular
+- packages/
+  - client/ `@verdin/client`, le client TypeScript typé
+- examples/
+  - blog/ projet d’exemple
+- docker/ `compose.dev.yml` (bases de données, RustFS, Mailpit) et l’image de release
+- site/ ce site de documentation
+- docs/ feuille de route, guide de traduction et notes de conception
+</FileTree>
+
+**Règle de dépendances.** `verdin-schema` et `verdin-db` forment la base. `verdin-migrate` et `verdin-query` s’appuient sur elles, `verdin-content` sur celles-ci, et `verdin-auth`, `verdin-upload`, `verdin-search` et `verdin-plugins` sur les couches inférieures. `verdin-api` et `verdin-graphql` se trouvent près du sommet, et le binaire `verdin` dépend de tout. Cargo interdit les cycles, et le code `unsafe` est interdit dans tout le workspace.
+
+## Par où commencer la lecture
+
+| Pour comprendre | Lire |
+|---|---|
+| Comment le binaire démarre et assemble ses routeurs | `crates/verdin/src/cli.rs` (`start`), puis `crates/verdin/src/app.rs` |
+| Le format de schéma et ses règles de validation | `crates/verdin-schema/src/raw.rs`, `validate.rs`, `naming.rs` |
+| Comment un schéma devient des tables | `crates/verdin-migrate/src/derive.rs`, puis [Stockage](/fr/internals/storage/) |
+| Les migrations | `crates/verdin-migrate/src/diff.rs`, `plan.rs`, `apply.rs`, et le [moteur de migration](/fr/internals/migrations/) |
+| Les gestionnaires de l’API de contenu | `crates/verdin-api/src/handlers.rs` et `lib.rs` |
+| Les paramètres de requête | `crates/verdin-query/src/params.rs` (parseur), `parse.rs` (validation), `sql.rs` (SQL) |
+| Les lectures et les écritures | `crates/verdin-content/src/service.rs` et `input.rs`, et le [Document Service](/fr/internals/document-service/) |
+| Le panneau d’administration | `admin/src/app/app.routes.ts`, puis `features/content/` et le [fonctionnement interne du panneau d’administration](/fr/internals/admin-panel/) |
+
+Parcourez le code sur [GitHub](https://github.com/Verdin-CMS/verdin). Le reste de cette section couvre le [stockage](/fr/internals/storage/), la [couche base de données](/fr/internals/database/), les [migrations](/fr/internals/migrations/), le [Document Service](/fr/internals/document-service/), le [panneau d’administration](/fr/internals/admin-panel/), les [tests](/fr/internals/testing/) et le [journal des décisions](/fr/internals/decisions/).
+
+Le comportement visible par les utilisateurs est documenté ailleurs : les paramètres de requête dans l’[API REST](/fr/api/rest/), les paramètres dans la [référence de configuration](/fr/reference/configuration/), les commandes dans la [référence de la CLI](/fr/reference/cli/), et le renforcement de la sécurité dans [Sécurité](/fr/deploy/security/).

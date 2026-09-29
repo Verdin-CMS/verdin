@@ -1,0 +1,33 @@
+---
+title: Пісочниця API
+description: Надсилайте запити до API вмісту прикладу блогу з браузера на ваш локальний Verdin.
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+Спробуйте API вмісту [прикладу блогу](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+без написання коду. Запити йдуть із вашого браузера на сервер, вибраний у полі **Server**,
+типово `http://localhost:1337`.
+
+Щоб на них хтось відповів, запустіть приклад локально й дозвольте запити:
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- Створіть першого адміністратора на [localhost:1337/admin](http://localhost:1337/admin/) і додайте кілька статей.
+- Дозвольте `find` і `findOne` у **Налаштування → Публічний доступ** або
+  вставте API-токен у розділі **Authentication**.
+- Пісочниця працює з origin цього сайту, тож сервер має його приймати: додайте його до
+  `[api].cors_origins` у `verdin.toml` (див. [Конфігурація](/uk/reference/configuration/)).
+
+Ваш власний проєкт має такий самий довідник для власної схеми за адресою `/api/docs`, щойно
+ви ввімкнете **Публічна документація** в **Налаштування → Функції → Документація API**.
+
+<Playground />

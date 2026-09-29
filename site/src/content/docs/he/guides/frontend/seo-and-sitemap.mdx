@@ -1,0 +1,172 @@
+---
+title: SEO ומפת אתר
+description: מפו סוגי תוכן לנתיבים של האתר שלכם, הגישו sitemap.xml של כל רשומה מפורסמת, והוסיפו רכיב SEO סטנדרטי.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+התכונה **SEO ומפת אתר** אומרת ל-Verdin היכן כל רשומה נמצאת באתר שלכם. מזה הוא מגיש
+`sitemap.xml` של כל רשומה מפורסמת, נותן ל[תפריטים](/he/guides/frontend/menus/) את הנתיבים של
+הרשומות שהם מקשרים אליהן, ומציע רכיב `shared.seo` מוכן לתגיות meta.
+
+זו אחת מארבע תכונות האתר, לצד [הפניות](/he/guides/frontend/redirects/),
+[תפריטים](/he/guides/frontend/menus/) ו[טפסים](/he/guides/frontend/forms/). Strapi מכסה את אותו
+תחום עם תוספים של הקהילה (SEO, sitemap); ב-Verdin זה מובנה.
+
+## הפעלה
+
+<Steps>
+
+1. ב-**הגדרות ← תכונות**, הפעילו את **SEO ומפת אתר**.
+2. בכרטיס שלה, בחרו **הגדרת SEO**.
+3. הזינו את **כתובת האתר**: המקור של האתר שלכם, כמו `https://www.example.com`. כתובות ה-URL
+   במפת האתר מתחילות בה.
+4. תחת **סוגי תוכן**, תנו לכל סוג שיש לו דפים **תבנית נתיב**. סוגים בלי תבנית נשארים מחוץ
+   למפת האתר. באופן אופציונלי הגדירו **תדירות שינוי** ו**עדיפות** (0 עד 1) עבור מפת האתר.
+5. שמרו, ואז בחרו **פתיחת sitemap.xml** כדי לבדוק את התוצאה.
+
+</Steps>
+
+שינוי ההגדרות דורש את ההרשאה **ניהול תכונות** (`features.manage`). ראו
+[הרשאות](/he/reference/permissions/).
+
+## תבניות נתיבים
+
+תבנית היא נתיב שמתחיל ב-`/`, עם ממלאי מקום בסוגריים מסולסלים:
+
+| תבנית | רשומה | נתיב |
+| --- | --- | --- |
+| `/blog/{slug}` | מאמר עם ה-slug `hello-world` | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | הגרסה הצרפתית שלו | `/fr/blog/bonjour` |
+| `/about` | הסוג היחיד Homepage | `/about` |
+
+ממלאי המקום הם המאפיינים של הסוג (בדרך כלל `uid` כמו `slug`) ו-`{locale}`. הערכים מקודדים
+ל-URL. לרשומה שממלא המקום שלה ריק (slug חסר, למשל) אין נתיב, והיא מושמטת ממפת האתר ומתפריטים.
+החלון מפרט את המאפיינים שאפשר להכניס ודוחה מאפיינים לא מוכרים.
+
+ההגדרות נשמרות כהגדרות של התכונה, במבנה הזה:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` הוא אחד מ-`always`, `hourly`, `daily`, `weekly`, `monthly`, `yearly` או `never`.
+
+## מפת האתר
+
+כשמוגדרת **כתובת האתר**, Verdin מגיש את `/sitemap.xml` בשורש של המארח שלו עצמו
+(`https://cms.example.com/sitemap.xml`, מחוץ לקידומת ה-API), עם:
+
+- כל רשומה **מפורסמת** של הסוגים שהוגדרו, שהתבנית שלה מתמלאת;
+- השינוי האחרון של כל רשומה (`lastmod`), וה-`changefreq` וה-`priority` של הסוג;
+- בסוגים מתורגמים, כתובת URL אחת לכל שפה, שמקושרות זו לזו עם
+  `<xhtml:link rel="alternate" hreflang="…">`;
+- לכל היותר 50,000 כתובות URL, המגבלה של קובץ sitemap.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+מפת האתר נבנית לכל היותר כל עשר דקות ונשלחת עם `Cache-Control: public, max-age=600`, כך
+שפרסום מופיע תוך עשר דקות.
+
+מנועי חיפוש מצפים למפת האתר במארח של האתר שלכם. הגישו אותה משם עם rewrite או עם נתיב קטן
+ששולף את זו של Verdin:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+אחר כך ציינו אותה ב-`robots.txt` שלכם: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## רכיב ה-SEO
+
+Verdin מציע רכיב `shared.seo` עם השדות של תוסף ה-SEO של Strapi:
+
+| מאפיין | טיפוס |
+| --- | --- |
+| `metaTitle` | string, חובה, עד 60 תווים |
+| `metaDescription` | text, חובה, עד 160 תווים |
+| `metaImage` | media (תמונות) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+בחלון **הגדרת SEO**, בחרו **הוספת רכיב ה-SEO**, ואז **יצירת הרכיב**. היצירה משנה את הסכמה,
+ולכן הכפתור קיים במצב פיתוח (`verdin dev`) עבור מנהלים עם **ניהול סוגי תוכן**; אחרת החלון
+מפרט במקום זאת את המאפיינים שצריך להוסיף בקובצי הסכמה שלכם. אחר כך הוסיפו שדה רכיב שמשתמש
+ב-`shared.seo` לכל סוג תוכן שיש לו דפים, בבונה סוגי התוכן.
+
+<Aside type="tip">
+כש[פעולות AI](/he/guides/integrations/ai-actions/) פעילות, רכיב שיש לו מאפייני טקסט `metaTitle`
+ו-`metaDescription` מקבל כפתור **הצעה** שממלא אותם מתוך הרשומה.
+</Aside>
+
+## הצגת תגיות ה-meta
+
+בצעו populate לרכיב וכתבו את התגיות ב-head של הדף:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+ל-`shared.seo` של הבלוג לדוגמה יש רק `metaTitle` ו-`metaDescription`; הרכיב המוצע מוסיף את
+השאר. אם דף התצוגה המקדימה משתמש ב[עריכה חזותית](/he/guides/frontend/visual-editing/), הסירו
+את הסימונים הבלתי נראים לפני שאתם מודדים או משווים טקסטים של meta.

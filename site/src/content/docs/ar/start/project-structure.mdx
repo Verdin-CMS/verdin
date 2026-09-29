@@ -1,0 +1,182 @@
+---
+title: بنية المشروع
+description: الملفات التي ينشئها verdin new، والملفات التي يضيفها Verdin أثناء عمله، وأيها ينتمي إلى git.
+sidebar:
+  order: 5
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+مشروع Verdin مجلد فيه ملف تهيئة والمخطط. تسرد هذه الصفحة
+ما ينشئه `verdin new`، وما يضيفه الخادم أثناء عمله، وما يجب اعتماده.
+
+## ما ينشئه `verdin new`
+
+```sh title="Terminal"
+verdin new my-site
+```
+
+<FileTree>
+- my-site/
+  - verdin.toml تهيئة المشروع
+  - .env الأسرار وعنوان URL لقاعدة البيانات، قابل للقراءة لك وحدك
+  - .gitignore
+  - schema/
+    - content-types/ ملف JSON واحد لكل نوع محتوى
+    - components/ مجلد واحد لكل فئة مكوّنات
+  - data/ قاعدة بيانات SQLite (فقط مع `--database sqlite`)
+</FileTree>
+
+يجب ألا يكون المجلد موجودًا أو أن يكون فارغًا. يأتي اسم المشروع في عنوان URL لقاعدة البيانات
+من اسم المجلد، بأحرف صغيرة، مع استبدال المحارف الأخرى بـ `_`
+(`My Site` يصبح `my_site`).
+
+### `verdin.toml`
+
+التهيئة. يعيّن الملف المولَّد المنفذ، وبادئة API المحتوى وأحجام
+الصفحات، ومسار الإدارة:
+
+```toml title="verdin.toml"
+[server]
+port = 1337
+# public_url = "https://cms.example.com"
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+
+[admin]
+path = "/admin"
+# secure_cookies = true
+```
+
+لكل مفتاح قيمة افتراضية، لذا يمكن أن يكون الملف فارغًا أو مفقودًا. المفاتيح غير المعروفة توقف الخادم
+بخطأ. يمكن تجاوز أي مفتاح من البيئة على شكل
+`VERDIN_<SECTION>__<KEY>`، مثلًا `VERDIN_SERVER__PORT=8080`. تقرأ الأوامر
+`verdin.toml` من المجلد الحالي؛ مرّر `-c <path>` أو عيّن `VERDIN_CONFIG` لاستخدام
+ملف آخر. المسارات في الملف، مثل مجلدات المخطط أو الرفع، نسبية إلى
+المجلد الذي يحتويه. كل الإعدادات موجودة في
+[مرجع التهيئة](/ar/reference/configuration/).
+
+### `.env`
+
+```sh title=".env"
+# أسرار محلية: أبقِ هذا الملف خارج إدارة الإصدارات.
+VERDIN_DATABASE_URL=sqlite://data/verdin.db
+VERDIN_ADMIN_JWT_SECRET=…
+VERDIN_TOKEN_PEPPER=…
+```
+
+يملأ `verdin new` سرّين عشوائيين وعنوان URL لقاعدة البيانات للمحرك الذي اخترته بـ
+`--database`:
+
+| `--database` | `VERDIN_DATABASE_URL` المولَّد |
+| --- | --- |
+| `sqlite` (الافتراضي) | `sqlite://data/verdin.db` |
+| `postgres` | `postgres://verdin:change-me@localhost:5432/<name>` |
+| `mysql`، `mariadb` | `mysql://verdin:change-me@localhost:3306/<name>` |
+
+استبدل المستخدم وكلمة المرور لـ PostgreSQL وMySQL وMariaDB. تُحَلّ مسارات SQLite النسبية
+نسبةً إلى مجلد المشروع، لا المجلد الذي تشغّل منه الأمر.
+
+يحمّل كل أمر ملف `.env` المجاور لـ `verdin.toml`؛ والمتغيرات المعيّنة بالفعل في
+البيئة لها الأولوية. على Linux وmacOS يُنشأ الملف قابلًا للقراءة لمالكه فقط. في
+الإنتاج، عيّن هذه المتغيرات في مخزن الأسرار لدى منصتك بدلًا من شحن ملف
+`.env`. يشرح [البدء السريع](/ar/start/quickstart/#2-الأسرار) السرّين.
+
+### `schema/`
+
+نموذج المحتوى، بصيغة مخطط Strapi:
+
+- `schema/content-types/<singularName>.json`، ملف واحد لكل نوع مجموعة أو نوع مفرد.
+- `schema/components/<category>/<name>.json`، ملف واحد لكل مكوّن؛ وuid المكوّن
+  هو `<category>.<name>`.
+
+يكتب منشئ أنواع المحتوى هذه الملفات في `verdin dev`، ويمكنك تحريرها يدويًا:
+يعيد `verdin dev` التحميل عندما تتغير. يبدو مخطط مثال المدونة هكذا:
+
+<FileTree>
+- schema/
+  - content-types/
+    - article.json
+    - category.json
+    - homepage.json نوع مفرد
+    - tag.json
+  - components/
+    - blocks/
+      - hero.json `blocks.hero`
+      - quote.json `blocks.quote`
+    - shared/
+      - seo.json `shared.seo`
+</FileTree>
+
+الملفات هي مصدر الحقيقة: يشتق Verdin منها جداول قاعدة البيانات، والتحقق، و
+واجهات REST وGraphQL، ومستند OpenAPI، وأنواع TypeScript، ونماذج الإدارة.
+راجع [نموذج المحتوى](/ar/concepts/content-model/) و
+[ترحيلات المخطط](/ar/concepts/schema-migrations/). مجلد المخطط هو `[schema].path`
+في `verdin.toml`، وهو `schema` افتراضيًا.
+
+## ما يظهر عندما يعمل Verdin
+
+<FileTree>
+- my-site/
+  - verdin.toml
+  - .env
+  - schema/
+  - data/
+    - verdin.db قاعدة بيانات SQLite، مع ملفيها `-wal` و`-shm`
+    - search/ فهرس النص الكامل، عندما يكون `[search].enabled` مفعّلًا
+  - public/
+    - uploads/ ملفات مكتبة الوسائط، تُقدَّم على `/uploads`
+  - .cache/
+    - transforms/ الصور المعاد تحجيمها، تُعاد بناؤها عند الطلب
+  - plugins/ إضافات WebAssembly، مجلد لكل منها (تنشئه أنت)
+  - strapi-id-map.json يكتبه `verdin import strapi`
+</FileTree>
+
+| المسار | يكتبه | الإعداد |
+| --- | --- | --- |
+| `data/verdin.db` | الخادم، مع SQLite | `VERDIN_DATABASE_URL` |
+| `public/uploads/` | عمليات الرفع مع الموفّر المحلي (الافتراضي) | `[upload].provider` |
+| `.cache/transforms/` | تحويلات الصور المطلوبة على `/uploads` | `[upload.transforms].cache_dir` |
+| `data/search/` | فهرس النص الكامل | `[search].dir` |
+| `plugins/` | أنت: كل إضافة في مجلدها الخاص | `[plugins].path` |
+| `strapi-id-map.json` | `verdin import strapi`: معرّفات Strapi مربوطة بمعرّفات Verdin | — |
+
+مع PostgreSQL أو MySQL أو MariaDB لا يوجد `data/verdin.db`: يعيش المحتوى في
+خادم قاعدة البيانات. ومع موفّر S3، تعيش ملفات الوسائط في الحاوية ويبقى `public/uploads`
+فارغًا.
+
+## ما الذي يذهب إلى git
+
+| اعتمد | أبقِ خارج git |
+| --- | --- |
+| `verdin.toml` | `.env` (الأسرار) |
+| `schema/` (أنواع المحتوى والمكوّنات) | `data/` (قاعدة بيانات SQLite، وفهرس البحث) |
+| `plugins/`، إن كنت تستخدم إضافات | `public/uploads/` (الوسائط) |
+| `.gitignore` | `.cache/` |
+
+يغطيها كلها ملف `.gitignore` المولَّد:
+
+```sh title=".gitignore"
+.env
+data/
+*.db
+*.db-*
+.cache/
+# مكتبة الوسائط المحلية (المجلد dir في [upload.provider]).
+public/uploads/
+```
+
+المشاريع المنشأة قبل 0.10 ينقصها سطر `public/uploads/`: أضفه.
+
+<Aside>
+المحتوى والوسائط بيانات، لا شيفرة. انسخها احتياطيًا بـ `verdin export` أو بأدوات قاعدة
+بياناتك بدلًا من اعتمادها؛ راجع [النسخ الاحتياطية](/ar/deploy/backups/).
+</Aside>
+
+اعتمد المخطط مع الشيفرة التي تعتمد عليه، مثل الأنواع المولّدة لواجهتك
+الأمامية. في الإنتاج، انشر المخطط المعتمد وشغّل
+`verdin start --migrate`: منشئ أنواع المحتوى معطّل خارج `verdin dev`، فلا
+يتغير المخطط إلا عبر مستودعك.

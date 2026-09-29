@@ -1,0 +1,152 @@
+---
+title: 싱글 사인온
+description: Microsoft Entra ID, Google Workspace, Okta, Keycloak 같은 OpenID Connect 제공업체로 관리자가 로그인하게 하고, 그룹을 역할에 매핑합니다.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+관리자는 어떤 OpenID Connect 제공업체로든 로그인할 수 있습니다: Microsoft Entra ID, Google Workspace, Okta,
+Auth0, Keycloak, Authentik, GitLab 등. 제공업체마다 로그인 페이지에 버튼이 생기며, 비밀번호 로그인도 옆에서 계속
+동작합니다. 이 가이드에서는 애플리케이션을 등록하고, Verdin에서 제공업체를 설정하고, 그룹을 역할에 매핑합니다.
+
+Strapi에서 SSO는 Enterprise 기능입니다. Verdin에서는 오픈 소스 코어의 일부입니다. 사이트의 최종 사용자에 대해서는
+대신 [최종 사용자의 OAuth 로그인](/ko/guides/auth/end-users/)을 참고하세요.
+
+## 시작하기 전에
+
+- SSO를 설정하려면 **기능 관리**(`features.manage`)가 필요합니다.
+- `[server].public_url`을 관리자가 Verdin에 접속하는 주소(예: `https://cms.example.com`)로 설정하세요. 리디렉션
+  URI는 이 값으로 만들어집니다.
+
+## 설정
+
+<Steps>
+
+1. 제공업체에 다음 리디렉션 URI로 **애플리케이션("web" 클라이언트)을 등록합니다**.
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>`는 3단계에서 고르는 제공업체 id(예: `corp`)입니다. 관리자 경로는 `[admin].path`를 따릅니다.
+
+2. **클라이언트 시크릿을 환경 변수에 넣고** Verdin을 재시작합니다.
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   변수 이름은 `VERDIN_SSO_<ID>_SECRET`이며, id는 대문자로, 대시는 밑줄로 씁니다. 공개 클라이언트(PKCE만 쓰고
+   시크릿 없음)에는 변수가 필요 없습니다.
+
+3. **제공업체를 추가합니다.** **설정 → 기능 → 싱글 사인온**을 켜고, **제공업체 구성**을 선택한 뒤
+   **제공업체 추가**를 선택하고 다음을 채웁니다.
+
+   - **ID**: 소문자, 숫자, 대시로 최대 32자.
+   - **버튼 텍스트**: 로그인 페이지에 "…(으)로 계속"으로 표시됩니다.
+   - **발급자 URL**: Verdin은 그 아래의 `/.well-known/openid-configuration`을 읽습니다. `localhost`가 아니면
+     `https`를 써야 합니다.
+   - **클라이언트 ID**와 **스코프**(기본값 `openid email profile`, `openid`는 필수).
+
+   대화 상자에 **제공업체에 등록할 리디렉션 URI**와 시크릿 변수 이름이 표시됩니다. 저장하세요.
+
+4. 시크릿 창에서 **사용해 보세요**. 로그인 페이지에 **Corp account(으)로 계속**이 표시됩니다.
+
+</Steps>
+
+## 누가 어떤 역할로 로그인할 수 있는가
+
+| 설정 | JSON 키 | 효과 |
+| --- | --- | --- |
+| **허용된 이메일 도메인** | `allowedDomains` | 이 이메일 도메인만 로그인할 수 있습니다. 비어 있으면 모두 허용. |
+| **첫 로그인 시 계정 만들기** | `autoCreate` | 누군가 처음 로그인할 때 관리자 계정을 만듭니다. 끄면 이미 계정이 있는 이메일만 로그인할 수 있습니다. |
+| **기본 역할** | `defaultRoles` | 역할 매핑이 역할을 주지 않을 때 만든 계정에 줄 역할 코드. |
+| **역할 클레임** | `roleClaim` | 사용자의 그룹을 나열하는 ID 토큰 클레임(예: `groups`, `roles`). |
+| **역할 매핑** | `roleMap` | 클레임 값마다 줄 역할 코드. |
+| **확인되지 않은 이메일 신뢰** | `trustUnverifiedEmail` | 제공업체가 확인됨으로 표시하지 않은 이메일도 받아들입니다. |
+| **공급자가 MFA를 강제함** | `providerMfa` | 이 제공업체를 거친 뒤에는 관리자에게 Verdin의 두 번째 인증 수단을 묻지 않습니다. |
+
+- 계정을 만드는 제공업체에는 기본 역할이나 역할 매핑이 필요합니다.
+- 둘 다 Super Admin 역할을 줄 수 없습니다. 관리자는 **설정 → 사용자**에서 직접 승격하세요.
+- 역할은 계정을 만들 때만 설정됩니다. 그 뒤에는 **설정 → 사용자**에서 관리하세요.
+- 만든 계정의 이름과 성은 `given_name`과 `family_name` 클레임에서 가져옵니다.
+
+같은 제공업체를 기능이 저장하는 JSON으로 나타내면 다음과 같습니다(`PUT /admin/api/features/sso`).
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## 제공업체별 참고 사항
+
+- **Microsoft Entra ID**는 ID 토큰에 `email_verified`를 넣지 않습니다. **확인되지 않은 이메일 신뢰**를 켜세요.
+  그룹을 매핑하려면 앱의 토큰 구성에서 `groups` 클레임을 추가하세요. 값은 그룹 id입니다.
+- **Google Workspace**: 발급자는 `https://accounts.google.com`입니다. **허용된 이메일 도메인**으로 도메인을
+  제한하세요.
+- **Keycloak**: 발급자는 realm URL인 `https://<host>/realms/<realm>`입니다.
+
+## 2단계 인증
+
+기본적으로 Verdin [두 번째 인증 수단](/ko/guides/auth/two-factor/)을 가진 관리자는 제공업체에서 돌아온 뒤 그
+인증을 요청받습니다. 제공업체가 이미 MFA를 강제한다면 **공급자가 MFA를 강제함**을 켜서 두 번 묻지 않게 하세요.
+
+## 동작 방식
+
+<Diagram
+  caption="SSO 로그인"
+  code={`sequenceDiagram
+  participant B as 브라우저
+  participant V as Verdin
+  participant P as 제공업체
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: state와 PKCE 챌린지를 담아 리디렉션
+  B->>P: 로그인
+  P-->>B: code를 담아 콜백으로 리디렉션
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: code 교환 (TLS)
+  V-->>B: 세션 쿠키, /admin/으로 리디렉션`}
+/>
+
+- Verdin은 PKCE(S256)를 쓰는 authorization code 흐름을 씁니다. `state`는 서명되며 수명이 짧은 `HttpOnly` 쿠키에
+  묶이고, `nonce`는 여기서 도출됩니다.
+- ID 토큰의 발급자, audience(여러 개면 `azp`도), 만료, nonce를 확인합니다. **확인되지 않은 이메일 신뢰**가 꺼져
+  있으면 `email_verified: true`인 `email` 클레임이 필요합니다.
+- 제공업체의 엔드포인트는 `https`를 써야 합니다.
+- 모든 SSO 로그인은 [감사 로그](/ko/guides/content/audit-logs/)에 제공업체와 함께 `admin.login`으로 기록됩니다.
+
+로그인에 실패하면 브라우저는 이유("Single sign-on failed")와 함께 로그인 페이지로 돌아가고, 이유는 서버 로그에도
+기록됩니다. 흔한 이유:
+
+| 이유 | 해결 방법 |
+| --- | --- |
+| the provider did not verify the email | **확인되지 않은 이메일 신뢰**를 켜거나 제공업체의 클레임을 고치세요. |
+| this email domain may not sign in | **허용된 이메일 도메인**에 도메인을 추가하세요. |
+| no admin account for this identity | **첫 로그인 시 계정 만들기**를 켜거나 관리자를 먼저 만드세요. |
+| the sign-in request expired or was not started here | 같은 브라우저에서 로그인 페이지부터 다시 시작하세요. |
+
+<Aside type="note">
+비활성화된 관리자는 SSO로도 로그인할 수 없습니다.
+</Aside>

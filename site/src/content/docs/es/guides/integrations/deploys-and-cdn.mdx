@@ -1,0 +1,224 @@
+---
+title: Despliegues y CDN
+description: Da a los editores un botón Desplegar para tu sitio estático, sigue sus builds y purga tu CDN cuando cambia el contenido.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Dos herramientas para los sitios que cachean lo que sirve Verdin:
+
+- Los **despliegues** ponen un botón **Desplegar** en la cabecera del panel. Llama al build hook
+  de tu sitio (Netlify, Vercel, Cloudflare Pages o cualquier CI), y el proveedor informa de cómo
+  va el build.
+- Las **purgas de la CDN** etiquetan las respuestas de la API de contenido por tipo de contenido y
+  purgan esas etiquetas en Cloudflare, Fastly o tu propio endpoint cuando el contenido cambia
+  públicamente.
+
+Ambas forman parte del núcleo: no hay interruptor de funcionalidad. Los despliegues se configuran
+en **Configuración → Despliegues**; la CDN, en `verdin.toml`.
+
+## Despliegues
+
+<Diagram code={`sequenceDiagram
+  participant E as Editor
+  participant V as Verdin
+  participant P as Proveedor de build
+  E->>V: Desplegar
+  V->>P: POST al build hook
+  P-->>V: callback: compilando
+  P-->>V: callback: listo (url)
+  V-->>E: "Sitio de producción desplegado"`} caption="El botón Desplegar llama al build hook; el proveedor informa a la URL de retorno." />
+
+### Añade un objetivo
+
+<Steps>
+
+1. En tu proveedor, crea un build hook para el sitio y copia su URL (Netlify: **Build hooks**;
+   Vercel: **Deploy Hooks**; Cloudflare Pages: **Deploy hooks**; un CI: cualquier URL que
+   inicie un pipeline con `POST`).
+2. En Verdin, ve a **Configuración → Despliegues** y elige **Añadir un objetivo**.
+3. Dale un **Nombre** (como **Sitio de producción**) y pega la **URL del build hook**.
+4. Guarda. La URL del hook es un secreto: a partir de ahora solo se muestra su host. Para que el
+   objetivo apunte a otro hook, usa **Sustituir la URL**.
+
+</Steps>
+
+Los administradores que pueden desplegar ven ahora **Desplegar** en la cabecera. Con varios
+objetivos, abre un menú **Desplegar en**. Tras confirmar, Verdin envía:
+
+```http
+POST <build hook URL>
+content-type: application/json
+
+{ "trigger": "verdin", "triggeredBy": "editor@example.com" }
+```
+
+Un objetivo se despliega como mucho cada 10 segundos, así que un doble clic no lanza dos builds.
+La petición agota el tiempo a los 15 segundos y no sigue redirecciones. Un hook que responde con
+algo distinto de `2xx` se registra como **Rechazado**.
+
+### Informa del estado de los builds
+
+Sin callback, un despliegue se queda en **Disparado**. Para ver **Compilando**, **Listo** y
+**Error** en el panel, y un enlace al sitio desplegado, da al proveedor la URL de retorno del
+objetivo: elige el botón **URL de retorno** del objetivo y cópiala.
+
+<Tabs syncKey="deploy-provider">
+<TabItem label="Netlify">
+
+En **Site configuration → Build & deploy → Deploy notifications**, añade un webhook saliente
+para **Deploy started**, **Deploy succeeded** y **Deploy failed**, con la URL de retorno.
+
+</TabItem>
+<TabItem label="Vercel">
+
+En **Team settings → Webhooks**, crea un webhook para los eventos `deployment.created`,
+`deployment.succeeded` y `deployment.error`, con la URL de retorno.
+
+</TabItem>
+<TabItem label="Otro CI">
+
+Haz `POST` de un JSON con un `status` (`building`, `ready` o `error`) y, opcionalmente, la `url`
+desplegada y un `message`:
+
+```sh title="Terminal"
+curl -X POST "$VERDIN_CALLBACK_URL" -H 'content-type: application/json' \
+  -d '{ "status": "ready", "url": "https://www.example.com" }'
+```
+
+</TabItem>
+</Tabs>
+
+Verdin entiende el `state` de Netlify, el `type` de Vercel y un `status` simple, y actualiza el
+último despliegue del objetivo. Responde `204`, o `404` si la URL no es correcta. La URL de
+retorno es `{public_url}{admin path}/api/deploy/callback/{id}/{secret}`, así que define
+[`[server].public_url`](/es/reference/configuration/) con la dirección a la que pueden llegar los
+proveedores.
+
+<Aside type="caution">
+La URL de retorno contiene un secreto: cualquiera que la tenga puede informar de estados de
+despliegue para ese objetivo. No puede lanzar despliegues ni leer nada.
+</Aside>
+
+El **Historial de despliegues** enumera los 50 últimos despliegues, del más reciente al más
+antiguo, con su objetivo, la hora de inicio, el estado, el estado HTTP del hook y el mensaje del
+proveedor. Eliminar un objetivo elimina su historial, no el build hook.
+
+### Permisos
+
+| Permiso | Permite |
+| --- | --- |
+| **Disparar despliegues** (`deploy.trigger`) | El botón **Desplegar** de la cabecera. Lo tiene el rol predefinido Editor. |
+| **Gestionar los objetivos de despliegue y la CDN** (`deploy.manage`) | **Configuración → Despliegues**: objetivos, URLs de retorno y purgas de la CDN. |
+
+Consulta [Permisos](/es/reference/permissions/). Las URLs de los build hooks siguen las mismas
+reglas de direcciones que los [webhooks](/es/guides/integrations/webhooks/): con `verdin start`
+no pueden apuntar a redes privadas salvo que
+[`[webhooks].allow_private_networks`](/es/reference/configuration/) lo permita.
+
+### O despliega con cada cambio
+
+El botón encaja con los sitios que se reconstruyen bajo demanda. Para reconstruir con cada
+publicación, crea un [webhook](/es/guides/integrations/webhooks/) para `entry.publish` y
+`entry.unpublish` con el build hook como URL. Para un lote programado de cambios, publícalos con
+un [lanzamiento](/es/guides/content/releases/) y conecta el webhook a `releases.publish`.
+
+## Purgas de la CDN
+
+Cuando una CDN cachea la API de contenido, sirve contenido obsoleto hasta que caduca la caché.
+Con `[cdn]` definido, Verdin etiqueta sus respuestas y purga las etiquetas adecuadas a medida que
+cambia el contenido, así que puedes cachear durante mucho tiempo.
+
+### Cómo funciona el etiquetado
+
+Cada `GET` correcto de la API de contenido lleva `vd` (todo), `vd-<singularName>` (el tipo de
+contenido) y la etiqueta de cada tipo que sus documentos pueden popular: los destinos de las
+relaciones, también dentro de componentes y zonas dinámicas, y a su vez sus propias relaciones.
+Para los artículos del blog de ejemplo, en los dos formatos de cabecera:
+
+```http
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
+```
+
+Un tipo con una relación polimórfica puede llegar a cualquier tipo, así que sus respuestas llevan
+la etiqueta de todos los tipos.
+
+Cloudflare lee `Cache-Tag` y Fastly lee `Surrogate-Key`. Cuando el contenido cambia
+públicamente, Verdin purga la etiqueta del tipo:
+
+- al publicar, despublicar o eliminar una entrada;
+- en cualquier escritura en un tipo sin borrador y publicación (sus escrituras son públicas al
+  momento).
+
+Guardar un borrador no purga nada, porque los borradores no se sirven públicamente. Los cambios
+en el plazo de un segundo (`debounce_ms`) se agrupan en una sola purga, y una purga fallida se
+reintenta dos veces.
+
+### Configúralas
+
+<Tabs syncKey="cdn">
+<TabItem label="Cloudflare">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "cloudflare"
+zone_id = "023e105f4ecef8ad9ca31a8372d0c353"
+```
+
+`VERDIN_CDN_TOKEN` es un token de API con el permiso **Cache Purge** sobre la zona.
+
+</TabItem>
+<TabItem label="Fastly">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "fastly"
+service_id = "SU1Z0isxPaozGVKXdv0eY"
+```
+
+`VERDIN_CDN_TOKEN` es un token de API de Fastly autorizado a purgar el servicio.
+
+</TabItem>
+<TabItem label="Webhook">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "webhook"
+url = "https://purge.example.com/verdin"
+```
+
+Verdin envía `POST { "tags": ["vd-article"] }`, con `Authorization: Bearer <VERDIN_CDN_TOKEN>`
+cuando el token está definido. Úsalo para otra CDN, un proxy inverso o la API de revalidación de
+tu framework.
+
+</TabItem>
+</Tabs>
+
+```sh title="Terminal"
+export VERDIN_CDN_TOKEN=...
+```
+
+Verdin comprueba la sección al arrancar y se niega a funcionar sin el `zone_id`, el
+`service_id`, la `url` o el token que necesita el proveedor. Consulta
+[`[cdn]`](/es/reference/configuration/).
+
+Es tu CDN la que sigue decidiendo qué cachear: configura una regla de caché para las rutas de la
+API (por ejemplo `/api/*` en los `GET` anónimos) con un TTL largo en el edge. Deja fuera de la
+caché las peticiones autenticadas, las lecturas de vista previa y `/api/_events`.
+
+### Comprueba y purga a mano
+
+La sección **CDN** de **Configuración → Despliegues** muestra el proveedor y las
+**Purgas recientes** (**Purgada** o **Fallida**, con las etiquetas). **Purgar todo** descarta
+todas las respuestas etiquetadas con `vd`.
+
+Como las respuestas llevan las etiquetas de los tipos que pueden popular, renombrar una categoría
+también purga las listas de artículos cacheadas que podrían incluirla, tanto si la petición pedía
+`populate` como si no.
+
+La caché en memoria propia de Verdin ([`[api].cache_ttl_secs`](/es/reference/configuration/)) es
+aparte: se vacía con cada cambio.

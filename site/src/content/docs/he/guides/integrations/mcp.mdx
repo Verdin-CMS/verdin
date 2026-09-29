@@ -1,0 +1,144 @@
+---
+title: שרת MCP
+description: אפשרו ל-Claude ולסוכני AI אחרים לקרוא ולערוך תוכן של Verdin דרך ה-Model Context Protocol, עם ההרשאות של אסימון API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin יכול להגיש את התוכן שלו לסוכני AI דרך ה-
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP). חברו את Claude Code, את
+Claude Desktop, את Cursor או כל לקוח MCP אחר, והסוכן יכול להציג את סוגי התוכן שלכם, לשאול
+על רשומות עם המסננים של ה-REST API, וליצור, לעדכן או לפרסם רשומות, בגבולות ההרשאות של האסימון
+שתתנו לו.
+
+ל-Strapi v5 אין שרת MCP מובנה.
+
+## הפעלה
+
+<Steps>
+
+1. ב-**הגדרות ← תכונות**, הפעילו את **שרת MCP**. הכרטיס שלו מציג את **נקודת קצה**,
+   `https://cms.example.com/mcp`, באותו מארח כמו API התוכן.
+2. ב-**הגדרות ← אסימוני API**, בחרו **יצירת אסימון**. בחרו **קריאה בלבד** אלא אם הסוכן צריך
+   לכתוב, או **מותאם אישית** כדי להתיר רק חלק מהסוגים והפעולות. העתיקו את האסימון: הוא מוצג
+   פעם אחת. ראו [אסימוני API](/he/guides/auth/api-tokens/).
+3. חברו את הלקוח שלכם עם נקודת הקצה והאסימון (בהמשך).
+
+</Steps>
+
+## חיבור לקוח
+
+השרת מדבר בתעבורת ה-Streamable HTTP של MCP. כל לקוח צריך את הכתובת וכותרת
+`Authorization: Bearer <token>`.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+בכרטיס **שרת MCP** יש את הפקודה הזו תחת **הוספה ל־Claude Code** (**העתקת הפקודה**); החליפו את
+`<token>` באסימון ה-API שלכם:
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+קובץ התצורה של Claude Desktop מפעיל שרתים מקומיים, אז גשרו לנקודת הקצה של HTTP עם
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+פורמטי התצורה של לקוחות משתנים; בדקו את התיעוד של הלקוח שלכם אם מפתח לא מזוהה. אחר כך
+שאלו את הסוכן משהו כמו *"הצג את המאמרים שפורסמו השבוע בקטגוריה News"*.
+
+## כלים
+
+| כלי | דורש | מה הוא עושה |
+| --- | --- | --- |
+| `list_content_types` | `find` או `findOne` | סוגי התוכן שהמבקש יכול לקרוא, עם הסוג (kind) והמאפיינים שלהם. |
+| `get_content_type` | `find` או `findOne` | המאפיינים של סוג תוכן: טיפוסים, אפשרויות וקשרים. |
+| `find_entries` | `find` | רשומות של סוג. `query` מקבל את הפרמטרים של ה-REST API כ-JSON (`filters`, `sort`, `fields`, `populate`, `pagination`); `status: "draft"` דורש גם `readDrafts`. |
+| `get_entry` | `findOne` | רשומה אחת לפי `documentId` (בסוגים יחידים: בלעדיו). |
+| `create_entry` | `create` | יוצר רשומה מ-`data`, כמו ב-REST API. `status: "draft"` שומר טיוטה. |
+| `update_entry` | `update` | מעדכן רשומה (בסוגים יחידים: בלי `documentId`). |
+| `delete_entry` | `delete` | מוחק רשומה. |
+| `publish_entry`, `unpublish_entry` | `publish` | מפרסם רשומה או מבטל את הפרסום שלה. |
+
+הכלים מקבלים `uid` (כמו `api::article`) ובסוגים מתורגמים גם `locale`. כל כלי בודק את אותה הרשאה
+כמו נתיב ה-REST המתאים, והכתיבות עוברות באותו מסלול כמו ה-REST API: אימות, hooks של תוספים,
+שלבי בקרה, webhooks, היסטוריית תוכן ויומני ביקורת. סוכן לא יכול לעשות שום דבר שהאסימון שלו לא
+יכול לעשות דרך REST.
+
+ראו [הרשאות](/he/reference/permissions/) לפעולות של API התוכן.
+
+## אימות
+
+נקודת הקצה מקבלת את אותם פרטי גישה כמו API התוכן:
+
+- אסימון API, הבחירה הרגילה לסוכנים;
+- JWT של משתמש קצה, לסוכן שפועל כמשתמש מחובר של האפליקציה שלכם;
+- בלי כותרת `Authorization`, להרשאות של התפקיד הציבורי.
+
+אסימון לא תקין עונה `401`. השרת לא שומר סשנים ולא פותח זרמים: כל בקשה היא `POST` של JSON-RPC
+שנענית ב-JSON (`GET` עונה `405`).
+
+### מקורות דפדפן
+
+בקשות שנושאות כותרת `Origin`, שדפדפנים שולחים, נדחות אלא אם המקור מופיע תחת **מקורות דפדפן
+מותרים** בכרטיס **שרת MCP**. זה מגן מפני DNS rebinding, שבו דף אינטרנט מערים על הדפדפן לקרוא
+לשרת ברשת שלכם. לקוחות שורת פקודה ושולחן עבודה לא שולחים `Origin`, ולכן הרשימה בדרך כלל ריקה.
+
+<Aside type="caution">
+סוכן עם אסימון גישה מלאה יכול למחוק ולפרסם תוכן. תנו לסוכנים אסימונים לקריאה בלבד או
+מותאמים שמוגבלים למה שהם צריכים. לטיוטות שסוכן כותב,
+[תהליך בקרה](/he/guides/content/review-workflows/) משאיר אדם בין הסוכן לבין הפרסום.
+</Aside>
+
+כדי לתת לעורכים עזרה של AI בתוך פאנל הניהול במקום זאת (תרגום, טקסט חלופי, הצעות SEO), ראו
+[פעולות AI](/he/guides/integrations/ai-actions/).

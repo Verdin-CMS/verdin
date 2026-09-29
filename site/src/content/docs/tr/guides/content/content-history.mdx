@@ -1,0 +1,89 @@
+---
+title: İçerik geçmişi
+description: Bir kaydın kaydedilmiş, yayınlanmış ve yayından kaldırılmış sürümlerine göz atın ve birini güncel taslak olarak geri yükleyin.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Verdin, herhangi bir API’den bir kayıt her oluşturulduğunda, kaydedildiğinde, yayınlandığında,
+yayından kaldırıldığında veya taslağı atıldığında onun bir sürümünü tutar. Bu kılavuz eski bir
+sürümü nasıl bulup geri yükleyeceğinizi, kaç sürümün tutulduğunu ve ilgili admin API’yi
+gösterir.
+
+İçerik geçmişi, orada ücretli bir özellik olan Strapi’ninki gibi çalışır.
+
+## Başlamadan önce
+
+- **Ayarlar → Özellikler → İçerik geçmişi** varsayılan olarak açıktır. Kapalıyken hiçbir sürüm
+  kaydedilmez ve geçmiş kullanılamaz.
+- Bir kaydın geçmişini okumak kayda okuma erişimi, geri yüklemek ise güncelleme erişimi
+  gerektirir. Alan kısıtlamaları uygulanır: yalnızca rolünüzün okuyabildiği veya
+  güncelleyebildiği alanları görür ve geri yüklersiniz. Bkz. [İzinler](/tr/reference/permissions/).
+
+## Bir sürümü geri yükleme
+
+<Steps>
+
+1. Kaydı açın ve **Geçmiş**’i seçin.
+2. **Sürümler** listesi her sürümü olayı (**Oluşturuldu**, **Kaydedildi**, **Yayınlandı**,
+   **Yayından kaldırıldı**, **Taslak atıldı**), tarihi ve onu yapan kişiyle gösterir. İçerik
+   API’si üzerinden yapılan değişikliklerde yazar olarak **API** görünür.
+3. Alanlarını görüntülemek için bir sürüm seçin.
+4. **Geri yükle**’yi seçin ve onaylayın.
+
+</Steps>
+
+Sürüm güncel taslağın yerini alır; hazır olduğunuzda sonra yayınlayın. Taslak ve yayınlama
+kullanmayan tiplerde geri yükleme kaydı doğrudan günceller.
+
+Geri yüklediğinizde dışarıda kalanlar:
+
+- Artık şemada bulunmayan alanlar listelenir ve geri yüklenmez.
+- Silinmiş kayıtlara veya dosyalara yapılan referanslar atılır ve düzenleyici hangi alanların
+  bunları kaybettiğini söyler.
+
+**Düzenleyiciye dön**, hiçbir şeyi değiştirmeden kayda geri döner.
+
+## Kaç sürüm tutulur
+
+Verdin her kayıt ve dil için en yeni `[history].max_versions` sürümü (varsayılan 50) tutar ve
+yeni sürümler geldikçe eskileri kaldırır:
+
+```toml title="verdin.toml"
+[history]
+max_versions = 100
+```
+
+Yerelleştirilmiş bir kaydın her dilinin kendi geçmişi vardır. Bir kaydı veya dillerinden birini
+silmek sürümlerini de siler. Bkz. [yapılandırma başvurusu](/tr/reference/configuration/).
+
+<Aside type="note">
+Geçmişin belirli sayıda gün tutulduğu Strapi’nin aksine Verdin, ne kadar eski olurlarsa olsunlar
+kayıt başına belirli sayıda sürüm tutar.
+</Aside>
+
+## Admin API
+
+Tüm rotalar `/admin/api` altındadır.
+
+| Rota | İzin | Yaptığı |
+| --- | --- | --- |
+| `GET /history/{uid}/{documentId}?locale=&page=&pageSize=` | kaydı okuma | En yeniden başlayarak, verileri olmadan sürümler (sayfa başına 20, en fazla 100). |
+| `GET /history/versions/{id}` | kaydı okuma | Verisiyle birlikte tek bir sürüm. |
+| `POST /history/versions/{id}/restore` | kaydı güncelleme | Sürümü güncel taslak olarak geri yükler. |
+
+Geri yükleme yanıtı atılanları listeler:
+
+```json
+{
+  "data": {
+    "documentId": "k3v9…",
+    "restored": 42,
+    "dropped": [{ "field": "tags", "count": 1 }]
+  }
+}
+```
+
+Özellik kapalıyken rotalar `404` yanıtını verir.

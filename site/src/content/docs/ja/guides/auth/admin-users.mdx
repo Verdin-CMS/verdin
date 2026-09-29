@@ -1,0 +1,134 @@
+---
+title: 管理者ユーザーとロール
+description: 最初の管理者を作成し、他の管理者を招待し、ロールを与え、パネルや CLI からパスワードを再設定し、セッションを管理します。
+sidebar:
+  order: 1
+  label: 管理者ユーザー
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+管理者は、管理パネルにログインする人々です。サイトやアプリの[エンドユーザー](/ja/guides/auth/end-users/)とは別です。このガイドでは、最初の管理者を作成し、他の管理者を招待し、ロールを与え、締め出されたときに再びログインできるようにします。
+
+## 始める前に
+
+- Verdin には、環境変数の `VERDIN_ADMIN_JWT_SECRET` と `VERDIN_TOKEN_PEPPER` が必要です。`verdin secrets` で一度だけ生成してください。
+- 管理者の管理には**ユーザーの管理**（`users.manage`）が、ロールの管理には**ロールの管理**（`roles.manage`）が必要です。[権限](/ja/reference/permissions/)を参照してください。
+- 招待とパスワード再設定は `[email]` を通じてメールで送られます。デフォルトの `log` プロバイダーでは、リンクを含むメールがサーバーのログに書き出されます。
+
+## 最初の管理者を作成する
+
+管理パネル（デフォルトは `http://localhost:1337/admin/`）を開きます。管理者が存在しない間は、最初の管理者の登録を求められ、その管理者が Super Admin になります。パスワードは 8〜128 文字です。
+
+ブラウザーがない場合は、CLI か API を使います。
+
+<Tabs>
+<TabItem label="CLI">
+
+```sh title="Terminal"
+verdin admin create --email you@example.com
+```
+
+パスワードは `VERDIN_ADMIN_PASSWORD` から取得するか、標準入力から読み込みます。このコマンドは Super Admin を作成し、最初の管理者に限らずいつでも使えます。
+
+</TabItem>
+<TabItem label="API">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/register-first-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+```
+
+このルートは、管理者が存在しない間だけ使えます。
+
+</TabItem>
+</Tabs>
+
+## 管理者を招待する
+
+<Steps>
+
+1. **設定 → ユーザー**を開き、**ユーザーを追加**を選びます。
+2. メールアドレスと、任意で**名**と**姓**を入力します。
+3. **ロール**を 1 つ以上選びます。
+4. 招待を送るには**今すぐパスワードを設定**をオフのままにし、自分でパスワードを設定するにはオンにします。
+5. **招待**（パスワードを設定した場合は**保存**）を選びます。
+
+</Steps>
+
+**招待リンク**のダイアログにリンクが表示され、メールで送られたかどうかがわかります。送られなかった場合（`log` プロバイダーでは常にそうです）は、自分でリンクを共有してください。リンクは 7 日間、1 回だけ使えます。招待された管理者はリンクを開き、パスワードを選ぶとログインできます。
+
+その管理者が一度もログインしていない間は、その行の**新しい招待リンク**で古いリンクを置き換えられます。一度ログインした後は、代わりにパスワードの再設定でアクセスを取り戻します。
+
+## ロール
+
+Verdin は、Strapi と同様に 3 つのロールを作成します。
+
+| ロール | できること |
+| --- | --- |
+| **Super Admin** | すべて。権限は変更できません。 |
+| **Editor** | すべてのコンテンツの作成、編集、公開、削除。メディアライブラリの管理、デプロイの実行、SEO、リダイレクト、メニュー、フォームの管理。 |
+| **Author** | コンテンツの作成と、自分のエントリーとファイルの編集・削除。公開はできません。 |
+
+その他のロールは、**設定 → ロール**の**新規ロール**で作成します。ロールごとに次を選びます。
+
+- **コンテンツ**: コンテンツタイプごと（または**すべてのコンテンツタイプ**）の、**閲覧**、**作成**、**更新**、**削除**、**公開**のレベル。**アクセス不可**、**自分のみ**（その管理者が作成したエントリーだけ）、**すべて**のいずれかです。**フィールド**でアクションを一部のフィールドに、**言語**で一部のロケールに限定します。
+- **メディアライブラリ**: **すべてのファイル**または**自分のファイル**に対するファイルの操作。
+- **設定**: **ユーザーの管理**や**監査ログの閲覧**など、管理領域へのアクセス。
+- **二段階認証を必須にする**: [二段階認証](/ja/guides/auth/two-factor/)を参照してください。
+
+複数のロールを持つ管理者は、それらの権限の和集合を得ます。完全な一覧は[権限のリファレンス](/ja/reference/permissions/)にあります。
+
+Super Admin のロールを与えたり、他の Super Admin を編集、削除、リセットしたりできるのは Super Admin だけです。
+
+## 管理者を無効化または削除する
+
+**設定 → ユーザー**で管理者を編集し、**有効**をオフにします。無効なユーザーはログインできません。**削除**はアカウントを完全に削除します。その管理者のコメントは、削除された管理者が書いたものとして表示されます。
+
+## パスワードを再設定する
+
+- **管理者本人が再設定する:** ログインページの<strong>パスワードをお忘れですか？</strong>で、1 時間有効なリンクがメールで送られます。パスワードが変わると、そのアカウントのすべてのセッションが終了します。
+- **別の管理者が設定する:** **設定 → ユーザー**でその管理者を編集し、新しいパスワードを入力します。現在のパスワードを保つには、欄を空のままにします。
+- **サーバーから:** 誰もログインできないときは、次を実行します。
+
+  ```sh title="Terminal"
+  verdin admin reset-password --email you@example.com
+  ```
+
+  パスワードは `VERDIN_ADMIN_PASSWORD` か標準入力で渡します。このコマンドはパスワードを設定し、アカウントのロックを解除し、そのセッションを終了します。二段階認証は解除しません。第二要素を失った管理者は、別の管理者に[リセット](/ja/guides/auth/two-factor/)してもらう必要があります。
+
+## ログインの保護
+
+- パスワードを 5 回続けて間違えると、アカウントは 15 分間ロックされます。
+- ログイン、登録、リフレッシュのリクエストは、クライアント IP ごとに `[admin].auth_rate_limit`（デフォルトは 1 分あたり 20 回）で制限されます。
+- 管理者のセッションは 15 分のアクセストークンで、30 日間有効なリフレッシュ Cookie で更新されます。`verdin start` ではこの Cookie は `Secure` です。`[admin].secure_cookies` を参照してください。
+
+各管理者は、**プロフィール**の**セッション**でログイン中のデバイスを確認でき、1 つまたは他のすべてのデバイスを**サインアウト**できます。パスワードを変更すると、他のすべてのデバイスからサインアウトされます。
+
+## Admin API
+
+ログインして、Admin API 用のアクセストークンを取得します。
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+# → { "data": { "user": {…}, "accessToken": "…", "accessTokenExpiresAt": "…" } }
+```
+
+| ルート | 権限 | 動作 |
+| --- | --- | --- |
+| `GET /users`、`GET /users/{id}` | `users.manage` | ロール付きの管理者。 |
+| `POST /users` | `users.manage` | `{ email, firstname?, lastname?, roles: [ids], isActive?, password? }`。`password` がない場合、応答の `meta` に `inviteUrl` と `emailed` が入ります。 |
+| `PUT /users/{id}`、`DELETE /users/{id}` | `users.manage` | 管理者を変更または削除します。 |
+| `POST /users/{id}/invite` | `users.manage` | 一度もログインしていない管理者向けの、新しい招待リンク。 |
+| `GET /roles`、`POST /roles`、`PUT /roles/{id}`、`DELETE /roles/{id}` | `roles.manage` | ロールとその権限。 |
+| `POST /auth/forgot-password` | 公開 | `{ email }`。常に `204` を返します。 |
+| `GET /auth/sessions`、`DELETE /auth/sessions/{id}` | ログイン済み | 自分のセッション。 |
+
+すべてのルートは `/admin/api` 配下にあります。[Admin API](/ja/api/admin/) を参照してください。
+
+<Aside type="caution">
+シークレットは決して `verdin.toml` に書かないでください。2 つのシークレットは、再起動やインスタンスをまたいで変えないでください。`VERDIN_ADMIN_JWT_SECRET` はアクセストークン、エンドユーザーの JWT、プレビューのリンクに署名し、`VERDIN_TOKEN_PEPPER` は API トークンと第二要素を保護します（[API トークン](/ja/guides/auth/api-tokens/)を参照）。
+</Aside>

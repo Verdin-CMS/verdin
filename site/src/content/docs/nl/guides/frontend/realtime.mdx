@@ -1,0 +1,144 @@
+---
+title: Realtime updates
+description: Ververs je frontend zodra content verandert, door je te abonneren op de server-sent events van Verdin.
+sidebar:
+  order: 8
+  label: Realtime
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Met de functie **Realtime** aan streamt Verdin een klein event telkens als een item of een
+mediabestand verandert. Een frontend abonneert zich op de stream en haalt opnieuw op wat is
+veranderd: een liveblog, een scorebord, een dashboard dat nooit hoeft te herladen. Elke abonnee
+ontvangt alleen events over content die hij mag lezen.
+
+Deze pagina laat zien hoe je de stream vanuit een frontend gebruikt. De eventnamen, payloads en
+regels staan in de [referentie van de realtime-API](/nl/api/realtime/). Strapi v5 heeft geen
+ingebouwd equivalent.
+
+## Aanzetten
+
+<Steps>
+
+1. Zet in **Instellingen → Functies** **Realtime** aan.
+2. Bepaal wie zich abonneert. De stream gebruikt de rechten van de content-API:
+   - voor iedereen: sta **Zoeken** of **Eén zoeken** toe op de types in
+     **Instellingen → Openbare toegang**;
+   - voor een server of een app: maak een [API-token](/nl/guides/auth/api-tokens/) aan met die
+     rechten (en **Concepten lezen** om events te ontvangen die alleen concepten betreffen);
+   - voor ingelogde eindgebruikers werkt hun JWT ook (zie [Eindgebruikers](/nl/guides/auth/end-users/)).
+
+</Steps>
+
+De stream is `GET /api/_events`. Voeg `?types=` toe met een door komma's gescheiden lijst van uid's
+van contenttypes om alleen die te ontvangen (`plugin::upload` is de mediabibliotheek):
+
+```sh title="Terminal"
+curl -N "https://cms.example.com/api/_events?types=api::article,api::category"
+```
+
+```
+event: ready
+data: {}
+
+event: entry.publish
+data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","locale":"en"}
+```
+
+## Abonneren vanuit een browser
+
+Events bevatten id's, geen content. Haal bij elk event opnieuw op wat je toont, via dezelfde API en
+rechten als bij elke andere leesactie.
+
+<Tabs syncKey="auth">
+<TabItem label="Openbaar">
+
+Met de openbare rol is de `EventSource` van de browser genoeg, en die maakt zelf opnieuw
+verbinding:
+
+```js
+const CMS = 'https://cms.example.com';
+const events = new EventSource(`${CMS}/api/_events?types=api::article`);
+
+for (const name of ['entry.publish', 'entry.unpublish', 'entry.delete']) {
+  events.addEventListener(name, (event) => {
+    const { documentId } = JSON.parse(event.data);
+    refreshArticle(documentId);
+  });
+}
+
+events.addEventListener('lagged', () => refreshEverything());
+```
+
+</TabItem>
+<TabItem label="Met een token">
+
+`EventSource` kan geen header `Authorization` meesturen. Lees de stream in plaats daarvan met
+`fetch`, en maak opnieuw verbinding als hij eindigt:
+
+```js
+async function subscribe(token, onEvent) {
+  for (;;) {
+    try {
+      const response = await fetch(`${CMS}/api/_events?types=api::article`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) return; // token refused
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const name = block.match(/^event: (.*)$/m)?.[1];
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (name && data) onEvent(name, JSON.parse(data));
+        }
+      }
+    } catch {
+      // network error: retry below
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+```
+
+Elke SSE-clientbibliotheek die headers ondersteunt, werkt ook.
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution">
+Een token in browsercode is leesbaar voor iedereen die de pagina opent. Lever alleen een token met
+alleen-lezen mee dat beperkt is tot de types die de pagina toont, of abonneer je vanaf je server en
+stuur de updates door naar de browser.
+</Aside>
+
+De stream aanroepen vanaf een site op een andere origin vereist die origin in
+[`[api].cors_origins`](/nl/reference/configuration/).
+
+## De stream gezond houden
+
+- Het eerste event is `ready`: het abonnement is actief.
+- Een stream eindigt na een uur. Maak dan opnieuw verbinding: `EventSource` doet dat automatisch,
+  en bij opnieuw verbinden wordt het token ook opnieuw gecontroleerd, dus een ingetrokken token
+  ontvangt geen events meer.
+- Een event met de naam `lagged` betekent dat de client te traag las en events heeft gemist. Haal
+  alles wat de pagina toont opnieuw op.
+- Events die alleen concepten betreffen (`entry.create`, `entry.update` en `entry.discard-draft`
+  op types met concept en publicatie) bereiken alleen aanroepers met **Concepten lezen**. Een
+  openbare site luistert meestal naar `entry.publish`, `entry.unpublish` en `entry.delete`.
+
+## Achter een load balancer
+
+Events zijn die van de instantie waarmee een client verbonden is. Gebruik bij meerdere instanties
+sticky sessions voor `/api/_events`, of laat realtime-clients met één instantie verbinden. Zie
+[Schalen](/nl/deploy/scaling/).
+
+Het beheerpaneel gebruikt zijn eigen stream (`/admin/api/events`) voor live updates, presence en
+zachte vergrendelingen tijdens het bewerken; zie de [referentie van de realtime-API](/nl/api/realtime/).

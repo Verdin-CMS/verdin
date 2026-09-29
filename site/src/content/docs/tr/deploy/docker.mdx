@@ -1,0 +1,389 @@
+---
+title: Docker
+description: Verdin’i resmi imajdan Docker veya Docker Compose ile; PostgreSQL, MySQL, MariaDB ya da SQLite ile, şemanız salt okunur bağlanmış ve medya bir volume’de veya S3’te olacak şekilde çalıştırın.
+sidebar:
+  order: 3
+---
+
+import { Aside, FileTree, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+Resmi imaj, yönetim paneli yerleşik olarak tek bir Verdin sunucusu çalıştırır. Bu sayfa imajın
+içeriğini, her veritabanı için bir Compose dosyasını ve kendi yapılandırmanızı nasıl
+ekleyeceğinizi anlatır. Diğer platform sayfaları bunun üzerine kurulur.
+
+## İmaj
+
+`ghcr.io/verdin-cms/verdin`, her sürümde `linux/amd64` ve `linux/arm64` için yayınlanır ve tam
+sürüm (`0.10.0`), minor sürüm (`0.10`) ve `latest` ile etiketlenir. Üretimde bir minor sürüme
+sabitleyin: 0.x minor sürümleri davranışı değiştirebilir (bkz.
+[Yükseltme](/tr/migrate/upgrading/)).
+
+| | |
+| --- | --- |
+| Temel | Distroless (`gcr.io/distroless/static-debian12:nonroot`): shell yok, paket yöneticisi yok, `curl` yok. |
+| Kullanıcı | `nonroot` (uid ve gid `65532`). |
+| Entrypoint | `/usr/local/bin/verdin` |
+| Varsayılan komut | `start --migrate`: bekleyen güvenli migrasyonları uygular, ardından sunar. |
+| Port | `1337` |
+| Volume | `/data`: SQLite veritabanı, yerel yüklemeler ve `dev` ile şema. |
+| Yapılandırma | `/app/verdin.toml` (`VERDIN_CONFIG=/app/verdin.toml`). |
+
+Yerleşik yapılandırma:
+
+```toml title="/app/verdin.toml"
+[server]
+host = "0.0.0.0"
+port = 1337
+
+[schema]
+path = "/data/schema"
+
+[log]
+format = "json"
+
+[upload.transforms]
+cache_dir = "/data/.cache/transforms"
+
+[search]
+dir = "/data/search"
+```
+
+ve `VERDIN_DATABASE_URL=sqlite:///data/verdin.db`. Yerel yükleme sağlayıcısının varsayılan
+olarak yazdığı `/app/public/uploads`, `/data/uploads`’a bir bağlantıdır. Herhangi bir anahtar
+bir `VERDIN_<SECTION>__<KEY>` değişkeniyle geçersiz kılınabilir (bkz.
+[yapılandırma başvurusu](/tr/reference/configuration/)).
+
+## Deneyin
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+`dev`, şemayı volume içindeki `/data/schema`’ya yazan içerik tipi oluşturucusunu etkinleştirir.
+`http://localhost:1337/admin/` adresini açın ve ilk admin’i kaydedin. Üretim için şemayı
+deponuzda tutun ve aşağıdaki gibi varsayılan `start --migrate` komutunu çalıştırın.
+
+## Compose ile çalıştırma
+
+Commit ettiğiniz şemayı Compose dosyasının yanına koyun:
+
+<FileTree>
+- compose.yaml
+- .env              Compose için veritabanı parolası
+- verdin.env        `verdin secrets` ile üretilen secret’lar
+- schema/
+  - content-types/
+  - components/
+</FileTree>
+
+<Steps>
+
+1. Secret’ları bir kez oluşturun ve sürüm denetiminin dışında tutun:
+
+   ```sh frame="terminal"
+   docker run --rm ghcr.io/verdin-cms/verdin:0.10 secrets > verdin.env
+   echo "DB_PASSWORD=$(openssl rand -hex 24)" > .env
+   ```
+
+2. Veritabanınız için `compose.yaml` yazın. `https://cms.example.com` adresini tarayıcıların
+   kullanacağı adresle değiştirin.
+
+   <Tabs syncKey="db">
+   <TabItem label="PostgreSQL">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD}@db:5432/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: postgres:17
+       restart: unless-stopped
+       environment:
+         POSTGRES_USER: verdin
+         POSTGRES_PASSWORD: ${DB_PASSWORD}
+         POSTGRES_DB: verdin
+       volumes:
+         - db-data:/var/lib/postgresql/data
+       healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U verdin -d verdin"]
+         interval: 5s
+         retries: 20
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   </TabItem>
+   <TabItem label="MySQL">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: mysql://verdin:${DB_PASSWORD}@db:3306/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: mysql:8.4
+       restart: unless-stopped
+       environment:
+         MYSQL_USER: verdin
+         MYSQL_PASSWORD: ${DB_PASSWORD}
+         MYSQL_DATABASE: verdin
+         MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+       volumes:
+         - db-data:/var/lib/mysql
+       healthcheck:
+         test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+         interval: 5s
+         retries: 30
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   </TabItem>
+   <TabItem label="MariaDB">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: mysql://verdin:${DB_PASSWORD}@db:3306/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: mariadb:11.4
+       restart: unless-stopped
+       environment:
+         MARIADB_USER: verdin
+         MARIADB_PASSWORD: ${DB_PASSWORD}
+         MARIADB_DATABASE: verdin
+         MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+       volumes:
+         - db-data:/var/lib/mysql
+       healthcheck:
+         test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+         interval: 5s
+         retries: 30
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   MariaDB `mysql://` URL’leri kullanır; Verdin konuştuğu sunucuyu algılar.
+
+   </TabItem>
+   <TabItem label="SQLite">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         # The image's default; the file lives in the volume.
+         VERDIN_DATABASE_URL: sqlite:///data/verdin.db
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+
+   volumes:
+     verdin-data:
+   ```
+
+   SQLite ile tek bir container çalıştırın: veritabanı onun volume’ündeki bir dosyadır.
+
+   </TabItem>
+   </Tabs>
+
+   `@`, `:` veya `/` gibi karakterler içeren bir parola URL’de percent-encoding ile
+   kodlanmalıdır; yukarıdaki `openssl rand -hex` parolası buna ihtiyaç duymaz.
+
+3. Başlatın ve günlükleri izleyin:
+
+   ```sh frame="terminal"
+   docker compose up -d
+   docker compose logs -f verdin
+   ```
+
+   İlk başlatma tüm tabloları oluşturur. `verdin listening` satırını bekleyin.
+
+4. İlk admin’i hemen `/admin/` adresinden ya da komut satırından kaydedin (parolayı sorar):
+
+   ```sh frame="terminal"
+   docker compose exec -it verdin verdin admin create --email you@example.com
+   ```
+
+</Steps>
+
+1337 numaralı portun önüne TLS’i sonlandıran bir reverse proxy (Caddy, nginx, Traefik veya yük
+dengeleyiciniz) koyun ve onu `VERDIN_SERVER__TRUSTED_PROXIES` içinde listeleyin. Bir Compose
+ağında proxy’nin adresi Docker’ın özel aralıklarındadır; `'["172.16.0.0/12"]'` Docker’ın
+varsayılan ağlarını kapsar, ancak kendinizinkini `docker network inspect` ile denetleyin.
+
+## Volume’ler
+
+| Yol | Tuttuğu | Notlar |
+| --- | --- | --- |
+| `/data` | SQLite veritabanı, yerel yüklemeler (`/data/uploads`) | Adlandırılmış bir volume imajın sahipliğini (`65532`) korur. Bir bind mount, uid `65532` tarafından yazılabilir olmalıdır. |
+| `/data/schema` | Şema dosyaları | Commit ettiğiniz şemayı `start` ile salt okunur (`:ro`) bağlayın. `dev` onun yazılabilir olmasını gerektirir. |
+
+İmaj başka hiçbir yere yazmaz: görsel dönüştürme önbelleği ve arama dizini de volume’dedir
+(`/data/.cache/transforms`, `/data/search`). 0.10’dan önceki imajlar bu ikisini `nonroot`
+kullanıcısının yazamadığı `/app` altında tutuyordu; orada `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR`
+ve `VERDIN_SEARCH__DIR` değerlerini `/data` altındaki yollara ayarlayın.
+
+Yüklemeler saklanmadan önce sistemin geçici dizinine (`/tmp`) akıtılır.
+
+## Sağlık denetimleri
+
+İmaj, [`verdin healthcheck`](/tr/reference/cli/) çalıştıran bir `HEALTHCHECK` bildirir: bu komut
+loopback arayüzünde `/_health` adresine sorar; böylece `docker ps` container’ı `healthy` olarak
+gösterir ve Compose’un `depends_on: condition: service_healthy` ayarı çalışır. İmajda shell veya
+`curl` yoktur; kendi Compose denetiminizi yazmak için ikili dosyayı aynı şekilde çağırın:
+
+```yaml
+healthcheck:
+  test: ["CMD", "/usr/local/bin/verdin", "healthcheck"]
+  interval: 30s
+```
+
+Proxy’ler, yük dengeleyiciler ve orkestratörler, hazır olma için `GET /_ready` (veritabanı yanıt
+verdiğinde 200, aksi hâlde 503), canlılık için `GET /_health` çağırmalıdır. Bkz.
+[İzleme](/tr/deploy/monitoring/).
+
+## Kendi yapılandırma dosyanız
+
+Ortam değişkenleri, S3 yükleme sağlayıcısı dâhil çoğu ayarı kapsar
+(`VERDIN_UPLOAD__PROVIDER__NAME=s3`, `VERDIN_UPLOAD__PROVIDER__BUCKET`,
+`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`, …; 0.10’dan önce imajın yerleşik `dir` anahtarı bunun
+başarısız olmasına yol açıyordu). Ayarları tek bir sürümlenmiş dosyada tutmayı tercih ediyorsanız
+bir yapılandırma dosyası kullanın.
+
+Container’lar için bir `verdin.toml` yazın:
+
+```toml title="verdin.toml"
+[server]
+host = "0.0.0.0"
+port = 1337
+public_url = "https://cms.example.com"
+trusted_proxies = ["172.16.0.0/12"]
+
+[schema]
+path = "/data/schema"
+
+[log]
+format = "json"
+
+[upload]
+provider = { name = "s3", bucket = "media", region = "auto",
+             endpoint = "https://<account>.r2.cloudflarestorage.com",
+             public_url = "https://media.example.com" }
+
+[email]
+provider = "smtp"
+from = "Verdin <cms@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+username = "cms@example.com"
+```
+
+ve onu yerleşik olanın üzerine bağlayın:
+
+```yaml title="compose.yaml"
+services:
+  verdin:
+    # …as above
+    environment:
+      VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD}@db:5432/verdin
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+    volumes:
+      - verdin-data:/data
+      - ./verdin.toml:/app/verdin.toml:ro
+      - ./schema:/data/schema:ro
+```
+
+Secret’ları dosyanın dışında tutun: `VERDIN_EMAIL_SMTP_PASSWORD`, `AWS_*` ve diğerleri ortamda
+kalır.
+
+## Kendi imajınız
+
+Dosya bağlayamadığınız platformlarda (Fly.io, Render, Railway, çoğu Kubernetes kurulumu),
+resmi imajın üzerine yapılandırmanızı ve şemanızı içeren küçük bir imaj oluşturun. Böylece her
+dağıtım commit ettiğiniz şemanın tam olarak aynısını taşır:
+
+```dockerfile title="Dockerfile"
+FROM ghcr.io/verdin-cms/verdin:0.10
+COPY verdin.toml /app/verdin.toml
+COPY schema /app/schema
+# Plugins, if you use them: COPY plugins /app/plugins
+```
+
+O `verdin.toml` içinde `[schema] path = "schema"` ile (yollar dosyaya görelidir, yani
+`/app/schema`). Dosyaların sahibi root’tur ve sunucu için salt okunurdur; `verdin start`’ın
+ihtiyaç duyduğu da budur.
+
+Dosyanız yerleşik olanın yerini tamamen alır. Ondan hâlâ istediğiniz anahtarları tekrarlayın
+(`host`, `[log] format = "json"`, dönüştürme önbelleği ve arama dizini için `/data` yolları).
+Yerel yükleme sağlayıcısının varsayılan dizini `public/uploads` zaten volume’ün içine işaret
+eder.
+
+<Aside type="caution">
+Dosyaları yukarıdaki gibi adlarıyla kopyalayın. Asla `COPY . /app` kullanmayın: bu, secret’larıyla
+birlikte `.env` dosyanızı imajın içine koyar.
+</Aside>
+
+## İmajı kaynaktan derleme
+
+Deponun `Dockerfile` dosyası yönetim panelini ve sunucuyu derler:
+
+```sh frame="terminal"
+git clone https://github.com/Verdin-CMS/verdin && cd verdin
+docker build -t verdin .
+```
+
+Temel olarak `gcr.io/distroless/cc-debian12:nonroot` kullanır; bunun dışında yayınlanan imaj
+gibi davranır.

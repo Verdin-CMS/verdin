@@ -1,0 +1,33 @@
+---
+title: Песочница API
+description: Отправляйте запросы к content API примера блога прямо из браузера, на свой локальный Verdin.
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+Попробуйте content API [примера блога](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+без написания кода. Запросы идут из вашего браузера на сервер, выбранный в поле **Server**,
+по умолчанию `http://localhost:1337`.
+
+Чтобы на них кто-то ответил, запустите пример локально и разрешите запросы:
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- Создайте первого администратора на [localhost:1337/admin](http://localhost:1337/admin/) и добавьте несколько статей.
+- Разрешите `find` и `findOne` в **Настройки → Публичный доступ** или
+  вставьте API-токен в разделе **Authentication**.
+- Песочница работает на origin этого сайта, поэтому сервер должен его принимать: добавьте его в
+  `[api].cors_origins` в `verdin.toml` (см. [Конфигурация](/ru/reference/configuration/)).
+
+В вашем собственном проекте такой же справочник по его схеме доступен по адресу `/api/docs`,
+когда включена **Публичная документация** в **Настройки → Функции → Документация API**.
+
+<Playground />

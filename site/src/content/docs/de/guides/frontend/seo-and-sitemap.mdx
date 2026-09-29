@@ -1,0 +1,180 @@
+---
+title: SEO und Sitemap
+description: Inhaltstypen den Pfaden deiner Website zuordnen, eine sitemap.xml aller veröffentlichten Einträge ausliefern und eine Standard-SEO-Komponente hinzufügen.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Die Funktion **SEO und Sitemap** sagt Verdin, wo jeder Eintrag auf deiner Website liegt.
+Daraus liefert es eine `sitemap.xml` aller veröffentlichten Einträge aus, gibt
+[Menüs](/de/guides/frontend/menus/) die Pfade der Einträge, auf die sie verweisen, und bietet
+eine fertige Komponente `shared.seo` für Meta-Tags.
+
+Sie ist eine von vier Website-Funktionen, neben [Weiterleitungen](/de/guides/frontend/redirects/),
+[Menüs](/de/guides/frontend/menus/) und [Formularen](/de/guides/frontend/forms/). Strapi deckt
+dasselbe mit Community-Plugins ab (SEO, Sitemap); in Verdin ist es eingebaut.
+
+## Einschalten
+
+<Steps>
+
+1. Schalte unter **Einstellungen → Funktionen** **SEO und Sitemap** ein.
+2. Wähle auf ihrer Karte **SEO konfigurieren**.
+3. Gib die **Website-URL** ein: den Origin deiner Website, etwa `https://www.example.com`. Die
+   URLs der Sitemap beginnen damit.
+4. Gib unter **Inhaltstypen** jedem Typ, der Seiten hat, ein **Pfadmuster**. Typen ohne Muster
+   bleiben aus der Sitemap heraus. Setze optional eine **Änderungshäufigkeit** und eine
+   **Priorität** (0 bis 1) für die Sitemap.
+5. Speichere und wähle dann **sitemap.xml öffnen**, um das Ergebnis zu prüfen.
+
+</Steps>
+
+Die Einstellungen zu ändern braucht die Berechtigung **Funktionen verwalten**
+(`features.manage`). Siehe [Berechtigungen](/de/reference/permissions/).
+
+## Pfadmuster
+
+Ein Muster ist ein Pfad, der mit `/` beginnt, mit Platzhaltern in geschweiften Klammern:
+
+| Muster | Eintrag | Pfad |
+| --- | --- | --- |
+| `/blog/{slug}` | Artikel mit Slug `hello-world` | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | Seine französische Version | `/fr/blog/bonjour` |
+| `/about` | Der Single Type Homepage | `/about` |
+
+Platzhalter sind die Attribute des Typs (meist eine `uid` wie `slug`) und `{locale}`. Werte
+werden URL-kodiert. Ein Eintrag, dessen Platzhalter leer ist (etwa ein fehlender Slug), hat
+keinen Pfad und wird aus Sitemap und Menüs weggelassen. Der Dialog listet die Attribute, die du
+einfügen kannst, und lehnt unbekannte ab.
+
+Die Einstellungen werden als Einstellungen der Funktion gespeichert, in dieser Form:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` ist einer der Werte `always`, `hourly`, `daily`, `weekly`, `monthly`, `yearly`
+oder `never`.
+
+## Die Sitemap
+
+Ist eine **Website-URL** gesetzt, liefert Verdin `/sitemap.xml` im Wurzelverzeichnis seines
+eigenen Hosts aus (`https://cms.example.com/sitemap.xml`, außerhalb des API-Präfixes), mit:
+
+- jedem **veröffentlichten** Eintrag der konfigurierten Typen, dessen Muster sich füllen lässt;
+- der letzten Änderung jedes Eintrags (`lastmod`) sowie `changefreq` und `priority` des Typs;
+- bei lokalisierten Typen einer URL pro Sprache, untereinander verknüpft mit
+  `<xhtml:link rel="alternate" hreflang="…">`;
+- höchstens 50.000 URLs, dem Limit einer Sitemap-Datei.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+Die Sitemap wird höchstens alle zehn Minuten neu gebaut und mit
+`Cache-Control: public, max-age=600` gesendet, eine Veröffentlichung erscheint also innerhalb von
+zehn Minuten.
+
+Suchmaschinen erwarten die Sitemap auf dem Host deiner Website. Liefere sie dort mit einem
+Rewrite oder einer kleinen Route aus, die die von Verdin holt:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+Trag sie dann in deine `robots.txt` ein: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## Die SEO-Komponente
+
+Verdin schlägt eine Komponente `shared.seo` mit den Feldern des SEO-Plugins von Strapi vor:
+
+| Attribut | Typ |
+| --- | --- |
+| `metaTitle` | string, Pflicht, höchstens 60 Zeichen |
+| `metaDescription` | text, Pflicht, höchstens 160 Zeichen |
+| `metaImage` | media (Bilder) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+Wähle im Dialog **SEO konfigurieren** **SEO-Komponente hinzufügen** und dann
+**Komponente erstellen**. Das Anlegen ändert das Schema, deshalb gibt es den Button im
+Entwicklungsmodus (`verdin dev`) für Admins mit **Inhaltstypen verwalten**; andernfalls listet
+der Dialog stattdessen die Attribute, die du in deine Schemadateien einträgst. Füge danach im
+Content-Type Builder jedem Inhaltstyp mit Seiten ein Komponentenfeld mit `shared.seo` hinzu.
+
+<Aside type="tip">
+Mit eingeschalteten [KI-Aktionen](/de/guides/integrations/ai-actions/) bekommt eine Komponente
+mit den Textattributen `metaTitle` und `metaDescription` einen Button **Vorschlagen**, der sie
+aus dem Eintrag ausfüllt.
+</Aside>
+
+## Die Meta-Tags rendern
+
+Lade die Komponente per Populate und schreib die Tags in den Head deiner Seite:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+Das `shared.seo` des Beispiel-Blogs hat nur `metaTitle` und `metaDescription`; die
+vorgeschlagene Komponente ergänzt den Rest. Nutzt die Vorschauseite
+[visuelles Bearbeiten](/de/guides/frontend/visual-editing/), entferne die unsichtbaren
+Markierungen, bevor du Meta-Texte misst oder vergleichst.

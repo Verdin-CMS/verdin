@@ -1,0 +1,105 @@
+---
+title: Comentarios y tareas
+description: Comenta las entradas en hilos, comenta campos concretos, menciona a otros administradores y asigna tareas con fecha límite.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Los administradores pueden comentar una entrada en hilos de comentarios, comentar un campo,
+mencionarse unos a otros y asignar tareas con fecha límite, sin salir del editor. Esta guía
+cubre ambas cosas, quién puede hacer qué y la API de administración. Strapi no tiene
+equivalente.
+
+## Antes de empezar
+
+- **Configuración → Funcionalidades → Comentarios y tareas** está activado por defecto.
+- Poder leer el tipo de contenido de una entrada basta para leer y escribir sus comentarios y
+  tareas.
+- A los administradores mencionados y a los responsables de las tareas se les avisa por correo
+  a través de `[email]`. Con el proveedor `log` por defecto, los correos solo van al log del
+  servidor. Consulta la [referencia de configuración](/es/reference/configuration/).
+
+## Comenta una entrada
+
+<Steps>
+
+1. Abre la entrada y selecciona **Comentarios**. El botón muestra el número de hilos abiertos.
+2. En la pestaña **Comentarios**, escribe en **Comentario nuevo**. Escribe `@` para mencionar a
+   un administrador.
+3. Selecciona **Comentar**, o pulsa Control o Comando y Enter.
+
+</Steps>
+
+Para comentar un campo, usa el botón de comentario que hay junto al campo (**Comentar en**
+seguido del nombre del campo). Los hilos de un campo aparecen en **Sobre** ese campo;
+**Mostrar todos** vuelve a enumerar todos los hilos.
+
+En un hilo puedes:
+
+- **Responder**.
+- **Resolver** cuando la conversación ha terminado, y **Reabrir** más adelante. Los hilos
+  resueltos pasan a **Hilos resueltos**. Solo el primer comentario de un hilo lo resuelve.
+- **Editar comentario** en tus propios comentarios.
+- **Eliminar comentario** o **Eliminar hilo** en tus propios comentarios. Un Super Admin puede
+  eliminar cualquier comentario.
+
+En los tipos localizados, los comentarios se guardan por idioma, y admiten hasta 10.000
+caracteres.
+
+## Menciona a un administrador
+
+Los administradores mencionados reciben un correo con el comentario y un enlace a la entrada,
+siempre que puedan leerla. Nunca se te avisa por mencionarte a ti mismo.
+
+## Asigna una tarea
+
+<Steps>
+
+1. Abre la pestaña **Tareas** del mismo panel y selecciona **Tarea nueva**.
+2. Introduce un **Título** y, opcionalmente, una **Descripción**, un **Responsable** y una
+   **Fecha límite**. El responsable debe poder leer la entrada.
+3. Selecciona **Crear tarea**.
+
+</Steps>
+
+Se avisa por correo al responsable, salvo que se haya asignado la tarea a sí mismo. Las tareas
+que han pasado su fecha límite aparecen como vencidas. Marca una tarea como hecha desde su fila.
+
+El creador y el responsable de una tarea pueden cambiarla o completarla. Solo su creador la
+elimina. Un Super Admin puede hacer ambas cosas con cualquier tarea.
+
+Para ver tus tareas abiertas en todas las entradas, añade el widget **Mis tareas** a la página
+de inicio: selecciona **Personalizar** y después **Añadir widget**.
+
+## Trabajar juntos en directo
+
+Cuando otro administrador añade, resuelve o elimina un comentario o una tarea en la entrada que
+tienes abierta, el panel indica **Los comentarios se han actualizado.** o
+**Las tareas se han actualizado.** y muestra el cambio.
+
+## API de administración
+
+Todas las rutas están bajo `/admin/api`. `uid`, `documentId` y `locale` identifican la entrada.
+
+| Ruta | Hace |
+| --- | --- |
+| `GET /comments?uid=&documentId=&locale=` | Los hilos de la entrada con sus respuestas. |
+| `POST /comments` | `{ uid, documentId, locale?, field?, parentId?, body }`. `parentId` crea una respuesta. |
+| `PUT /comments/{id}` | `{ body }`. Solo tus propios comentarios. |
+| `DELETE /comments/{id}` | Tus propios comentarios, o cualquiera si eres Super Admin. |
+| `POST /comments/{id}/resolve`, `POST /comments/{id}/reopen` | Sobre el primer comentario de un hilo. |
+| `GET /tasks?uid=&documentId=&locale=` | Las tareas de la entrada. |
+| `GET /tasks?mine=true&status=open` | Tus tareas, en todas las entradas que todavía puedes leer. |
+| `POST /tasks` | `{ uid, documentId, locale?, title, description?, assigneeId?, dueDate? }`, con `dueDate` como `YYYY-MM-DD`. |
+| `PUT /tasks/{id}` | Creador o responsable. Cualquiera de `title`, `description`, `assigneeId`, `dueDate` (`null` los vacía) y `status` (`open` o `done`). |
+| `DELETE /tasks/{id}` | Solo el creador (o un Super Admin). |
+
+En el cuerpo de un comentario, una mención se escribe `@[Name](user:12)`, donde `12` es el id
+del administrador.
+
+<Aside type="note">
+Las rutas responden `404` mientras la funcionalidad está desactivada. Desactivarla oculta los
+comentarios y las tareas; se conservan para cuando vuelvas a activarla.
+</Aside>

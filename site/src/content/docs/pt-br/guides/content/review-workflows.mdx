@@ -1,0 +1,135 @@
+---
+title: Fluxos de revisão
+description: Mova as entradas por etapas de revisão, atribua-as a revisores, limite quem pode movê-las e exija uma etapa antes da publicação.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Um fluxo de revisão é uma lista ordenada de etapas, como *To do*, *In review* e *Ready*, pelas
+quais as entradas de alguns tipos de conteúdo passam antes de serem publicadas. Este guia
+configura um fluxo, move e atribui entradas e mostra a API de administração correspondente.
+
+No Strapi, os fluxos de revisão são um recurso Enterprise. No Verdin, eles fazem parte do núcleo
+open source.
+
+## Antes de começar
+
+- Ative **Configurações → Recursos → Fluxos de revisão**. Ele vem desativado por padrão.
+- Configurar fluxos exige **Gerenciar fluxos de revisão** (`workflows.manage`).
+- Mover e atribuir uma entrada exige acesso de atualização a ela. Veja
+  [Permissões](/pt-br/reference/permissions/).
+
+## Crie um fluxo
+
+<Steps>
+
+1. Abra **Configurações → Fluxos de revisão** e selecione **Novo fluxo**.
+2. Dê a ele um **Nome**.
+3. Em **Tipos de conteúdo**, escolha os tipos cujas entradas o seguem. Um tipo segue no máximo um
+   fluxo.
+4. Em **Etapas**, liste as etapas em ordem. Cada uma tem um **Nome da etapa** e uma **Cor**. Use
+   **Adicionar etapa** para criar mais, e os botões de seta para reordená-las. As novas entradas
+   começam na primeira etapa.
+5. Opcionalmente, escolha **Funções que podem mover entradas para esta etapa** em uma etapa. Sem
+   nenhuma função selecionada, qualquer pessoa que possa atualizar a entrada pode movê-la.
+6. Opcionalmente, defina **Etapa exigida para publicar**. As entradas passam a poder ser
+   publicadas apenas enquanto estão nessa etapa. **Qualquer etapa** não restringe a publicação.
+7. Salve.
+
+</Steps>
+
+<Diagram
+  caption="Um fluxo editorial com uma etapa exigida para publicar"
+  code={`flowchart LR
+  A[To do] --> B[In review] --> C[Ready]
+  C -->|publicação permitida| P((Publicado))
+  A -.->|publicação recusada| X[400]`}
+/>
+
+As entradas que existiam antes de o seu tipo entrar no fluxo ficam na primeira etapa.
+
+Quando você altera um fluxo depois:
+
+- Remover uma etapa manda as suas entradas de volta para a primeira etapa.
+- Remover um tipo de conteúdo do fluxo limpa as etapas das suas entradas.
+- Excluir o fluxo limpa as etapas e os responsáveis das suas entradas.
+
+## Mova e atribua entradas
+
+O editor de entradas mostra um painel **Revisão** com a **Etapa** e o **Responsável**.
+
+- Escolha outra **Etapa** para mover a entrada. As etapas reservadas a outras funções não podem
+  ser escolhidas, e o painel avisa isso. Os administradores com **Gerenciar fluxos de revisão**
+  sempre podem mover entradas.
+- Escolha um **Responsável** entre os administradores ativos que podem ler o tipo de conteúdo, ou
+  selecione **Remover responsável**. Qualquer pessoa que possa atualizar a entrada pode
+  atribuí-la.
+- Quando o fluxo tem uma etapa exigida, o painel diz a qual etapa a entrada precisa chegar antes
+  que **Publicar** funcione.
+
+A visualização em lista mostra uma coluna **Etapa**, e a página inicial lista as entradas
+atribuídas a você em **Atribuído a mim**. Os tipos localizados mantêm uma etapa por idioma.
+
+## O que a etapa de publicação bloqueia
+
+A etapa exigida se aplica a todas as formas de publicar: o painel de administração, REST,
+GraphQL, os lançamentos e os plugins. A publicação de uma entrada fora dessa etapa falha com
+`400`:
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+No Strapi, a exigência de etapa se aplica apenas ao painel de administração. As funções das
+etapas também diferem: no Verdin, elas limitam quem move as entradas *para dentro de* uma etapa.
+
+## Logs de auditoria e webhooks
+
+- As mudanças de etapa e as atribuições são registradas nos
+  [logs de auditoria](/pt-br/guides/content/audit-logs/) como `entry.stage` e `entry.assign`.
+- Os webhooks podem assinar **Etapa da entrada alterada** (`review-workflows.updateEntryStage`).
+  Veja [Webhooks](/pt-br/guides/integrations/webhooks/).
+
+## API de administração
+
+Todas as rotas ficam em `/admin/api` e recebem um token de acesso de administrador.
+
+| Rota | Permissão | Faz |
+| --- | --- | --- |
+| `GET /review-workflows`, `GET /review-workflows/{id}` | `workflows.manage` | Os fluxos com as suas etapas. |
+| `POST /review-workflows`, `PUT /review-workflows/{id}` | `workflows.manage` | Cria ou substitui um fluxo (corpo abaixo). |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | As entradas dos seus tipos perdem as etapas. |
+| `GET /content/{uid}/{documentId}/review?locale=` | ler a entrada | A etapa, o responsável e as etapas para as quais você pode mover a entrada (`canMoveTo`). |
+| `PUT /content/{uid}/{documentId}/review?locale=` | atualizar a entrada | `{ "stageId": 3, "assigneeId": 7 }`. Os dois campos são opcionais; `"assigneeId": null` remove o responsável. |
+| `GET /content/{uid}/review?documentIds=a,b` | ler o tipo | As etapas de até 200 entradas, com o fluxo em `meta.workflow`. |
+| `GET /review/assigned` | com login | As entradas atribuídas a você. |
+| `GET /review/assignees?uid=` | atualizar o tipo | Os administradores ativos que podem ler o tipo. |
+| `GET /review/roles` | `workflows.manage` | Os códigos e os nomes das funções, para as funções das etapas. |
+
+Um fluxo como é enviado para `POST` e `PUT`:
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- Um fluxo tem de 1 a 50 etapas, com nomes únicos e cores `#rrggbb`.
+- `publishStage` nomeia uma das etapas; omita-o para não ter nenhuma.
+- Envie as etapas existentes com o seu `id`, para que as suas entradas fiquem onde estão. As
+  etapas sem `id` são novas.
+
+<Aside type="note">
+Desativar o recurso esconde as etapas e deixa de impor a etapa de publicação. Os fluxos e as
+etapas das entradas são mantidos para quando você o reativar.
+</Aside>

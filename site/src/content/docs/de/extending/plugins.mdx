@@ -1,0 +1,138 @@
+---
+title: Plugins
+description: Was Verdin-Plugins können, wie die WebAssembly-Sandbox und Fähigkeiten sie eingrenzen und wie du sie installierst und einschaltest.
+sidebar:
+  order: 1
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Plugins erweitern Verdin um Verhalten, ohne dass du den Server änderst oder neu baust. Ein
+Plugin ist ein WebAssembly-Modul mit einem Manifest, abgelegt im Verzeichnis `plugins/` des
+Projekts. Diese Seite erklärt, was Plugins können und wie du eines installierst; wie du eines
+schreibst, zeigt das [Plugin-Tutorial](/de/extending/plugin-tutorial/), und die Details stehen
+in der [Plugin-Referenz](/de/extending/plugin-reference/).
+
+## Was ein Plugin kann
+
+| Erweiterungspunkt | Wofür |
+| --- | --- |
+| **Hooks auf Schreibvorgängen** | Bevor ein Eintrag angelegt, aktualisiert, veröffentlicht, zurückgezogen, gelöscht oder sein Entwurf verworfen wird, die Daten ändern oder den Schreibvorgang mit einer Meldung ablehnen. Nach dem Schreiben darauf reagieren (protokollieren, benachrichtigen, synchronisieren). |
+| **Routen** | HTTP-Endpunkte unter `/api/plugins/<name>/…` bereitstellen: einen Webhook-Empfänger, einen berechneten Feed, einen Proxy zu einem anderen Dienst. |
+| **Geplante Jobs** | Eine Funktion nach Cron-Zeitplan (UTC) ausführen. |
+| **GraphQL-Felder** | Felder `name(args: JSON): JSON` zu `Query` oder `Mutation` hinzufügen. |
+| **Dashboard-Widgets** | Widget-Typen zum Admin-Dashboard hinzufügen, als Web Components. |
+| **Benutzerdefinierte Felder** | Attributen einen eigenen Editor im Admin-Panel geben (einen Farbwähler, eine Karte), als Web Components; der Wert wird als regulärer Attributtyp gespeichert. |
+| **Einstellungen** | Ein Einstellungsformular deklarieren, das Admins unter **Einstellungen → Plugins** ausfüllen. |
+
+Ein Plugin liest und schreibt Inhalte über denselben Document Service wie Admin-Panel und API,
+sodass Webhooks, Verlauf, Review-Phasen und Validierung auch für seine Schreibvorgänge gelten.
+
+<Aside type="note">
+Verdin-Plugins sind keine Strapi-Plugins. Strapi-Plugins sind Node.js-Pakete mit vollem Zugriff
+auf den Server; Verdin führt auf dem Server kein JavaScript aus. Benutzerdefinierte Felder, die
+Strapi-Schemas deklarieren (`customField`-Attribute), laden, wie sie sind, und ein
+Verdin-Plugin kann ihren Editor liefern.
+</Aside>
+
+## Die Sandbox
+
+Plugins laufen in einer WebAssembly-Sandbox ([Extism](https://extism.org), auf Wasmtime). Ein
+Modul hat keine Dateien, keine Sockets und keine eigene Datenbankverbindung. Alles, was es
+außerhalb seines eigenen Speichers tut, läuft über ein paar Host-Funktionen, und der Server
+prüft jeden Aufruf gegen die **Fähigkeiten**, die das Manifest deklariert:
+
+| Fähigkeit | Erlaubt |
+| --- | --- |
+| `read` | Einträge der aufgeführten Inhaltstypen (oder `*`) lesen. |
+| `write` | Einträge der aufgeführten Typen anlegen, aktualisieren, veröffentlichen, zurückziehen und löschen (und lesen). |
+| `http` | HTTP-Anfragen an die aufgeführten Hosts (`api.example.com`, `*.example.com`). |
+| `kv` | Einen eigenen Key-Value-Speicher in der Datenbank von Verdin. |
+
+<Diagram
+  caption="Aufrufe in ein Plugin und was seine Host-Aufrufe erreichen"
+  code={`flowchart LR
+    W[Schreibvorgänge] -->|Hooks| M
+    R["/api/plugins/name/…"] --> M
+    J[Geplante Jobs] --> M
+    M[WebAssembly-Modul] --> C{Fähigkeiten}
+    C -->|read, write| D[(Inhalte)]
+    C -->|kv| K[(Plugin-Speicher)]
+    C -->|http| H[Aufgeführte Hosts]`}
+/>
+
+Jeder Aufruf hat außerdem Limits: ein Zeitlimit (standardmäßig 5 Sekunden) und ein
+Speicherlimit (standardmäßig 64 MB), festgelegt im Manifest. Ein Modul, das in einen Trap läuft
+oder die Zeit überschreitet, lässt nur diesen Aufruf scheitern; Verdin baut es beim nächsten
+Aufruf neu.
+
+Was die Sandbox dir nicht abnimmt:
+
+- **Routen sind öffentlich.** Anfragen an `/api/plugins/<name>/…` werden nicht gegen
+  **Öffentlicher Zugriff** oder Berechtigungen von API-Tokens geprüft. Das Plugin erfährt, wer
+  aufruft (irgendwer, ein API-Token oder ein Endnutzer), und muss das selbst prüfen.
+- **Hooks sehen alle Schreibvorgänge auf ihren Typen**, unabhängig von der Fähigkeit `read` des
+  Plugins.
+- **Ein fehlschlagender Before-Hook blockiert den Schreibvorgang nicht.** Stürzt das Modul ab
+  oder überschreitet es die Zeit, wird der Fehler protokolliert, und der Schreibvorgang läuft
+  weiter. Nur eine ausdrückliche Ablehnung stoppt ihn.
+
+## Ein Plugin installieren
+
+<Steps>
+
+1. Leg das Plugin in ein eigenes Verzeichnis unter `plugins/`, neben `verdin.toml`. Es enthält
+   das Manifest, das Modul und optional die Dateien fürs Admin-Panel:
+
+   <FileTree>
+   - verdin.toml
+   - plugins/
+     - reading-time/
+       - plugin.toml
+       - plugin.wasm
+       - admin/ optional: Web Components fürs Admin-Panel
+         - index.js
+   - schema/
+   </FileTree>
+
+2. Starte Verdin neu. Es lädt beim Start jede `plugins/*/plugin.toml` und protokolliert für
+   jedes `plugin found`. Ein Plugin, das nicht lädt (ungültiges Manifest, fehlendes Modul,
+   doppelter Name), wird unter **Einstellungen → Plugins** mit dem Grund aufgeführt.
+
+3. Öffne im Admin-Panel **Einstellungen → Plugins**. Prüfe, was das Plugin unter **Zugriff**,
+   **Hooks**, **Routen** und **Jobs** anfordert, und schalte es dann ein.
+
+4. Hat das Plugin Einstellungen, öffne **Einstellungen** auf seiner Karte, füll sie aus und
+   speichere.
+
+</Steps>
+
+Installierte Plugins starten ausgeschaltet. Einschalten und Ändern der Einstellungen wirken
+sofort, auf jeder Instanz (andere Instanzen übernehmen die Änderung innerhalb von
+`[server].sync_interval_secs`). Änderungen an `plugin.toml` oder am Modul brauchen einen
+Neustart.
+
+Plugins zu verwalten braucht die Berechtigung `plugins.manage` (**Plugins verwalten**). Siehe
+die [Referenz der Berechtigungen](/de/reference/permissions/).
+
+## `[plugins]` konfigurieren
+
+```toml title="verdin.toml"
+[plugins]
+path = "plugins"   # directory of plugins, relative to verdin.toml
+run_jobs = true    # run scheduled jobs on this instance
+```
+
+Setze bei mehreren Instanzen `run_jobs = false` auf allen bis auf eine, damit jeder Job einmal
+läuft. Siehe die [Konfigurationsreferenz](/de/reference/configuration/).
+
+## Betrieb
+
+- **Ein Aufruf nach dem anderen.** Jedes Plugin hat eine Instanz und bearbeitet einen Aufruf
+  gleichzeitig, eine langsame Route verzögert also die Hooks dieses Plugins. Halte Funktionen
+  kurz.
+- **Logs.** Was ein Plugin protokolliert, landet im Server-Log und unter
+  **Einstellungen → Plugins → Protokolle** (die letzten 200 Zeilen, im Speicher gehalten).
+- **Deploys.** Liefere Plugins mit dem Projekt aus (im Image oder im Volume), wie das Schema.
+  Schalter und Einstellungen liegen in der Datenbank.

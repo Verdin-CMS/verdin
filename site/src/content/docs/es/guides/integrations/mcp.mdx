@@ -1,0 +1,150 @@
+---
+title: Servidor MCP
+description: Permite que Claude y otros agentes de IA lean y editen el contenido de Verdin a través del Model Context Protocol, con los permisos de un token de API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin puede servir su contenido a agentes de IA a través del
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP). Conecta Claude Code, Claude
+Desktop, Cursor o cualquier otro cliente MCP, y el agente podrá enumerar tus tipos de contenido,
+consultar entradas con los filtros de la API REST y crear, actualizar o publicar entradas, dentro
+de los permisos del token que le des.
+
+Strapi v5 no tiene un servidor MCP integrado.
+
+## Actívalo
+
+<Steps>
+
+1. En **Configuración → Funcionalidades**, activa **Servidor MCP**. Su tarjeta muestra el
+   **Punto de acceso**, `https://cms.example.com/mcp`, en el mismo host que la API de contenido.
+2. En **Configuración → Tokens de API**, elige **Crear token**. Elige **Solo lectura** salvo que
+   el agente deba escribir, o **Personalizado** para permitir solo algunos tipos y acciones.
+   Copia el token: se muestra una sola vez. Consulta [Tokens de API](/es/guides/auth/api-tokens/).
+3. Conecta tu cliente con el endpoint y el token (ver más abajo).
+
+</Steps>
+
+## Conecta un cliente
+
+El servidor habla el transporte Streamable HTTP de MCP. Todos los clientes necesitan la URL y una
+cabecera `Authorization: Bearer <token>`.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+La tarjeta **Servidor MCP** tiene este comando en **Añadirlo a Claude Code**
+(**Copiar el comando**); sustituye `<token>` por tu token de API:
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+El archivo de configuración de Claude Desktop arranca servidores locales, así que conecta con el
+endpoint HTTP mediante [`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Los formatos de configuración de los clientes cambian; consulta la documentación de tu cliente si
+no reconoce alguna clave. Después, pide al agente algo como *"Enumera los artículos publicados
+esta semana en la categoría News"*.
+
+## Herramientas
+
+| Herramienta | Necesita | Qué hace |
+| --- | --- | --- |
+| `list_content_types` | `find` o `findOne` | Los tipos de contenido que el cliente puede leer, con su clase y sus atributos. |
+| `get_content_type` | `find` o `findOne` | Los atributos de un tipo de contenido: tipos, opciones y relaciones. |
+| `find_entries` | `find` | Las entradas de un tipo. `query` recibe los parámetros de la API REST como JSON (`filters`, `sort`, `fields`, `populate`, `pagination`); `status: "draft"` necesita además `readDrafts`. |
+| `get_entry` | `findOne` | Una entrada por `documentId` (tipos únicos: sin él). |
+| `create_entry` | `create` | Crea una entrada a partir de `data`, como en la API REST. `status: "draft"` guarda un borrador. |
+| `update_entry` | `update` | Actualiza una entrada (tipos únicos: sin `documentId`). |
+| `delete_entry` | `delete` | Elimina una entrada. |
+| `publish_entry`, `unpublish_entry` | `publish` | Publica o despublica una entrada. |
+
+Las herramientas reciben `uid` (como `api::article`) y, en los tipos localizados, `locale`. Cada
+herramienta comprueba el mismo permiso que la ruta REST correspondiente, y las escrituras siguen
+el mismo camino que la API REST: validación, hooks de plugins, etapas de revisión, webhooks,
+historial de contenido y registros de auditoría. Un agente no puede hacer nada que su token no
+pueda hacer por REST.
+
+Consulta [Permisos](/es/reference/permissions/) para las acciones de la API de contenido.
+
+## Autenticación
+
+El endpoint acepta las mismas credenciales que la API de contenido:
+
+- un token de API, la opción habitual para los agentes;
+- el JWT de un usuario final, para un agente que actúa como un usuario con sesión iniciada de tu
+  aplicación;
+- sin cabecera `Authorization`, para los permisos del rol público.
+
+Un token no válido responde `401`. El servidor no guarda sesiones ni abre flujos: cada petición es
+un `POST` JSON-RPC que se responde con JSON (`GET` responde `405`).
+
+### Orígenes de navegador
+
+Las peticiones que llevan una cabecera `Origin`, que envían los navegadores, se rechazan salvo que
+el origen figure en **Orígenes de navegador permitidos** en la tarjeta **Servidor MCP**. Esto
+protege contra el DNS rebinding, en el que una página web engaña al navegador para que llame a un
+servidor de tu red. Los clientes de línea de comandos y de escritorio no envían `Origin`, así que
+la lista suele estar vacía.
+
+<Aside type="caution">
+Un agente con un token de acceso completo puede eliminar y publicar contenido. Da a los agentes
+tokens de solo lectura o personalizados limitados a lo que necesitan. Para los borradores que
+escribe un agente, un [flujo de revisión](/es/guides/content/review-workflows/) mantiene a una
+persona entre el agente y la publicación.
+</Aside>
+
+Para dar a los editores ayuda de IA dentro del panel de administración (traducción, texto
+alternativo, sugerencias de SEO), consulta [Acciones de IA](/es/guides/integrations/ai-actions/).

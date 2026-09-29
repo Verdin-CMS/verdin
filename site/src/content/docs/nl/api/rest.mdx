@@ -1,0 +1,482 @@
+---
+title: "REST-API"
+description: "Routes, queryparameters (filters, sort, pagination, fields, populate, locale, status), request-bodies, responses, fouten en limieten van de met Strapi v5 compatibele REST-API van Verdin."
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+Elk contenttype krijgt REST-routes onder het prefix van de content-API, standaard `/api`
+(`[api].prefix`). Routes, parameters en responsevormen volgen Strapi v5, dus de meeste frontends
+die voor Strapi zijn geschreven, werken ongewijzigd. Deze pagina is de referentie; de voorbeelden
+gebruiken het [blogvoorbeeld](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+(artikelen, categorieën, tags en een homepage).
+
+De server beschrijft de routes van *jouw* schema ook in een OpenAPI 3.1-document op
+`GET /api/_openapi.json`. De pagina's van de [voorbeeld-content-API](/api/example/) tonen het
+document van de blog, en met de [API-playground](/nl/api/playground/) kun je requests uitproberen.
+
+## Voorbeeld
+
+Dezelfde query in elke API: de tien nieuwste artikelen van een categorie, met de naam van hun
+categorie.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+Zie [GraphQL-API](/nl/api/graphql/) en [Getypeerde client](/nl/guides/frontend/typed-client/).
+
+## Authenticatie
+
+| Header `Authorization` | Aanroeper | Rechten |
+| --- | --- | --- |
+| geen | Openbaar | **Instellingen → Openbare toegang** |
+| `Bearer vd_…` | API-token | Het type en de grants van het token |
+| `Bearer <JWT>` | Eindgebruiker | Zijn eindgebruikersrol |
+
+Een onbekend, verlopen of ongeldig token geeft `401`; het valt nooit terug op openbare toegang.
+Een geldige aanroeper zonder de grant krijgt `403`. Zie [Rechten](/nl/concepts/permissions/).
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+Browsers op andere origins kunnen de API alleen aanroepen als `[api].cors_origins` ze vermeldt.
+
+## Routes
+
+Collectietypes worden geserveerd op hun `pluralName`:
+
+| Methode en pad | Actie | Antwoordt |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`, een pagina documenten |
+| `GET /api/articles/{documentId}` | `findOne` | `200`, één document |
+| `POST /api/articles` | `create` | `201`, het aangemaakte document |
+| `PUT /api/articles/{documentId}` | `update` | `200`, het bijgewerkte document |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`, geen body |
+
+Enkele types worden geserveerd op hun `singularName`:
+
+| Methode en pad | Actie | Antwoordt |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200`, of `404` vóór de eerste schrijfactie |
+| `PUT /api/homepage` | `update` | `200`; de eerste `PUT` maakt het document aan |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+`POST` op een enkel type antwoordt met `405`.
+
+### Acties
+
+Types met [concept en publicatie](/nl/concepts/draft-and-publish/) hebben drie extra routes,
+waarvoor de grant `publish` nodig is. Strapi heeft geen REST-equivalent.
+
+| Methode en pad | Effect | Antwoordt |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | Publiceert het concept. | De gepubliceerde versie |
+| `POST /api/articles/{documentId}/actions/unpublish` | Verwijdert de gepubliceerde versie. | Het concept |
+| `POST /api/articles/{documentId}/actions/discard-draft` | Vervangt het concept door de gepubliceerde versie. | Het concept |
+
+Alle drie accepteren `?locale=` op gelokaliseerde types.
+
+## Schrijven
+
+`POST` en `PUT` nemen een JSON-body met een object `data`:
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` is een gedeeltelijke update: attributen die je weglaat, behouden hun waarde.
+  Componenten en dynamische zones die je meestuurt, vervangen de opgeslagen waarde.
+- Bij types met concept en publicatie schrijven `POST` en `PUT` het concept **en publiceren het**,
+  zoals in Strapi v5. Voeg `?status=draft` toe om alleen het concept te schrijven. Als publiceren
+  niet door de validatie komt, wordt er niets geschreven.
+- Onbekende sleutels, systeemvelden (`id`, `documentId`, tijdstempels) en inverse kanten van
+  relaties (`mappedBy`) zijn validatiefouten.
+- Relaties nemen `documentId`s, lijsten, `null`, of `{ connect, disconnect, set }`; zie
+  [Relaties](/nl/concepts/relations/#schrijven). Mediavelden nemen bestands-id's.
+- De response is de geschreven versie, gelezen met de `fields` en `populate` van het request.
+- `DELETE` verwijdert elke versie van het document (bij gelokaliseerde types de versie in de
+  gevraagde locale).
+
+## Queryparameters
+
+| Parameter | Voorbeeld | Standaard |
+| --- | --- | --- |
+| [`filters`](#filters) | `filters[title][$containsi]=rust` | geen |
+| [`sort`](#sorteren) | `sort=publishedAt:desc` | op `id`, oplopend |
+| [`pagination`](#paginering) | `pagination[page]=2&pagination[pageSize]=10` | pagina 1, 25 per pagina |
+| [`fields`](#velden) | `fields[0]=title&fields[1]=slug` | elk scalair veld |
+| [`populate`](#populate) | `populate[category][fields][0]=name` | niets |
+| [`status`](#status) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#status) | `hasPublishedVersion=false` | geen |
+| [`locale`](#locale) | `locale=fr` | de standaardlocale |
+| [`_q`](#zoeken) | `_q=ownership` | geen |
+
+Parameters gebruiken de haakjesnotatie van Strapi. Lijsten kun je schrijven met indexen
+(`sort[0]=a&sort[1]=b`), met lege haakjes (`sort[]=a`) of door de sleutel te herhalen
+(`sort=a&sort=b`). Codeer haakjes en waarden zoals gebruikelijk in een URL; clients zoals
+[`qs`](https://github.com/ljharb/qs) of de [getypeerde client](/nl/guides/frontend/typed-client/)
+bouwen deze strings voor je.
+
+Een onbekende parameter, een onbekend of `private` veld, of een ongeldige waarde geeft een `400`
+`ValidationError` die het probleem noemt. Niets wordt stilzwijgend genegeerd.
+
+## Filters
+
+`filters[field][operator]=value`. Een kale waarde betekent `$eq`: `filters[slug]=hello-verdin`.
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+Meerdere voorwaarden op hetzelfde niveau moeten allemaal kloppen. Combineer ze met logische
+operatoren:
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| Operator | Komt overeen met | Types |
+| --- | --- | --- |
+| `$eq`, `$ne` | Gelijk, niet gelijk | alle scalairen |
+| `$eqi`, `$nei` | Gelijk, niet gelijk, zonder op hoofdletters te letten | tekst |
+| `$lt`, `$lte`, `$gt`, `$gte` | Kleiner dan, kleiner of gelijk, groter dan, groter of gelijk | alle scalairen behalve booleans |
+| `$between` | Tussen twee waarden, inclusief: `[$between][0]=1&[$between][1]=5` | alle scalairen behalve booleans |
+| `$in`, `$notIn` | In, niet in een lijst: `[$in][0]=a&[$in][1]=b` | alle scalairen |
+| `$contains`, `$notContains` | Bevat, bevat niet | tekst |
+| `$containsi`, `$notContainsi` | Idem, zonder op hoofdletters te letten | tekst |
+| `$startsWith`, `$startsWithi` | Begint met (zonder op hoofdletters te letten) | tekst |
+| `$endsWith`, `$endsWithi` | Eindigt op (zonder op hoofdletters te letten) | tekst |
+| `$null`, `$notNull` | Is leeg, is ingesteld: `[$null]=true` | alle velden |
+| `$and`, `$or` | Elke, een van de voorwaarden in een lijst | logisch |
+| `$not` | Keert een filterobject om | logisch |
+
+- Teksttypes zijn `string`, `text`, `richtext`, `email`, `uid` en `enumeration`. `json` en
+  `blocks` nemen alleen `$null` en `$notNull`.
+- Waarden worden omgezet naar het type van het veld: gehele getallen, getallen, `true`/`false`
+  (of `1`/`0`), datums als `YYYY-MM-DD`, tijden als `HH:MM:SS`, datetimes als ISO 8601.
+- Je kunt filteren op `id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt` en, bij
+  gelokaliseerde types, `locale`.
+- Tekstvergelijkingen gedragen zich op elke database hetzelfde: `$eq`, `$contains` en de andere
+  operatoren zonder `i` zijn exact, en de varianten `…i` negeren hoofdletters (en accenten op
+  MySQL en MariaDB; SQLite vouwt alleen ASCII-letters).
+- Een request heeft hoogstens 100 voorwaarden.
+
+### Filteren via relaties
+
+Filter op de velden van gerelateerde documenten, aan beide kanten van de relatie en genest:
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+Een to-many-voorwaarde klopt als een van de gerelateerde documenten overeenkomt. Gerelateerde
+documenten worden vergeleken in de versie en locale die gelezen worden. Polymorfe relaties en
+mediavelden kunnen niet worden gefilterd.
+
+### Filteren op componenten en dynamische zones
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+Scalaire velden van componenten kunnen worden gefilterd, geneste inbegrepen; een herhaalbare
+component klopt als een van de items overeenkomt. Dynamische zones worden alleen op
+`__component` gefilterd. Zie
+[Componenten en dynamische zones](/nl/concepts/components-and-dynamic-zones/#filteren).
+
+## Sorteren
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` of `field:asc|desc`; de richting is standaard `asc`.
+- Elk scalair veld behalve `json` en `blocks` kan worden gesorteerd, systeemvelden inbegrepen.
+- `relation.field` sorteert op een veld van een to-one-relatie.
+- Lege waarden komen in beide richtingen als laatste, en gelijke waarden worden op `id`
+  beslist, dus pagina's zijn stabiel.
+
+## Paginering
+
+Op basis van pagina's of van een offset, niet allebei:
+
+| Parameter | Standaard | Opmerkingen |
+| --- | --- | --- |
+| `pagination[page]` | `1` | Vanaf 1. |
+| `pagination[pageSize]` | `25` (`[api].default_page_size`) | Begrensd op `[api].max_page_size` (100). |
+| `pagination[start]` | `0` | Offset. |
+| `pagination[limit]` | `25` | Begrensd op het maximum; `-1` vraagt het maximum. |
+| `pagination[withCount]` | `true` | `false` slaat het tellen over en laat `total` en `pageCount` weg. |
+
+De `meta.pagination` van de response volgt de modus die je gebruikte:
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## Velden
+
+`fields` selecteert scalaire attributen:
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id` en `documentId` worden altijd teruggegeven. Relaties, media, componenten en dynamische
+zones worden nooit door `fields` geselecteerd: gebruik `populate`.
+
+## Populate
+
+Relaties, media, componenten en dynamische zones worden alleen teruggegeven als ze gepopuleerd
+zijn:
+
+| Vorm | Populeert |
+| --- | --- |
+| `populate=*` | Elke relatie, elk mediaveld, elke component en dynamische zone, één niveau diep |
+| `populate=category,tags` of `populate[0]=category&populate[1]=tags` | De genoemde velden |
+| `populate[category]=true` | Het genoemde veld (`false` laat het weg) |
+| `populate[category][fields][0]=name` | Het veld, met opties |
+
+Elke gepopuleerde relatie accepteert `fields`, `filters`, `sort`, `populate` (genest, tot 5
+niveaus in totaal) en `count`:
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- Een to-one-relatie is een object of `null`; een to-many-relatie is een array, in
+  koppelvolgorde of in de `sort`-volgorde van de populate.
+- `count=true` geeft `{ "count": 12 }` terug in plaats van de documenten (alleen
+  to-many-relaties).
+- Er worden hoogstens 1.000 gerelateerde documenten per document en relatie teruggegeven;
+  `count` is exact.
+- Componenten en dynamische zones komen volledig terug, geneste componenten en hun relaties en
+  media inbegrepen. De opties per niveau van Strapi daarvoor (`populate[blocks][on][…]`) worden
+  geaccepteerd en genegeerd.
+- Mediavelden komen terug als bestandsobjecten.
+- Polymorfe relaties accepteren alleen `count`.
+- Gerelateerde documenten worden gelezen in dezelfde status en locale als het document. Een type
+  populeren dat de aanroeper niet mag lezen, geeft `400`; `populate=*` slaat het over.
+
+Elk niveau is één gebundelde query per relatie, dus diepe populates blijven snel en geven nooit
+dubbele rijen terug.
+
+## Status
+
+Bij types met concept en publicatie kiest `status` de versie:
+
+- `status=published` (de standaard) leest gepubliceerde versies.
+- `status=draft` leest concepten, en vereist de grant `readDrafts` naast `find` of `findOne`.
+
+`hasPublishedVersion=true|false` houdt documenten over die wel, of geen, gepubliceerde versie
+hebben: `?status=draft&hasPublishedVersion=false` somt documenten op die nooit zijn gepubliceerd.
+Op types zonder concept en publicatie geeft het `400`.
+
+Bij schrijfacties slaat `status=draft` het concept op zonder het te publiceren. Zie
+[Concept en publicatie](/nl/concepts/draft-and-publish/).
+
+## Locale
+
+`locale=fr` leest en schrijft de Franse versie van gelokaliseerde types. Zonder deze parameter
+gebruiken requests de standaardlocale. Een ongeldige of onbekende code geeft `400`. Types die niet
+gelokaliseerd zijn, negeren hem. Zie [Internationalisatie](/nl/concepts/internationalization/).
+
+## Zoeken
+
+`_q` vindt documenten waarvan de tekstvelden de woorden bevatten, zonder op hoofdletters te
+letten (hoogstens 200 tekens):
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+Zonder zoekindex komt dit, zoals in Strapi, overeen met elk niet-privé veld van het type
+`string`, `text`, `richtext`, `email`, `uid` of `enumeration`. Met `[search] enabled = true`
+worden resultaten op relevantie gerangschikt, tenzij je `sort` meegeeft. Andere filters en
+paginering blijven gelden. Zie [Zoeken](/nl/guides/content/search/).
+
+## Responses
+
+Een lijst:
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+Eén document: `{ "data": { … }, "meta": {} }`.
+
+- Documenten zijn plat, zoals in Strapi v5: geen `attributes`-wrapper.
+- Attributen komen in schemavolgorde, tussen `id`/`documentId` en de tijdstempels;
+  gelokaliseerde types voegen `locale` toe. `private` velden verschijnen nooit.
+- Waarden van `biginteger` zijn strings. Waarden van `decimal` zijn getallen, afgerond op hun
+  schaal (strings met `[api].decimal_as_string = true`). Datums zijn `YYYY-MM-DD`, tijden
+  `HH:MM:SS.mmm`, en datetimes `YYYY-MM-DDTHH:MM:SS.mmmZ` in UTC.
+
+Geslaagde leesacties bevatten een `ETag`; stuur die terug in `If-None-Match` om
+`304 Not Modified` te krijgen. Ze bevatten ook de headers `Cache-Tag` en `Surrogate-Key` voor
+CDN-purges (zie [Deploys en CDN](/nl/guides/integrations/deploys-and-cdn/)).
+
+## Fouten
+
+Fouten hebben de vorm van Strapi:
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| Status | `name` | Wanneer |
+| --- | --- | --- |
+| `400` | `ValidationError` | Ongeldige parameters, body of content. `details.errors` somt contentproblemen op met hun pad. |
+| `401` | `UnauthorizedError` | Ongeldig, onbekend of verlopen token. |
+| `403` | `ForbiddenError` | De aanroeper mist de grant (voor concepten: `readDrafts`). |
+| `404` | `NotFoundError` | Onbekende route, onbekend contenttype of document. |
+| `405` | `MethodNotAllowedError` | `POST` op een enkel type, of `PUT` of `DELETE` op de route van een collectietype. |
+| `408` | | Het request duurde langer dan `[server].request_timeout_secs` (30 s). |
+| `413` | | De body is groter dan `[server].body_limit` (1 MB). |
+| `429` | `RateLimitError` | Boven `[api].public_rate_limit` of `[api].token_rate_limit`. `Retry-After` zegt wanneer je het opnieuw kunt proberen. |
+| `500` | `ApplicationError` | Een onverwachte fout; details staan alleen in het serverlog. |
+
+## Limieten
+
+| Limiet | Waarde |
+| --- | --- |
+| Paginagrootte | `[api].max_page_size`, standaard 100 |
+| Populate-diepte | 5 niveaus |
+| Gerelateerde documenten per document en relatie | 1.000 |
+| Filtervoorwaarden | 100 |
+| Haakjesnesting in een parameter | 12 niveaus |
+| Parameters per request | 1.000 |
+| Querystring | 16 KB |
+| `_q` | 200 tekens |
+
+Alleen de paginagroottes zijn configureerbaar. Elke veldnaam in `filters`, `sort`, `fields` en
+`populate` wordt tegen het schema gecontroleerd, en waarden worden altijd als SQL-parameters
+gebonden.
+
+## Mediabibliotheek
+
+De uploadroutes van Strapi, gecontroleerd tegen de grants van **Mediabibliotheek**. Ze antwoorden
+met gewone objecten en arrays, zonder `data`, zoals Strapi:
+
+| Route | Grant | Body of parameters |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart: `files` (tot 20), optioneel `fileInfo`-JSON (`name`, `alternativeText`, `caption`, `folder`, `focalPoint`), één per bestand of één voor allemaal |
+| `POST /api/upload?id={id}` | `update` | Multipart `fileInfo`, en optioneel een nieuw bestand dat de inhoud vervangt |
+| `GET /api/upload/files` | `find` | `pagination[page]`, `pagination[pageSize]`, `sort`, `filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+Zie [Media](/nl/concepts/media/).
+
+## Andere routes onder het prefix
+
+| Routes | Pagina |
+| --- | --- |
+| `/api/auth/*`, `/api/users/*`, `/api/connect/*` | [Eindgebruikers](/nl/guides/auth/end-users/) (als de functie aan staat) |
+| `/api/_events` | [Realtime-API](/nl/api/realtime/) (als de functie aan staat) |
+| `/api/_redirects`, `/api/_menus/{slug}`, `/api/_forms/{slug}` | [Redirects](/nl/guides/frontend/redirects/), [Menu's](/nl/guides/frontend/menus/), [Formulieren](/nl/guides/frontend/forms/) |
+| `/api/_openapi.json`, `/api/docs` | Het OpenAPI-document (alleen API-tokens, tenzij openbaar gemaakt in **Instellingen → Functies → API-documentatie**) en de interactieve referentie ervan (als het openbaar is) |
+| `/api/plugins/{name}/*` | Routes van [plugins](/nl/extending/plugins/) |

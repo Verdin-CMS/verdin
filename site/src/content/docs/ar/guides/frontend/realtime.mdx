@@ -1,0 +1,141 @@
+---
+title: التحديثات في الوقت الفعلي
+description: حدّث واجهتك الأمامية لحظة تغيّر المحتوى، بالاشتراك في أحداث Verdin المرسلة من الخادم (server-sent events).
+sidebar:
+  order: 8
+  label: الوقت الفعلي
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+مع تفعيل ميزة **الوقت الفعلي**، يبث Verdin حدثًا صغيرًا في كل مرة يتغير فيها إدخال أو
+ملف وسائط. تشترك الواجهة الأمامية في البث وتعيد جلب ما تغيّر: مدونة
+مباشرة، أو لوحة نتائج، أو لوحة معلومات لا تحتاج أبدًا إلى إعادة تحميل. لا يتلقى كل مشترك إلا
+الأحداث المتعلقة بمحتوى يُسمح له بقراءته.
+
+تبيّن هذه الصفحة كيفية استخدام البث من واجهة أمامية. أسماء الأحداث وحمولاتها و
+قواعدها موجودة في [مرجع API الوقت الفعلي](/ar/api/realtime/). ليس لـ Strapi v5 مقابل
+مدمج.
+
+## فعّله
+
+<Steps>
+
+1. في **الإعدادات ← الميزات**، فعّل **الوقت الفعلي**.
+2. قرّر من يشترك. يستخدم البث صلاحيات API المحتوى:
+   - للجميع، اسمح بـ **بحث** أو **بحث عن واحد** على الأنواع في **الإعدادات ← الوصول العام**؛
+   - لخادم أو تطبيق، أنشئ [رمز API](/ar/guides/auth/api-tokens/) بتلك
+     الصلاحيات (و**قراءة المسودات** لتلقي الأحداث الخاصة بالمسودات فقط)؛
+   - للمستخدمين النهائيين المسجّلي الدخول، يعمل الـ JWT الخاص بهم أيضًا (راجع [المستخدمون النهائيون](/ar/guides/auth/end-users/)).
+
+</Steps>
+
+البث هو `GET /api/_events`. أضف `?types=` مع قائمة مفصولة بفواصل من uid أنواع
+المحتوى لتلقي تلك الأنواع فقط (`plugin::upload` هو مكتبة الوسائط):
+
+```sh title="Terminal"
+curl -N "https://cms.example.com/api/_events?types=api::article,api::category"
+```
+
+```
+event: ready
+data: {}
+
+event: entry.publish
+data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","locale":"en"}
+```
+
+## اشترك من متصفح
+
+تحمل الأحداث معرّفات، لا محتوى. مع كل حدث، أعِد جلب ما تعرضه، عبر الـ API نفسه
+والصلاحيات نفسها كأي قراءة أخرى.
+
+<Tabs syncKey="auth">
+<TabItem label="عام">
+
+مع الدور العام، يكفي `EventSource` في المتصفح، وهو يعيد الاتصال بنفسه:
+
+```js
+const CMS = 'https://cms.example.com';
+const events = new EventSource(`${CMS}/api/_events?types=api::article`);
+
+for (const name of ['entry.publish', 'entry.unpublish', 'entry.delete']) {
+  events.addEventListener(name, (event) => {
+    const { documentId } = JSON.parse(event.data);
+    refreshArticle(documentId);
+  });
+}
+
+events.addEventListener('lagged', () => refreshEverything());
+```
+
+</TabItem>
+<TabItem label="برمز">
+
+لا يستطيع `EventSource` إرسال ترويسة `Authorization`. اقرأ البث بـ `fetch` بدلًا من ذلك،
+وأعِد الاتصال عندما ينتهي:
+
+```js
+async function subscribe(token, onEvent) {
+  for (;;) {
+    try {
+      const response = await fetch(`${CMS}/api/_events?types=api::article`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) return; // token refused
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const name = block.match(/^event: (.*)$/m)?.[1];
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (name && data) onEvent(name, JSON.parse(data));
+        }
+      }
+    } catch {
+      // network error: retry below
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+```
+
+تعمل أيضًا أي مكتبة عميل SSE تدعم الترويسات.
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution">
+الرمز في شيفرة المتصفح يستطيع قراءته أي شخص يفتح الصفحة. لا تشحن إلا رمزًا للقراءة فقط
+محصورًا في الأنواع التي تعرضها الصفحة، أو اشترك من خادمك ومرّر
+التحديثات إلى المتصفح.
+</Aside>
+
+استدعاء البث من موقع على مصدر آخر يحتاج إلى ذلك المصدر في
+[`[api].cors_origins`](/ar/reference/configuration/).
+
+## حافظ على سلامة البث
+
+- الحدث الأول هو `ready`: الاشتراك يعمل.
+- ينتهي البث بعد ساعة. أعِد الاتصال حينها: يفعل `EventSource` ذلك تلقائيًا، و
+  إعادة الاتصال تتحقق من الرمز مرة أخرى أيضًا، فيتوقف الرمز الملغى عن تلقي الأحداث.
+- حدث باسم `lagged` يعني أن العميل قرأ ببطء شديد وفاتته أحداث. أعِد جلب
+  كل ما تعرضه الصفحة.
+- الأحداث الخاصة بالمسودات فقط (`entry.create` و`entry.update` و`entry.discard-draft` في أنواع
+  المسودة والنشر) لا تصل إلا إلى المستدعين الذين لديهم **قراءة المسودات**. يستمع الموقع العام عادةً
+  إلى `entry.publish` و`entry.unpublish` و`entry.delete`.
+
+## خلف موازن أحمال
+
+الأحداث هي تلك الخاصة بالنسخة المتصل بها العميل. مع عدة نسخ، استخدم
+جلسات لاصقة لـ `/api/_events`، أو وجّه عملاء الوقت الفعلي إلى نسخة واحدة. راجع
+[التوسّع](/ar/deploy/scaling/).
+
+تستخدم لوحة الإدارة بثها الخاص (`/admin/api/events`) للتحديثات المباشرة والحضور و
+الأقفال المرنة أثناء التحرير؛ راجع [مرجع API الوقت الفعلي](/ar/api/realtime/).

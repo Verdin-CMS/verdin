@@ -1,0 +1,147 @@
+---
+title: MCP sunucusu
+description: Claude’un ve diğer AI ajanlarının Verdin içeriğini Model Context Protocol üzerinden, bir API token’ının izinleriyle okumasını ve düzenlemesini sağlayın.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin içeriğini AI ajanlarına [Model Context Protocol](https://modelcontextprotocol.io) (MCP)
+üzerinden sunabilir. Claude Code, Claude Desktop, Cursor veya başka bir MCP istemcisini bağlayın;
+ajan, ona verdiğiniz token’ın izinleri dâhilinde içerik tiplerinizi listeleyebilir, REST API’nin
+filtreleriyle kayıtları sorgulayabilir ve kayıt oluşturabilir, güncelleyebilir veya yayınlayabilir.
+
+Strapi v5’te yerleşik bir MCP sunucusu yoktur.
+
+## Açma
+
+<Steps>
+
+1. **Ayarlar → Özellikler** bölümünde **MCP sunucusu**’nu açın. Kartı, içerik API’siyle aynı
+   host’taki **Uç nokta**’yı gösterir: `https://cms.example.com/mcp`.
+2. **Ayarlar → API token’ları** bölümünde **Token oluştur**’u seçin. Ajan yazmayacaksa **Salt
+   okunur**’u ya da yalnızca bazı tiplere ve eylemlere izin vermek için **Özel**’i seçin. Token’ı
+   kopyalayın: bir kez gösterilir. Bkz. [API token’ları](/tr/guides/auth/api-tokens/).
+3. İstemcinizi uç nokta ve token ile bağlayın (aşağıda).
+
+</Steps>
+
+## Bir istemci bağlama
+
+Sunucu MCP’nin Streamable HTTP taşımasını konuşur. Her istemci URL’ye ve bir
+`Authorization: Bearer <token>` başlığına ihtiyaç duyar.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+**MCP sunucusu** kartında bu komut **Claude Code’a ekle** altında bulunur (**Komutu kopyala**);
+`<token>` yerine API token’ınızı yazın:
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+Claude Desktop’un yapılandırma dosyası yerel sunucular başlatır; bu yüzden HTTP uç noktasına
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) ile köprü kurun:
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+İstemci yapılandırma biçimleri değişir; bir anahtar tanınmıyorsa istemcinizin dokümantasyonuna
+bakın. Ardından ajana *"Bu hafta News kategorisinde yayınlanan makaleleri listele"* gibi bir şey
+sorun.
+
+## Araçlar
+
+| Araç | Gerektirdiği | Yaptığı |
+| --- | --- | --- |
+| `list_content_types` | `find` veya `findOne` | Çağıranın okuyabildiği içerik tipleri, türleri ve nitelikleriyle. |
+| `get_content_type` | `find` veya `findOne` | Bir içerik tipinin nitelikleri: tipler, seçenekler ve ilişkiler. |
+| `find_entries` | `find` | Bir tipin kayıtları. `query`, REST API’nin parametrelerini JSON olarak alır (`filters`, `sort`, `fields`, `populate`, `pagination`); `status: "draft"` ayrıca `readDrafts` gerektirir. |
+| `get_entry` | `findOne` | `documentId` ile tek bir kayıt (tekil tipler: onsuz). |
+| `create_entry` | `create` | REST API’deki gibi `data`’dan bir kayıt oluşturur. `status: "draft"` bir taslak kaydeder. |
+| `update_entry` | `update` | Bir kaydı günceller (tekil tipler: `documentId` olmadan). |
+| `delete_entry` | `delete` | Bir kaydı siler. |
+| `publish_entry`, `unpublish_entry` | `publish` | Bir kaydı yayınlar veya yayından kaldırır. |
+
+Araçlar `uid` (örneğin `api::article`) ve yerelleştirilmiş tipler için `locale` alır. Her araç
+karşılık gelen REST rotasıyla aynı izni denetler ve yazmalar REST API ile aynı yoldan geçer:
+doğrulama, eklenti hook’ları, inceleme aşamaları, webhook’lar, içerik geçmişi ve denetim kayıtları.
+Bir ajan, token’ının REST üzerinden yapamayacağı hiçbir şeyi yapamaz.
+
+İçerik API’si eylemleri için bkz. [İzinler](/tr/reference/permissions/).
+
+## Kimlik doğrulama
+
+Uç nokta içerik API’siyle aynı kimlik bilgilerini alır:
+
+- bir API token’ı, ajanlar için olağan seçim;
+- uygulamanızın oturum açmış bir kullanıcısı olarak hareket eden bir ajan için bir son
+  kullanıcının JWT’si;
+- public rolünün izinleri için `Authorization` başlığı olmadan.
+
+Geçersiz bir token `401` yanıtını verir. Sunucu oturum tutmaz ve akış açmaz: her istek JSON ile
+yanıtlanan bir JSON-RPC `POST`’tur (`GET` `405` yanıtını verir).
+
+### Tarayıcı origin’leri
+
+Tarayıcıların gönderdiği bir `Origin` başlığı taşıyan istekler, origin **MCP sunucusu** kartındaki
+**İzin verilen tarayıcı origin’leri** altında listelenmedikçe reddedilir. Bu, bir web sayfasının
+tarayıcıyı ağınızdaki bir sunucuyu çağırmaya kandırdığı DNS rebinding’e karşı korur. Komut satırı
+ve masaüstü istemcileri `Origin` göndermez; bu yüzden liste genellikle boştur.
+
+<Aside type="caution">
+Tam erişimli token’a sahip bir ajan içerik silebilir ve yayınlayabilir. Ajanlara, ihtiyaç
+duyduklarıyla sınırlı salt okunur veya özel token’lar verin. Bir ajanın yazdığı taslaklar için bir
+[inceleme iş akışı](/tr/guides/content/review-workflows/), ajan ile yayınlama arasında bir insan
+bulundurur.
+</Aside>
+
+Bunun yerine editörlere yönetim paneli içinde AI yardımı (çeviri, alternatif metin, SEO önerileri)
+vermek için bkz. [AI eylemleri](/tr/guides/integrations/ai-actions/).

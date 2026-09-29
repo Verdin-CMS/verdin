@@ -1,0 +1,161 @@
+---
+title: Formulare
+description: Kontakt- und Anmeldeformulare im Admin-Panel definieren, sie von deiner Website aus absenden und die Einsendungen lesen oder exportieren.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Die Funktion **Formulare** übernimmt die Formulare deiner Website (Kontakt,
+Newsletter-Anmeldung, Veranstaltungsanmeldung) ohne externen Formulardienst. Redakteure
+definieren die Felder im Admin-Panel, deine Website rendert sie und schickt sie an Verdin, und
+die Einsendungen werden validiert, gespeichert, per E-Mail verschickt und als CSV exportiert.
+
+## Einschalten
+
+Schalte unter **Einstellungen → Funktionen** **Formulare** ein und wähle dann
+**Formulare verwalten** (oder geh zu **Einstellungen → Formulare**). Formulare zu verwalten und
+Einsendungen zu lesen braucht die Berechtigung
+**SEO, Weiterleitungen, Menüs und Formulare verwalten** (`site.manage`), die die eingebaute
+Rolle Editor hat. Siehe [Berechtigungen](/de/reference/permissions/).
+
+Für Benachrichtigungs-E-Mails konfigurierst du einen Provider in
+[`[email]`](/de/reference/configuration/); mit dem Standard-Provider `log` landen E-Mails nur im
+Server-Log.
+
+## Ein Formular anlegen
+
+<Steps>
+
+1. Wähle unter **Einstellungen → Formulare** **Neues Formular**.
+2. Gib ihm einen Namen (etwa **Kontakt**) und einen **Slug** (`contact`). Der Slug ist Teil der
+   URL des Formulars.
+3. Wähle im Tab **Felder** für jedes Feld **Feld hinzufügen**, mit **Bezeichnung**, **Name**,
+   **Typ**, **Pflichtfeld**, **Platzhalter** und **Maximallänge**.
+4. Leg im Tab **Einstellungen** fest:
+   - **Benachrichtigen**: E-Mail-Adressen, die jede Einsendung bekommen.
+   - **Erfolgsmeldung**: wird nach einer Einsendung an deine Website zurückgegeben.
+   - **Spam-Falle**: standardmäßig an (siehe [Spam](#spam)).
+5. Speichere. Der Tab **Integration** zeigt den öffentlichen Endpunkt und ein Beispiel zum
+   Kopieren.
+
+</Steps>
+
+| Typ | Bezeichnung im Admin-Panel | Akzeptiert |
+| --- | --- | --- |
+| `text` | **Text** | Beliebigen Text. |
+| `email` | **E-Mail** | Eine E-Mail-Adresse. |
+| `textarea` | **Langer Text** | Beliebigen Text. |
+| `number` | **Zahl** | Eine Zahl, als Zahl gespeichert. |
+| `select` | **Auswahl** | Eine seiner **Optionen** (eine pro Zeile). |
+| `checkbox` | **Kontrollkästchen** | `true`, `on`, `1` oder `yes` gilt als angehakt, alles andere nicht. Ein Pflicht-Kontrollkästchen muss angehakt sein. |
+| `date` | **Datum** | Beliebigen Text (nimm `<input type="date">`). |
+| `url` | **URL** | Eine URL. |
+| `tel` | **Telefon** | Beliebigen Text. |
+
+Feldnamen beginnen mit einem Buchstaben, gefolgt von Buchstaben, Ziffern oder `_`, und sind im
+Formular eindeutig. Ein Formular hat 1 bis 50 Felder. Werte haben höchstens **Maximallänge**
+Zeichen (standardmäßig 5.000, höchstens 20.000).
+
+## Das Formular rendern
+
+`GET /api/_forms/{slug}` liefert die Definition, damit deine Website die Felder rendern kann,
+die die Redaktion gewählt hat:
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+`honeypot` ist `null`, wenn die Spam-Falle aus ist. Die Definition wird eine Minute lang gecacht
+(`Cache-Control: public, max-age=60`).
+
+## Absenden
+
+`POST /api/_forms/{slug}` nimmt die Werte als JSON (die Felder oder `{ "data": { … } }`) oder
+als einfachen Formular-Post (`application/x-www-form-urlencoded`). Ein Token ist nicht nötig.
+
+<Tabs syncKey="form">
+<TabItem label="HTML-Formular">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| Antwort | Wann |
+| --- | --- |
+| `201` mit `{ "data": { "message": … } }` | Angenommen. `message` ist die **Erfolgsmeldung** oder `Thank you!`. |
+| `400` `ValidationError` | Ein Wert fehlt oder ist ungültig. `details.errors` listet `{ path, message }` pro Feld. |
+| `404` | Kein Formular mit diesem Slug, oder die Funktion ist aus. |
+| `413` | Die Einsendung ist größer als 64 KB. |
+| `429` | Derselbe Besucher hat in einer Minute mehr als 10 Einsendungen an dieses Formular geschickt. |
+
+Werte werden getrimmt und gegen die Felder geprüft. Unbekannte Felder werden verworfen, ein
+Besucher kann also keine Daten hinzufügen, nach denen du nicht gefragt hast.
+
+Ein einfacher HTML-Formular-Post bekommt die JSON-Antwort als Seite angezeigt. Für ein besseres
+Erlebnis sende mit `fetch` und zeig die Meldung selbst an. Aus dem Browser an einen anderen
+Origin zu senden braucht den Origin deiner Website in
+[`[api].cors_origins`](/de/reference/configuration/).
+
+### Spam
+
+Mit eingeschalteter **Spam-Falle** fügst du dem Formular ein verstecktes, leeres Feld `_gotcha`
+hinzu. Bots füllen jedes Feld aus; eine Einsendung mit ausgefülltem `_gotcha` wird als
+angenommen beantwortet (`201`) und verworfen, der Bot erfährt also nichts. Zusammen mit dem Rate
+Limit stoppt das den meisten Formular-Spam ohne CAPTCHA.
+
+## Einsendungen lesen
+
+Der Tab **Einsendungen** des Formulars listet, was Besucher geschickt haben, mit dem Zeitpunkt,
+zu dem es **Empfangen** wurde. Du kannst eine Einsendung löschen, und **CSV exportieren** lädt
+alle herunter.
+
+Jede angenommene Einsendung geht außerdem per E-Mail an die Adressen unter **Benachrichtigen**,
+mit einem Link zu den Einsendungen im Admin-Panel (gebaut aus
+[`[server].public_url`](/de/reference/configuration/)).
+
+<Aside type="note">
+Verdin speichert die Werte jeder Einsendung, den User Agent des Besuchers und einen
+verschlüsselten Hash seiner IP-Adresse (nicht die Adresse selbst), genug, um eine Flut zu
+erkennen, ohne Menschen zu verfolgen. Wer ein Formular löscht, löscht auch seine Einsendungen.
+</Aside>
+
+## Admin-API
+
+Das Admin-Panel nutzt `/admin/api/site/forms` und `/admin/api/site/forms/{id}`, dazu
+`/admin/api/site/forms/{id}/submissions` und `…/submissions/export` (CSV), mit dem
+Access-Token eines Admins und `site.manage`. Siehe [Admin-API](/de/api/admin/).

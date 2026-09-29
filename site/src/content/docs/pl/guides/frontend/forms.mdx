@@ -1,0 +1,158 @@
+---
+title: Formularze
+description: Definiuj formularze kontaktowe i zapisów w panelu administracyjnym, wysyłaj do nich dane ze swojej witryny i odczytuj lub eksportuj zgłoszenia.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Funkcja **Formularze** obsługuje formularze twojej witryny (kontakt, zapis do newslettera,
+rejestracja na wydarzenie) bez zewnętrznej usługi formularzy. Redaktorzy definiują pola
+w panelu administracyjnym, twoja witryna je renderuje i wysyła do Verdin, a zgłoszenia są
+walidowane, przechowywane, wysyłane e-mailem i eksportowane jako CSV.
+
+## Włącz funkcję
+
+W **Ustawienia → Funkcje** włącz **Formularze**, a potem wybierz **Zarządzaj formularzami**
+(albo przejdź do **Ustawienia → Formularze**). Zarządzanie formularzami i odczyt zgłoszeń
+wymagają uprawnienia **Zarządzanie SEO, przekierowaniami, menu i formularzami**
+(`site.manage`), które ma wbudowana rola Editor. Zobacz
+[Uprawnienia](/pl/reference/permissions/).
+
+Do e-maili z powiadomieniami skonfiguruj dostawcę w
+[`[email]`](/pl/reference/configuration/); z domyślnym dostawcą `log` e-maile są tylko
+zapisywane w logu serwera.
+
+## Utwórz formularz
+
+<Steps>
+
+1. W **Ustawienia → Formularze** wybierz **Nowy formularz**.
+2. Nadaj mu nazwę (np. **Kontakt**) i **Slug** (`contact`). Slug jest częścią URL formularza.
+3. Na karcie **Pola** wybierz **Dodaj pole** dla każdego pola, z jego **Etykietą**,
+   **Nazwą**, **Typem**, opcjami **Wymagane**, **Tekst zastępczy** i **Maksymalna długość**.
+4. Na karcie **Ustawienia** ustaw:
+   - **Powiadom**: adresy e-mail, które otrzymują każde zgłoszenie.
+   - **Komunikat powodzenia**: zwracany do twojej witryny po zgłoszeniu.
+   - **Pułapka na spam**: domyślnie włączona (zobacz [Spam](#spam)).
+5. Zapisz. Karta **Integracja** pokazuje publiczny endpoint i przykład do skopiowania.
+
+</Steps>
+
+| Typ | Etykieta w panelu | Akceptuje |
+| --- | --- | --- |
+| `text` | **Tekst** | Dowolny tekst. |
+| `email` | **E-mail** | Adres e-mail. |
+| `textarea` | **Długi tekst** | Dowolny tekst. |
+| `number` | **Liczba** | Liczbę, przechowywaną jako liczba. |
+| `select` | **Wybór** | Jedną z jego **Opcji** (jedna na linię). |
+| `checkbox` | **Pole wyboru** | `true`, `on`, `1` lub `yes` oznacza zaznaczone; wszystko inne nie. Wymagane pole wyboru musi być zaznaczone. |
+| `date` | **Data** | Dowolny tekst (użyj `<input type="date">`). |
+| `url` | **URL** | URL. |
+| `tel` | **Telefon** | Dowolny tekst. |
+
+Nazwy pól zaczynają się od litery, potem litery, cyfry lub `_`, i są unikalne w formularzu.
+Formularz ma od 1 do 50 pól. Wartości mają najwyżej **Maksymalną długość** znaków
+(domyślnie 5000, najwyżej 20 000).
+
+## Wyrenderuj formularz
+
+`GET /api/_forms/{slug}` zwraca definicję, więc twoja witryna może wyrenderować pola wybrane
+przez redaktorów:
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+`honeypot` to `null`, gdy pułapka na spam jest wyłączona. Definicja jest cache'owana przez
+minutę (`Cache-Control: public, max-age=60`).
+
+## Wysyłanie
+
+`POST /api/_forms/{slug}` przyjmuje wartości jako JSON (pola albo `{ "data": { … } }`) lub
+jako zwykłe wysłanie formularza (`application/x-www-form-urlencoded`). Token nie jest
+potrzebny.
+
+<Tabs syncKey="form">
+<TabItem label="Formularz HTML">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| Odpowiedź | Kiedy |
+| --- | --- |
+| `201` z `{ "data": { "message": … } }` | Przyjęto. `message` to **Komunikat powodzenia** albo `Thank you!`. |
+| `400` `ValidationError` | Brakuje wartości lub jest niepoprawna. `details.errors` wymienia `{ path, message }` dla każdego pola. |
+| `404` | Nie ma formularza z tym slugiem albo funkcja jest wyłączona. |
+| `413` | Zgłoszenie ma ponad 64 KB. |
+| `429` | Ten sam odwiedzający wysłał do tego formularza ponad 10 zgłoszeń w ciągu minuty. |
+
+Wartości są przycinane i sprawdzane względem pól. Nieznane pola są odrzucane, więc
+odwiedzający nie może dodać danych, o które nie prosiłeś.
+
+Zwykłe wysłanie formularza HTML dostaje odpowiedź JSON jako stronę. Dla lepszego
+doświadczenia wysyłaj przez `fetch` i sam pokazuj komunikat. Wysyłanie z przeglądarki do
+innego originu wymaga originu twojej witryny w
+[`[api].cors_origins`](/pl/reference/configuration/).
+
+### Spam
+
+Z włączoną **Pułapką na spam** dodaj do formularza ukryte, puste pole `_gotcha`. Boty
+wypełniają każde pole; zgłoszenie z wypełnionym `_gotcha` dostaje odpowiedź jak przyjęte
+(`201`) i jest wyrzucane, więc bot niczego się nie dowiaduje. Razem z limitem żądań
+zatrzymuje to większość spamu w formularzach bez CAPTCHA.
+
+## Odczytuj zgłoszenia
+
+Karta **Zgłoszenia** formularza wymienia, co wysłali odwiedzający, z czasem w kolumnie
+**Otrzymano**. Możesz usunąć zgłoszenie, a **Eksportuj CSV** pobiera wszystkie.
+
+Każde przyjęte zgłoszenie jest też wysyłane e-mailem na adresy z **Powiadom**, z linkiem do
+zgłoszeń w panelu (zbudowanym z [`[server].public_url`](/pl/reference/configuration/)).
+
+<Aside type="note">
+Verdin przechowuje wartości każdego zgłoszenia, user agent odwiedzającego i hash z kluczem
+jego adresu IP (nie sam adres), co wystarcza do wykrycia zalewu bez śledzenia ludzi.
+Usunięcie formularza usuwa jego zgłoszenia.
+</Aside>
+
+## API administracyjne
+
+Panel administracyjny używa `/admin/api/site/forms` i `/admin/api/site/forms/{id}` oraz
+`/admin/api/site/forms/{id}/submissions` i `…/submissions/export` (CSV), z tokenem dostępu
+administratora i `site.manage`. Zobacz [API administracyjne](/pl/api/admin/).

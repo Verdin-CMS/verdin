@@ -1,0 +1,175 @@
+---
+title: מבנה הפרויקט
+description: הקבצים ש-verdin new יוצר, אלה ש-Verdin מוסיף בזמן שהוא רץ, ואילו מהם שייכים ל-git.
+sidebar:
+  order: 5
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+פרויקט Verdin הוא תיקייה עם קובץ תצורה והסכמה. העמוד הזה מפרט מה `verdin new` יוצר, מה
+השרת מוסיף בזמן שהוא רץ, ומה לעשות לו commit.
+
+## מה `verdin new` יוצר
+
+```sh title="Terminal"
+verdin new my-site
+```
+
+<FileTree>
+- my-site/
+  - verdin.toml תצורת הפרויקט
+  - .env סודות וכתובת מסד הנתונים, קריא רק לכם
+  - .gitignore
+  - schema/
+    - content-types/ קובץ JSON אחד לכל סוג תוכן
+    - components/ תיקייה אחת לכל קטגוריית רכיבים
+  - data/ מסד הנתונים של SQLite (רק עם `--database sqlite`)
+</FileTree>
+
+התיקייה חייבת לא להתקיים או להיות ריקה. שם הפרויקט בכתובת מסד הנתונים מגיע משם התיקייה,
+באותיות קטנות, כשתווים אחרים מוחלפים ב-`_` (`My Site` הופך ל-`my_site`).
+
+### `verdin.toml`
+
+התצורה. הקובץ שנוצר מגדיר את הפורט, את הקידומת וגודלי העמודים של API התוכן, ואת נתיב
+הניהול:
+
+```toml title="verdin.toml"
+[server]
+port = 1337
+# public_url = "https://cms.example.com"
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+
+[admin]
+path = "/admin"
+# secure_cookies = true
+```
+
+לכל מפתח יש ברירת מחדל, כך שהקובץ יכול להיות ריק או חסר. מפתחות לא מוכרים עוצרים את השרת עם
+שגיאה. אפשר לדרוס כל מפתח מהסביבה כ-`VERDIN_<SECTION>__<KEY>`, למשל `VERDIN_SERVER__PORT=8080`.
+הפקודות קוראות את `verdin.toml` מהתיקייה הנוכחית; העבירו `-c <path>` או הגדירו `VERDIN_CONFIG`
+כדי להשתמש בקובץ אחר. נתיבים בקובץ, כמו תיקיית הסכמה או תיקיית ההעלאות, יחסיים לתיקייה
+שמכילה אותו. כל ההגדרות נמצאות ב[תיעוד התצורה](/he/reference/configuration/).
+
+### `.env`
+
+```sh title=".env"
+# Local secrets: keep this file out of version control.
+VERDIN_DATABASE_URL=sqlite://data/verdin.db
+VERDIN_ADMIN_JWT_SECRET=…
+VERDIN_TOKEN_PEPPER=…
+```
+
+`verdin new` ממלא שני סודות אקראיים וכתובת מסד נתונים עבור המנוע שבחרתם עם `--database`:
+
+| `--database` | `VERDIN_DATABASE_URL` שנוצר |
+| --- | --- |
+| `sqlite` (ברירת מחדל) | `sqlite://data/verdin.db` |
+| `postgres` | `postgres://verdin:change-me@localhost:5432/<name>` |
+| `mysql`, `mariadb` | `mysql://verdin:change-me@localhost:3306/<name>` |
+
+החליפו את המשתמש והסיסמה עבור PostgreSQL, MySQL ו-MariaDB. נתיבי SQLite יחסיים נפתרים מול
+תיקיית הפרויקט, לא מול התיקייה שממנה מריצים את הפקודה.
+
+כל פקודה טוענת את ה-`.env` שליד `verdin.toml`; משתנים שכבר מוגדרים בסביבה גוברים. ב-Linux
+וב-macOS הקובץ נוצר קריא לבעלים שלו בלבד. בייצור, הגדירו את המשתנים האלה במאגר הסודות של
+הפלטפורמה שלכם במקום לשלוח קובץ `.env`. [ההתחלה המהירה](/he/start/quickstart/#2-סודות) מסבירה
+את שני הסודות.
+
+### `schema/`
+
+מודל התוכן, בפורמט הסכמה של Strapi:
+
+- `schema/content-types/<singularName>.json`, קובץ אחד לכל סוג אוסף או סוג יחיד.
+- `schema/components/<category>/<name>.json`, קובץ אחד לכל רכיב; ה-uid של הרכיב הוא
+  `<category>.<name>`.
+
+בונה סוגי התוכן כותב את הקבצים האלה ב-`verdin dev`, ואפשר לערוך אותם ידנית: `verdin dev`
+נטען מחדש כשהם משתנים. הסכמה של הבלוג לדוגמה נראית כך:
+
+<FileTree>
+- schema/
+  - content-types/
+    - article.json
+    - category.json
+    - homepage.json סוג יחיד
+    - tag.json
+  - components/
+    - blocks/
+      - hero.json `blocks.hero`
+      - quote.json `blocks.quote`
+    - shared/
+      - seo.json `shared.seo`
+</FileTree>
+
+הקבצים הם מקור האמת: Verdin גוזר מהם את טבלאות מסד הנתונים, את האימות, את ה-REST וה-GraphQL
+APIs, את מסמך ה-OpenAPI, את טיפוסי ה-TypeScript ואת הטפסים של פאנל הניהול. ראו
+[מודל התוכן](/he/concepts/content-model/) ו[הגירות סכמה](/he/concepts/schema-migrations/).
+תיקיית הסכמה היא `[schema].path` ב-`verdin.toml`, `schema` כברירת מחדל.
+
+## מה מופיע כש-Verdin רץ
+
+<FileTree>
+- my-site/
+  - verdin.toml
+  - .env
+  - schema/
+  - data/
+    - verdin.db מסד הנתונים של SQLite, עם קובצי ה-`-wal` וה-`-shm` שלו
+    - search/ אינדקס טקסט מלא, כש-`[search].enabled` פעיל
+  - public/
+    - uploads/ קובצי ספריית המדיה, מוגשים ב-`/uploads`
+  - .cache/
+    - transforms/ תמונות בגדלים שונים, נבנות מחדש לפי דרישה
+  - plugins/ תוספי WebAssembly, תיקייה לכל אחד (אתם יוצרים אותה)
+  - strapi-id-map.json נכתב על ידי `verdin import strapi`
+</FileTree>
+
+| נתיב | נכתב על ידי | הגדרה |
+| --- | --- | --- |
+| `data/verdin.db` | השרת, עם SQLite | `VERDIN_DATABASE_URL` |
+| `public/uploads/` | העלאות עם הספק המקומי (ברירת המחדל) | `[upload].provider` |
+| `.cache/transforms/` | המרות תמונות שהתבקשו ב-`/uploads` | `[upload.transforms].cache_dir` |
+| `data/search/` | אינדקס הטקסט המלא | `[search].dir` |
+| `plugins/` | אתם: כל תוסף בתיקייה משלו | `[plugins].path` |
+| `strapi-id-map.json` | `verdin import strapi`: מזהי Strapi שממופים למזהי Verdin | — |
+
+עם PostgreSQL, MySQL או MariaDB אין `data/verdin.db`: התוכן נמצא בשרת מסד הנתונים. עם ספק
+S3, קובצי המדיה נמצאים ב-bucket ו-`public/uploads` נשאר ריק.
+
+## מה נכנס ל-git
+
+| לעשות commit | להשאיר מחוץ ל-git |
+| --- | --- |
+| `verdin.toml` | `.env` (סודות) |
+| `schema/` (סוגי תוכן ורכיבים) | `data/` (מסד הנתונים של SQLite, אינדקס החיפוש) |
+| `plugins/`, אם אתם משתמשים בתוספים | `public/uploads/` (מדיה) |
+| `.gitignore` | `.cache/` |
+
+ה-`.gitignore` שנוצר מכסה את כולם:
+
+```sh title=".gitignore"
+.env
+data/
+*.db
+*.db-*
+.cache/
+# Local media library ([upload.provider] dir).
+public/uploads/
+```
+
+לפרויקטים שנוצרו לפני 0.10 חסרה השורה `public/uploads/`: הוסיפו אותה.
+
+<Aside>
+תוכן ומדיה הם נתונים, לא קוד. גבו אותם עם `verdin export` או עם הכלים של מסד הנתונים שלכם
+במקום לעשות להם commit; ראו [גיבויים](/he/deploy/backups/).
+</Aside>
+
+עשו commit לסכמה יחד עם הקוד שתלוי בה, כמו הטיפוסים שנוצרו בפרונטאנד שלכם. בייצור, פרסו את
+הסכמה שעשיתם לה commit והריצו `verdin start --migrate`: בונה סוגי התוכן כבוי מחוץ ל-`verdin dev`,
+כך שהסכמה משתנה רק דרך המאגר שלכם.

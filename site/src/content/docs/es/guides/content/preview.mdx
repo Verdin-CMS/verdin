@@ -1,0 +1,156 @@
+---
+title: Vista previa
+description: Abre borradores en tu sitio desde el editor de entradas con un token de vista previa de vida corta, y haz que tu sitio lea el borrador con él.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+La vista previa abre el borrador de una entrada en tu propio sitio, antes de publicarlo. El
+editor construye un enlace a partir de una plantilla de URL por tipo de contenido y añade un
+token de vida corta que permite a tu sitio leer ese único borrador. Esta guía configura las
+plantillas y la parte del sitio.
+
+Para hacer clic en un texto de la vista previa y saltar a su campo, añade encima la
+[edición visual](/es/guides/frontend/visual-editing/).
+
+## Antes de empezar
+
+- Activa **Configuración → Funcionalidades → Vista previa**. Está desactivada por defecto.
+- Cambiar los ajustes de la funcionalidad necesita **Gestionar funcionalidades**
+  (`features.manage`).
+- Abrir una vista previa necesita acceso de lectura a la entrada. Consulta
+  [Permisos](/es/reference/permissions/).
+
+## Configura las URLs de vista previa
+
+<Steps>
+
+1. En la tarjeta **Vista previa** de **Configuración → Funcionalidades**, selecciona
+   **Configurar las URL de vista previa**.
+2. En **Plantillas de URL**, introduce la página de tu sitio que muestra el borrador de cada
+   tipo de contenido. Deja vacío un tipo para que no tenga vista previa.
+3. Opcionalmente, cambia **Duración del enlace (minutos)**: 60 por defecto, como máximo 10080
+   (7 días).
+4. Guarda.
+
+</Steps>
+
+Una plantilla es una URL `http` o `https` con marcadores entre llaves:
+
+| Marcador | Se rellena con |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | Cualquier campo de nivel superior del borrador. Los marcadores desconocidos quedan vacíos. |
+| `{documentId}`, `{uid}` | El id del documento y el uid del tipo de contenido. |
+| `{token}` | El token de vista previa. Sin este marcador, el token se añade como parámetro de consulta `preview`. |
+
+Para los artículos del proyecto de ejemplo:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+da `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+Los mismos ajustes en JSON, tal como los guarda la funcionalidad
+(`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## Abre una vista previa
+
+En el editor de entradas, selecciona **Abrir vista previa** para abrir el borrador en tu sitio
+en una pestaña nueva, o **En paralelo** para mostrarlo en un panel junto al formulario, con los
+anchos **Escritorio**, **Tableta** y **Móvil**. El panel lateral se recarga después de cada
+guardado. Si se queda en blanco, probablemente tu sitio no permite que se le incruste en un
+frame: usa **Abrir en una pestaña nueva**.
+
+## Lee el borrador en tu sitio
+
+Tu página de vista previa toma el token de la URL y lo devuelve a la API de contenido en la
+cabecera `x-verdin-preview`, pidiendo el borrador:
+
+<Diagram
+  caption="Una petición de vista previa"
+  code={`sequenceDiagram
+  participant E as Editor
+  participant V as Verdin
+  participant S as Tu sitio
+  E->>V: Abrir vista previa
+  V-->>E: URL con el token de vista previa
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: el borrador`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+El token de vista previa lo lee la API de contenido REST. Pide el borrador por REST en tu
+página de vista previa.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+La misma cabecera funciona en los tipos únicos (`GET /api/<singularName>?status=draft`).
+
+Lo que concede el token:
+
+- Permite a quien lo tenga leer ese único documento, borradores incluidos, hasta que caduque.
+- No puede leer otros documentos, listar entradas ni escribir nada.
+- Las respuestas a las peticiones de vista previa nunca se cachean.
+
+<Aside type="caution">
+Cualquiera con el enlace puede leer el borrador hasta que caduque el token. Mantén corta la
+duración y no compartas enlaces de vista previa en sitios públicos.
+</Aside>
+
+Tu página de vista previa normalmente busca la entrada por un campo como `slug`. Como el token
+lee por `documentId`, pon también `{documentId}` en la plantilla, o mantén en tu lado la
+búsqueda de slug a id.
+
+## API de administración
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` devuelve el enlace para el botón del
+editor:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+Necesita acceso de lectura a la entrada, y responde `404` cuando la funcionalidad está
+desactivada o el tipo no tiene plantilla.

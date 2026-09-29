@@ -1,0 +1,102 @@
+---
+title: 导入和导出条目
+description: 把列表中的条目导出为 CSV 或 JSON，并从 CSV 或 JSON 文件创建或更新条目，可先试运行。
+sidebar:
+  order: 9
+  label: 导入和导出
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+每个内容类型的管理后台列表都可以把条目导出为 CSV 或 JSON，也可以从同类文件中导回：用于在电子表格中批量修改条目、加载产品目录，或者在项目之间复制条目。本指南介绍这两个方向的操作以及文件格式。
+
+这里一次只处理一个内容类型的条目。要迁移整个项目，请参见 [`verdin export` 和 `verdin import verdin`](/zh-cn/reference/cli/)。要从 Strapi 迁移过来，请参见[从 Strapi 迁移](/zh-cn/migrate/from-strapi/)。
+
+## 开始之前
+
+- 导出需要对该内容类型的读取权限。只会导出你的角色可以读取的字段。
+- 导入需要创建权限、更新权限，或者两者都要：创建条目的行需要创建权限，更新条目的行需要更新权限。发布导入的行还需要发布权限。参见[权限](/zh-cn/reference/permissions/)。
+
+## 导出条目
+
+<Steps>
+
+1. 打开内容类型的列表，按你希望的导出方式进行设置：过滤条件、搜索、排序、状态和语言区域。
+2. 选择 **导出**，然后选择 **导出为 CSV** 或 **导出为 JSON**。
+
+</Steps>
+
+文件包含列表所显示的条目（应用其过滤条件、搜索和排序），涵盖所有分页，最多 50,000 个条目。每一行以 `documentId` 开头，后面跟着各个字段。
+
+## 导入条目
+
+<Steps>
+
+1. 打开内容类型的列表，选择 **导入**。
+2. 选择一个 **文件**：带标题行的 `.csv` 文件，或者包含对象列表的 `.json` 文件，最大 1 MB。
+3. 在 **列** 下，为每一列选择对应的字段。与字段同名的列已经自动匹配。选择 **跳过** 可以排除某一列，选择 **文档 ID（更新）** 指定用于标识现有条目的列。
+4. 可以选择开启 **发布导入的条目**。否则它们会保存为草稿。
+5. 选择 **检查**。Verdin 会检查每一行（包括约束和引用），但不写入任何内容，并报告它将创建、更新或拒绝的行。
+6. 必要时修正文件，然后选择 **导入**。
+
+</Steps>
+
+行的写入方式：
+
+- 带有 `documentId` 的行会更新该条目；其他行会创建新条目。
+- 行是逐一写入的。失败的行会连同其字段和问题一起报告并被跳过；其他行仍会写入。
+- 报告最多列出 100 个出错的行，以及未匹配任何字段的列。
+- 一次导入最多 5,000 行。请拆分更大的文件。
+- 条目以列表当前的语言区域写入。
+
+<Aside type="caution">
+导入会让你的行经过与编辑器相同的校验，但无法撤销。请先运行 **检查**，并在大规模更新之前导出列表，以便需要时恢复。开启[内容历史](/zh-cn/guides/content/content-history/)后，每个被更新的条目都会保留其之前的版本。
+</Aside>
+
+## 文件格式
+
+字段使用与内容 API 写入格式相同的形式：
+
+| 字段 | 值 |
+| --- | --- |
+| 文本、数字、布尔值、日期 | 与 API 相同（`true`/`false`、ISO 8601 日期）。 |
+| 关联 | 关联条目的 `documentId`。 |
+| 媒体 | 媒体库中的文件 id。 |
+| 多态关联 | `uid:documentId`，例如 `api::article:k3v9…`。 |
+| 组件、动态区域、blocks 和 JSON | JSON。 |
+
+在 CSV 中，列表（多个关联或文件）用 `|` 连接。
+
+```csv title="articles.csv"
+documentId,title,slug,featured,tags
+,Hello world,hello-world,true,t1a2b3|t4c5d6
+k3v9x8…,Updated title,updated-title,false,
+```
+
+同样的行用 JSON 表示：
+
+```json title="articles.json"
+[
+  { "title": "Hello world", "slug": "hello-world", "featured": true, "tags": ["t1a2b3", "t4c5d6"] },
+  { "documentId": "k3v9x8…", "title": "Updated title", "slug": "updated-title", "featured": false }
+]
+```
+
+列表的导出文件始终是同一内容类型的有效导入文件。
+
+## 管理 API
+
+- `GET /admin/api/content/{uid}/export?format=csv`（或 `json`）接受列表的查询参数：`filters`、`_q`、`sort`、`status` 和 `locale`。
+- `POST /admin/api/content/{uid}/import?locale=` 以字符串形式接收文件内容：
+
+```json
+{
+  "format": "csv",
+  "data": "title,slug\nHello world,hello-world\n",
+  "mapping": { "slug": "slug", "notes": null },
+  "dryRun": true,
+  "publish": false
+}
+```
+
+`mapping` 把列映射到字段；`null` 表示跳过该列，未映射的列保留其名称。请求体大小受 `[server].body_limit` 限制（默认 1 MB）。

@@ -1,0 +1,117 @@
+---
+title: Uruchamianie kilku instancji
+description: Uruchamiaj kilka instancji Verdin jednego projektu za load balancerem — co współdzielą przez bazę danych, co zostaje w każdej instancji i które ustawienia zmienić.
+sidebar:
+  order: 8
+  label: Kilka instancji
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Verdin trzyma swój stan w bazie danych, więc możesz uruchomić kilka instancji tego samego
+projektu za load balancerem, dla dostępności lub wydajności. Ta strona wymienia, co
+instancje współdzielą, co każda zatrzymuje dla siebie i które ustawienia mają znaczenie.
+
+<Diagram
+  caption="Instancje współdzielą bazę danych i magazyn multimediów; cache, limity żądań i strumienie zdarzeń zostają w każdej instancji."
+  code={`flowchart LR
+  LB[Load balancer] --> A[Instancja 1]
+  LB --> B[Instancja 2]
+  LB --> C[Instancja 3]
+  A --> DB[(Baza danych)]
+  B --> DB
+  C --> DB
+  A --> S3[(Multimedia S3)]
+  B --> S3
+  C --> S3`}
+/>
+
+## Lista kontrolna
+
+- **Wspólna baza danych.** PostgreSQL, MySQL lub MariaDB. SQLite to plik na jednej maszynie
+  i nie działa z kilkoma instancjami.
+- **Ta sama konfiguracja wszędzie.** Każda instancja używa tego samego `verdin.toml`, plików
+  schematu i sekretów (`VERDIN_ADMIN_JWT_SECRET`, `VERDIN_TOKEN_PEPPER`,
+  `VERDIN_SSO_<ID>_SECRET`…). Przy różnych sekretach sesje i tokeny API utworzone na jednej
+  instancji są odrzucane przez pozostałe.
+- **Tryb produkcyjny.** Uruchamiaj `verdin start`, nie `verdin dev`. Zmieniaj schemat
+  w środowisku deweloperskim, zatwierdzaj go i migruj raz na wdrożenie.
+- **Wspólny magazyn multimediów.** Użyj dostawcy S3 (`[upload] provider = { name = "s3", … }`)
+  albo zamontuj ten sam wolumen na każdej instancji dla dostawcy lokalnego.
+- **Kontrole stanu.** Skieruj load balancer na `GET /_ready`, który odpowiada `503`, gdy baza
+  danych jest nieosiągalna. `GET /_health` mówi tylko, że proces działa; używaj go do
+  sprawdzania żywotności.
+- **Zadania wtyczek na jednej instancji.** Ustaw `[plugins].run_jobs = false` na każdej
+  instancji poza jedną; w przeciwnym razie każda instancja uruchamia zaplanowane zadania.
+- **Metryki per instancja.** Z `[metrics].enabled = true` każda instancja serwuje własne
+  `/_metrics`; scrapuj każdą z nich.
+
+## Migracje przy kilku instancjach
+
+`verdin start --migrate` można bezpiecznie uruchomić na wszystkich instancjach naraz. Każde
+uruchomienie migracji trzyma blokadę w bazie danych (advisory lock w PostgreSQL, `GET_LOCK`
+w MySQL i MariaDB, z oczekiwaniem do 60 sekund), więc pierwsza instancja stosuje kroki,
+a pozostałe zastają aktualną bazę danych.
+
+Podczas wdrożenia kroczącego instancje starej wersji przez jakiś czas działają na
+zmigrowanej bazie danych. Bezpieczne kroki tworzą tabele, dodają kolumny dopuszczające
+`NULL` lub z wartością domyślną oraz indeksy, poszerzają kolumny tekstowe albo dodają
+wartości enum, czego stara wersja nie zauważa. Kroki ryzykowne lub destrukcyjne
+(`verdin migrate apply --allow risky|destructive`) stosuj w osobnym wdrożeniu, gdy żadna
+instancja starego schematu nie potrzebuje już tych danych. Zobacz
+[Migracje schematu](/pl/concepts/schema-migrations/).
+
+## Co jest współdzielone
+
+| Co | Jak |
+| --- | --- |
+| Sesje administratorów, tokeny API, uprawnienia | W bazie danych; sesje sticky nie są potrzebne. |
+| Przełączniki funkcji, przełączniki wtyczek, języki, przepływy recenzji | W bazie danych. Każda instancja odczytuje je ponownie co `[server].sync_interval_secs` (10 s), więc zmiana wprowadzona na jednej instancji dociera do pozostałych w tym czasie. |
+| Dostarczenia webhooków | Kolejka w bazie danych. Instancja przejmuje dostarczenie przed wysłaniem, więc każde wychodzi raz. |
+| Zaplanowane wydania | Przejmowane w bazie danych przed wykonaniem, więc każde wykonuje się raz. |
+| Codzienne podsumowanie | Każde dzienne uruchomienie jest przejmowane w bazie danych, więc administratorzy dostają jeden e-mail. |
+| Wyzwania kluczy dostępu | Zużyte wyzwania są zapisywane w bazie danych, więc na każde odpowiada się raz we wszystkich instancjach. |
+| Czyszczenie dziennika audytu | Działa na każdej instancji; dwukrotne usunięcie starych wierszy jest nieszkodliwe. |
+| Magazyn klucz-wartość wtyczek | W bazie danych. |
+
+## Co zostaje w każdej instancji
+
+- **Limity żądań** liczy każda instancja osobno. Przy `n` instancjach klient może wykonać do
+  `n` razy `[api].public_rate_limit` żądań na minutę. Jeśli potrzebujesz globalnego limitu,
+  egzekwuj go na load balancerze.
+- **Cache anonimowych odpowiedzi** (`[api].cache_ttl_secs`). Zapis czyści cache instancji,
+  która go wykonała; pozostałe mogą serwować poprzednią odpowiedź, dopóki ich wpis nie
+  wygaśnie. Utrzymuj TTL na kilku sekundach albo `0`.
+- **Zdarzenia czasu rzeczywistego i obecność** dotyczą instancji, z którą klient jest
+  połączony. Używaj sesji sticky dla strumieni zdarzeń (zobacz
+  [Czas rzeczywisty](/pl/guides/frontend/realtime/)).
+- **Indeks wyszukiwania** (`[search]`) znajduje się na dysku instancji i śledzi tylko zapisy
+  tej instancji. Włącz go na jednej instancji i kieruj tam żądania `_q` albo zaakceptuj, że
+  pozostałe będą w tyle, dopóki nie zrestartują się z pustym katalogiem indeksu.
+- **Transformacje obrazów** (`[upload.transforms]`) są cache'owane per instancja
+  w `cache_dir`. Aby je współdzielić, postaw CDN przed `/uploads`.
+- **Zaplanowane zadania wtyczek**: zobacz `run_jobs` powyżej.
+
+## Ustawienia
+
+```toml title="verdin.toml"
+[server]
+# How often to read settings that other instances changed; 0 turns it off.
+sync_interval_secs = 10
+
+[plugins]
+# Run the plugins' scheduled jobs here (true on one instance only).
+run_jobs = true
+
+[api]
+# Short-lived when each instance keeps its own cache.
+cache_ttl_secs = 5
+```
+
+Ustaw `run_jobs` per instancja przez `VERDIN_PLUGINS__RUN_JOBS=false`.
+
+## Połączenia z bazą danych
+
+Każda instancja otwiera do `[database].pool_max` połączeń (domyślnie 10). Utrzymuj
+`instances × pool_max` poniżej limitu serwera, z zapasem na migracje, kopie zapasowe
+i konserwację. Domyślny limit PostgreSQL to 100 połączeń.

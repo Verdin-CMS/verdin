@@ -79,7 +79,7 @@ panneau d’administration. Pas de runtime Node.js ni de `node_modules` en produ
 - **Vous dépendez de plugins Strapi ou de code serveur personnalisé en JavaScript.** Verdin ne
   peut pas les exécuter : il faudrait les réécrire sous forme de plugins WebAssembly ou déplacer
   cette logique ailleurs.
-- **Vous avez besoin d’une version 1.0 stable.** Verdin en est à la 0.9 : les versions mineures
+- **Vous avez besoin d’une version 1.0 stable.** Verdin en est à la 0.10 : les versions mineures
   peuvent encore modifier la configuration et le comportement. Lisez
   [Mise à niveau](/fr/migrate/upgrading/) avant chacune d’elles.
 - **Vous voulez que le CMS génère vos pages.** Verdin est headless : associez-le à un framework

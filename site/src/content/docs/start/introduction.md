@@ -72,7 +72,7 @@ There is no Node.js runtime and no `node_modules` in production.
 
 - **You depend on Strapi plugins or custom server code in JavaScript.** Verdin cannot run
   them; you would rewrite them as WebAssembly plugins or move the logic elsewhere.
-- **You need a stable 1.0.** Verdin is at 0.9: minor releases can still change
+- **You need a stable 1.0.** Verdin is at 0.10: minor releases can still change
   configuration and behaviour. Read [Upgrading](/migrate/upgrading/) before each one.
 - **You want the CMS to render your pages.** Verdin is headless; pair it with a frontend
   framework or a static site generator.

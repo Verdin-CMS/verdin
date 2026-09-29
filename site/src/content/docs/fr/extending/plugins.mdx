@@ -1,0 +1,138 @@
+---
+title: Plugins
+description: Ce que peuvent faire les plugins Verdin, comment le bac à sable WebAssembly et les capacités les contiennent, et comment les installer et les activer.
+sidebar:
+  order: 1
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Les plugins ajoutent du comportement à Verdin sans modifier ni recompiler le serveur. Un plugin
+est un module WebAssembly accompagné d’un manifeste, déposé dans le répertoire `plugins/` du
+projet. Cette page explique ce que peuvent faire les plugins et comment en installer un ; pour
+en écrire un, suivez le [tutoriel de plugin](/fr/extending/plugin-tutorial/), et consultez les
+détails dans la [référence des plugins](/fr/extending/plugin-reference/).
+
+## Ce que peut faire un plugin
+
+| Point d’extension | À quoi il sert |
+| --- | --- |
+| **Hooks sur les écritures** | Avant qu’une entrée soit créée, modifiée, publiée, dépubliée, supprimée ou que son brouillon soit abandonné, modifier les données ou refuser l’écriture avec un message. Après l’écriture, y réagir (journaliser, notifier, synchroniser). |
+| **Routes** | Servir des endpoints HTTP sous `/api/plugins/<name>/…` : un récepteur de webhooks, un flux calculé, un proxy vers un autre service. |
+| **Tâches planifiées** | Exécuter une fonction selon une planification cron (UTC). |
+| **Champs GraphQL** | Ajouter des champs `name(args: JSON): JSON` à `Query` ou `Mutation`. |
+| **Widgets du tableau de bord** | Ajouter des types de widgets au tableau de bord de l’administration, sous forme de Web Components. |
+| **Champs personnalisés** | Donner aux attributs un éditeur personnalisé dans l’administration (un sélecteur de couleur, une carte), sous forme de Web Components ; la valeur est stockée comme un type d’attribut ordinaire. |
+| **Paramètres** | Déclarer un formulaire de paramètres que les administrateurs remplissent dans **Paramètres → Plugins**. |
+
+Un plugin lit et écrit du contenu via le même Document Service que l’administration et l’API :
+les webhooks, l’historique, les étapes de relecture et la validation s’appliquent donc à ses
+écritures.
+
+<Aside type="note">
+Les plugins Verdin ne sont pas des plugins Strapi. Les plugins Strapi sont des paquets Node.js
+disposant d’un accès complet au serveur ; Verdin n’exécute aucun JavaScript sur le serveur. Les
+champs personnalisés déclarés par des schémas Strapi (attributs `customField`) se chargent tels
+quels, et un plugin Verdin peut fournir leur éditeur.
+</Aside>
+
+## Le bac à sable
+
+Les plugins s’exécutent dans un bac à sable WebAssembly ([Extism](https://extism.org), sur
+Wasmtime). Un module n’a ni fichiers, ni sockets, ni connexion à une base de données propres.
+Tout ce qu’il fait hors de sa propre mémoire passe par quelques fonctions hôtes, et le serveur
+vérifie chaque appel par rapport aux **capacités** que déclare le manifeste :
+
+| Capacité | Accorde |
+| --- | --- |
+| `read` | La lecture des entrées des types de contenu listés (ou `*`). |
+| `write` | La création, la modification, la publication, la dépublication et la suppression des entrées des types listés (ainsi que leur lecture). |
+| `http` | Les requêtes HTTP vers les hôtes listés (`api.example.com`, `*.example.com`). |
+| `kv` | Un stockage clé-valeur qui lui est propre, dans la base de données de Verdin. |
+
+<Diagram
+  caption="Les appels vers un plugin, et ce que ses appels à l’hôte peuvent atteindre"
+  code={`flowchart LR
+    W[Écritures] -->|hooks| M
+    R["/api/plugins/name/…"] --> M
+    J[Tâches planifiées] --> M
+    M[Module WebAssembly] --> C{Capacités}
+    C -->|read, write| D[(Contenu)]
+    C -->|kv| K[(Stockage du plugin)]
+    C -->|http| H[Hôtes listés]`}
+/>
+
+Chaque appel a aussi des limites : une limite de temps (5 secondes par défaut) et une limite de
+mémoire (64 Mo par défaut), définies dans le manifeste. Un module qui provoque un trap ou dépasse
+son temps ne fait échouer que cet appel ; Verdin le reconstruit à l’appel suivant.
+
+Ce que le bac à sable ne décide pas à votre place :
+
+- **Les routes sont publiques.** Les requêtes vers `/api/plugins/<name>/…` ne sont pas
+  contrôlées par l’**Accès public** ni par les autorisations des jetons d’API. Le plugin reçoit
+  l’identité de l’appelant (n’importe qui, un jeton d’API ou un utilisateur final) et doit la
+  vérifier.
+- **Les hooks voient toutes les écritures sur leurs types**, quelle que soit la capacité `read`
+  du plugin.
+- **Un hook before en échec ne bloque pas l’écriture.** Si le module plante ou dépasse son
+  temps, l’erreur est journalisée et l’écriture se poursuit. Seul un refus explicite l’arrête.
+
+## Installer un plugin
+
+<Steps>
+
+1. Placez le plugin dans son propre répertoire sous `plugins/`, à côté de `verdin.toml`. Il
+   contient le manifeste, le module et, éventuellement, les fichiers du panneau
+   d’administration :
+
+   <FileTree>
+   - verdin.toml
+   - plugins/
+     - reading-time/
+       - plugin.toml
+       - plugin.wasm
+       - admin/ facultatif : des Web Components pour le panneau d’administration
+         - index.js
+   - schema/
+   </FileTree>
+
+2. Redémarrez Verdin. Il charge chaque `plugins/*/plugin.toml` au démarrage et journalise
+   `plugin found` pour chacun. Un plugin qui ne se charge pas (manifeste invalide, module
+   manquant, nom en double) est listé dans **Paramètres → Plugins** avec la raison.
+
+3. Dans le panneau d’administration, ouvrez **Paramètres → Plugins**. Vérifiez ce que demande le
+   plugin sous **Accès**, **Hooks**, **Routes** et **Tâches**, puis activez-le.
+
+4. Si le plugin a des paramètres, ouvrez **Paramètres** sur sa carte, remplissez-les et
+   enregistrez.
+
+</Steps>
+
+Les plugins installés sont désactivés au départ. Activer un plugin et modifier ses paramètres
+prennent effet immédiatement, sur toutes les instances (les autres instances prennent en compte
+la modification dans le délai de `[server].sync_interval_secs`). Les modifications de
+`plugin.toml` ou du module nécessitent un redémarrage.
+
+Gérer les plugins nécessite l’autorisation `plugins.manage` (**Gérer les plugins**). Voir la
+[référence des autorisations](/fr/reference/permissions/).
+
+## Configurer `[plugins]`
+
+```toml title="verdin.toml"
+[plugins]
+path = "plugins"   # directory of plugins, relative to verdin.toml
+run_jobs = true    # run scheduled jobs on this instance
+```
+
+Avec plusieurs instances, définissez `run_jobs = false` sur toutes sauf une, pour que chaque
+tâche ne s’exécute qu’une fois. Voir la [référence de configuration](/fr/reference/configuration/).
+
+## Exploitation
+
+- **Un appel à la fois.** Chaque plugin a une instance et traite un appel à la fois : une route
+  lente retarde donc les hooks de ce plugin. Gardez des fonctions courtes.
+- **Journaux.** Ce qu’un plugin journalise va dans le log du serveur et dans
+  **Paramètres → Plugins → Journaux** (les 200 dernières lignes, gardées en mémoire).
+- **Déploiements.** Livrez les plugins avec le projet (dans l’image ou sur le volume), comme le
+  schéma. Les interrupteurs et les paramètres résident dans la base de données.

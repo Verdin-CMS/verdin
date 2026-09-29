@@ -1,0 +1,90 @@
+---
+title: 发布计划
+description: 把多个条目归为一组，立即或在预定日期一起发布或取消发布。
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+发布计划把需要一起上线或一起下线的条目归为一组：一次产品发布、一场营销活动、一批译文。你可以手动发布它，也可以为它设定日期。本指南介绍如何创建发布计划、添加条目、执行它，以及管理 API。
+
+发布计划的工作方式与 Strapi 的 Releases 相同，后者属于 Strapi 的付费套餐。
+
+## 开始之前
+
+- **设置 → 功能 → 发布计划** 默认开启。关闭期间，**发布计划** 页面和相关路由不可用，定时的发布计划会等待。
+- 管理发布计划需要 **管理发布计划**（`releases.manage`）。
+- 添加条目还需要其内容类型上的 **发布** 权限，并且该类型必须启用[草稿与发布](/zh-cn/concepts/draft-and-publish/)。
+
+## 创建发布计划
+
+<Steps>
+
+1. 在侧边栏中打开 **发布计划**，选择 **新建发布计划**。
+2. 输入 **名称**。
+3. 可以选择设置 **发布时间（可选）**：发布计划执行的日期和时间，使用你所在的时区。不设置日期时，发布计划会一直等待，直到你手动发布它。
+4. 选择 **创建**。
+
+</Steps>
+
+## 添加条目
+
+<Steps>
+
+1. 在编辑器中打开一个条目。**发布计划** 面板会列出它所在的发布计划。
+2. 选择 **添加到发布计划**。
+3. 选择 **发布计划**，并在 **发布计划执行时** 下选择 **发布** 或 **取消发布**。
+4. 选择 **添加**。
+
+</Steps>
+
+对于本地化类型，只会添加编辑器当前语言区域的版本。请分别添加你要发布的每个语言区域。添加一个已在该发布计划中的条目会替换其操作。
+
+发布计划页面会列出其中的条目及其内容类型和操作。用条目所在行上的按钮即可移除它。
+
+## 执行发布计划
+
+- **立即执行：** 打开发布计划并选择 **立即发布**。
+- **在设定的日期执行：** 一个后台任务每 30 秒检查一次，并以创建者管理员的身份执行到期的发布计划。
+
+<Diagram
+  caption="发布计划的状态"
+  code={`flowchart LR
+  P[待执行] -->|立即发布或到达日期| R[执行中]
+  R -->|所有操作成功| D[已完成]
+  R -->|部分操作失败| F[失败]`}
+/>
+
+每个操作都会记录是否成功。当某个操作失败时（例如条目已被删除或未通过校验），其他操作仍会执行，发布计划最终为 **失败** 状态，每个失败操作的错误显示在其所在行上。
+
+<Aside type="caution">
+已执行的发布计划不能再修改。要重试失败的操作，请把那些条目添加到一个新的发布计划中。
+</Aside>
+
+发布计划作为一个整体发布：它不会等待[审核阶段](/zh-cn/guides/content/review-workflows/)。如果某个工作流要求处于特定阶段才能发布，那么不在该阶段的条目会像其他任何发布一样失败。
+
+webhook 可以订阅 **发布计划已执行**（`releases.publish`），它在发布计划执行时发送。参见 [Webhook](/zh-cn/guides/integrations/webhooks/)。
+
+## 管理 API
+
+所有路由都位于 `/admin/api` 下，并且需要 `releases.manage`。
+
+```http
+GET    /admin/api/releases?status=pending
+POST   /admin/api/releases                    { "name": "Launch", "scheduledAt": "2026-10-01T08:00:00Z" }
+GET    /admin/api/releases/{id}
+PUT    /admin/api/releases/{id}               { "name": "Launch", "scheduledAt": null }
+DELETE /admin/api/releases/{id}
+POST   /admin/api/releases/{id}/actions       { "uid": "api::article", "documentId": "…", "locale": "fr", "action": "publish" }
+DELETE /admin/api/releases/{id}/actions/{actionId}
+POST   /admin/api/releases/{id}/publish
+GET    /admin/api/content/{uid}/{documentId}/releases
+```
+
+- `status` 为 `pending`、`running`、`done` 或 `failed`；每个操作都有自己的 `status` 和 `error`。
+- 修改、添加条目到或发布一个已不处于待执行状态的发布计划，会返回 `409`。
+- `action` 为 `publish` 或 `unpublish`。添加操作还需要该类型上的 `content.publish`。语言区域在添加操作时就已确定，因此之后更改默认语言区域不会影响它。
+- 删除发布计划会删除其条目列表。条目本身不会改变。
+- `GET /content/{uid}/{documentId}/releases` 需要对该条目的读取权限，对没有 `releases.manage` 的管理员返回空列表。

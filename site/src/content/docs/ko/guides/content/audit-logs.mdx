@@ -1,0 +1,104 @@
+---
+title: 감사 로그
+description: 누가 언제 무엇을 바꿨는지 확인하고, 관리자 패널이나 API에서 감사 로그를 필터링하고, 항목 보관 기간을 설정합니다.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+감사 로그는 누가 언제 무엇을 바꿨는지 기록합니다. 콘텐츠, 미디어, 로그인, 관리자 패널에서 한 모든 변경입니다.
+이 가이드에서는 무엇이 기록되는지, 로그를 필터링하는 방법, 얼마나 오래 보관하는지 설명합니다.
+
+Strapi에서 감사 로그는 Enterprise 기능입니다. Verdin에서는 오픈 소스 코어의 일부입니다.
+
+## 시작하기 전에
+
+- **설정 → 기능 → 감사 로그**는 기본적으로 켜져 있습니다. 끄면 새 작업을 기록하지 않으며, 기존 항목은 계속 읽을
+  수 있습니다.
+- 로그를 읽으려면 **감사 로그 읽기**(`audit.read`)가 필요합니다. [권한](/ko/reference/permissions/)을
+  참고하세요.
+
+## 기록되는 것
+
+| 영역 | 작업 | 참고 |
+| --- | --- | --- |
+| 콘텐츠 | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | 모든 API에서: 관리자 패널, REST, GraphQL, 플러그인. 로케일은 세부 정보에 있습니다. |
+| 검토 워크플로 | `entry.stage`, `entry.assign` | 단계 변경과 담당자 지정. |
+| 미디어 | `media.create`, `media.update`, `media.delete` | 파일 업로드, 변경, 삭제. 파일 이름은 세부 정보에 있습니다. |
+| 로그인 | `admin.login` | 비밀번호 로그인과 첫 관리자 로그인(두 번째 인증 수단이 있는 계정은 그 단계 이후에 기록), 그리고 제공업체와 함께 SSO 로그인. |
+| 관리자 변경 | `{METHOD} {route}`, 예: `PUT /roles/{id}` | admin API의 모든 성공한 쓰기: 사용자, 역할, API 토큰, 설정, 기능, 웹훅, 로케일, 플러그인, 릴리스… 라우트의 파라미터는 세부 정보에 있습니다. |
+
+각 항목에는 시각, 수행자, 작업, 대상(콘텐츠 타입 uid, `plugin::upload.file`, 또는 `roles` 같은 관리자
+리소스), 대상의 id, 세부 정보, 그리고 요청의 경우 클라이언트 IP 주소가 있습니다.
+
+수행자는 다음 중 하나입니다.
+
+- **관리자**: 로그인한 관리자이며, 로그에 이름이 나옵니다.
+- **API**: 콘텐츠 API나 GraphQL로 API 토큰, 최종 사용자의 토큰, 공개 접근을 써서 한 변경.
+- **시스템**: 로그인한 관리자 없이 한 admin API 쓰기.
+
+리버스 프록시 뒤에서는 로그에 프록시 주소 대신 클라이언트 주소가 나오도록 `[server].trusted_proxies`를
+설정하세요. [설정 레퍼런스](/ko/reference/configuration/)를 참고하세요.
+
+## 로그 필터링
+
+<Steps>
+
+1. **설정 → 감사 로그**를 엽니다.
+2. **빠른 필터** 프리셋(**콘텐츠**, **미디어**, **로그인**)을 쓰거나 필터를 채웁니다.
+   - **작업**: `entry.publish` 같은 정확한 작업, 또는 `entry.*`처럼 `*`로 끝나는 접두사.
+   - **수행자**: 관리자 한 명, 또는 **모든 사람**.
+   - **대상**: `api::article` 같은 콘텐츠 타입 uid.
+   - **시작**과 **종료**: 날짜 범위. 시각 없는 날짜는 그날 전체를 포함합니다.
+3. **적용**을 선택합니다. 행의 **세부 정보**를 열면 그 항목에 기록된 모든 것을 볼 수 있습니다.
+
+</Steps>
+
+## API로 조회
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+항목은 최신순이며, 기본 페이지당 50개, 최대 200개입니다.
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from`과 `to`는 ISO 8601 날짜나 날짜시간을 받습니다. 그 밖의 값은 `400` 오류입니다.
+
+## 항목 보관 기간 설정
+
+`[audit].retention_days`보다 오래된 항목은 하루에 한 번 삭제됩니다. 기본값은 90일입니다.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+데이터베이스에 두기에 너무 오래 감사 항목을 보관하려면, 위의 API로 정기적으로 자체 스토리지에 복사하세요.
+</Aside>

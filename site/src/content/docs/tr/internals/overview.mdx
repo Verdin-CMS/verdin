@@ -1,0 +1,165 @@
+---
+title: Mimariye genel bakış
+description: Verdin’in tasarım ilkelerinden bir isteğin geçtiği crate’lere kadar nasıl oluşturulduğu; kodu okumak veya değiştirmek isteyen katkıda bulunanlar için.
+sidebar:
+  order: 1
+  label: Genel bakış
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Bu bölüm Verdin’in kendisi üzerinde çalışan kişiler içindir. Sunucunun ve yönetim panelinin nasıl bir araya getirildiğini, neden bu şekilde oluşturulduklarını ve kodu okumaya nereden başlanacağını açıklar. Verdin’i kullanmak için bunun yerine [hızlı başlangıç](/tr/start/quickstart/) ile başlayın.
+
+Verdin, Strapi v5’i izleyen, Rust ile yazılmış bir headless CMS’tir: içeriği görsel olarak veya JSON dosyalarında modellersiniz ve bir REST ve GraphQL API’si ile bir yönetim paneli elde edersiniz. Sunucuyu, CLI’ı ve Angular yönetim panelini içeren tek bir ikili dosya olarak gelir ve PostgreSQL, MySQL, MariaDB ve SQLite üzerinde çalışır.
+
+## Hedefler
+
+- **Tek ikili dosya.** `verdin` sunucuyu, CLI’ı ve gömülü yönetim panelini içerir. Üretim Node.js veya `node_modules` gerektirmez.
+- **Hızlı başlangıç, küçük bellek ayak izi.**
+- **Dört veritabanı, tek test paketi.** PostgreSQL, MySQL, MariaDB ve SQLite’ın hepsi birinci sınıftır ve hepsi aynı testlerle kapsanır.
+- **Kod olarak şema.** İçerik tipleri git’te sürümlediğiniz JSON dosyalarıdır.
+- Makul olan her yerde **Strapi v5 uyumlu REST API**; böylece mevcut frontend’ler az değişiklikle taşınır.
+- **Her şey ücretsiz.** Enterprise sürümü yoktur: SSO, denetim kayıtları, inceleme iş akışları, sürümler ve diğer tüm özellikler herkes için gelir.
+
+Sürüm sürüm nelerin çıktığı ve sırada ne olduğu [yol haritasındadır](/tr/project/roadmap/).
+
+### Hedef olmayanlar
+
+- Strapi’nin JavaScript eklentilerini çalıştırmak. Verdin eklentileri WebAssembly modülleridir (bkz. [eklentiler](/tr/extending/plugins/)).
+- Bir Strapi veritabanını olduğu gibi okumak. İçerik bir içe aktarıcı aracılığıyla taşınır (bkz. [Strapi’den geçiş](/tr/migrate/from-strapi/)).
+- Sayfa oluşturmak. Verdin headless’tır.
+
+## Tasarım ilkeleri
+
+1. **Şema doğruluğun kaynağıdır.** Tablolar, doğrulama, REST ve GraphQL API’leri, OpenAPI belgesi ve admin formlarının hepsi ondan türetilir.
+2. **Hiçbir SQL tanımlayıcısı asla bir istekten gelmez.** Tablo ve sütun adları yalnızca doğrulanmış şemadan gelir ve her değer bağlanmış bir parametredir.
+3. **Dialect’ler birinci sınıftır.** "PostgreSQL’de çalışır, MySQL sonra" yok. Her özellik dört motorun hepsinde test edilir.
+4. **Varsayılan olarak güvenli.** İçerik API’si siz izin verene kadar kapalıdır, `private` alanlar asla açığa çıkmaz ve sorgu derinliği ve boyutu sınırları her zaman açıktır.
+5. **Yıkıcı işlemler açıktır.** Bir sütunu veya tabloyu kaldırmak onayınızı gerektirir; asla bir yan etki olarak gerçekleşmez.
+6. **Global durum yok.** Servisler `axum` state’i ve constructor’lar aracılığıyla geçirilir; singleton yoktur.
+
+## Genel resim
+
+Bir istek ikili dosyaya küçük bir paylaşılan katman yığını üzerinden girer, API router’larından birine ulaşır ve bağlı dialect için SQL oluşturan Document Service’te son bulur. `schema/*.json`’dan yüklenen şema kayıt defteri her adımı besler ve migrasyon motoru veritabanını onunla uyumlu tutar.
+
+<Diagram
+  caption="Bir içerik API’si isteği ve geçtiği crate’ler"
+  code={`flowchart LR
+  Client["Frontend veya yönetim paneli"] --> Layers["Paylaşılan katmanlar<br/>istemci IP’si, istek kimliği, CORS, sınırlar"]
+  Layers --> Routers["verdin-api / verdin-graphql<br/>REST, admin API, GraphQL, MCP"]
+  Routers --> Auth["verdin-auth<br/>token’lar, roller, yetkiler"]
+  Routers --> Query["verdin-query<br/>parametrelerden tipli sorguya"]
+  Query --> Docs["verdin-content<br/>Document Service"]
+  Docs --> Db["verdin-db<br/>havuz ve Flavor"]
+  Db --> Engines[("PostgreSQL, MySQL,<br/>MariaDB, SQLite")]
+  Schema["verdin-schema<br/>schema/*.json"] --> Migrate["verdin-migrate<br/>fark, plan, uygula"]
+  Migrate --> Db`}
+/>
+
+- **İçerik API’si**, `[api].prefix` altında (varsayılan `/api`): içerik tipi başına REST rotaları, yüklemeler ve OpenAPI belgesi. Bkz. [REST API](/tr/api/rest/).
+- **Admin API**, `{admin.path}/api` altında (varsayılan `/admin/api`): yönetim panelinin yaptığı her şey. Bkz. [admin API](/tr/api/admin/).
+- Bu özellikler açıkken `/graphql` adresinde **GraphQL** ve `/mcp` adresinde **MCP**. GraphQL argümanları REST ayrıştırıcısının okuduğu aynı parametre ağacına çevrilir; böylece her iki API filtreleri, sayfalamayı, populate’i ve izin kurallarını paylaşır.
+- **Yönetim paneli**, `[admin].path` altında (varsayılan `/admin`), ikili dosyadan veya `[admin].assets_dir`’den sunulur. Bkz. [yönetim paneli iç yapısı](/tr/internals/admin-panel/).
+- **İşletim rotaları**: `/_health`, `/_ready` ve metrikler açıkken `/_metrics`. Bkz. [izleme](/tr/deploy/monitoring/).
+
+Her yazma, hangi API’den gelirse gelsin [Document Service](/tr/internals/document-service/)’ten geçer. Veriyi doğrular, satırları ve bağlantı tablolarını tek bir transaction içinde yazar ve ardından dinleyicilere (webhook’lar, arama dizini, geçmiş, gerçek zamanlı, denetim kaydı) neyin değiştiğini bildirir.
+
+Özellikler açılıp kapatıldığında ya da içerik tipi oluşturucusu `verdin dev` içinde şemayı değiştirdiğinde, tüm router yeniden oluşturulur ve yeniden başlatmadan yerinde değiştirilir (bir `ArcSwap`).
+
+## Teknoloji yığını
+
+### Sunucu (Rust, edition 2024)
+
+| Alan | Seçim | Neden |
+|---|---|---|
+| Çalışma zamanı | `tokio` | Standart async çalışma zamanı |
+| HTTP | `axum`, `tower`, `tower-http` | CORS, gövde sınırları, zaman aşımları, istek kimlikleri, tracing için middleware |
+| SQL sürücüsü | `sqlx` (postgres, mysql, sqlite) | Async, havuzlama, TLS; MySQL ve MariaDB tek sürücüyü paylaşır; SQLite içine derlenir |
+| SQL oluşturma | Verdin’in kendi oluşturucuları: `verdin-migrate` içinde DDL, `verdin-query` ve `verdin-content` içinde DML | Tablolar şema tarafından tanımlanır, bu yüzden SQL çalışma zamanında oluşturulur. Her durumda dialect başına kesin denetim gerekir (`jsonb`, `datetime(3)`, binary collation’lar, tipli NULL’lar, SQLite metin biçimleri). ORM yok, `sea-query` yok |
+| Sorgu string’leri | `verdin-query` içinde kendi köşeli parantez gösterimi ayrıştırıcısı | Derinlik, uzunluk ve çift sınırlarıyla Strapi tarzı `filters[title][$eq]=…` |
+| JSON | `serde`, `serde_json` | — |
+| Ondalıklar | `rust_decimal` | Sunucu içinde hassasiyet kaybı yok |
+| Tarihler | `time` | — |
+| Belge kimlikleri | `ulid` | Sıralanabilir, 26 karakter, taşınabilir |
+| OpenAPI | `verdin-api` içinde kendi üreteci | Kayıt defterinden oluşturulan, içerik tipi başına bir yol ve şema |
+| GraphQL | `async-graphql` (dinamik şema) | İçerik şemasından oluşturulur |
+| Kimlik doğrulama | `argon2` (argon2id), `hmac` + `sha2` üzerinde HS256 JWT | Birkaç satır HS256, bir RSA yığını çekmekten kaçınır |
+| Yapılandırma | `figment` (TOML + ortam), `dotenvy` | Katmanlama ve ortam başına geçersiz kılmalar |
+| CLI | `clap` | — |
+| Günlükler | `tracing`, `tracing-subscriber` | Varsayılan olarak insan tarafından okunabilir, `[log].format = "json"` ile JSON |
+| Hız sınırlama | `verdin-api` içinde kendi sabit pencereli sınırlayıcısı | Oturum açma rotaları ve isteğe bağlı içerik API’si sınırları |
+| Medya | `object_store`, `image`, `infer` | Yerel disk veya S3 uyumlu depolama; formatlar ve MIME algılama |
+| Arama | `tantivy` | İkili dosyanın içinde isteğe bağlı tam metin dizini |
+| Eklentiler | `extism` | WebAssembly eklentileri |
+| E-posta | `lettre`, `reqwest` | SMTP, Resend, Postmark |
+| Admin gömme | `rust-embed` (`embed-admin` özelliği) | Yönetim paneli ikili dosyanın içinde gelir |
+| Şema izleme | `notify` | `verdin dev` içinde yeniden yüklemeler |
+| Hatalar | Kütüphanelerde `thiserror`, ikili dosyada `anyhow` | — |
+| Testler | `cargo test`, `insta` (DDL anlık görüntüleri) | Bkz. [test](/tr/internals/testing/) |
+
+### Yönetim paneli (Angular)
+
+| Alan | Seçim |
+|---|---|
+| Framework | Angular 22: standalone bileşenler, zoneless, signal’lar, lazy rotalar |
+| Arayüz | Tailwind CSS v4 üzerinde spartan/ui (brain primitifleri, `src/app/shared/ui` içine kopyalanan helm bileşenleri) |
+| İkonlar | Lucide ile `@ng-icons` |
+| Durum | Enjekte edilebilir servislerde signal’lar (store kütüphanesi yok) |
+| Formlar | Signal Forms (`@angular/forms/signals`) |
+| API istemcisi | Elle yazılmış tipler (`core/types.ts`) ve `HttpClient` üzerinde küçük bir sarmalayıcı (`core/api.ts`) |
+| Çeviriler | FormatJS aracılığıyla ICU MessageFormat ile Transloco |
+| Zengin metin | Önizlemeli Markdown düzenleyici (`marked`, `DOMPurify`); TipTap ile `blocks` alanları |
+| Testler | Angular’ın unit-test builder’ı üzerinden Vitest, uçtan uca Playwright |
+
+### Dokümantasyon
+
+`site/` içinde Starlight ile Astro. `site/scripts/sync-docs.mjs`, build sırasında `docs/` içinden birkaç Markdown dosyasını (yol haritası, çeviri kılavuzu) ve `CHANGELOG.md`’yi **Project** bölümüne kopyalar.
+
+## Depo düzeni
+
+<FileTree>
+- Cargo.toml workspace (sürüm, edition, release profili)
+- crates/
+  - verdin-schema/ şema modeli, JSON ayrıştırıcısı, doğrulama, adlandırma kuralları
+  - verdin-db/ bağlantı havuzları, flavor ve sürüm algılama, tipli değerler
+  - verdin-migrate/ fiziksel model, anlık görüntü, fark, plan, günlüklü uygulama, platform tabloları
+  - verdin-query/ sorgu parametrelerinden tipli sorguya ve filtreler ile sıralamalar için SQL
+  - verdin-content/ Document Service: doğrulama, taslak ve yayınlama, ilişkiler, bileşenler, bloklar, olaylar
+  - verdin-auth/ admin kullanıcılar, oturumlar, iki adımlı doğrulama ve geçiş anahtarları, API token’ları, RBAC, herkese açık yetkiler
+  - verdin-upload/ medya kütüphanesi: depolama sağlayıcıları, dosya meta verisi, görsel formatları
+  - verdin-email/ e-posta teslimi: SMTP, Resend, Postmark ve bir log sağlayıcısı
+  - verdin-search/ Tantivy tam metin dizini
+  - verdin-plugins/ WebAssembly eklentileri (Extism): belge hook’ları, rotalar, zamanlanmış görevler
+  - verdin-graphql/ şemadan üretilen GraphQL API
+  - verdin-api/ axum router’ları: içerik API’si, admin API, OpenAPI, MCP, gerçek zamanlı, webhook’lar…
+  - verdin-testkit/ test yardımcıları (test başına yeni bir veritabanı); yayınlanmaz
+  - verdin/ ikili dosya: yapılandırma, bootstrap, CLI, metrikler, gömülü admin
+- admin/ Angular yönetim paneli
+- packages/
+  - client/ `@verdin/client`, tipli TypeScript istemcisi
+- examples/
+  - blog/ örnek proje
+- docker/ `compose.dev.yml` (veritabanları, RustFS, Mailpit) ve sürüm imajı
+- site/ bu dokümantasyon sitesi
+- docs/ yol haritası, çeviri kılavuzu ve tasarım notları
+</FileTree>
+
+**Bağımlılık kuralı.** `verdin-schema` ve `verdin-db` temeldir. `verdin-migrate` ve `verdin-query` bunların üzerine, `verdin-content` onların üzerine, `verdin-auth`, `verdin-upload`, `verdin-search` ve `verdin-plugins` ise altlarındaki katmanların üzerine kurulur. `verdin-api` ve `verdin-graphql` en üste yakındır ve `verdin` ikili dosyası her şeye bağlıdır. Cargo döngüleri yasaklar ve `unsafe` kod tüm workspace’te yasaktır.
+
+## Okumaya nereden başlanır
+
+| Anlamak için | Okuyun |
+|---|---|
+| İkili dosyanın nasıl açıldığı ve router’larını nasıl birleştirdiği | `crates/verdin/src/cli.rs` (`start`), ardından `crates/verdin/src/app.rs` |
+| Şema biçimi ve doğrulama kuralları | `crates/verdin-schema/src/raw.rs`, `validate.rs`, `naming.rs` |
+| Bir şemanın nasıl tablolara dönüştüğü | `crates/verdin-migrate/src/derive.rs`, ardından [depolama](/tr/internals/storage/) |
+| Migrasyonlar | `crates/verdin-migrate/src/diff.rs`, `plan.rs`, `apply.rs` ve [migrasyon motoru](/tr/internals/migrations/) |
+| İçerik API’si işleyicileri | `crates/verdin-api/src/handlers.rs` ve `lib.rs` |
+| Sorgu parametreleri | `crates/verdin-query/src/params.rs` (ayrıştırıcı), `parse.rs` (doğrulama), `sql.rs` (SQL) |
+| Okumalar ve yazmalar | `crates/verdin-content/src/service.rs` ve `input.rs` ve [Document Service](/tr/internals/document-service/) |
+| Yönetim paneli | `admin/src/app/app.routes.ts`, ardından `features/content/` ve [yönetim paneli iç yapısı](/tr/internals/admin-panel/) |
+
+Kodu [GitHub](https://github.com/Verdin-CMS/verdin) üzerinde inceleyin. Bu bölümün geri kalanı [depolama](/tr/internals/storage/), [veritabanı katmanı](/tr/internals/database/), [migrasyonlar](/tr/internals/migrations/), [Document Service](/tr/internals/document-service/), [yönetim paneli](/tr/internals/admin-panel/), [test](/tr/internals/testing/) ve [karar günlüğü](/tr/internals/decisions/) konularını kapsar.
+
+Kullanıcıya yönelik davranış başka yerlerde belgelenmiştir: sorgu parametreleri [REST API](/tr/api/rest/) sayfasında, ayarlar [yapılandırma başvurusunda](/tr/reference/configuration/), komutlar [CLI başvurusunda](/tr/reference/cli/) ve güçlendirme [güvenlik](/tr/deploy/security/) sayfasında.

@@ -1,0 +1,181 @@
+---
+title: Структура проекта
+description: Файлы, которые создаёт verdin new, файлы, которые Verdin добавляет во время работы, и какие из них хранить в git.
+sidebar:
+  order: 5
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+Проект Verdin — это каталог с файлом конфигурации и схемой. На этой странице перечислено, что
+создаёт `verdin new`, что добавляет сервер во время работы и что нужно коммитить.
+
+## Что создаёт `verdin new`
+
+```sh title="Terminal"
+verdin new my-site
+```
+
+<FileTree>
+- my-site/
+  - verdin.toml конфигурация проекта
+  - .env секреты и URL базы данных, доступен для чтения только вам
+  - .gitignore
+  - schema/
+    - content-types/ по одному JSON-файлу на тип содержимого
+    - components/ по одной папке на категорию компонентов
+  - data/ база данных SQLite (только с `--database sqlite`)
+</FileTree>
+
+Каталог не должен существовать или должен быть пуст. Имя проекта в URL базы данных
+берётся из имени каталога в нижнем регистре, остальные символы заменяются на `_`
+(`My Site` превращается в `my_site`).
+
+### `verdin.toml`
+
+Конфигурация. Сгенерированный файл задаёт порт, префикс content API, размеры страниц и путь
+админки:
+
+```toml title="verdin.toml"
+[server]
+port = 1337
+# public_url = "https://cms.example.com"
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+
+[admin]
+path = "/admin"
+# secure_cookies = true
+```
+
+У каждого ключа есть значение по умолчанию, поэтому файл может быть пустым или отсутствовать.
+Неизвестные ключи останавливают сервер с ошибкой. Любой ключ можно переопределить из
+окружения как `VERDIN_<SECTION>__<KEY>`, например `VERDIN_SERVER__PORT=8080`. Команды читают
+`verdin.toml` из текущего каталога; чтобы использовать другой файл, передайте `-c <path>` или
+задайте `VERDIN_CONFIG`. Пути в файле, например каталоги схемы или загрузок, указываются
+относительно каталога, в котором он лежит. Все настройки описаны в
+[справочнике по конфигурации](/ru/reference/configuration/).
+
+### `.env`
+
+```sh title=".env"
+# Локальные секреты: не добавляйте этот файл в систему контроля версий.
+VERDIN_DATABASE_URL=sqlite://data/verdin.db
+VERDIN_ADMIN_JWT_SECRET=…
+VERDIN_TOKEN_PEPPER=…
+```
+
+`verdin new` записывает два случайных секрета и URL базы данных для СУБД, выбранной через
+`--database`:
+
+| `--database` | Сгенерированный `VERDIN_DATABASE_URL` |
+| --- | --- |
+| `sqlite` (по умолчанию) | `sqlite://data/verdin.db` |
+| `postgres` | `postgres://verdin:change-me@localhost:5432/<name>` |
+| `mysql`, `mariadb` | `mysql://verdin:change-me@localhost:3306/<name>` |
+
+Для PostgreSQL, MySQL и MariaDB замените пользователя и пароль. Относительные пути SQLite
+разрешаются относительно каталога проекта, а не каталога, из которого вы запускаете команду.
+
+Каждая команда загружает `.env` рядом с `verdin.toml`; переменные, уже заданные в окружении,
+имеют приоритет. В Linux и macOS файл создаётся доступным для чтения только владельцу. В
+продакшене задавайте эти переменные в хранилище секретов своей платформы, а не поставляйте
+файл `.env`. Два секрета объяснены в [Быстром старте](/ru/start/quickstart/#2-секреты).
+
+### `schema/`
+
+Модель контента в формате схемы Strapi:
+
+- `schema/content-types/<singularName>.json` — по одному файлу на тип-коллекцию или
+  одиночный тип.
+- `schema/components/<category>/<name>.json` — по одному файлу на компонент; UID компонента —
+  `<category>.<name>`.
+
+Конструктор типов содержимого записывает эти файлы в `verdin dev`, и их можно редактировать
+вручную: `verdin dev` перезагружается при их изменении. Схема примера блога выглядит так:
+
+<FileTree>
+- schema/
+  - content-types/
+    - article.json
+    - category.json
+    - homepage.json одиночный тип
+    - tag.json
+  - components/
+    - blocks/
+      - hero.json `blocks.hero`
+      - quote.json `blocks.quote`
+    - shared/
+      - seo.json `shared.seo`
+</FileTree>
+
+Файлы — источник истины: из них Verdin выводит таблицы базы данных, валидацию, REST и
+GraphQL API, документ OpenAPI, типы TypeScript и формы админки. См.
+[Модель контента](/ru/concepts/content-model/) и [Миграции схемы](/ru/concepts/schema-migrations/).
+Каталог схемы — это `[schema].path` в `verdin.toml`, по умолчанию `schema`.
+
+## Что появляется при работе Verdin
+
+<FileTree>
+- my-site/
+  - verdin.toml
+  - .env
+  - schema/
+  - data/
+    - verdin.db база данных SQLite с файлами `-wal` и `-shm`
+    - search/ полнотекстовый индекс, когда включён `[search].enabled`
+  - public/
+    - uploads/ файлы медиатеки, отдаются по адресу `/uploads`
+  - .cache/
+    - transforms/ изображения с изменённым размером, пересоздаются по запросу
+  - plugins/ плагины WebAssembly, по папке на каждый (создаёте вы)
+  - strapi-id-map.json записывается `verdin import strapi`
+</FileTree>
+
+| Путь | Кто записывает | Настройка |
+| --- | --- | --- |
+| `data/verdin.db` | Сервер, с SQLite | `VERDIN_DATABASE_URL` |
+| `public/uploads/` | Загрузки с локальным провайдером (по умолчанию) | `[upload].provider` |
+| `.cache/transforms/` | Преобразования изображений, запрошенные на `/uploads` | `[upload.transforms].cache_dir` |
+| `data/search/` | Полнотекстовый индекс | `[search].dir` |
+| `plugins/` | Вы: каждый плагин в своей папке | `[plugins].path` |
+| `strapi-id-map.json` | `verdin import strapi`: соответствие id Strapi и id Verdin | — |
+
+С PostgreSQL, MySQL или MariaDB файла `data/verdin.db` нет: контент хранится на сервере базы
+данных. С провайдером S3 медиафайлы хранятся в бакете, а `public/uploads` остаётся пустым.
+
+## Что хранить в git
+
+| Коммитить | Не добавлять в git |
+| --- | --- |
+| `verdin.toml` | `.env` (секреты) |
+| `schema/` (типы содержимого и компоненты) | `data/` (база данных SQLite, поисковый индекс) |
+| `plugins/`, если вы используете плагины | `public/uploads/` (медиа) |
+| `.gitignore` | `.cache/` |
+
+Сгенерированный `.gitignore` покрывает всё это:
+
+```sh title=".gitignore"
+.env
+data/
+*.db
+*.db-*
+.cache/
+# Local media library ([upload.provider] dir).
+public/uploads/
+```
+
+В проектах, созданных до 0.10, нет строки `public/uploads/`: добавьте её.
+
+<Aside>
+Контент и медиа — это данные, а не код. Делайте их резервные копии через `verdin export` или
+инструменты вашей базы данных, а не коммитьте их; см. [Резервные копии](/ru/deploy/backups/).
+</Aside>
+
+Коммитьте схему вместе с кодом, который от неё зависит, например сгенерированными типами
+фронтенда. В продакшене разворачивайте закоммиченную схему и запускайте
+`verdin start --migrate`: вне `verdin dev` конструктор типов содержимого выключен, поэтому
+схема меняется только через ваш репозиторий.

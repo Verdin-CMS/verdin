@@ -1,0 +1,225 @@
+---
+title: Desplegaments i CDN
+description: Dona als editors un botó de desplegament per al teu lloc estàtic, segueix-ne les builds i purga la teva CDN quan canvia el contingut.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Dues eines per als llocs que desen a la memòria cau el que serveix Verdin:
+
+- Els **desplegaments** posen un botó **Desplega** a la capçalera de l'administració. Crida el
+  build hook del teu lloc (Netlify, Vercel, Cloudflare Pages o qualsevol CI), i el proveïdor informa
+  de com va la build.
+- Les **purgues de CDN** etiqueten les respostes de l'API de contingut per tipus de contingut i
+  purguen aquestes etiquetes a Cloudflare, Fastly o el teu propi endpoint quan el contingut canvia
+  públicament.
+
+Totes dues formen part del nucli: no hi ha cap interruptor de funcionalitat. Els desplegaments es
+configuren a **Configuració → Desplegaments**; la CDN, a `verdin.toml`.
+
+## Desplegaments
+
+<Diagram code={`sequenceDiagram
+  participant E as Editor
+  participant V as Verdin
+  participant P as Proveïdor de build
+  E->>V: Desplega
+  V->>P: POST al build hook
+  P-->>V: callback: building
+  P-->>V: callback: ready (url)
+  V-->>E: "Lloc de producció està desplegat"`} caption="El botó Desplega crida el build hook; el proveïdor informa a l'URL de retorn." />
+
+### Afegeix un destí
+
+<Steps>
+
+1. Al teu proveïdor, crea un build hook per al lloc i copia'n l'URL (Netlify: **Build hooks**;
+   Vercel: **Deploy Hooks**; Cloudflare Pages: **Deploy hooks**; una CI: qualsevol URL que iniciï
+   un pipeline amb `POST`).
+2. A Verdin, ves a **Configuració → Desplegaments** i tria **Afegeix un destí**.
+3. Dona-li un **Nom** (com ara **Lloc de producció**) i enganxa l'**URL del ganxo de build**.
+4. Desa. L'URL del hook és un secret: a partir d'ara només se'n mostra el host. Per apuntar el
+   destí a un altre hook, fes servir **Substitueix l’URL**.
+
+</Steps>
+
+Els administradors que poden desplegar ara veuen **Desplega** a la capçalera. Amb diversos
+destins, obre un menú **Desplega a**. Després de confirmar, Verdin envia:
+
+```http
+POST <build hook URL>
+content-type: application/json
+
+{ "trigger": "verdin", "triggeredBy": "editor@example.com" }
+```
+
+Un destí es desplega com a màxim cada 10 segons, de manera que un doble clic no inicia dues
+builds. La petició esgota el temps d'espera al cap de 15 segons i no segueix redireccions. Un hook
+que respon amb una cosa diferent de `2xx` es registra com a **Rebutjat**.
+
+### Informa de l'estat de les builds
+
+Sense callback, un desplegament es queda a **Iniciat**. Per veure **En construcció**, **Llest** i
+**Error** a l'administració, i un enllaç al lloc desplegat, dona al proveïdor l'URL de retorn del
+destí: tria el botó **URL de retorn** del destí i copia-la.
+
+<Tabs syncKey="deploy-provider">
+<TabItem label="Netlify">
+
+A **Site configuration → Build & deploy → Deploy notifications**, afegeix un webhook sortint per a
+**Deploy started**, **Deploy succeeded** i **Deploy failed**, amb l'URL de retorn.
+
+</TabItem>
+<TabItem label="Vercel">
+
+A **Team settings → Webhooks**, crea un webhook per als esdeveniments `deployment.created`,
+`deployment.succeeded` i `deployment.error`, amb l'URL de retorn.
+
+</TabItem>
+<TabItem label="Altres CI">
+
+Fes un `POST` de JSON amb un `status` (`building`, `ready` o `error`) i, opcionalment, l'`url`
+desplegat i un `message`:
+
+```sh title="Terminal"
+curl -X POST "$VERDIN_CALLBACK_URL" -H 'content-type: application/json' \
+  -d '{ "status": "ready", "url": "https://www.example.com" }'
+```
+
+</TabItem>
+</Tabs>
+
+Verdin entén l'`state` de Netlify, el `type` de Vercel i un `status` simple, i actualitza l'últim
+desplegament del destí. Respon `204`, o `404` quan l'URL és incorrecte. L'URL de retorn és
+`{public_url}{admin path}/api/deploy/callback/{id}/{secret}`, així que defineix
+[`[server].public_url`](/ca/reference/configuration/) amb l'adreça a què poden arribar els
+proveïdors.
+
+<Aside type="caution">
+L'URL de retorn conté un secret: qualsevol que el tingui pot informar d'estats de desplegament
+d'aquell destí. No pot iniciar desplegaments ni llegir res.
+</Aside>
+
+**Historial de desplegaments** llista els 50 últims desplegaments, dels més recents als més
+antics, amb el seu destí, l'hora d'inici, l'estat, l'estat HTTP del hook i el missatge del
+proveïdor. Eliminar un destí n'elimina l'historial, no el build hook.
+
+### Permisos
+
+| Permís | Permet |
+| --- | --- |
+| **Executa desplegaments** (`deploy.trigger`) | El botó **Desplega** de la capçalera. El rol integrat Editor el té. |
+| **Gestiona els destins de desplegament i la CDN** (`deploy.manage`) | **Configuració → Desplegaments**: destins, URL de retorn i purgues de CDN. |
+
+Consulta [Permisos](/ca/reference/permissions/). Els URL dels build hooks segueixen les mateixes
+regles d'adreça que els [webhooks](/ca/guides/integrations/webhooks/): amb `verdin start` no poden
+apuntar a xarxes privades tret que ho permeti
+[`[webhooks].allow_private_networks`](/ca/reference/configuration/).
+
+### Desplega a cada canvi
+
+El botó és adequat per als llocs que es reconstrueixen sota demanda. Per reconstruir a cada
+publicació, crea un [webhook](/ca/guides/integrations/webhooks/) per a `entry.publish` i
+`entry.unpublish` amb el build hook com a URL. Per a un lot de canvis programat, publica'ls amb un
+[llançament](/ca/guides/content/releases/) i connecta el webhook a `releases.publish`.
+
+## Purgues de CDN
+
+Quan una CDN desa l'API de contingut a la memòria cau, serveix contingut antic fins que la memòria
+cau caduca. Amb `[cdn]` definit, Verdin etiqueta les seves respostes i purga les etiquetes
+adequades a mesura que canvia el contingut, de manera que pots desar a la memòria cau durant molt
+de temps.
+
+### Com funciona l'etiquetatge
+
+Cada `GET` correcte de l'API de contingut porta `vd` (tot), `vd-<singularName>` (el tipus de
+contingut) i l'etiqueta de tots els tipus que els seus documents poden poblar: destinacions de
+relacions, també dins de components i zones dinàmiques, seguides fins a les seves pròpies
+relacions. Per als articles de l'exemple del blog, en tots dos formats de capçalera:
+
+```http
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
+```
+
+Un tipus amb una relació polimòrfica pot arribar a qualsevol tipus, així que les seves respostes
+porten l'etiqueta de tots els tipus.
+
+Cloudflare llegeix `Cache-Tag` i Fastly llegeix `Surrogate-Key`. Quan el contingut canvia
+públicament, Verdin purga l'etiqueta del tipus:
+
+- en publicar, despublicar o eliminar una entrada;
+- en qualsevol escriptura a un tipus sense esborrany i publicació (les seves escriptures són
+  públiques a l'instant).
+
+Desar un esborrany no purga res, ja que els esborranys no se serveixen públicament. Els canvis dins
+d'un segon (`debounce_ms`) s'agrupen en una sola purga, i una purga fallida es torna a intentar dues
+vegades.
+
+### Configura-ho
+
+<Tabs syncKey="cdn">
+<TabItem label="Cloudflare">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "cloudflare"
+zone_id = "023e105f4ecef8ad9ca31a8372d0c353"
+```
+
+`VERDIN_CDN_TOKEN` és un token d'API amb el permís **Cache Purge** sobre la zona.
+
+</TabItem>
+<TabItem label="Fastly">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "fastly"
+service_id = "SU1Z0isxPaozGVKXdv0eY"
+```
+
+`VERDIN_CDN_TOKEN` és un token d'API de Fastly que pot purgar el servei.
+
+</TabItem>
+<TabItem label="Webhook">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "webhook"
+url = "https://purge.example.com/verdin"
+```
+
+Verdin envia `POST { "tags": ["vd-article"] }`, amb `Authorization: Bearer <VERDIN_CDN_TOKEN>`
+quan el token està definit. Fes-lo servir per a una altra CDN, un proxy invers o l'API de
+revalidació del teu framework.
+
+</TabItem>
+</Tabs>
+
+```sh title="Terminal"
+export VERDIN_CDN_TOKEN=...
+```
+
+Verdin comprova la secció en iniciar-se i es nega a executar-se sense el `zone_id`, el
+`service_id`, l'`url` o el token que necessita el proveïdor. Consulta
+[`[cdn]`](/ca/reference/configuration/).
+
+La teva CDN continua decidint què desa a la memòria cau: configura una regla de memòria cau per als
+camins de l'API (per exemple `/api/*` en els `GET` anònims) amb un TTL d'edge llarg. Mantén fora de
+la memòria cau les peticions autenticades, les lectures de previsualització i `/api/_events`.
+
+### Comprova i purga a mà
+
+La secció **CDN** de **Configuració → Desplegaments** mostra el proveïdor i **Purgues recents**
+(**Purgada** o **Fallida**, amb les etiquetes). **Purga-ho tot** descarta totes les respostes
+etiquetades amb `vd`.
+
+Com que les respostes porten les etiquetes dels tipus que poden poblar, canviar el nom d'una
+categoria també purga les llistes d'articles desades a la memòria cau que la podrien incloure, tant
+si la petició demanava `populate` com si no.
+
+La memòria cau pròpia de Verdin a la memòria ([`[api].cache_ttl_secs`](/ca/reference/configuration/))
+és independent: es buida a cada canvi.

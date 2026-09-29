@@ -1,0 +1,111 @@
+---
+title: Llançaments
+description: Agrupa entrades i publica-les o despublica-les juntes, immediatament o en una data programada.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Un llançament agrupa entrades que es publiquen, o es retiren, juntes: el llançament d'un producte,
+una campanya, un conjunt de traduccions. El publiques a mà o li dones una data. Aquesta guia crea
+un llançament, hi afegeix entrades, l'executa i mostra l'API d'administració.
+
+Els llançaments funcionen com els Releases de Strapi, que formen part dels plans de pagament de
+Strapi.
+
+## Abans de començar
+
+- **Configuració → Funcionalitats → Llançaments** està activat per defecte. Mentre està
+  desactivat, la pàgina **Llançaments** i les rutes no són disponibles i els llançaments
+  programats esperen.
+- Gestionar llançaments necessita **Gestiona els llançaments** (`releases.manage`).
+- Afegir una entrada també necessita **Publica** sobre el seu tipus de contingut, i el tipus ha
+  de fer servir [esborrany i publicació](/ca/concepts/draft-and-publish/).
+
+## Crea un llançament
+
+<Steps>
+
+1. Obre **Llançaments** a la barra lateral i selecciona **Llançament nou**.
+2. Introdueix un **Nom**.
+3. Opcionalment, defineix **Publica el (opcional)**: la data i l'hora, a la teva zona horària, en
+   què s'executa el llançament. Sense data, el llançament espera fins que el publiquis.
+4. Selecciona **Crea**.
+
+</Steps>
+
+## Afegeix entrades
+
+<Steps>
+
+1. Obre una entrada a l'editor. El panell **Llançaments** llista els llançaments on és.
+2. Selecciona **Afegeix al llançament**.
+3. Tria el **Llançament** i, a **Quan s’executi el llançament**, tria **Publica** o
+   **Despublica**.
+4. Selecciona **Afegeix**.
+
+</Steps>
+
+Als tipus localitzats, només s'afegeix la versió de l'idioma actual de l'editor. Afegeix cada
+idioma que vulguis llançar. Afegir una entrada que ja és al llançament en substitueix l'acció.
+
+La pàgina del llançament llista les seves entrades amb el tipus de contingut i l'acció. Treu-ne una
+amb el botó de la seva fila.
+
+## Publica el llançament
+
+- **Ara:** obre el llançament i selecciona **Publica ara**.
+- **A la seva data:** una tasca en segon pla comprova cada 30 segons i executa els llançaments que
+  toquen, en nom de l'administrador que els ha creat.
+
+<Diagram
+  caption="Estats d'un llançament"
+  code={`flowchart LR
+  P[Pendent] -->|Publica ara o data assolida| R[En execució]
+  R -->|totes les accions correctes| D[Fet]
+  R -->|algunes accions han fallat| F[Error]`}
+/>
+
+Cada acció registra si ha tingut èxit. Quan una falla, per exemple perquè l'entrada s'ha eliminat
+o no passa la validació, les altres accions s'executen igualment i el llançament acaba com a
+**Error**, amb l'error de cada acció fallida a la seva fila.
+
+<Aside type="caution">
+Un llançament que ja s'ha executat no es pot canviar. Per tornar a provar les accions fallides,
+afegeix aquestes entrades a un llançament nou.
+</Aside>
+
+Un llançament es publica sencer: no espera les [etapes de revisió](/ca/guides/content/review-workflows/).
+Si un flux exigeix una etapa per publicar, les entrades fora d'aquesta etapa fallen com qualsevol
+altra publicació.
+
+Els webhooks es poden subscriure a **Llançament publicat** (`releases.publish`), que s'envia quan
+s'executa un llançament. Consulta [Webhooks](/ca/guides/integrations/webhooks/).
+
+## API d'administració
+
+Totes les rutes són sota `/admin/api` i necessiten `releases.manage`.
+
+```http
+GET    /admin/api/releases?status=pending
+POST   /admin/api/releases                    { "name": "Launch", "scheduledAt": "2026-10-01T08:00:00Z" }
+GET    /admin/api/releases/{id}
+PUT    /admin/api/releases/{id}               { "name": "Launch", "scheduledAt": null }
+DELETE /admin/api/releases/{id}
+POST   /admin/api/releases/{id}/actions       { "uid": "api::article", "documentId": "…", "locale": "fr", "action": "publish" }
+DELETE /admin/api/releases/{id}/actions/{actionId}
+POST   /admin/api/releases/{id}/publish
+GET    /admin/api/content/{uid}/{documentId}/releases
+```
+
+- `status` és `pending`, `running`, `done` o `failed`; cada acció té el seu propi `status` i
+  `error`.
+- Canviar, afegir o publicar un llançament que ja no està pendent respon `409`.
+- `action` és `publish` o `unpublish`. Afegir una acció també necessita `content.publish` sobre el
+  tipus. L'idioma es resol quan s'afegeix l'acció, de manera que un canvi posterior de l'idioma per
+  defecte no la mou.
+- Eliminar un llançament n'elimina la llista d'entrades. Les entrades mateixes no canvien.
+- `GET /content/{uid}/{documentId}/releases` necessita accés de lectura a l'entrada i retorna una
+  llista buida als administradors sense `releases.manage`.

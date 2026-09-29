@@ -1,0 +1,119 @@
+---
+title: עריכה חזותית
+description: אפשרו לעורכים ללחוץ על טקסט בדף התצוגה המקדימה ולהגיע לשדה שמחזיק אותו בפאנל הניהול.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+עריכה חזותית הופכת את דף התצוגה המקדימה שלכם למפה של פאנל הניהול: עורך מרחף מעל כותרת, לוחץ
+**עריכה**, והרשומה נפתחת עם הפוקוס על השדה הזה. היא נשענת על
+[תצוגה מקדימה](/he/guides/content/preview/): הגדירו קודם את כתובות התצוגה המקדימה, ואז הוסיפו
+לדף התצוגה המקדימה את שני החלקים שבהמשך.
+
+Verdin מסתיר מפת מקור קטנה ובלתי נראית בכל טקסט שהוא מחזיר (טכניקה שמכונה *stega*), וסקריפט
+שכבה מוצא את הטקסטים האלה בדף. שום דבר לא משתנה ברכיבים שלכם: הטקסט המסומן מוצג כמו כל טקסט
+אחר.
+
+<Diagram code={`flowchart LR
+  A[דף תצוגה מקדימה] -- "x-verdin-stega: true" --> B[API התוכן]
+  B -- "טקסט + מפת מקור בלתי נראית" --> A
+  A -- "visual-editing.js: לחיצה על עריכה" --> C[שדה בפאנל הניהול]`} caption="הדף מבקש מפות מקור, והשכבה הופכת אותן לקישורים לשדות." />
+
+## הגדרה
+
+<Steps>
+
+1. הפעילו את **תצוגה מקדימה** ב-**הגדרות ← תכונות**, בחרו **הגדרת כתובות תצוגה מקדימה** ותנו
+   לכל סוג תוכן את כתובת הדף שמציג אותו. הקטע **עריכה חזותית** באותו חלון מציג את תגית
+   הסקריפט ואת הכותרת עבור השרת שלכם. ראו [תצוגה מקדימה](/he/guides/content/preview/).
+
+2. בדף התצוגה המקדימה, שלפו תוכן עם אסימון ועם הכותרת `x-verdin-stega: true`. האסימון הוא
+   אסימון התצוגה המקדימה מכתובת התצוגה המקדימה (`?preview=…`, שנשלח בחזרה כ-
+   `x-verdin-preview`) או אסימון API:
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. טענו את השכבה באותו דף:
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   הנתיב עוקב אחרי [`[admin].path`](/he/reference/configuration/): `{path}/api/visual-editing.js`.
+
+</Steps>
+
+עם [הלקוח עם הטיפוסים](/he/guides/frontend/typed-client/), העבירו את שתי הכותרות ב-`headers`:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+מפות המקור מתווספות רק לתגובות REST, לא ל-GraphQL: קראו את תוכן התצוגה המקדימה דרך ה-REST
+API.
+
+רחפו מעל טקסט מסומן בדף: הוא מקבל מסגרת ירוקה וכפתור **עריכה**. בתוך התצוגה המקדימה
+זה-לצד-זה של פאנל הניהול (**פתיחת תצוגה מקדימה** ← **זה לצד זה**), הכפתור מבקש מהמנהל לפתוח
+את השדה שם במקום. כשהדף פתוח לבד, הכפתור פותח את הרשומה בכרטיסייה חדשה.
+
+<Aside type="note">
+מפות מקור מתווספות רק לבקשות `GET` ששולחות `x-verdin-stega: true` **וגם** אסימון
+(`Authorization` או `x-verdin-preview`). תעבורה ציבורית וכל מה שה-CDN שלכם שומר במטמון אף פעם
+לא נושאים אותן, ותגובות מסומנות נשלחות עם `Cache-Control: private, no-store`.
+</Aside>
+
+## מה מסומן
+
+| מסומן | לא מסומן |
+| --- | --- |
+| מאפייני `string`, `text` ו-`richtext` | `uid`, `email`, `password`, `enumeration` |
+| הטקסט הראשון של כל בלוק במאפיין `blocks` | מספרים, בוליאניים, תאריכים, JSON |
+| אותו דבר בתוך רכיבים ואזורים דינמיים (`seo.metaTitle`, `blocks.2.title`) | מחרוזות ריקות |
+| קשרים שעברו populate, שמצביעים על הרשומה הקשורה | שדות מדיה |
+
+השכבה קוראת סימונים גם במאפייני `alt` ו-`title`, כך שטקסט מסומן שאתם שמים באחד מהם (שדה כיתוב
+שמשמש כ-`alt`, למשל) נשאר לחיץ.
+
+## הסרת סימונים היכן שהטקסט הוא נתון
+
+הסימונים הם תווים בלתי נראים שמצורפים לטקסט. היכן שאתם משתמשים בערך כנתון במקום להציג אותו
+(מפתח, כתובת URL, השוואה, בדיקת אורך של `<title>`), הסירו אותם קודם:
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+שדות שהם נתונים מטבעם, כמו slugs של `uid` ו-enumerations, אף פעם לא מסומנים, כך שניתוב לפי
+`slug` עובד כמו שהוא.
+
+## איך סימון מקודד
+
+לכלים שקוראים את הסימונים בעצמם: סימון הוא U+2064, ואחריו כל בייט UTF-8 של
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+כארבע ספרות בבסיס 4 (המשמעותית ביותר ראשונה) שנכתבות עם U+200B, U+200C, U+200D ו-U+2060,
+ואחריהן U+2063. כתובת הניהול מגיעה מ-[`[server].public_url`](/he/reference/configuration/)
+ומ-`[admin].path`. השכבה שולחת `{ type: 'verdin:edit', href }` לחלון ההורה עם `postMessage`;
+פאנל הניהול פועל לפיה רק כשהיא מגיעה מהמקור של כתובת התצוגה המקדימה.

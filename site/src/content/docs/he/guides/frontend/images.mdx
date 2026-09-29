@@ -1,0 +1,222 @@
+---
+title: תמונות רספונסיביות
+description: הגישו תמונות בגודל הנכון, עם הפורמטים ש-Verdin מייצר בהעלאה ועם המרות לפי URL בזמן אמת.
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin נותן לכם שתי דרכים להגיש תמונה בגודל שדף צריך:
+
+- **פורמטים רספונסיביים**, שנוצרים פעם אחת כשהתמונה מועלית (`thumbnail`, `small`, `medium`,
+  `large`), בדיוק כמו תוסף ההעלאות של Strapi. הם עובדים עם כל ספק העלאות.
+- **המרות**, שמיוצרות לפי בקשה מפרמטרים ב-URL (`?preset=thumb`, או `?w=800&format=webp` עם
+  חתימה) ונשמרות במטמון בדיסק. הן עובדות עם הספק המקומי.
+
+שתיהן חלק מספריית המדיה, שתמיד פעילה. להעלאה ולארגון של קבצים, ראו [מדיה](/he/concepts/media/).
+
+## פורמטים רספונסיביים
+
+כשמועלית תמונת JPEG, PNG, WebP, TIFF או BMP, Verdin כותב עותקים קטנים יותר שלה ומפרט אותם
+ב-`formats` של הקובץ:
+
+| פורמט | גודל |
+| --- | --- |
+| `thumbnail` | נכנס בתוך 245 × 156 פיקסלים. |
+| `large` | ברוחב 1000 פיקסלים. |
+| `medium` | ברוחב 750 פיקסלים. |
+| `small` | ברוחב 500 פיקסלים. |
+
+פורמט מדולג כשהתמונה כבר קטנה יותר, כך שתמונה ברוחב 600 פיקסלים מקבלת רק `thumbnail`
+ו-`small`. העותקים שומרים על הפורמט של המקור (קובצי JPEG מקודדים באיכות 80) ועל כיוון ה-EXIF
+שלו. קובצי GIF לא נוגעים בהם, כי הם עשויים להיות מונפשים.
+
+בצעו populate לשדה המדיה כדי לקבל אותם. הדוגמאות משתמשות במאפיין מדיה `cover` על Article;
+בבלוג לדוגמה אין כזה, אז הוסיפו אחד בבונה סוגי התוכן כדי לעקוב.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?populate[cover]=true'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles {
+    title
+    cover { url width height alternativeText formats }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ populate: { cover: true } });
+const formats = data[0].cover?.formats; // Record<string, MediaFormat> | null
+```
+
+</TabItem>
+</Tabs>
+
+```json
+"cover": {
+  "url": "/uploads/team_4f1c2a.jpg",
+  "width": 2400,
+  "height": 1600,
+  "alternativeText": "The team at the office",
+  "formats": {
+    "thumbnail": { "url": "/uploads/thumbnail_team_4f1c2a.jpg", "width": 234, "height": 156 },
+    "large": { "url": "/uploads/large_team_4f1c2a.jpg", "width": 1000, "height": 667 },
+    "medium": { "url": "/uploads/medium_team_4f1c2a.jpg", "width": 750, "height": 500 },
+    "small": { "url": "/uploads/small_team_4f1c2a.jpg", "width": 500, "height": 333 }
+  }
+}
+```
+
+בנו מהם `srcset`. עם הספק המקומי, ערכי `url` הם נתיבים במארח של Verdin; הוסיפו לפניהם את
+המקור שלו:
+
+```ts
+const CMS = 'https://cms.example.com';
+
+function srcset(image: Media): string {
+  const sources = Object.values(image.formats ?? {}).map((f) => `${CMS}${f.url} ${f.width}w`);
+  return [...sources, `${CMS}${image.url} ${image.width}w`].join(', ');
+}
+```
+
+```html
+<img src="…/uploads/large_team_4f1c2a.jpg" srcset="…" sizes="(min-width: 60rem) 50vw, 100vw"
+     width="2400" height="1600" alt="The team at the office" />
+```
+
+### שינוי הפורמטים
+
+הפורמטים מגיעים מ-`[upload]` ב-`verdin.toml`:
+
+```toml title="verdin.toml"
+[upload]
+breakpoints = [{ name = "large", width = 1600 }, { name = "small", width = 640 }]
+# responsive_formats = false  # no copies at all
+# max_original_size = 3000    # scale larger originals down on upload (drops EXIF and GPS)
+```
+
+`breakpoints` הוא ההגדרה של Strapi באותו שם. השינויים חלים על העלאות חדשות; קבצים קיימים
+שומרים על הפורמטים שיש להם. ראו את [`[upload]`](/he/reference/configuration/) לכל המפתחות,
+כולל `max_image_megapixels`, מגבלת הפענוח שמגנה מפני פצצות דחיסה (100 מגה-פיקסל כברירת
+מחדל).
+
+## המרות
+
+עם הספק המקומי, Verdin מגיש את `/uploads/<file>` בעצמו ויכול לייצר לפי בקשה גדלים ופורמטים
+אחרים של תמונה:
+
+```
+/uploads/team_4f1c2a.jpg?preset=thumb
+/uploads/team_4f1c2a.jpg?w=800&format=webp&s=<signature>
+```
+
+| פרמטר | ערכים |
+| --- | --- |
+| `w`, `h` | רוחב וגובה בפיקסלים, מ-1 עד `max_size` (4096 כברירת מחדל). עם אחד מהם בלבד, השני עוקב אחרי יחס הממדים. בלי אף אחד, התמונה שומרת על הגודל שלה (שינוי פורמט). |
+| `fit` | `cover` (ברירת המחדל) ממלא את התיבה וחותך את השאר, תוך שמירה על נקודת המוקד של הקובץ בתמונה. `inside` מכניס את התמונה לתוך התיבה. `fill` מותח אותה לתיבה. |
+| `format` | `jpeg` (או `jpg`), `png` או `webp`. פלט WebP הוא lossless. בלעדיו התמונה שומרת על הפורמט שלה (TIFF ו-BMP הופכים ל-JPEG). |
+| `q` | איכות JPEG, מ-1 עד 100. ברירת המחדל 80. |
+| `preset` | המרה עם שם מהתצורה. אי אפשר לשלב אותה עם שאר הפרמטרים. |
+| `s` | החתימה, כשהפרמטרים אינם preset. |
+
+תמונות אף פעם לא מוגדלות: תמונה ברוחב 600 פיקסלים שמתבקשת ב-`w=1200` חוזרת ב-600. המרות
+עובדות על קובצי JPEG, PNG, WebP, TIFF ו-BMP, לא על GIF.
+
+### נקודת מוקד
+
+עורכים קובעים את נקודת המוקד של תמונה בספריית המדיה: פתחו את הקובץ ולחצו על התמונה (**נקודת
+מוקד: לחצו על התמונה או השתמשו במקשי החצים כדי לקבוע אותה**). חיתוכים עם `fit=cover` שומרים
+על הנקודה הזו בתמונה, ושינוי שלה מוחק את הגרסאות השמורות במטמון של הקובץ.
+
+### Presets
+
+Presets הם ההמרות שאתם מתירים לכל אחד לבקש. הגדירו אותם ב-`[upload.transforms.presets]`:
+
+```toml title="verdin.toml"
+[upload.transforms.presets]
+thumb = { w = 300, h = 300 }
+card = { w = 640, h = 360, format = "webp" }
+hero = { w = 1600, h = 600, fit = "cover", format = "jpeg", q = 85 }
+```
+
+```html
+<img src="https://cms.example.com/uploads/team_4f1c2a.jpg?preset=card" alt="…" />
+```
+
+preset לא מוכר עונה `400`.
+
+### פרמטרים חתומים
+
+כל שילוב אחר של `w`, `h`, `fit`, `format` ו-`q` דורש חתימה, כדי שאף אחד לא יוכל לגרום לשרת
+לייצר (ולשמור) מספר בלתי מוגבל של גרסאות. הגדירו סוד בסביבה של השרת ושל הקוד שבונה את כתובות
+התמונות:
+
+```sh title="Terminal"
+export VERDIN_IMAGE_SECRET="$(openssl rand -hex 32)"
+```
+
+החתימה `s` היא ה-HMAC-SHA256 בהקסדצימלי, עם הסוד הזה כמפתח, של `<file>?<canonical query>`.
+השאילתה הקנונית מפרטת את הפרמטרים שהגדרתם, חוץ מ-`fit=cover` (ברירת המחדל), ממוינים לפי שם
+(`fit`, `format`, `h`, `q`, `w`), עם `jpeg` עבור JPEG:
+
+```ts title="src/image-url.ts"
+import { createHmac } from 'node:crypto';
+
+type Transform = { w?: number; h?: number; fit?: 'cover' | 'inside' | 'fill'; format?: 'jpeg' | 'png' | 'webp'; q?: number };
+
+export function imageUrl(cms: string, url: string, t: Transform): string {
+  const file = url.replace(/^\/uploads\//, '');
+  const params: [string, string][] = [];
+  if (t.fit && t.fit !== 'cover') params.push(['fit', t.fit]);
+  if (t.format) params.push(['format', t.format]);
+  if (t.h) params.push(['h', String(t.h)]);
+  if (t.q) params.push(['q', String(t.q)]);
+  if (t.w) params.push(['w', String(t.w)]);
+  const query = params.map(([k, v]) => `${k}=${v}`).join('&');
+  const s = createHmac('sha256', process.env.VERDIN_IMAGE_SECRET!).update(`${file}?${query}`).digest('hex');
+  return `${cms}/uploads/${file}?${query}&s=${s}`;
+}
+```
+
+בנו את הכתובות האלה בשרת (או בזמן ה-build): הסוד לא יכול להגיע לדפדפן. בלי
+`VERDIN_IMAGE_SECRET`, או עם חתימה שגויה, הבקשה עונה `403`.
+
+<Aside type="caution">
+`[upload.transforms].allow_arbitrary = true` מקבל כל פרמטר בלי חתימה. אז כל כתובת URL שונה
+מיוצרת ונשמרת במטמון, כך שכל אחד יכול למלא את הדיסק ולנצל את המעבד. הפעילו את זה רק כשהשרת
+נגיש מרשתות מהימנות בלבד.
+</Aside>
+
+### מטמון ומגבלות
+
+- הגרסאות שיוצרו נכתבות ל-`[upload.transforms].cache_dir` (`.cache/transforms` כברירת מחדל)
+  ומוגשות משם אחר כך. בטוח למחוק את התיקייה.
+- החלפת קובץ או הזזת נקודת המוקד שלו מוחקת את הגרסאות השמורות שלו.
+- תגובות של המרות נשמרות במטמון של דפדפנים ו-CDNs ליום אחד
+  (`Cache-Control: public, max-age=86400`); קבצים רגילים לשנה, כי השמות שלהם לעולם לא משתנים.
+- הייצור רץ במקביל עד למספר ליבות המעבד; בקשות נוספות ממתינות.
+- תמונות גדולות מ-`max_image_megapixels` נדחות (`422`).
+
+הגדירו `[upload.transforms].enabled = false` כדי לכבות המרות. ראו את
+[`[upload.transforms]`](/he/reference/configuration/) למפתחות.
+
+### עם S3 וספקים אחרים
+
+עם ספק S3, הקבצים מוגשים על ידי ה-bucket או ה-CDN שלו, לא על ידי Verdin, כך שפרמטרי ההמרה לא
+עושים כלום. השתמשו בפורמטים הרספונסיביים, או בשירות התמונות של ה-CDN שלכם (למשל Cloudflare
+Images או imgix) לפני ה-`public_url` של ה-bucket.
+
+ל-Strapi אין המרות מובנות; הפורמטים הרספונסיביים וה-`breakpoints` שלו מתנהגים כמו של Verdin.

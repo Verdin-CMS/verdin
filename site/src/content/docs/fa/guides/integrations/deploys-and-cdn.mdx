@@ -1,0 +1,222 @@
+---
+title: استقرارها و CDN
+description: یک دکمهٔ استقرار برای سایت ایستای خود به ویرایشگران بدهید، ساخت‌های آن را دنبال کنید، و هنگام تغییر محتوا کش CDN خود را پاک کنید.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+دو ابزار برای سایت‌هایی که آنچه Verdin ارائه می‌کند را کش می‌کنند:
+
+- **استقرارها** یک دکمهٔ **استقرار** در سرصفحهٔ پنل مدیریت قرار می‌دهند. این دکمه build hook
+  سایت شما (Netlify، Vercel، Cloudflare Pages یا هر CI) را فراخوانی می‌کند و ارائه‌دهنده روند
+  ساخت را گزارش می‌دهد.
+- **پاک‌سازی‌های CDN** پاسخ‌های content API را بر اساس نوع محتوا برچسب‌گذاری می‌کنند و وقتی
+  محتوا به‌صورت عمومی تغییر کند، آن برچسب‌ها را در Cloudflare، Fastly یا نقطهٔ پایانی خودتان
+  پاک می‌کنند.
+
+هر دو بخشی از هسته هستند: هیچ کلید قابلیتی ندارند. استقرارها در **تنظیمات ← استقرارها**
+راه‌اندازی می‌شوند؛ CDN در `verdin.toml`.
+
+## استقرارها
+
+<Diagram code={`sequenceDiagram
+  participant E as ویرایشگر
+  participant V as Verdin
+  participant P as ارائه‌دهندهٔ ساخت
+  E->>V: استقرار
+  V->>P: POST build hook
+  P-->>V: callback: building
+  P-->>V: callback: ready (url)
+  V-->>E: "سایت تولید مستقر شد"`} caption="دکمهٔ استقرار build hook را فراخوانی می‌کند؛ ارائه‌دهنده به نشانی callback گزارش می‌دهد." />
+
+### افزودن یک هدف
+
+<Steps>
+
+1. نزد ارائه‌دهندهٔ خود یک build hook برای سایت بسازید و URL آن را کپی کنید (Netlify:
+   **Build hooks**؛ Vercel: **Deploy Hooks**؛ Cloudflare Pages: **Deploy hooks**؛ یک CI: هر
+   URLی که با `POST` یک pipeline را شروع کند).
+2. در Verdin به **تنظیمات ← استقرارها** بروید و **افزودن هدف** را انتخاب کنید.
+3. به آن یک **نام** بدهید (مانند **سایت تولید**) و **نشانی هوک ساخت** را جای‌گذاری کنید.
+4. ذخیره کنید. نشانی هوک یک کلید محرمانه است: از این پس فقط میزبان آن نشان داده می‌شود. برای
+   اینکه هدف را به هوک دیگری اشاره دهید، از **جایگزینی نشانی** استفاده کنید.
+
+</Steps>
+
+مدیرانی که اجازهٔ استقرار دارند اکنون **استقرار** را در سرصفحه می‌بینند. با چند هدف، این دکمه
+منوی **استقرار در** را باز می‌کند. پس از تأیید، Verdin این را می‌فرستد:
+
+```http
+POST <build hook URL>
+content-type: application/json
+
+{ "trigger": "verdin", "triggeredBy": "editor@example.com" }
+```
+
+یک هدف حداکثر هر 10 ثانیه یک بار مستقر می‌شود، بنابراین یک دوبار کلیک دو ساخت را شروع نمی‌کند.
+درخواست پس از 15 ثانیه منقضی می‌شود و تغییرمسیرها را دنبال نمی‌کند. هوکی که با چیزی غیر از
+`2xx` پاسخ دهد به‌عنوان **ردشده** ثبت می‌شود.
+
+### گزارش وضعیت‌های ساخت
+
+بدون callback، یک استقرار در وضعیت **آغازشده** می‌ماند. برای دیدن **در حال ساخت**، **آماده** و
+**خطا** در پنل مدیریت، و پیوندی به سایت مستقرشده، نشانی callback هدف را به ارائه‌دهنده بدهید:
+دکمهٔ **نشانی بازگشت (Callback)** هدف را انتخاب کنید و آن را کپی کنید.
+
+<Tabs syncKey="deploy-provider">
+<TabItem label="Netlify">
+
+در **Site configuration → Build & deploy → Deploy notifications**، یک outgoing webhook برای
+**Deploy started**، **Deploy succeeded** و **Deploy failed** با نشانی callback اضافه کنید.
+
+</TabItem>
+<TabItem label="Vercel">
+
+در **Team settings → Webhooks**، یک وب‌هوک برای رویدادهای `deployment.created`،
+`deployment.succeeded` و `deployment.error` با نشانی callback بسازید.
+
+</TabItem>
+<TabItem label="CI دیگر">
+
+یک JSON با `status` (`building`، `ready` یا `error`) و، در صورت تمایل، `url` مستقرشده و یک
+`message` را با `POST` بفرستید:
+
+```sh title="Terminal"
+curl -X POST "$VERDIN_CALLBACK_URL" -H 'content-type: application/json' \
+  -d '{ "status": "ready", "url": "https://www.example.com" }'
+```
+
+</TabItem>
+</Tabs>
+
+Verdin فیلد `state` در Netlify، فیلد `type` در Vercel و یک `status` ساده را می‌فهمد و آخرین
+استقرار هدف را به‌روزرسانی می‌کند. با `204` پاسخ می‌دهد، یا با `404` وقتی URL نادرست باشد.
+نشانی callback به شکل `{public_url}{admin path}/api/deploy/callback/{id}/{secret}` است، پس
+[`[server].public_url`](/fa/reference/configuration/) را روی نشانی‌ای تنظیم کنید که
+ارائه‌دهندگان به آن دسترسی دارند.
+
+<Aside type="caution">
+نشانی callback یک کلید محرمانه دارد: هر کسی که آن را داشته باشد می‌تواند وضعیت‌های استقرار را
+برای آن هدف گزارش دهد. نمی‌تواند استقراری را شروع کند یا چیزی را بخواند.
+</Aside>
+
+**تاریخچهٔ استقرار** 50 استقرار آخر را، از جدیدترین، با هدف، زمان شروع، وضعیت، وضعیت HTTP هوک
+و پیام ارائه‌دهنده فهرست می‌کند. حذف یک هدف تاریخچهٔ آن را حذف می‌کند، نه build hook را.
+
+### مجوزها
+
+| مجوز | اجازه می‌دهد |
+| --- | --- |
+| **آغاز استقرارها** (`deploy.trigger`) | دکمهٔ **استقرار** در سرصفحه. نقش داخلی Editor این مجوز را دارد. |
+| **مدیریت هدف‌های استقرار و CDN** (`deploy.manage`) | **تنظیمات ← استقرارها**: هدف‌ها، نشانی‌های callback و پاک‌سازی‌های CDN. |
+
+نگاه کنید به [مجوزها](/fa/reference/permissions/). نشانی‌های build hook از همان قواعد نشانی
+[وب‌هوک‌ها](/fa/guides/integrations/webhooks/) پیروی می‌کنند: با `verdin start` نمی‌توانند به
+شبکه‌های خصوصی اشاره کنند، مگر اینکه
+[`[webhooks].allow_private_networks`](/fa/reference/configuration/) اجازه دهد.
+
+### در عوض، استقرار در هر تغییر
+
+این دکمه برای سایت‌هایی مناسب است که در صورت نیاز دوباره ساخته می‌شوند. برای ساخت دوباره در هر
+انتشار، یک [وب‌هوک](/fa/guides/integrations/webhooks/) برای `entry.publish` و `entry.unpublish`
+بسازید که URL آن build hook باشد. برای یک دستهٔ زمان‌بندی‌شده از تغییرات، آن‌ها را با یک
+[بستهٔ انتشار](/fa/guides/content/releases/) منتشر کنید و وب‌هوک را به `releases.publish`
+وصل کنید.
+
+## پاک‌سازی‌های CDN
+
+وقتی یک CDN پاسخ‌های content API را کش می‌کند، تا انقضای کش محتوای کهنه ارائه می‌دهد. با تنظیم
+`[cdn]`، Verdin پاسخ‌هایش را برچسب‌گذاری می‌کند و با تغییر محتوا برچسب‌های درست را پاک می‌کند،
+بنابراین می‌توانید برای مدت طولانی کش کنید.
+
+### برچسب‌گذاری چگونه کار می‌کند
+
+هر `GET` موفق content API برچسب‌های `vd` (همه‌چیز)، `vd-<singularName>` (نوع محتوا) و برچسب هر
+نوعی را دارد که سندهایش می‌توانند populate کنند: هدف‌های رابطه، از جمله درون کامپوننت‌ها و
+ناحیه‌های پویا، که تا روابط خودشان دنبال می‌شوند. برای مقاله‌های مثال وبلاگ، در هر دو قالب
+هدر:
+
+```http
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
+```
+
+نوعی با یک رابطهٔ چندریختی می‌تواند به هر نوعی برسد، بنابراین پاسخ‌هایش برچسب همهٔ نوع‌ها را
+دارند.
+
+Cloudflare هدر `Cache-Tag` و Fastly هدر `Surrogate-Key` را می‌خواند. وقتی محتوا به‌صورت عمومی
+تغییر کند، Verdin برچسب آن نوع را پاک می‌کند:
+
+- انتشار، لغو انتشار یا حذف یک مدخل؛
+- هر نوشتنی در نوعی بدون پیش‌نویس و انتشار (نوشتن‌های آن بی‌درنگ عمومی هستند).
+
+ذخیرهٔ یک پیش‌نویس هیچ چیز را پاک نمی‌کند، چون پیش‌نویس‌ها به‌صورت عمومی ارائه نمی‌شوند.
+تغییرات درون یک ثانیه (`debounce_ms`) در یک پاک‌سازی جمع می‌شوند، و یک پاک‌سازی ناموفق دو بار
+دیگر تلاش می‌شود.
+
+### پیکربندی
+
+<Tabs syncKey="cdn">
+<TabItem label="Cloudflare">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "cloudflare"
+zone_id = "023e105f4ecef8ad9ca31a8372d0c353"
+```
+
+`VERDIN_CDN_TOKEN` یک توکن API با مجوز **Cache Purge** روی zone است.
+
+</TabItem>
+<TabItem label="Fastly">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "fastly"
+service_id = "SU1Z0isxPaozGVKXdv0eY"
+```
+
+`VERDIN_CDN_TOKEN` یک توکن API در Fastly است که اجازهٔ پاک‌سازی آن سرویس را دارد.
+
+</TabItem>
+<TabItem label="وب‌هوک">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "webhook"
+url = "https://purge.example.com/verdin"
+```
+
+Verdin درخواست `POST { "tags": ["vd-article"] }` را می‌فرستد، و اگر توکن تنظیم شده باشد با
+`Authorization: Bearer <VERDIN_CDN_TOKEN>`. از آن برای یک CDN دیگر، یک reverse proxy یا API
+بازاعتبارسنجی (revalidation) فریم‌ورک خود استفاده کنید.
+
+</TabItem>
+</Tabs>
+
+```sh title="Terminal"
+export VERDIN_CDN_TOKEN=...
+```
+
+Verdin این بخش را هنگام راه‌اندازی بررسی می‌کند و بدون `zone_id`، `service_id`، `url` یا توکنی
+که ارائه‌دهنده لازم دارد اجرا نمی‌شود. نگاه کنید به [`[cdn]`](/fa/reference/configuration/).
+
+CDN شما همچنان تصمیم می‌گیرد چه چیزی کش شود: برای مسیرهای API یک قاعدهٔ کش با TTL طولانی در
+لبه تعریف کنید (برای مثال `/api/*` روی `GET`های ناشناس). درخواست‌های احرازهویت‌شده، خواندن‌های
+پیش‌نمایش و `/api/_events` را از کش بیرون نگه دارید.
+
+### بررسی و پاک‌سازی دستی
+
+بخش **CDN** در **تنظیمات ← استقرارها** ارائه‌دهنده و **پاک‌سازی‌های اخیر** را نشان می‌دهد
+(**پاک‌سازی شد** یا **ناموفق**، همراه با برچسب‌ها). **پاک‌سازی همه** هر پاسخی را که برچسب `vd`
+دارد پاک می‌کند.
+
+چون پاسخ‌ها برچسب نوع‌هایی را دارند که می‌توانند populate کنند، تغییر نام یک دسته فهرست‌های
+کش‌شدهٔ مقاله‌هایی را هم که ممکن است آن را در بر بگیرند پاک می‌کند، چه درخواست `populate`
+خواسته باشد چه نه.
+
+کش درون‌حافظه‌ای خودِ Verdin ([`[api].cache_ttl_secs`](/fa/reference/configuration/)) جداست:
+با هر تغییر خالی می‌شود.

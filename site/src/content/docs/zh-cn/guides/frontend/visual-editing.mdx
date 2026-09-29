@@ -1,0 +1,99 @@
+---
+title: 可视化编辑
+description: 让编辑在预览页面上点击文本，即可跳转到管理后台中存放该文本的字段。
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+可视化编辑把你的预览页面变成一张通往管理后台的地图：编辑把鼠标悬停在某个标题上，点击 **Edit**，对应的条目就会打开并聚焦到该字段。它建立在[预览](/zh-cn/guides/content/preview/)之上：先设置预览 URL，然后在预览页面上添加下面两个部分。
+
+Verdin 会在它返回的每段文本中隐藏一个小小的、不可见的源映射（一种称为 *stega* 的技术），叠加层脚本会在页面上找到这些文本。你的组件无需任何改动：带标记的文本和其他文本的渲染方式完全相同。
+
+<Diagram code={`flowchart LR
+  A[预览页面] -- "x-verdin-stega: true" --> B[内容 API]
+  B -- "文本 + 不可见的源映射" --> A
+  A -- "visual-editing.js：点击 Edit" --> C[管理后台字段]`} caption="页面请求源映射，叠加层再把它们变成指向字段的链接。" />
+
+## 设置
+
+<Steps>
+
+1. 在 **设置 → 功能** 中开启 **预览**，选择 **配置预览 URL**，并为每个内容类型填写渲染它的页面 URL。同一对话框中的 **可视化编辑** 部分会显示需要用于你的服务器的 script 标签和请求头。参见[预览](/zh-cn/guides/content/preview/)。
+
+2. 在预览页面上，使用令牌和 `x-verdin-stega: true` 请求头获取内容。令牌可以是预览 URL 中的预览令牌（`?preview=…`，以 `x-verdin-preview` 发回），也可以是 API 令牌：
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. 在同一页面上加载叠加层：
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   该路径跟随 [`[admin].path`](/zh-cn/reference/configuration/)：`{path}/api/visual-editing.js`。
+
+</Steps>
+
+使用[类型化客户端](/zh-cn/guides/frontend/typed-client/)时，在 `headers` 中传入这两个请求头：
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+源映射只会添加到 REST 响应中，不会添加到 GraphQL 中：请通过 REST API 读取预览内容。
+
+把鼠标悬停在页面上带标记的文本上：它会显示绿色轮廓和一个 **Edit** 按钮。在管理后台的并排预览中（**打开预览** → **并排显示**），该按钮会请求管理后台直接在那里打开该字段。当页面单独打开时，该按钮会在新标签页中打开该条目。
+
+<Aside type="note">
+只有发送了 `x-verdin-stega: true` **并且**带有令牌（`Authorization` 或 `x-verdin-preview`）的 `GET` 请求才会添加源映射。公开流量以及 CDN 缓存的任何内容都不会带有源映射，带标记的响应会以 `Cache-Control: private, no-store` 发送。
+</Aside>
+
+## 哪些内容会被标记
+
+| 会被标记 | 不会被标记 |
+| --- | --- |
+| `string`、`text` 和 `richtext` 属性 | `uid`、`email`、`password`、`enumeration` |
+| `blocks` 属性中每个区块的第一段文本 | 数字、布尔值、日期、JSON |
+| 组件和动态区域中的上述内容（`seo.metaTitle`、`blocks.2.title`） | 空字符串 |
+| 已 populate 的关联，指向关联的条目 | 媒体字段 |
+
+叠加层还会读取 `alt` 和 `title` 属性中的标记，因此你放入其中的带标记文本（例如用作 `alt` 的说明文字字段）仍然可以点击。
+
+## 在把文本当作数据时去除标记
+
+标记是附加在文本末尾的不可见字符。当你把某个值当作数据使用而不是展示它时（作为键、URL、用于比较、检查 `<title>` 的长度），请先去除标记：
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+本质上属于数据的字段，例如 `uid` slug 和枚举，永远不会被标记，因此基于 `slug` 的路由可以照常工作。
+
+## 标记的编码方式
+
+供需要自行读取标记的工具参考：一个标记由 U+2064 开头，然后是下面这段内容的每个 UTF-8 字节
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+每个字节表示为四个四进制数字（高位在前），分别用 U+200B、U+200C、U+200D 和 U+2060 书写，最后以 U+2063 结尾。管理后台 URL 来自 [`[server].public_url`](/zh-cn/reference/configuration/) 和 `[admin].path`。叠加层通过 `postMessage` 向父窗口发送 `{ type: 'verdin:edit', href }`；只有当消息来自预览 URL 的源时，管理后台才会响应。

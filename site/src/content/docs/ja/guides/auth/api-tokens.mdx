@@ -1,0 +1,126 @@
+---
+title: API トークン
+description: コンテンツ API 用に、読み取り専用、フルアクセス、カスタムの API トークンを作成し、再生成や削除を行い、トークンの pepper を安全に保ちます。
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+API トークンを使うと、サイト、アプリ、スクリプトは、公開アクセスより多くの権限でコンテンツ API を呼び出せます。このガイドでは、トークンを作成し、アクセス範囲を選び、使い、漏れたときに置き換えます。トークンは Strapi の API トークンと同じように動きます。
+
+コンテンツ API はデフォルトで閉じています。トークンがない場合、リクエストは**設定 → 公開アクセス**が許可するものだけを得られ、許可するまでは何もありません。
+
+## 始める前に
+
+- トークンの管理には **APIトークンの管理**（`tokens.manage`）が必要です。[権限](/ja/reference/permissions/)を参照してください。
+- `VERDIN_TOKEN_PEPPER` が設定されている必要があります。[pepper が重要になる場所](#pepper-が重要になる場所)を参照してください。
+
+## トークンを作成する
+
+<Steps>
+
+1. **設定 → APIトークン**を開き、**トークンを作成**を選びます。
+2. **名前**と、任意で**説明**を入力します。
+3. **タイプ**を選びます。
+
+   | タイプ | 許可されること |
+   | --- | --- |
+   | **読み取り専用** | すべてのコンテンツタイプに対する検索と 1 件取得。公開バージョンのみ。 |
+   | **フルアクセス** | すべてのコンテンツタイプとメディアライブラリに対するすべてのアクション。 |
+   | **カスタム** | **権限**でチェックしたアクションだけ。 |
+
+4. **有効期限**を選びます: **なし**、または 7 日、30 日、90 日。
+5. カスタムトークンの場合は、**権限**で、コンテンツタイプごとにアクションをチェックします: **検索**、**1件取得**、**作成**、**更新**、**削除**、**公開**、**下書きの閲覧**。**メディアライブラリ**の行はアップロードを、**ユーザー**の行は[エンドユーザー](/ja/guides/auth/end-users/)の `/api/users` ルートを対象とします。
+6. **作成**を選び、トークンをコピーします。トークンが表示されるのはこのときだけです。
+
+</Steps>
+
+トークンは `vd_` で始まります。一覧には、各トークンの先頭の文字、最後に使われた日時、有効期限が表示されます。
+
+## トークンを使う
+
+Bearer トークンとして送ります。
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'http://localhost:1337/api/articles?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/graphql \
+  -H "Authorization: Bearer $VERDIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({
+  url: 'http://localhost:1337',
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+</TabItem>
+</Tabs>
+
+- トークンのアクセス範囲は公開アクセスを置き換えるもので、それに加算されるものではありません。ある型に**検索**を持たないカスタムトークンは、公開アクセスでは一覧できる場合でも、その型を一覧できません。
+- 下書きの読み取り（`?status=draft`）には**下書きの閲覧**が必要です。読み取り専用のトークンは下書きを見ることはありません。
+- 不明なトークンと期限切れのトークンには `401` が返ります。トークンのアクセス範囲外のアクションには `403` が返ります。
+- `[api].token_rate_limit` は、トークンと 1 分あたりのリクエスト数を制限します（デフォルトはオフ）。
+- 同じトークンで、GraphQL と [MCP サーバー](/ja/guides/integrations/mcp/)も認可されます。
+
+<Aside type="caution">
+ブラウザー内のトークンは、すべての訪問者に見えます。トークンはサーバー、ビルドの工程、非公開のアプリでだけ使ってください。公開ページには、必要なものを**設定 → 公開アクセス**で許可します。
+</Aside>
+
+## トークンを再生成または削除する
+
+- トークンの行の**再生成**は、同じ名前、種類、権限で新しいキーを作成します。現在のキーはすぐに使えなくなるので、それを使っているアプリは、更新するまでエラーになります。
+- **削除**はトークンを削除します。それを使っているクライアントはアクセスを失います。
+
+トークンが漏れた可能性があれば、すぐにどちらかを行ってください。
+
+## pepper が重要になる場所
+
+Verdin はトークンを保存しません。`VERDIN_TOKEN_PEPPER` を鍵にした各トークンのハッシュ（HMAC-SHA256）を保存するので、データベースのコピーだけではトークンを使えません。同じ pepper が次のものも保護します。
+
+- API トークン。
+- 管理者の認証アプリのシークレットとリカバリーコード（[二段階認証](/ja/guides/auth/two-factor/)）。
+- フォームの送信内容とともに保存される、ハッシュ化された IP アドレス。
+
+pepper は `verdin secrets` で一度だけ生成し、`verdin.toml` とデータベースのバックアップには入れず、すべてのインスタンスに同じ値を与えてください。
+
+<Aside type="caution" title="pepper の変更">
+別の pepper にすると、すべての API トークンが使えなくなり、すべての管理者の認証アプリとリカバリーコードも使えなくなります。変更するのは漏れた場合だけにし、その後、新しいトークンを作成して、すべての管理者の二段階認証をリセットしてください。パスキーとパスワードは影響を受けません。
+</Aside>
+
+## Admin API
+
+すべてのルートは `/admin/api` 配下にあり、`tokens.manage` が必要です。
+
+```http
+GET    /admin/api/api-tokens
+POST   /admin/api/api-tokens                  { "name": "Website", "kind": "custom", "expiresInDays": 90,
+                                                "permissions": [{ "subject": "api::article", "action": "find" }] }
+GET    /admin/api/api-tokens/{id}
+PUT    /admin/api/api-tokens/{id}             { "name": "…", "description": null, "kind": "read-only", "permissions": [...] }
+POST   /admin/api/api-tokens/{id}/regenerate
+DELETE /admin/api/api-tokens/{id}
+```
+
+- `kind` は `read-only`、`full-access`、`custom` のいずれかです。`expiresInDays` は任意（省略すると無期限）で、後から変更できません。
+- `permissions` は `{ subject, action }` の組のリストです。`subject` はコンテンツタイプの UID、`plugin::upload`（メディアライブラリ）、`plugin::users-permissions.user` のいずれか、`action` は `find`、`findOne`、`create`、`update`、`delete`、`publish`、`readDrafts` のいずれかです。`publish` と `readDrafts` は後の 2 つの対象には適用されません。
+- `POST /api-tokens` と `/regenerate` は、キーを `accessKey` として一度だけ返します。
+
+公開アクセスも同じ組を使います: `PUT /admin/api/public-permissions` `{ "permissions": [...] }`。これには**ロールの管理**（`roles.manage`）が必要です。

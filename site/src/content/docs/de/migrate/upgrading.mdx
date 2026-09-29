@@ -1,0 +1,228 @@
+---
+title: Verdin aktualisieren
+description: Eine Verdin-Installation aktualisieren – die Binärdatei oder das Docker-Image, die Migrationen beim Start und die wichtigen oder inkompatiblen Änderungen jeder Minor-Version.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+Diese Seite erklärt, wie du ein Projekt auf eine neuere Verdin-Version bringst, und listet, was
+sich zwischen den Minor-Versionen geändert hat. Verdin folgt
+[Semantic Versioning](https://semver.org/) mit einer Besonderheit für 0.x: Bis 1.0 kann ein
+**Minor**-Release (0.8 → 0.9) das Verhalten ändern, und ein **Patch**-Release (0.9.0 → 0.9.1)
+behebt und härtet nur.
+
+## Vor dem Aktualisieren
+
+1. **Lies das Changelog** von deiner Version bis zur neuen: Das
+   [Changelog](/de/project/changelog/) listet jede Änderung, und die
+   [Hinweise unten](#hinweise-zum-upgrade) fassen diejenigen zusammen, die Handeln erfordern.
+2. **Sichere** die Datenbank und den Medienspeicher (siehe [Backups](/de/deploy/backups/)).
+   Zurück zu einer älteren Version heißt, dieses Backup wiederherzustellen: Ältere Versionen
+   machen Tabellen und Spalten, die eine neuere hinzugefügt hat, nicht rückgängig.
+3. **Probiere es an einer Kopie** der Produktion aus, wenn die Hinweise Verhalten erwähnen, auf
+   das sich dein Frontend oder deine Redaktion verlässt.
+
+Du kannst Versionen überspringen. Migrationen werden aus dem Unterschied zwischen der Datenbank
+und dem, was die neue Version erwartet, berechnet, nicht Release für Release nachgespielt;
+0.6 → 0.9 migriert also in einem Lauf. Lies die Hinweise jeder Version dazwischen.
+
+## Aktualisieren
+
+<Tabs syncKey="install">
+<TabItem label="Docker">
+
+<Steps>
+
+1. Ändere den Image-Tag in deiner Compose-Datei, deinem Manifest oder deinem `Dockerfile`, zum
+   Beispiel `ghcr.io/verdin-cms/verdin:0.10` → `ghcr.io/verdin-cms/verdin:0.11`. Ein Minor-Tag
+   (`0.10`) folgt seinen Patch-Releases; fixiere eine volle Version (`0.10.0`), wenn du auch
+   entscheiden willst, wann diese kommen.
+
+2. Pull und Neustart:
+
+   ```sh frame="terminal"
+   docker compose pull verdin
+   docker compose up -d verdin
+   docker compose logs -f verdin
+   ```
+
+   Der Standardbefehl des Images, `start --migrate`, wendet die Migrationen der neuen Version
+   an, bevor er ausliefert. Achte im Log auf `applied migrations` und `verdin listening`.
+
+</Steps>
+
+</TabItem>
+<TabItem label="Binary">
+
+<Steps>
+
+1. Lade das Archiv für deine Plattform von der
+   [Release-Seite](https://github.com/Verdin-CMS/verdin/releases) herunter, zum Beispiel
+   `verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz`, und prüfe es gegen die `SHA256SUMS` des
+   Releases:
+
+   ```sh frame="terminal"
+   sha256sum --ignore-missing -c SHA256SUMS
+   tar xzf verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz
+   ```
+
+2. Stoppe den Server, ersetze die Binärdatei `verdin` und prüfe die Version:
+
+   ```sh frame="terminal"
+   verdin version
+   ```
+
+3. Prüfe und wende die Migrationen im Projektverzeichnis an:
+
+   ```sh frame="terminal"
+   verdin migrate plan
+   verdin migrate apply
+   ```
+
+   Oder starte mit `verdin start --migrate`, das vorher die sicheren Schritte anwendet.
+
+4. Starte den Server wie gewohnt (`verdin start`).
+
+</Steps>
+
+</TabItem>
+</Tabs>
+
+## Migrationen beim Start
+
+Eine neue Version bringt oft eigene Tabellen oder Spalten mit (Sitzungen, Einstellungen, neue
+Funktionen). `verdin start` vergleicht die Datenbank mit dem, was Schema und neue Version
+brauchen:
+
+- Passen sie zusammen, startet es.
+- Stehen Schritte aus, verweigert es den Start und fordert dich auf, `verdin migrate plan` und
+  `verdin migrate apply` auszuführen oder mit `--migrate` zu starten.
+- `--migrate` wendet nur **sichere** Schritte an. Ist ein Schritt riskant oder destruktiv,
+  scheitert der Start, und du wendest ihn nach dem Lesen des Plans selbst mit
+  `verdin migrate apply --allow risky` (oder `destructive`) an.
+- Auf MySQL und MariaDB, wo Schemaänderungen nicht in einer Transaktion laufen können, setzt
+  eine unterbrochene Migration beim nächsten `verdin migrate apply` beim fehlgeschlagenen
+  Schritt fort.
+
+Mit mehreren Instanzen funktioniert ein Rolling Upgrade: Die erste neue Instanz nimmt die
+Migrationssperre und migriert, die anderen warten darauf und finden nichts mehr zu tun. Siehe
+[Mehrere Instanzen betreiben](/de/deploy/scaling/).
+
+<Aside type="caution">
+Aktualisiere das ganze Projekt auf eine Version. Lass Instanzen zweier Minor-Versionen nicht
+länger nebeneinander laufen, als ein Rolling Deploy dauert.
+</Aside>
+
+## Hinweise zum Upgrade
+
+Wichtige und inkompatible Änderungen pro Version, die älteste zuletzt. Das
+[Changelog](/de/project/changelog/) enthält die vollständige Liste.
+
+### 0.9.1 → 0.10
+
+Keine Datenbankmigration. Die Dokumentation ist von `docs/` auf diese Website umgezogen.
+
+- **Webhook-Empfänger von `review-workflows.updateEntryStage`**: `model` ist jetzt der
+  Singularname (`article`), wie bei Eintrags-Events, und die UID steht jetzt in `uid`. Lies
+  `uid`, wo du `model` verwendet hast.
+- **Erzeuge deine TypeScript-Typen neu** mit `verdin types`: `Collections` und `Singles` sind
+  jetzt Typ-Aliase, die `createClient<VerdinSchema>` braucht.
+- **Docker**: Das Image legt den Transformations-Cache und den Suchindex in `/data` ab und
+  verlinkt `/app/public/uploads` auf `/data/uploads`. Hast du
+  `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR` oder `VERDIN_SEARCH__DIR` nur gesetzt, um das
+  schreibgeschützte `/app` zu umgehen, kannst du sie entfernen. Das Image hat einen
+  `HEALTHCHECK`.
+- **CDN**: Antworten tragen die Tags der Typen, die sie per Populate laden können, Purges
+  aktualisieren also mehr vom Cache als bisher; du musst nichts ändern.
+- Relationsfelder im Admin-Panel verknüpfen Einträge über einen Dialog
+  (**Eintrag verknüpfen**) statt über ein eingebettetes Suchfeld.
+
+### 0.9.0 → 0.9.1
+
+Ein Härtungs-Release; das Upgrade wird jeder Installation empfohlen. Seine Migration (eine neue
+Tabelle, zwei neue Spalten) läuft beim Start.
+
+- **Hinter einem Reverse Proxy setze `[server].trusted_proxies`.** Nur das `X-Forwarded-For` der
+  aufgeführten Proxys wird für die Client-Adresse genutzt; sonst teilen sich alle Clients hinter
+  dem Proxy eine Adresse für Rate Limits und Audit-Logs.
+- **Browser-Frontends auf einem anderen Origin brauchen `[api].cors_origins`.** 0.9.1 ergänzt
+  CORS für Content-API und GraphQL; vorher gab es keine CORS-Unterstützung.
+- **Lesezugriffe über Relationen folgen den Berechtigungen.** `populate`, Relationsfilter und
+  Sortierungen über Relationen erreichen auf jeder API nur die Typen und Felder, die der
+  Aufrufer lesen darf. Öffentliche und Token-Anfragen, die Typen ohne `find`-Berechtigung per
+  Populate geladen haben, bekommen jetzt weniger Daten: Gib die fehlenden Berechtigungen frei.
+- **SSO ist strenger.** Seine Einstellungen brauchen einen Super Admin; `defaultRoles` und
+  `roleMap` können nicht Super Admin vergeben; der Claim `email_verified` des Anbieters muss
+  true sein (außer bei `trustUnverifiedEmail`); der zweite Faktor der Admins gilt, sofern dem
+  Anbieter dafür nicht vertraut wird (`providerMfa`); Aussteller und Token-Endpunkt müssen
+  öffentliche `https`-URLs sein. Prüfe nach dem Upgrade deine SSO-Anmeldungen.
+- **Super Admins** können nur von einem anderen Super Admin angelegt, bearbeitet, gelöscht,
+  neu eingeladen oder zurückgesetzt werden.
+- **Endnutzer-Konten werden gesperrt** nach wiederholt falschen Passwörtern, wie
+  Admin-Konten.
+- Geladene Relationen liefern höchstens 1.000 Einträge pro Eintrag und Relation.
+- Suchindizes werden beim ersten Start neu aufgebaut (private Komponentenfelder werden nicht
+  mehr indexiert).
+
+### 0.8 → 0.9
+
+- Das Suchfeld der Admin-Liste durchsucht jedes Textfeld (`_q`) statt des Titels.
+- Neue Admin-Berechtigungen `deploy.manage`, `deploy.trigger` und `site.manage`; Editoren
+  bekommen `deploy.trigger` und `site.manage`.
+- Neue optionale Funktionen (Echtzeit, Kommentare und Aufgaben, KI-Aktionen, SEO und Sitemap,
+  Weiterleitungen, Menüs, Formulare) sind aus, bis du sie einschaltest. Metriken brauchen
+  `[metrics].enabled = true`.
+
+### 0.7 → 0.8
+
+- **Bedingte Felder werden angewendet**: Ein Feld, das seine `conditions` ausblenden, ist nicht
+  mehr Pflicht. Inhalte, die darauf angewiesen waren, dass ein solches Feld Pflicht ist, lassen
+  sich jetzt ohne es speichern.
+- Neuer Attributtyp `password`; `verdin import strapi` importiert jetzt die Passwortfelder von
+  Strapi.
+
+### 0.7.0 → 0.7.1
+
+- Die Plugin-Laufzeit wechselt zu Wasmtime 48. Bestehende Plugins funktionieren ohne Neubau
+  weiter.
+- Der Bau aus dem Quellcode braucht Rust 1.95 oder neuer.
+
+### 0.6 → 0.7
+
+- **Mehrere Instanzen**: Jede Instanz liest alle `[server].sync_interval_secs` (10 s)
+  Einstellungen neu, die die anderen geändert haben. Betreibst du mehr als eine, setze
+  `[plugins].run_jobs = false` auf allen bis auf eine.
+- Inhalte, die Plugins über den Host schreiben, durchlaufen jetzt die Prüfungen der Plattform
+  vor dem Schreiben, etwa Phasen der Review-Workflows. Die eigenen Before-Write-Hooks der
+  Plugins werden bei diesen Schreibvorgängen weiterhin übersprungen, ein Plugin kann sich also
+  nicht selbst auslösen.
+
+### 0.5 → 0.6
+
+- **Audit-Logs** sind standardmäßig an und behalten Einträge `[audit].retention_days` lang
+  (90). Schalte die Funktion unter **Einstellungen → Funktionen** aus, wenn du sie nicht willst.
+
+### 0.4 → 0.5
+
+- Nichts zu ändern. Plugins werden aus `[plugins].path` (`plugins/`) geladen und bleiben aus,
+  bis sie eingeschaltet werden.
+
+### 0.3 → 0.4
+
+- **`auth`, `users` und `connect` sind reservierte Routennamen**, neben `upload` und `uploads`:
+  Benenne Inhaltstypen, deren API-Name einer davon ist, vor dem Upgrade um.
+
+### 0.2 → 0.3
+
+- Attributnamen folgen der Regel von Strapi (ein Buchstabe, dann Buchstaben, Ziffern und
+  Unterstriche) statt nur camelCase. Zwei Namen, die auf dieselbe Spalte abgebildet werden,
+  werden abgelehnt.
+- `regex`-Optionen akzeptieren JavaScript-ähnliche Muster.
+
+### 0.1 → 0.2
+
+- Begrenzungen der Body-Größe und Timeouts gelten pro API-Router; Uploads haben eigene Limits
+  (`[upload].max_file_size`).
+- Eingebaute Rollen bestehender Installationen bekommen die neuen Berechtigungen einmalig.

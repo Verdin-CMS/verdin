@@ -1,0 +1,475 @@
+---
+title: "REST API"
+description: "المسارات ومعاملات الاستعلام (filters وsort وpagination وfields وpopulate وlocale وstatus) وأجسام الطلبات والاستجابات والأخطاء والحدود في REST API الخاص بـ Verdin والمتوافق مع Strapi v5."
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+يحصل كل نوع محتوى على مسارات REST تحت بادئة API المحتوى، وهي `/api` افتراضيًا
+(`[api].prefix`). تتبع المسارات والمعاملات وأشكال الاستجابات Strapi v5، لذا تعمل معظم الواجهات
+الأمامية المكتوبة لـ Strapi دون تغيير. هذه الصفحة هي المرجع؛ وتستخدم الأمثلة
+[مثال المدونة](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) (مقالات
+وتصنيفات ووسوم وصفحة رئيسية).
+
+يصف الخادم أيضًا مسارات مخططك *أنت* في مستند OpenAPI 3.1 على
+`GET /api/_openapi.json`. تعرض صفحات [مثال API المحتوى](/api/example/) مستند
+المدونة، وتتيح لك [بيئة تجربة الـ API](/ar/api/playground/) تجربة الطلبات.
+
+## مثال
+
+الاستعلام نفسه في كل API: أحدث عشر مقالات في تصنيف، مع اسم تصنيفها.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+راجع [GraphQL API](/ar/api/graphql/) و[العميل المُنمَّط](/ar/guides/frontend/typed-client/).
+
+## المصادقة
+
+| ترويسة `Authorization` | المستدعي | الصلاحيات |
+| --- | --- | --- |
+| لا شيء | عام | **الإعدادات ← الوصول العام** |
+| `Bearer vd_…` | رمز API | نوع الرمز وصلاحياته |
+| `Bearer <JWT>` | مستخدم نهائي | دوره كمستخدم نهائي |
+
+الرمز غير المعروف أو المنتهي أو المشوّه يعطي `401`؛ ولا يرجع أبدًا إلى الوصول العام.
+والمستدعي الصالح الذي لا يملك الصلاحية يحصل على `403`. راجع [الصلاحيات](/ar/concepts/permissions/).
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+لا تستطيع المتصفحات من مصادر أخرى استدعاء الـ API إلا عندما يسردها `[api].cors_origins`.
+
+## المسارات
+
+تُقدَّم أنواع المجموعات على `pluralName` الخاص بها:
+
+| الطريقة والمسار | الإجراء | الإجابة |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`، صفحة من المستندات |
+| `GET /api/articles/{documentId}` | `findOne` | `200`، مستند واحد |
+| `POST /api/articles` | `create` | `201`، المستند المُنشأ |
+| `PUT /api/articles/{documentId}` | `update` | `200`، المستند المُحدَّث |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`، بلا جسم |
+
+تُقدَّم الأنواع المفردة على `singularName` الخاص بها:
+
+| الطريقة والمسار | الإجراء | الإجابة |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200`، أو `404` قبل أول كتابة |
+| `PUT /api/homepage` | `update` | `200`؛ أول `PUT` ينشئ المستند |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+`POST` على نوع مفرد يجيب بـ `405`.
+
+### الإجراءات
+
+للأنواع التي تستخدم [المسودة والنشر](/ar/concepts/draft-and-publish/) ثلاثة مسارات إضافية،
+تتطلب الصلاحية `publish`. لا مقابل لها في REST لدى Strapi.
+
+| الطريقة والمسار | الأثر | الإجابة |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | ينشر المسودة. | النسخة المنشورة |
+| `POST /api/articles/{documentId}/actions/unpublish` | يحذف النسخة المنشورة. | المسودة |
+| `POST /api/articles/{documentId}/actions/discard-draft` | يستبدل المسودة بالنسخة المنشورة. | المسودة |
+
+تأخذ الثلاثة `?locale=` في الأنواع المترجمة.
+
+## الكتابة
+
+يأخذ `POST` و`PUT` جسم JSON يحتوي على كائن `data`:
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` تحديث جزئي: السمات التي لا ترسلها تحتفظ بقيمتها. أما المكوّنات
+  والمناطق الديناميكية التي ترسلها فتستبدل القيمة المخزّنة.
+- في أنواع المسودة والنشر، يكتب `POST` و`PUT` المسودة **وينشرانها**، كما في
+  Strapi v5. أضف `?status=draft` لكتابة المسودة فقط. إذا فشل النشر في التحقق،
+  لا يُكتب شيء.
+- المفاتيح غير المعروفة، وحقول النظام (`id` و`documentId` والطوابع الزمنية) والجوانب العكسية (`mappedBy`)
+  للعلاقات أخطاء تحقق.
+- تأخذ العلاقات قيم `documentId`، أو قوائم، أو `null`، أو `{ connect, disconnect, set }`؛ راجع
+  [العلاقات](/ar/concepts/relations/#الكتابة). وتأخذ حقول الوسائط معرّفات الملفات.
+- الاستجابة هي النسخة المكتوبة، مقروءة بمعاملَي `fields` و`populate` الخاصين بالطلب.
+- يحذف `DELETE` كل نسخ المستند (في الأنواع المترجمة، النسخة في
+  اللغة المطلوبة).
+
+## معاملات الاستعلام
+
+| المعامل | مثال | الافتراضي |
+| --- | --- | --- |
+| [`filters`](#التصفية) | `filters[title][$containsi]=rust` | لا شيء |
+| [`sort`](#الترتيب) | `sort=publishedAt:desc` | حسب `id`، تصاعديًا |
+| [`pagination`](#التقسيم-إلى-صفحات) | `pagination[page]=2&pagination[pageSize]=10` | الصفحة 1، و25 لكل صفحة |
+| [`fields`](#الحقول) | `fields[0]=title&fields[1]=slug` | كل حقل عددي/نصي بسيط |
+| [`populate`](#التعبئة) | `populate[category][fields][0]=name` | لا شيء |
+| [`status`](#الحالة) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#الحالة) | `hasPublishedVersion=false` | لا شيء |
+| [`locale`](#اللغة) | `locale=fr` | اللغة الافتراضية |
+| [`_q`](#البحث) | `_q=ownership` | لا شيء |
+
+تستخدم المعاملات صيغة الأقواس المربعة الخاصة بـ Strapi. يمكن كتابة القوائم بالفهارس
+(`sort[0]=a&sort[1]=b`)، أو بأقواس فارغة (`sort[]=a`) أو بتكرار المفتاح
+(`sort=a&sort=b`). رمّز الأقواس والقيم كالمعتاد في عنوان URL؛ فعملاء مثل
+[`qs`](https://github.com/ljharb/qs) أو [العميل المُنمَّط](/ar/guides/frontend/typed-client/)
+يبنون هذه السلاسل نيابةً عنك.
+
+المعامل غير المعروف، أو الحقل غير المعروف أو `private`، أو القيمة المشوّهة، كلها `400`
+`ValidationError` يسمّي المشكلة. لا شيء يُتجاهل بصمت.
+
+## التصفية
+
+`filters[field][operator]=value`. القيمة المجرّدة تعني `$eq`: `filters[slug]=hello-verdin`.
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+يجب أن تتطابق كل الشروط في المستوى نفسه. اجمعها بالعوامل المنطقية:
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| العامل | يطابق | الأنواع |
+| --- | --- | --- |
+| `$eq`، `$ne` | يساوي، لا يساوي | كل الأنواع البسيطة |
+| `$eqi`، `$nei` | يساوي، لا يساوي، مع تجاهل حالة الأحرف | النص |
+| `$lt`، `$lte`، `$gt`، `$gte` | أقل من، أقل أو يساوي، أكبر من، أكبر أو يساوي | كل الأنواع البسيطة ما عدا المنطقية |
+| `$between` | بين قيمتين، شاملًا: `[$between][0]=1&[$between][1]=5` | كل الأنواع البسيطة ما عدا المنطقية |
+| `$in`، `$notIn` | ضمن قائمة، ليس ضمنها: `[$in][0]=a&[$in][1]=b` | كل الأنواع البسيطة |
+| `$contains`، `$notContains` | يحتوي، لا يحتوي | النص |
+| `$containsi`، `$notContainsi` | نفسه، مع تجاهل حالة الأحرف | النص |
+| `$startsWith`، `$startsWithi` | يبدأ بـ (مع تجاهل حالة الأحرف) | النص |
+| `$endsWith`، `$endsWithi` | ينتهي بـ (مع تجاهل حالة الأحرف) | النص |
+| `$null`، `$notNull` | فارغ، معيَّن: `[$null]=true` | كل الحقول |
+| `$and`، `$or` | كل شروط القائمة، بعضها | منطقي |
+| `$not` | ينفي كائن تصفية | منطقي |
+
+- الأنواع النصية هي `string` و`text` و`richtext` و`email` و`uid` و`enumeration`. أما `json`
+  و`blocks` فلا يأخذان إلا `$null` و`$notNull`.
+- تُحوَّل القيم إلى نوع الحقل: أعداد صحيحة، وأرقام، و`true`/`false` (أو `1`/`0`)،
+  والتواريخ بصيغة `YYYY-MM-DD`، والأوقات بصيغة `HH:MM:SS`، والتاريخ والوقت بصيغة ISO 8601.
+- يمكنك التصفية على `id` و`documentId` و`createdAt` و`updatedAt` و`publishedAt`، وفي
+  الأنواع المترجمة على `locale`.
+- تتصرف مقارنات النص بالطريقة نفسها في كل قاعدة بيانات: `$eq` و`$contains` والعوامل
+  الأخرى التي لا تنتهي بـ `i` دقيقة، ومتغيرات `…i` تتجاهل حالة الأحرف (والتشكيل/العلامات على MySQL
+  وMariaDB؛ ولا يطوي SQLite إلا أحرف ASCII).
+- للطلب 100 شرط على الأكثر.
+
+### التصفية عبر العلاقات
+
+صفِّ على حقول المستندات المرتبطة، من أي جانب من العلاقة وبشكل متداخل:
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+يتطابق شرط إلى متعدد عندما يتطابق أحد المستندات المرتبطة. تُطابَق المستندات المرتبطة
+في النسخة واللغة المقروءتين. لا يمكن تصفية العلاقات متعددة الأشكال وحقول
+الوسائط.
+
+### التصفية على المكوّنات والمناطق الديناميكية
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+يمكن تصفية الحقول البسيطة في المكوّنات، بما فيها المتداخلة؛ ويتطابق المكوّن القابل للتكرار
+عندما يتطابق أحد عناصره. تُصفّى المناطق الديناميكية حسب `__component` فقط. راجع
+[المكوّنات والمناطق الديناميكية](/ar/concepts/components-and-dynamic-zones/#التصفية).
+
+## الترتيب
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` أو `field:asc|desc`؛ والاتجاه الافتراضي `asc`.
+- يمكن الترتيب حسب أي حقل بسيط ما عدا `json` و`blocks`، بما في ذلك حقول النظام.
+- يرتّب `relation.field` حسب حقل في علاقة إلى واحد.
+- تأتي القيم الفارغة أخيرًا في الاتجاهين، ويُفصل في التعادل حسب `id`، فتبقى الصفحات
+  مستقرة.
+
+## التقسيم إلى صفحات
+
+حسب الصفحة أو حسب الإزاحة، لا كلاهما:
+
+| المعامل | الافتراضي | ملاحظات |
+| --- | --- | --- |
+| `pagination[page]` | `1` | يبدأ من 1. |
+| `pagination[pageSize]` | `25` (`[api].default_page_size`) | محدود بـ `[api].max_page_size` (100). |
+| `pagination[start]` | `0` | الإزاحة. |
+| `pagination[limit]` | `25` | محدود بالحد الأقصى؛ `-1` يطلب الحد الأقصى. |
+| `pagination[withCount]` | `true` | `false` يتخطى العدّ ويستبعد `total` و`pageCount`. |
+
+يتبع `meta.pagination` في الاستجابة الوضع الذي استخدمته:
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## الحقول
+
+يحدد `fields` السمات البسيطة:
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+يُعاد `id` و`documentId` دائمًا. لا يحدد `fields` أبدًا العلاقات والوسائط والمكوّنات والمناطق
+الديناميكية: استخدم `populate`.
+
+## التعبئة
+
+لا تُعاد العلاقات والوسائط والمكوّنات والمناطق الديناميكية إلا عند تعبئتها (populate):
+
+| الصيغة | تعبّئ |
+| --- | --- |
+| `populate=*` | كل علاقة وحقل وسائط ومكوّن ومنطقة ديناميكية، بعمق مستوى واحد |
+| `populate=category,tags` أو `populate[0]=category&populate[1]=tags` | الحقول المسمّاة |
+| `populate[category]=true` | الحقل المسمّى (`false` يستبعده) |
+| `populate[category][fields][0]=name` | الحقل، مع خيارات |
+
+تقبل كل علاقة مُعبّأة `fields` و`filters` و`sort` و`populate` (متداخلًا، حتى 5
+مستويات إجمالًا) و`count`:
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- العلاقة إلى واحد كائن أو `null`؛ والعلاقة إلى متعدد مصفوفة، بترتيب الروابط أو
+  بترتيب `sort` الخاص بالتعبئة.
+- يعيد `count=true` القيمة `{ "count": 12 }` بدلًا من المستندات (للعلاقات إلى متعدد فقط).
+- يُعاد 1,000 مستند مرتبط على الأكثر لكل مستند وعلاقة؛ و`count` دقيق.
+- تعود المكوّنات والمناطق الديناميكية كاملة، بما فيها المكوّنات المتداخلة وعلاقاتها
+  ووسائطها. خيارات Strapi لكل مستوى الخاصة بها (`populate[blocks][on][…]`)
+  مقبولة ويتم تجاهلها.
+- تعود حقول الوسائط ككائنات ملفات.
+- لا تقبل العلاقات متعددة الأشكال إلا `count`.
+- تُقرأ المستندات المرتبطة بالحالة واللغة نفسيهما للمستند. تعبئة
+  نوع لا يستطيع المستدعي قراءته تعطي `400`؛ ويتخطاه `populate=*`.
+
+كل مستوى استعلام واحد مجمَّع لكل علاقة، فتبقى التعبئات العميقة سريعة ولا تعيد أبدًا
+صفوفًا مكررة.
+
+## الحالة
+
+في أنواع المسودة والنشر، يختار `status` النسخة:
+
+- `status=published` (الافتراضي) يقرأ النسخ المنشورة.
+- `status=draft` يقرأ المسودات، ويتطلب الصلاحية `readDrafts` إلى جانب `find` أو `findOne`.
+
+يُبقي `hasPublishedVersion=true|false` المستندات التي لها، أو ليس لها، نسخة
+منشورة: `?status=draft&hasPublishedVersion=false` يسرد المستندات التي لم تُنشر قط. وهو
+`400` في الأنواع التي لا تستخدم المسودة والنشر.
+
+عند الكتابة، يحفظ `status=draft` المسودة دون نشرها. راجع
+[المسودة والنشر](/ar/concepts/draft-and-publish/).
+
+## اللغة
+
+`locale=fr` يقرأ ويكتب النسخة الفرنسية من الأنواع المترجمة. بدونه، تستخدم الطلبات
+اللغة الافتراضية. الرمز غير الصالح أو غير المعروف يعطي `400`. الأنواع غير المترجمة
+تتجاهله. راجع [التدويل](/ar/concepts/internationalization/).
+
+## البحث
+
+يعثر `_q` على المستندات التي تحتوي حقولها النصية على الكلمات، مع تجاهل حالة الأحرف (200
+حرف على الأكثر):
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+بدون فهرس بحث يطابق هذا، كما في Strapi، أي حقل `string` أو `text` أو
+`richtext` أو `email` أو `uid` أو `enumeration` غير خاص. ومع `[search] enabled = true`، تُرتَّب النتائج
+حسب الصلة ما لم تمرّر `sort`. تظل عوامل التصفية الأخرى والتقسيم إلى صفحات سارية. راجع
+[البحث](/ar/guides/content/search/).
+
+## الاستجابات
+
+قائمة:
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+مستند واحد: `{ "data": { … }, "meta": {} }`.
+
+- المستندات مسطّحة، كما في Strapi v5: بلا غلاف `attributes`.
+- تأتي السمات بترتيب المخطط، بين `id`/`documentId` والطوابع الزمنية؛ وتضيف الأنواع
+  المترجمة `locale`. لا تظهر حقول `private` أبدًا.
+- قيم `biginteger` سلاسل نصية. وقيم `decimal` أرقام، مقرّبة إلى مقياسها
+  (سلاسل نصية مع `[api].decimal_as_string = true`). التواريخ بصيغة `YYYY-MM-DD`، والأوقات
+  `HH:MM:SS.mmm`، والتاريخ والوقت `YYYY-MM-DDTHH:MM:SS.mmmZ` بتوقيت UTC.
+
+تحمل القراءات الناجحة `ETag`؛ أعِده في `If-None-Match` لتحصل على `304 Not Modified`.
+وتحمل أيضًا ترويستي `Cache-Tag` و`Surrogate-Key` لعمليات تفريغ CDN (راجع
+[النشر وCDN](/ar/guides/integrations/deploys-and-cdn/)).
+
+## الأخطاء
+
+للأخطاء شكل Strapi:
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| الحالة | `name` | متى |
+| --- | --- | --- |
+| `400` | `ValidationError` | معاملات أو جسم أو محتوى غير صالح. يسرد `details.errors` مشكلات المحتوى مع مساراتها. |
+| `401` | `UnauthorizedError` | رمز مشوّه أو غير معروف أو منتهٍ. |
+| `403` | `ForbiddenError` | يفتقر المستدعي إلى الصلاحية (للمسودات، `readDrafts`). |
+| `404` | `NotFoundError` | مسار أو نوع محتوى أو مستند غير معروف. |
+| `405` | `MethodNotAllowedError` | `POST` على نوع مفرد، أو `PUT` أو `DELETE` على مسار نوع مجموعة. |
+| `408` | | استغرق الطلب أكثر من `[server].request_timeout_secs` (30 ثانية). |
+| `413` | | الجسم أكبر من `[server].body_limit` (1 MB). |
+| `429` | `RateLimitError` | تجاوز `[api].public_rate_limit` أو `[api].token_rate_limit`. تحدد `Retry-After` متى تعيد المحاولة. |
+| `500` | `ApplicationError` | خطأ غير متوقع؛ التفاصيل في سجل الخادم فقط. |
+
+## الحدود
+
+| الحد | القيمة |
+| --- | --- |
+| حجم الصفحة | `[api].max_page_size`، 100 افتراضيًا |
+| عمق التعبئة | 5 مستويات |
+| المستندات المرتبطة لكل مستند وعلاقة | 1,000 |
+| شروط التصفية | 100 |
+| تداخل الأقواس في معامل | 12 مستوى |
+| المعاملات لكل طلب | 1,000 |
+| سلسلة الاستعلام | 16 KB |
+| `_q` | 200 حرف |
+
+أحجام الصفحات وحدها قابلة للضبط. يُتحقق من كل اسم حقل في `filters` و`sort` و`fields`
+و`populate` مقابل المخطط، وتُربط القيم دائمًا كمعاملات SQL.
+
+## مكتبة الوسائط
+
+مسارات الرفع الخاصة بـ Strapi، ويُتحقق منها مقابل صلاحيات **مكتبة الوسائط**. تجيب بكائنات
+ومصفوفات عادية، دون `data`، كما في Strapi:
+
+| المسار | الصلاحية | الجسم أو المعاملات |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart: `files` (حتى 20)، و`fileInfo` JSON اختياري (`name`، `alternativeText`، `caption`، `folder`، `focalPoint`)، واحد لكل ملف أو واحد للجميع |
+| `POST /api/upload?id={id}` | `update` | Multipart `fileInfo`، واختياريًا ملف جديد يستبدل المحتوى |
+| `GET /api/upload/files` | `find` | `pagination[page]`، `pagination[pageSize]`، `sort`، `filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+راجع [الوسائط](/ar/concepts/media/).
+
+## مسارات أخرى تحت البادئة
+
+| المسارات | الصفحة |
+| --- | --- |
+| `/api/auth/*`، `/api/users/*`، `/api/connect/*` | [المستخدمون النهائيون](/ar/guides/auth/end-users/) (عندما تكون الميزة مفعّلة) |
+| `/api/_events` | [API الوقت الفعلي](/ar/api/realtime/) (عندما تكون الميزة مفعّلة) |
+| `/api/_redirects`، `/api/_menus/{slug}`، `/api/_forms/{slug}` | [إعادات التوجيه](/ar/guides/frontend/redirects/)، [القوائم](/ar/guides/frontend/menus/)، [النماذج](/ar/guides/frontend/forms/) |
+| `/api/_openapi.json`، `/api/docs` | مستند OpenAPI (لرموز API فقط، ما لم يُجعل عامًا في **الإعدادات ← الميزات ← توثيق الـ API**) ومرجعه التفاعلي (عندما يكون عامًا) |
+| `/api/plugins/{name}/*` | مسارات [الإضافات](/ar/extending/plugins/) |

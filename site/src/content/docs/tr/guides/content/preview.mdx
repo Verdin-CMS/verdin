@@ -1,0 +1,150 @@
+---
+title: Önizleme
+description: Taslakları kayıt düzenleyicisinden kısa ömürlü bir önizleme token’ıyla sitenizde açın ve sitenizin taslağı bu token’la okumasını sağlayın.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Önizleme bir kaydın taslağını, yayınlanmadan önce kendi sitenizde açar. Düzenleyici, içerik tipi
+başına bir URL şablonundan bir bağlantı oluşturur ve sitenizin o tek taslağı okumasına izin veren
+kısa ömürlü bir token ekler. Bu kılavuz şablonları ve site tarafını kurar.
+
+Önizlemedeki metne tıklayıp alanına atlamak için bunun üzerine
+[Görsel düzenleme](/tr/guides/frontend/visual-editing/) ekleyin.
+
+## Başlamadan önce
+
+- **Ayarlar → Özellikler → Önizleme**’yi açın. Varsayılan olarak kapalıdır.
+- Özelliğin ayarlarını değiştirmek **Özellikleri yönet** (`features.manage`) gerektirir.
+- Bir önizleme açmak kayda okuma erişimi gerektirir. Bkz. [İzinler](/tr/reference/permissions/).
+
+## Önizleme URL’lerini ayarlama
+
+<Steps>
+
+1. **Ayarlar → Özellikler** içindeki **Önizleme** kartında **Önizleme URL’lerini yapılandır**’ı
+   seçin.
+2. **URL şablonları** altında, sitenizin her içerik tipinin taslağını gösteren sayfasını girin.
+   Bir tipe önizleme vermemek için boş bırakın.
+3. İsteğe bağlı olarak **Bağlantı süresi (dakika)** değerini değiştirin: varsayılan 60, en fazla
+   10080 (7 gün).
+4. Kaydedin.
+
+</Steps>
+
+Bir şablon, süslü parantez içinde yer tutucular bulunan bir `http` veya `https` URL’sidir:
+
+| Yer tutucu | Doldurulduğu değer |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | Taslağın herhangi bir üst düzey alanı. Bilinmeyen yer tutucular boş olur. |
+| `{documentId}`, `{uid}` | Belge kimliği ve içerik tipi uid’si. |
+| `{token}` | Önizleme token’ı. Bu yer tutucu olmadan token `preview` sorgu parametresi olarak eklenir. |
+
+Örnek projenin makaleleri için:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+`https://example.com/blog/hello-world?locale=en&preview=<token>` verir.
+
+Özelliğin sakladığı şekliyle JSON olarak aynı ayarlar (`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## Bir önizleme açma
+
+Kayıt düzenleyicisinde, taslağı sitenizde yeni bir sekmede açmak için **Önizlemeyi aç**’ı ya da
+formun yanındaki bir panelde **Masaüstü**, **Tablet** ve **Mobil** genişlikleriyle göstermek için
+**Yan yana**’yı seçin. Yan panel her kaydetmeden sonra yeniden yüklenir. Boş kalırsa siteniz
+muhtemelen bir frame içine gömülmeyi reddediyordur: **Yeni bir sekmede aç**’ı kullanın.
+
+## Taslağı sitenizde okuma
+
+Önizleme sayfanız token’ı URL’den alır ve taslağı isteyerek onu `x-verdin-preview` başlığında
+içerik API’sine geri gönderir:
+
+<Diagram
+  caption="Bir önizleme isteği"
+  code={`sequenceDiagram
+  participant E as Düzenleyici
+  participant V as Verdin
+  participant S as Siteniz
+  E->>V: Önizlemeyi aç
+  V-->>E: önizleme token’ı içeren URL
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: taslak`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+Önizleme token’ını REST içerik API’si okur. Önizleme sayfanızda taslağı REST üzerinden getirin.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+Aynı başlık tekil tiplerde de çalışır (`GET /api/<singularName>?status=draft`).
+
+Token’ın verdiği yetkiler:
+
+- Taşıyıcısının o tek belgeyi, taslaklar dâhil, süresi dolana kadar okumasına izin verir.
+- Başka belgeleri okuyamaz, kayıtları listeleyemez veya hiçbir şey yazamaz.
+- Önizleme isteklerine verilen yanıtlar asla önbelleğe alınmaz.
+
+<Aside type="caution">
+Bağlantıya sahip olan herkes token’ın süresi dolana kadar taslağı okuyabilir. Süreyi kısa tutun
+ve önizleme bağlantılarını herkese açık yerlerde paylaşmayın.
+</Aside>
+
+Önizleme sayfanız kaydı genellikle `slug` gibi bir alana göre arar. Token `documentId` ile
+okuduğu için şablona `{documentId}` değerini de koyun ya da slug’dan kimliğe aramayı kendi
+tarafınızda tutun.
+
+## Admin API
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` düzenleyicinin düğmesi için bağlantıyı
+döndürür:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+Kayda okuma erişimi gerektirir ve özellik kapalıyken veya tipin şablonu yokken `404` yanıtını
+verir.

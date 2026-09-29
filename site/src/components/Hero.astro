@@ -6,7 +6,29 @@ import { Code, LinkButton, Tabs, TabItem } from '@astrojs/starlight/components';
 // Starlight's skip link and table of contents point at this id.
 const PAGE_TITLE_ID = '_top';
 
-const { data } = Astro.locals.starlightRoute.entry;
+const { entry, lang } = Astro.locals.starlightRoute;
+const { data } = entry;
+const EYEBROW: Record<string, string> = {
+  en: 'Headless CMS · written in Rust · Strapi v5 APIs',
+  ar: 'نظام إدارة محتوى headless · مكتوب بلغة Rust · واجهات Strapi v5',
+  ca: 'CMS headless · escrit en Rust · API de Strapi v5',
+  de: 'Headless CMS · in Rust geschrieben · Strapi-v5-APIs',
+  es: 'CMS headless · escrito en Rust · API de Strapi v5',
+  fa: 'CMS هدلس · نوشته‌شده با Rust · APIهای Strapi v5',
+  fr: 'CMS headless · écrit en Rust · API Strapi v5',
+  he: 'CMS headless · כתוב ב-Rust · ממשקי Strapi v5',
+  it: 'CMS headless · scritto in Rust · API di Strapi v5',
+  ja: 'ヘッドレス CMS · Rust 製 · Strapi v5 API',
+  ko: '헤드리스 CMS · Rust로 작성 · Strapi v5 API',
+  nl: 'Headless CMS · geschreven in Rust · Strapi v5-API’s',
+  pl: 'Headless CMS · napisany w Rust · API Strapi v5',
+  'pt-BR': 'CMS headless · escrito em Rust · APIs do Strapi v5',
+  ru: 'Headless CMS · написан на Rust · API Strapi v5',
+  tr: 'Headless CMS · Rust ile yazıldı · Strapi v5 API’leri',
+  uk: 'Headless CMS · написаний на Rust · API Strapi v5',
+  'zh-CN': '无头 CMS · 用 Rust 编写 · Strapi v5 API',
+};
+const eyebrow = EYEBROW[lang] ?? EYEBROW['en'];
 const { title = data.title, tagline, actions = [] } = data.hero || {};
 // Frontmatter links are written without the base path (like Markdown links).
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -24,7 +46,7 @@ cd my-site && verdin dev
 
 <section class="vd-hero not-content">
   <div class="copy">
-    <p class="eyebrow">Headless CMS · written in Rust · Strapi v5 APIs</p>
+    <p class="eyebrow">{eyebrow}</p>
     <h1 id={PAGE_TITLE_ID} data-page-title set:html={title} />
     {tagline && <p class="tagline" set:html={tagline} />}
     {

@@ -1,0 +1,136 @@
+---
+title: Flussi di revisione
+description: Fai passare le voci per fasi di revisione, assegnale ai revisori, limita chi può spostarle e richiedi una fase prima della pubblicazione.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Un flusso di revisione è una lista ordinata di fasi, come *Da fare*, *In revisione* e
+*Pronto*, che le voci di alcuni tipi di contenuto attraversano prima di essere pubblicate.
+Questa guida ne configura uno, sposta e assegna voci, e mostra l'API admin corrispondente.
+
+In Strapi i flussi di revisione sono una funzionalità Enterprise. In Verdin fanno parte del
+core open source.
+
+## Prima di iniziare
+
+- Attiva **Impostazioni → Funzionalità → Flussi di revisione**. È disattivato di default.
+- Configurare i flussi richiede **Gestisci flussi di revisione** (`workflows.manage`).
+- Spostare e assegnare una voce richiede l'accesso in aggiornamento su di essa. Vedi
+  [Permessi](/it/reference/permissions/).
+
+## Crea un flusso
+
+<Steps>
+
+1. Apri **Impostazioni → Flussi di revisione** e seleziona **Nuovo flusso**.
+2. Dagli un **Nome**.
+3. Sotto **Tipi di contenuto**, scegli i tipi le cui voci lo seguono. Un tipo segue al
+   massimo un flusso.
+4. Sotto **Fasi**, elenca le fasi in ordine. Ognuna ha un **Nome della fase** e un
+   **Colore**. Usa **Aggiungi fase** per aggiungerne altre, e i pulsanti freccia per
+   riordinarle. Le nuove voci partono dalla prima fase.
+5. Opzionalmente, scegli su una fase i **Ruoli che possono spostare le voci in questa
+   fase**. Senza ruoli selezionati, può farlo chiunque possa aggiornare la voce.
+6. Opzionalmente, imposta la **Fase richiesta per la pubblicazione**. Le voci possono allora
+   essere pubblicate solo mentre sono in quella fase. **Qualsiasi fase** non tocca la
+   pubblicazione.
+7. Salva.
+
+</Steps>
+
+<Diagram
+  caption="Un flusso editoriale con una fase richiesta per la pubblicazione"
+  code={`flowchart LR
+  A[Da fare] --> B[In revisione] --> C[Pronto]
+  C -->|pubblicazione consentita| P((Pubblicato))
+  A -.->|pubblicazione rifiutata| X[400]`}
+/>
+
+Le voci che esistevano prima che il loro tipo entrasse nel flusso sono nella prima fase.
+
+Quando modifichi un flusso in seguito:
+
+- Rimuovere una fase riporta le sue voci alla prima fase.
+- Rimuovere un tipo di contenuto dal flusso cancella le fasi delle sue voci.
+- Eliminare il flusso cancella le fasi e gli assegnatari delle sue voci.
+
+## Sposta e assegna le voci
+
+L'editor della voce mostra un pannello **Revisione** con la **Fase** e l'**Assegnato a**.
+
+- Scegli un'altra **Fase** per spostare la voce. Le fasi riservate ad altri ruoli non si
+  possono scegliere, e il pannello lo indica. Gli admin con **Gestisci flussi di revisione**
+  possono sempre spostare le voci.
+- Scegli un assegnatario in **Assegnato a** tra gli admin attivi che possono leggere il tipo
+  di contenuto, o seleziona **Rimuovi assegnazione**. Chiunque possa aggiornare la voce può
+  assegnarla.
+- Quando il flusso ha una fase richiesta, il pannello dice quale fase deve raggiungere la
+  voce prima che **Pubblica** funzioni.
+
+La vista a lista mostra una colonna **Fase**, e la home elenca le voci assegnate a te sotto
+**Assegnate a me**. I tipi localizzati tengono una fase per lingua.
+
+## Cosa blocca la fase di pubblicazione
+
+La fase richiesta si applica a ogni modo di pubblicare: il pannello di amministrazione, REST,
+GraphQL, i rilasci e i plugin. Una pubblicazione di una voce fuori da quella fase fallisce
+con `400`:
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+In Strapi il requisito della fase si applica solo al pannello di amministrazione. Anche i
+ruoli delle fasi sono diversi: in Verdin limitano chi sposta le voci *dentro* una fase.
+
+## Log di audit e webhook
+
+- I cambi di fase e le assegnazioni vengono registrati nei
+  [log di audit](/it/guides/content/audit-logs/) come `entry.stage` ed `entry.assign`.
+- I webhook possono iscriversi a **Fase della voce modificata**
+  (`review-workflows.updateEntryStage`). Vedi [Webhook](/it/guides/integrations/webhooks/).
+
+## API admin
+
+Tutte le route sono sotto `/admin/api` e accettano un access token admin.
+
+| Route | Permesso | Fa |
+| --- | --- | --- |
+| `GET /review-workflows`, `GET /review-workflows/{id}` | `workflows.manage` | I flussi con le loro fasi. |
+| `POST /review-workflows`, `PUT /review-workflows/{id}` | `workflows.manage` | Crea o sostituisce un flusso (corpo sotto). |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | Le voci dei suoi tipi perdono le loro fasi. |
+| `GET /content/{uid}/{documentId}/review?locale=` | lettura della voce | Fase, assegnatario, e le fasi in cui puoi spostare la voce (`canMoveTo`). |
+| `PUT /content/{uid}/{documentId}/review?locale=` | aggiornamento della voce | `{ "stageId": 3, "assigneeId": 7 }`. Entrambi i campi sono opzionali; `"assigneeId": null` rimuove l'assegnatario. |
+| `GET /content/{uid}/review?documentIds=a,b` | lettura del tipo | Fasi di fino a 200 voci, con il flusso in `meta.workflow`. |
+| `GET /review/assigned` | autenticato | Le voci assegnate a te. |
+| `GET /review/assignees?uid=` | aggiornamento del tipo | Admin attivi che possono leggere il tipo. |
+| `GET /review/roles` | `workflows.manage` | Codici e nomi dei ruoli, per i ruoli delle fasi. |
+
+Un flusso come viene inviato a `POST` e `PUT`:
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- Un flusso ha da 1 a 50 fasi con nomi unici e colori `#rrggbb`.
+- `publishStage` nomina una delle fasi; omettilo per nessuna.
+- Invia le fasi esistenti con il loro `id` così le loro voci restano dove sono. Le fasi senza
+  `id` sono nuove.
+
+<Aside type="note">
+Disattivare la funzionalità nasconde le fasi e smette di imporre la fase di pubblicazione.
+I flussi e le fasi delle voci vengono conservati per quando la riattivi.
+</Aside>

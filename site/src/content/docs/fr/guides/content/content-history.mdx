@@ -1,0 +1,93 @@
+---
+title: Historique du contenu
+description: Parcourez les versions enregistrées, publiées et dépubliées d’une entrée et restaurez-en une comme brouillon actuel.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Verdin conserve une version d’une entrée chaque fois qu’elle est créée, enregistrée, publiée,
+dépubliée ou que son brouillon est abandonné, depuis n’importe quelle API. Ce guide montre comment
+retrouver une ancienne version et la restaurer, combien de versions sont conservées, et l’API
+d’administration correspondante.
+
+L’historique du contenu fonctionne comme celui de Strapi, où il s’agit d’une fonctionnalité
+payante.
+
+## Avant de commencer
+
+- **Paramètres → Fonctionnalités → Historique du contenu** est activé par défaut. Tant qu’il est
+  désactivé, aucune version n’est enregistrée et l’historique n’est pas disponible.
+- Lire l’historique d’une entrée nécessite l’accès en lecture à l’entrée ; restaurer nécessite
+  l’accès en modification. Les restrictions de champs s’appliquent : vous ne voyez et ne
+  restaurez que les champs que votre rôle peut lire ou modifier. Voir
+  [Autorisations](/fr/reference/permissions/).
+
+## Restaurer une version
+
+<Steps>
+
+1. Ouvrez l’entrée et sélectionnez **Historique**.
+2. La liste **Versions** affiche chaque version avec son événement (**Créé**, **Enregistré**,
+   **Publié**, **Dépublié**, **Brouillon abandonné**), sa date et son auteur. Les modifications
+   faites via l’API de contenu affichent **API** comme auteur.
+3. Sélectionnez une version pour voir ses champs.
+4. Sélectionnez **Restaurer** et confirmez.
+
+</Steps>
+
+La version remplace le brouillon actuel ; publiez-la ensuite quand vous êtes prêt. Sur les types
+sans brouillon et publication, la restauration met directement à jour l’entrée.
+
+Ce qui est laissé de côté lors d’une restauration :
+
+- Les champs qui n’existent plus dans le schéma sont listés et ne sont pas restaurés.
+- Les références à des entrées ou des fichiers supprimés sont abandonnées, et l’éditeur vous
+  indique quels champs les ont perdues.
+
+**Retour à l’éditeur** revient à l’entrée sans rien modifier.
+
+## Nombre de versions conservées
+
+Verdin conserve les `[history].max_versions` versions les plus récentes de chaque entrée et de
+chaque langue (50 par défaut) et supprime les plus anciennes à mesure que de nouvelles versions
+arrivent :
+
+```toml title="verdin.toml"
+[history]
+max_versions = 100
+```
+
+Chaque langue d’une entrée localisée a son propre historique. Supprimer une entrée, ou l’une de
+ses langues, supprime aussi ses versions. Voir la
+[référence de configuration](/fr/reference/configuration/).
+
+<Aside type="note">
+Contrairement à Strapi, où l’historique est conservé pendant un nombre de jours, Verdin conserve
+un nombre de versions par entrée, quel que soit leur âge.
+</Aside>
+
+## API d’administration
+
+Toutes les routes sont sous `/admin/api`.
+
+| Route | Autorisation | Effet |
+| --- | --- | --- |
+| `GET /history/{uid}/{documentId}?locale=&page=&pageSize=` | lire l’entrée | Les versions, de la plus récente à la plus ancienne, sans leurs données (20 par page, 100 au maximum). |
+| `GET /history/versions/{id}` | lire l’entrée | Une version avec ses données. |
+| `POST /history/versions/{id}/restore` | modifier l’entrée | Restaure la version comme brouillon actuel. |
+
+La réponse de restauration liste ce qui a été abandonné :
+
+```json
+{
+  "data": {
+    "documentId": "k3v9…",
+    "restored": 42,
+    "dropped": [{ "field": "tags", "count": 1 }]
+  }
+}
+```
+
+Les routes répondent `404` tant que la fonctionnalité est désactivée.

@@ -1,0 +1,484 @@
+---
+title: "API REST"
+description: "Rutes, paràmetres de consulta (filters, sort, pagination, fields, populate, locale, status), cossos de petició, respostes, errors i límits de l'API REST de Verdin compatible amb Strapi v5."
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+Cada tipus de contingut té rutes REST sota el prefix de l'API de contingut, `/api` per defecte
+(`[api].prefix`). Les rutes, els paràmetres i la forma de les respostes segueixen Strapi v5, així
+que la majoria de frontends escrits per a Strapi funcionen sense canvis. Aquesta pàgina és la
+referència; els exemples fan servir
+l'[exemple del blog](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) (articles,
+categories, etiquetes i una pàgina d'inici).
+
+El servidor també descriu les rutes del *teu* esquema en un document OpenAPI 3.1 a
+`GET /api/_openapi.json`. Les pàgines de l'[API de contingut d'exemple](/api/example/)
+mostren el document del blog, i l'[entorn de proves de l'API](/ca/api/playground/) et permet
+provar peticions.
+
+## Exemple
+
+La mateixa consulta a cada API: els deu articles més recents d'una categoria, amb el nom de la
+seva categoria.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+Consulta l'[API GraphQL](/ca/api/graphql/) i el [client tipat](/ca/guides/frontend/typed-client/).
+
+## Autenticació
+
+| Capçalera `Authorization` | Client | Permisos |
+| --- | --- | --- |
+| cap | Públic | **Configuració → Accés públic** |
+| `Bearer vd_…` | Token d'API | El tipus i els permisos del token |
+| `Bearer <JWT>` | Usuari final | El seu rol d'usuari final |
+
+Un token desconegut, caducat o mal format és un `401`; mai no torna a l'accés públic. Un client
+vàlid sense el permís rep `403`. Consulta [Permisos](/ca/concepts/permissions/).
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+Els navegadors d'altres orígens només poden cridar l'API quan `[api].cors_origins` els llista.
+
+## Rutes
+
+Els tipus de col·lecció se serveixen al seu `pluralName`:
+
+| Mètode i camí | Acció | Respon |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`, una pàgina de documents |
+| `GET /api/articles/{documentId}` | `findOne` | `200`, un document |
+| `POST /api/articles` | `create` | `201`, el document creat |
+| `PUT /api/articles/{documentId}` | `update` | `200`, el document actualitzat |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`, sense cos |
+
+Els tipus únics se serveixen al seu `singularName`:
+
+| Mètode i camí | Acció | Respon |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200`, o `404` abans de la primera escriptura |
+| `PUT /api/homepage` | `update` | `200`; el primer `PUT` crea el document |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+`POST` sobre un tipus únic respon `405`.
+
+### Accions
+
+Els tipus amb [esborrany i publicació](/ca/concepts/draft-and-publish/) tenen tres rutes més, que
+necessiten el permís `publish`. Strapi no té cap equivalent REST.
+
+| Mètode i camí | Efecte | Respon |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | Publica l'esborrany. | La versió publicada |
+| `POST /api/articles/{documentId}/actions/unpublish` | Elimina la versió publicada. | L'esborrany |
+| `POST /api/articles/{documentId}/actions/discard-draft` | Substitueix l'esborrany per la versió publicada. | L'esborrany |
+
+Totes tres accepten `?locale=` als tipus localitzats.
+
+## Escriptura
+
+`POST` i `PUT` accepten un cos JSON amb un objecte `data`:
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` és una actualització parcial: els atributs que no envies conserven el seu valor. Els
+  components i les zones dinàmiques que envies substitueixen el valor desat.
+- Als tipus amb esborrany i publicació, `POST` i `PUT` escriuen l'esborrany **i el publiquen**,
+  com a Strapi v5. Afegeix `?status=draft` per escriure només l'esborrany. Si la publicació no
+  passa la validació, no s'escriu res.
+- Les claus desconegudes, els camps del sistema (`id`, `documentId`, marques de temps) i els
+  costats inversos (`mappedBy`) de les relacions són errors de validació.
+- Les relacions accepten `documentId`, llistes, `null` o `{ connect, disconnect, set }`;
+  consulta [Relacions](/ca/concepts/relations/#escriptura). Els camps de multimèdia accepten ids
+  de fitxer.
+- La resposta és la versió escrita, llegida amb els `fields` i el `populate` de la petició.
+- `DELETE` elimina totes les versions del document (als tipus localitzats, la versió de l'idioma
+  demanat).
+
+## Paràmetres de consulta
+
+| Paràmetre | Exemple | Per defecte |
+| --- | --- | --- |
+| [`filters`](#filtres) | `filters[title][$containsi]=rust` | cap |
+| [`sort`](#ordenació) | `sort=publishedAt:desc` | per `id`, ascendent |
+| [`pagination`](#paginació) | `pagination[page]=2&pagination[pageSize]=10` | pàgina 1, 25 per pàgina |
+| [`fields`](#camps) | `fields[0]=title&fields[1]=slug` | tots els camps escalars |
+| [`populate`](#populate) | `populate[category][fields][0]=name` | res |
+| [`status`](#estat) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#estat) | `hasPublishedVersion=false` | cap |
+| [`locale`](#idioma) | `locale=fr` | l'idioma per defecte |
+| [`_q`](#cerca) | `_q=ownership` | cap |
+
+Els paràmetres fan servir la notació de claudàtors de Strapi. Les llistes es poden escriure amb
+índexs (`sort[0]=a&sort[1]=b`), amb claudàtors buits (`sort[]=a`) o repetint la clau
+(`sort=a&sort=b`). Codifica els claudàtors i els valors com és habitual en una URL; clients com
+[`qs`](https://github.com/ljharb/qs) o el [client tipat](/ca/guides/frontend/typed-client/)
+construeixen aquestes cadenes per tu.
+
+Un paràmetre desconegut, un camp desconegut o `private`, o un valor mal format és un `400`
+`ValidationError` que indica el problema. No s'ignora res en silenci.
+
+## Filtres
+
+`filters[field][operator]=value`. Un valor sol vol dir `$eq`: `filters[slug]=hello-verdin`.
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+Diverses condicions al mateix nivell s'han de complir totes. Combina-les amb operadors lògics:
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| Operador | Coincideix amb | Tipus |
+| --- | --- | --- |
+| `$eq`, `$ne` | Igual, diferent | tots els escalars |
+| `$eqi`, `$nei` | Igual, diferent, sense distingir majúscules | text |
+| `$lt`, `$lte`, `$gt`, `$gte` | Menor que, menor o igual, major que, major o igual | tots els escalars excepte els booleans |
+| `$between` | Entre dos valors, inclosos: `[$between][0]=1&[$between][1]=5` | tots els escalars excepte els booleans |
+| `$in`, `$notIn` | Dins, fora d'una llista: `[$in][0]=a&[$in][1]=b` | tots els escalars |
+| `$contains`, `$notContains` | Conté, no conté | text |
+| `$containsi`, `$notContainsi` | El mateix, sense distingir majúscules | text |
+| `$startsWith`, `$startsWithi` | Comença per (sense distingir majúscules) | text |
+| `$endsWith`, `$endsWithi` | Acaba en (sense distingir majúscules) | text |
+| `$null`, `$notNull` | És buit, té valor: `[$null]=true` | tots els camps |
+| `$and`, `$or` | Totes, alguna de les condicions d'una llista | lògic |
+| `$not` | Nega un objecte de filtre | lògic |
+
+- Els tipus de text són `string`, `text`, `richtext`, `email`, `uid` i `enumeration`. `json` i
+  `blocks` només accepten `$null` i `$notNull`.
+- Els valors es converteixen al tipus del camp: enters, nombres, `true`/`false` (o `1`/`0`),
+  dates com a `YYYY-MM-DD`, hores com a `HH:MM:SS`, dates i hores en ISO 8601.
+- Pots filtrar per `id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt` i, als tipus
+  localitzats, `locale`.
+- Les comparacions de text es comporten igual a totes les bases de dades: `$eq`, `$contains` i
+  els altres operadors sense `i` són exactes, i les variants `…i` no distingeixen majúscules (ni
+  accents a MySQL i MariaDB; SQLite només normalitza les lletres ASCII).
+- Una petició té com a màxim 100 condicions.
+
+### Filtrar a través de relacions
+
+Filtra pels camps dels documents relacionats, a qualsevol costat de la relació i de manera
+imbricada:
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+Una condició a molts coincideix quan algun document relacionat coincideix. Els documents
+relacionats es comparen en la versió i l'idioma que s'estan llegint. Les relacions polimòrfiques
+i els camps de multimèdia no es poden filtrar.
+
+### Filtrar per components i zones dinàmiques
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+Es poden filtrar els camps escalars dels components, inclosos els imbricats; un component
+repetible coincideix quan algun element coincideix. Les zones dinàmiques només es filtren per
+`__component`. Consulta
+[Components i zones dinàmiques](/ca/concepts/components-and-dynamic-zones/#filtratge).
+
+## Ordenació
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` o `field:asc|desc`; la direcció per defecte és `asc`.
+- Es pot ordenar per qualsevol camp escalar excepte `json` i `blocks`, inclosos els camps del
+  sistema.
+- `relation.field` ordena per un camp d'una relació a un.
+- Els valors buits van al final en les dues direccions, i els empats es desfan per `id`, de
+  manera que les pàgines són estables.
+
+## Paginació
+
+Per pàgines o per desplaçament, no totes dues alhora:
+
+| Paràmetre | Per defecte | Notes |
+| --- | --- | --- |
+| `pagination[page]` | `1` | Des d'1. |
+| `pagination[pageSize]` | `25` (`[api].default_page_size`) | Limitat a `[api].max_page_size` (100). |
+| `pagination[start]` | `0` | Desplaçament. |
+| `pagination[limit]` | `25` | Limitat al màxim; `-1` demana el màxim. |
+| `pagination[withCount]` | `true` | `false` no fa el recompte i deixa fora `total` i `pageCount`. |
+
+El `meta.pagination` de la resposta segueix el mode que has fet servir:
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## Camps
+
+`fields` selecciona atributs escalars:
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id` i `documentId` sempre es retornen. Les relacions, els mitjans, els components i les zones
+dinàmiques mai no se seleccionen amb `fields`: fes servir `populate`.
+
+## Populate
+
+Les relacions, els mitjans, els components i les zones dinàmiques només es retornen quan es
+poblen:
+
+| Forma | Pobla |
+| --- | --- |
+| `populate=*` | Totes les relacions, camps de multimèdia, components i zones dinàmiques, un nivell |
+| `populate=category,tags` o `populate[0]=category&populate[1]=tags` | Els camps indicats |
+| `populate[category]=true` | El camp indicat (`false` el deixa fora) |
+| `populate[category][fields][0]=name` | El camp, amb opcions |
+
+Cada relació poblada accepta `fields`, `filters`, `sort`, `populate` (imbricat, fins a 5 nivells
+en total) i `count`:
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- Una relació a un és un objecte o `null`; una relació a molts és un array, en l'ordre dels
+  enllaços o en l'ordre del `sort` del populate.
+- `count=true` retorna `{ "count": 12 }` en lloc dels documents (només relacions a molts).
+- Es retornen com a màxim 1.000 documents relacionats per document i relació; `count` és exacte.
+- Els components i les zones dinàmiques tornen sencers, amb els components imbricats i les seves
+  relacions i mitjans inclosos. Les opcions per nivell de Strapi per a aquests
+  (`populate[blocks][on][…]`) s'accepten i s'ignoren.
+- Els camps de multimèdia tornen com a objectes de fitxer.
+- Les relacions polimòrfiques només accepten `count`.
+- Els documents relacionats es llegeixen en el mateix estat i idioma que el document. Poblar un
+  tipus que el client no pot llegir és un `400`; `populate=*` l'omet.
+
+Cada nivell és una consulta agrupada per relació, de manera que els populate profunds continuen
+sent ràpids i mai no retornen files duplicades.
+
+## Estat
+
+Als tipus amb esborrany i publicació, `status` tria la versió:
+
+- `status=published` (per defecte) llegeix les versions publicades.
+- `status=draft` llegeix els esborranys i necessita el permís `readDrafts` a més de `find` o
+  `findOne`.
+
+`hasPublishedVersion=true|false` conserva els documents que tenen, o que no tenen, una versió
+publicada: `?status=draft&hasPublishedVersion=false` llista els documents que no s'han publicat
+mai. És un `400` als tipus sense esborrany i publicació.
+
+En les escriptures, `status=draft` desa l'esborrany sense publicar-lo. Consulta
+[Esborrany i publicació](/ca/concepts/draft-and-publish/).
+
+## Idioma
+
+`locale=fr` llegeix i escriu la versió francesa dels tipus localitzats. Sense aquest paràmetre,
+les peticions fan servir l'idioma per defecte. Un codi no vàlid o desconegut és un `400`. Els
+tipus no localitzats l'ignoren. Consulta [Internacionalització](/ca/concepts/internationalization/).
+
+## Cerca
+
+`_q` troba els documents els camps de text dels quals contenen les paraules, sense distingir
+majúscules (com a màxim 200 caràcters):
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+Sense índex de cerca, com a Strapi, coincideix amb qualsevol camp `string`, `text`, `richtext`,
+`email`, `uid` o `enumeration` que no sigui privat. Amb `[search] enabled = true`, els resultats
+s'ordenen per rellevància tret que passis `sort`. Els altres filtres i la paginació continuen
+aplicant-se. Consulta [Cerca](/ca/guides/content/search/).
+
+## Respostes
+
+Una llista:
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+Un document: `{ "data": { … }, "meta": {} }`.
+
+- Els documents són plans, com a Strapi v5: sense l'embolcall `attributes`.
+- Els atributs vénen en l'ordre de l'esquema, entre `id`/`documentId` i les marques de temps; els
+  tipus localitzats hi afegeixen `locale`. Els camps `private` no apareixen mai.
+- Els valors `biginteger` són cadenes. Els valors `decimal` són nombres, arrodonits a la seva
+  escala (cadenes amb `[api].decimal_as_string = true`). Les dates són `YYYY-MM-DD`, les hores
+  `HH:MM:SS.mmm` i les dates i hores `YYYY-MM-DDTHH:MM:SS.mmmZ` en UTC.
+
+Les lectures correctes porten un `ETag`; torna'l a enviar a `If-None-Match` per obtenir
+`304 Not Modified`. També porten les capçaleres `Cache-Tag` i `Surrogate-Key` per a les purgues
+de CDN (consulta [Desplegaments i CDN](/ca/guides/integrations/deploys-and-cdn/)).
+
+## Errors
+
+Els errors tenen la forma de Strapi:
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| Estat | `name` | Quan |
+| --- | --- | --- |
+| `400` | `ValidationError` | Paràmetres, cos o contingut no vàlids. `details.errors` llista els problemes de contingut amb el seu camí. |
+| `401` | `UnauthorizedError` | Token mal format, desconegut o caducat. |
+| `403` | `ForbiddenError` | El client no té el permís (per als esborranys, `readDrafts`). |
+| `404` | `NotFoundError` | Ruta, tipus de contingut o document desconeguts. |
+| `405` | `MethodNotAllowedError` | `POST` sobre un tipus únic, o `PUT` o `DELETE` sobre la ruta d'un tipus de col·lecció. |
+| `408` | | La petició ha trigat més de `[server].request_timeout_secs` (30 s). |
+| `413` | | El cos és més gran que `[server].body_limit` (1 MB). |
+| `429` | `RateLimitError` | S'ha superat `[api].public_rate_limit` o `[api].token_rate_limit`. `Retry-After` indica quan tornar-ho a provar. |
+| `500` | `ApplicationError` | Un error inesperat; els detalls només són al registre del servidor. |
+
+## Límits
+
+| Límit | Valor |
+| --- | --- |
+| Mida de pàgina | `[api].max_page_size`, 100 per defecte |
+| Profunditat de populate | 5 nivells |
+| Documents relacionats per document i relació | 1.000 |
+| Condicions de filtre | 100 |
+| Imbricació de claudàtors en un paràmetre | 12 nivells |
+| Paràmetres per petició | 1.000 |
+| Cadena de consulta | 16 KB |
+| `_q` | 200 caràcters |
+
+Només les mides de pàgina són configurables. Tots els noms de camp de `filters`, `sort`, `fields`
+i `populate` es comproven contra l'esquema, i els valors sempre s'enllacen com a paràmetres SQL.
+
+## Mediateca
+
+Les rutes de pujada de Strapi, comprovades amb els permisos de **Mediateca**. Responen objectes i
+arrays simples, sense `data`, com Strapi:
+
+| Ruta | Permís | Cos o paràmetres |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart: `files` (fins a 20), JSON `fileInfo` opcional (`name`, `alternativeText`, `caption`, `folder`, `focalPoint`), un per fitxer o un per a tots |
+| `POST /api/upload?id={id}` | `update` | `fileInfo` multipart i, opcionalment, un fitxer nou que en substitueix el contingut |
+| `GET /api/upload/files` | `find` | `pagination[page]`, `pagination[pageSize]`, `sort`, `filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+Consulta [Multimèdia](/ca/concepts/media/).
+
+## Altres rutes sota el prefix
+
+| Rutes | Pàgina |
+| --- | --- |
+| `/api/auth/*`, `/api/users/*`, `/api/connect/*` | [Usuaris finals](/ca/guides/auth/end-users/) (quan la funcionalitat està activada) |
+| `/api/_events` | [API de temps real](/ca/api/realtime/) (quan la funcionalitat està activada) |
+| `/api/_redirects`, `/api/_menus/{slug}`, `/api/_forms/{slug}` | [Redireccions](/ca/guides/frontend/redirects/), [Menús](/ca/guides/frontend/menus/), [Formularis](/ca/guides/frontend/forms/) |
+| `/api/_openapi.json`, `/api/docs` | El document OpenAPI (només tokens d'API, tret que es faci públic a **Configuració → Funcionalitats → Documentació de l’API**) i la seva referència interactiva (quan és públic) |
+| `/api/plugins/{name}/*` | Rutes dels [connectors](/ca/extending/plugins/) |

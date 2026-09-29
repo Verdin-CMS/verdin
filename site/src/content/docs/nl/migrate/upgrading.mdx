@@ -1,0 +1,224 @@
+---
+title: Verdin upgraden
+description: Upgrade een Verdin-installatie — de binary of het Docker-image, de migraties die bij het starten draaien, en de opvallende of brekende wijzigingen van elke minorversie.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+Deze pagina legt uit hoe je een project naar een nieuwere versie van Verdin brengt, en somt op wat
+er tussen minorversies is veranderd. Verdin volgt [Semantic Versioning](https://semver.org/) met
+een 0.x-draai: tot 1.0 kan een **minor** release (0.8 → 0.9) gedrag veranderen, en een **patch**
+release (0.9.0 → 0.9.1) bevat alleen fixes en verharding.
+
+## Voordat je upgradet
+
+1. **Lees de changelog** van je versie tot de nieuwe: de [changelog](/nl/project/changelog/)
+   somt elke wijziging op, en de [notities hieronder](#upgradenotities) vatten de wijzigingen samen
+   die actie vereisen.
+2. **Maak een back-up** van de database en de mediaopslag (zie [Back-ups](/nl/deploy/backups/)).
+   Teruggaan naar een oudere versie betekent die back-up terugzetten: oudere versies draaien de
+   tabellen en kolommen die een nieuwere heeft toegevoegd niet terug.
+3. **Probeer het op een kopie** van productie als de notities gedrag noemen waar je frontend of je
+   redacteuren op vertrouwen.
+
+Je kunt versies overslaan. Migraties worden berekend uit het verschil tussen de database en wat de
+nieuwe versie verwacht, niet release voor release opnieuw afgespeeld, dus 0.6 → 0.9 migreert in
+één run. Lees de notities van elke versie daartussen.
+
+## Upgraden
+
+<Tabs syncKey="install">
+<TabItem label="Docker">
+
+<Steps>
+
+1. Wijzig de image-tag in je Compose-bestand, manifest of `Dockerfile`, bijvoorbeeld
+   `ghcr.io/verdin-cms/verdin:0.10` → `ghcr.io/verdin-cms/verdin:0.11`. Een minortag (`0.10`) volgt
+   zijn patchreleases; pin een volledige versie (`0.10.0`) om ook zelf te bepalen wanneer die
+   binnenkomen.
+
+2. Haal het image op en herstart:
+
+   ```sh frame="terminal"
+   docker compose pull verdin
+   docker compose up -d verdin
+   docker compose logs -f verdin
+   ```
+
+   Het standaardcommando van het image, `start --migrate`, past de migraties van de nieuwe versie
+   toe voordat het serveert. Zoek naar `applied migrations` en `verdin listening` in de logs.
+
+</Steps>
+
+</TabItem>
+<TabItem label="Binary">
+
+<Steps>
+
+1. Download het archief voor je platform van de
+   [releasepagina](https://github.com/Verdin-CMS/verdin/releases), bijvoorbeeld
+   `verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz`, en controleer het tegen de `SHA256SUMS` van
+   de release:
+
+   ```sh frame="terminal"
+   sha256sum --ignore-missing -c SHA256SUMS
+   tar xzf verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz
+   ```
+
+2. Stop de server, vervang de binary `verdin`, en controleer de versie:
+
+   ```sh frame="terminal"
+   verdin version
+   ```
+
+3. Bekijk de migraties en pas ze toe vanuit de projectmap:
+
+   ```sh frame="terminal"
+   verdin migrate plan
+   verdin migrate apply
+   ```
+
+   Of start met `verdin start --migrate`, dat eerst de veilige stappen toepast.
+
+4. Start de server zoals gewoonlijk (`verdin start`).
+
+</Steps>
+
+</TabItem>
+</Tabs>
+
+## Migraties bij het starten
+
+Een nieuwe versie voegt vaak eigen tabellen of kolommen toe (sessies, instellingen, nieuwe
+functies). `verdin start` vergelijkt de database met wat het schema en de nieuwe versie nodig
+hebben:
+
+- Als ze overeenkomen, start het.
+- Als er stappen openstaan, weigert het te starten en zegt het dat je `verdin migrate plan` en
+  `verdin migrate apply` moet draaien, of met `--migrate` moet starten.
+- `--migrate` past alleen **veilige** stappen toe. Als een stap riskant of destructief is, mislukt
+  het starten en pas je hem zelf toe met `verdin migrate apply --allow risky` (of `destructive`)
+  nadat je het plan hebt gelezen.
+- Op MySQL en MariaDB, waar schemawijzigingen niet in een transactie kunnen draaien, gaat een
+  onderbroken migratie bij de volgende `verdin migrate apply` verder vanaf de mislukte stap.
+
+Met meerdere instanties werkt een rolling upgrade: de eerste nieuwe instantie neemt de
+migratielock en migreert, de andere wachten erop en vinden daarna niets meer te doen. Zie
+[Meerdere instanties draaien](/nl/deploy/scaling/).
+
+<Aside type="caution">
+Upgrade het hele project naar één versie. Laat instanties van twee minorversies niet langer naast
+elkaar draaien dan een rolling deploy duurt.
+</Aside>
+
+## Upgradenotities
+
+Opvallende en brekende wijzigingen per versie, oudste als laatste. De
+[changelog](/nl/project/changelog/) heeft de volledige lijst.
+
+### 0.9.1 → 0.10
+
+Geen databasemigratie. De documentatie is verhuisd van `docs/` naar deze site.
+
+- **Webhook-afnemers van `review-workflows.updateEntryStage`**: `model` is nu de naam in het
+  enkelvoud (`article`), zoals bij item-events, en de uid is verhuisd naar `uid`. Lees `uid`
+  waar je `model` gebruikte.
+- **Genereer je TypeScript-types opnieuw** met `verdin types`: `Collections` en `Singles` zijn nu
+  type-aliassen, wat `createClient<VerdinSchema>` nodig heeft.
+- **Docker**: het image bewaart de transformatiecache en de zoekindex in `/data` en linkt
+  `/app/public/uploads` naar `/data/uploads`. Als je `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR` of
+  `VERDIN_SEARCH__DIR` alleen instelde om de alleen-lezen `/app` te omzeilen, kun je ze weghalen.
+  Het image heeft een `HEALTHCHECK`.
+- **CDN**: responses bevatten de tags van de types die ze kunnen populeren, dus purges verversen
+  meer van de cache dan voorheen; je hoeft niets te veranderen.
+- Relatievelden in het beheerpaneel koppelen items via een dialoogvenster
+  (**Een item koppelen**) in plaats van een ingebouwd zoekvak.
+
+### 0.9.0 → 0.9.1
+
+Een verhardingsrelease; upgraden wordt voor elke installatie aanbevolen. De migratie ervan (één
+nieuwe tabel, twee nieuwe kolommen) draait bij het starten.
+
+- **Stel achter een reverse proxy `[server].trusted_proxies` in.** Alleen de `X-Forwarded-For` van
+  vermelde proxy's wordt voor het clientadres gebruikt; anders delen alle clients achter de proxy
+  één adres voor rate limits en auditlogs.
+- **Browserfrontends op een andere origin hebben `[api].cors_origins` nodig.** 0.9.1 voegt CORS toe
+  aan de content-API en GraphQL; daarvoor was er geen ondersteuning voor CORS.
+- **Leesacties via relaties volgen de rechten.** `populate`, relatiefilters en sorteringen op
+  relaties bereiken op elke API alleen de types en velden die de aanroeper mag lezen. Openbare
+  requests en requests met een token die types populeerden waarop ze geen grant `find` hadden,
+  krijgen nu minder gegevens: verleen de ontbrekende rechten.
+- **SSO is strenger.** De instellingen ervan vereisen een Super Admin; `defaultRoles` en `roleMap`
+  kunnen geen Super Admin toekennen; de claim `email_verified` van de provider moet true zijn
+  (tenzij `trustUnverifiedEmail`); de tweede factor van beheerders geldt, tenzij de provider
+  daarvoor wordt vertrouwd (`providerMfa`); de issuer en het tokenendpoint moeten openbare
+  `https`-URL's zijn. Controleer je SSO-logins na het upgraden.
+- **Super Admins** kunnen alleen door een andere Super Admin worden aangemaakt, bewerkt,
+  verwijderd, opnieuw uitgenodigd of gereset.
+- **Eindgebruikersaccounts worden vergrendeld** na herhaaldelijk verkeerde wachtwoorden, net als
+  beheerdersaccounts.
+- Gepopuleerde relaties geven hoogstens 1.000 items per item en relatie terug.
+- Zoekindexen worden bij de eerste start opnieuw opgebouwd (privévelden van componenten worden niet
+  meer geïndexeerd).
+
+### 0.8 → 0.9
+
+- Het zoekvak van de beheerlijst doorzoekt elk tekstveld (`_q`) in plaats van de titel.
+- Nieuwe beheerdersrechten `deploy.manage`, `deploy.trigger` en `site.manage`; Editors krijgen
+  `deploy.trigger` en `site.manage`.
+- Nieuwe optionele functies (realtime, opmerkingen en taken, AI-acties, SEO en sitemap,
+  redirects, menu's, formulieren) staan uit totdat je ze aanzet. Metrics vereisen
+  `[metrics].enabled = true`.
+
+### 0.7 → 0.8
+
+- **Voorwaardelijke velden worden toegepast**: een veld dat door zijn `conditions` wordt
+  verborgen, is niet meer verplicht. Content die erop vertrouwde dat zo'n veld verplicht was, kan
+  nu zonder worden opgeslagen.
+- Nieuw attribuuttype `password`; `verdin import strapi` importeert nu de wachtwoordvelden van
+  Strapi.
+
+### 0.7.0 → 0.7.1
+
+- De pluginruntime gaat naar Wasmtime 48. Bestaande plugins blijven werken zonder opnieuw te
+  bouwen.
+- Bouwen vanuit de broncode vereist Rust 1.95 of later.
+
+### 0.6 → 0.7
+
+- **Meerdere instanties**: elke instantie leest instellingen die de andere hebben gewijzigd elke
+  `[server].sync_interval_secs` (10 s). Als je er meer dan één draait, stel dan
+  `[plugins].run_jobs = false` in op alle instanties op één na.
+- Content die plugins via de host schrijven, gaat nu door de controles vóór het schrijven van het
+  platform, zoals fasen van reviewworkflows. De eigen before-write-hooks van plugins worden voor
+  deze schrijfacties nog steeds overgeslagen, zodat een plugin zichzelf niet kan triggeren.
+
+### 0.5 → 0.6
+
+- **Auditlogs** staan standaard aan en bewaren regels gedurende `[audit].retention_days` (90). Zet
+  de functie uit in **Instellingen → Functies** als je ze niet wilt.
+
+### 0.4 → 0.5
+
+- Niets te wijzigen. Plugins worden geladen vanuit `[plugins].path` (`plugins/`) en blijven uit
+  totdat ze worden aangezet.
+
+### 0.3 → 0.4
+
+- **`auth`, `users` en `connect` zijn gereserveerde routenamen**, samen met `upload` en
+  `uploads`: hernoem contenttypes waarvan de API-naam een daarvan is voordat je upgradet.
+
+### 0.2 → 0.3
+
+- Attribuutnamen volgen de regel van Strapi (een letter, gevolgd door letters, cijfers en
+  underscores) in plaats van alleen camelCase. Twee namen die op dezelfde kolom uitkomen, worden
+  geweigerd.
+- Opties `regex` accepteren patronen zoals in JavaScript.
+
+### 0.1 → 0.2
+
+- Limieten op de bodygrootte en time-outs gelden per API-router; uploads hebben hun eigen limieten
+  (`[upload].max_file_size`).
+- Ingebouwde rollen van bestaande installaties krijgen de nieuwe rechten één keer.

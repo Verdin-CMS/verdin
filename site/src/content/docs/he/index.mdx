@@ -1,0 +1,96 @@
+---
+title: Verdin — ה-CMS ה-headless שצומח על Rust
+description: CMS headless בקוד פתוח שנכתב ב-Rust. APIs תואמים ל-Strapi v5, קובץ בינארי יחיד, PostgreSQL, MySQL, MariaDB ו-SQLite.
+template: splash
+editUrl: false
+tableOfContents: false
+lastUpdated: false
+hero:
+  title: ה-CMS ה-headless שצומח על <span class="metal">Rust</span>.
+  tagline: APIs תואמים ל-Strapi v5 ופאנל ניהול לעורכים שלכם, בקובץ בינארי אחד של כ-25 MB. קוד פתוח ומלא — אין מהדורת Enterprise.
+  actions:
+    - text: מתחילים
+      link: /he/start/quickstart/
+      icon: right-arrow
+    - text: מגיעים מ-Strapi
+      link: /he/migrate/from-strapi/
+      variant: minimal
+---
+
+import { Card, CardGrid, Code, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Nameplate from '../../../components/landing/Nameplate.astro';
+
+<Nameplate />
+
+## מ-Strapi בשלוש פקודות
+
+ייצאו את פרויקט ה-Strapi, ייבאו אותו לפרויקט Verdin חדש, הפעילו אותו. סוגי התוכן, הרשומות עם
+הטיוטות והשפות שלהן, הקשרים וספריית המדיה עוברים; API התוכן שומר על המבנה שלו, כך שהפרונטאנד
+ממשיך לעבוד.
+
+```sh title="Terminal"
+npx strapi export --no-encrypt -f my-export        # בפרויקט ה-Strapi
+verdin new my-site && cd my-site && verdin import strapi ../my-export.tar.gz
+verdin dev                                         # http://localhost:1337/admin
+```
+
+<LinkCard
+  title="ייבוא פרויקט Strapi"
+  description="מה מיובא, מפת המזהים, ומה לבדוק אחר כך."
+  href="/he/migrate/from-strapi/"
+/>
+
+## קראו את התוכן שלכם כמו שאתם כבר עושים
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+    ```sh
+    curl 'localhost:1337/api/articles?filters[title][$containsi]=rust&populate=category&sort=publishedAt:desc'
+    ```
+  </TabItem>
+  <TabItem label="GraphQL">
+    ```graphql
+    query {
+      articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"]) {
+        documentId
+        title
+        category { name }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```ts
+    import { createClient } from '@verdin/client';
+    import type { VerdinSchema } from './verdin-types'; // verdin types -o src/verdin-types.ts
+
+    const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+    const { data } = await verdin.collection('articles').find({
+      filters: { title: { $containsi: 'rust' } },
+      populate: { category: true },
+      sort: ['publishedAt:desc'],
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## מה מקבלים עורכים ומפתחים
+
+<CardGrid>
+  <Card title="סכמה בקבצים, הגירות שאפשר לקרוא" icon="document">
+    סוגי התוכן הם קובצי JSON בפורמט של Strapi, שנשמרים ב-git. כל שינוי סכמה הופך לתוכנית
+    הגירה עם רמת סיכון וה-SQL המדויק לפני שהיא רצה.
+  </Card>
+  <Card title="פאנל ניהול שעורכים אוהבים" icon="pencil">
+    טיוטות ופרסום, היסטוריית תוכן, מהדורות, תהליכי בקרה, תגובות ונוכחות חיה, עריכה חזותית
+    באתר שלכם — ב-18 שפות.
+  </Card>
+  <Card title="אבטחה שאינה תוספת בתשלום" icon="approve-check">
+    SSO, התחברות דו-שלבית עם מפתחות גישה, תפקידים עד רמת השדות והשפות, יומני ביקורת ואסימוני
+    API, הכול בפרויקט הקוד הפתוח.
+  </Card>
+  <Card title="הרחיבו אותו בבטחה" icon="puzzle">
+    תוספי WebAssembly מתחברים לכתיבות, מוסיפים נתיבים, משימות וווידג'טים לפאנל הניהול, ומגיעים
+    רק למה שהם מצהירים עליו.
+  </Card>
+</CardGrid>

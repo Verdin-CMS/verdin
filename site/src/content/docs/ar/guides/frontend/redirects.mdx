@@ -1,0 +1,116 @@
+---
+title: إعادات التوجيه
+description: احتفظ بقائمة إعادات التوجيه في لوحة الإدارة وطبّقها في الـ middleware الخاص بموقعك.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+تتيح ميزة **إعادات التوجيه** للمحررين توجيه المسارات القديمة إلى جديدة دون عملية نشر: فهم
+يحتفظون بالقائمة في لوحة الإدارة، ويجلبها موقعك ويجيب بإعادة التوجيه.
+لا يعيد Verdin توجيه الزوار بنفسه، لأنهم يصلون إلى موقعك، لا إلى نظام إدارة المحتوى.
+
+## فعّلها
+
+في **الإعدادات ← الميزات**، فعّل **إعادات التوجيه**، ثم اختر **إدارة إعادات التوجيه** (أو انتقل
+إلى **الإعدادات ← إعادات التوجيه**). تتطلب إدارة إعادات التوجيه الصلاحية **إدارة SEO وإعادات التوجيه والقوائم
+والنماذج** (`site.manage`)، التي يملكها الدور المدمج Editor. راجع
+[الصلاحيات](/ar/reference/permissions/).
+
+## أضف إعادات توجيه
+
+<Steps>
+
+1. في **الإعدادات ← إعادات التوجيه**، اختر **إضافة إعادة توجيه**.
+2. **من**: المسار القديم، يبدأ بـ `/` (مثلًا `/blog/2024/hello`).
+3. **إلى**: المسار الجديد، أو عنوان URL كامل من نوع `http(s)` على موقع آخر.
+4. **النوع**: **301 · دائم**، أو **302 · مؤقت**، أو **307 · مؤقت (يحافظ على الطريقة)**
+   أو **308 · دائم (يحافظ على الطريقة)**.
+5. احفظ.
+
+</Steps>
+
+يرفض Verdin إعادة التوجيه التي لن تعمل أبدًا:
+
+- إعادة توجيه ثانية من المسار نفسه؛
+- مسار يعيد التوجيه إلى نفسه؛
+- سلسلة تدور في حلقة (`/a` ← `/b` ← `/a`).
+
+لإعادات توجيه كثيرة دفعة واحدة، استخدم **استيراد CSV** بأعمدة `source` و`destination` و`status`.
+الصفوف التي يوجد مصدرها بالفعل تحدّث إعادة التوجيه تلك. يكتب **تصدير CSV**
+الصيغة نفسها، وهو مفيد للترحيل من نظام إدارة محتوى آخر أو للمراجعة في جدول بيانات.
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## طبّقها على موقعك
+
+تقرأ المواقع القائمة من `GET /api/_redirects`، دون رمز:
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+تُرسل الاستجابة مع `Cache-Control: public, max-age=60`، فيصل التغيير إلى المواقع
+خلال دقيقة تقريبًا. طابِق مسار الطلب مع `source` تمامًا:
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+لموقع ثابت، اجلب القائمة وقت البناء واكتب ملف إعادة التوجيه الخاص بمضيفك
+(`_redirects` في Netlify، و`vercel.json` في Vercel، وmap في nginx). اجمع ذلك مع
+[زر نشر](/ar/guides/integrations/deploys-and-cdn/) أو [webhook](/ar/guides/integrations/webhooks/)
+حتى يتمكن المحررون من إعادة البناء بعد تغيير إعادات التوجيه.
+
+<Aside type="note">
+تتبع بادئة الـ API الإعداد [`[api].prefix`](/ar/reference/configuration/). مع تعطيل الميزة،
+يجيب `/api/_redirects` بـ `404`.
+</Aside>
+
+## API الإدارة
+
+تستخدم لوحة الإدارة `/admin/api/site/redirects` (`GET`، `POST`) و
+`/admin/api/site/redirects/{id}` (`PUT`، `DELETE`)، مع رمز وصول لمسؤول و
+`site.manage`. راجع [API الإدارة](/ar/api/admin/).

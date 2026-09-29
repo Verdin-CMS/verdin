@@ -1,0 +1,423 @@
+---
+title: "REST API"
+description: "Verdin 与 Strapi v5 兼容的 REST API：路由、查询参数（filters、sort、pagination、fields、populate、locale、status）、请求体、响应、错误和限制。"
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+每个内容类型都会在内容 API 前缀（默认为 `/api`，即 `[api].prefix`）下获得 REST 路由。路由、参数和响应格式遵循 Strapi v5，因此大多数为 Strapi 编写的前端无需改动即可使用。本页是参考文档，示例基于[博客示例](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)（文章、分类、标签和一个首页）。
+
+服务器还会在 `GET /api/_openapi.json` 以 OpenAPI 3.1 文档的形式描述*你的* schema 的路由。[示例内容 API](/api/example/) 页面渲染的是博客示例的文档，[API 调试台](/zh-cn/api/playground/)则可以让你试着发送请求。
+
+## 示例
+
+用每种 API 实现同一个查询：某个分类下最新的十篇文章，并附带其分类名称。
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+参见 [GraphQL API](/zh-cn/api/graphql/) 和[类型化客户端](/zh-cn/guides/frontend/typed-client/)。
+
+## 身份验证
+
+| `Authorization` 请求头 | 调用方 | 权限 |
+| --- | --- | --- |
+| 无 | 公开 | **设置 → 公开访问** |
+| `Bearer vd_…` | API 令牌 | 令牌的类型和授权 |
+| `Bearer <JWT>` | 终端用户 | 其终端用户角色 |
+
+未知、过期或格式错误的令牌返回 `401`；它绝不会回退为公开访问。有效的调用方如果缺少授权，会收到 `403`。参见[权限](/zh-cn/concepts/permissions/)。
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+来自其他源的浏览器只有在 `[api].cors_origins` 中列出时才能调用该 API。
+
+## 路由
+
+集合类型以其 `pluralName` 提供服务：
+
+| 方法和路径 | 操作 | 响应 |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`，一页文档 |
+| `GET /api/articles/{documentId}` | `findOne` | `200`，一个文档 |
+| `POST /api/articles` | `create` | `201`，创建的文档 |
+| `PUT /api/articles/{documentId}` | `update` | `200`，更新后的文档 |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`，无响应体 |
+
+单一类型以其 `singularName` 提供服务：
+
+| 方法和路径 | 操作 | 响应 |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200`，首次写入之前为 `404` |
+| `PUT /api/homepage` | `update` | `200`；第一次 `PUT` 会创建该文档 |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+对单一类型发送 `POST` 会返回 `405`。
+
+### 操作
+
+启用了[草稿与发布](/zh-cn/concepts/draft-and-publish/)的类型还有三个路由，需要 `publish` 授权。Strapi 没有对应的 REST 路由。
+
+| 方法和路径 | 作用 | 响应 |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | 发布草稿。 | 已发布的版本 |
+| `POST /api/articles/{documentId}/actions/unpublish` | 删除已发布的版本。 | 草稿 |
+| `POST /api/articles/{documentId}/actions/discard-draft` | 用已发布的版本替换草稿。 | 草稿 |
+
+在本地化类型上，这三个路由都接受 `?locale=`。
+
+## 写入
+
+`POST` 和 `PUT` 接受一个带有 `data` 对象的 JSON 请求体：
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` 是部分更新：未提供的属性保持原值。发送的组件和动态区域会替换已存储的值。
+- 在启用草稿与发布的类型上，与 Strapi v5 一样，`POST` 和 `PUT` 会写入草稿**并将其发布**。加上 `?status=draft` 则只写入草稿。如果发布未通过校验，则什么都不会写入。
+- 未知的键、系统字段（`id`、`documentId`、时间戳）以及关联的反向（`mappedBy`）一侧都会导致校验错误。
+- 关联接受 `documentId`、列表、`null` 或 `{ connect, disconnect, set }`；参见[关联](/zh-cn/concepts/relations/#写入)。媒体字段接受文件 id。
+- 响应是写入后的版本，按请求中的 `fields` 和 `populate` 读取。
+- `DELETE` 删除该文档的所有版本（在本地化类型上，删除所请求语言区域的版本）。
+
+## 查询参数
+
+| 参数 | 示例 | 默认值 |
+| --- | --- | --- |
+| [`filters`](#过滤) | `filters[title][$containsi]=rust` | 无 |
+| [`sort`](#排序) | `sort=publishedAt:desc` | 按 `id` 升序 |
+| [`pagination`](#分页) | `pagination[page]=2&pagination[pageSize]=10` | 第 1 页，每页 25 条 |
+| [`fields`](#字段) | `fields[0]=title&fields[1]=slug` | 所有标量字段 |
+| [`populate`](#populate) | `populate[category][fields][0]=name` | 无 |
+| [`status`](#状态) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#状态) | `hasPublishedVersion=false` | 无 |
+| [`locale`](#语言区域) | `locale=fr` | 默认语言区域 |
+| [`_q`](#搜索) | `_q=ownership` | 无 |
+
+参数使用 Strapi 的方括号写法。列表可以带索引（`sort[0]=a&sort[1]=b`）、用空方括号（`sort[]=a`），或者重复同一个键（`sort=a&sort=b`）。方括号和值按 URL 的常规方式编码；[`qs`](https://github.com/ljharb/qs) 或[类型化客户端](/zh-cn/guides/frontend/typed-client/)等客户端会替你生成这些字符串。
+
+未知参数、未知或 `private` 字段，以及格式错误的值，都会返回指明问题所在的 `400` `ValidationError`。不会有任何内容被静默忽略。
+
+## 过滤
+
+`filters[field][operator]=value`。只写值表示 `$eq`：`filters[slug]=hello-verdin`。
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+同一层级的多个条件必须全部满足。可以用逻辑运算符组合它们：
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| 运算符 | 匹配 | 类型 |
+| --- | --- | --- |
+| `$eq`、`$ne` | 等于、不等于 | 所有标量 |
+| `$eqi`、`$nei` | 等于、不等于，忽略大小写 | 文本 |
+| `$lt`、`$lte`、`$gt`、`$gte` | 小于、小于等于、大于、大于等于 | 除布尔值外的所有标量 |
+| `$between` | 介于两个值之间（含边界）：`[$between][0]=1&[$between][1]=5` | 除布尔值外的所有标量 |
+| `$in`、`$notIn` | 在列表中、不在列表中：`[$in][0]=a&[$in][1]=b` | 所有标量 |
+| `$contains`、`$notContains` | 包含、不包含 | 文本 |
+| `$containsi`、`$notContainsi` | 同上，忽略大小写 | 文本 |
+| `$startsWith`、`$startsWithi` | 以……开头（忽略大小写） | 文本 |
+| `$endsWith`、`$endsWithi` | 以……结尾（忽略大小写） | 文本 |
+| `$null`、`$notNull` | 为空、已设置：`[$null]=true` | 所有字段 |
+| `$and`、`$or` | 列表中的所有条件、某个条件 | 逻辑 |
+| `$not` | 对一个过滤对象取反 | 逻辑 |
+
+- 文本类型包括 `string`、`text`、`richtext`、`email`、`uid` 和 `enumeration`。`json` 和 `blocks` 只接受 `$null` 和 `$notNull`。
+- 值会被转换为字段的类型：整数、数字、`true`/`false`（或 `1`/`0`）、`YYYY-MM-DD` 格式的日期、`HH:MM:SS` 格式的时间、ISO 8601 格式的日期时间。
+- 可以按 `id`、`documentId`、`createdAt`、`updatedAt`、`publishedAt` 过滤，在本地化类型上还可以按 `locale` 过滤。
+- 文本比较在所有数据库上的行为一致：`$eq`、`$contains` 以及其他不带 `i` 的运算符都是精确匹配，`…i` 变体忽略大小写（在 MySQL 和 MariaDB 上还会忽略重音；SQLite 只对 ASCII 字母做大小写折叠）。
+- 一个请求最多包含 100 个条件。
+
+### 通过关联过滤
+
+可以按关联文档的字段过滤，关联的任一侧均可，也可以嵌套：
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+对多关联的条件只要有某个关联文档满足即算匹配。关联文档按正在读取的版本和语言区域进行匹配。多态关联和媒体字段不能用于过滤。
+
+### 在组件和动态区域上过滤
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+组件的标量字段（包括嵌套组件中的字段）可以用于过滤；可重复组件只要有某一项满足即算匹配。动态区域只能按 `__component` 过滤。参见[组件和动态区域](/zh-cn/concepts/components-and-dynamic-zones/#过滤)。
+
+## 排序
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` 或 `field:asc|desc`；方向默认为 `asc`。
+- 除 `json` 和 `blocks` 外的任何标量字段都可以排序，包括系统字段。
+- `relation.field` 按对一关联的某个字段排序。
+- 无论哪个方向，空值都排在最后；值相同时按 `id` 排序，因此分页结果是稳定的。
+
+## 分页
+
+基于页码或基于偏移量，二者不能同时使用：
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `pagination[page]` | `1` | 从 1 开始。 |
+| `pagination[pageSize]` | `25`（`[api].default_page_size`） | 上限为 `[api].max_page_size`（100）。 |
+| `pagination[start]` | `0` | 偏移量。 |
+| `pagination[limit]` | `25` | 上限为最大值；`-1` 表示取最大值。 |
+| `pagination[withCount]` | `true` | `false` 会跳过计数，并省略 `total` 和 `pageCount`。 |
+
+响应中的 `meta.pagination` 与你使用的模式一致：
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## 字段
+
+`fields` 用于选择标量属性：
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id` 和 `documentId` 始终会返回。关联、媒体、组件和动态区域永远不会被 `fields` 选中：请使用 `populate`。
+
+## Populate
+
+关联、媒体、组件和动态区域只有在 populate 时才会返回：
+
+| 写法 | Populate 的内容 |
+| --- | --- |
+| `populate=*` | 所有关联、媒体字段、组件和动态区域，深度一层 |
+| `populate=category,tags` 或 `populate[0]=category&populate[1]=tags` | 指定的字段 |
+| `populate[category]=true` | 指定的字段（`false` 则排除它） |
+| `populate[category][fields][0]=name` | 该字段，并附带选项 |
+
+每个被 populate 的关联都接受 `fields`、`filters`、`sort`、`populate`（嵌套，总共最多 5 层）和 `count`：
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- 对一关联是一个对象或 `null`；对多关联是一个数组，按链接顺序或 populate 中的 `sort` 顺序排列。
+- `count=true` 返回 `{ "count": 12 }` 而不是文档（仅限对多关联）。
+- 每个文档的每个关联最多返回 1,000 个关联文档；`count` 是精确值。
+- 组件和动态区域会完整返回，包括嵌套组件及其关联和媒体。Strapi 针对它们的逐层选项（`populate[blocks][on][…]`）会被接受但忽略。
+- 媒体字段以文件对象的形式返回。
+- 多态关联只接受 `count`。
+- 关联文档以与该文档相同的状态和语言区域读取。populate 调用方无权读取的类型会返回 `400`；`populate=*` 会跳过它。
+
+每一层对每个关联只执行一次批量查询，因此深层 populate 依然很快，也绝不会返回重复的行。
+
+## 状态
+
+在启用草稿与发布的类型上，`status` 用于选择版本：
+
+- `status=published`（默认）读取已发布的版本。
+- `status=draft` 读取草稿，除 `find` 或 `findOne` 外还需要 `readDrafts` 授权。
+
+`hasPublishedVersion=true|false` 保留有或没有已发布版本的文档：`?status=draft&hasPublishedVersion=false` 列出从未发布过的文档。在未启用草稿与发布的类型上使用它会返回 `400`。
+
+写入时，`status=draft` 只保存草稿而不发布。参见[草稿与发布](/zh-cn/concepts/draft-and-publish/)。
+
+## 语言区域
+
+`locale=fr` 读写本地化类型的法语版本。不传时，请求使用默认语言区域。无效或未知的代码返回 `400`。未本地化的类型会忽略它。参见[国际化](/zh-cn/concepts/internationalization/)。
+
+## 搜索
+
+`_q` 查找文本字段中包含这些词的文档，忽略大小写（最多 200 个字符）：
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+没有搜索索引时，它与 Strapi 一样匹配任何非 private 的 `string`、`text`、`richtext`、`email`、`uid` 或 `enumeration` 字段。设置 `[search] enabled = true` 后，除非传入 `sort`，否则结果按相关度排序。其他过滤条件和分页仍然生效。参见[搜索](/zh-cn/guides/content/search/)。
+
+## 响应
+
+列表：
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+单个文档：`{ "data": { … }, "meta": {} }`。
+
+- 与 Strapi v5 一样，文档是扁平的：没有 `attributes` 包裹层。
+- 属性按 schema 中的顺序排列，位于 `id`/`documentId` 与时间戳之间；本地化类型会加上 `locale`。`private` 字段永远不会出现。
+- `biginteger` 值是字符串。`decimal` 值是数字，按其小数位数四舍五入（设置 `[api].decimal_as_string = true` 时为字符串）。日期为 `YYYY-MM-DD`，时间为 `HH:MM:SS.mmm`，日期时间为 UTC 的 `YYYY-MM-DDTHH:MM:SS.mmmZ`。
+
+成功的读取会带有 `ETag`；在 `If-None-Match` 中回传它即可得到 `304 Not Modified`。它们还带有用于 CDN 清除的 `Cache-Tag` 和 `Surrogate-Key` 响应头（参见[部署与 CDN](/zh-cn/guides/integrations/deploys-and-cdn/)）。
+
+## 错误
+
+错误采用 Strapi 的格式：
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| 状态码 | `name` | 何时出现 |
+| --- | --- | --- |
+| `400` | `ValidationError` | 参数、请求体或内容无效。`details.errors` 列出内容问题及其路径。 |
+| `401` | `UnauthorizedError` | 令牌格式错误、未知或已过期。 |
+| `403` | `ForbiddenError` | 调用方缺少授权（草稿需要 `readDrafts`）。 |
+| `404` | `NotFoundError` | 未知的路由、内容类型或文档。 |
+| `405` | `MethodNotAllowedError` | 对单一类型发送 `POST`，或对集合类型的列表路由发送 `PUT` 或 `DELETE`。 |
+| `408` | | 请求耗时超过 `[server].request_timeout_secs`（30 秒）。 |
+| `413` | | 请求体超过 `[server].body_limit`（1 MB）。 |
+| `429` | `RateLimitError` | 超过 `[api].public_rate_limit` 或 `[api].token_rate_limit`。`Retry-After` 说明何时可以重试。 |
+| `500` | `ApplicationError` | 意外错误；详情只记录在服务器日志中。 |
+
+## 限制
+
+| 限制项 | 值 |
+| --- | --- |
+| 每页大小 | `[api].max_page_size`，默认为 100 |
+| Populate 深度 | 5 层 |
+| 每个文档每个关联的关联文档数 | 1,000 |
+| 过滤条件数 | 100 |
+| 单个参数中方括号的嵌套层数 | 12 层 |
+| 每个请求的参数数 | 1,000 |
+| 查询字符串 | 16 KB |
+| `_q` | 200 个字符 |
+
+只有每页大小可以配置。`filters`、`sort`、`fields` 和 `populate` 中的每个字段名都会对照 schema 进行检查，值始终作为 SQL 参数绑定。
+
+## 媒体库
+
+Strapi 的上传路由，按 **媒体库** 授权进行检查。与 Strapi 一样，它们返回普通的对象和数组，不带 `data`：
+
+| 路由 | 授权 | 请求体或参数 |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart：`files`（最多 20 个），可选的 `fileInfo` JSON（`name`、`alternativeText`、`caption`、`folder`、`focalPoint`），每个文件一个或所有文件共用一个 |
+| `POST /api/upload?id={id}` | `update` | Multipart `fileInfo`，以及可选的新文件，用于替换内容 |
+| `GET /api/upload/files` | `find` | `pagination[page]`、`pagination[pageSize]`、`sort`、`filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+参见[媒体](/zh-cn/concepts/media/)。
+
+## 前缀下的其他路由
+
+| 路由 | 页面 |
+| --- | --- |
+| `/api/auth/*`、`/api/users/*`、`/api/connect/*` | [终端用户](/zh-cn/guides/auth/end-users/)（功能开启时） |
+| `/api/_events` | [实时 API](/zh-cn/api/realtime/)（功能开启时） |
+| `/api/_redirects`、`/api/_menus/{slug}`、`/api/_forms/{slug}` | [重定向](/zh-cn/guides/frontend/redirects/)、[菜单](/zh-cn/guides/frontend/menus/)、[表单](/zh-cn/guides/frontend/forms/) |
+| `/api/_openapi.json`、`/api/docs` | OpenAPI 文档（仅限 API 令牌，除非在 **设置 → 功能 → API 文档** 中设为公开）及其交互式参考（公开时） |
+| `/api/plugins/{name}/*` | [插件](/zh-cn/extending/plugins/)的路由 |

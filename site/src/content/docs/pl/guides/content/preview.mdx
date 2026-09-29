@@ -1,0 +1,154 @@
+---
+title: Podgląd
+description: Otwieraj szkice w swojej witrynie z edytora wpisu za pomocą krótkotrwałego tokenu podglądu i spraw, by witryna odczytywała z nim szkic.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Podgląd otwiera szkic wpisu w twojej własnej witrynie, zanim zostanie opublikowany. Edytor
+buduje link z szablonu URL dla każdego typu zawartości i dodaje krótkotrwały token, który
+pozwala twojej witrynie odczytać ten jeden szkic. Ten przewodnik konfiguruje szablony i stronę
+witryny.
+
+Aby klikać tekst w podglądzie i przechodzić do jego pola, dodaj do tego
+[Edycję wizualną](/pl/guides/frontend/visual-editing/).
+
+## Zanim zaczniesz
+
+- Włącz **Ustawienia → Funkcje → Podgląd**. Domyślnie jest wyłączony.
+- Zmiana ustawień funkcji wymaga **Zarządzanie funkcjami** (`features.manage`).
+- Otwarcie podglądu wymaga dostępu do odczytu wpisu. Zobacz
+  [Uprawnienia](/pl/reference/permissions/).
+
+## Skonfiguruj adresy URL podglądu
+
+<Steps>
+
+1. Na karcie **Podgląd** w **Ustawienia → Funkcje** wybierz **Skonfiguruj adresy URL
+   podglądu**.
+2. W sekcji **Szablony adresów URL** wpisz stronę swojej witryny, która pokazuje szkic
+   każdego typu zawartości. Zostaw typ pusty, aby nie miał podglądu.
+3. Opcjonalnie zmień **Ważność linku (minuty)**: domyślnie 60, najwyżej 10080 (7 dni).
+4. Zapisz.
+
+</Steps>
+
+Szablon to URL `http` lub `https` z symbolami zastępczymi w nawiasach klamrowych:
+
+| Symbol zastępczy | Wypełniany przez |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | Dowolne pole najwyższego poziomu szkicu. Nieznane symbole stają się puste. |
+| `{documentId}`, `{uid}` | Identyfikator dokumentu i UID typu zawartości. |
+| `{token}` | Token podglądu. Bez tego symbolu token jest dodawany jako parametr zapytania `preview`. |
+
+Dla artykułów z przykładowego projektu:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+daje `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+Te same ustawienia jako JSON, w postaci zapisywanej przez funkcję
+(`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## Otwórz podgląd
+
+W edytorze wpisu wybierz **Otwórz podgląd**, aby otworzyć szkic w swojej witrynie w nowej
+karcie, albo **Obok siebie**, aby pokazać go w panelu obok formularza, z szerokościami
+**Komputer**, **Tablet** i **Telefon**. Panel boczny przeładowuje się po każdym zapisie. Jeśli
+pozostaje pusty, twoja witryna prawdopodobnie nie pozwala na osadzanie w ramce: użyj
+**Otwórz w nowej karcie**.
+
+## Odczytaj szkic w swojej witrynie
+
+Twoja strona podglądu bierze token z URL i odsyła go do API treści w nagłówku
+`x-verdin-preview`, prosząc o szkic:
+
+<Diagram
+  caption="Żądanie podglądu"
+  code={`sequenceDiagram
+  participant E as Edytor
+  participant V as Verdin
+  participant S as Twoja witryna
+  E->>V: Otwórz podgląd
+  V-->>E: URL z tokenem podglądu
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: szkic`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+Token podglądu jest odczytywany przez API treści REST. Na stronie podglądu pobieraj szkic
+przez REST.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+Ten sam nagłówek działa w pojedynczych typach (`GET /api/<singularName>?status=draft`).
+
+Co daje token:
+
+- Pozwala okazicielowi odczytać ten jeden dokument, łącznie ze szkicami, do czasu wygaśnięcia.
+- Nie może czytać innych dokumentów, listować wpisów ani niczego zapisywać.
+- Odpowiedzi na żądania podglądu nigdy nie są cache'owane.
+
+<Aside type="caution">
+Każdy, kto ma link, może czytać szkic do wygaśnięcia tokenu. Utrzymuj krótki czas ważności
+i nie udostępniaj linków podglądu w miejscach publicznych.
+</Aside>
+
+Twoja strona podglądu zwykle wyszukuje wpis po polu takim jak `slug`. Ponieważ token czyta
+po `documentId`, umieść w szablonie także `{documentId}` albo zachowaj po swojej stronie
+mapowanie sluga na identyfikator.
+
+## API administracyjne
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` zwraca link dla przycisku
+edytora:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+Wymaga dostępu do odczytu wpisu i odpowiada `404`, gdy funkcja jest wyłączona albo typ nie
+ma szablonu.

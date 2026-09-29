@@ -1,0 +1,489 @@
+---
+title: "API REST"
+description: "Routes, paramètres de requête (filters, sort, pagination, fields, populate, locale, status), corps de requête, réponses, erreurs et limites de l’API REST de Verdin, compatible avec Strapi v5."
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+Chaque type de contenu obtient des routes REST sous le préfixe de l’API de contenu, `/api` par
+défaut (`[api].prefix`). Les routes, les paramètres et la forme des réponses suivent Strapi v5,
+si bien que la plupart des frontends écrits pour Strapi fonctionnent sans modification. Cette
+page sert de référence ; les exemples utilisent le
+[blog d’exemple](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) (articles,
+catégories, tags et une page d’accueil).
+
+Le serveur décrit aussi les routes de *votre* schéma dans un document OpenAPI 3.1 à l’adresse
+`GET /api/_openapi.json`. Les pages de l’[API de contenu d’exemple](/api/example/) affichent
+le document du blog, et le [bac à sable de l’API](/fr/api/playground/) vous permet d’essayer des
+requêtes.
+
+## Exemple
+
+La même requête dans chaque API : les dix derniers articles d’une catégorie, avec le nom de
+leur catégorie.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+Voir [API GraphQL](/fr/api/graphql/) et [Client typé](/fr/guides/frontend/typed-client/).
+
+## Authentification
+
+| En-tête `Authorization` | Appelant | Autorisations |
+| --- | --- | --- |
+| aucun | Public | **Paramètres → Accès public** |
+| `Bearer vd_…` | Jeton d’API | Le type et les accès du jeton |
+| `Bearer <JWT>` | Utilisateur final | Son rôle d’utilisateur final |
+
+Un jeton inconnu, expiré ou mal formé donne `401` ; il ne se rabat jamais sur l’accès public.
+Un appelant valide sans l’accès requis reçoit `403`. Voir
+[Autorisations](/fr/concepts/permissions/).
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+Les navigateurs d’autres origines ne peuvent appeler l’API que si `[api].cors_origins` les
+liste.
+
+## Routes
+
+Les types de collection sont servis sous leur `pluralName` :
+
+| Méthode et chemin | Action | Réponse |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`, une page de documents |
+| `GET /api/articles/{documentId}` | `findOne` | `200`, un document |
+| `POST /api/articles` | `create` | `201`, le document créé |
+| `PUT /api/articles/{documentId}` | `update` | `200`, le document mis à jour |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`, sans corps |
+
+Les types uniques sont servis sous leur `singularName` :
+
+| Méthode et chemin | Action | Réponse |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200`, ou `404` avant la première écriture |
+| `PUT /api/homepage` | `update` | `200` ; le premier `PUT` crée le document |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+Un `POST` sur un type unique répond `405`.
+
+### Actions
+
+Les types avec [brouillon et publication](/fr/concepts/draft-and-publish/) ont trois routes
+de plus, qui nécessitent l’accès `publish`. Strapi n’a pas d’équivalent REST.
+
+| Méthode et chemin | Effet | Réponse |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | Publie le brouillon. | La version publiée |
+| `POST /api/articles/{documentId}/actions/unpublish` | Supprime la version publiée. | Le brouillon |
+| `POST /api/articles/{documentId}/actions/discard-draft` | Remplace le brouillon par la version publiée. | Le brouillon |
+
+Les trois acceptent `?locale=` sur les types localisés.
+
+## Écriture
+
+`POST` et `PUT` prennent un corps JSON avec un objet `data` :
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` est une mise à jour partielle : les attributs que vous omettez conservent leur valeur.
+  Les composants et les zones dynamiques que vous envoyez remplacent la valeur stockée.
+- Sur les types avec brouillon et publication, `POST` et `PUT` écrivent le brouillon **et le
+  publient**, comme dans Strapi v5. Ajoutez `?status=draft` pour n’écrire que le brouillon. Si
+  la publication échoue à la validation, rien n’est écrit.
+- Les clés inconnues, les champs système (`id`, `documentId`, horodatages) et les côtés inverses
+  (`mappedBy`) des relations sont des erreurs de validation.
+- Les relations prennent des `documentId`, des listes, `null`, ou `{ connect, disconnect, set }` ;
+  voir [Relations](/fr/concepts/relations/#écriture). Les champs de média prennent des
+  identifiants de fichiers.
+- La réponse est la version écrite, lue avec les `fields` et `populate` de la requête.
+- `DELETE` supprime toutes les versions du document (sur les types localisés, la version dans
+  la langue demandée).
+
+## Paramètres de requête
+
+| Paramètre | Exemple | Valeur par défaut |
+| --- | --- | --- |
+| [`filters`](#filtres) | `filters[title][$containsi]=rust` | aucune |
+| [`sort`](#tri) | `sort=publishedAt:desc` | par `id`, croissant |
+| [`pagination`](#pagination) | `pagination[page]=2&pagination[pageSize]=10` | page 1, 25 par page |
+| [`fields`](#champs) | `fields[0]=title&fields[1]=slug` | tous les champs scalaires |
+| [`populate`](#populate) | `populate[category][fields][0]=name` | rien |
+| [`status`](#statut) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#statut) | `hasPublishedVersion=false` | aucune |
+| [`locale`](#langue) | `locale=fr` | la langue par défaut |
+| [`_q`](#recherche) | `_q=ownership` | aucune |
+
+Les paramètres utilisent la notation à crochets de Strapi. Les listes peuvent s’écrire avec
+des index (`sort[0]=a&sort[1]=b`), avec des crochets vides (`sort[]=a`) ou en répétant la clé
+(`sort=a&sort=b`). Encodez les crochets et les valeurs comme d’habitude dans une URL ; des
+clients comme [`qs`](https://github.com/ljharb/qs) ou le
+[client typé](/fr/guides/frontend/typed-client/) construisent ces chaînes pour vous.
+
+Un paramètre inconnu, un champ inconnu ou `private`, ou une valeur mal formée donne une
+`ValidationError` `400` qui nomme le problème. Rien n’est ignoré silencieusement.
+
+## Filtres
+
+`filters[field][operator]=value`. Une valeur seule signifie `$eq` : `filters[slug]=hello-verdin`.
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+Plusieurs conditions au même niveau doivent toutes être satisfaites. Combinez-les avec des
+opérateurs logiques :
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| Opérateur | Correspond à | Types |
+| --- | --- | --- |
+| `$eq`, `$ne` | Égal, différent | tous les scalaires |
+| `$eqi`, `$nei` | Égal, différent, sans tenir compte de la casse | texte |
+| `$lt`, `$lte`, `$gt`, `$gte` | Inférieur, inférieur ou égal, supérieur, supérieur ou égal | tous les scalaires sauf les booléens |
+| `$between` | Entre deux valeurs, bornes incluses : `[$between][0]=1&[$between][1]=5` | tous les scalaires sauf les booléens |
+| `$in`, `$notIn` | Dans une liste, hors d’une liste : `[$in][0]=a&[$in][1]=b` | tous les scalaires |
+| `$contains`, `$notContains` | Contient, ne contient pas | texte |
+| `$containsi`, `$notContainsi` | Idem, sans tenir compte de la casse | texte |
+| `$startsWith`, `$startsWithi` | Commence par (sans tenir compte de la casse) | texte |
+| `$endsWith`, `$endsWithi` | Se termine par (sans tenir compte de la casse) | texte |
+| `$null`, `$notNull` | Est vide, est renseigné : `[$null]=true` | tous les champs |
+| `$and`, `$or` | Toutes les conditions, au moins une condition d’une liste | logique |
+| `$not` | Inverse un objet de filtre | logique |
+
+- Les types texte sont `string`, `text`, `richtext`, `email`, `uid` et `enumeration`. `json` et
+  `blocks` n’acceptent que `$null` et `$notNull`.
+- Les valeurs sont converties dans le type du champ : entiers, nombres, `true`/`false` (ou
+  `1`/`0`), dates au format `YYYY-MM-DD`, heures au format `HH:MM:SS`, date-heures en ISO 8601.
+- Vous pouvez filtrer sur `id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt` et, sur
+  les types localisés, `locale`.
+- Les comparaisons de texte se comportent de la même façon sur toutes les bases de données :
+  `$eq`, `$contains` et les autres opérateurs sans `i` sont exacts, et les variantes `…i`
+  ignorent la casse (et les accents sur MySQL et MariaDB ; SQLite ne normalise que les lettres
+  ASCII).
+- Une requête comporte au plus 100 conditions.
+
+### Filtrer à travers les relations
+
+Filtrez sur les champs des documents liés, de chaque côté de la relation et de façon
+imbriquée :
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+Une condition sur une relation vers plusieurs documents est satisfaite dès qu’un document lié
+correspond. Les documents liés sont comparés dans la version et la langue en cours de lecture.
+Les relations polymorphes et les champs de média ne peuvent pas être filtrés.
+
+### Filtrer sur les composants et les zones dynamiques
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+Les champs scalaires des composants peuvent être filtrés, y compris ceux des composants
+imbriqués ; un composant répétable correspond dès qu’un de ses éléments correspond. Les zones
+dynamiques ne se filtrent que par `__component`. Voir
+[Composants et zones dynamiques](/fr/concepts/components-and-dynamic-zones/#filtrage).
+
+## Tri
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` ou `field:asc|desc` ; le sens par défaut est `asc`.
+- Tout champ scalaire sauf `json` et `blocks` peut être trié, champs système compris.
+- `relation.field` trie selon un champ d’une relation vers un seul document.
+- Les valeurs vides viennent en dernier dans les deux sens, et les égalités sont départagées
+  par `id`, ce qui rend les pages stables.
+
+## Pagination
+
+Par page ou par décalage, pas les deux :
+
+| Paramètre | Valeur par défaut | Remarques |
+| --- | --- | --- |
+| `pagination[page]` | `1` | À partir de 1. |
+| `pagination[pageSize]` | `25` (`[api].default_page_size`) | Plafonné à `[api].max_page_size` (100). |
+| `pagination[start]` | `0` | Décalage. |
+| `pagination[limit]` | `25` | Plafonné au maximum ; `-1` demande le maximum. |
+| `pagination[withCount]` | `true` | `false` évite le comptage et omet `total` et `pageCount`. |
+
+Le `meta.pagination` de la réponse suit le mode utilisé :
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## Champs
+
+`fields` sélectionne des attributs scalaires :
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id` et `documentId` sont toujours renvoyés. Les relations, les médias, les composants et les
+zones dynamiques ne sont jamais sélectionnés par `fields` : utilisez `populate`.
+
+## Populate
+
+Les relations, les médias, les composants et les zones dynamiques ne sont renvoyés que s’ils
+sont peuplés :
+
+| Forme | Peuple |
+| --- | --- |
+| `populate=*` | Toutes les relations, champs de média, composants et zones dynamiques, sur un niveau |
+| `populate=category,tags` ou `populate[0]=category&populate[1]=tags` | Les champs nommés |
+| `populate[category]=true` | Le champ nommé (`false` l’exclut) |
+| `populate[category][fields][0]=name` | Le champ, avec des options |
+
+Chaque relation peuplée accepte `fields`, `filters`, `sort`, `populate` (imbriqué, jusqu’à
+5 niveaux au total) et `count` :
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- Une relation vers un seul document est un objet ou `null` ; une relation vers plusieurs
+  documents est un tableau, dans l’ordre des liens ou dans l’ordre du `sort` du populate.
+- `count=true` renvoie `{ "count": 12 }` au lieu des documents (relations vers plusieurs
+  documents uniquement).
+- Au plus 1 000 documents liés sont renvoyés par document et par relation ; `count` est exact.
+- Les composants et les zones dynamiques sont renvoyés en entier, y compris les composants
+  imbriqués et leurs relations et médias. Les options par niveau de Strapi pour ceux-ci
+  (`populate[blocks][on][…]`) sont acceptées et ignorées.
+- Les champs de média sont renvoyés sous forme d’objets fichier.
+- Les relations polymorphes n’acceptent que `count`.
+- Les documents liés sont lus dans le même statut et la même langue que le document. Peupler
+  un type que l’appelant ne peut pas lire donne un `400` ; `populate=*` l’ignore.
+
+Chaque niveau correspond à une requête groupée par relation : les populates profonds restent
+rapides et ne renvoient jamais de lignes en double.
+
+## Statut
+
+Sur les types avec brouillon et publication, `status` choisit la version :
+
+- `status=published` (par défaut) lit les versions publiées.
+- `status=draft` lit les brouillons et nécessite l’accès `readDrafts` en plus de `find` ou
+  `findOne`.
+
+`hasPublishedVersion=true|false` conserve les documents qui ont, ou n’ont pas, de version
+publiée : `?status=draft&hasPublishedVersion=false` liste les documents jamais publiés. C’est
+un `400` sur les types sans brouillon et publication.
+
+À l’écriture, `status=draft` enregistre le brouillon sans le publier. Voir
+[Brouillon et publication](/fr/concepts/draft-and-publish/).
+
+## Langue
+
+`locale=fr` lit et écrit la version française des types localisés. Sans ce paramètre, les
+requêtes utilisent la langue par défaut. Un code invalide ou inconnu donne un `400`. Les types
+non localisés l’ignorent. Voir [Internationalisation](/fr/concepts/internationalization/).
+
+## Recherche
+
+`_q` trouve les documents dont les champs texte contiennent les mots, sans tenir compte de la
+casse (200 caractères au maximum) :
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+Sans index de recherche, cela porte, comme dans Strapi, sur tout champ `string`, `text`,
+`richtext`, `email`, `uid` ou `enumeration` non privé. Avec `[search] enabled = true`, les
+résultats sont classés par pertinence, sauf si vous passez `sort`. Les autres filtres et la
+pagination s’appliquent toujours. Voir [Recherche](/fr/guides/content/search/).
+
+## Réponses
+
+Une liste :
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+Un document : `{ "data": { … }, "meta": {} }`.
+
+- Les documents sont à plat, comme dans Strapi v5 : pas d’enveloppe `attributes`.
+- Les attributs arrivent dans l’ordre du schéma, entre `id`/`documentId` et les horodatages ;
+  les types localisés ajoutent `locale`. Les champs `private` n’apparaissent jamais.
+- Les valeurs `biginteger` sont des chaînes. Les valeurs `decimal` sont des nombres, arrondis
+  à leur échelle (des chaînes avec `[api].decimal_as_string = true`). Les dates sont au format
+  `YYYY-MM-DD`, les heures `HH:MM:SS.mmm` et les date-heures `YYYY-MM-DDTHH:MM:SS.mmmZ` en UTC.
+
+Les lectures réussies portent un `ETag` ; renvoyez-le dans `If-None-Match` pour obtenir
+`304 Not Modified`. Elles portent aussi les en-têtes `Cache-Tag` et `Surrogate-Key` pour les
+purges de CDN (voir [Déploiements et CDN](/fr/guides/integrations/deploys-and-cdn/)).
+
+## Erreurs
+
+Les erreurs ont la forme de celles de Strapi :
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| Statut | `name` | Quand |
+| --- | --- | --- |
+| `400` | `ValidationError` | Paramètres, corps ou contenu invalides. `details.errors` liste les problèmes de contenu avec leur chemin. |
+| `401` | `UnauthorizedError` | Jeton mal formé, inconnu ou expiré. |
+| `403` | `ForbiddenError` | L’appelant n’a pas l’accès requis (pour les brouillons, `readDrafts`). |
+| `404` | `NotFoundError` | Route, type de contenu ou document inconnu. |
+| `405` | `MethodNotAllowedError` | `POST` sur un type unique, ou `PUT` ou `DELETE` sur la route d’un type de collection. |
+| `408` | | La requête a duré plus longtemps que `[server].request_timeout_secs` (30 s). |
+| `413` | | Le corps dépasse `[server].body_limit` (1 Mo). |
+| `429` | `RateLimitError` | Dépassement de `[api].public_rate_limit` ou `[api].token_rate_limit`. `Retry-After` indique quand réessayer. |
+| `500` | `ApplicationError` | Une erreur inattendue ; les détails ne figurent que dans le journal du serveur. |
+
+## Limites
+
+| Limite | Valeur |
+| --- | --- |
+| Taille de page | `[api].max_page_size`, 100 par défaut |
+| Profondeur de populate | 5 niveaux |
+| Documents liés par document et par relation | 1 000 |
+| Conditions de filtre | 100 |
+| Imbrication de crochets dans un paramètre | 12 niveaux |
+| Paramètres par requête | 1 000 |
+| Chaîne de requête | 16 Ko |
+| `_q` | 200 caractères |
+
+Seules les tailles de page sont configurables. Chaque nom de champ dans `filters`, `sort`,
+`fields` et `populate` est vérifié par rapport au schéma, et les valeurs sont toujours liées
+comme paramètres SQL.
+
+## Médiathèque
+
+Les routes de téléversement de Strapi, contrôlées par les accès de la **Médiathèque**. Elles
+renvoient de simples objets et tableaux, sans `data`, comme Strapi :
+
+| Route | Accès | Corps ou paramètres |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart : `files` (jusqu’à 20), `fileInfo` JSON facultatif (`name`, `alternativeText`, `caption`, `folder`, `focalPoint`), un par fichier ou un pour tous |
+| `POST /api/upload?id={id}` | `update` | `fileInfo` en multipart, et éventuellement un nouveau fichier qui remplace le contenu |
+| `GET /api/upload/files` | `find` | `pagination[page]`, `pagination[pageSize]`, `sort`, `filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+Voir [Médias](/fr/concepts/media/).
+
+## Autres routes sous le préfixe
+
+| Routes | Page |
+| --- | --- |
+| `/api/auth/*`, `/api/users/*`, `/api/connect/*` | [Utilisateurs finaux](/fr/guides/auth/end-users/) (quand la fonctionnalité est activée) |
+| `/api/_events` | [API temps réel](/fr/api/realtime/) (quand la fonctionnalité est activée) |
+| `/api/_redirects`, `/api/_menus/{slug}`, `/api/_forms/{slug}` | [Redirections](/fr/guides/frontend/redirects/), [Menus](/fr/guides/frontend/menus/), [Formulaires](/fr/guides/frontend/forms/) |
+| `/api/_openapi.json`, `/api/docs` | Le document OpenAPI (jetons d’API uniquement, sauf s’il est rendu public dans **Paramètres → Fonctionnalités → Documentation de l’API**) et sa référence interactive (quand il est public) |
+| `/api/plugins/{name}/*` | Routes des [plugins](/fr/extending/plugins/) |

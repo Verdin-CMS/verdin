@@ -1,0 +1,379 @@
+---
+title: 'מדריך: בלוג עם Astro'
+description: בנו בלוג Astro קטן על סכמת הדוגמה של Verdin, עם שאילתות עם טיפוסים, דפי מאמרים לפי slug, קטגוריות ותצוגה מקדימה אופציונלית של טיוטות.
+sidebar:
+  order: 3
+  label: בלוג עם Astro
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+במדריך הזה תבנו בלוג סטטי עם [Astro](https://astro.build) שקורא את התוכן שלו מ-Verdin: דף
+בית שמציג מאמרים, דף אחד לכל מאמר ב-`/articles/<slug>/` עם הקטגוריה שלו, ובאופן אופציונלי
+דף שמציג טיוטות מקישור התצוגה המקדימה של פאנל הניהול. תשתמשו בלקוח עם הטיפוסים
+`@verdin/client` עם טיפוסים שנוצרו מהסכמה.
+
+נכתב עבור Astro 7.3 (`create-astro` 5.2) ו-Node.js 22.12 ומעלה, עם Verdin ו-`@verdin/client`
+0.10. [המדריך של Next.js](/he/start/tutorial-nextjs/) בונה את אותו בלוג עם Next.js.
+
+## לפני שמתחילים
+
+צריך את הקובץ הבינארי `verdin` ב-`PATH` שלכם (ראו את [ההתחלה המהירה](/he/start/quickstart/)),
+Node.js ו-Git. בסוף יהיו לכם שתי תיקיות זו לצד זו: `cms`, פרויקט ה-Verdin, ו-`blog`, אתר
+ה-Astro.
+
+## 1. הגדרת Verdin עם סכמת הבלוג
+
+הפרויקט [`examples/blog`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) של
+המאגר ממדל בלוג: מאמרים עם כותרת, `slug`, תקציר, `body` ב-Markdown, קטגוריה ותגיות, ועוד סוג
+יחיד של דף בית וכמה רכיבים.
+
+<Steps>
+
+1. צרו פרויקט Verdin והעתיקו לתוכו את סכמת הדוגמה:
+
+   ```sh title="Terminal"
+   git clone --depth 1 https://github.com/Verdin-CMS/verdin.git
+   verdin new cms
+   cp verdin/examples/blog/schema/content-types/{article,category,tag,homepage}.json cms/schema/content-types/
+   cp -r verdin/examples/blog/schema/components/* cms/schema/components/
+   ```
+
+2. הפעילו אותו:
+
+   ```sh title="Terminal"
+   cd cms
+   verdin dev
+   ```
+
+   ההפעלה הראשונה יוצרת את הטבלאות לארבעת סוגי התוכן.
+
+3. פתחו את [http://localhost:1337/admin/](http://localhost:1337/admin/) וצרו את המנהל הראשון.
+
+4. תחת **אוספים**, פתחו את **Category**, בחרו **רשומה חדשה**, תנו לה את השם `News` ושמרו.
+
+5. פתחו את **Article**, בחרו **רשומה חדשה**, ומלאו כותרת, תקציר וגוף ב-Markdown. ה-`slug`
+   נוצר מהכותרת. בחרו `News` כקטגוריה ובחרו **פרסום**. הוסיפו מאמר שני באותה דרך.
+
+6. פתחו את **הגדרות ← גישה ציבורית**, אפשרו **חיפוש** ו**חיפוש פריט אחד** עבור **Article**
+   ו-**Category**, ובחרו **שמירה**.
+
+</Steps>
+
+בדקו שה-API עונה:
+
+```sh title="Terminal"
+curl 'localhost:1337/api/articles?populate=category'
+```
+
+<Aside>
+populate של קשר דורש הרשאת קריאה ליעד שלו. בלי **חיפוש** על **Category**, `populate=category`
+עונה `400` עם ``invalid key `category` in populate``.
+</Aside>
+
+## 2. יצירת פרויקט ה-Astro
+
+בטרמינל חדש, ליד `cms`:
+
+```sh title="Terminal"
+npm create astro@latest blog -- --template minimal --no-git --yes
+cd blog
+npm install @verdin/client marked
+```
+
+[`marked`](https://marked.js.org) הופך את ה-Markdown של השדה `body` ל-HTML.
+
+## 3. יצירת הטיפוסים
+
+`verdin types` קורא את הסכמה וכותב ממשק TypeScript אחד לכל סוג תוכן ורכיב, ומפת נתיבים
+`VerdinSchema` עבור הלקוח. הריצו אותו מ-`blog`, כשהוא מצביע לתצורה של פרויקט ה-Verdin:
+
+```sh title="Terminal"
+verdin types -c ../cms/verdin.toml -o src/verdin-types.ts
+```
+
+הקובץ מכיל, בין השאר:
+
+```ts title="src/verdin-types.ts"
+export interface Article extends DocumentBase {
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  body: string | null;
+  // …
+  category?: Category | null;
+  tags?: Tag[];
+}
+```
+
+קשרים, מדיה ורכיבים הם אופציונליים כי ה-API מחזיר אותם רק כשמבצעים להם populate. הריצו שוב
+את הפקודה בכל פעם שהסכמה משתנה.
+
+## 4. חיבור ל-Verdin
+
+הצהירו על כתובת השרת, ועל אסימון API אופציונלי, בסביבה עם הטיפוסים של Astro:
+
+```js title="astro.config.mjs"
+// @ts-check
+import { defineConfig, envField } from 'astro/config';
+
+export default defineConfig({
+  env: {
+    schema: {
+      VERDIN_URL: envField.string({ context: 'server', access: 'public', default: 'http://localhost:1337' }),
+      VERDIN_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+    },
+  },
+});
+```
+
+בלי אסימון הלקוח קורא כתפקיד הציבורי, וזה מה שפתחתם בשלב 1. כדי לקרוא עם אסימון במקום זאת,
+צרו אסימון **קריאה בלבד** ב-**הגדרות ← אסימוני API** ושימו אותו ב-`.env` כ-`VERDIN_TOKEN=…`.
+
+צרו את הלקוח פעם אחת ושתפו אותו:
+
+```ts title="src/lib/verdin.ts"
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+```
+
+עכשיו `verdin.collection('articles')` מקבל רק את הנתיבים של הסכמה שלכם, והתוצאות שלו מקבלות
+את הטיפוס `Article`.
+
+## 5. הוספת layout
+
+החליפו את ה-HTML של דף ההתחלה ב-layout שהדפים חולקים:
+
+```astro title="src/layouts/Layout.astro"
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header><a href="/">My blog</a></header>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>
+```
+
+## 6. הצגת רשימת המאמרים
+
+```astro title="src/pages/index.astro"
+---
+import Layout from '../layouts/Layout.astro';
+import { verdin } from '../lib/verdin';
+
+const { data: articles } = await verdin.collection('articles').find({
+  fields: ['title', 'slug', 'excerpt', 'publishedAt'],
+  populate: { category: { fields: ['name'] } },
+  sort: ['publishedAt:desc'],
+});
+---
+
+<Layout title="My blog">
+  <h1>Articles</h1>
+  <ul>
+    {articles.map((article) => (
+      <li>
+        <a href={`/articles/${article.slug}/`}>{article.title}</a>
+        {article.category && <small> in {article.category.name}</small>}
+        {article.excerpt && <p>{article.excerpt}</p>}
+      </li>
+    ))}
+  </ul>
+</Layout>
+```
+
+השאילתה היא קריאת ה-REST
+`GET /api/articles?fields[0]=title&…&populate[category][fields][0]=name&sort[0]=publishedAt:desc`,
+בפורמט של Strapi v5. `fields` שומר על תגובה קטנה, ו-`populate` מוסיף את הקטגוריה עם השם שלה
+בלבד. התפקיד הציבורי קורא רק מאמרים מפורסמים.
+
+## 7. הוספת דף לכל מאמר
+
+Astro בונה דף אחד לכל מאמר. `getStaticPaths` שולף את המאמרים עם הקטגוריה שלהם ומעביר כל אחד
+לדף שלו:
+
+```astro title="src/pages/articles/[slug].astro"
+---
+import type { GetStaticPaths } from 'astro';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { verdin } from '../../lib/verdin';
+
+export const getStaticPaths = (async () => {
+  const { data: articles } = await verdin.collection('articles').find({
+    populate: { category: true },
+    pagination: { pageSize: 100 },
+  });
+  return articles.map((article) => ({
+    params: { slug: article.slug },
+    props: { article },
+  }));
+}) satisfies GetStaticPaths;
+
+const { article } = Astro.props;
+const html = await marked.parse(article.body ?? '');
+---
+
+<Layout title={article.title}>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+`pageSize` מוגבל על ידי `[api].max_page_size` (100 כברירת מחדל). עם יותר מאמרים, שלפו את
+העמודים בלולאה באמצעות `meta.pagination.pageCount`.
+
+<Aside type="caution">
+`marked` לא מנקה (sanitize) HTML. זה בסדר עבור Markdown שהעורכים שלכם כותבים; אם התוכן יכול
+להגיע מאנשים לא מהימנים, נקו את ה-HTML לפני שאתם מציגים אותו.
+</Aside>
+
+## 8. הרצה
+
+```sh title="Terminal"
+npm run dev
+```
+
+פתחו את [http://localhost:4321](http://localhost:4321): הרשימה מציגה את המאמרים המפורסמים שלכם,
+וכל אחד מקשר לדף שלו. `npm run build` כותב את האתר הסטטי ל-`dist/`.
+
+בנייה סטטית קוראת את התוכן פעם אחת. כדי לפרסם שינויים, בנו מחדש את האתר כשהתוכן משתנה, למשל
+מ-webhook או מ-deploy hook; ראו [פריסות ו-CDN](/he/guides/integrations/deploys-and-cdn/).
+
+עכשיו הפרויקט שלכם נראה כך:
+
+<FileTree>
+- blog/
+  - astro.config.mjs
+  - src/
+    - verdin-types.ts נוצר על ידי `verdin types`
+    - lib/
+      - verdin.ts
+    - layouts/
+      - Layout.astro
+    - pages/
+      - index.astro
+      - articles/
+        - [slug].astro
+</FileTree>
+
+## 9. אופציונלי: תצוגה מקדימה של טיוטות
+
+פאנל הניהול יכול לפתוח טיוטה באתר שלכם עם אסימון תצוגה מקדימה קצר מועד. האסימון קורא את
+המסמך הזה בלבד, כולל טיוטות, ושום דבר אחר. מכיוון שטיוטות משתנות אחרי הבנייה, דף התצוגה
+המקדימה מתרנדר בכל בקשה, מה שדורש adapter:
+
+```sh title="Terminal"
+npx astro add node --yes
+```
+
+הוסיפו לקוח ששולח את אסימון התצוגה המקדימה בכותרת `x-verdin-preview`:
+
+```ts title="src/lib/verdin.ts" ins={10-16}
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+
+/** A client that reads one draft with the preview token from the admin's link. */
+export function previewClient(previewToken: string) {
+  return createClient<VerdinSchema>({
+    url: VERDIN_URL,
+    headers: { 'x-verdin-preview': previewToken },
+  });
+}
+```
+
+אחר כך הדף. `prerender = false` מרנדר אותו לפי דרישה; האסימון מגיע כפרמטר השאילתה `preview`:
+
+```astro title="src/pages/preview/[documentId].astro"
+---
+import { VerdinError } from '@verdin/client';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { previewClient } from '../../lib/verdin';
+
+export const prerender = false;
+
+const { documentId } = Astro.params;
+const token = Astro.url.searchParams.get('preview');
+if (!documentId || !token) {
+  return new Response('Missing preview token', { status: 401 });
+}
+
+let article;
+try {
+  ({ data: article } = await previewClient(token)
+    .collection('articles')
+    .findOne(documentId, { status: 'draft', populate: { category: true } }));
+} catch (error) {
+  if (error instanceof VerdinError) {
+    return new Response('This preview link has expired', { status: error.status });
+  }
+  throw error;
+}
+const html = await marked.parse(article.body ?? '');
+Astro.response.headers.set('cache-control', 'no-store');
+---
+
+<Layout title={`Preview: ${article.title}`}>
+  <p><strong>Draft preview</strong></p>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+אסימון תצוגה מקדימה לא יכול להציג רשימות של רשומות, ולכן הדף מחפש את הטיוטה לפי `documentId`
+ולא לפי slug. עכשיו אמרו ל-Verdin היכן הדף נמצא:
+
+<Steps>
+
+1. בפאנל הניהול, פתחו את **הגדרות ← תכונות**, הפעילו את **תצוגה מקדימה** ובחרו **הגדרת
+   כתובות תצוגה מקדימה**.
+2. הגדירו את תבנית ה-URL של **Article** ל-`http://localhost:4321/preview/{documentId}` ושמרו.
+   Verdin מוסיף את האסימון כ-`?preview=…`.
+3. פתחו מאמר, שנו אותו ובחרו **שמירת טיוטה**, ואז בחרו **פתיחת תצוגה מקדימה**.
+
+</Steps>
+
+הדף מציג את הטיוטה. הקישורים תקפים 60 דקות כברירת מחדל. ראו
+[תצוגה מקדימה](/he/guides/content/preview/) לממלאי המקום ולהגדרות, ו
+[עריכה חזותית](/he/guides/frontend/visual-editing/) כדי לערוך מתוך התצוגה המקדימה.
+
+## הצעדים הבאים
+
+- [לקוח עם טיפוסים](/he/guides/frontend/typed-client/): כל מתודה של `@verdin/client`.
+- [REST API](/he/api/rest/): מסננים, מיון, עימוד ו-`populate`.
+- [תמונות](/he/guides/frontend/images/): הפורמטים הרספונסיביים של ספריית המדיה.
+- [SEO ומפת אתר](/he/guides/frontend/seo-and-sitemap/): הרכיב `shared.seo` ומפת האתר של
+  Verdin.

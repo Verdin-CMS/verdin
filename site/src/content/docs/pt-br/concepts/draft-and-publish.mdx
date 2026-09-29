@@ -1,0 +1,137 @@
+---
+title: "Rascunho e publicação"
+description: "Documentos, as suas versões de rascunho e publicada, os estados pelos quais uma entrada passa e como cada API os lê e escreve."
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+O rascunho e publicação permite que os editores trabalhem em um documento sem mudar o que o seu
+site mostra e publiquem quando estiver pronto. Esta página explica o modelo: documentos,
+versões, as ações que movem o conteúdo entre eles e como cada API os trata. Funciona como no
+Strapi v5.
+
+Ative-o por tipo de conteúdo no seu schema:
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+Ele fica desativado quando `options.draftAndPublish` não está presente.
+
+## Documentos e versões
+
+Um **documento** é uma entrada, identificada pelo seu `documentId`. Com rascunho e publicação,
+um documento tem até duas **versões**:
+
+- um **rascunho**, que toda edição altera, e
+- uma versão **publicada**, que a API de conteúdo serve por padrão.
+
+Em um tipo [localizado](/pt-br/concepts/internationalization/), cada idioma tem o seu próprio
+rascunho e a sua própria versão publicada, todos compartilhando o `documentId`.
+
+Os tipos sem rascunho e publicação têm uma única versão por idioma, que está sempre publicada:
+toda escrita muda o que os leitores veem.
+
+## Estados
+
+O painel de administração mostra o estado de cada entrada na lista e no editor:
+
+| Estado | Rascunho | Versão publicada | O que os leitores de conteúdo publicado veem |
+| --- | --- | --- | --- |
+| **Rascunho** | sim | nenhuma | Nada: o documento não está visível. |
+| **Publicado** | igual à publicada | sim | A versão publicada. |
+| **Modificado** | alterado desde a última publicação | sim | A versão publicada, sem as novas alterações. |
+
+<Diagram
+  caption="Estados de um documento com rascunho e publicação, e as ações entre eles"
+  code={`stateDiagram-v2
+    state "Rascunho" as Draft
+    state "Publicado" as Published
+    state "Modificado" as Modified
+    [*] --> Draft: criar
+    Draft --> Published: publicar
+    Published --> Modified: salvar
+    Modified --> Published: publicar ou descartar alterações
+    Published --> Draft: despublicar
+    Modified --> Draft: despublicar`}
+/>
+
+As ações movem um documento entre esses estados:
+
+| Ação | Efeito | De → para |
+| --- | --- | --- |
+| Salvar | Escreve o rascunho. | Rascunho → Rascunho, Publicado → Modificado |
+| **Publicar** | Copia o rascunho para a versão publicada, criando-a se necessário. | Rascunho ou Modificado → Publicado |
+| **Despublicar** | Exclui a versão publicada; o rascunho fica. | Publicado ou Modificado → Rascunho |
+| **Descartar alterações** | Substitui o rascunho por uma cópia da versão publicada. | Modificado → Publicado |
+| Excluir | Remove todas as versões (do idioma solicitado, nos tipos localizados). | qualquer → removido |
+
+A publicação roda em uma única transação. Ela verifica os campos `required` e as
+[regras entre campos](/pt-br/concepts/content-model/#validações-entre-campos) do tipo no
+rascunho; uma verificação que falha não publica nada. Até lá, os rascunhos podem estar
+incompletos e violar essas regras.
+
+`publishedAt` é `null` nos rascunhos. A versão publicada guarda o momento da última
+publicação.
+
+## Relações e mídia seguem a versão
+
+Cada versão tem os seus próprios vínculos de relações e de mídia, e a publicação copia os
+vínculos do rascunho para a versão publicada. Os vínculos apontam para documentos e são
+resolvidos na versão que está sendo lida: um artigo publicado mostra a versão publicada da sua
+categoria, e um rascunho mostra o rascunho da categoria. Se a categoria for despublicada, ela
+desaparece do artigo publicado até ser publicada de novo, sem que nenhum vínculo seja
+reescrito. Veja [Relações](/pt-br/concepts/relations/#vinculadas-pelo-documento-não-pela-linha).
+
+Componentes e zonas dinâmicas fazem parte da linha, então a publicação os copia como estão.
+
+## Leitura de rascunhos e de conteúdo publicado
+
+| API | Lê por padrão | Para ler rascunhos |
+| --- | --- | --- |
+| [REST](/pt-br/api/rest/#status) | Versões publicadas | `?status=draft`, que exige a permissão **Ler rascunhos** |
+| [GraphQL](/pt-br/api/graphql/) | Versões publicadas | `status: DRAFT`, com a mesma permissão |
+| [API de administração](/pt-br/api/admin/) | Rascunhos | `?status=published` |
+
+Ler rascunhos é uma permissão própria (`readDrafts`), para que um token que lê o conteúdo do
+seu site não consiga ler trabalho não publicado. Os tokens de API somente leitura nunca leem
+rascunhos.
+
+Para distinguir os documentos pelo fato de já terem sido publicados ou não, filtre com
+`hasPublishedVersion`: `?status=draft&hasPublishedVersion=false` lista os documentos que nunca
+foram publicados.
+
+## Escrita pelas APIs
+
+As APIs seguem o Strapi v5 nas escritas:
+
+- Os `create` e `update` de **REST e GraphQL** escrevem o rascunho **e o publicam**, a menos
+  que a requisição peça `status=draft` (`status: DRAFT` no GraphQL). Uma publicação que falha
+  desfaz a requisição inteira.
+- **O painel de administração e a API de administração** salvam apenas rascunhos. Publicar é
+  sempre uma ação explícita.
+
+A API REST também tem ações explícitas, que o Strapi não oferece via REST:
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+Elas exigem a permissão **Publicar** no tipo. Veja [API REST](/pt-br/api/rest/#ações).
+
+## Outros recursos que publicam
+
+- Os [lançamentos](/pt-br/guides/content/releases/) agrupam documentos e os publicam ou
+  despublicam juntos, agora ou em uma data.
+- Os [fluxos de revisão](/pt-br/guides/content/review-workflows/) podem exigir uma etapa antes
+  que um documento possa ser publicado.
+- Publicar e despublicar enviam os [eventos de webhook](/pt-br/api/webhooks/) e os
+  [eventos de tempo real](/pt-br/api/realtime/) `entry.publish` e `entry.unpublish`. Salvar um
+  rascunho envia `entry.update`, que via tempo real só recebem os clientes autorizados a ler
+  rascunhos.

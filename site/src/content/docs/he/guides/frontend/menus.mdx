@@ -1,0 +1,121 @@
+---
+title: תפריטים
+description: בנו תפריטי ניווט של קישורים ורשומות בפאנל הניהול והציגו אותם באתר שלכם.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+התכונה **תפריטים** נותנת לעורכים עצי ניווט עם שם (כותרת עליונה, כותרת תחתונה, סרגל צד)
+שמקשרים לדפים, לרשומות או לאתרים אחרים. האתר שלכם שולף תפריט לפי ה-slug שלו ומציג אותו;
+קישורים לרשומות עוקבים אחרי מצב הפרסום והנתיב שלהן.
+
+ב-Strapi זה בדרך כלל דורש תוסף ניווט או סוג תוכן לתפריט שבונים ידנית; ב-Verdin זה מובנה.
+
+## הפעלה
+
+ב-**הגדרות ← תכונות**, הפעילו את **תפריטים**, ואז בחרו **ניהול תפריטים** (או עברו ל-**הגדרות
+← תפריטים**). ניהול תפריטים דורש את ההרשאה **ניהול SEO, הפניות, תפריטים וטפסים**
+(`site.manage`), שיש לתפקיד המובנה Editor. ראו [הרשאות](/he/reference/permissions/).
+
+כדי לקשר רשומות לפי נתיב, הגדירו גם תבניות נתיבים ב-[SEO ו-sitemap](/he/guides/frontend/seo-and-sitemap/).
+
+## בניית תפריט
+
+<Steps>
+
+1. ב-**הגדרות ← תפריטים**, בחרו **תפריט חדש**.
+2. תנו לו שם (כמו **ניווט ראשי**) ו-**Slug** (`main`): אותיות קטנות, ספרות ומקפים. אתרים
+   שולפים את התפריט לפי ה-slug שלו.
+3. בחרו **הוספת פריט** ומלאו את הפריט:
+   - **תווית**: הטקסט של הקישור, עד 255 תווים.
+   - **מקשר אל**: **כתובת URL**, **רשומה**, או **כלום (כותרת)**.
+   - **URL**: נתיב (`/about`), עוגן (`#team`), או קישור `http(s)`, `mailto:` או `tel:`.
+   - לרשומה, בחרו **בחירת רשומה**: בחרו את **סוג תוכן** אם אפשר לקשר כמה סוגים, חפשו
+     ברשומות ובחרו אחת.
+   - **נפתח ב**: **אותה לשונית** או **לשונית חדשה**.
+4. גררו פריטים כדי לסדר ולקנן אותם, או השתמשו בכפתורים שלהם. עם המקלדת, על ידית הגרירה:
+   Alt+↑ ו-Alt+↓ מזיזים פריט, Alt+→ מקנן אותו תחת הפריט שמעליו, Alt+← מוציא אותו החוצה.
+5. שמרו.
+
+</Steps>
+
+לתפריט יש לכל היותר 5 רמות ו-500 פריטים.
+
+## שליפת תפריט
+
+אתרים קוראים תפריט מ-`GET /api/_menus/{slug}`, בלי אסימון. הוסיפו `?locale=` לתוכן מתורגם:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+איך קישורים לרשומות נפתרים:
+
+- רשומה שאינה מפורסמת, בשפה המבוקשת, מושמטת מהתפריט (יחד עם הילדים שלה). תפריטים אף פעם
+  לא חושפים טיוטות.
+- `entry.path` מגיע מהתבנית של הסוג ב-[SEO ו-sitemap](/he/guides/frontend/seo-and-sitemap/),
+  ממולא בשדות של הרשומה ובשפה. הוא `null` כשלסוג אין תבנית או שהרשומה לא ממלאת אותה.
+- כשלפריט אין `url` משלו, הוא מקבל את הנתיב כ-`url`, כך שרוב האתרים צריכים לקרוא רק את
+  `url`.
+
+בלי `locale`, הרשומות נקראות בשפת ברירת המחדל. התגובה נשלחת עם
+`Cache-Control: public, max-age=60`.
+
+## הצגה
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+מחיקת תפריט גורמת ל-`/api/_menus/{slug}` לענות `404`, וכך גם כיבוי התכונה. טפלו בזה באתר
+שלכם, למשל על ידי כך שלא תציגו ניווט.
+</Aside>
+
+## API הניהול
+
+פאנל הניהול משתמש ב-`/admin/api/site/menus` (`GET`, `POST`) וב-
+`/admin/api/site/menus/{id}` (`GET`, `PUT`, `DELETE`), עם אסימון גישה של מנהל ו-
+`site.manage`. ראו [API הניהול](/he/api/admin/).

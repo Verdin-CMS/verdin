@@ -1,0 +1,129 @@
+---
+title: Menús
+description: Construeix menús de navegació amb enllaços i entrades al tauler d'administració i mostra'ls al teu lloc.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+La funcionalitat **Menús** dona als editors arbres de navegació amb nom (una capçalera, un peu de
+pàgina, una barra lateral) que enllacen amb pàgines, entrades o altres llocs. El teu lloc obté un
+menú pel seu slug i el mostra; els enllaços a entrades segueixen el seu estat de publicació i el
+seu camí.
+
+A Strapi això sol requerir un connector de navegació o un tipus de contingut de menú fet a mà; a
+Verdin ve integrat.
+
+## Activa-la
+
+A **Configuració → Funcionalitats**, activa **Menús** i després tria **Gestiona els menús** (o ves
+a **Configuració → Menús**). Gestionar menús necessita el permís **Gestiona el SEO, les
+redireccions, els menús i els formularis** (`site.manage`), que té el rol integrat Editor.
+Consulta [Permisos](/ca/reference/permissions/).
+
+Per enllaçar entrades per camí, configura també els patrons de camí a
+[SEO i mapa del lloc](/ca/guides/frontend/seo-and-sitemap/).
+
+## Construeix un menú
+
+<Steps>
+
+1. A **Configuració → Menús**, tria **Menú nou**.
+2. Dona-li un nom (com ara **Navegació principal**) i un **Slug** (`main`): lletres minúscules,
+   dígits i guions. Els llocs obtenen el menú pel seu slug.
+3. Tria **Afegeix un element** i omple l'element:
+   - **Etiqueta**: el text de l'enllaç, fins a 255 caràcters.
+   - **Enllaça a**: **Un URL**, **Una entrada** o **Res (un encapçalament)**.
+   - **URL**: un camí (`/about`), una àncora (`#team`), o un enllaç `http(s)`, `mailto:` o
+     `tel:`.
+   - Per a una entrada, tria **Tria una entrada**: selecciona el **Tipus de contingut** si se'n
+     poden enllaçar diversos, cerca entre les entrades i selecciona'n una.
+   - **S’obre a**: **La mateixa pestanya** o **Una pestanya nova**.
+4. Arrossega els elements per ordenar-los i imbricar-los, o fes servir els seus botons. Amb el
+   teclat, sobre una nansa d'arrossegament: Alt+↑ i Alt+↓ mouen un element, Alt+→ l'imbrica sota
+   el de dalt, Alt+← el treu a fora.
+5. Desa.
+
+</Steps>
+
+Un menú té com a màxim 5 nivells i 500 elements.
+
+## Obtén un menú
+
+Els llocs llegeixen un menú de `GET /api/_menus/{slug}`, sense token. Afegeix `?locale=` per al
+contingut localitzat:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+Com es resolen els enllaços a entrades:
+
+- Una entrada que no està publicada, en l'idioma demanat, queda fora del menú (amb els seus fills).
+  Els menús mai no filtren esborranys.
+- `entry.path` surt del patró del tipus a [SEO i mapa del lloc](/ca/guides/frontend/seo-and-sitemap/),
+  omplert amb els camps de l'entrada i l'idioma. És `null` quan el tipus no té patró o l'entrada no
+  l'omple.
+- Quan l'element no té `url` propi, rep el camí com a `url`, de manera que la majoria de llocs
+  només han de llegir `url`.
+
+Sense `locale`, les entrades es llegeixen en l'idioma per defecte. La resposta s'envia amb
+`Cache-Control: public, max-age=60`.
+
+## Mostra'l
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+Eliminar un menú fa que `/api/_menus/{slug}` respongui `404`, igual que desactivar la
+funcionalitat. Gestiona-ho al teu lloc, per exemple no mostrant cap navegació.
+</Aside>
+
+## API d'administració
+
+El tauler d'administració fa servir `/admin/api/site/menus` (`GET`, `POST`) i
+`/admin/api/site/menus/{id}` (`GET`, `PUT`, `DELETE`), amb el token d'accés d'un administrador i
+`site.manage`. Consulta l'[API d'administració](/ca/api/admin/).

@@ -1,0 +1,237 @@
+---
+title: Mettre à niveau Verdin
+description: Mettez à niveau une installation Verdin — le binaire ou l’image Docker, les migrations qui s’exécutent au démarrage, et les changements notables ou incompatibles de chaque version mineure.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+Cette page explique comment faire passer un projet à une version plus récente de Verdin, et
+liste ce qui a changé entre les versions mineures. Verdin suit le
+[Semantic Versioning](https://semver.org/) avec une particularité propre à la 0.x : jusqu’à la
+1.0, une version **mineure** (0.8 → 0.9) peut changer le comportement, et une version **de
+correctif** (0.9.0 → 0.9.1) ne fait que corriger et renforcer.
+
+## Avant la mise à niveau
+
+1. **Lisez le changelog** de votre version jusqu’à la nouvelle : le
+   [changelog](/fr/project/changelog/) liste chaque modification, et les
+   [notes ci-dessous](#notes-de-mise-à-niveau) résument celles qui demandent une action.
+2. **Sauvegardez** la base de données et le stockage des médias (voir
+   [Sauvegardes](/fr/deploy/backups/)). Revenir à une version antérieure implique de restaurer
+   cette sauvegarde : les versions antérieures n’annulent pas les tables et les colonnes qu’une
+   version plus récente a ajoutées.
+3. **Essayez sur une copie** de la production si les notes mentionnent un comportement dont
+   dépendent votre frontend ou vos rédacteurs.
+
+Vous pouvez sauter des versions. Les migrations sont calculées à partir de la différence entre la
+base de données et ce qu’attend la nouvelle version, et non rejouées version après version : le
+passage de 0.6 à 0.9 migre donc en une seule exécution. Lisez les notes de chaque version
+intermédiaire.
+
+## Mise à niveau
+
+<Tabs syncKey="install">
+<TabItem label="Docker">
+
+<Steps>
+
+1. Changez le tag de l’image dans votre fichier Compose, votre manifeste ou votre
+   `Dockerfile`, par exemple `ghcr.io/verdin-cms/verdin:0.10` → `ghcr.io/verdin-cms/verdin:0.11`.
+   Un tag mineur (`0.10`) suit ses versions de correctif ; fixez une version complète (`0.10.0`)
+   pour décider aussi du moment où celles-ci arrivent.
+
+2. Récupérez l’image et redémarrez :
+
+   ```sh frame="terminal"
+   docker compose pull verdin
+   docker compose up -d verdin
+   docker compose logs -f verdin
+   ```
+
+   La commande par défaut de l’image, `start --migrate`, applique les migrations de la nouvelle
+   version avant de servir. Cherchez `applied migrations` et `verdin listening` dans les logs.
+
+</Steps>
+
+</TabItem>
+<TabItem label="Binary">
+
+<Steps>
+
+1. Téléchargez l’archive pour votre plateforme depuis la
+   [page des versions](https://github.com/Verdin-CMS/verdin/releases), par exemple
+   `verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz`, et vérifiez-la avec le `SHA256SUMS` de la
+   version :
+
+   ```sh frame="terminal"
+   sha256sum --ignore-missing -c SHA256SUMS
+   tar xzf verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz
+   ```
+
+2. Arrêtez le serveur, remplacez le binaire `verdin` et vérifiez la version :
+
+   ```sh frame="terminal"
+   verdin version
+   ```
+
+3. Examinez et appliquez les migrations depuis le répertoire du projet :
+
+   ```sh frame="terminal"
+   verdin migrate plan
+   verdin migrate apply
+   ```
+
+   Ou démarrez avec `verdin start --migrate`, qui applique d’abord les étapes sans risque.
+
+4. Démarrez le serveur comme d’habitude (`verdin start`).
+
+</Steps>
+
+</TabItem>
+</Tabs>
+
+## Migrations au démarrage
+
+Une nouvelle version ajoute souvent ses propres tables ou colonnes (sessions, paramètres,
+nouvelles fonctionnalités). `verdin start` compare la base de données avec ce dont ont besoin le
+schéma et la nouvelle version :
+
+- S’ils correspondent, il démarre.
+- Si des étapes sont en attente, il refuse de démarrer et vous indique d’exécuter
+  `verdin migrate plan` et `verdin migrate apply`, ou de démarrer avec `--migrate`.
+- `--migrate` n’applique que les étapes **sans risque**. Si une étape est risquée ou
+  destructive, le démarrage échoue et vous l’appliquez vous-même avec
+  `verdin migrate apply --allow risky` (ou `destructive`) après avoir lu le plan.
+- Sur MySQL et MariaDB, où les modifications du schéma ne peuvent pas s’exécuter dans une
+  transaction, une migration interrompue reprend à l’étape en échec au prochain
+  `verdin migrate apply`.
+
+Avec plusieurs instances, une mise à niveau progressive fonctionne : la première nouvelle instance
+prend le verrou de migration et migre, les autres l’attendent et ne trouvent plus rien à faire.
+Voir [Exécuter plusieurs instances](/fr/deploy/scaling/).
+
+<Aside type="caution">
+Mettez à niveau tout le projet vers une même version. Ne laissez pas tourner côte à côte des
+instances de deux versions mineures plus longtemps que ne dure un déploiement progressif.
+</Aside>
+
+## Notes de mise à niveau
+
+Les changements notables et incompatibles par version, du plus récent au plus ancien. Le
+[changelog](/fr/project/changelog/) contient la liste complète.
+
+### 0.9.1 → 0.10
+
+Aucune migration de base de données. La documentation a quitté `docs/` pour ce site.
+
+- **Consommateurs de webhooks de `review-workflows.updateEntryStage`** : `model` est désormais
+  le nom au singulier (`article`), comme dans les événements d’entrée, et l’uid est passé dans
+  `uid`. Lisez `uid` là où vous utilisiez `model`.
+- **Régénérez vos types TypeScript** avec `verdin types` : `Collections` et `Singles` sont
+  désormais des alias de type, ce dont `createClient<VerdinSchema>` a besoin.
+- **Docker** : l’image conserve le cache des transformations et l’index de recherche dans
+  `/data` et relie `/app/public/uploads` à `/data/uploads`. Si vous définissiez
+  `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR` ou `VERDIN_SEARCH__DIR` uniquement pour contourner
+  `/app` en lecture seule, vous pouvez les retirer. L’image dispose d’un `HEALTHCHECK`.
+- **CDN** : les réponses portent les étiquettes des types qu’elles peuvent peupler, donc les
+  purges rafraîchissent une plus grande partie du cache qu’avant ; rien à changer.
+- Les champs de relation du panneau d’administration lient les entrées via une boîte de
+  dialogue (**Lier une entrée**) au lieu d’un champ de recherche intégré.
+
+### 0.9.0 → 0.9.1
+
+Une version de renforcement ; la mise à niveau est recommandée pour toutes les installations. Sa
+migration (une nouvelle table, deux nouvelles colonnes) s’exécute au démarrage.
+
+- **Derrière un reverse proxy, définissez `[server].trusted_proxies`.** Seul le
+  `X-Forwarded-For` des proxys listés est utilisé pour l’adresse du client ; sinon, tous les
+  clients derrière le proxy partagent une même adresse pour les limites de débit et les journaux
+  d’audit.
+- **Les frontends navigateur sur une autre origine ont besoin de `[api].cors_origins`.** La
+  0.9.1 ajoute CORS à l’API de contenu et à GraphQL ; il n’y avait aucune prise en charge de CORS
+  auparavant.
+- **Les lectures à travers les relations suivent les autorisations.** `populate`, les filtres et
+  les tris à travers les relations n’atteignent que les types et les champs que l’appelant peut
+  lire, sur toutes les API. Les requêtes publiques et par jeton qui peuplaient des types sur
+  lesquels elles n’avaient pas l’accès `find` reçoivent désormais moins de données : accordez les
+  autorisations manquantes.
+- **Le SSO est plus strict.** Ses paramètres nécessitent un Super Admin ; `defaultRoles` et
+  `roleMap` ne peuvent pas accorder le rôle Super Admin ; le claim `email_verified` du
+  fournisseur doit être vrai (sauf avec `trustUnverifiedEmail`) ; le second facteur des
+  administrateurs s’applique, sauf si le fournisseur est reconnu pour cela (`providerMfa`) ;
+  l’émetteur et le token endpoint doivent être des URL `https` publiques. Vérifiez vos connexions
+  SSO après la mise à niveau.
+- **Les Super Admins** ne peuvent être créés, modifiés, supprimés, réinvités ou réinitialisés que
+  par un autre Super Admin.
+- **Les comptes d’utilisateurs finaux se verrouillent** après des mots de passe erronés répétés,
+  comme les comptes d’administration.
+- Les relations peuplées renvoient au plus 1 000 entrées par entrée et par relation.
+- Les index de recherche sont reconstruits au premier démarrage (les champs privés des
+  composants ne sont plus indexés).
+
+### 0.8 → 0.9
+
+- Le champ de recherche de la liste de l’administration recherche dans tous les champs texte
+  (`_q`) au lieu du titre.
+- Nouvelles autorisations d’administration `deploy.manage`, `deploy.trigger` et `site.manage` ;
+  les Editors reçoivent `deploy.trigger` et `site.manage`.
+- Les nouvelles fonctionnalités facultatives (temps réel, commentaires et tâches, actions IA, SEO
+  et sitemap, redirections, menus, formulaires) sont désactivées tant que vous ne les activez
+  pas. Les métriques nécessitent `[metrics].enabled = true`.
+
+### 0.7 → 0.8
+
+- **Les champs conditionnels sont appliqués** : un champ masqué par ses `conditions` n’est plus
+  obligatoire. Du contenu qui comptait sur le caractère obligatoire d’un tel champ peut
+  désormais être enregistré sans lui.
+- Nouveau type d’attribut `password` ; `verdin import strapi` importe désormais les champs de mot
+  de passe de Strapi.
+
+### 0.7.0 → 0.7.1
+
+- Le runtime des plugins passe à Wasmtime 48. Les plugins existants continuent de fonctionner
+  sans recompilation.
+- Compiler depuis les sources nécessite Rust 1.95 ou ultérieur.
+
+### 0.6 → 0.7
+
+- **Plusieurs instances** : chaque instance relit les paramètres modifiés par les autres toutes
+  les `[server].sync_interval_secs` (10 s). Si vous en exécutez plusieurs, définissez
+  `[plugins].run_jobs = false` sur toutes sauf une.
+- Le contenu que les plugins écrivent via l’hôte passe désormais par les vérifications
+  avant écriture de la plateforme, comme les étapes des workflows de relecture. Les propres hooks
+  before des plugins restent sautés pour ces écritures, si bien qu’un plugin ne peut pas se
+  déclencher lui-même.
+
+### 0.5 → 0.6
+
+- Les **journaux d’audit** sont activés par défaut et conservent les entrées pendant
+  `[audit].retention_days` (90). Désactivez la fonctionnalité dans
+  **Paramètres → Fonctionnalités** si vous n’en voulez pas.
+
+### 0.4 → 0.5
+
+- Rien à modifier. Les plugins sont chargés depuis `[plugins].path` (`plugins/`) et restent
+  désactivés tant qu’ils ne sont pas activés.
+
+### 0.3 → 0.4
+
+- **`auth`, `users` et `connect` sont des noms de routes réservés**, tout comme `upload` et
+  `uploads` : renommez les types de contenu dont le nom d’API est l’un d’eux avant la mise à
+  niveau.
+
+### 0.2 → 0.3
+
+- Les noms d’attributs suivent la règle de Strapi (une lettre, puis des lettres, chiffres et
+  tirets bas) au lieu du seul camelCase. Deux noms qui correspondent à la même colonne sont
+  refusés.
+- Les options `regex` acceptent des motifs de type JavaScript.
+
+### 0.1 → 0.2
+
+- Les limites de taille du corps et les délais s’appliquent par routeur d’API ; les
+  téléversements ont leurs propres limites (`[upload].max_file_size`).
+- Les rôles intégrés des installations existantes reçoivent une seule fois les nouvelles
+  autorisations.

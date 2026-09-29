@@ -1,0 +1,153 @@
+---
+title: Jetons d’API
+description: Créez des jetons d’API en lecture seule, à accès complet ou personnalisés pour l’API de contenu, régénérez-les ou supprimez-les, et protégez le pepper des jetons.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Les jetons d’API permettent à vos sites, applications et scripts d’appeler l’API de contenu avec
+plus d’accès que le public. Ce guide crée un jeton, choisit son accès, l’utilise et le remplace
+en cas de fuite. Les jetons fonctionnent comme les jetons d’API de Strapi.
+
+L’API de contenu est fermée par défaut : sans jeton, les requêtes n’obtiennent que ce
+qu’autorise **Paramètres → Accès public**, c’est-à-dire rien tant que vous ne l’avez pas accordé.
+
+## Avant de commencer
+
+- Gérer les jetons nécessite **Gérer les jetons d’API** (`tokens.manage`). Voir
+  [Autorisations](/fr/reference/permissions/).
+- `VERDIN_TOKEN_PEPPER` doit être défini ; voir [Le rôle du pepper](#le-rôle-du-pepper).
+
+## Créer un jeton
+
+<Steps>
+
+1. Ouvrez **Paramètres → Jetons d’API** et sélectionnez **Créer un jeton**.
+2. Saisissez un **Nom** et, éventuellement, une **Description**.
+3. Choisissez le **Type** :
+
+   | Type | Autorise |
+   | --- | --- |
+   | **Lecture seule** | Rechercher et Rechercher un sur tous les types de contenu, versions publiées uniquement. |
+   | **Accès complet** | Toutes les actions sur tous les types de contenu et la médiathèque. |
+   | **Personnalisé** | Uniquement les actions que vous cochez dans **Autorisations**. |
+
+4. Choisissez l’**Expiration** : **Jamais**, ou dans 7, 30 ou 90 jours.
+5. Pour un jeton personnalisé, cochez les actions sous **Autorisations**, par type de contenu :
+   **Rechercher**, **Rechercher un**, **Créer**, **Modifier**, **Supprimer**, **Publier** et
+   **Lire les brouillons**. La ligne **Médiathèque** couvre les téléversements, et la ligne
+   **Utilisateurs** les routes `/api/users` des [utilisateurs finaux](/fr/guides/auth/end-users/).
+6. Sélectionnez **Créer**, puis copiez le jeton. C’est la seule fois où il est affiché.
+
+</Steps>
+
+Les jetons commencent par `vd_`. La liste affiche les premiers caractères de chacun, sa dernière
+utilisation et sa date d’expiration.
+
+## Utiliser un jeton
+
+Envoyez-le comme jeton bearer :
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'http://localhost:1337/api/articles?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/graphql \
+  -H "Authorization: Bearer $VERDIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({
+  url: 'http://localhost:1337',
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+</TabItem>
+</Tabs>
+
+- L’accès d’un jeton remplace l’accès public ; il ne s’y ajoute pas. Un jeton personnalisé sans
+  **Rechercher** sur un type ne peut pas le lister, même quand le public le peut.
+- Lire les brouillons (`?status=draft`) nécessite **Lire les brouillons** ; les jetons en
+  lecture seule ne voient jamais les brouillons.
+- Les jetons inconnus et expirés reçoivent `401`. Les actions hors de l’accès du jeton reçoivent
+  `403`.
+- `[api].token_rate_limit` limite les requêtes par jeton et par minute (désactivé par défaut).
+- Les mêmes jetons autorisent GraphQL et le [serveur MCP](/fr/guides/integrations/mcp/).
+
+<Aside type="caution">
+Un jeton dans un navigateur est visible par tous les visiteurs. N’utilisez les jetons que depuis
+des serveurs, des étapes de build et des applications privées ; pour les pages publiques,
+accordez ce dont elles ont besoin dans **Paramètres → Accès public**.
+</Aside>
+
+## Régénérer ou supprimer un jeton
+
+- **Régénérer** sur la ligne d’un jeton crée une nouvelle clé avec le même nom, le même type et
+  les mêmes autorisations. La clé actuelle cesse immédiatement de fonctionner : les applications
+  qui l’utilisent reçoivent des erreurs jusqu’à ce que vous les mettiez à jour.
+- **Supprimer** retire le jeton ; les clients qui l’utilisent perdent l’accès.
+
+Faites l’un ou l’autre dès qu’un jeton a pu fuiter.
+
+## Le rôle du pepper
+
+Verdin ne stocke jamais les jetons. Il stocke un hachage à clé (HMAC-SHA256) de chacun, calculé
+avec `VERDIN_TOKEN_PEPPER` : une copie de la base de données seule ne permet donc à personne de
+les utiliser. Le même pepper protège :
+
+- Les jetons d’API.
+- Les secrets d’application d’authentification et les codes de récupération des administrateurs
+  ([authentification à deux facteurs](/fr/guides/auth/two-factor/)).
+- Les adresses IP hachées stockées avec les soumissions de formulaires.
+
+Générez le pepper une fois avec `verdin secrets`, gardez-le hors de `verdin.toml` et des
+sauvegardes de la base de données, et donnez la même valeur à toutes les instances.
+
+<Aside type="caution" title="Changer le pepper">
+Avec un autre pepper, tous les jetons d’API cessent de fonctionner, ainsi que l’application
+d’authentification et les codes de récupération de chaque administrateur. Ne le changez qu’en cas
+de fuite, puis créez de nouveaux jetons et réinitialisez l’authentification à deux facteurs de
+chaque administrateur. Les passkeys et les mots de passe ne sont pas concernés.
+</Aside>
+
+## API d’administration
+
+Toutes les routes sont sous `/admin/api` et nécessitent `tokens.manage`.
+
+```http
+GET    /admin/api/api-tokens
+POST   /admin/api/api-tokens                  { "name": "Website", "kind": "custom", "expiresInDays": 90,
+                                                "permissions": [{ "subject": "api::article", "action": "find" }] }
+GET    /admin/api/api-tokens/{id}
+PUT    /admin/api/api-tokens/{id}             { "name": "…", "description": null, "kind": "read-only", "permissions": [...] }
+POST   /admin/api/api-tokens/{id}/regenerate
+DELETE /admin/api/api-tokens/{id}
+```
+
+- `kind` vaut `read-only`, `full-access` ou `custom` ; `expiresInDays` est facultatif (le jeton
+  n’expire jamais) et ne peut pas être modifié ensuite.
+- `permissions` liste des paires `{ subject, action }`. `subject` est un UID de type de contenu,
+  `plugin::upload` (la médiathèque) ou `plugin::users-permissions.user` ; `action` vaut `find`,
+  `findOne`, `create`, `update`, `delete`, `publish` ou `readDrafts`. `publish` et `readDrafts`
+  ne s’appliquent pas aux deux derniers sujets.
+- `POST /api-tokens` et `/regenerate` renvoient la clé une seule fois, sous `accessKey`.
+
+L’accès public utilise les mêmes paires : `PUT /admin/api/public-permissions`
+`{ "permissions": [...] }`, qui nécessite **Gérer les rôles** (`roles.manage`).

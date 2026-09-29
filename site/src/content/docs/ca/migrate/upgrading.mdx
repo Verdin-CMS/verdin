@@ -1,0 +1,227 @@
+---
+title: Actualitzar Verdin
+description: Actualitza una instal·lació de Verdin — el binari o la imatge Docker, les migracions que s'executen en iniciar i els canvis destacats o incompatibles de cada versió menor.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+Aquesta pàgina explica com passar un projecte a una versió més nova de Verdin, i llista què ha
+canviat entre versions menors. Verdin segueix el [versionat semàntic](https://semver.org/) amb un
+matís per a la 0.x: fins a la 1.0, una versió **menor** (0.8 → 0.9) pot canviar el comportament, i
+una versió **de pedaç** (0.9.0 → 0.9.1) només corregeix i reforça.
+
+## Abans d'actualitzar
+
+1. **Llegeix el registre de canvis** des de la teva versió fins a la nova: el
+   [registre de canvis](/ca/project/changelog/) llista tots els canvis, i les
+   [notes de més avall](#notes-dactualització) resumeixen els que requereixen alguna acció.
+2. **Fes una còpia de seguretat** de la base de dades i de l'emmagatzematge de multimèdia (consulta
+   [Còpies de seguretat](/ca/deploy/backups/)). Tornar a una versió anterior vol dir restaurar
+   aquesta còpia: les versions anteriors no desfan les taules i les columnes que n'ha afegit una de
+   més nova.
+3. **Prova-ho en una còpia** de producció si les notes esmenten un comportament del qual depenen el
+   teu frontend o els teus editors.
+
+Pots saltar-te versions. Les migracions es calculen a partir de la diferència entre la base de
+dades i el que espera la versió nova, no es reprodueixen versió a versió, de manera que 0.6 → 0.9
+migra en una sola execució. Llegeix les notes de totes les versions intermèdies.
+
+## Actualitza
+
+<Tabs syncKey="install">
+<TabItem label="Docker">
+
+<Steps>
+
+1. Canvia l'etiqueta de la imatge al teu fitxer Compose, manifest o `Dockerfile`, per exemple
+   `ghcr.io/verdin-cms/verdin:0.10` → `ghcr.io/verdin-cms/verdin:0.11`. Una etiqueta menor (`0.10`)
+   segueix les seves versions de pedaç; fixa una versió completa (`0.10.0`) per decidir també quan
+   arriben aquestes.
+
+2. Baixa-la i reinicia:
+
+   ```sh frame="terminal"
+   docker compose pull verdin
+   docker compose up -d verdin
+   docker compose logs -f verdin
+   ```
+
+   L'ordre per defecte de la imatge, `start --migrate`, aplica les migracions de la versió nova
+   abans de servir. Busca `applied migrations` i `verdin listening` als registres.
+
+</Steps>
+
+</TabItem>
+<TabItem label="Binary">
+
+<Steps>
+
+1. Baixa l'arxiu per a la teva plataforma de la
+   [pàgina de versions](https://github.com/Verdin-CMS/verdin/releases), per exemple
+   `verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz`, i comprova'l amb els `SHA256SUMS` de la
+   versió:
+
+   ```sh frame="terminal"
+   sha256sum --ignore-missing -c SHA256SUMS
+   tar xzf verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz
+   ```
+
+2. Atura el servidor, substitueix el binari `verdin` i comprova'n la versió:
+
+   ```sh frame="terminal"
+   verdin version
+   ```
+
+3. Revisa i aplica les migracions des del directori del projecte:
+
+   ```sh frame="terminal"
+   verdin migrate plan
+   verdin migrate apply
+   ```
+
+   O inicia amb `verdin start --migrate`, que primer aplica els passos segurs.
+
+4. Inicia el servidor com sempre (`verdin start`).
+
+</Steps>
+
+</TabItem>
+</Tabs>
+
+## Migracions en iniciar
+
+Una versió nova sovint afegeix taules o columnes pròpies (sessions, configuració, funcionalitats
+noves). `verdin start` compara la base de dades amb el que necessiten l'esquema i la versió nova:
+
+- Si coincideixen, s'inicia.
+- Si hi ha passos pendents, es nega a iniciar-se i et diu que executis `verdin migrate plan` i
+  `verdin migrate apply`, o que iniciïs amb `--migrate`.
+- `--migrate` només aplica els passos **segurs**. Si un pas és arriscat o destructiu, l'inici falla
+  i l'apliques tu mateix amb `verdin migrate apply --allow risky` (o `destructive`) després de
+  llegir el pla.
+- A MySQL i MariaDB, on els canvis d'esquema no es poden executar en una transacció, una migració
+  interrompuda continua des del pas que ha fallat al següent `verdin migrate apply`.
+
+Amb diverses instàncies, funciona una actualització progressiva: la primera instància nova agafa el
+bloqueig de migració i migra, i les altres l'esperen i no troben res més a fer. Consulta
+[Executar diverses instàncies](/ca/deploy/scaling/).
+
+<Aside type="caution">
+Actualitza tot el projecte a una sola versió. No mantinguis instàncies de dues versions menors en
+execució alhora més temps del que dura un desplegament progressiu.
+</Aside>
+
+## Notes d'actualització
+
+Canvis destacats i incompatibles per versió, amb els més antics al final. El
+[registre de canvis](/ca/project/changelog/) té la llista completa.
+
+### 0.9.1 → 0.10
+
+Sense migració de base de dades. La documentació s'ha traslladat de `docs/` a aquest lloc.
+
+- **Consumidors de webhooks de `review-workflows.updateEntryStage`**: `model` ara és el nom en
+  singular (`article`), com als esdeveniments d'entrada, i l'uid ha passat a `uid`. Llegeix
+  `uid` on feies servir `model`.
+- **Regenera els teus tipus de TypeScript** amb `verdin types`: `Collections` i `Singles` ara
+  són àlies de tipus, que és el que necessita `createClient<VerdinSchema>`.
+- **Docker**: la imatge desa la memòria cau de transformacions i l'índex de cerca a `/data` i
+  enllaça `/app/public/uploads` a `/data/uploads`. Si definies
+  `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR` o `VERDIN_SEARCH__DIR` només per esquivar que `/app` és
+  de només lectura, les pots treure. La imatge té un `HEALTHCHECK`.
+- **CDN**: les respostes porten les etiquetes dels tipus que poden poblar, de manera que les
+  purgues refresquen més memòria cau que abans; no cal canviar res.
+- Els camps de relació del tauler d'administració enllacen entrades mitjançant un diàleg
+  (**Enllaça una entrada**) en lloc d'un quadre de cerca integrat.
+
+### 0.9.0 → 0.9.1
+
+Una versió de reforç; es recomana actualitzar totes les instal·lacions. La seva migració (una taula
+nova, dues columnes noves) s'executa en iniciar.
+
+- **Darrere d'un proxy invers, defineix `[server].trusted_proxies`.** Només es fa servir el
+  `X-Forwarded-For` dels proxies llistats per a l'adreça del client; si no, tots els clients
+  darrere del proxy comparteixen una adreça per als límits de freqüència i els registres
+  d'auditoria.
+- **Els frontends de navegador d'un altre origen necessiten `[api].cors_origins`.** La 0.9.1 afegeix
+  CORS a l'API de contingut i a GraphQL; abans no hi havia suport per a CORS.
+- **Les lectures a través de relacions segueixen els permisos.** `populate`, els filtres de relació
+  i les ordenacions per relació només arriben als tipus i camps que el client pot llegir, a totes
+  les API. Les peticions públiques i amb token que poblaven tipus sobre els quals no tenien permís
+  `find` ara reben menys dades: concedeix els permisos que falten.
+- **L'SSO és més estricte.** La seva configuració necessita un Super Admin; `defaultRoles` i
+  `roleMap` no poden concedir Super Admin; el claim `email_verified` del proveïdor ha de ser true
+  (tret de `trustUnverifiedEmail`); el segon factor dels administradors s'aplica tret que es confiï
+  en el proveïdor per a això (`providerMfa`); l'emissor i l'endpoint de tokens han de ser URL
+  `https` públics. Comprova els inicis de sessió SSO després d'actualitzar.
+- **Els Super Admin** només els pot crear, editar, eliminar, tornar a convidar o restablir un altre
+  Super Admin.
+- **Els comptes d'usuari final es bloquegen** després de contrasenyes incorrectes repetides, com els
+  comptes d'administració.
+- Les relacions poblades retornen com a màxim 1.000 entrades per entrada i relació.
+- Els índexs de cerca es reconstrueixen en el primer inici (els camps privats dels components ja no
+  s'indexen).
+
+### 0.8 → 0.9
+
+- El quadre de cerca de la llista d'administració cerca a tots els camps de text (`_q`) en lloc del
+  títol.
+- Permisos d'administració nous `deploy.manage`, `deploy.trigger` i `site.manage`; els Editor reben
+  `deploy.trigger` i `site.manage`.
+- Les funcionalitats opcionals noves (temps real, comentaris i tasques, accions d'IA, SEO i mapa del
+  lloc, redireccions, menús, formularis) estan desactivades fins que les actives. Les mètriques
+  necessiten `[metrics].enabled = true`.
+
+### 0.7 → 0.8
+
+- **Els camps condicionals s'apliquen**: un camp amagat per les seves `conditions` ja no és
+  obligatori. El contingut que depenia que aquest camp fos obligatori ara es pot desar sense ell.
+- Tipus d'atribut `password` nou; `verdin import strapi` ara importa els camps de contrasenya de
+  Strapi.
+
+### 0.7.0 → 0.7.1
+
+- L'entorn d'execució dels connectors passa a Wasmtime 48. Els connectors existents continuen
+  funcionant sense recompilar-los.
+- Compilar des del codi font necessita Rust 1.95 o posterior.
+
+### 0.6 → 0.7
+
+- **Diverses instàncies**: cada instància llegeix la configuració que han canviat les altres cada
+  `[server].sync_interval_secs` (10 s). Si n'executes més d'una, defineix
+  `[plugins].run_jobs = false` a totes excepte una.
+- El contingut que escriuen els connectors a través de l'amfitrió ara passa per les comprovacions
+  prèvies a l'escriptura de la plataforma, com les etapes dels fluxos de revisió. Els hooks previs
+  dels mateixos connectors continuen ometent-se per a aquestes escriptures, de manera que un
+  connector no es pot disparar a si mateix.
+
+### 0.5 → 0.6
+
+- **Els registres d'auditoria** estan activats per defecte i conserven les entrades durant
+  `[audit].retention_days` (90). Desactiva la funcionalitat a **Configuració → Funcionalitats** si
+  no els vols.
+
+### 0.4 → 0.5
+
+- No cal canviar res. Els connectors es carreguen des de `[plugins].path` (`plugins/`) i es queden
+  desactivats fins que s'activen.
+
+### 0.3 → 0.4
+
+- **`auth`, `users` i `connect` són noms de ruta reservats**, juntament amb `upload` i `uploads`:
+  canvia el nom dels tipus de contingut el nom d'API dels quals sigui un d'aquests abans
+  d'actualitzar.
+
+### 0.2 → 0.3
+
+- Els noms d'atribut segueixen la regla de Strapi (una lletra, seguida de lletres, dígits i guions
+  baixos) en lloc de només camelCase. Es rebutgen dos noms que corresponguin a la mateixa columna.
+- Les opcions `regex` accepten patrons semblants als de JavaScript.
+
+### 0.1 → 0.2
+
+- Els límits de mida del cos i els temps d'espera s'apliquen per router d'API; les pujades tenen
+  els seus propis límits (`[upload].max_file_size`).
+- Els rols integrats de les instal·lacions existents reben els permisos nous un sol cop.

@@ -1,0 +1,154 @@
+---
+title: Pré-visualização
+description: Abra os rascunhos no seu site a partir do editor de entradas com um token de pré-visualização de curta duração e faça o seu site ler o rascunho com ele.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+A pré-visualização abre o rascunho de uma entrada no seu próprio site, antes de ele ser
+publicado. O editor monta um link a partir de um modelo de URL por tipo de conteúdo e adiciona
+um token de curta duração que permite ao seu site ler aquele único rascunho. Este guia configura
+os modelos e o lado do site.
+
+Para clicar em um texto na pré-visualização e ir para o campo correspondente, adicione a
+[Edição visual](/pt-br/guides/frontend/visual-editing/) por cima disto.
+
+## Antes de começar
+
+- Ative **Configurações → Recursos → Pré-visualização**. Ela vem desativada por padrão.
+- Alterar as configurações do recurso exige **Gerenciar recursos** (`features.manage`).
+- Abrir uma pré-visualização exige acesso de leitura à entrada. Veja
+  [Permissões](/pt-br/reference/permissions/).
+
+## Configure as URLs de pré-visualização
+
+<Steps>
+
+1. No cartão **Pré-visualização** em **Configurações → Recursos**, selecione **Configurar URLs
+   de pré-visualização**.
+2. Em **Modelos de URL**, informe a página do seu site que mostra o rascunho de cada tipo de
+   conteúdo. Deixe um tipo vazio para que ele não tenha pré-visualização.
+3. Opcionalmente, altere **Validade do link (minutos)**: 60 por padrão, no máximo 10080 (7
+   dias).
+4. Salve.
+
+</Steps>
+
+Um modelo é uma URL `http` ou `https` com placeholders entre chaves:
+
+| Placeholder | Preenchido com |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | Qualquer campo de nível superior do rascunho. Os placeholders desconhecidos ficam vazios. |
+| `{documentId}`, `{uid}` | O id do documento e o uid do tipo de conteúdo. |
+| `{token}` | O token de pré-visualização. Sem esse placeholder, o token é adicionado como o parâmetro de consulta `preview`. |
+
+Para os artigos do projeto de exemplo:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+resulta em `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+As mesmas configurações em JSON, como o recurso as armazena (`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## Abra uma pré-visualização
+
+No editor de entradas, selecione **Abrir pré-visualização** para abrir o rascunho no seu site em
+uma nova aba, ou **Lado a lado** para mostrá-lo em um painel ao lado do formulário, com as
+larguras **Desktop**, **Tablet** e **Celular**. O painel lateral recarrega após cada salvamento.
+Se ele ficar em branco, o seu site provavelmente se recusa a ser incorporado em um frame: use
+**Abrir em uma nova aba**.
+
+## Leia o rascunho no seu site
+
+A sua página de pré-visualização pega o token da URL e o envia de volta para a API de conteúdo no
+cabeçalho `x-verdin-preview`, pedindo o rascunho:
+
+<Diagram
+  caption="Uma requisição de pré-visualização"
+  code={`sequenceDiagram
+  participant E as Editor
+  participant V as Verdin
+  participant S as O seu site
+  E->>V: Abrir pré-visualização
+  V-->>E: URL com o token de pré-visualização
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: o rascunho`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+O token de pré-visualização é lido pela API de conteúdo REST. Busque o rascunho via REST na sua
+página de pré-visualização.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+O mesmo cabeçalho funciona nos single types (`GET /api/<singularName>?status=draft`).
+
+O que o token concede:
+
+- Ele permite que quem o tem leia aquele único documento, rascunhos incluídos, até ele expirar.
+- Ele não consegue ler outros documentos, listar entradas nem escrever nada.
+- As respostas às requisições de pré-visualização nunca ficam em cache.
+
+<Aside type="caution">
+Qualquer pessoa com o link pode ler o rascunho até o token expirar. Mantenha a validade curta e
+não compartilhe links de pré-visualização em lugares públicos.
+</Aside>
+
+A sua página de pré-visualização normalmente busca a entrada por um campo como `slug`. Como o
+token lê pelo `documentId`, coloque também `{documentId}` no modelo, ou mantenha do seu lado a
+correspondência entre slug e id.
+
+## API de administração
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` retorna o link para o botão do
+editor:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+Ele exige acesso de leitura à entrada e responde `404` quando o recurso está desativado ou o tipo
+não tem modelo.

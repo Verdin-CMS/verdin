@@ -1,0 +1,386 @@
+---
+title: 'Eğitim: Astro ile bir blog'
+description: Verdin’in örnek şeması üzerinde tipli sorgular, slug’a göre makale sayfaları, kategoriler ve isteğe bağlı bir taslak önizlemesiyle küçük bir Astro blogu geliştirin.
+sidebar:
+  order: 3
+  label: Astro ile blog
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+Bu eğitimde içeriğini Verdin’den okuyan, [Astro](https://astro.build) ile statik bir blog
+geliştireceksiniz: makaleleri listeleyen bir ana sayfa, kategorisiyle birlikte `/articles/<slug>/`
+adresinde makale başına bir sayfa ve isteğe bağlı olarak admin’in önizleme bağlantısından taslakları
+gösteren bir sayfa. Şemadan üretilen tiplerle tipli istemci `@verdin/client`’ı kullanacaksınız.
+
+Astro 7.3 (`create-astro` 5.2) ve Node.js 22.12 veya sonrası için, Verdin ve `@verdin/client` 0.10 ile
+yazılmıştır. [Next.js eğitimi](/tr/start/tutorial-nextjs/) aynı blogu Next.js ile geliştirir.
+
+## Başlamadan önce
+
+`PATH`’inizde `verdin` ikili dosyasına (bkz. [Hızlı başlangıç](/tr/start/quickstart/)), Node.js’e ve
+Git’e ihtiyacınız var. Sonunda yan yana iki klasörünüz olur: Verdin projesi `cms` ve Astro sitesi
+`blog`.
+
+## 1. Verdin’i blog şemasıyla kurun
+
+Deponun [`examples/blog`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) projesi bir
+blog modeller: başlığı, `slug`’ı, özeti, Markdown `body`’si, kategorisi ve etiketleri olan
+makaleler, ayrıca bir homepage tekil tipi ve birkaç bileşen.
+
+<Steps>
+
+1. Bir Verdin projesi oluşturun ve örnek şemayı içine kopyalayın:
+
+   ```sh title="Terminal"
+   git clone --depth 1 https://github.com/Verdin-CMS/verdin.git
+   verdin new cms
+   cp verdin/examples/blog/schema/content-types/{article,category,tag,homepage}.json cms/schema/content-types/
+   cp -r verdin/examples/blog/schema/components/* cms/schema/components/
+   ```
+
+2. Başlatın:
+
+   ```sh title="Terminal"
+   cd cms
+   verdin dev
+   ```
+
+   İlk başlatma dört içerik tipi için tabloları oluşturur.
+
+3. [http://localhost:1337/admin/](http://localhost:1337/admin/) adresini açın ve ilk admin’i
+   oluşturun.
+
+4. **Koleksiyonlar** altında **Category**’yi açın, **Yeni kayıt**’ı seçin, ona `News` adını verin ve
+   kaydedin.
+
+5. **Article**’ı açın, **Yeni kayıt**’ı seçin ve bir başlık, bir özet ve Markdown ile bir gövde
+   doldurun. `slug` başlıktan üretilir. Kategori olarak `News`’i seçin ve **Yayınla**’yı seçin. Aynı
+   şekilde ikinci bir makale ekleyin.
+
+6. **Ayarlar → Herkese açık erişim**’i açın, **Article** ve **Category** için **Listele** ve
+   **Tekini getir**’e izin verin ve **Kaydet**’i seçin.
+
+</Steps>
+
+API’nin yanıt verdiğini denetleyin:
+
+```sh title="Terminal"
+curl 'localhost:1337/api/articles?populate=category'
+```
+
+<Aside>
+Bir ilişkiyi populate etmek hedefine okuma erişimi gerektirir. **Category** üzerinde **Listele**
+olmadan `populate=category`, ``invalid key `category` in populate`` ile `400` yanıtını verir.
+</Aside>
+
+## 2. Astro projesini oluşturun
+
+Yeni bir terminalde, `cms`’in yanında:
+
+```sh title="Terminal"
+npm create astro@latest blog -- --template minimal --no-git --yes
+cd blog
+npm install @verdin/client marked
+```
+
+[`marked`](https://marked.js.org), `body` alanının Markdown’ını HTML’e dönüştürür.
+
+## 3. Tipleri üretin
+
+`verdin types` şemayı okur ve içerik tipi ve bileşen başına bir TypeScript arayüzü ile istemci için
+rotaların bir `VerdinSchema` haritasını yazar. Onu Verdin projesinin yapılandırmasına işaret ederek
+`blog` içinden çalıştırın:
+
+```sh title="Terminal"
+verdin types -c ../cms/verdin.toml -o src/verdin-types.ts
+```
+
+Dosya diğerlerinin yanı sıra şunu içerir:
+
+```ts title="src/verdin-types.ts"
+export interface Article extends DocumentBase {
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  body: string | null;
+  // …
+  category?: Category | null;
+  tags?: Tag[];
+}
+```
+
+İlişkiler, medya ve bileşenler isteğe bağlıdır, çünkü API onları yalnızca populate ettiğinizde
+döndürür. Şema her değiştiğinde komutu yeniden çalıştırın.
+
+## 4. Verdin’e bağlanın
+
+Sunucunun URL’sini ve isteğe bağlı bir API token’ını Astro’nun tipli ortamında bildirin:
+
+```js title="astro.config.mjs"
+// @ts-check
+import { defineConfig, envField } from 'astro/config';
+
+export default defineConfig({
+  env: {
+    schema: {
+      VERDIN_URL: envField.string({ context: 'server', access: 'public', default: 'http://localhost:1337' }),
+      VERDIN_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+    },
+  },
+});
+```
+
+Token olmadan istemci, 1. adımda açtığınız public rolü olarak okur. Bunun yerine bir token ile okumak
+için **Ayarlar → API token’ları** bölümünde **Salt okunur** bir token oluşturun ve onu `.env`’ye
+`VERDIN_TOKEN=…` olarak koyun.
+
+İstemciyi bir kez oluşturun ve paylaşın:
+
+```ts title="src/lib/verdin.ts"
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+```
+
+`verdin.collection('articles')` artık yalnızca şemanızın rotalarını kabul eder ve sonuçları
+`Article` olarak tiplenir.
+
+## 5. Bir yerleşim ekleyin
+
+Başlangıç sayfasının HTML’ini sayfaların paylaştığı bir yerleşimle değiştirin:
+
+```astro title="src/layouts/Layout.astro"
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header><a href="/">My blog</a></header>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>
+```
+
+## 6. Makaleleri listeleyin
+
+```astro title="src/pages/index.astro"
+---
+import Layout from '../layouts/Layout.astro';
+import { verdin } from '../lib/verdin';
+
+const { data: articles } = await verdin.collection('articles').find({
+  fields: ['title', 'slug', 'excerpt', 'publishedAt'],
+  populate: { category: { fields: ['name'] } },
+  sort: ['publishedAt:desc'],
+});
+---
+
+<Layout title="My blog">
+  <h1>Articles</h1>
+  <ul>
+    {articles.map((article) => (
+      <li>
+        <a href={`/articles/${article.slug}/`}>{article.title}</a>
+        {article.category && <small> in {article.category.name}</small>}
+        {article.excerpt && <p>{article.excerpt}</p>}
+      </li>
+    ))}
+  </ul>
+</Layout>
+```
+
+Sorgu, Strapi v5 biçimindeki REST çağrısıdır:
+`GET /api/articles?fields[0]=title&…&populate[category][fields][0]=name&sort[0]=publishedAt:desc`.
+`fields` yanıtı küçük tutar, `populate` ise kategoriyi yalnızca adıyla ekler. Public rolü yalnızca
+yayınlanmış makaleleri okur.
+
+## 7. Makale başına bir sayfa ekleyin
+
+Astro makale başına bir sayfa oluşturur. `getStaticPaths` makaleleri kategorileriyle getirir ve her
+birini kendi sayfasına geçirir:
+
+```astro title="src/pages/articles/[slug].astro"
+---
+import type { GetStaticPaths } from 'astro';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { verdin } from '../../lib/verdin';
+
+export const getStaticPaths = (async () => {
+  const { data: articles } = await verdin.collection('articles').find({
+    populate: { category: true },
+    pagination: { pageSize: 100 },
+  });
+  return articles.map((article) => ({
+    params: { slug: article.slug },
+    props: { article },
+  }));
+}) satisfies GetStaticPaths;
+
+const { article } = Astro.props;
+const html = await marked.parse(article.body ?? '');
+---
+
+<Layout title={article.title}>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+`pageSize`, `[api].max_page_size` (varsayılan 100) ile sınırlıdır. Daha fazla makaleyle sayfaları
+`meta.pagination.pageCount` kullanarak bir döngüde getirin.
+
+<Aside type="caution">
+`marked` HTML’i temizlemez (sanitize etmez). Bu, kendi editörlerinizin yazdığı Markdown için sorun
+değildir; içerik güvenilmeyen kişilerden gelebiliyorsa HTML’i göstermeden önce temizleyin.
+</Aside>
+
+## 8. Çalıştırın
+
+```sh title="Terminal"
+npm run dev
+```
+
+[http://localhost:4321](http://localhost:4321) adresini açın: liste yayınlanmış makalelerinizi gösterir
+ve her biri kendi sayfasına bağlanır. `npm run build` statik siteyi `dist/` içine yazar.
+
+Statik bir derleme içeriği bir kez okur. Değişiklikleri yayınlamak için içerik değiştiğinde siteyi
+yeniden derleyin; örneğin bir webhook veya bir deploy hook’undan. Bkz.
+[Dağıtımlar ve CDN](/tr/guides/integrations/deploys-and-cdn/).
+
+Projeniz şimdi şöyle görünür:
+
+<FileTree>
+- blog/
+  - astro.config.mjs
+  - src/
+    - verdin-types.ts `verdin types` tarafından üretilir
+    - lib/
+      - verdin.ts
+    - layouts/
+      - Layout.astro
+    - pages/
+      - index.astro
+      - articles/
+        - [slug].astro
+</FileTree>
+
+## 9. İsteğe bağlı: taslakları önizleme
+
+Admin, kısa ömürlü bir önizleme token’ıyla bir taslağı sitenizde açabilir. Token o tek belgeyi,
+taslaklar dâhil, okur ve başka hiçbir şeyi okumaz. Taslaklar derlemeden sonra değiştiği için
+önizleme sayfası her istekte oluşturulur; bu da bir adapter gerektirir:
+
+```sh title="Terminal"
+npx astro add node --yes
+```
+
+Önizleme token’ını `x-verdin-preview` başlığında gönderen bir istemci ekleyin:
+
+```ts title="src/lib/verdin.ts" ins={10-16}
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+
+/** A client that reads one draft with the preview token from the admin's link. */
+export function previewClient(previewToken: string) {
+  return createClient<VerdinSchema>({
+    url: VERDIN_URL,
+    headers: { 'x-verdin-preview': previewToken },
+  });
+}
+```
+
+Ardından sayfa. `prerender = false` onu istek üzerine oluşturur; token `preview` sorgu parametresi
+olarak gelir:
+
+```astro title="src/pages/preview/[documentId].astro"
+---
+import { VerdinError } from '@verdin/client';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { previewClient } from '../../lib/verdin';
+
+export const prerender = false;
+
+const { documentId } = Astro.params;
+const token = Astro.url.searchParams.get('preview');
+if (!documentId || !token) {
+  return new Response('Missing preview token', { status: 401 });
+}
+
+let article;
+try {
+  ({ data: article } = await previewClient(token)
+    .collection('articles')
+    .findOne(documentId, { status: 'draft', populate: { category: true } }));
+} catch (error) {
+  if (error instanceof VerdinError) {
+    return new Response('This preview link has expired', { status: error.status });
+  }
+  throw error;
+}
+const html = await marked.parse(article.body ?? '');
+Astro.response.headers.set('cache-control', 'no-store');
+---
+
+<Layout title={`Preview: ${article.title}`}>
+  <p><strong>Draft preview</strong></p>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+Bir önizleme token’ı kayıtları listeleyemez; bu yüzden sayfa taslağı slug yerine `documentId` ile
+arar. Şimdi Verdin’e sayfanın nerede olduğunu söyleyin:
+
+<Steps>
+
+1. Admin’de **Ayarlar → Özellikler**’i açın, **Önizleme**’yi açın ve **Önizleme URL’lerini
+   yapılandır**’ı seçin.
+2. **Article**’ın URL şablonunu `http://localhost:4321/preview/{documentId}` olarak ayarlayın ve
+   kaydedin. Verdin token’ı `?preview=…` olarak ekler.
+3. Bir makale açın, değiştirin ve **Taslağı kaydet**’i, ardından **Önizlemeyi aç**’ı seçin.
+
+</Steps>
+
+Sayfa taslağı gösterir. Bağlantılar varsayılan olarak 60 dakika geçerlidir. Yer tutucular ve ayarlar
+için [Önizleme](/tr/guides/content/preview/) sayfasına, önizlemeden düzenlemek için
+[Görsel düzenleme](/tr/guides/frontend/visual-editing/) sayfasına bakın.
+
+## Sonraki adımlar
+
+- [Tipli istemci](/tr/guides/frontend/typed-client/): `@verdin/client`’ın her metodu.
+- [REST API](/tr/api/rest/): filtreler, sıralama, sayfalama ve `populate`.
+- [Görseller](/tr/guides/frontend/images/): medya kütüphanesinin duyarlı formatları.
+- [SEO ve site haritası](/tr/guides/frontend/seo-and-sitemap/): `shared.seo` bileşeni ve Verdin’in
+  site haritası.

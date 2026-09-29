@@ -1,0 +1,214 @@
+---
+title: Migreren vanaf Strapi
+description: Verhuis een Strapi v4- of v5-project naar Verdin met verdin import strapi — exporteren, importeren, wat er meekomt, de id-mapping, controles achteraf en de wijzigingen die je frontend nodig heeft.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+`verdin import strapi` haalt een Strapi v4- of v5-project binnen in Verdin: de contenttypes en
+componenten worden schemabestanden, en de items, locales, mediabibliotheek, relaties,
+eindgebruikers en openbare rechten worden geïmporteerd. Deze pagina loopt door een migratie en
+somt op wat je frontend moet veranderen. Voor een vergelijking per functie, zie
+[Compatibiliteit met Strapi](/nl/migrate/compatibility/).
+
+<Diagram
+  caption="De importer leest het exportbestand van Strapi; hij maakt nooit verbinding met de Strapi-database."
+  code={`flowchart LR
+  S[Strapi-project] -->|strapi export| E[export .tar.gz]
+  E -->|verdin import strapi| F[schemabestanden]
+  F --> M[database migreren]
+  M --> D[items, media, gebruikers]
+  D --> R[strapi-id-map.json]`}
+/>
+
+## Voordat je begint
+
+- Een Strapi v4- of v5-project waarin je `strapi export` kunt draaien.
+- Een nieuw Verdin-project (`verdin new my-site`), of een project zonder schemabestanden met
+  dezelfde namen. Zie de [quickstart](/nl/start/quickstart/).
+- De database en mediaopslag die het Verdin-project in productie gaat gebruiken, als dat kan:
+  bestanden worden tijdens de import naar de geconfigureerde uploadprovider gekopieerd.
+
+## 1. Exporteren vanuit Strapi
+
+In het Strapi-project:
+
+```sh frame="terminal"
+npx strapi export --no-encrypt -f my-export      # schrijft my-export.tar.gz
+```
+
+Verdin kan geen versleutelde exports (`.tar.gz.enc`) lezen; exporteer opnieuw met
+`--no-encrypt`. Niet-gecomprimeerde exports (`--no-compress`, een `.tar`) en een uitgepakte
+exportmap werken ook.
+
+## 2. Importeren in Verdin
+
+<Steps>
+
+1. Maak het project aan en importeer de export:
+
+   ```sh frame="terminal"
+   verdin new my-site && cd my-site
+   verdin import strapi ../my-export.tar.gz
+   ```
+
+2. Lees de samenvatting. De importer drukt af hoeveel documenten, versies, bestanden, mappen,
+   locales en koppelingen hij heeft geïmporteerd, en daarna één regel per waarschuwing.
+
+3. Start de ontwikkelserver en open het beheerpaneel:
+
+   ```sh frame="terminal"
+   verdin dev
+   ```
+
+</Steps>
+
+Het commando voert deze stappen op volgorde uit:
+
+1. Schrijft één schemabestand per `api::`-contenttype en per component naar `schema/`. Als het
+   geconverteerde schema niet door de validatie komt, wordt er niets geschreven.
+2. Migreert de database (veilige stappen).
+3. Importeert locales, mediamappen en -bestanden, items (elk concept, elke gepubliceerde versie en
+   elke locale), relaties, en de media die aan items en componenten hangen.
+4. Importeert eindgebruikers, hun rollen en de openbare en geauthenticeerde rechten.
+5. Schrijft `strapi-id-map.json` in de projectmap.
+
+| Optie | Effect |
+| --- | --- |
+| `--schema-only` | Stop na het schrijven van de schemabestanden. Handig om het schema eerst te bekijken of aan te passen. |
+| `--force` | Overschrijf bestaande schemabestanden, en importeer in contenttypes die al items hebben. |
+
+Zonder `--force` stopt de import als een schemabestand dat hij zou schrijven al bestaat, of als
+een contenttype al items heeft.
+
+## Wat er meekomt
+
+| Strapi | Verdin |
+| --- | --- |
+| Contenttypes en componenten van `api::…` | Schemabestanden, met behoud van `collectionName`, concept en publicatie, i18n-opties en veldopties (`required`, `private`, `unique`, lengtes, `regex`, standaardwaarden…) |
+| Relaties tussen types van `api::` | Dezelfde relaties |
+| Relaties in componenten | Verwijzingen `oneWay` / `manyWay` |
+| Polymorfe relaties (`morphToOne`, `morphToMany`, `morphOne`, `morphMany`) | Dezelfde, met hun koppelingen naar geïmporteerde contenttypes |
+| Mediavelden (ook in componenten) | Mediavelden |
+| Rijen van v5 (concept en gepubliceerd) | Concept- en gepubliceerde versies |
+| Rijen van v4 | Een concept, plus een gepubliceerde versie als `publishedAt` is ingesteld; `localizations` worden locales van één document |
+| `plugin::i18n.locale` | Locales (de standaard van Strapi blijft de standaard) |
+| `plugin::upload.file` en `folder` | Bestanden van de mediabibliotheek (met hun formaten) en mappen |
+| Velden `password` | Velden `password`, met behoud van de bcrypt-hashes van Strapi |
+| Aangepaste velden (`customField`) | Het attribuut met behoud van zijn `customField`; zie hieronder |
+| Voorwaardelijke velden (`conditions`, Strapi 5.17) | Bewaard in het schema en toegepast door de editor |
+| `plugin::users-permissions.user` | Eindgebruikers, met hun bcrypt-wachtwoorden (bij de volgende login opnieuw gehasht met Argon2id), `confirmed` en `blocked` |
+| Rollen van Users & Permissions | De grants van de rol Public worden de openbare rechten van Verdin; Authenticated en aangepaste rollen worden eindgebruikersrollen |
+| Rolrechten op contenttypes en uploads | Grants `find`, `findOne`, `create`, `update` en `delete`; voor uploads `find`, `findOne`, `upload` en `destroy` |
+
+## Wat er niet meekomt
+
+Gemeld als waarschuwingen:
+
+- Relaties naar beheerders, eindgebruikers of types van andere plugins (alleen doelen van `api::`
+  worden geïmporteerd). De velden `createdBy` / `updatedBy` worden weggelaten.
+- `unique` op attributen van het type `text`, `richtext`, `blocks` en `json` (Verdin ondersteunt
+  het op korte teksttypes).
+- Attribuuttypes die Verdin niet kent, en relatietypes die het niet binnen een component kan
+  opslaan.
+- Relatiehelften waarvan `inversedBy` / `mappedBy` niet overeenkomt met de andere kant.
+- Localecodes die niet geldig zijn.
+
+Helemaal niet geïmporteerd: beheerders en beheerdersrollen, API-tokens, transfer tokens, webhooks,
+releases, fasen van reviewworkflows, contentgeschiedenis en auditlogs, en de instellingen van
+Strapi-plugins. Je Strapi-code — controllers, services, routes, policies, middlewares, lifecycle
+hooks, cron-taken en aanpassingen van het beheerpaneel — heeft geen Verdin-equivalent om naar te
+converteren; zie [Eigen code opnieuw bouwen](#eigen-code-opnieuw-bouwen).
+
+<Aside type="note">
+Aangepaste velden behouden hun `customField`-naam, zoals `plugin::color-picker.color`. De editor
+toont ze met een [plugin](/nl/extending/plugins/) die dat veld levert, en valt terug op het
+invoerveld voor het opgeslagen type als er geen is.
+</Aside>
+
+## De id-mapping
+
+Verdin genereert nieuwe document-id's: de `documentId`s van Strapi hebben 24 tekens en die van
+Verdin 26, dus elk document krijgt een nieuw id. Numerieke `id`s veranderen ook.
+`strapi-id-map.json` legt de koppeling vast:
+
+```json title="strapi-id-map.json"
+{
+  "documents": {
+    "api::article": {
+      "hq7xw1c6m2vkn0f3t8ybz5sd": "01k6b3xg0r9m2m7c1d4e5f6g7h"
+    }
+  },
+  "files": {
+    "12": 3
+  }
+}
+```
+
+- `documents` heeft als sleutel de uid van het contenttype in Verdin (`api::article`, bij Strapi
+  `api::article.article`), en daarna de `documentId` van Strapi (v5) of een rij-id (v4: één id
+  staat voor alle locales van een document).
+- `files` koppelt bestands-id's van Strapi aan bestands-id's van Verdin.
+
+Gebruik het om id's te herschrijven die buiten het CMS zijn opgeslagen: links in de code van je
+frontend, id's in een andere database, analytics, bladwijzers.
+
+## Het resultaat controleren
+
+1. `verdin schema check` slaagt, en `verdin migrate plan` zegt dat de database up-to-date is.
+2. Open in het beheerpaneel elke collectie en vergelijk het aantal items, concepten en locales met
+   Strapi.
+3. Open een paar items met relaties, componenten, dynamische zones en media, en controleer dat de
+   koppelingen naar de juiste documenten en bestanden wijzen.
+4. Open de **Mediabibliotheek** en controleer dat de mappen en afbeeldingen (met hun formaten)
+   er zijn.
+5. Bekijk in **Instellingen → Openbare toegang** en **Instellingen → Eindgebruikers** de
+   geïmporteerde rechten en rollen.
+6. Roep je API aan zoals je frontend dat doet en vergelijk de responses met die van Strapi.
+
+Commit daarna `schema/`, maak je beheerders, API-tokens en webhooks aan, en deploy (zie de
+[productiechecklist](/nl/deploy/production-checklist/)).
+
+## Wijzigingen in de frontend
+
+De content-API volgt de REST- en GraphQL-vormen van Strapi v5, dus de meeste requests werken zoals
+ze zijn. Wijzig het volgende:
+
+- **Basis-URL.** Laat de frontend naar de Verdin-server wijzen. De content-API staat onder `/api`
+  (`[api].prefix`), GraphQL op `/graphql` zodra je het aanzet in **Instellingen → Functies**.
+- **API-tokens.** Tokens worden niet geïmporteerd: maak nieuwe aan in
+  **Instellingen → API-tokens** en vervang ze in de omgeving van je frontend.
+- **Document-id's.** Elk `documentId` en numeriek `id` is nieuw. Vervang id's die in de frontend
+  hard gecodeerd zijn door die in `strapi-id-map.json`, of beter, zoek items op aan de hand van een
+  slug of een ander `uid`-veld.
+- **Media-URL's.** Bestands-URL's wijzen naar de nieuwe provider: `/uploads/…` op de Verdin-server
+  voor de lokale provider, of `[upload.provider].public_url` voor S3. Werk de afbeeldingsdomeinen
+  bij die je framework toestaat (bijvoorbeeld `images.remotePatterns` in Next.js).
+- **Ingelogde eindgebruikers** moeten opnieuw inloggen: hun wachtwoorden werken, maar JWT's die
+  door Strapi zijn uitgegeven niet.
+- **CORS.** Als een browser de API vanaf een andere origin aanroept, vermeld die dan in
+  `[api].cors_origins`.
+- **Webhooks.** Maak ze opnieuw aan in **Instellingen → Webhooks**. Het event
+  `entry.draft-discard` van Strapi heet `entry.discard-draft`, en afleveringen zijn ondertekend
+  (zie [Webhooks](/nl/guides/integrations/webhooks/)).
+- **Strapi v4-frontends** hebben ook de wijzigingen van v5 nodig: platte responses zonder
+  `attributes`, `documentId` in plaats van `id` in URL's, en `status=draft` in plaats van
+  `publicationState=preview`.
+
+Genereer voor getypeerde toegang TypeScript-types met `verdin types` en gebruik de
+[getypeerde client](/nl/guides/frontend/typed-client/).
+
+## Eigen code opnieuw bouwen
+
+| Strapi | Verdin |
+| --- | --- |
+| Lifecycle hooks, middlewares van de document service | Plugin-hooks (`beforeCreate`, `afterUpdate`…) in een [WebAssembly-plugin](/nl/extending/plugins/) |
+| Eigen routes en controllers | Pluginroutes onder `/api/plugins/<name>/` |
+| Cron-taken | Pluginjobs (`[[jobs]]`) |
+| Aangepaste velden | Aangepaste velden van plugins |
+| Adminwidgets | Pluginwidgets, of de ingebouwde dashboardwidgets |
+| Logo, kleuren en teksten van het beheerpaneel | `[admin.branding]` in `verdin.toml` |
+| `config/*.js` | `verdin.toml` en omgevingsvariabelen ([configuratiereferentie](/nl/reference/configuration/)) |

@@ -1,0 +1,174 @@
+---
+title: Localitzar contingut
+description: Afegeix idiomes, fes localitzat un tipus de contingut, tradueix entrades al tauler d'administració i llegeix o escriu cada idioma a través de l'API.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Un tipus de contingut localitzat conserva una versió de cada entrada per idioma. Aquesta guia
+afegeix els idiomes en què publiques, activa la localització per a un tipus, tradueix entrades al
+tauler d'administració i llegeix o escriu cada idioma a través de l'API. Per al model que hi ha
+darrere (camps compartits, relacions entre tipus localitzats), consulta
+[Internacionalització](/ca/concepts/internationalization/).
+
+La localització forma part del nucli: no cal activar cap funcionalitat. Funciona com el connector
+i18n de Strapi v5 i accepta el mateix paràmetre `locale`.
+
+## Abans de començar
+
+- Per afegir, reanomenar o eliminar idiomes necessites **Gestiona els idiomes** (`locales.manage`).
+- Per fer localitzat un tipus n'edites l'esquema, al **Constructor de tipus de contingut**
+  (`verdin dev`) o a `schema/content-types/<name>.json`.
+- Consulta [Permisos](/ca/reference/permissions/) per als permisos de contingut que necessiten els
+  editors.
+
+## Afegeix els idiomes
+
+El primer inici crea l'anglès (`en`) com a idioma per defecte. Les peticions que no indiquen cap
+idioma fan servir el per defecte, i les entrades noves hi comencen.
+
+<Steps>
+
+1. Obre **Configuració → Internacionalització** i selecciona **Afegeix un idioma**.
+2. Introdueix un **Codi**: un codi de llengua en minúscules, opcionalment amb una regió o una
+   escriptura, com ara `fr`, `pt-BR` o `zh-Hans`. El nom s'omple sol i es pot canviar.
+3. Marca **Fes-lo l’idioma predeterminat** si les peticions sense idioma l'han de fer servir, i
+   després desa.
+
+</Steps>
+
+Per canviar el per defecte més endavant, selecciona **Estableix com a predeterminat** en un altre
+idioma. L'idioma per defecte no es pot eliminar.
+
+<Aside type="caution" title="Eliminar un idioma n'elimina les entrades">
+Eliminar un idioma elimina definitivament totes les entrades escrites en aquest idioma, a tots els
+tipus de contingut, versions publicades incloses. El diàleg et demana que escriguis el codi de
+l'idioma per confirmar-ho.
+</Aside>
+
+## Fes localitzat un tipus de contingut
+
+Al **Constructor de tipus de contingut**, obre el tipus i activa **Localitzat** a la seva
+configuració. Després decideix, camp per camp, quins valors canvien segons l'idioma: un camp amb
+**Localitzat** desactivat conté un sol valor compartit per tots els idiomes.
+
+El mateix al fitxer d'esquema, per al tipus `article` del projecte d'exemple:
+
+```json title="schema/content-types/article.json" {6,9}
+{
+  "kind": "collectionType",
+  "singularName": "article",
+  "pluralName": "articles",
+  "displayName": "Article",
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "title": { "type": "string", "required": true },
+    "readingTime": { "type": "integer", "pluginOptions": { "i18n": { "localized": false } } }
+  }
+}
+```
+
+Com es comporten els camps compartits:
+
+- Desar un camp compartit en un idioma l'escriu als esborranys de tots els idiomes.
+- Publicar un idioma copia els seus camps compartits a les versions publicades dels altres
+  idiomes.
+- Les relacions i els camps de multimèdia també es poden compartir.
+
+Els tipus sense `pluginOptions.i18n.localized` no són localitzats i ignoren els paràmetres
+`locale`. Canviar la localització d'un tipus és un canvi d'esquema: revisa la migració amb
+`verdin migrate plan` abans de desplegar-la.
+
+## Tradueix una entrada al tauler d'administració
+
+<Steps>
+
+1. Obre l'entrada i tria la llengua de destinació al selector **Idioma** de la part superior de
+   l'editor. Els idiomes sense versió mostren **Encara no creat**.
+2. L'editor diu que l'entrada encara no té versió en aquest idioma i que desar-la la crearà. Els
+   camps compartits ja mostren els seus valors.
+3. Per començar a partir d'una traducció existent, selecciona **Omple des d’un altre idioma** en
+   aquest avís. Tria l'origen a **Copia de** i selecciona **Copia els camps**. Copia els camps
+   localitzats, relacions i multimèdia incloses, al formulari. Encara no es desa res.
+4. Edita els camps i fes **Desa l’esborrany** o **Publica**. Cada idioma té el seu propi esborrany
+   i la seva pròpia versió publicada.
+
+</Steps>
+
+La vista de llista té el mateix selector **Idioma**: llista les versions d'un idioma cada vegada.
+Eliminar des de l'editor només elimina la versió de l'idioma actual; els altres idiomes es
+conserven.
+
+Amb la funcionalitat **Accions d’IA** activada, l'editor també pot traduir els camps de text a
+partir de l'esborrany d'un altre idioma. Consulta [Accions d'IA](/ca/guides/integrations/ai-actions/).
+
+## Limita els editors a alguns idiomes
+
+Els permisos de contingut d'un rol poden cobrir només alguns idiomes. A **Configuració → Rols**,
+obre el rol, busca el tipus de contingut i selecciona **Idiomes**. Tria **Només aquests idiomes** i
+selecciona'ls. Els administradors amb aquest rol no poden llegir ni canviar les versions en els
+altres idiomes; el selector **Idioma** mostra aquests idiomes com a «(sense accés)».
+
+## Llegeix i escriu idiomes a través de l'API
+
+Afegeix `locale` a qualsevol petició REST, o passa'l com a argument a GraphQL. Sense aquest
+paràmetre, es fa servir l'idioma per defecte. Un idioma desconegut és un error `400`.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+# Llegeix les versions franceses
+curl 'http://localhost:1337/api/articles?locale=fr'
+
+# Crea o actualitza la versió francesa d'un document
+curl -X PUT 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"data":{"title":"Bonjour"}}'
+
+# Elimina només la versió francesa
+curl -X DELETE 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(locale: "fr") {
+    documentId
+    title
+    locale
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ locale: 'fr' });
+```
+
+</TabItem>
+</Tabs>
+
+Què pots esperar:
+
+- `PUT` amb un `locale` crea la versió d'aquell idioma quan el document encara no en té.
+- Les respostes dels tipus localitzats inclouen `locale`. Totes les versions comparteixen el mateix
+  `documentId`.
+- `DELETE` només elimina la versió de l'idioma demanat (l'idioma per defecte quan no se n'indica
+  cap). Els enllaços que apunten al document s'eliminen quan ja no en queda cap idioma.
+- Quan un tipus localitzat enllaça amb un altre tipus localitzat, les lectures resolen la
+  destinació en el mateix idioma, i els filtres a través de relacions fan el mateix. Les
+  destinacions no localitzades són compartides per tots els idiomes.
+- Les càrregues dels webhooks i les versions de l'historial registren l'idioma.
+
+A diferència de Strapi, l'API de contingut no té la ruta `/api/i18n/locales`. Els idiomes es
+llisten a l'API d'administració a `GET /admin/api/i18n/locales`, i es gestionen amb `POST`,
+`PUT /admin/api/i18n/locales/{code}` i `DELETE /admin/api/i18n/locales/{code}`
+(`locales.manage`).

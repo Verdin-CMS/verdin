@@ -1,0 +1,33 @@
+---
+title: סביבת ניסוי ל-API
+description: שלחו בקשות ל-API התוכן של פרויקט הבלוג לדוגמה מהדפדפן, מול ה-Verdin המקומי שלכם.
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+נסו את API התוכן של [פרויקט הבלוג לדוגמה](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+בלי לכתוב קוד. הבקשות יוצאות מהדפדפן שלכם אל השרת שתבחרו ב-**Server**,
+כברירת מחדל `http://localhost:1337`.
+
+כדי שיהיה מי שיענה להן, הריצו את פרויקט הדוגמה מקומית ואפשרו את הבקשות:
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- צרו את המנהל הראשון ב-[localhost:1337/admin](http://localhost:1337/admin/) והוסיפו כמה מאמרים.
+- אפשרו את `find` ואת `findOne` ב-**הגדרות ← גישה ציבורית**, או
+  הדביקו אסימון API תחת **Authentication**.
+- סביבת הניסוי רצה במקור (origin) של האתר הזה, ולכן השרת צריך לקבל אותו: הוסיפו אותו ל-
+  `[api].cors_origins` ב-`verdin.toml` (ראו [תצורה](/he/reference/configuration/)).
+
+לפרויקט שלכם יש את אותו תיעוד עבור הסכמה שלו ב-`/api/docs` ברגע ש-
+**תיעוד ציבורי** מופעל ב-**הגדרות ← תכונות ← תיעוד API**.
+
+<Playground />

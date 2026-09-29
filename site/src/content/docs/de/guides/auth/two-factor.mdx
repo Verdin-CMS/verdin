@@ -1,0 +1,142 @@
+---
+title: Zwei-Faktor-Authentifizierung
+description: Schütze Admin-Konten mit einer Authenticator-App oder Passkeys, verlange einen zweiten Faktor pro Rolle und stelle verlorene Faktoren wieder her oder setze sie zurück.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Zwei-Faktor-Authentifizierung ergänzt nach dem Passwort einen zweiten Schritt: einen
+6-stelligen Code aus einer Authenticator-App oder einen Passkey (Fingerabdruck, Gesicht,
+Bildschirmsperre oder Sicherheitsschlüssel). Diese Anleitung richtet beides ein, macht es für
+eine Rolle verpflichtend und beschreibt, was zu tun ist, wenn ein Admin seinen Faktor verliert.
+Strapi hat kein eingebautes Gegenstück.
+
+Zwei-Faktor-Authentifizierung ist für Admins gedacht. [Endnutzer](/de/guides/auth/end-users/)
+melden sich mit einem Passwort oder einem OAuth-Anbieter an.
+
+## Bevor du anfängst
+
+- Es gibt keine Funktion zum Einschalten: Jeder Admin kann in seinem Profil einen zweiten
+  Faktor einrichten.
+- Passkeys sind an die Adresse des Admin-Panels gebunden. Setze `[server].public_url` auf die
+  Adresse, die Admins öffnen, etwa `https://cms.example.com`. Browser bieten Passkeys nur über
+  `https://` an (und auf `localhost`).
+- Halte `VERDIN_TOKEN_PEPPER` stabil: Authenticator-Secrets und Wiederherstellungscodes sind
+  damit geschützt, und eine Änderung macht sie unbrauchbar.
+
+## Eine Authenticator-App einrichten
+
+<Steps>
+
+1. Öffne dein **Profil** und such **Zwei-Faktor-Authentifizierung**.
+2. Wähle unter **Authenticator-App** **Einrichten** und bestätige dein Passwort.
+3. Scanne den QR-Code mit einer App wie 1Password, Google Authenticator oder Authy. Kannst du ihn
+   nicht scannen, gib den Einrichtungsschlüssel ein, der darunter steht.
+4. Gib den **6-stelliger Code** ein, den die App anzeigt, und wähle **Einschalten**.
+5. Sichere die **Wiederherstellungscodes**, die Verdin anzeigt: **Herunterladen** oder kopieren,
+   dann **Ich habe sie gespeichert** wählen.
+
+</Steps>
+
+Die Codes folgen dem üblichen TOTP-Verfahren (30-Sekunden-Schritte, SHA-1, 6 Ziffern). Ein Code
+aus dem Schritt davor oder danach wird ebenfalls akzeptiert, um Uhrabweichungen auszugleichen.
+Werden Codes abgelehnt, prüfe die Uhrzeit deines Geräts.
+
+## Einen Passkey hinzufügen
+
+<Steps>
+
+1. Wähle unter **Passkeys** **Passkey hinzufügen**.
+2. Gib ihm einen **Name**, etwa „MacBook Touch ID“, und bestätige dein Passwort.
+3. Folge der Aufforderung deines Browsers.
+
+</Steps>
+
+Du kannst bis zu 20 Passkeys registrieren und sie mit **Entfernen** wieder löschen. Passkeys
+sind ein zweiter Faktor nach dem Passwort, kein Ersatz dafür.
+
+## Wiederherstellungscodes
+
+Beim Einrichten deines ersten Faktors bekommst du 10 Wiederherstellungscodes. Jeder meldet dich
+einmal an, wenn du deine App oder deine Passkeys verlierst. Das Profil zeigt, wie viele übrig
+sind; **Neue Codes erzeugen** ersetzt alle (die alten funktionieren nicht mehr).
+
+<Aside type="caution">
+Die Codes werden einmal angezeigt. Bewahre sie in einem Passwortmanager oder offline auf, nicht
+neben dem Gerät mit deinem Authenticator.
+</Aside>
+
+## Mit einem zweiten Faktor anmelden
+
+<Diagram
+  caption="Anmeldung mit Zwei-Faktor-Authentifizierung"
+  code={`flowchart LR
+  A[E-Mail und Passwort] --> B{Zweiter Faktor?}
+  B -->|nein| S[Angemeldet]
+  B -->|ja| C[Code, Passkey oder Wiederherstellungscode]
+  C -->|innerhalb von 5 Minuten| S`}
+/>
+
+Nach dem Passwort fragt die Anmeldeseite nach dem **Authentifizierungscode**. Wähle
+**Passkey verwenden** oder **Wiederherstellungscode verwenden**, um die Methode zu wechseln. Du
+hast 5 Minuten Zeit; danach gibst du dein Passwort erneut ein.
+
+## Zwei-Faktor-Authentifizierung für eine Rolle verlangen
+
+<Steps>
+
+1. Öffne **Einstellungen → Rollen** und die Rolle.
+2. Schalte **Zwei-Faktor-Authentifizierung erfordern** ein und speichere.
+
+</Steps>
+
+Mitglieder ohne zweiten Faktor werden bei der Anmeldung aufgefordert, einen einzurichten. Bis
+dahin können sie nur ihr Profil öffnen. Unter **Einstellungen → Benutzer** zeigt ihre Zeile
+**2FA fehlt**; Admins mit zweitem Faktor zeigen **2FA**.
+
+Solange deine Rolle einen zweiten Faktor verlangt, weigert sich Verdin, deinen letzten zu
+entfernen: Füge einen Passkey hinzu, bevor du die App abschaltest, oder einen anderen Faktor,
+bevor du deinen einzigen Passkey entfernst.
+
+## Den zweiten Faktor eines anderen Admins zurücksetzen
+
+Wenn ein Admin sein Gerät und seine Wiederherstellungscodes verliert:
+
+<Steps>
+
+1. Öffne **Einstellungen → Benutzer** und such den Admin.
+2. Wähle **Zwei-Faktor zurücksetzen** und bestätige.
+
+</Steps>
+
+Das entfernt seine Authenticator-App, seine Passkeys und Wiederherstellungscodes, sodass er sich
+nur mit dem Passwort anmeldet. Verlangt seine Rolle Zwei-Faktor-Authentifizierung, muss er sie
+erneut einrichten. Das braucht **Benutzer verwalten**; nur ein Super Admin kann einen anderen
+Super Admin zurücksetzen.
+
+`verdin admin reset-password` setzt nur das Passwort zurück, nicht den zweiten Faktor.
+
+## Single Sign-on
+
+Admins, die sich über [Single Sign-on](/de/guides/auth/sso/) anmelden, werden ebenfalls nach
+ihrem zweiten Faktor in Verdin gefragt, sofern der Anbieter nicht mit
+**Der Anbieter erzwingt MFA** markiert ist.
+
+## Admin-API
+
+Alle Routen liegen unter `/admin/api`. Die Routen, die Faktoren ändern, verlangen dein
+`password`.
+
+| Route | Tut |
+| --- | --- |
+| `POST /auth/login` | Mit zweitem Faktor antwortet sie mit `{ twoFactorRequired: true, twoFactorToken, methods }` statt mit einer Sitzung. |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }` (TOTP- oder Wiederherstellungscode), oder `{ twoFactorToken, challengeToken, credential }` für einen Passkey. Antwortet mit der Sitzung. |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }`: die Passkey-Challenge. |
+| `GET /auth/two-factor` | Deine Faktoren: `totp`, `passkeys`, `recoveryCodesLeft`, `required`. |
+| `POST /auth/two-factor/totp/setup`, `/totp/enable`, `/totp/disable` | Authenticator-App einrichten (Passwort), einschalten (Code) und ausschalten (Passwort). |
+| `POST /auth/two-factor/recovery-codes` | Neue Wiederherstellungscodes. |
+| `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/{id}` | Passkeys registrieren und entfernen. |
+| `DELETE /users/{id}/two-factor` | Die Faktoren eines anderen Admins zurücksetzen (`users.manage`). |

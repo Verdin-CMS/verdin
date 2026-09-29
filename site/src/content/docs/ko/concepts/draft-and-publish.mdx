@@ -1,0 +1,124 @@
+---
+title: "초안과 게시"
+description: "문서와 그 초안·게시 버전, 항목이 거치는 상태, 각 API가 이를 읽고 쓰는 방식."
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+초안과 게시 기능을 쓰면 편집자는 사이트에 보이는 내용을 바꾸지 않고 문서를 작업하다가, 준비가 되면
+게시할 수 있습니다. 이 페이지에서는 모델을 설명합니다. 문서, 버전, 콘텐츠를 버전 사이에서 옮기는 작업,
+그리고 각 API가 이를 다루는 방식입니다. Strapi v5와 같은 방식으로 동작합니다.
+
+콘텐츠 타입마다 스키마에서 켭니다.
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+`options.draftAndPublish`가 없으면 꺼져 있습니다.
+
+## 문서와 버전
+
+**문서**는 `documentId`로 식별하는 항목 하나입니다. 초안과 게시를 쓰면 문서는 최대 두 개의
+**버전**을 가집니다.
+
+- 편집할 때마다 바뀌는 **초안**
+- 콘텐츠 API가 기본으로 제공하는 **게시된** 버전
+
+[로컬라이즈된](/ko/concepts/internationalization/) 타입에서는 로케일마다 자체 초안과 게시 버전이 있으며,
+모두 같은 `documentId`를 공유합니다.
+
+초안과 게시를 쓰지 않는 타입은 로케일마다 버전이 하나이며 항상 게시된 상태입니다. 쓸 때마다 독자가
+보는 내용이 바뀝니다.
+
+## 상태
+
+관리자 패널은 목록과 편집기에서 각 항목의 상태를 보여 줍니다.
+
+| 상태 | 초안 | 게시된 버전 | 게시된 콘텐츠를 읽는 사람이 보는 것 |
+| --- | --- | --- | --- |
+| **초안** | 있음 | 없음 | 없음. 문서가 보이지 않습니다. |
+| **게시됨** | 게시된 버전과 같음 | 있음 | 게시된 버전. |
+| **수정됨** | 마지막 게시 이후 변경됨 | 있음 | 새 변경 사항이 빠진 게시된 버전. |
+
+<Diagram
+  caption="초안과 게시를 쓰는 문서의 상태와 상태 사이의 작업"
+  code={`stateDiagram-v2
+    [*] --> Draft: 생성
+    Draft --> Published: 게시
+    Published --> Modified: 저장
+    Modified --> Published: 게시 또는 변경 사항 취소
+    Published --> Draft: 게시 취소
+    Modified --> Draft: 게시 취소`}
+/>
+
+작업은 문서를 이 상태들 사이에서 옮깁니다.
+
+| 작업 | 효과 | 이전 → 이후 |
+| --- | --- | --- |
+| 저장 | 초안을 씁니다. | 초안 → 초안, 게시됨 → 수정됨 |
+| **게시** | 초안을 게시된 버전에 복사하며, 필요하면 게시된 버전을 만듭니다. | 초안 또는 수정됨 → 게시됨 |
+| **게시 취소** | 게시된 버전을 삭제합니다. 초안은 남습니다. | 게시됨 또는 수정됨 → 초안 |
+| **변경 사항 취소** | 초안을 게시된 버전의 복사본으로 바꿉니다. | 수정됨 → 게시됨 |
+| 삭제 | 모든 버전을 삭제합니다(로컬라이즈된 타입에서는 요청한 로케일의 버전). | 모든 상태 → 없음 |
+
+게시는 트랜잭션 하나로 실행됩니다. 초안에 대해 `required` 필드와 타입의
+[필드 간 규칙](/ko/concepts/content-model/#필드-간-검증)을 검사하며, 검사에 실패하면 아무것도
+게시하지 않습니다. 그 전까지 초안은 불완전하거나 이 규칙을 어겨도 됩니다.
+
+초안의 `publishedAt`은 `null`입니다. 게시된 버전은 마지막으로 게시된 시각을 담습니다.
+
+## 관계와 미디어는 버전을 따른다
+
+버전마다 자체 관계와 미디어 링크가 있으며, 게시하면 초안의 링크가 게시된 버전으로 복사됩니다. 링크는
+문서를 가리키고, 읽고 있는 버전에서 해석됩니다. 게시된 글은 카테고리의 게시된 버전을, 초안은 카테고리의
+초안을 보여 줍니다. 카테고리가 게시 취소되면 다시 게시될 때까지 게시된 글에서 사라지며, 이때 링크는 전혀
+다시 쓰이지 않습니다. [관계](/ko/concepts/relations/#행이-아니라-문서로-연결)를 참고하세요.
+
+컴포넌트와 다이나믹 존은 행의 일부이므로 게시할 때 그대로 복사됩니다.
+
+## 초안과 게시된 콘텐츠 읽기
+
+| API | 기본으로 읽는 것 | 초안을 읽으려면 |
+| --- | --- | --- |
+| [REST](/ko/api/rest/#상태) | 게시된 버전 | `?status=draft`, **초안 읽기** 권한 필요 |
+| [GraphQL](/ko/api/graphql/) | 게시된 버전 | `status: DRAFT`, 같은 권한 필요 |
+| [Admin API](/ko/api/admin/) | 초안 | `?status=published` |
+
+초안 읽기는 별도 권한(`readDrafts`)이므로, 사이트 콘텐츠를 읽는 토큰이 게시되지 않은 작업을 읽을 수
+없습니다. 읽기 전용 API 토큰은 절대 초안을 읽지 않습니다.
+
+한 번이라도 게시된 적이 있는지로 문서를 구분하려면 `hasPublishedVersion`으로 필터링하세요.
+`?status=draft&hasPublishedVersion=false`는 한 번도 게시되지 않은 문서를 나열합니다.
+
+## API로 쓰기
+
+API는 쓰기에서 Strapi v5를 따릅니다.
+
+- **REST와 GraphQL**의 `create`와 `update`는 요청이 `status=draft`(GraphQL에서는 `status: DRAFT`)를
+  요구하지 않으면 초안을 쓰고 **게시까지 합니다**. 게시에 실패하면 요청 전체가 롤백됩니다.
+- **관리자 패널과 admin API**는 초안만 저장합니다. 게시는 항상 명시적인 작업입니다.
+
+REST API에는 Strapi가 REST로 제공하지 않는 명시적인 액션도 있습니다.
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+해당 타입에 **게시** 권한이 필요합니다. [REST API](/ko/api/rest/#액션)를 참고하세요.
+
+## 게시와 관련된 다른 기능
+
+- [릴리스](/ko/guides/content/releases/)는 문서를 묶어 즉시 또는 지정한 날짜에 함께 게시하거나 게시
+  취소합니다.
+- [검토 워크플로](/ko/guides/content/review-workflows/)는 문서를 게시하기 전에 특정 단계를 거치도록 요구할
+  수 있습니다.
+- 게시와 게시 취소는 `entry.publish`와 `entry.unpublish` [웹훅 이벤트](/ko/api/webhooks/)와
+  [실시간 이벤트](/ko/api/realtime/)를 보냅니다. 초안을 저장하면 `entry.update`를 보내며, 실시간으로는
+  초안을 읽을 수 있는 호출자만 이를 받습니다.

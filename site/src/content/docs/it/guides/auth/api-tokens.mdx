@@ -1,0 +1,154 @@
+---
+title: Token API
+description: Crea token API in sola lettura, con accesso completo o personalizzati per la content API, rigenerali o eliminali, e custodisci il token pepper.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+I token API permettono ai tuoi siti, app e script di chiamare la content API con più accesso
+di quello che ha il pubblico. Questa guida crea un token, ne sceglie l'accesso, lo usa, e lo
+sostituisce quando trapela. I token funzionano come i token API di Strapi.
+
+La content API è chiusa di default: senza un token, le richieste ricevono solo ciò che
+consente **Impostazioni → Accesso pubblico**, cioè niente finché non lo concedi.
+
+## Prima di iniziare
+
+- Gestire i token richiede **Gestisci token API** (`tokens.manage`). Vedi
+  [Permessi](/it/reference/permissions/).
+- `VERDIN_TOKEN_PEPPER` deve essere impostato; vedi
+  [Dove conta il pepper](#dove-conta-il-pepper).
+
+## Crea un token
+
+<Steps>
+
+1. Apri **Impostazioni → Token API** e seleziona **Crea token**.
+2. Inserisci un **Nome** e, opzionalmente, una **Descrizione**.
+3. Scegli il **Tipo**:
+
+   | Tipo | Consente |
+   | --- | --- |
+   | **Sola lettura** | Trova e Trova uno su ogni tipo di contenuto, solo versioni pubblicate. |
+   | **Accesso completo** | Ogni azione su ogni tipo di contenuto e sulla libreria media. |
+   | **Personalizzato** | Solo le azioni che spunti in **Permessi**. |
+
+4. Scegli la **Scadenza**: **Mai**, oppure tra 7, 30 o 90 giorni.
+5. Per un token personalizzato, spunta le azioni sotto **Permessi**, per tipo di contenuto:
+   **Trova**, **Trova uno**, **Crea**, **Aggiorna**, **Elimina**, **Pubblica** e **Leggi
+   bozze**. La riga **Libreria media** copre gli upload, e la riga **Utenti** le route
+   `/api/users` degli [utenti finali](/it/guides/auth/end-users/).
+6. Seleziona **Crea**, poi copia il token. È l'unica volta in cui viene mostrato.
+
+</Steps>
+
+I token iniziano con `vd_`. La lista mostra i primi caratteri di ciascuno, quando è stato
+usato l'ultima volta e quando scade.
+
+## Usa un token
+
+Invialo come bearer token:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'http://localhost:1337/api/articles?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/graphql \
+  -H "Authorization: Bearer $VERDIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({
+  url: 'http://localhost:1337',
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+</TabItem>
+</Tabs>
+
+- L'accesso di un token sostituisce quello pubblico; non si somma. Un token personalizzato
+  senza **Trova** su un tipo non può elencarlo, anche quando il pubblico può.
+- Leggere le bozze (`?status=draft`) richiede **Leggi bozze**; i token in sola lettura non
+  vedono mai le bozze.
+- I token sconosciuti e scaduti ricevono `401`. Le azioni fuori dall'accesso del token
+  ricevono `403`.
+- `[api].token_rate_limit` limita le richieste per token e minuto (disattivato di default).
+- Gli stessi token autorizzano GraphQL e il [server MCP](/it/guides/integrations/mcp/).
+
+<Aside type="caution">
+Un token in un browser è visibile a ogni visitatore. Usa i token solo da server, step di
+build e app private; per le pagine pubbliche, concedi ciò che serve in **Impostazioni →
+Accesso pubblico**.
+</Aside>
+
+## Rigenera o elimina un token
+
+- **Rigenera** sulla riga di un token crea una nuova chiave con lo stesso nome, tipo e
+  permessi. La chiave attuale smette subito di funzionare, quindi le app che la usano
+  ricevono errori finché non le aggiorni.
+- **Elimina** rimuove il token; i client che lo usano perdono l'accesso.
+
+Fai l'una o l'altra cosa appena un token potrebbe essere trapelato.
+
+## Dove conta il pepper
+
+Verdin non memorizza mai i token. Memorizza un hash con chiave (HMAC-SHA256) di ciascuno,
+con chiave `VERDIN_TOKEN_PEPPER`, così una copia del solo database non permette a nessuno di
+usarli. Lo stesso pepper protegge:
+
+- I token API.
+- I segreti di autenticazione e i codici di recupero degli admin
+  ([autenticazione a due fattori](/it/guides/auth/two-factor/)).
+- Gli hash degli indirizzi IP memorizzati con gli invii dei form.
+
+Genera il pepper una volta con `verdin secrets`, tienilo fuori da `verdin.toml` e dai backup
+del database, e dai a ogni istanza lo stesso valore.
+
+<Aside type="caution" title="Cambiare il pepper">
+Con un altro pepper, ogni token API smette di funzionare, e smettono di funzionare anche
+l'app di autenticazione e i codici di recupero di ogni admin. Cambialo solo se è trapelato,
+poi crea nuovi token e reimposta l'autenticazione a due fattori di ogni admin. Passkey e
+password non ne sono toccate.
+</Aside>
+
+## API admin
+
+Tutte le route sono sotto `/admin/api` e richiedono `tokens.manage`.
+
+```http
+GET    /admin/api/api-tokens
+POST   /admin/api/api-tokens                  { "name": "Website", "kind": "custom", "expiresInDays": 90,
+                                                "permissions": [{ "subject": "api::article", "action": "find" }] }
+GET    /admin/api/api-tokens/{id}
+PUT    /admin/api/api-tokens/{id}             { "name": "…", "description": null, "kind": "read-only", "permissions": [...] }
+POST   /admin/api/api-tokens/{id}/regenerate
+DELETE /admin/api/api-tokens/{id}
+```
+
+- `kind` è `read-only`, `full-access` o `custom`; `expiresInDays` è opzionale (senza, non
+  scade mai) e non può essere cambiato in seguito.
+- `permissions` elenca coppie `{ subject, action }`. `subject` è l'uid di un tipo di
+  contenuto, `plugin::upload` (la libreria media) o `plugin::users-permissions.user`;
+  `action` è `find`, `findOne`, `create`, `update`, `delete`, `publish` o `readDrafts`.
+  `publish` e `readDrafts` non si applicano agli ultimi due oggetti.
+- `POST /api-tokens` e `/regenerate` restituiscono la chiave una volta, come `accessKey`.
+
+L'accesso pubblico usa le stesse coppie: `PUT /admin/api/public-permissions`
+`{ "permissions": [...] }`, che richiede **Gestisci ruoli** (`roles.manage`).

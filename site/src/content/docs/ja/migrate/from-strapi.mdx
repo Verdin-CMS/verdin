@@ -1,0 +1,169 @@
+---
+title: Strapi からの移行
+description: verdin import strapi で Strapi v4 または v5 のプロジェクトを Verdin に移行します。エクスポート、インポート、移行されるもの、ID の対応表、移行後の確認、フロントエンドに必要な変更を説明します。
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+`verdin import strapi` は Strapi v4 または v5 のプロジェクトを Verdin に取り込みます。コンテンツタイプとコンポーネントはスキーマファイルになり、エントリー、ロケール、メディアライブラリ、リレーション、エンドユーザー、公開の権限がインポートされます。このページでは移行の手順を説明し、フロントエンドで変える必要があるものを一覧にします。機能ごとの比較は [Strapi との互換性](/ja/migrate/compatibility/)を参照してください。
+
+<Diagram
+  caption="インポーターは Strapi のエクスポートファイルを読みます。Strapi のデータベースに接続することはありません。"
+  code={`flowchart LR
+  S[Strapi のプロジェクト] -->|strapi export| E[エクスポートの .tar.gz]
+  E -->|verdin import strapi| F[スキーマファイル]
+  F --> M[データベースのマイグレーション]
+  M --> D[エントリー、メディア、ユーザー]
+  D --> R[strapi-id-map.json]`}
+/>
+
+## 始める前に
+
+- `strapi export` を実行できる Strapi v4 または v5 のプロジェクト。
+- 新しい Verdin のプロジェクト（`verdin new my-site`）、または同じ名前のスキーマファイルを持たないプロジェクト。[クイックスタート](/ja/start/quickstart/)を参照してください。
+- 可能なら、Verdin のプロジェクトが本番環境で使うデータベースとメディアストレージ。インポート中に、ファイルは設定されたアップロードプロバイダーにコピーされます。
+
+## 1. Strapi からエクスポートする
+
+Strapi のプロジェクトで実行します。
+
+```sh frame="terminal"
+npx strapi export --no-encrypt -f my-export      # my-export.tar.gz を書き出す
+```
+
+Verdin は暗号化されたエクスポート（`.tar.gz.enc`）を読めないので、`--no-encrypt` を付けてエクスポートし直してください。圧縮しないエクスポート（`--no-compress`、`.tar`）や、展開したエクスポートのディレクトリも使えます。
+
+## 2. Verdin にインポートする
+
+<Steps>
+
+1. プロジェクトを作成し、エクスポートをインポートします。
+
+   ```sh frame="terminal"
+   verdin new my-site && cd my-site
+   verdin import strapi ../my-export.tar.gz
+   ```
+
+2. 概要を読みます。インポーターは、インポートしたドキュメント、バージョン、ファイル、フォルダー、ロケール、リンクの数を出力し、続いて警告ごとに 1 行を出力します。
+
+3. 開発サーバーを起動し、管理パネルを開きます。
+
+   ```sh frame="terminal"
+   verdin dev
+   ```
+
+</Steps>
+
+このコマンドは次の手順を順に実行します。
+
+1. `api::` のコンテンツタイプとコンポーネントごとに 1 つのスキーマファイルを `schema/` に書き込みます。変換したスキーマが検証に通らない場合は、何も書き込みません。
+2. データベースをマイグレーションします（安全なステップ）。
+3. ロケール、メディアのフォルダーとファイル、エントリー（すべての下書き、公開バージョン、ロケール）、リレーション、そしてエントリーとコンポーネントに付いたメディアをインポートします。
+4. エンドユーザー、そのロール、公開と認証済みの権限をインポートします。
+5. プロジェクトのディレクトリに `strapi-id-map.json` を書き込みます。
+
+| オプション | 効果 |
+| --- | --- |
+| `--schema-only` | スキーマファイルを書き込んだところで止めます。先にスキーマを確認・調整したいときに便利です。 |
+| `--force` | 既存のスキーマファイルを上書きし、すでにエントリーのあるコンテンツタイプにもインポートします。 |
+
+`--force` がない場合、書き込もうとするスキーマファイルがすでに存在するか、コンテンツタイプにすでにエントリーがあると、インポートは停止します。
+
+## 移行されるもの
+
+| Strapi | Verdin |
+| --- | --- |
+| `api::…` のコンテンツタイプとコンポーネント | スキーマファイル。`collectionName`、下書きと公開、i18n のオプション、フィールドのオプション（`required`、`private`、`unique`、長さ、`regex`、デフォルトなど）を保ちます |
+| `api::` の型の間のリレーション | 同じリレーション |
+| コンポーネント内のリレーション | `oneWay` / `manyWay` の参照 |
+| ポリモーフィックリレーション（`morphToOne`、`morphToMany`、`morphOne`、`morphMany`） | 同じもの。インポートしたコンテンツタイプへのリンク付き |
+| メディアフィールド（コンポーネント内も） | メディアフィールド |
+| v5 の行（下書きと公開） | 下書きと公開バージョン |
+| v4 の行 | 下書き。`publishedAt` が設定されていれば公開バージョンも。`localizations` は 1 つのドキュメントのロケールになります |
+| `plugin::i18n.locale` | ロケール（Strapi のデフォルトがデフォルトのまま） |
+| `plugin::upload.file` と `folder` | メディアライブラリのファイル（フォーマット付き）とフォルダー |
+| `password` フィールド | Strapi の bcrypt のハッシュを保った `password` フィールド |
+| カスタムフィールド（`customField`） | `customField` を保った属性。下記を参照 |
+| 条件付きフィールド（`conditions`、Strapi 5.17） | スキーマに保たれ、エディターで適用されます |
+| `plugin::users-permissions.user` | エンドユーザー。bcrypt のパスワード（次のログインで Argon2id で再ハッシュ）、`confirmed`、`blocked` 付き |
+| Users & Permissions のロール | Public ロールの許可は Verdin の公開の権限に、Authenticated とカスタムロールはエンドユーザーのロールになります |
+| コンテンツタイプとアップロードに対するロールの権限 | `find`、`findOne`、`create`、`update`、`delete` の許可。アップロードは `find`、`findOne`、`upload`、`destroy` |
+
+## 移行されないもの
+
+警告として報告されるもの:
+
+- 管理者ユーザー、エンドユーザー、他のプラグインの型へのリレーション（インポートされるのは `api::` の対象だけです）。`createdBy` / `updatedBy` のフィールドは除かれます。
+- `text`、`richtext`、`blocks`、`json` の属性の `unique`（Verdin は短いテキストの型で対応しています）。
+- Verdin が知らない属性の型と、コンポーネント内に保存できないリレーションの種類。
+- `inversedBy` / `mappedBy` が反対側と一致しないリレーションの片側。
+- 有効でないロケールのコード。
+
+まったくインポートされないもの: 管理者ユーザーと管理者のロール、API トークン、転送トークン、Webhook、リリース、レビューワークフローの段階、コンテンツ履歴と監査ログ、Strapi のプラグインの設定。Strapi のコード（コントローラー、サービス、ルート、ポリシー、ミドルウェア、ライフサイクルフック、cron のタスク、管理画面のカスタマイズ）には変換先となる Verdin の対応物がありません。[独自のコードを作り直す](#独自のコードを作り直す)を参照してください。
+
+<Aside type="note">
+カスタムフィールドは、`plugin::color-picker.color` のような `customField` の名前を保ちます。エディターはそのフィールドを提供する[プラグイン](/ja/extending/plugins/)で表示し、そのようなプラグインがない場合は保存用の型の入力欄にフォールバックします。
+</Aside>
+
+## ID の対応表
+
+Verdin は新しいドキュメント ID を生成します。Strapi の `documentId` は 24 文字、Verdin のものは 26 文字なので、すべてのドキュメントに新しい ID が付きます。数値の `id` も変わります。`strapi-id-map.json` がその対応を記録します。
+
+```json title="strapi-id-map.json"
+{
+  "documents": {
+    "api::article": {
+      "hq7xw1c6m2vkn0f3t8ybz5sd": "01k6b3xg0r9m2m7c1d4e5f6g7h"
+    }
+  },
+  "files": {
+    "12": 3
+  }
+}
+```
+
+- `documents` のキーは Verdin のコンテンツタイプの UID（`api::article`、Strapi では `api::article.article`）で、その次のキーは Strapi の `documentId`（v5）または行の ID（v4: 1 つの ID がドキュメントのすべてのロケールを表します）です。
+- `files` は Strapi のファイル ID を Verdin のファイル ID に対応付けます。
+
+CMS の外に保存された ID の書き換えに使ってください。フロントエンドのコード内のリンク、別のデータベースの ID、アクセス解析、ブックマークなどです。
+
+## 結果を確認する
+
+1. `verdin schema check` が通り、`verdin migrate plan` がデータベースは最新だと表示します。
+2. 管理パネルで各コレクションを開き、エントリー、下書き、ロケールの数を Strapi と比べます。
+3. リレーション、コンポーネント、ダイナミックゾーン、メディアを持つエントリーをいくつか開き、リンクが正しいドキュメントとファイルを指していることを確認します。
+4. **メディアライブラリ**を開き、フォルダーと画像（フォーマット付き）があることを確認します。
+5. **設定 → 公開アクセス**と**設定 → エンドユーザー**で、インポートされた権限とロールを確認します。
+6. フロントエンドと同じように API を呼び出し、レスポンスを Strapi のものと比べます。
+
+その後、`schema/` をコミットし、管理者、API トークン、Webhook を作成して、デプロイします（[本番環境のチェックリスト](/ja/deploy/production-checklist/)を参照）。
+
+## フロントエンドの変更
+
+コンテンツ API は Strapi v5 の REST と GraphQL の形に従うので、ほとんどのリクエストはそのまま動きます。次の点を変更してください。
+
+- **ベース URL。** フロントエンドを Verdin のサーバーに向けます。コンテンツ API は `/api`（`[api].prefix`）配下に、GraphQL は**設定 → 機能**でオンにすると `/graphql` にあります。
+- **API トークン。** トークンはインポートされないので、**設定 → APIトークン**で新しいトークンを作成し、フロントエンドの環境変数で置き換えてください。
+- **ドキュメント ID。** すべての `documentId` と数値の `id` が新しくなります。フロントエンドにハードコードされた ID を `strapi-id-map.json` のものに置き換えるか、できればスラッグなどの `uid` フィールドでエントリーを探すようにしてください。
+- **メディアの URL。** ファイルの URL は新しいプロバイダーを指します。ローカルプロバイダーでは Verdin のサーバーの `/uploads/…`、S3 では `[upload.provider].public_url` です。フレームワークで許可する画像のドメイン（Next.js の `images.remotePatterns` など）を更新してください。
+- **ログイン済みのエンドユーザー**はもう一度ログインする必要があります。パスワードは使えますが、Strapi が発行した JWT は使えません。
+- **CORS。** ブラウザーが別のオリジンから API を呼び出す場合は、`[api].cors_origins` に登録してください。
+- **Webhook。** **設定 → Webhook** で作り直してください。Strapi の `entry.draft-discard` イベントは `entry.discard-draft` という名前で、配信は署名されます（[Webhook](/ja/guides/integrations/webhooks/) を参照）。
+- **Strapi v4 のフロントエンド**には v5 の変更も必要です。`attributes` のないフラットなレスポンス、URL での `id` の代わりの `documentId`、`publicationState=preview` の代わりの `status=draft` です。
+
+型付きでアクセスするには、`verdin types` で TypeScript の型を生成し、[型付きクライアント](/ja/guides/frontend/typed-client/)を使ってください。
+
+## 独自のコードを作り直す
+
+| Strapi | Verdin |
+| --- | --- |
+| ライフサイクルフック、Document Service のミドルウェア | [WebAssembly のプラグイン](/ja/extending/plugins/)のフック（`beforeCreate`、`afterUpdate` など） |
+| 独自のルートとコントローラー | `/api/plugins/<name>/` 配下のプラグインのルート |
+| cron のタスク | プラグインのジョブ（`[[jobs]]`） |
+| カスタムフィールド | プラグインのカスタムフィールド |
+| 管理画面のウィジェット | プラグインのウィジェット、または組み込みのダッシュボードのウィジェット |
+| 管理画面のロゴ、色、テキスト | `verdin.toml` の `[admin.branding]` |
+| `config/*.js` | `verdin.toml` と環境変数（[設定のリファレンス](/ja/reference/configuration/)） |

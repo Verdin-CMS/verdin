@@ -1,0 +1,133 @@
+---
+title: Eklentiler
+description: Verdin eklentilerinin neler yapabildiği, WebAssembly sandbox’ı ve yeteneklerin onları nasıl sınırlar içinde tuttuğu ve nasıl kurulup açıldıkları.
+sidebar:
+  order: 1
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Eklentiler, sunucuyu değiştirmeden veya yeniden derlemeden Verdin’e davranış ekler. Bir eklenti,
+projenin `plugins/` dizinine bırakılan, manifest’i olan bir WebAssembly modülüdür. Bu sayfa
+eklentilerin neler yapabildiğini ve birinin nasıl kurulacağını açıklar; bir eklenti yazmak için
+[eklenti eğitimini](/tr/extending/plugin-tutorial/) izleyin, ayrıntılar için
+[eklenti başvurusuna](/tr/extending/plugin-reference/) bakın.
+
+## Bir eklenti neler yapabilir
+
+| Genişletme noktası | Ne için |
+| --- | --- |
+| **Yazma hook’ları** | Bir kayıt oluşturulmadan, güncellenmeden, yayınlanmadan, yayından kaldırılmadan, silinmeden veya taslağı atılmadan önce veriyi değiştirin ya da yazmayı bir mesajla reddedin. Yazmadan sonra ona tepki verin (günlüğe yazma, bildirim, senkronizasyon). |
+| **Rotalar** | `/api/plugins/<name>/…` altında HTTP uç noktaları sunun: bir webhook alıcısı, hesaplanmış bir feed, başka bir servise proxy. |
+| **Zamanlanmış görevler** | Bir fonksiyonu cron takvimine göre (UTC) çalıştırın. |
+| **GraphQL alanları** | `Query` veya `Mutation`’a `name(args: JSON): JSON` alanları ekleyin. |
+| **Pano widget’ları** | Admin panosuna Web Components olarak widget tipleri ekleyin. |
+| **Özel alanlar** | Niteliklere admin’de Web Components olarak özel bir düzenleyici verin (renk seçici, harita); değer normal bir nitelik tipi olarak saklanır. |
+| **Ayarlar** | Admin’lerin **Ayarlar → Eklentiler** bölümünde doldurduğu bir ayar formu bildirin. |
+
+Bir eklenti içeriği admin ve API ile aynı Document Service üzerinden okur ve yazar; bu yüzden
+webhook’lar, geçmiş, inceleme aşamaları ve doğrulama onun yazmalarına da uygulanır.
+
+<Aside type="note">
+Verdin eklentileri Strapi eklentileri değildir. Strapi eklentileri sunucuya tam erişimi olan
+Node.js paketleridir; Verdin sunucuda JavaScript çalıştırmaz. Strapi şemalarının bildirdiği özel
+alanlar (`customField` nitelikleri) olduğu gibi yüklenir ve bir Verdin eklentisi onların
+düzenleyicisini sağlayabilir.
+</Aside>
+
+## Sandbox
+
+Eklentiler bir WebAssembly sandbox’ında ([Extism](https://extism.org), Wasmtime üzerinde)
+çalışır. Bir modülün kendine ait dosyası, soketi veya veritabanı bağlantısı yoktur. Kendi
+belleğinin dışında yaptığı her şey birkaç host fonksiyonundan geçer ve sunucu her çağrıyı
+manifest’in bildirdiği **yeteneklere** karşı denetler:
+
+| Yetenek | Verdiği |
+| --- | --- |
+| `read` | Listelenen içerik tiplerinin (veya `*`) kayıtlarını okuma. |
+| `write` | Listelenen tiplerin kayıtlarını oluşturma, güncelleme, yayınlama, yayından kaldırma ve silme (okuma da). |
+| `http` | Listelenen host’lara (`api.example.com`, `*.example.com`) HTTP istekleri. |
+| `kv` | Verdin’in veritabanında kendine ait bir anahtar-değer deposu. |
+
+<Diagram
+  caption="Bir eklentiye yapılan çağrılar ve host çağrılarının ulaşabildikleri"
+  code={`flowchart LR
+    W[Yazmalar] -->|hook’lar| M
+    R["/api/plugins/name/…"] --> M
+    J[Zamanlanmış görevler] --> M
+    M[WebAssembly modülü] --> C{Yetenekler}
+    C -->|read, write| D[(İçerik)]
+    C -->|kv| K[(Eklenti depolaması)]
+    C -->|http| H[Listelenen host’lar]`}
+/>
+
+Her çağrının ayrıca manifest’te ayarlanan sınırları vardır: bir zaman sınırı (varsayılan 5
+saniye) ve bir bellek sınırı (varsayılan 64 MB). Trap’e düşen veya süresi dolan bir modül
+yalnızca o çağrıyı başarısız kılar; Verdin onu bir sonraki çağrıda yeniden oluşturur.
+
+Sandbox’ın sizin için karar vermedikleri:
+
+- **Rotalar herkese açıktır.** `/api/plugins/<name>/…` adresine gelen istekler **Herkese açık
+  erişim** veya API token izinlerine karşı denetlenmez. Eklenti kimin çağırdığını (herhangi
+  biri, bir API token’ı veya bir son kullanıcı) alır ve bunu denetlemelidir.
+- **Hook’lar, eklentinin `read` yeteneği ne olursa olsun, tiplerine yapılan tüm yazmaları
+  görür.**
+- **Başarısız olan bir before hook’u yazmayı engellemez.** Modül çökerse veya süresi dolarsa
+  hata günlüğe yazılır ve yazma devam eder. Onu yalnızca açık bir ret durdurur.
+
+## Bir eklenti kurma
+
+<Steps>
+
+1. Eklentiyi `plugins/` altında, `verdin.toml`’un yanında kendi dizinine koyun. Dizin manifest’i,
+   modülü ve isteğe bağlı olarak yönetim paneli dosyalarını tutar:
+
+   <FileTree>
+   - verdin.toml
+   - plugins/
+     - reading-time/
+       - plugin.toml
+       - plugin.wasm
+       - admin/ isteğe bağlı: yönetim paneli için Web Components
+         - index.js
+   - schema/
+   </FileTree>
+
+2. Verdin’i yeniden başlatın. Başlangıçta her `plugins/*/plugin.toml`’u yükler ve her biri için
+   `plugin found` yazar. Yüklenemeyen bir eklenti (geçersiz manifest, eksik modül, yinelenen ad)
+   nedeniyle birlikte **Ayarlar → Eklentiler** bölümünde listelenir.
+
+3. Yönetim panelinde **Ayarlar → Eklentiler**’i açın. Eklentinin **Erişim**, **Hook’lar**,
+   **Rotalar** ve **Görevler** altında istediklerini gözden geçirin, ardından onu açın.
+
+4. Eklentinin ayarları varsa kartındaki **Ayarlar**’ı açın, doldurun ve kaydedin.
+
+</Steps>
+
+Kurulan eklentiler kapalı başlar. Bir eklentiyi açıp kapatmak ve ayarlarını düzenlemek her
+örnekte hemen etkili olur (diğer örnekler değişikliği `[server].sync_interval_secs` içinde
+alır). `plugin.toml` veya modüldeki değişiklikler yeniden başlatma gerektirir.
+
+Eklentileri yönetmek `plugins.manage` iznini (**Eklentileri yönet**) gerektirir. Bkz.
+[izin başvurusu](/tr/reference/permissions/).
+
+## `[plugins]` yapılandırması
+
+```toml title="verdin.toml"
+[plugins]
+path = "plugins"   # directory of plugins, relative to verdin.toml
+run_jobs = true    # run scheduled jobs on this instance
+```
+
+Birden fazla örnekle, her görevin bir kez çalışması için biri dışında hepsinde
+`run_jobs = false` ayarlayın. Bkz. [yapılandırma başvurusu](/tr/reference/configuration/).
+
+## İşletim
+
+- **Aynı anda tek çağrı.** Her eklentinin tek bir örneği vardır ve aynı anda tek bir çağrıyı
+  işler; bu yüzden yavaş bir rota o eklentinin hook’larını geciktirir. Fonksiyonları kısa tutun.
+- **Günlükler.** Bir eklentinin günlüğe yazdıkları sunucu günlüğüne ve **Ayarlar → Eklentiler →
+  Günlükler** bölümüne gider (bellekte tutulan son 200 satır).
+- **Dağıtımlar.** Eklentileri şema gibi projeyle birlikte (imajda veya volume’de) gönderin.
+  Anahtarlar ve ayarlar veritabanında bulunur.

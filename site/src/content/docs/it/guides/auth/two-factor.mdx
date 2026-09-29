@@ -1,0 +1,141 @@
+---
+title: Autenticazione a due fattori
+description: Proteggi gli account admin con un'app di autenticazione o con le passkey, richiedi un secondo fattore per ruolo, e recupera o reimposta i fattori persi.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+L'autenticazione a due fattori aggiunge un secondo passaggio dopo la password: un codice di 6
+cifre da un'app di autenticazione, o una passkey (impronta, volto, blocco schermo o chiave di
+sicurezza). Questa guida li configura entrambi, li rende obbligatori per un ruolo, e spiega
+cosa fare quando un admin perde il proprio. Strapi non ha un equivalente integrato.
+
+L'autenticazione a due fattori è per gli admin. Gli [utenti finali](/it/guides/auth/end-users/)
+accedono con una password o un provider OAuth.
+
+## Prima di iniziare
+
+- Non c'è una funzionalità da attivare: ogni admin può configurare un secondo fattore nel
+  proprio profilo.
+- Le passkey sono legate all'indirizzo del pannello di amministrazione. Imposta
+  `[server].public_url` all'indirizzo che aprono gli admin, come `https://cms.example.com`. I
+  browser offrono le passkey solo su `https://` (e su `localhost`).
+- Mantieni stabile `VERDIN_TOKEN_PEPPER`: i segreti di autenticazione e i codici di recupero
+  sono protetti con esso, e cambiarlo li rende inutilizzabili.
+
+## Configura un'app di autenticazione
+
+<Steps>
+
+1. Apri il tuo **Profilo** e trova **Autenticazione a due fattori**.
+2. Sotto **App di autenticazione**, seleziona **Configura** e conferma la password.
+3. Scansiona il codice QR con un'app come 1Password, Google Authenticator o Authy. Se non
+   riesci a scansionarlo, inserisci la chiave di configurazione mostrata sotto.
+4. Inserisci il **Codice a 6 cifre** mostrato dall'app e seleziona **Attiva**.
+5. Salva i **codici di recupero** che mostra Verdin: **Scarica** o copiali, poi seleziona
+   **Li ho salvati**.
+
+</Steps>
+
+I codici seguono lo schema TOTP standard (intervalli di 30 secondi, SHA-1, 6 cifre). Viene
+accettato anche un codice dell'intervallo precedente o successivo, per tollerare lo
+sfasamento dell'orologio. Se i codici vengono rifiutati, controlla l'ora del tuo dispositivo.
+
+## Aggiungi una passkey
+
+<Steps>
+
+1. Sotto **Passkey**, seleziona **Aggiungi una passkey**.
+2. Dalle un **Nome**, come "MacBook Touch ID", e conferma la password.
+3. Segui la richiesta del browser.
+
+</Steps>
+
+Puoi registrare fino a 20 passkey e rimuoverle con **Rimuovi**. Le passkey sono un secondo
+fattore dopo la password, non la sostituiscono.
+
+## Codici di recupero
+
+Ricevi 10 codici di recupero quando configuri il tuo primo fattore. Ognuno ti fa accedere una
+volta se perdi l'app o le passkey. Il profilo mostra quanti ne restano; **Genera nuovi codici**
+li sostituisce tutti (i vecchi smettono di funzionare).
+
+<Aside type="caution">
+I codici vengono mostrati una volta sola. Conservali in un password manager o da qualche
+parte offline, non vicino al dispositivo che contiene la tua app di autenticazione.
+</Aside>
+
+## Accedi con un secondo fattore
+
+<Diagram
+  caption="Accesso con autenticazione a due fattori"
+  code={`flowchart LR
+  A[Email e password] --> B{Secondo fattore?}
+  B -->|no| S[Accesso effettuato]
+  B -->|sì| C[Codice, passkey o codice di recupero]
+  C -->|entro 5 minuti| S`}
+/>
+
+Dopo la password, la pagina di accesso chiede il **Codice di autenticazione**. Scegli **Usa
+una passkey** o **Usa un codice di recupero** per cambiare metodo. Hai 5 minuti per finire;
+dopo, inserisci di nuovo la password.
+
+## Richiedi l'autenticazione a due fattori per un ruolo
+
+<Steps>
+
+1. Apri **Impostazioni → Ruoli** e il ruolo.
+2. Attiva **Richiedi l’autenticazione a due fattori** e salva.
+
+</Steps>
+
+Ai membri senza un secondo fattore viene chiesto di configurarne uno quando accedono. Finché
+non lo fanno, possono aprire solo il proprio profilo. In **Impostazioni → Utenti**, la loro
+riga mostra **2FA mancante**; gli admin che hanno un secondo fattore mostrano **2FA**.
+
+Finché il tuo ruolo richiede un secondo fattore, Verdin si rifiuta di rimuovere l'ultimo:
+aggiungi una passkey prima di disattivare l'app, o un altro fattore prima di rimuovere la tua
+unica passkey.
+
+## Reimposta il secondo fattore di un altro admin
+
+Quando un admin perde il dispositivo e i codici di recupero:
+
+<Steps>
+
+1. Apri **Impostazioni → Utenti** e trova l'admin.
+2. Seleziona **Reimposta 2FA** e conferma.
+
+</Steps>
+
+Questo rimuove la sua app di autenticazione, le passkey e i codici di recupero, così accede
+con la sola password. Se il suo ruolo richiede l'autenticazione a due fattori, deve
+configurarla di nuovo. Richiede **Gestisci utenti**; solo un Super Admin può reimpostare un
+altro Super Admin.
+
+`verdin admin reset-password` reimposta solo la password, non il secondo fattore.
+
+## Single sign-on
+
+Agli admin che accedono tramite [single sign-on](/it/guides/auth/sso/) viene chiesto anche il
+loro secondo fattore Verdin, a meno che il provider non sia segnato con **Il provider impone
+l'MFA**.
+
+## API admin
+
+Tutte le route sono sotto `/admin/api`. Quelle che modificano i fattori richiedono la tua
+`password`.
+
+| Route | Fa |
+| --- | --- |
+| `POST /auth/login` | Con un secondo fattore, risponde `{ twoFactorRequired: true, twoFactorToken, methods }` invece di una sessione. |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }` (TOTP o codice di recupero), o `{ twoFactorToken, challengeToken, credential }` per una passkey. Risponde con la sessione. |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }`: la challenge della passkey. |
+| `GET /auth/two-factor` | I tuoi fattori: `totp`, `passkeys`, `recoveryCodesLeft`, `required`. |
+| `POST /auth/two-factor/totp/setup`, `/totp/enable`, `/totp/disable` | Configura (password), attiva (codice) e disattiva (password) l'app di autenticazione. |
+| `POST /auth/two-factor/recovery-codes` | Nuovi codici di recupero. |
+| `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/{id}` | Registra e rimuove le passkey. |
+| `DELETE /users/{id}/two-factor` | Reimposta i fattori di un altro admin (`users.manage`). |

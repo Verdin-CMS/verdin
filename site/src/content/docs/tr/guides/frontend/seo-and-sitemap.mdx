@@ -1,0 +1,177 @@
+---
+title: SEO ve site haritası
+description: İçerik tiplerini sitenizin yollarına eşleyin, yayınlanmış her kaydın sitemap.xml’ini sunun ve standart bir SEO bileşeni ekleyin.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**SEO ve site haritası** özelliği Verdin’e her kaydın sitenizde nerede bulunduğunu söyler. Bundan
+yola çıkarak yayınlanmış her kaydın `sitemap.xml`’ini sunar, [menülere](/tr/guides/frontend/menus/)
+bağlandıkları kayıtların yollarını verir ve meta etiketleri için hazır bir `shared.seo` bileşeni
+sunar.
+
+[Yönlendirmeler](/tr/guides/frontend/redirects/), [menüler](/tr/guides/frontend/menus/) ve
+[formlarla](/tr/guides/frontend/forms/) birlikte dört site özelliğinden biridir. Strapi aynı alanı
+topluluk eklentileriyle (SEO, sitemap) kapsar; Verdin’de yerleşiktir.
+
+## Açma
+
+<Steps>
+
+1. **Ayarlar → Özellikler** bölümünde **SEO ve site haritası**’nı açın.
+2. Kartında **SEO’yu yapılandır**’ı seçin.
+3. **Site URL’si**’ni girin: sitenizin origin’i, örneğin `https://www.example.com`. Site
+   haritasının URL’leri onunla başlar.
+4. **İçerik tipleri** altında, sayfası olan her tipe bir **Yol kalıbı** verin. Kalıbı olmayan
+   tipler site haritasının dışında kalır. İsteğe bağlı olarak site haritası için bir **Değişim
+   sıklığı** ve bir **Öncelik** (0 ile 1 arası) ayarlayın.
+5. Kaydedin, ardından sonucu denetlemek için **sitemap.xml’i aç**’ı seçin.
+
+</Steps>
+
+Ayarları değiştirmek **Özellikleri yönet** (`features.manage`) iznini gerektirir. Bkz.
+[İzinler](/tr/reference/permissions/).
+
+## Yol kalıpları
+
+Bir kalıp, `/` ile başlayan ve süslü parantez içinde yer tutucular bulunan bir yoldur:
+
+| Kalıp | Kayıt | Yol |
+| --- | --- | --- |
+| `/blog/{slug}` | Slug’ı `hello-world` olan makale | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | Onun Fransızca sürümü | `/fr/blog/bonjour` |
+| `/about` | Homepage tekil tipi | `/about` |
+
+Yer tutucular tipin nitelikleri (genellikle `slug` gibi bir `uid`) ve `{locale}`’dir. Değerler URL
+kodlamasıyla kodlanır. Yer tutucusu boş olan (örneğin slug’ı eksik) bir kaydın yolu yoktur ve site
+haritasının ve menülerin dışında bırakılır. Diyalog ekleyebileceğiniz nitelikleri listeler ve
+bilinmeyenleri reddeder.
+
+Ayarlar, özelliğin ayarları olarak bu biçimde saklanır:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq`; `always`, `hourly`, `daily`, `weekly`, `monthly`, `yearly` veya `never`
+değerlerinden biridir.
+
+## Site haritası
+
+Bir **Site URL’si** ayarlandığında Verdin, kendi host’unun kökünde (API önekinin dışında,
+`https://cms.example.com/sitemap.xml`) `/sitemap.xml`’i şunlarla sunar:
+
+- yapılandırılmış tiplerin, kalıbı dolan her **yayınlanmış** kaydı;
+- her kaydın son değişikliği (`lastmod`) ve tipin `changefreq` ve `priority` değerleri;
+- yerelleştirilmiş tipler için, `<xhtml:link rel="alternate" hreflang="…">` ile birbirine bağlanan
+  dil başına bir URL;
+- bir site haritası dosyasının sınırı olan en fazla 50.000 URL.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+Site haritası en fazla on dakikada bir oluşturulur ve `Cache-Control: public, max-age=600` ile
+gönderilir; böylece bir yayınlama on dakika içinde görünür.
+
+Arama motorları site haritasını sitenizin host’unda bekler. Onu oradan bir rewrite veya
+Verdin’inkini getiren küçük bir rotayla sunun:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+Ardından onu `robots.txt` dosyanızda listeleyin: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## SEO bileşeni
+
+Verdin, Strapi’nin SEO eklentisinin alanlarına sahip bir `shared.seo` bileşeni önerir:
+
+| Nitelik | Tip |
+| --- | --- |
+| `metaTitle` | string, zorunlu, en fazla 60 karakter |
+| `metaDescription` | text, zorunlu, en fazla 160 karakter |
+| `metaImage` | media (görseller) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+**SEO’yu yapılandır** diyaloğunda **SEO bileşenini ekle**’yi, ardından **Bileşeni oluştur**’u
+seçin. Onu oluşturmak şemayı değiştirir; bu yüzden düğme, **İçerik tiplerini yönet** yetkisi olan
+admin’ler için geliştirme modunda (`verdin dev`) bulunur; aksi hâlde diyalog bunun yerine şema
+dosyalarınıza eklenecek nitelikleri listeler. Ardından içerik tipi oluşturucusunda, sayfası olan
+her içerik tipine `shared.seo` kullanan bir bileşen alanı ekleyin.
+
+<Aside type="tip">
+[AI eylemleri](/tr/guides/integrations/ai-actions/) açıkken `metaTitle` ve `metaDescription` metin
+niteliklerine sahip bir bileşen, bunları kayıttan dolduran bir **Öner** düğmesi alır.
+</Aside>
+
+## Meta etiketlerini gösterme
+
+Bileşeni populate edin ve etiketleri sayfanızın head bölümüne yazın:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+Örnek blog’un `shared.seo` bileşeninde yalnızca `metaTitle` ve `metaDescription` vardır; önerilen
+bileşen geri kalanını ekler. Önizleme sayfası [görsel düzenleme](/tr/guides/frontend/visual-editing/)
+kullanıyorsa meta metinlerini ölçmeden veya karşılaştırmadan önce görünmez işaretleri temizleyin.

@@ -1,0 +1,221 @@
+---
+title: Wdrożenia i CDN
+description: Daj redaktorom przycisk Wdróż dla twojej statycznej witryny, śledź jej buildy i czyść CDN, gdy zmienia się treść.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Dwa narzędzia dla witryn, które cache'ują to, co serwuje Verdin:
+
+- **Wdrożenia** umieszczają przycisk **Wdróż** w nagłówku panelu. Wywołuje on build hook
+  twojej witryny (Netlify, Vercel, Cloudflare Pages lub dowolne CI), a dostawca raportuje
+  z powrotem, jak idzie build.
+- **Czyszczenie CDN** taguje odpowiedzi API treści według typu zawartości i czyści te tagi
+  w Cloudflare, Fastly lub twoim własnym endpoincie, gdy treść zmienia się publicznie.
+
+Oba są częścią rdzenia: nie ma przełącznika funkcji. Wdrożenia konfiguruje się w
+**Ustawienia → Wdrożenia**; CDN w `verdin.toml`.
+
+## Wdrożenia
+
+<Diagram code={`sequenceDiagram
+  participant E as Redaktor
+  participant V as Verdin
+  participant P as Dostawca buildów
+  E->>V: Wdróż
+  V->>P: POST build hook
+  P-->>V: callback: building
+  P-->>V: callback: ready (url)
+  V-->>E: "Strona produkcyjna zostało wdrożone"`} caption="Przycisk Wdróż wywołuje build hook; dostawca raportuje z powrotem na URL wywołania zwrotnego." />
+
+### Dodaj cel
+
+<Steps>
+
+1. U swojego dostawcy utwórz build hook dla witryny i skopiuj jego URL (Netlify: **Build
+   hooks**; Vercel: **Deploy Hooks**; Cloudflare Pages: **Deploy hooks**; CI: dowolny URL,
+   który uruchamia pipeline po `POST`).
+2. W Verdin przejdź do **Ustawienia → Wdrożenia** i wybierz **Dodaj cel**.
+3. Nadaj mu **Nazwę** (np. **Strona produkcyjna**) i wklej **Adres URL hooka kompilacji**.
+4. Zapisz. URL hooka jest sekretem: od teraz pokazywany jest tylko jego host. Aby skierować
+   cel na inny hook, użyj **Zamień adres URL**.
+
+</Steps>
+
+Administratorzy, którzy mogą wdrażać, widzą teraz **Wdróż** w nagłówku. Przy kilku celach
+przycisk otwiera menu **Wdróż do**. Po potwierdzeniu Verdin wysyła:
+
+```http
+POST <build hook URL>
+content-type: application/json
+
+{ "trigger": "verdin", "triggeredBy": "editor@example.com" }
+```
+
+Cel jest wdrażany najwyżej co 10 sekund, więc podwójne kliknięcie nie uruchamia dwóch
+buildów. Żądanie przekracza czas po 15 sekundach i nie podąża za przekierowaniami. Hook,
+który odpowiada czymś innym niż `2xx`, jest zapisywany jako **Odrzucono**.
+
+### Raportowanie stanów buildu
+
+Bez callbacku wdrożenie pozostaje w stanie **Uruchomiono**. Aby widzieć w panelu
+**Kompilowanie**, **Gotowe** i **Błąd** oraz link do wdrożonej witryny, podaj dostawcy URL
+wywołania zwrotnego celu: wybierz przycisk **Adres URL wywołania zwrotnego** celu i skopiuj
+go.
+
+<Tabs syncKey="deploy-provider">
+<TabItem label="Netlify">
+
+W **Site configuration → Build & deploy → Deploy notifications** dodaj wychodzący webhook dla
+**Deploy started**, **Deploy succeeded** i **Deploy failed**, z URL wywołania zwrotnego.
+
+</TabItem>
+<TabItem label="Vercel">
+
+W **Team settings → Webhooks** utwórz webhook dla zdarzeń `deployment.created`,
+`deployment.succeeded` i `deployment.error`, z URL wywołania zwrotnego.
+
+</TabItem>
+<TabItem label="Inne CI">
+
+Wyślij `POST` z JSON-em zawierającym `status` (`building`, `ready` lub `error`)
+i opcjonalnie wdrożony `url` oraz `message`:
+
+```sh title="Terminal"
+curl -X POST "$VERDIN_CALLBACK_URL" -H 'content-type: application/json' \
+  -d '{ "status": "ready", "url": "https://www.example.com" }'
+```
+
+</TabItem>
+</Tabs>
+
+Verdin rozumie `state` z Netlify, `type` z Vercel i zwykłe `status` oraz aktualizuje ostatnie
+wdrożenie celu. Odpowiada `204` albo `404`, gdy URL jest zły. URL wywołania zwrotnego to
+`{public_url}{admin path}/api/deploy/callback/{id}/{secret}`, więc ustaw
+[`[server].public_url`](/pl/reference/configuration/) na adres osiągalny dla dostawców.
+
+<Aside type="caution">
+URL wywołania zwrotnego zawiera sekret: każdy, kto go ma, może raportować stany wdrożeń tego
+celu. Nie może uruchamiać wdrożeń ani niczego odczytywać.
+</Aside>
+
+**Historia wdrożeń** wymienia 50 ostatnich wdrożeń, od najnowszych, z celem, czasem startu,
+statusem, statusem HTTP hooka i komunikatem dostawcy. Usunięcie celu usuwa jego historię,
+a nie build hook.
+
+### Uprawnienia
+
+| Uprawnienie | Pozwala na |
+| --- | --- |
+| **Uruchamianie wdrożeń** (`deploy.trigger`) | Przycisk **Wdróż** w nagłówku. Ma je wbudowana rola Editor. |
+| **Zarządzanie celami wdrożenia i CDN** (`deploy.manage`) | **Ustawienia → Wdrożenia**: cele, URL-e wywołań zwrotnych i czyszczenie CDN. |
+
+Zobacz [Uprawnienia](/pl/reference/permissions/). URL-e build hooków podlegają tym samym
+regułom adresów co [webhooki](/pl/guides/integrations/webhooks/): z `verdin start` nie mogą
+wskazywać sieci prywatnych, chyba że pozwala na to
+[`[webhooks].allow_private_networks`](/pl/reference/configuration/).
+
+### Wdrażanie przy każdej zmianie
+
+Przycisk pasuje do witryn przebudowywanych na żądanie. Aby przebudowywać przy każdej
+publikacji, utwórz [webhook](/pl/guides/integrations/webhooks/) dla `entry.publish`
+i `entry.unpublish` z build hookiem jako URL. Dla zaplanowanej paczki zmian opublikuj je
+[wydaniem](/pl/guides/content/releases/) i podepnij webhook pod `releases.publish`.
+
+## Czyszczenie CDN
+
+Gdy CDN cache'uje API treści, serwuje nieaktualną treść, dopóki cache nie wygaśnie.
+Z ustawionym `[cdn]` Verdin taguje swoje odpowiedzi i czyści właściwe tagi, gdy zmienia się
+treść, więc możesz cache'ować przez długi czas.
+
+### Jak działa tagowanie
+
+Każdy udany `GET` API treści ma tagi `vd` (wszystko), `vd-<singularName>` (typ zawartości)
+i tag każdego typu, który jego dokumenty mogą wypełnić przez populate: celów relacji, także
+wewnątrz komponentów i stref dynamicznych, śledzonych dalej do ich własnych relacji. Dla
+artykułów z przykładu bloga, w obu formatach nagłówków:
+
+```http
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
+```
+
+Typ z relacją polimorficzną może sięgnąć do dowolnego typu, więc jego odpowiedzi mają tag
+każdego typu.
+
+Cloudflare czyta `Cache-Tag`, Fastly czyta `Surrogate-Key`. Gdy treść zmienia się publicznie,
+Verdin czyści tag typu:
+
+- przy publikacji, cofnięciu publikacji lub usunięciu wpisu;
+- przy każdym zapisie do typu bez szkiców i publikacji (jego zapisy są od razu publiczne).
+
+Zapis szkicu niczego nie czyści, bo szkice nie są serwowane publicznie. Zmiany w ciągu
+sekundy (`debounce_ms`) są zbierane w jedno czyszczenie, a nieudane czyszczenie jest
+ponawiane dwa razy.
+
+### Konfiguracja
+
+<Tabs syncKey="cdn">
+<TabItem label="Cloudflare">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "cloudflare"
+zone_id = "023e105f4ecef8ad9ca31a8372d0c353"
+```
+
+`VERDIN_CDN_TOKEN` to token API z uprawnieniem **Cache Purge** na strefie.
+
+</TabItem>
+<TabItem label="Fastly">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "fastly"
+service_id = "SU1Z0isxPaozGVKXdv0eY"
+```
+
+`VERDIN_CDN_TOKEN` to token API Fastly z prawem do czyszczenia usługi.
+
+</TabItem>
+<TabItem label="Webhook">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "webhook"
+url = "https://purge.example.com/verdin"
+```
+
+Verdin wysyła `POST { "tags": ["vd-article"] }`, z `Authorization: Bearer <VERDIN_CDN_TOKEN>`,
+gdy token jest ustawiony. Używaj tego dla innego CDN, reverse proxy albo API rewalidacji
+twojego frameworka.
+
+</TabItem>
+</Tabs>
+
+```sh title="Terminal"
+export VERDIN_CDN_TOKEN=...
+```
+
+Verdin sprawdza sekcję przy starcie i odmawia działania bez `zone_id`, `service_id`, `url`
+lub tokenu, których wymaga dostawca. Zobacz [`[cdn]`](/pl/reference/configuration/).
+
+To nadal twój CDN decyduje, co cache'ować: skonfiguruj regułę cache dla ścieżek API (np.
+`/api/*` dla anonimowych `GET`) z długim TTL na krawędzi. Trzymaj uwierzytelnione żądania,
+odczyty podglądu i `/api/_events` poza cache.
+
+### Sprawdzanie i ręczne czyszczenie
+
+Sekcja **CDN** w **Ustawienia → Wdrożenia** pokazuje dostawcę i **Ostatnie czyszczenia**
+(**Wyczyszczono** lub **Niepowodzenie**, z tagami). **Wyczyść wszystko** usuwa każdą
+odpowiedź z tagiem `vd`.
+
+Ponieważ odpowiedzi mają tagi typów, które mogą wypełnić, zmiana nazwy kategorii czyści też
+zapisane w cache listy artykułów, które mogłyby ją zawierać, niezależnie od tego, czy żądanie
+prosiło o `populate`.
+
+Własny cache Verdin w pamięci ([`[api].cache_ttl_secs`](/pl/reference/configuration/)) jest
+osobny: jest opróżniany przy każdej zmianie.

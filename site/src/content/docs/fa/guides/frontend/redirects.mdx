@@ -1,0 +1,118 @@
+---
+title: تغییرمسیرها
+description: فهرستی از تغییرمسیرها را در پنل مدیریت نگه دارید و آن‌ها را در middleware سایت خود اعمال کنید.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+قابلیت **تغییرمسیرها** به ویراستاران اجازه می‌دهد مسیرهای قدیمی را بدون استقرار دوباره به
+مسیرهای جدید بفرستند: آن‌ها فهرست را در پنل مدیریت نگه می‌دارند و سایت شما آن را دریافت می‌کند
+و با تغییرمسیر پاسخ می‌دهد. Verdin خودش بازدیدکنندگان را تغییرمسیر نمی‌دهد، چون آن‌ها به سایت
+شما می‌رسند، نه به CMS.
+
+## روشن کردن
+
+در **تنظیمات ← قابلیت‌ها**، **تغییرمسیرها** را روشن کنید و سپس **مدیریت تغییرمسیرها** را انتخاب
+کنید (یا به **تنظیمات ← تغییرمسیرها** بروید). مدیریت تغییرمسیرها به مجوز
+**مدیریت SEO، تغییرمسیرها، منوها و فرم‌ها** (`site.manage`) نیاز دارد که نقش داخلی Editor آن
+را دارد. [مجوزها](/fa/reference/permissions/) را ببینید.
+
+## افزودن تغییرمسیرها
+
+<Steps>
+
+1. در **تنظیمات ← تغییرمسیرها**، **افزودن تغییرمسیر** را انتخاب کنید.
+2. **از**: مسیر قدیمی که با `/` شروع می‌شود (برای مثال `/blog/2024/hello`).
+3. **به**: مسیر جدید، یا یک URL کامل `http(s)` در سایتی دیگر.
+4. **نوع**: **301 · دائمی**، **302 · موقت**، **307 · موقت (روش را نگه می‌دارد)**
+   یا **308 · دائمی (روش را نگه می‌دارد)**.
+5. ذخیره کنید.
+
+</Steps>
+
+Verdin تغییرمسیری را که هرگز کار نمی‌کند رد می‌کند:
+
+- تغییرمسیر دوم از همان مسیر؛
+- مسیری که به خودش تغییرمسیر می‌دهد؛
+- زنجیره‌ای که حلقه می‌سازد (`/a` → `/b` → `/a`).
+
+برای تعداد زیادی تغییرمسیر به‌طور همزمان، از **درون‌ریزی CSV** با ستون‌های `source`،
+`destination` و `status` استفاده کنید. ردیف‌هایی که source آن‌ها از قبل وجود دارد، همان
+تغییرمسیر را به‌روزرسانی می‌کنند. **خروجی CSV** همین قالب را می‌نویسد که برای مهاجرت از یک CMS
+دیگر یا بازبینی در صفحه‌گسترده مفید است.
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## اعمال در سایت
+
+سایت‌ها فهرست را بدون توکن از `GET /api/_redirects` می‌خوانند:
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+پاسخ با `Cache-Control: public, max-age=60` ارسال می‌شود، بنابراین هر تغییر در حدود یک دقیقه به
+سایت‌ها می‌رسد. مسیر درخواست را دقیقاً با `source` مقایسه کنید:
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+برای یک سایت ایستا، فهرست را هنگام build دریافت کنید و فایل تغییرمسیر میزبان خود را بنویسید
+(`_redirects` در Netlify، `vercel.json` در Vercel، یک map در nginx). این را با یک
+[دکمهٔ استقرار](/fa/guides/integrations/deploys-and-cdn/) یا یک [وب‌هوک](/fa/guides/integrations/webhooks/)
+ترکیب کنید تا ویراستاران بتوانند پس از تغییر تغییرمسیرها سایت را دوباره build کنند.
+
+<Aside type="note">
+پیشوند API از [`[api].prefix`](/fa/reference/configuration/) پیروی می‌کند. وقتی قابلیت خاموش
+باشد، `/api/_redirects` پاسخ `404` می‌دهد.
+</Aside>
+
+## Admin API
+
+پنل مدیریت از `/admin/api/site/redirects` (`GET`، `POST`) و
+`/admin/api/site/redirects/{id}` (`PUT`، `DELETE`) استفاده می‌کند، با توکن دسترسی یک مدیر و
+مجوز `site.manage`. [Admin API](/fa/api/admin/) را ببینید.

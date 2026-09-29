@@ -1,0 +1,174 @@
+---
+title: デプロイと CDN
+description: 静的サイト用のデプロイボタンを編集者に提供し、そのビルドを追跡し、コンテンツが変わったときに CDN をパージします。
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Verdin が提供するものをキャッシュするサイトのための、2 つの仕組みです。
+
+- **デプロイ**は、管理画面のヘッダーに**デプロイ**ボタンを置きます。ボタンはサイトのビルドフック（Netlify、Vercel、Cloudflare Pages、または任意の CI）を呼び出し、プロバイダーがビルドの進み具合を報告します。
+- **CDN のパージ**は、コンテンツ API のレスポンスにコンテンツタイプごとのタグを付け、コンテンツが公開の範囲で変わったときに、Cloudflare、Fastly、または独自のエンドポイントでそのタグをパージします。
+
+どちらもコアの一部で、機能の切り替えはありません。デプロイは**設定 → デプロイ**で、CDN は `verdin.toml` で設定します。
+
+## デプロイ
+
+<Diagram code={`sequenceDiagram
+  participant E as 編集者
+  participant V as Verdin
+  participant P as ビルドプロバイダー
+  E->>V: デプロイ
+  V->>P: ビルドフックに POST
+  P-->>V: コールバック: building
+  P-->>V: コールバック: ready (url)
+  V-->>E: 「本番サイトがデプロイされました」`} caption="デプロイボタンがビルドフックを呼び出し、プロバイダーがコールバック URL に報告します。" />
+
+### ターゲットを追加する
+
+<Steps>
+
+1. プロバイダーで、サイトのビルドフックを作成してその URL をコピーします（Netlify: **Build hooks**、Vercel: **Deploy Hooks**、Cloudflare Pages: **Deploy hooks**、CI: `POST` でパイプラインを開始する任意の URL）。
+2. Verdin で**設定 → デプロイ**に移動し、**ターゲットを追加**を選びます。
+3. **名前**（**本番サイト**など）を付け、**ビルドフックURL**を貼り付けます。
+4. 保存します。フックの URL はシークレットなので、以後はそのホストだけが表示されます。ターゲットを別のフックに向けるには、**URLを置き換える**を使います。
+
+</Steps>
+
+デプロイできる管理者のヘッダーに、**デプロイ**が表示されるようになります。ターゲットが複数ある場合は、**デプロイ先**のメニューが開きます。確認後、Verdin は次を送ります。
+
+```http
+POST <build hook URL>
+content-type: application/json
+
+{ "trigger": "verdin", "triggeredBy": "editor@example.com" }
+```
+
+1 つのターゲットのデプロイは最大で 10 秒に 1 回なので、ダブルクリックしてもビルドが 2 回始まることはありません。リクエストは 15 秒でタイムアウトし、リダイレクトは追いかけません。`2xx` 以外で応答したフックは**拒否**として記録されます。
+
+### ビルドの状態を報告させる
+
+コールバックがない場合、デプロイは**開始済み**のままです。管理画面で**ビルド中**、**完了**、**エラー**と、デプロイされたサイトへのリンクを表示するには、プロバイダーにターゲットのコールバック URL を渡します。ターゲットの**コールバックURL**ボタンを選び、コピーしてください。
+
+<Tabs syncKey="deploy-provider">
+<TabItem label="Netlify">
+
+**Site configuration → Build & deploy → Deploy notifications** で、**Deploy started**、**Deploy succeeded**、**Deploy failed** 用の送信 Webhook を、コールバック URL で追加します。
+
+</TabItem>
+<TabItem label="Vercel">
+
+**Team settings → Webhooks** で、`deployment.created`、`deployment.succeeded`、`deployment.error` のイベント用の Webhook を、コールバック URL で作成します。
+
+</TabItem>
+<TabItem label="Other CI">
+
+`status`（`building`、`ready`、`error` のいずれか）と、任意でデプロイされた `url` と `message` を含む JSON を `POST` します。
+
+```sh title="Terminal"
+curl -X POST "$VERDIN_CALLBACK_URL" -H 'content-type: application/json' \
+  -d '{ "status": "ready", "url": "https://www.example.com" }'
+```
+
+</TabItem>
+</Tabs>
+
+Verdin は Netlify の `state`、Vercel の `type`、そして素の `status` を理解し、ターゲットの最新のデプロイを更新します。`204` を返し、URL が誤っていれば `404` を返します。コールバック URL は `{public_url}{admin path}/api/deploy/callback/{id}/{secret}` なので、[`[server].public_url`](/ja/reference/configuration/) をプロバイダーが到達できるアドレスに設定してください。
+
+<Aside type="caution">
+コールバック URL にはシークレットが含まれています。それを持つ人は誰でも、そのターゲットのデプロイの状態を報告できます。デプロイを開始したり、何かを読んだりすることはできません。
+</Aside>
+
+**デプロイ履歴**には、直近の 50 件のデプロイが新しい順に、ターゲット、開始時刻、状態、フックの HTTP ステータス、プロバイダーのメッセージとともに一覧されます。ターゲットを削除すると、その履歴は削除されますが、ビルドフックは削除されません。
+
+### 権限
+
+| 権限 | 許可されること |
+| --- | --- |
+| **デプロイの実行**（`deploy.trigger`） | ヘッダーの**デプロイ**ボタン。組み込みの Editor ロールが持っています。 |
+| **デプロイターゲットとCDNの管理**（`deploy.manage`） | **設定 → デプロイ**: ターゲット、コールバック URL、CDN のパージ。 |
+
+[権限](/ja/reference/permissions/)を参照してください。ビルドフックの URL は [Webhook](/ja/guides/integrations/webhooks/) と同じアドレスの規則に従います。`verdin start` では、[`[webhooks].allow_private_networks`](/ja/reference/configuration/) で許可しない限り、プライベートなネットワークを指すことはできません。
+
+### 変更のたびにデプロイする
+
+ボタンは、必要なときに再ビルドするサイトに向いています。公開のたびに再ビルドするには、ビルドフックを URL にした `entry.publish` と `entry.unpublish` の [Webhook](/ja/guides/integrations/webhooks/) を作成します。予定した変更のまとまりには、[リリース](/ja/guides/content/releases/)で公開し、Webhook を `releases.publish` につなぎます。
+
+## CDN のパージ
+
+CDN がコンテンツ API をキャッシュしていると、キャッシュの期限が切れるまで古いコンテンツを提供します。`[cdn]` を設定すると、Verdin はレスポンスにタグを付け、コンテンツが変わるたびに適切なタグをパージするので、長い時間キャッシュできます。
+
+### タグ付けの仕組み
+
+コンテンツ API の成功した `GET` にはすべて、`vd`（すべて）、`vd-<singularName>`（コンテンツタイプ）、そしてそのドキュメントが populate できるすべての型のタグが付きます。リレーションの対象で、コンポーネントやダイナミックゾーンの中も含み、さらにその先のリレーションもたどります。ブログのサンプルの記事では、両方のヘッダー形式で次のようになります。
+
+```http
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
+```
+
+ポリモーフィックリレーションを持つ型はどの型にも到達しうるので、そのレスポンスにはすべての型のタグが付きます。
+
+Cloudflare は `Cache-Tag` を、Fastly は `Surrogate-Key` を読みます。コンテンツが公開の範囲で変わると、Verdin はその型のタグをパージします。
+
+- エントリーの公開、非公開、削除。
+- 下書きと公開を使わない型への書き込み（その書き込みはすぐに公開されるため）。
+
+下書きは公開されないので、下書きを保存しても何もパージされません。1 秒以内（`debounce_ms`）の変更は 1 回のパージにまとめられ、失敗したパージは 2 回再試行されます。
+
+### 設定する
+
+<Tabs syncKey="cdn">
+<TabItem label="Cloudflare">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "cloudflare"
+zone_id = "023e105f4ecef8ad9ca31a8372d0c353"
+```
+
+`VERDIN_CDN_TOKEN` は、そのゾーンに **Cache Purge** の権限を持つ API トークンです。
+
+</TabItem>
+<TabItem label="Fastly">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "fastly"
+service_id = "SU1Z0isxPaozGVKXdv0eY"
+```
+
+`VERDIN_CDN_TOKEN` は、そのサービスをパージできる Fastly の API トークンです。
+
+</TabItem>
+<TabItem label="Webhook">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "webhook"
+url = "https://purge.example.com/verdin"
+```
+
+Verdin は `POST { "tags": ["vd-article"] }` を送り、トークンが設定されていれば `Authorization: Bearer <VERDIN_CDN_TOKEN>` を付けます。別の CDN、リバースプロキシ、フレームワークの再検証 API に使ってください。
+
+</TabItem>
+</Tabs>
+
+```sh title="Terminal"
+export VERDIN_CDN_TOKEN=...
+```
+
+Verdin は起動時にこのセクションを確認し、プロバイダーが必要とする `zone_id`、`service_id`、`url`、トークンがなければ実行を拒否します。[`[cdn]`](/ja/reference/configuration/) を参照してください。
+
+何をキャッシュするかを決めるのは引き続き CDN です。API のパス（たとえば匿名の `GET` での `/api/*`）に、エッジの TTL が長いキャッシュルールを設定してください。認証付きのリクエスト、プレビューの読み取り、`/api/_events` はキャッシュの対象外にします。
+
+### 確認と手動のパージ
+
+**設定 → デプロイ**の **CDN** のセクションには、プロバイダーと**最近のパージ**（タグ付きで**パージ済み**または**失敗**）が表示されます。**すべてパージ**は、`vd` のタグが付いたすべてのレスポンスを破棄します。
+
+レスポンスには populate できる型のタグが付くので、カテゴリーの名前を変えると、リクエストが `populate` を求めたかどうかにかかわらず、そのカテゴリーを含みうるキャッシュ済みの記事の一覧もパージされます。
+
+Verdin 自身のメモリ内キャッシュ（[`[api].cache_ttl_secs`](/ja/reference/configuration/)）は別のもので、変更のたびに空になります。

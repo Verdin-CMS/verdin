@@ -1,0 +1,230 @@
+---
+title: 최종 사용자
+description: Strapi의 users-permissions 라우트를 써서, 사이트 사용자가 이메일 확인, OAuth 제공업체, 역할과 함께 콘텐츠 API로 가입하고 로그인하게 합니다.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+최종 사용자는 관리자 패널이 아니라 사이트나 앱에 로그인하는 사람들입니다. Verdin은 이들에게 가입, 로그인,
+이메일 확인, 비밀번호 재설정, OAuth 제공업체, 그리고 콘텐츠 API에서 할 수 있는 일을 정하는 역할을 제공합니다.
+라우트와 페이로드는 Strapi v5 users-permissions 플러그인과 같으므로 기존 프런트엔드가 그대로 동작합니다.
+
+## 시작하기 전에
+
+<Steps>
+
+1. **설정 → 기능 → 사용자 및 권한**을 켜거나(기본적으로 꺼짐), **설정 → 최종 사용자 → 설정**에서
+   **최종 사용자**를 켭니다.
+2. 이메일 확인이나 비밀번호 재설정을 쓴다면 `[email]`을 설정합니다.
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend와 Postmark는 `VERDIN_EMAIL_API_KEY`에서 키를 읽습니다. **설정 → 기능 → 이메일**에
+   **테스트 이메일 보내기**가 있습니다. 로컬 작업용으로 `docker/compose.dev.yml`에 Mailpit(SMTP 포트 1025, 받은
+   편지함 `http://localhost:8025`)이 들어 있습니다.
+
+3. `[server].public_url`을 설정합니다. 이메일의 링크와 OAuth 콜백이 이 값을 씁니다.
+
+</Steps>
+
+계정과 역할을 관리하려면 **최종 사용자 관리**(`endusers.manage`)가 필요합니다. 설정 탭(가입, 제공업체,
+템플릿)을 바꾸려면 **기능 관리**(`features.manage`)가 필요합니다.
+
+## 가입과 세션 설정
+
+**설정 → 최종 사용자 → 설정**의 **가입 및 세션** 아래:
+
+| 설정 | 기본값 | 효과 |
+| --- | --- | --- |
+| **가입 허용** | 켜짐 | 누구나 콘텐츠 API로 계정을 만들 수 있습니다. 끄면 `register`가 `400`으로 응답합니다. |
+| **이메일 주소 확인** | 꺼짐 | 새 사용자는 이메일로 받은 링크를 열어야 로그인할 수 있습니다. |
+| **기본 역할** | Authenticated | 새 계정의 역할. |
+| **세션** | 수명이 긴 토큰 하나 | **수명이 긴 토큰 하나**(Strapi의 레거시 모드) 또는 **갱신 가능한 단기 토큰**. |
+| **세션 길이(일)** | 30 | 수명이 긴 토큰의 수명. |
+| **액세스 토큰 수명(분)**, **리프레시 토큰 수명(일)** | 30, 30 | 리프레시 토큰을 쓰는 경우. |
+
+**앱의 페이지** 아래에서 **이메일 확인 후**(주소가 확인된 뒤 사용자가 도착하는 곳)와 **비밀번호 재설정 페이지**
+(`?code=`를 받아 새 비밀번호를 묻는 여러분의 페이지)를 설정합니다. 비밀번호 재설정에는 재설정 페이지가 필요합니다.
+
+## 역할 설정
+
+모든 요청은 다음 중 하나로 처리됩니다.
+
+- **Public**: 토큰 없는 요청. 권한은 **설정 → 공개 접근**의 권한입니다.
+- **Authenticated**: 새 계정에 주어지는 기본 제공 역할. 삭제할 수 없습니다.
+- **사용자 지정 역할**: **설정 → 최종 사용자 → 역할**에서 **역할 만들기**로 만듭니다.
+
+역할의 **권한**은 공개 접근, API 토큰과 같은 행렬을 씁니다. 콘텐츠 타입마다 **목록 조회**, **단건 조회**,
+**생성**, **수정**, **삭제**, **게시**, **초안 읽기**, 그리고 **미디어 라이브러리**와 **사용자**(`/api/users`
+라우트)입니다. 로그인한 사용자는 역할의 권한만 받으며, 공개 접근이 더해지지 않습니다. 로그인한 사용자에게 공개
+읽기가 필요하면 역할에도 허용하세요. 역할을 삭제하면 그 사용자들은 Authenticated로 옮겨집니다.
+
+사용자로서 요청하려면 프런트엔드가 사용자의 JWT를 `Authorization: Bearer <jwt>`로 보냅니다. API 토큰은 `vd_`로
+시작하며, Verdin은 이것으로 둘을 구분합니다.
+
+## 가입과 로그인
+
+<Tabs>
+<TabItem label="가입">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   이메일 확인이 켜져 있으면 { "user": … }
+```
+
+</TabItem>
+<TabItem label="로그인">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier`는 이메일 또는 사용자 이름입니다.
+
+</TabItem>
+<TabItem label="사용자로 읽기">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+차단된 사용자("Your account has been blocked by an administrator")와, 확인이 켜져 있을 때 확인되지 않은 사용자
+("Your account email is not confirmed")는 로그인이 거부됩니다.
+
+## 토큰과 세션
+
+- **수명이 긴 토큰 하나**(`jwtManagement: "legacy-support"`): JWT는 **세션 길이(일)** 동안 유효합니다.
+- **갱신 가능한 단기 토큰**(`jwtManagement: "refresh"`, Strapi 5와 같음): JWT는 **액세스 토큰 수명(분)** 동안
+  유효하며, 로그인 응답에 `refreshToken`도 담깁니다. `{ refreshToken }`으로 `POST /api/auth/refresh`를 호출하면
+  새 쌍을 받습니다. 각 리프레시 토큰은 한 번만 쓸 수 있으며, 이미 쓴 토큰을 제시하면 세션 전체가 끝납니다.
+  `{ refreshToken }`으로 `POST /api/auth/logout`을 호출하면 의도적으로 세션을 끝냅니다.
+- 비밀번호를 바꾸거나 재설정하면 사용자의 이전 토큰이 취소되며, 사용자를 차단해도 마찬가지입니다.
+- 로그인, 가입, 재설정 요청은 클라이언트 IP당 분당 20회로 제한됩니다.
+- 비밀번호는 Argon2id로 저장됩니다. Strapi에서 가져온 계정은 다음 로그인 때까지 bcrypt 해시를 유지하며, 그때
+  다시 해싱됩니다.
+
+## 이메일 주소 확인과 비밀번호 재설정
+
+**이메일 주소 확인**이 켜져 있으면 가입 시 `/api/auth/email-confirmation?confirmation=…`로 가는 링크를 이메일로
+보냅니다. 링크를 열면 계정이 확인되고 **이메일 확인 후**로 리디렉션됩니다. `{ email }`로
+`POST /api/auth/send-email-confirmation`을 호출하면 새 링크를 보냅니다.
+
+비밀번호를 잊어버린 경우:
+
+<Steps>
+
+1. 앱이 `{ email }`로 `POST /api/auth/forgot-password`를 호출합니다. 계정이 있든 없든 응답은 같습니다.
+2. 사용자는 `?code=…`가 붙은 **비밀번호 재설정 페이지** 링크가 담긴 이메일을 받습니다. 코드는 1시간 동안
+   유효합니다.
+3. 페이지가 `{ code, password, passwordConfirmation }`으로 `POST /api/auth/reset-password`를 호출하고
+   `{ jwt, user }`를 받습니다.
+
+</Steps>
+
+로그인한 사용자는 `POST /api/auth/change-password`
+(`{ currentPassword, password, passwordConfirmation }`)로 비밀번호를 바꿉니다.
+
+이메일은 **설정 → 최종 사용자 → 설정 → 이메일 템플릿**에서 편집합니다. **이메일 확인**과 **비밀번호 재설정**
+각각에 **제목**, **본문**, 선택 사항인 <strong>HTML 본문(선택)</strong>이 있습니다. 자리 표시자 `{{username}}`,
+`{{email}}`, `{{url}}`을 쓸 수 있으며, HTML 본문에서는 값이 HTML 이스케이프됩니다.
+
+## OAuth 제공업체로 로그인
+
+GitHub, Google, Microsoft, Discord, Facebook, GitLab, LinkedIn용 기본 프리셋이 있습니다. 그 밖의 이름은
+**인가 URL**, **토큰 URL**, **사용자 정보 URL**이 필요한 일반 OAuth 2 제공업체입니다. Keycloak, Auth0, Okta는
+realm이나 tenant의 URL로 이렇게 동작합니다. Sign in with Apple은 지원하지 않습니다.
+
+<Steps>
+
+1. **설정 → 최종 사용자 → 설정 → 로그인 제공업체**에서 **GitHub 추가**(또는 다른 프리셋이나
+   **OAuth 2 제공업체 추가**)를 선택합니다.
+2. 제공업체에 대화 상자에 표시된 **제공업체에 등록할 콜백 URL**을 등록합니다:
+   `https://cms.example.com/api/connect/github/callback`.
+3. **클라이언트 ID**, 선택 사항인 **스코프**, **앱으로 리디렉션**(로그인 후 `?access_token=`을 받는 프런트엔드
+   페이지)을 입력합니다. **활성화됨**을 켭니다.
+4. 클라이언트 시크릿을 서버 환경 변수에 넣고 재시작합니다.
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   변수 이름은 `VERDIN_OAUTH_<PROVIDER>_SECRET`입니다. 시크릿은 절대 데이터베이스에 저장되지 않습니다.
+
+</Steps>
+
+로그인은 Strapi의 흐름을 따릅니다.
+
+<Diagram
+  caption="최종 사용자의 OAuth 로그인"
+  code={`sequenceDiagram
+  participant B as 브라우저
+  participant V as Verdin
+  participant P as 제공업체
+  B->>V: GET /api/connect/github
+  V-->>B: 제공업체로 리디렉션
+  B->>P: 동의
+  P-->>B: /api/connect/github/callback으로 리디렉션
+  B->>V: 콜백
+  V-->>B: 앱 페이지로 리디렉션 ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+OAuth `state`는 서명되며 쿠키로 브라우저에 묶입니다. 계정은 이메일로 대조합니다. 다른 제공업체나 이메일·비밀번호
+계정이 이미 쓰는 이메일은 거부됩니다("Email is already taken.").
+
+## 관리자 패널에서 계정 관리
+
+**설정 → 최종 사용자 → 사용자**는 계정을 나열하며, 사용자 이름이나 이메일로 검색할 수 있습니다. **사용자 추가**,
+계정 편집(사용자 이름, 이메일, 비밀번호, 역할, **확인됨**, **차단됨**), **차단** 또는 **차단 해제**, 삭제를 할
+수 있습니다.
+
+## 라우트
+
+라우트는 콘텐츠 API 접두사(기본값 `/api`) 아래에 있습니다. 요청과 응답 형식은 Strapi v5를 따릅니다.
+
+| 라우트 | 하는 일 |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }`, 이메일 확인이 켜져 있으면 `{ user }`. |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`. |
+| `GET /auth/email-confirmation?confirmation=` | 이메일을 확인한 뒤 리디렉션하거나 사용자를 반환합니다. |
+| `POST /auth/send-email-confirmation` | `{ email }`: 새 확인 링크. |
+| `POST /auth/forgot-password` | `{ email }`: 재설정 링크를 이메일로 보냅니다. |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/change-password` | 로그인 필요. `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/refresh`, `POST /auth/logout` | 갱신 모드에서만: `{ refreshToken }`. |
+| `GET /users/me` | 로그인한 사용자. |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | 사용자에 대한 목록 조회 / 단건 조회 필요. Strapi처럼 `data` 봉투 없는 일반 JSON. `populate=role`은 역할을 추가하고, `_q=`는 사용자 이름과 이메일을 검색하며, `pagination[page]`와 `pagination[pageSize]`(최대 100)로 페이지를 넘깁니다. |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | 사용자에 대한 생성 / 수정 / 삭제 필요. `{ username, email, password, confirmed, blocked, role }`, `role`은 역할 id. |
+| `GET /connect/{provider}` | OAuth 로그인을 시작합니다. |
+| `GET /auth/{provider}/callback?access_token=` | 제공업체의 토큰을 `{ jwt, user }`로 교환합니다. |
+
+`verdin import strapi`는 최종 사용자를 비밀번호, 사용자 지정 역할, 그리고 public, authenticated, 사용자 지정
+역할의 권한과 함께 가져옵니다. [Strapi에서 마이그레이션](/ko/migrate/from-strapi/)을 참고하세요.
+
+<Aside type="caution">
+**사용자**에 대한 생성, 수정, 삭제 권한을 가진 역할은 그 구성원이 모든 최종 사용자 계정을 관리할 수 있게 합니다.
+신뢰하는 역할이나 API 토큰에만 주세요.
+</Aside>

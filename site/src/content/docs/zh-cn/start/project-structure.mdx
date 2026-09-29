@@ -1,0 +1,155 @@
+---
+title: 项目结构
+description: verdin new 创建的文件、Verdin 运行时添加的文件，以及其中哪些应当纳入 git。
+sidebar:
+  order: 5
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+一个 Verdin 项目就是一个包含配置文件和 schema 的目录。本页列出 `verdin new` 创建的内容、服务器运行时添加的内容，以及应当提交的内容。
+
+## `verdin new` 创建的内容
+
+```sh title="Terminal"
+verdin new my-site
+```
+
+<FileTree>
+- my-site/
+  - verdin.toml 项目配置
+  - .env 密钥和数据库 URL，只有你可以读取
+  - .gitignore
+  - schema/
+    - content-types/ 每个内容类型一个 JSON 文件
+    - components/ 每个组件类别一个文件夹
+  - data/ SQLite 数据库（仅在使用 `--database sqlite` 时）
+</FileTree>
+
+该目录必须不存在或为空。数据库 URL 中的项目名称来自目录名，转为小写，其他字符替换为 `_`（`My Site` 变为 `my_site`）。
+
+### `verdin.toml`
+
+配置文件。生成的文件设置了端口、内容 API 前缀和每页大小，以及管理后台路径：
+
+```toml title="verdin.toml"
+[server]
+port = 1337
+# public_url = "https://cms.example.com"
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+
+[admin]
+path = "/admin"
+# secure_cookies = true
+```
+
+每个键都有默认值，因此该文件可以为空，也可以不存在。未知的键会让服务器报错停止。任何键都可以通过环境变量 `VERDIN_<SECTION>__<KEY>` 覆盖，例如 `VERDIN_SERVER__PORT=8080`。命令从当前目录读取 `verdin.toml`；传入 `-c <path>` 或设置 `VERDIN_CONFIG` 可以使用其他文件。文件中的路径（例如 schema 或上传目录）相对于包含该文件的目录。所有设置请参见[配置参考](/zh-cn/reference/configuration/)。
+
+### `.env`
+
+```sh title=".env"
+# Local secrets: keep this file out of version control.
+VERDIN_DATABASE_URL=sqlite://data/verdin.db
+VERDIN_ADMIN_JWT_SECRET=…
+VERDIN_TOKEN_PEPPER=…
+```
+
+`verdin new` 会填入两个随机密钥，以及一个针对你用 `--database` 所选引擎的数据库 URL：
+
+| `--database` | 生成的 `VERDIN_DATABASE_URL` |
+| --- | --- |
+| `sqlite`（默认） | `sqlite://data/verdin.db` |
+| `postgres` | `postgres://verdin:change-me@localhost:5432/<name>` |
+| `mysql`、`mariadb` | `mysql://verdin:change-me@localhost:3306/<name>` |
+
+对于 PostgreSQL、MySQL 和 MariaDB，请替换用户和密码。相对的 SQLite 路径相对于项目目录解析，而不是相对于你运行命令的目录。
+
+每个命令都会加载 `verdin.toml` 旁边的 `.env`；环境中已设置的变量优先。在 Linux 和 macOS 上，该文件创建时只有其所有者可以读取。在生产环境中，请在平台的密钥存储中设置这些变量，而不是随项目发布 `.env` 文件。[快速开始](/zh-cn/start/quickstart/#2-密钥)介绍了这两个密钥。
+
+### `schema/`
+
+内容模型，采用 Strapi 的 schema 格式：
+
+- `schema/content-types/<singularName>.json`，每个集合类型或单一类型一个文件。
+- `schema/components/<category>/<name>.json`，每个组件一个文件；组件的 uid 为 `<category>.<name>`。
+
+内容类型构建器在 `verdin dev` 中写入这些文件，你也可以手动编辑它们：文件变化时 `verdin dev` 会重新加载。示例博客的 schema 如下：
+
+<FileTree>
+- schema/
+  - content-types/
+    - article.json
+    - category.json
+    - homepage.json 单一类型
+    - tag.json
+  - components/
+    - blocks/
+      - hero.json `blocks.hero`
+      - quote.json `blocks.quote`
+    - shared/
+      - seo.json `shared.seo`
+</FileTree>
+
+这些文件是唯一的事实来源：Verdin 从中推导出数据库表、校验、REST 和 GraphQL API、OpenAPI 文档、TypeScript 类型以及管理后台表单。参见[内容模型](/zh-cn/concepts/content-model/)和 [Schema 迁移](/zh-cn/concepts/schema-migrations/)。schema 目录由 `verdin.toml` 中的 `[schema].path` 指定，默认为 `schema`。
+
+## Verdin 运行时出现的内容
+
+<FileTree>
+- my-site/
+  - verdin.toml
+  - .env
+  - schema/
+  - data/
+    - verdin.db SQLite 数据库，以及其 `-wal` 和 `-shm` 文件
+    - search/ 全文索引，开启 `[search].enabled` 时出现
+  - public/
+    - uploads/ 媒体库文件，在 `/uploads` 提供
+  - .cache/
+    - transforms/ 缩放后的图片，按需重建
+  - plugins/ WebAssembly 插件，每个一个文件夹（由你创建）
+  - strapi-id-map.json 由 `verdin import strapi` 写入
+</FileTree>
+
+| 路径 | 写入者 | 设置 |
+| --- | --- | --- |
+| `data/verdin.db` | 服务器，使用 SQLite 时 | `VERDIN_DATABASE_URL` |
+| `public/uploads/` | 使用本地提供方（默认）时的上传 | `[upload].provider` |
+| `.cache/transforms/` | 在 `/uploads` 请求的图片转换 | `[upload.transforms].cache_dir` |
+| `data/search/` | 全文索引 | `[search].dir` |
+| `plugins/` | 你：每个插件放在自己的文件夹中 | `[plugins].path` |
+| `strapi-id-map.json` | `verdin import strapi`：Strapi id 到 Verdin id 的映射 | — |
+
+使用 PostgreSQL、MySQL 或 MariaDB 时不会有 `data/verdin.db`：内容存放在数据库服务器中。使用 S3 提供方时，媒体文件存放在存储桶中，`public/uploads` 保持为空。
+
+## 哪些内容纳入 git
+
+| 提交 | 不纳入 git |
+| --- | --- |
+| `verdin.toml` | `.env`（密钥） |
+| `schema/`（内容类型和组件） | `data/`（SQLite 数据库、搜索索引） |
+| `plugins/`（如果使用插件） | `public/uploads/`（媒体） |
+| `.gitignore` | `.cache/` |
+
+生成的 `.gitignore` 涵盖了所有这些：
+
+```sh title=".gitignore"
+.env
+data/
+*.db
+*.db-*
+.cache/
+# Local media library ([upload.provider] dir).
+public/uploads/
+```
+
+0.10 之前创建的项目缺少 `public/uploads/` 这一行：请把它加上。
+
+<Aside>
+内容和媒体是数据，而不是代码。请用 `verdin export` 或数据库自带的工具备份它们，而不是提交它们；参见[备份](/zh-cn/deploy/backups/)。
+</Aside>
+
+请把 schema 与依赖它的代码（例如前端生成的类型）一起提交。在生产环境中，部署已提交的 schema 并运行 `verdin start --migrate`：内容类型构建器在 `verdin dev` 之外是关闭的，因此 schema 只会通过你的代码仓库发生变化。

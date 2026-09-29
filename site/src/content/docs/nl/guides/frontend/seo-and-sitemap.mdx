@@ -1,0 +1,179 @@
+---
+title: SEO en sitemap
+description: Koppel contenttypes aan de paden van je site, serveer een sitemap.xml van elk gepubliceerd item, en voeg een standaard SEO-component toe.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+De functie **SEO en sitemap** vertelt Verdin waar elk item op je site staat. Op basis daarvan
+serveert het een `sitemap.xml` van elk gepubliceerd item, geeft het [menu's](/nl/guides/frontend/menus/)
+de paden van de items waarnaar ze linken, en biedt het een kant-en-klare component `shared.seo`
+voor metatags.
+
+Het is een van vier sitefuncties, met [redirects](/nl/guides/frontend/redirects/),
+[menu's](/nl/guides/frontend/menus/) en [formulieren](/nl/guides/frontend/forms/). Strapi dekt
+hetzelfde terrein met communityplugins (SEO, sitemap); in Verdin is het ingebouwd.
+
+## Aanzetten
+
+<Steps>
+
+1. Zet in **Instellingen → Functies** **SEO en sitemap** aan.
+2. Kies op de kaart ervan **SEO configureren**.
+3. Vul de **Site-URL** in: de origin van je site, zoals `https://www.example.com`. De URL's van de
+   sitemap beginnen ermee.
+4. Geef onder **Contenttypes** elk type met pagina's een **Padpatroon**. Types zonder patroon
+   blijven buiten de sitemap. Stel eventueel een **Wijzigingsfrequentie** en een **Prioriteit**
+   (0 tot 1) in voor de sitemap.
+5. Sla op en kies daarna **sitemap.xml openen** om het resultaat te controleren.
+
+</Steps>
+
+De instellingen wijzigen vereist het recht **Functies beheren** (`features.manage`). Zie
+[Rechten](/nl/reference/permissions/).
+
+## Padpatronen
+
+Een patroon is een pad dat met `/` begint, met placeholders tussen accolades:
+
+| Patroon | Item | Pad |
+| --- | --- | --- |
+| `/blog/{slug}` | Artikel met slug `hello-world` | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | De Franse versie ervan | `/fr/blog/bonjour` |
+| `/about` | Het enkele type Homepage | `/about` |
+
+Placeholders zijn de attributen van het type (meestal een `uid` zoals `slug`) en `{locale}`.
+Waarden worden URL-gecodeerd. Een item waarvan een placeholder leeg is (bijvoorbeeld een
+ontbrekende slug), heeft geen pad, en blijft buiten de sitemap en de menu's. De dialoog somt de
+attributen op die je kunt invoegen en weigert onbekende.
+
+De instellingen worden opgeslagen als de instellingen van de functie, in deze vorm:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` is een van `always`, `hourly`, `daily`, `weekly`, `monthly`, `yearly` of `never`.
+
+## De sitemap
+
+Met een ingestelde **Site-URL** serveert Verdin `/sitemap.xml` op de root van zijn eigen host
+(`https://cms.example.com/sitemap.xml`, buiten het API-prefix), met:
+
+- elk **gepubliceerd** item van de geconfigureerde types waarvan het patroon wordt ingevuld;
+- de laatste wijziging van elk item (`lastmod`), en de `changefreq` en `priority` van het type;
+- voor gelokaliseerde types één URL per locale, onderling gekoppeld met
+  `<xhtml:link rel="alternate" hreflang="…">`;
+- hoogstens 50.000 URL's, de limiet van een sitemapbestand.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+De sitemap wordt hoogstens elke tien minuten opgebouwd en verzonden met
+`Cache-Control: public, max-age=600`, dus een publicatie verschijnt binnen tien minuten.
+
+Zoekmachines verwachten de sitemap op de host van je site. Serveer hem vanaf daar met een rewrite
+of een kleine route die die van Verdin ophaalt:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+Vermeld hem daarna in je `robots.txt`: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## De SEO-component
+
+Verdin stelt een component `shared.seo` voor met de velden van de SEO-plugin van Strapi:
+
+| Attribuut | Type |
+| --- | --- |
+| `metaTitle` | string, verplicht, hoogstens 60 tekens |
+| `metaDescription` | text, verplicht, hoogstens 160 tekens |
+| `metaImage` | media (afbeeldingen) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+Kies in de dialoog **SEO configureren** **De SEO-component toevoegen** en daarna
+**De component aanmaken**. Het aanmaken wijzigt het schema, dus de knop is er in de
+ontwikkelmodus (`verdin dev`) voor beheerders met **Contenttypes beheren**; anders somt de dialoog
+in plaats daarvan de attributen op die je in je schemabestanden moet toevoegen. Voeg daarna in de
+contenttype-bouwer aan elk contenttype met pagina's een componentveld toe dat `shared.seo`
+gebruikt.
+
+<Aside type="tip">
+Met [AI-acties](/nl/guides/integrations/ai-actions/) aan krijgt een component met de
+tekstattributen `metaTitle` en `metaDescription` een knop **Voorstellen** die ze vanuit het item
+invult.
+</Aside>
+
+## De metatags tonen
+
+Populeer de component en schrijf de tags in de head van je pagina:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+De `shared.seo` van de voorbeeldblog heeft alleen `metaTitle` en `metaDescription`; de
+voorgestelde component voegt de rest toe. Als de voorbeeldpagina
+[visueel bewerken](/nl/guides/frontend/visual-editing/) gebruikt, verwijder dan de onzichtbare
+markeringen voordat je metateksten meet of vergelijkt.

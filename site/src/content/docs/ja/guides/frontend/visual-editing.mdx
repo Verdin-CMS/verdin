@@ -1,0 +1,99 @@
+---
+title: ビジュアル編集
+description: 編集者がプレビューページのテキストをクリックすると、管理パネルでそのテキストを持つフィールドに移動できるようにします。
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+ビジュアル編集は、プレビューページを管理パネルへの地図に変えます。編集者が見出しにカーソルを合わせて**編集**をクリックすると、そのフィールドにフォーカスした状態でエントリーが開きます。これは[プレビュー](/ja/guides/content/preview/)の上に成り立つ機能です。先にプレビューの URL を設定し、それからプレビューページに以下の 2 つの要素を加えてください。
+
+Verdin は、返す各テキストに小さな見えないソースマップを埋め込み（*stega* と呼ばれる手法）、オーバーレイのスクリプトがページ上でそれらのテキストを見つけます。コンポーネントは何も変わりません。印の付いたテキストも、他のテキストと同じように表示されます。
+
+<Diagram code={`flowchart LR
+  A[プレビューページ] -- "x-verdin-stega: true" --> B[コンテンツ API]
+  B -- "テキスト + 見えないソースマップ" --> A
+  A -- "visual-editing.js: 編集をクリック" --> C[管理パネルのフィールド]`} caption="ページがソースマップを要求し、オーバーレイがそれをフィールドへのリンクに変えます。" />
+
+## 設定する
+
+<Steps>
+
+1. **設定 → 機能**で**プレビュー**をオンにし、**プレビューURLを設定**を選んで、各コンテンツタイプにそれを表示するページの URL を設定します。同じダイアログの**ビジュアル編集**のセクションに、スクリプトタグとサーバー用のヘッダーが表示されます。[プレビュー](/ja/guides/content/preview/)を参照してください。
+
+2. プレビューページで、トークンと `x-verdin-stega: true` ヘッダーを付けてコンテンツを取得します。トークンは、プレビューの URL にあるプレビュートークン（`?preview=…`、`x-verdin-preview` として送り返す）か API トークンです。
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. 同じページでオーバーレイを読み込みます。
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   パスは [`[admin].path`](/ja/reference/configuration/) に従います: `{path}/api/visual-editing.js`。
+
+</Steps>
+
+[型付きクライアント](/ja/guides/frontend/typed-client/)では、`headers` に両方のヘッダーを渡します。
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+ソースマップが付くのは REST のレスポンスだけで、GraphQL には付きません。プレビューのコンテンツは REST API で読んでください。
+
+ページ上の印の付いたテキストにカーソルを合わせると、緑の枠線と**編集**ボタンが表示されます。管理画面の左右に並べたプレビュー（**プレビューを開く** → **左右に並べて表示**）の中では、ボタンを押すと、その場でフィールドを開くよう管理画面に求めます。ページを単独で開いている場合は、ボタンでエントリーが新しいタブで開きます。
+
+<Aside type="note">
+ソースマップが付くのは、`x-verdin-stega: true` **と**トークン（`Authorization` または `x-verdin-preview`）を送る `GET` リクエストだけです。公開のトラフィックや CDN がキャッシュするものに付くことはなく、印の付いたレスポンスは `Cache-Control: private, no-store` 付きで送られます。
+</Aside>
+
+## 印が付くもの
+
+| 印が付く | 印が付かない |
+| --- | --- |
+| `string`、`text`、`richtext` 属性 | `uid`、`email`、`password`、`enumeration` |
+| `blocks` 属性の各ブロックの最初のテキスト | 数値、ブール値、日付、JSON |
+| コンポーネントとダイナミックゾーン内の同じもの（`seo.metaTitle`、`blocks.2.title`） | 空の文字列 |
+| populate したリレーション（関連するエントリーを指す） | メディアフィールド |
+
+オーバーレイは `alt` 属性と `title` 属性の印も読むので、それらに入れた印付きのテキスト（たとえば `alt` に使うキャプションのフィールド）もクリックできます。
+
+## テキストをデータとして使う場所では印を取り除く
+
+印は、テキストの末尾に付け加えられた見えない文字です。値を表示するのではなくデータとして使う場所（キー、URL、比較、`<title>` の長さのチェック）では、先に取り除いてください。
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+`uid` のスラッグや enumeration のように本来データであるフィールドには印が付かないので、`slug` によるルーティングはそのまま動きます。
+
+## 印のエンコード方法
+
+印を自分で読むツールのために説明します。印は U+2064 で始まり、次に
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+の各 UTF-8 バイトを、U+200B、U+200C、U+200D、U+2060 で書いた 4 桁の 4 進数（上位の桁が先）として並べ、最後に U+2063 が来ます。管理画面の URL は [`[server].public_url`](/ja/reference/configuration/) と `[admin].path` から作られます。オーバーレイは `postMessage` で親ウィンドウに `{ type: 'verdin:edit', href }` を送ります。管理画面は、それがプレビューの URL のオリジンから来た場合にだけ応じます。

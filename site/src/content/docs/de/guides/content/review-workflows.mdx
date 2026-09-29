@@ -1,0 +1,138 @@
+---
+title: Review-Workflows
+description: Einträge durch Review-Phasen bewegen, sie Prüfern zuweisen, beschränken, wer sie verschieben darf, und vor dem Veröffentlichen eine Phase verlangen.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Ein Review-Workflow ist eine geordnete Liste von Phasen, etwa *Zu erledigen*, *Im Review* und
+*Bereit*, die die Einträge bestimmter Inhaltstypen vor ihrer Veröffentlichung durchlaufen.
+Diese Anleitung richtet einen ein, verschiebt und weist Einträge zu und zeigt die passende
+Admin-API.
+
+In Strapi sind Review-Workflows eine Enterprise-Funktion. In Verdin gehören sie zum
+Open-Source-Kern.
+
+## Bevor du anfängst
+
+- Schalte **Einstellungen → Funktionen → Review-Workflows** ein. Standardmäßig ist es aus.
+- Workflows einzurichten braucht **Review-Workflows verwalten** (`workflows.manage`).
+- Einen Eintrag zu verschieben und zuzuweisen braucht Schreibzugriff darauf. Siehe
+  [Berechtigungen](/de/reference/permissions/).
+
+## Einen Workflow anlegen
+
+<Steps>
+
+1. Öffne **Einstellungen → Review-Workflows** und wähle **Neuer Workflow**.
+2. Gib ihm einen **Name**.
+3. Wähle unter **Inhaltstypen** die Typen, deren Einträge ihm folgen. Ein Typ folgt höchstens
+   einem Workflow.
+4. Liste unter **Phasen** die Phasen in ihrer Reihenfolge auf. Jede hat einen **Phasenname** und
+   eine **Farbe**. Mit **Phase hinzufügen** kommen weitere hinzu, mit den Pfeil-Buttons änderst
+   du die Reihenfolge. Neue Einträge beginnen in der ersten Phase.
+5. Wähle optional bei einer Phase
+   **Rollen, die Einträge in diese Phase verschieben können**. Ohne ausgewählte Rollen kann das
+   jeder, der den Eintrag ändern darf.
+6. Setze optional **Erforderliche Phase zum Veröffentlichen**. Einträge lassen sich dann nur
+   veröffentlichen, solange sie in dieser Phase sind. **Beliebige Phase** lässt das
+   Veröffentlichen unberührt.
+7. Speichere.
+
+</Steps>
+
+<Diagram
+  caption="Ein redaktioneller Workflow mit erforderlicher Phase zum Veröffentlichen"
+  code={`flowchart LR
+  A[Zu erledigen] --> B[Im Review] --> C[Bereit]
+  C -->|Veröffentlichen erlaubt| P((Veröffentlicht))
+  A -.->|Veröffentlichen abgelehnt| X[400]`}
+/>
+
+Einträge, die es schon gab, bevor ihr Typ dem Workflow beitrat, stehen in der ersten Phase.
+
+Wenn du einen Workflow später änderst:
+
+- Wird eine Phase entfernt, wandern ihre Einträge zurück in die erste Phase.
+- Wird ein Inhaltstyp aus dem Workflow entfernt, verlieren seine Einträge ihre Phasen.
+- Wird der Workflow gelöscht, verlieren seine Einträge Phasen und Zuweisungen.
+
+## Einträge verschieben und zuweisen
+
+Der Eintragseditor zeigt ein Panel **Review** mit **Phase** und **Zugewiesen an**.
+
+- Wähle eine andere **Phase**, um den Eintrag zu verschieben. Phasen, die anderen Rollen
+  vorbehalten sind, lassen sich nicht wählen, und das Panel sagt das. Admins mit
+  **Review-Workflows verwalten** können Einträge immer verschieben.
+- Wähle unter **Zugewiesen an** einen der aktiven Admins, die den Inhaltstyp lesen dürfen, oder
+  wähle **Zuweisung entfernen**. Jeder, der den Eintrag ändern darf, kann ihn zuweisen.
+- Hat der Workflow eine erforderliche Phase, sagt das Panel, welche Phase der Eintrag erreichen
+  muss, bevor **Veröffentlichen** funktioniert.
+
+Die Listenansicht zeigt eine Spalte **Phase**, und die Startseite listet die dir zugewiesenen
+Einträge unter **Mir zugewiesen**. Lokalisierte Typen führen eine Phase pro Sprache.
+
+## Was die Phase zum Veröffentlichen blockiert
+
+Die erforderliche Phase gilt für jeden Weg des Veröffentlichens: Admin-Panel, REST, GraphQL,
+Releases und Plugins. Die Veröffentlichung eines Eintrags außerhalb dieser Phase scheitert mit
+`400`:
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+In Strapi gilt die Phasenanforderung nur im Admin-Panel. Auch Phasenrollen unterscheiden sich:
+In Verdin begrenzen sie, wer Einträge *in* eine Phase verschiebt.
+
+## Audit-Logs und Webhooks
+
+- Phasenwechsel und Zuweisungen werden in den [Audit-Logs](/de/guides/content/audit-logs/) als
+  `entry.stage` und `entry.assign` festgehalten.
+- Webhooks können **Eintragsphase geändert** (`review-workflows.updateEntryStage`) abonnieren.
+  Siehe [Webhooks](/de/guides/integrations/webhooks/).
+
+## Admin-API
+
+Alle Routen liegen unter `/admin/api` und nehmen ein Admin-Access-Token.
+
+| Route | Berechtigung | Tut |
+| --- | --- | --- |
+| `GET /review-workflows`, `GET /review-workflows/{id}` | `workflows.manage` | Workflows mit ihren Phasen. |
+| `POST /review-workflows`, `PUT /review-workflows/{id}` | `workflows.manage` | Einen Workflow anlegen oder ersetzen (Body unten). |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | Einträge seiner Typen verlieren ihre Phasen. |
+| `GET /content/{uid}/{documentId}/review?locale=` | den Eintrag lesen | Phase, zugewiesene Person und die Phasen, in die du den Eintrag verschieben kannst (`canMoveTo`). |
+| `PUT /content/{uid}/{documentId}/review?locale=` | den Eintrag ändern | `{ "stageId": 3, "assigneeId": 7 }`. Beide Felder sind optional; `"assigneeId": null` entfernt die Zuweisung. |
+| `GET /content/{uid}/review?documentIds=a,b` | den Typ lesen | Phasen von bis zu 200 Einträgen, mit dem Workflow in `meta.workflow`. |
+| `GET /review/assigned` | angemeldet | Dir zugewiesene Einträge. |
+| `GET /review/assignees?uid=` | den Typ ändern | Aktive Admins, die den Typ lesen dürfen. |
+| `GET /review/roles` | `workflows.manage` | Rollencodes und -namen, für Phasenrollen. |
+
+Ein Workflow, wie er an `POST` und `PUT` geschickt wird:
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- Ein Workflow hat 1 bis 50 Phasen mit eindeutigen Namen und `#rrggbb`-Farben.
+- `publishStage` nennt eine der Phasen; lass es weg, wenn keine gelten soll.
+- Schick bestehende Phasen mit ihrer `id`, damit ihre Einträge bleiben, wo sie sind. Phasen ohne
+  `id` sind neu.
+
+<Aside type="note">
+Das Ausschalten der Funktion verbirgt die Phasen und setzt die Phase zum Veröffentlichen nicht
+mehr durch. Workflows und Phasen der Einträge bleiben erhalten, bis du die Funktion wieder
+einschaltest.
+</Aside>

@@ -1,0 +1,165 @@
+---
+title: Обзор архитектуры
+description: Как устроен Verdin — от принципов проектирования до крейтов, через которые проходит запрос, — для тех, кто хочет читать или менять код.
+sidebar:
+  order: 1
+  label: Обзор
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Этот раздел для тех, кто работает над самим Verdin. В нём объясняется, как устроены сервер и админ-панель, почему они построены именно так и с чего начать чтение кода. Чтобы пользоваться Verdin, начните лучше с [быстрого старта](/ru/start/quickstart/).
+
+Verdin — это headless CMS на Rust, которая следует Strapi v5: вы моделируете контент визуально или в JSON-файлах и получаете REST и GraphQL API и админ-панель. Она поставляется одним бинарником, в котором есть сервер, CLI и админ-панель на Angular, и работает с PostgreSQL, MySQL, MariaDB и SQLite.
+
+## Цели
+
+- **Один бинарник.** `verdin` содержит сервер, CLI и встроенную админ-панель. В продакшене не нужны ни Node.js, ни `node_modules`.
+- **Быстрый запуск, небольшое потребление памяти.**
+- **Четыре базы данных, один набор тестов.** PostgreSQL, MySQL, MariaDB и SQLite поддерживаются полноценно и покрыты одними и теми же тестами.
+- **Схема как код.** Типы содержимого — это JSON-файлы, которые вы храните в git.
+- **REST API, совместимый со Strapi v5**, везде, где это разумно, чтобы существующие фронтенды переезжали с небольшими изменениями.
+- **Всё бесплатно.** Enterprise-редакции нет: SSO, журналы аудита, процессы проверки, релизы и все остальные функции доступны всем.
+
+Что вышло в каждом релизе и что будет дальше, описано в [дорожной карте](/ru/project/roadmap/).
+
+### Что не входит в цели
+
+- Запуск JavaScript-плагинов Strapi. Плагины Verdin — это модули WebAssembly (см. [плагины](/ru/extending/plugins/)).
+- Чтение базы данных Strapi как есть. Контент переносится через импортёр (см. [миграция со Strapi](/ru/migrate/from-strapi/)).
+- Рендеринг страниц. Verdin — headless.
+
+## Принципы проектирования
+
+1. **Схема — источник истины.** Таблицы, валидация, REST и GraphQL API, документ OpenAPI и формы админки выводятся из неё.
+2. **Ни один идентификатор SQL не берётся из запроса.** Имена таблиц и колонок берутся только из проверенной схемы, а каждое значение — связанный параметр.
+3. **Диалекты равноправны.** Никаких «работает в PostgreSQL, MySQL потом». Каждая функция тестируется на всех четырёх СУБД.
+4. **Безопасность по умолчанию.** Content API закрыт, пока вы не выдадите разрешения, поля `private` никогда не раскрываются, а ограничения глубины и размера запросов всегда включены.
+5. **Разрушительные операции — явные.** Удаление колонки или таблицы требует вашего одобрения и никогда не происходит как побочный эффект.
+6. **Никакого глобального состояния.** Сервисы передаются через состояние `axum` и конструкторы; синглтонов нет.
+
+## Общая картина
+
+Запрос попадает в бинарник через небольшой стек общих слоёв, доходит до одного из роутеров API и заканчивается в Document Service, который строит SQL для подключённого диалекта. Реестр схемы, загруженный из `schema/*.json`, питает каждый шаг, а движок миграций поддерживает базу данных в соответствии с ним.
+
+<Diagram
+  caption="Запрос content API и крейты, через которые он проходит"
+  code={`flowchart LR
+  Client["Фронтенд или админ-панель"] --> Layers["Общие слои<br/>IP клиента, id запроса, CORS, лимиты"]
+  Layers --> Routers["verdin-api / verdin-graphql<br/>REST, admin API, GraphQL, MCP"]
+  Routers --> Auth["verdin-auth<br/>токены, роли, права"]
+  Routers --> Query["verdin-query<br/>параметры в типизированный запрос"]
+  Query --> Docs["verdin-content<br/>Document Service"]
+  Docs --> Db["verdin-db<br/>пул и Flavor"]
+  Db --> Engines[("PostgreSQL, MySQL,<br/>MariaDB, SQLite")]
+  Schema["verdin-schema<br/>schema/*.json"] --> Migrate["verdin-migrate<br/>diff, plan, apply"]
+  Migrate --> Db`}
+/>
+
+- **Content API** под `[api].prefix` (по умолчанию `/api`): REST-маршруты для каждого типа содержимого, загрузки и документ OpenAPI. См. [REST API](/ru/api/rest/).
+- **Admin API** под `{admin.path}/api` (по умолчанию `/admin/api`): всё, что делает админ-панель. См. [admin API](/ru/api/admin/).
+- **GraphQL** на `/graphql` и **MCP** на `/mcp`, когда эти функции включены. Аргументы GraphQL переводятся в то же дерево параметров, которое читает парсер REST, поэтому оба API используют общие правила фильтров, пагинации, populate и разрешений.
+- **Админ-панель** под `[admin].path` (по умолчанию `/admin`), которая отдаётся из бинарника или из `[admin].assets_dir`. См. [устройство админ-панели](/ru/internals/admin-panel/).
+- **Служебные маршруты**: `/_health`, `/_ready` и `/_metrics`, когда метрики включены. См. [мониторинг](/ru/deploy/monitoring/).
+
+Каждая запись проходит через [Document Service](/ru/internals/document-service/), из какого бы API она ни пришла. Он проверяет данные, записывает строки и таблицы связей в одной транзакции, а затем сообщает слушателям (вебхуки, поисковый индекс, история, реальное время, журнал аудита), что изменилось.
+
+Когда функции включаются или выключаются или когда конструктор типов содержимого меняет схему в `verdin dev`, весь роутер пересобирается и подменяется на месте (`ArcSwap`) без перезапуска.
+
+## Технологический стек
+
+### Сервер (Rust, редакция 2024)
+
+| Область | Выбор | Почему |
+|---|---|---|
+| Среда выполнения | `tokio` | Стандартная асинхронная среда выполнения |
+| HTTP | `axum`, `tower`, `tower-http` | Middleware для CORS, ограничений тела, тайм-аутов, id запросов, трассировки |
+| Драйвер SQL | `sqlx` (postgres, mysql, sqlite) | Асинхронность, пулы, TLS; MySQL и MariaDB используют один драйвер; SQLite вкомпилирован |
+| Построение SQL | Собственные построители Verdin: DDL в `verdin-migrate`, DML в `verdin-query` и `verdin-content` | Таблицы определяются схемой, поэтому SQL строится во время выполнения. Точный контроль по диалектам нужен в любом случае (`jsonb`, `datetime(3)`, бинарные сопоставления, типизированные NULL, текстовые форматы SQLite). Никакого ORM и `sea-query` |
+| Строки запроса | Собственный парсер скобочной нотации в `verdin-query` | `filters[title][$eq]=…` в стиле Strapi с ограничениями глубины, длины и числа пар |
+| JSON | `serde`, `serde_json` | — |
+| Decimal | `rust_decimal` | Никакой потери точности внутри сервера |
+| Даты | `time` | — |
+| Id документов | `ulid` | Сортируемые, 26 символов, переносимые |
+| OpenAPI | Собственный генератор в `verdin-api` | По одному пути и схеме на тип содержимого, строится из реестра |
+| GraphQL | `async-graphql` (динамическая схема) | Строится по схеме контента |
+| Аутентификация | `argon2` (argon2id), JWT HS256 на `hmac` + `sha2` | Несколько строк HS256 избавляют от стека RSA |
+| Конфигурация | `figment` (TOML + окружение), `dotenvy` | Слои и переопределения для окружений |
+| CLI | `clap` | — |
+| Логи | `tracing`, `tracing-subscriber` | По умолчанию для человека, JSON с `[log].format = "json"` |
+| Ограничение частоты | Собственный ограничитель с фиксированным окном в `verdin-api` | Маршруты входа и необязательные ограничения content API |
+| Медиа | `object_store`, `image`, `infer` | Локальный диск или S3-совместимое хранилище; форматы и определение MIME |
+| Поиск | `tantivy` | Необязательный полнотекстовый индекс внутри бинарника |
+| Плагины | `extism` | Плагины WebAssembly |
+| Почта | `lettre`, `reqwest` | SMTP, Resend, Postmark |
+| Встраивание админки | `rust-embed` (feature `embed-admin`) | Админ-панель поставляется внутри бинарника |
+| Отслеживание схемы | `notify` | Перезагрузка в `verdin dev` |
+| Ошибки | `thiserror` в библиотеках, `anyhow` в бинарнике | — |
+| Тесты | `cargo test`, `insta` (снимки DDL) | См. [тестирование](/ru/internals/testing/) |
+
+### Админ-панель (Angular)
+
+| Область | Выбор |
+|---|---|
+| Фреймворк | Angular 22: standalone-компоненты, без zone.js, сигналы, ленивые маршруты |
+| UI | spartan/ui (примитивы brain, компоненты helm, скопированные в `src/app/shared/ui`) на Tailwind CSS v4 |
+| Иконки | `@ng-icons` с Lucide |
+| Состояние | Сигналы в injectable-сервисах (без библиотеки хранилища) |
+| Формы | Signal Forms (`@angular/forms/signals`) |
+| Клиент API | Типы, написанные вручную (`core/types.ts`), и небольшая обёртка над `HttpClient` (`core/api.ts`) |
+| Переводы | Transloco с ICU MessageFormat через FormatJS |
+| Rich text | Редактор Markdown с предпросмотром (`marked`, `DOMPurify`); поля `blocks` с TipTap |
+| Тесты | Vitest через unit-test builder Angular, Playwright для end-to-end |
+
+### Документация
+
+Astro со Starlight в `site/`. `site/scripts/sync-docs.mjs` во время сборки копирует несколько Markdown-файлов из `docs/` (дорожная карта, руководство по переводу) и `CHANGELOG.md` в раздел **Проект**.
+
+## Структура репозитория
+
+<FileTree>
+- Cargo.toml workspace (версия, редакция, профиль релиза)
+- crates/
+  - verdin-schema/ модель схемы, парсер JSON, валидация, правила именования
+  - verdin-db/ пулы соединений, определение варианта и версии СУБД, типизированные значения
+  - verdin-migrate/ физическая модель, снимок, diff, план, применение с журналом, таблицы платформы
+  - verdin-query/ параметры запроса в типизированный запрос и SQL для фильтров и сортировки
+  - verdin-content/ Document Service: валидация, черновики и публикация, связи, компоненты, blocks, события
+  - verdin-auth/ администраторы, сессии, двухфакторная аутентификация и ключи доступа, API-токены, RBAC, публичные права
+  - verdin-upload/ медиатека: провайдеры хранилища, метаданные файлов, форматы изображений
+  - verdin-email/ доставка почты: SMTP, Resend, Postmark и провайдер log
+  - verdin-search/ полнотекстовый индекс Tantivy
+  - verdin-plugins/ плагины WebAssembly (Extism): хуки документов, маршруты, запланированные задания
+  - verdin-graphql/ GraphQL API, генерируемый по схеме
+  - verdin-api/ роутеры axum: content API, admin API, OpenAPI, MCP, реальное время, вебхуки…
+  - verdin-testkit/ вспомогательные средства для тестов (новая база данных на каждый тест); не публикуется
+  - verdin/ бинарник: конфигурация, начальная загрузка, CLI, метрики, встроенная админка
+- admin/ админ-панель на Angular
+- packages/
+  - client/ `@verdin/client`, типизированный TypeScript-клиент
+- examples/
+  - blog/ пример проекта
+- docker/ `compose.dev.yml` (базы данных, RustFS, Mailpit) и образ релиза
+- site/ этот сайт документации
+- docs/ дорожная карта, руководство по переводу и проектные заметки
+</FileTree>
+
+**Правило зависимостей.** `verdin-schema` и `verdin-db` — основа. `verdin-migrate` и `verdin-query` строятся на них, `verdin-content` — на этих двух, а `verdin-auth`, `verdin-upload`, `verdin-search` и `verdin-plugins` — на слоях ниже. `verdin-api` и `verdin-graphql` находятся ближе к вершине, а бинарник `verdin` зависит от всего. Cargo запрещает циклы, а код `unsafe` запрещён во всём workspace.
+
+## С чего начать чтение
+
+| Чтобы понять | Читайте |
+|---|---|
+| Как бинарник запускается и собирает свои роутеры | `crates/verdin/src/cli.rs` (`start`), затем `crates/verdin/src/app.rs` |
+| Формат схемы и правила её валидации | `crates/verdin-schema/src/raw.rs`, `validate.rs`, `naming.rs` |
+| Как схема становится таблицами | `crates/verdin-migrate/src/derive.rs`, затем [хранение](/ru/internals/storage/) |
+| Миграции | `crates/verdin-migrate/src/diff.rs`, `plan.rs`, `apply.rs` и [движок миграций](/ru/internals/migrations/) |
+| Обработчики content API | `crates/verdin-api/src/handlers.rs` и `lib.rs` |
+| Параметры запроса | `crates/verdin-query/src/params.rs` (парсер), `parse.rs` (валидация), `sql.rs` (SQL) |
+| Чтение и запись | `crates/verdin-content/src/service.rs` и `input.rs`, а также [Document Service](/ru/internals/document-service/) |
+| Админ-панель | `admin/src/app/app.routes.ts`, затем `features/content/` и [устройство админ-панели](/ru/internals/admin-panel/) |
+
+Код можно посмотреть на [GitHub](https://github.com/Verdin-CMS/verdin). Остальная часть раздела посвящена [хранению](/ru/internals/storage/), [слою базы данных](/ru/internals/database/), [миграциям](/ru/internals/migrations/), [Document Service](/ru/internals/document-service/), [админ-панели](/ru/internals/admin-panel/), [тестированию](/ru/internals/testing/) и [журналу решений](/ru/internals/decisions/).
+
+Поведение для пользователей описано в других разделах: параметры запроса — в [REST API](/ru/api/rest/), настройки — в [справочнике по конфигурации](/ru/reference/configuration/), команды — в [справочнике по CLI](/ru/reference/cli/), укрепление защиты — в разделе [безопасность](/ru/deploy/security/).

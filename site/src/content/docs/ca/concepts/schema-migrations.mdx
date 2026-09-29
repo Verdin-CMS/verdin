@@ -1,0 +1,148 @@
+---
+title: "Migracions d'esquema"
+description: "Com converteix Verdin els canvis d'esquema en migracions de base de dades: el pla, els nivells de risc, què fan verdin dev i verdin start, els canvis de nom i --allow."
+sidebar:
+  order: 7
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Quan canvies un fitxer d'esquema, la base de dades ha de seguir-lo: un atribut nou necessita una
+columna; una relació nova, una taula d'enllaç. Verdin calcula aquesta migració per tu, te la
+mostra abans d'executar-la i mai no elimina dades sense que li ho diguis. Aquesta pàgina explica
+com.
+
+## De l'esquema al pla
+
+Verdin mai no et demana que escriguis una migració. Compara dos models de la base de dades:
+
+1. **Desitjat**: derivat dels teus fitxers `schema/*.json`, amb totes les taules, columnes i
+   índexs que necessiten (incloses les taules d'enllaç i les taules pròpies de Verdin).
+2. **Actual**: el model que va deixar l'última migració, desat a la base de dades com una
+   instantània.
+
+La diferència és un **pla**: una llista de passos, cadascun amb el seu SQL per a la teva base de
+dades i un nivell de risc. Com que el pla surt de la instantània desada i no d'inspeccionar la
+base de dades, és determinista i igual en tots els dialectes. Els canvis que produeixen el mateix
+SQL a la teva base de dades, com `integer` a `biginteger` a SQLite, no produeixen cap pas.
+
+<Diagram
+  caption="Com es converteix un canvi d'esquema en una migració"
+  code={`flowchart LR
+    F[schema/*.json] --> D[Model desitjat]
+    S[(Instantània desada)] --> C[Model actual]
+    D --> X{Diferència}
+    C --> X
+    X --> P[Pla: passos, risc, SQL]
+    P --> A[apply --allow]
+    A --> B[(Base de dades i instantània nova)]`}
+/>
+
+`verdin migrate plan` el mostra. Aquí s'ha canviat el nom de l'atribut `excerpt` del blog a
+`summary` a `article.json`:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [safe] add column articles.summary
+       ALTER TABLE "articles" ADD COLUMN "summary" text
+  2. [destructive] drop column articles.excerpt
+       ALTER TABLE "articles" DROP COLUMN "excerpt"
+
+requires: verdin migrate apply --allow destructive
+
+possible renames (pass them to keep the data):
+  --rename-column articles.excerpt=summary
+```
+
+## Nivells de risc
+
+| Risc | Passos | Per què |
+| --- | --- | --- |
+| **safe** | Crear una taula, afegir una columna, afegir o eliminar un índex no únic, canviar el nom d'una taula o columna. | No pot perdre dades ni fallar amb les files existents. |
+| **risky** | Canviar el tipus d'una columna, afegir un índex únic a una taula existent, reconstruir una taula SQLite (SQLite no pot modificar columnes in situ). | Pot fallar amb les dades existents (duplicats, valors que no es converteixen), o reescriure-les. |
+| **destructive** | Eliminar una columna o una taula. | Esborra dades. |
+
+Totes les columnes d'atribut admeten nuls (`required` es comprova en publicar), així que afegir
+atributs, obligatoris o no, sempre és segur. Afegir `"unique": true` al títol dels articles del
+blog és arriscat, perquè els títols existents es poden repetir:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [risky] create unique index articles_title_uq
+       CREATE UNIQUE INDEX "articles_title_uq" ON "articles" ("title", "locale", "publication_state")
+
+requires: verdin migrate apply --allow risky
+```
+
+Abans que s'executi la primera sentència, Verdin fa una comprovació per a cada pas arriscat que
+pot fallar, com buscar duplicats abans d'un índex únic, i s'atura amb un missatge si en troba
+algun problema. En aquest punt no ha canviat res.
+
+## Aplicar un pla
+
+`verdin migrate apply` executa els passos pendents. Accepta el risc més alt que admets:
+
+```sh title="Terminal"
+verdin migrate apply                        # només passos segurs (per defecte)
+verdin migrate apply --allow risky          # també canvis de tipus i índexs únics
+verdin migrate apply --allow destructive    # també eliminacions
+```
+
+Si algun pas supera el risc permès, no s'executa res:
+
+```text title="Terminal"
+$ verdin migrate apply
+Error: these steps need explicit approval:
+  create unique index articles_title_uq (risky)
+```
+
+Una migració agafa un bloqueig, de manera que dues instàncies mai no migren alhora. A PostgreSQL
+i SQLite tot el pla s'executa en una sola transacció: un error ho desfà tot. MySQL i MariaDB
+confirmen cada sentència DDL per separat, així que Verdin enregistra el seu progrés pas a pas en
+un diari. Després d'un error, corregeix-ne la causa i torna a executar `verdin migrate apply`:
+continua des del pas que ha fallat si el pla no ha canviat, i s'hi nega si l'esquema ha canviat
+entretant.
+
+## Canvis de nom
+
+Un atribut eliminat i un de nou semblen una eliminació i una addició, cosa que faria perdre les
+dades de la columna. Verdin mai no endevina un canvi de nom. En suggereix un quan desapareix una
+columna i n'apareix una del mateix tipus a la mateixa taula (o desapareix una taula i n'apareix
+una amb les mateixes columnes), i tu el confirmes explícitament:
+
+```text title="Terminal"
+$ verdin migrate apply --rename-column articles.excerpt=summary
+applied 1 step
+```
+
+- `--rename-column TABLE.OLD=NEW` canvia el nom d'una columna; `TABLE` és la taula del tipus de
+  contingut (el seu `collectionName`).
+- `--rename-table OLD=NEW` canvia el nom d'una taula. Les taules d'enllaç del tipus canvien de
+  nom amb ella.
+- Passa els mateixos indicadors a `migrate plan` per previsualitzar el resultat.
+
+Els canvis de nom són passos segurs. El constructor de tipus de contingut ofereix els mateixos
+suggeriments al seu diàleg.
+
+## `verdin dev` i `verdin start`
+
+| | `verdin dev` | `verdin start` |
+| --- | --- | --- |
+| En iniciar-se | Aplica els passos segurs pendents. S'atura si n'hi ha d'altres de pendents. | Es nega a iniciar-se mentre hi hagi algun pas pendent, tret que passis `--migrate`, que primer aplica els passos segurs. |
+| Canvis d'esquema en execució | El **Constructor de tipus de contingut** mostra el pla amb els seus riscos i suggeriments de canvi de nom, i l'aplica quan confirmes, passos més arriscats inclosos. Les edicions a mà (o un `git pull`) les detecta un observador de fitxers: els plans segurs s'apliquen i l'aplicació es recarrega; els altres es registren i l'aplicació en execució es queda com estava. | L'esquema és de només lectura. Desplega els fitxers nous i migra. |
+
+El constructor primer migra la base de dades, després escriu els fitxers d'esquema i després
+recarrega l'API de contingut, l'API d'administració, GraphQL i el document OpenAPI sense
+reiniciar. Si la migració falla, els fitxers i l'aplicació en execució es queden com estaven.
+
+En producció, executa `verdin migrate plan` contra una còpia de la base de dades i després
+`verdin migrate apply` amb el risc que acceptis, abans d'iniciar la versió nova. Consulta
+[Actualitzar](/ca/migrate/upgrading/) i [Còpies de seguretat](/ca/deploy/backups/).
+
+## Comparació amb Strapi
+
+Strapi sincronitza la base de dades amb l'esquema quan s'inicia, sense mostrar què farà. Verdin
+primer planifica, mostra l'SQL, només aplica els passos segurs sense que li ho demanin i necessita
+`--allow` per a qualsevol cosa que pugui fallar o esborrar dades.

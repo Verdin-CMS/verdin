@@ -1,0 +1,148 @@
+---
+title: رموز API
+description: أنشئ رموز API للقراءة فقط أو بوصول كامل أو مخصصة لـ API المحتوى، وأعِد توليدها أو احذفها، واحفظ الـ pepper الخاص بالرموز في أمان.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+تتيح رموز API لمواقعك وتطبيقاتك وسكربتاتك استدعاء API المحتوى بوصول أكبر مما يملكه
+العامة. ينشئ هذا الدليل رمزًا، ويختار وصوله، ويستخدمه، ويستبدله عندما
+يتسرّب. تعمل الرموز مثل رموز API في Strapi.
+
+API المحتوى مغلق افتراضيًا: بدون رمز، لا تحصل الطلبات إلا على ما يسمح به **الإعدادات ←
+الوصول العام**، وهو لا شيء حتى تمنحه.
+
+## قبل أن تبدأ
+
+- تتطلب إدارة الرموز **إدارة رموز API** (`tokens.manage`). راجع
+  [الصلاحيات](/ar/reference/permissions/).
+- يجب تعيين `VERDIN_TOKEN_PEPPER`؛ راجع [أين تكمن أهمية pepper](#أين-تكمن-أهمية-pepper).
+
+## أنشئ رمزًا
+
+<Steps>
+
+1. افتح **الإعدادات ← رموز API** واختر **إنشاء رمز**.
+2. أدخل **الاسم**، واختياريًا **الوصف**.
+3. اختر **النوع**:
+
+   | النوع | يسمح بـ |
+   | --- | --- |
+   | **للقراءة فقط** | بحث وبحث عن واحد على كل نوع محتوى، للنسخ المنشورة فقط. |
+   | **وصول كامل** | كل إجراء على كل نوع محتوى وعلى مكتبة الوسائط. |
+   | **مخصص** | الإجراءات التي تحددها في **الصلاحيات** فقط. |
+
+4. اختر متى **ينتهي**: **أبدًا**، أو بعد 7 أو 30 أو 90 يومًا.
+5. لرمز مخصص، حدد الإجراءات تحت **الصلاحيات**، لكل نوع محتوى: **بحث**،
+   و**بحث عن واحد**، و**إنشاء**، و**تحديث**، و**حذف**، و**نشر** و**قراءة المسودات**. يغطي
+   صف **مكتبة الوسائط** عمليات الرفع، ويغطي صف **المستخدمون** مسارات `/api/users` الخاصة بـ
+   [المستخدمين النهائيين](/ar/guides/auth/end-users/).
+6. اختر **إنشاء**، ثم انسخ الرمز. هذه هي المرة الوحيدة التي يُعرض فيها.
+
+</Steps>
+
+تبدأ الرموز بـ `vd_`. تعرض القائمة الأحرف الأولى من كل رمز، ومتى استُخدم آخر مرة
+ومتى تنتهي صلاحيته.
+
+## استخدم رمزًا
+
+أرسله كرمز bearer:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'http://localhost:1337/api/articles?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/graphql \
+  -H "Authorization: Bearer $VERDIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({
+  url: 'http://localhost:1337',
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+</TabItem>
+</Tabs>
+
+- وصول الرمز يحل محل الوصول العام؛ ولا يُضاف إليه. الرمز المخصص الذي لا يملك
+  **بحث** على نوع لا يستطيع سرده، حتى لو كان العامة يستطيعون.
+- تتطلب قراءة المسودات (`?status=draft`) **قراءة المسودات**؛ ولا ترى الرموز للقراءة فقط المسودات أبدًا.
+- تحصل الرموز غير المعروفة والمنتهية على `401`. وتحصل الإجراءات خارج وصول الرمز على `403`.
+- يحدّ `[api].token_rate_limit` الطلبات لكل رمز ودقيقة (معطّل افتراضيًا).
+- تفوّض الرموز نفسها GraphQL و[خادم MCP](/ar/guides/integrations/mcp/).
+
+<Aside type="caution">
+الرمز في المتصفح مرئي لكل زائر. استخدم الرموز من الخوادم وخطوات البناء و
+التطبيقات الخاصة فقط؛ وللصفحات العامة، امنح ما تحتاجه في **الإعدادات ← الوصول العام**.
+</Aside>
+
+## أعِد توليد رمز أو احذفه
+
+- **إعادة التوليد** في صف الرمز ينشئ مفتاحًا جديدًا بالاسم والنوع والصلاحيات نفسها.
+  يتوقف المفتاح الحالي عن العمل فورًا، فتحصل التطبيقات التي تستخدمه على أخطاء حتى تحدّثها.
+- **حذف** يزيل الرمز؛ ويفقد العملاء الذين يستخدمونه الوصول.
+
+افعل أيًا منهما فور احتمال تسرّب رمز.
+
+## أين تكمن أهمية pepper
+
+لا يخزّن Verdin الرموز أبدًا. بل يخزّن تجزئة بمفتاح (HMAC-SHA256) لكل منها، بمفتاح هو
+`VERDIN_TOKEN_PEPPER`، فلا تتيح نسخة من قاعدة البيانات وحدها لأي شخص استخدامها. ويحمي
+الـ pepper نفسه:
+
+- رموز API.
+- أسرار تطبيقات المصادقة ورموز الاسترداد الخاصة بالمسؤولين ([المصادقة
+  الثنائية](/ar/guides/auth/two-factor/)).
+- عناوين IP المجزّأة المخزّنة مع إرسالات النماذج.
+
+ولّد الـ pepper مرة واحدة بـ `verdin secrets`، وأبقِه خارج `verdin.toml` والنسخ
+الاحتياطية لقاعدة البيانات، وامنح كل نسخة القيمة نفسها.
+
+<Aside type="caution" title="تغيير الـ pepper">
+مع pepper آخر، يتوقف كل رمز API عن العمل، ويتوقف تطبيق المصادقة ورموز
+الاسترداد لكل مسؤول. غيّره فقط إذا تسرّب، ثم أنشئ رموزًا جديدة وأعِد تعيين
+المصادقة الثنائية لكل مسؤول. لا تتأثر مفاتيح المرور وكلمات المرور.
+</Aside>
+
+## API الإدارة
+
+كل المسارات تحت `/admin/api` وتحتاج إلى `tokens.manage`.
+
+```http
+GET    /admin/api/api-tokens
+POST   /admin/api/api-tokens                  { "name": "Website", "kind": "custom", "expiresInDays": 90,
+                                                "permissions": [{ "subject": "api::article", "action": "find" }] }
+GET    /admin/api/api-tokens/{id}
+PUT    /admin/api/api-tokens/{id}             { "name": "…", "description": null, "kind": "read-only", "permissions": [...] }
+POST   /admin/api/api-tokens/{id}/regenerate
+DELETE /admin/api/api-tokens/{id}
+```
+
+- `kind` هو `read-only` أو `full-access` أو `custom`؛ و`expiresInDays` اختياري (بدونه لا
+  تنتهي الصلاحية) ولا يمكن تغييره لاحقًا.
+- يسرد `permissions` أزواج `{ subject, action }`. `subject` هو uid نوع محتوى،
+  أو `plugin::upload` (مكتبة الوسائط) أو `plugin::users-permissions.user`؛ و`action` هو
+  `find` أو `findOne` أو `create` أو `update` أو `delete` أو `publish` أو `readDrafts`. لا ينطبق `publish` و
+  `readDrafts` على الموضوعين الأخيرين.
+- يعيد `POST /api-tokens` و`/regenerate` المفتاح مرة واحدة، باسم `accessKey`.
+
+يستخدم الوصول العام الأزواج نفسها: `PUT /admin/api/public-permissions`
+`{ "permissions": [...] }`، الذي يحتاج إلى **إدارة الأدوار** (`roles.manage`).

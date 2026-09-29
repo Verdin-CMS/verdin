@@ -1,0 +1,221 @@
+---
+title: Migrer depuis Strapi
+description: Passez d’un projet Strapi v4 ou v5 à Verdin avec verdin import strapi — export, import, ce qui est repris, la table de correspondance des identifiants, les vérifications ensuite et les modifications dont votre frontend a besoin.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+`verdin import strapi` fait entrer un projet Strapi v4 ou v5 dans Verdin : ses types de contenu
+et ses composants deviennent des fichiers de schéma, et ses entrées, langues, médiathèque,
+relations, utilisateurs finaux et autorisations publiques sont importés. Cette page déroule une
+migration et liste ce que votre frontend doit modifier. Pour une comparaison fonctionnalité par
+fonctionnalité, voir [Compatibilité avec Strapi](/fr/migrate/compatibility/).
+
+<Diagram
+  caption="L’importateur lit le fichier d’export de Strapi ; il ne se connecte jamais à la base de données de Strapi."
+  code={`flowchart LR
+  S[Projet Strapi] -->|strapi export| E[export .tar.gz]
+  E -->|verdin import strapi| F[fichiers de schéma]
+  F --> M[migration de la base]
+  M --> D[entrées, médias, utilisateurs]
+  D --> R[strapi-id-map.json]`}
+/>
+
+## Avant de commencer
+
+- Un projet Strapi v4 ou v5 dans lequel vous pouvez exécuter `strapi export`.
+- Un nouveau projet Verdin (`verdin new my-site`), ou un projet sans fichiers de schéma portant
+  les mêmes noms. Voir le [démarrage rapide](/fr/start/quickstart/).
+- La base de données et le stockage des médias que le projet Verdin utilisera en production, si
+  possible : les fichiers sont copiés dans le fournisseur de téléversement configuré pendant
+  l’import.
+
+## 1. Exporter depuis Strapi
+
+Dans le projet Strapi :
+
+```sh frame="terminal"
+npx strapi export --no-encrypt -f my-export      # écrit my-export.tar.gz
+```
+
+Verdin ne peut pas lire les exports chiffrés (`.tar.gz.enc`) ; exportez à nouveau avec
+`--no-encrypt`. Les exports non compressés (`--no-compress`, un `.tar`) et un répertoire d’export
+décompressé fonctionnent aussi.
+
+## 2. Importer dans Verdin
+
+<Steps>
+
+1. Créez le projet et importez l’export :
+
+   ```sh frame="terminal"
+   verdin new my-site && cd my-site
+   verdin import strapi ../my-export.tar.gz
+   ```
+
+2. Lisez le récapitulatif. L’importateur affiche le nombre de documents, versions, fichiers,
+   dossiers, langues et liens importés, puis une ligne par avertissement.
+
+3. Démarrez le serveur de développement et ouvrez le panneau d’administration :
+
+   ```sh frame="terminal"
+   verdin dev
+   ```
+
+</Steps>
+
+La commande exécute ces étapes dans l’ordre :
+
+1. Écrit un fichier de schéma par type de contenu `api::` et par composant dans `schema/`. Si le
+   schéma converti n’est pas valide, rien n’est écrit.
+2. Migre la base de données (étapes sans risque).
+3. Importe les langues, les dossiers et fichiers de médias, les entrées (chaque brouillon,
+   version publiée et langue), les relations, et les médias rattachés aux entrées et aux
+   composants.
+4. Importe les utilisateurs finaux, leurs rôles et les autorisations publiques et authentifiées.
+5. Écrit `strapi-id-map.json` dans le répertoire du projet.
+
+| Option | Effet |
+| --- | --- |
+| `--schema-only` | S’arrête après l’écriture des fichiers de schéma. Utile pour examiner ou ajuster d’abord le schéma. |
+| `--force` | Écrase les fichiers de schéma existants, et importe dans des types de contenu qui ont déjà des entrées. |
+
+Sans `--force`, l’import s’arrête si un fichier de schéma qu’il écrirait existe déjà, ou si un
+type de contenu a déjà des entrées.
+
+## Ce qui est repris
+
+| Strapi | Verdin |
+| --- | --- |
+| Types de contenu et composants `api::…` | Fichiers de schéma, en conservant `collectionName`, le brouillon et la publication, les options i18n et les options des champs (`required`, `private`, `unique`, longueurs, `regex`, valeurs par défaut…) |
+| Relations entre types `api::` | Les mêmes relations |
+| Relations dans les composants | Références `oneWay` / `manyWay` |
+| Relations polymorphes (`morphToOne`, `morphToMany`, `morphOne`, `morphMany`) | Les mêmes, avec leurs liens vers les types de contenu importés |
+| Champs de média (y compris dans les composants) | Champs de média |
+| Lignes v5 (brouillon et publiée) | Versions brouillon et publiée |
+| Lignes v4 | Un brouillon, plus une version publiée quand `publishedAt` est défini ; les `localizations` deviennent des langues d’un même document |
+| `plugin::i18n.locale` | Langues (la langue par défaut de Strapi reste la langue par défaut) |
+| `plugin::upload.file` et `folder` | Fichiers de la médiathèque (avec leurs formats) et dossiers |
+| Champs `password` | Champs `password`, en conservant les hachages bcrypt de Strapi |
+| Champs personnalisés (`customField`) | L’attribut avec son `customField` conservé ; voir ci-dessous |
+| Champs conditionnels (`conditions`, Strapi 5.17) | Conservés dans le schéma et appliqués par l’éditeur |
+| `plugin::users-permissions.user` | Utilisateurs finaux, avec leurs mots de passe bcrypt (recalculés avec Argon2id à la connexion suivante), `confirmed` et `blocked` |
+| Rôles Users & Permissions | Les accès du rôle Public deviennent les autorisations publiques de Verdin ; Authenticated et les rôles personnalisés deviennent des rôles d’utilisateurs finaux |
+| Autorisations des rôles sur les types de contenu et les téléversements | Accès `find`, `findOne`, `create`, `update` et `delete` ; pour l’upload, `find`, `findOne`, `upload` et `destroy` |
+
+## Ce qui n’est pas repris
+
+Signalé sous forme d’avertissements :
+
+- Les relations vers des administrateurs, des utilisateurs finaux ou des types d’autres plugins
+  (seules les cibles `api::` sont importées). Les champs `createdBy` / `updatedBy` sont omis.
+- `unique` sur les attributs `text`, `richtext`, `blocks` et `json` (Verdin le prend en charge
+  sur les types de texte courts).
+- Les types d’attributs que Verdin ne connaît pas, et les types de relations qu’il ne peut pas
+  stocker dans un composant.
+- Les moitiés de relations dont les `inversedBy` / `mappedBy` ne correspondent pas à l’autre
+  côté.
+- Les codes de langue invalides.
+
+Pas du tout importés : les administrateurs et les rôles d’administration, les jetons d’API, les
+jetons de transfert, les webhooks, les releases, les étapes des workflows de relecture,
+l’historique du contenu et les journaux d’audit, et les paramètres des plugins Strapi. Votre code
+Strapi — contrôleurs, services, routes, policies, middlewares, hooks de cycle de vie, tâches cron
+et personnalisations de l’administration — n’a pas d’équivalent Verdin vers lequel être converti ;
+voir [Réécrire le code personnalisé](#réécrire-le-code-personnalisé).
+
+<Aside type="note">
+Les champs personnalisés conservent leur nom `customField`, par exemple
+`plugin::color-picker.color`. L’éditeur les affiche avec un [plugin](/fr/extending/plugins/) qui
+fournit ce champ, et se rabat sur la saisie du type stocké quand aucun ne le fait.
+</Aside>
+
+## La table de correspondance des identifiants
+
+Verdin génère de nouveaux identifiants de documents : les `documentId` de Strapi font
+24 caractères et ceux de Verdin 26, si bien que chaque document en reçoit un nouveau. Les `id`
+numériques changent aussi. `strapi-id-map.json` enregistre la correspondance :
+
+```json title="strapi-id-map.json"
+{
+  "documents": {
+    "api::article": {
+      "hq7xw1c6m2vkn0f3t8ybz5sd": "01k6b3xg0r9m2m7c1d4e5f6g7h"
+    }
+  },
+  "files": {
+    "12": 3
+  }
+}
+```
+
+- `documents` a pour clés l’UID du type de contenu dans Verdin (`api::article`, l’
+  `api::article.article` de Strapi), puis le `documentId` de Strapi (v5) ou un identifiant de
+  ligne (v4 : un identifiant représente toutes les langues d’un document).
+- `files` fait correspondre les identifiants de fichiers de Strapi à ceux de Verdin.
+
+Utilisez-la pour réécrire les identifiants stockés hors du CMS : liens dans le code de votre
+frontend, identifiants dans une autre base de données, analytics, favoris.
+
+## Vérifier le résultat
+
+1. `verdin schema check` passe, et `verdin migrate plan` indique que la base de données est à
+   jour.
+2. Dans le panneau d’administration, ouvrez chaque collection et comparez le nombre d’entrées,
+   de brouillons et de langues avec Strapi.
+3. Ouvrez quelques entrées dotées de relations, de composants, de zones dynamiques et de médias,
+   et vérifiez que les liens pointent vers les bons documents et fichiers.
+4. Ouvrez la **Médiathèque** et vérifiez que les dossiers et les images (avec leurs formats) sont
+   présents.
+5. Dans **Paramètres → Accès public** et **Paramètres → Utilisateurs finaux**, passez en revue
+   les autorisations et les rôles importés.
+6. Appelez votre API comme le fait votre frontend et comparez les réponses avec celles de Strapi.
+
+Commitez ensuite `schema/`, créez vos administrateurs, jetons d’API et webhooks, et déployez (voir
+la [check-list de production](/fr/deploy/production-checklist/)).
+
+## Modifications du frontend
+
+L’API de contenu suit les formes REST et GraphQL de Strapi v5 : la plupart des requêtes
+fonctionnent donc telles quelles. Modifiez ceci :
+
+- **URL de base.** Faites pointer le frontend vers le serveur Verdin. L’API de contenu est sous
+  `/api` (`[api].prefix`), GraphQL sur `/graphql` une fois activé dans
+  **Paramètres → Fonctionnalités**.
+- **Jetons d’API.** Les jetons ne sont pas importés : créez-en de nouveaux dans
+  **Paramètres → Jetons d’API** et remplacez-les dans l’environnement de votre frontend.
+- **Identifiants de documents.** Chaque `documentId` et chaque `id` numérique est nouveau.
+  Remplacez les identifiants codés en dur dans le frontend par ceux de `strapi-id-map.json` ou,
+  mieux, recherchez les entrées par un slug ou un autre champ `uid`.
+- **URL des médias.** Les URL des fichiers pointent vers le nouveau fournisseur : `/uploads/…`
+  sur le serveur Verdin pour le fournisseur local, ou `[upload.provider].public_url` pour S3.
+  Mettez à jour les domaines d’images autorisés par votre framework (par exemple
+  `images.remotePatterns` dans Next.js).
+- **Les utilisateurs finaux connectés** doivent se reconnecter : leurs mots de passe
+  fonctionnent, mais pas les JWT émis par Strapi.
+- **CORS.** Si un navigateur appelle l’API depuis une autre origine, listez-la dans
+  `[api].cors_origins`.
+- **Webhooks.** Recréez-les dans **Paramètres → Webhooks**. L’événement `entry.draft-discard` de
+  Strapi s’appelle `entry.discard-draft`, et les envois sont signés (voir
+  [Webhooks](/fr/guides/integrations/webhooks/)).
+- **Les frontends Strapi v4** ont aussi besoin des modifications de la v5 : réponses à plat sans
+  `attributes`, `documentId` au lieu de `id` dans les URL, et `status=draft` au lieu de
+  `publicationState=preview`.
+
+Pour un accès typé, générez les types TypeScript avec `verdin types` et utilisez le
+[client typé](/fr/guides/frontend/typed-client/).
+
+## Réécrire le code personnalisé
+
+| Strapi | Verdin |
+| --- | --- |
+| Hooks de cycle de vie, middlewares du document service | Hooks de plugins (`beforeCreate`, `afterUpdate`…) dans un [plugin WebAssembly](/fr/extending/plugins/) |
+| Routes et contrôleurs personnalisés | Routes de plugins sous `/api/plugins/<name>/` |
+| Tâches cron | Tâches de plugins (`[[jobs]]`) |
+| Champs personnalisés | Champs personnalisés de plugins |
+| Widgets d’administration | Widgets de plugins, ou les widgets intégrés du tableau de bord |
+| Logo, couleurs et textes de l’administration | `[admin.branding]` dans `verdin.toml` |
+| `config/*.js` | `verdin.toml` et variables d’environnement ([référence de configuration](/fr/reference/configuration/)) |

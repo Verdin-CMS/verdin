@@ -1,0 +1,348 @@
+---
+title: '教程：用 Astro 搭建博客'
+description: 基于 Verdin 的示例 schema 构建一个小型 Astro 博客，包括类型化查询、按 slug 访问的文章页面、分类以及可选的草稿预览。
+sidebar:
+  order: 3
+  label: 用 Astro 搭建博客
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+在本教程中，你将用 [Astro](https://astro.build) 构建一个从 Verdin 读取内容的静态博客：一个列出文章的首页，每篇文章在 `/articles/<slug>/` 有一个带分类的页面，以及一个可选的页面，用于显示管理后台预览链接中的草稿。你将使用类型化客户端 `@verdin/client`，以及根据 schema 生成的类型。
+
+本教程基于 Astro 7.3（`create-astro` 5.2）和 Node.js 22.12 或更高版本，以及 Verdin 和 `@verdin/client` 0.10 编写。[Next.js 教程](/zh-cn/start/tutorial-nextjs/)用 Next.js 构建同样的博客。
+
+## 开始之前
+
+你需要 `PATH` 中有 `verdin` 二进制文件（参见[快速开始](/zh-cn/start/quickstart/)），以及 Node.js 和 Git。最终你会得到两个并列的文件夹：Verdin 项目 `cms` 和 Astro 网站 `blog`。
+
+## 1. 用博客 schema 设置 Verdin
+
+代码仓库中的 [`examples/blog`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog) 项目为一个博客建模：带有标题、`slug`、摘要、Markdown `body`、分类和标签的文章，外加一个首页单一类型和几个组件。
+
+<Steps>
+
+1. 创建一个 Verdin 项目，并把示例 schema 复制进去：
+
+   ```sh title="Terminal"
+   git clone --depth 1 https://github.com/Verdin-CMS/verdin.git
+   verdin new cms
+   cp verdin/examples/blog/schema/content-types/{article,category,tag,homepage}.json cms/schema/content-types/
+   cp -r verdin/examples/blog/schema/components/* cms/schema/components/
+   ```
+
+2. 启动它：
+
+   ```sh title="Terminal"
+   cd cms
+   verdin dev
+   ```
+
+   首次启动会为这四个内容类型创建表。
+
+3. 打开 [http://localhost:1337/admin/](http://localhost:1337/admin/) 并创建第一个管理员。
+
+4. 在 **集合** 下打开 **Category**，选择 **新建条目**，命名为 `News` 并保存。
+
+5. 打开 **Article**，选择 **新建条目**，填写标题、摘要和 Markdown 格式的正文。`slug` 会根据标题生成。选择 `News` 作为分类，然后选择 **发布**。用同样的方式再添加一篇文章。
+
+6. 打开 **设置 → 公开访问**，为 **Article** 和 **Category** 允许 **查询** 和 **查询单个**，然后选择 **保存**。
+
+</Steps>
+
+检查 API 是否有响应：
+
+```sh title="Terminal"
+curl 'localhost:1337/api/articles?populate=category'
+```
+
+<Aside>
+populate 一个关联需要对其目标的读取权限。如果 **Category** 上没有 **查询** 权限，`populate=category` 会返回 `400` 以及 ``invalid key `category` in populate``。
+</Aside>
+
+## 2. 创建 Astro 项目
+
+在一个新的终端中，于 `cms` 旁边执行：
+
+```sh title="Terminal"
+npm create astro@latest blog -- --template minimal --no-git --yes
+cd blog
+npm install @verdin/client marked
+```
+
+[`marked`](https://marked.js.org) 会把 `body` 字段中的 Markdown 转换为 HTML。
+
+## 3. 生成类型
+
+`verdin types` 读取 schema，为每个内容类型和组件写出一个 TypeScript 接口，并为客户端生成一个路由映射 `VerdinSchema`。在 `blog` 中运行它，并指向 Verdin 项目的配置：
+
+```sh title="Terminal"
+verdin types -c ../cms/verdin.toml -o src/verdin-types.ts
+```
+
+该文件中包含以下内容（节选）：
+
+```ts title="src/verdin-types.ts"
+export interface Article extends DocumentBase {
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  body: string | null;
+  // …
+  category?: Category | null;
+  tags?: Tag[];
+}
+```
+
+关联、媒体和组件都是可选的，因为 API 只在你 populate 时才返回它们。每当 schema 变化时，请重新运行该命令。
+
+## 4. 连接到 Verdin
+
+在 Astro 的类型化环境中声明服务器的 URL，以及一个可选的 API 令牌：
+
+```js title="astro.config.mjs"
+// @ts-check
+import { defineConfig, envField } from 'astro/config';
+
+export default defineConfig({
+  env: {
+    schema: {
+      VERDIN_URL: envField.string({ context: 'server', access: 'public', default: 'http://localhost:1337' }),
+      VERDIN_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+    },
+  },
+});
+```
+
+不带令牌时，客户端以公开角色读取，也就是你在第 1 步中开放的权限。如果想改用令牌读取，请在 **设置 → API 令牌** 中创建一个 **只读** 令牌，并以 `VERDIN_TOKEN=…` 的形式写入 `.env`。
+
+创建一次客户端并共享它：
+
+```ts title="src/lib/verdin.ts"
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+```
+
+现在 `verdin.collection('articles')` 只接受你的 schema 中的路由，其结果的类型为 `Article`。
+
+## 5. 添加布局
+
+用一个供各页面共享的布局替换起始页面的 HTML：
+
+```astro title="src/layouts/Layout.astro"
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header><a href="/">My blog</a></header>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>
+```
+
+## 6. 列出文章
+
+```astro title="src/pages/index.astro"
+---
+import Layout from '../layouts/Layout.astro';
+import { verdin } from '../lib/verdin';
+
+const { data: articles } = await verdin.collection('articles').find({
+  fields: ['title', 'slug', 'excerpt', 'publishedAt'],
+  populate: { category: { fields: ['name'] } },
+  sort: ['publishedAt:desc'],
+});
+---
+
+<Layout title="My blog">
+  <h1>Articles</h1>
+  <ul>
+    {articles.map((article) => (
+      <li>
+        <a href={`/articles/${article.slug}/`}>{article.title}</a>
+        {article.category && <small> in {article.category.name}</small>}
+        {article.excerpt && <p>{article.excerpt}</p>}
+      </li>
+    ))}
+  </ul>
+</Layout>
+```
+
+这个查询就是 Strapi v5 格式的 REST 调用 `GET /api/articles?fields[0]=title&…&populate[category][fields][0]=name&sort[0]=publishedAt:desc`。`fields` 让响应保持精简，`populate` 则添加只包含名称的分类。公开角色只能读取已发布的文章。
+
+## 7. 为每篇文章添加页面
+
+Astro 会为每篇文章构建一个页面。`getStaticPaths` 获取文章及其分类，并把每篇文章传给对应的页面：
+
+```astro title="src/pages/articles/[slug].astro"
+---
+import type { GetStaticPaths } from 'astro';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { verdin } from '../../lib/verdin';
+
+export const getStaticPaths = (async () => {
+  const { data: articles } = await verdin.collection('articles').find({
+    populate: { category: true },
+    pagination: { pageSize: 100 },
+  });
+  return articles.map((article) => ({
+    params: { slug: article.slug },
+    props: { article },
+  }));
+}) satisfies GetStaticPaths;
+
+const { article } = Astro.props;
+const html = await marked.parse(article.body ?? '');
+---
+
+<Layout title={article.title}>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+`pageSize` 的上限为 `[api].max_page_size`（默认 100）。文章更多时，请利用 `meta.pagination.pageCount` 循环获取各页。
+
+<Aside type="caution">
+`marked` 不会对 HTML 进行清理。对于你自己的编辑撰写的 Markdown 这没有问题；如果内容可能来自不受信任的人，请在渲染之前清理 HTML。
+</Aside>
+
+## 8. 运行
+
+```sh title="Terminal"
+npm run dev
+```
+
+打开 [http://localhost:4321](http://localhost:4321)：列表会显示你已发布的文章，每篇都链接到其页面。`npm run build` 会把静态网站写入 `dist/`。
+
+静态构建只读取一次内容。要发布更改，请在内容变化时重新构建网站，例如通过 webhook 或部署钩子；参见[部署与 CDN](/zh-cn/guides/integrations/deploys-and-cdn/)。
+
+现在项目的结构如下：
+
+<FileTree>
+- blog/
+  - astro.config.mjs
+  - src/
+    - verdin-types.ts 由 `verdin types` 生成
+    - lib/
+      - verdin.ts
+    - layouts/
+      - Layout.astro
+    - pages/
+      - index.astro
+      - articles/
+        - [slug].astro
+</FileTree>
+
+## 9. 可选：预览草稿
+
+管理后台可以用一个短期有效的预览令牌在你的网站上打开草稿。该令牌只能读取这一个文档（包括草稿），别无其他。由于草稿会在构建之后发生变化，预览页面需要在每次请求时渲染，这需要一个适配器：
+
+```sh title="Terminal"
+npx astro add node --yes
+```
+
+添加一个在 `x-verdin-preview` 请求头中发送预览令牌的客户端：
+
+```ts title="src/lib/verdin.ts" ins={10-16}
+import { createClient } from '@verdin/client';
+import { VERDIN_TOKEN, VERDIN_URL } from 'astro:env/server';
+import type { VerdinSchema } from '../verdin-types';
+
+export const verdin = createClient<VerdinSchema>({
+  url: VERDIN_URL,
+  token: VERDIN_TOKEN,
+});
+
+/** A client that reads one draft with the preview token from the admin's link. */
+export function previewClient(previewToken: string) {
+  return createClient<VerdinSchema>({
+    url: VERDIN_URL,
+    headers: { 'x-verdin-preview': previewToken },
+  });
+}
+```
+
+然后是页面。`prerender = false` 让它按需渲染；令牌以 `preview` 查询参数的形式传入：
+
+```astro title="src/pages/preview/[documentId].astro"
+---
+import { VerdinError } from '@verdin/client';
+import { marked } from 'marked';
+import Layout from '../../layouts/Layout.astro';
+import { previewClient } from '../../lib/verdin';
+
+export const prerender = false;
+
+const { documentId } = Astro.params;
+const token = Astro.url.searchParams.get('preview');
+if (!documentId || !token) {
+  return new Response('Missing preview token', { status: 401 });
+}
+
+let article;
+try {
+  ({ data: article } = await previewClient(token)
+    .collection('articles')
+    .findOne(documentId, { status: 'draft', populate: { category: true } }));
+} catch (error) {
+  if (error instanceof VerdinError) {
+    return new Response('This preview link has expired', { status: error.status });
+  }
+  throw error;
+}
+const html = await marked.parse(article.body ?? '');
+Astro.response.headers.set('cache-control', 'no-store');
+---
+
+<Layout title={`Preview: ${article.title}`}>
+  <p><strong>Draft preview</strong></p>
+  <article>
+    <h1>{article.title}</h1>
+    {article.category && <p>Category: {article.category.name}</p>}
+    <Fragment set:html={html} />
+  </article>
+</Layout>
+```
+
+预览令牌无法列出条目，因此页面按 `documentId` 而不是按 slug 查找草稿。现在告诉 Verdin 页面在哪里：
+
+<Steps>
+
+1. 在管理后台中打开 **设置 → 功能**，开启 **预览**，然后选择 **配置预览 URL**。
+2. 把 **Article** 的 URL 模板设置为 `http://localhost:4321/preview/{documentId}` 并保存。Verdin 会以 `?preview=…` 的形式附加令牌。
+3. 打开一篇文章，修改后选择 **保存草稿**，然后选择 **打开预览**。
+
+</Steps>
+
+页面会显示草稿。链接默认有效 60 分钟。占位符和设置请参见[预览](/zh-cn/guides/content/preview/)，如需在预览中编辑，请参见[可视化编辑](/zh-cn/guides/frontend/visual-editing/)。
+
+## 下一步
+
+- [类型化客户端](/zh-cn/guides/frontend/typed-client/)：`@verdin/client` 的所有方法。
+- [REST API](/zh-cn/api/rest/)：过滤、排序、分页和 `populate`。
+- [图片](/zh-cn/guides/frontend/images/)：媒体库的响应式格式。
+- [SEO 与站点地图](/zh-cn/guides/frontend/seo-and-sitemap/)：`shared.seo` 组件和 Verdin 的站点地图。

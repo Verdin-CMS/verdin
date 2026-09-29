@@ -1,0 +1,196 @@
+---
+title: レスポンシブ画像
+description: Verdin がアップロード時に生成するフォーマットと、URL によるオンザフライの変換を使って、画像を適切なサイズで提供します。
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin には、ページに必要なサイズで画像を提供する方法が 2 つあります。
+
+- **レスポンシブなフォーマット**。画像のアップロード時に一度だけ生成され（`thumbnail`、`small`、`medium`、`large`）、Strapi のアップロードプラグインとまったく同じです。どのアップロードプロバイダーでも使えます。
+- **変換**。URL パラメーター（`?preset=thumb`、または署名付きの `?w=800&format=webp`）からリクエスト時に描画され、ディスクにキャッシュされます。ローカルプロバイダーで使えます。
+
+どちらも常に有効なメディアライブラリの一部です。ファイルのアップロードと整理については、[メディア](/ja/concepts/media/)を参照してください。
+
+## レスポンシブなフォーマット
+
+JPEG、PNG、WebP、TIFF、BMP の画像をアップロードすると、Verdin はその縮小コピーを書き出し、ファイルの `formats` に並べます。
+
+| フォーマット | サイズ |
+| --- | --- |
+| `thumbnail` | 245 × 156 ピクセルに収まる。 |
+| `large` | 幅 1000 ピクセル。 |
+| `medium` | 幅 750 ピクセル。 |
+| `small` | 幅 500 ピクセル。 |
+
+画像がすでにそれより小さい場合、そのフォーマットはスキップされるので、幅 600 ピクセルの画像には `thumbnail` と `small` だけが作られます。コピーは元画像の形式（JPEG は品質 80 でエンコード）と EXIF の向きを保ちます。GIF はアニメーションの可能性があるので、そのままにされます。
+
+フォーマットを得るには、メディアフィールドを populate します。例では Article の `cover` メディア属性を使います。ブログのサンプルにはないので、手順に沿って試すには、コンテンツタイプビルダーで追加してください。
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?populate[cover]=true'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles {
+    title
+    cover { url width height alternativeText formats }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ populate: { cover: true } });
+const formats = data[0].cover?.formats; // Record<string, MediaFormat> | null
+```
+
+</TabItem>
+</Tabs>
+
+```json
+"cover": {
+  "url": "/uploads/team_4f1c2a.jpg",
+  "width": 2400,
+  "height": 1600,
+  "alternativeText": "The team at the office",
+  "formats": {
+    "thumbnail": { "url": "/uploads/thumbnail_team_4f1c2a.jpg", "width": 234, "height": 156 },
+    "large": { "url": "/uploads/large_team_4f1c2a.jpg", "width": 1000, "height": 667 },
+    "medium": { "url": "/uploads/medium_team_4f1c2a.jpg", "width": 750, "height": 500 },
+    "small": { "url": "/uploads/small_team_4f1c2a.jpg", "width": 500, "height": 333 }
+  }
+}
+```
+
+これらから `srcset` を組み立てます。ローカルプロバイダーでは、`url` は Verdin のホスト上のパスなので、そのオリジンを前に付けてください。
+
+```ts
+const CMS = 'https://cms.example.com';
+
+function srcset(image: Media): string {
+  const sources = Object.values(image.formats ?? {}).map((f) => `${CMS}${f.url} ${f.width}w`);
+  return [...sources, `${CMS}${image.url} ${image.width}w`].join(', ');
+}
+```
+
+```html
+<img src="…/uploads/large_team_4f1c2a.jpg" srcset="…" sizes="(min-width: 60rem) 50vw, 100vw"
+     width="2400" height="1600" alt="The team at the office" />
+```
+
+### フォーマットを変更する
+
+フォーマットは `verdin.toml` の `[upload]` で決まります。
+
+```toml title="verdin.toml"
+[upload]
+breakpoints = [{ name = "large", width = 1600 }, { name = "small", width = 640 }]
+# responsive_formats = false  # no copies at all
+# max_original_size = 3000    # scale larger originals down on upload (drops EXIF and GPS)
+```
+
+`breakpoints` は、Strapi の同名の設定です。変更は新しいアップロードに適用され、既存のファイルは今のフォーマットを保ちます。すべてのキーは [`[upload]`](/ja/reference/configuration/) を参照してください。解凍爆弾から守るためのデコードの上限 `max_image_megapixels`（デフォルトは 100 メガピクセル）も含まれます。
+
+## 変換
+
+ローカルプロバイダーでは、Verdin が `/uploads/<file>` を自分で提供し、リクエストに応じて画像を別のサイズや形式で描画できます。
+
+```
+/uploads/team_4f1c2a.jpg?preset=thumb
+/uploads/team_4f1c2a.jpg?w=800&format=webp&s=<signature>
+```
+
+| パラメーター | 値 |
+| --- | --- |
+| `w`、`h` | 幅と高さ（ピクセル）。1 から `max_size`（デフォルトは 4096）まで。片方だけを指定すると、もう片方は縦横比に従います。どちらも指定しない場合、画像はサイズを保ちます（形式の変更）。 |
+| `fit` | `cover`（デフォルト）はボックスを埋めて残りをトリミングし、ファイルのフォーカルポイントを表示範囲に残します。`inside` は画像をボックス内に収めます。`fill` はボックスに合わせて引き伸ばします。 |
+| `format` | `jpeg`（または `jpg`）、`png`、`webp`。WebP の出力はロスレスです。指定しない場合、画像は形式を保ちます（TIFF と BMP は JPEG になります）。 |
+| `q` | JPEG の品質。1 から 100 まで。デフォルトは 80。 |
+| `preset` | 設定で名前を付けた変換。他のパラメーターとは組み合わせられません。 |
+| `s` | パラメーターがプリセットでない場合の署名。 |
+
+画像が拡大されることはありません。幅 600 ピクセルの画像を `w=1200` で要求しても、600 で返ります。変換は JPEG、PNG、WebP、TIFF、BMP のファイルで使え、GIF では使えません。
+
+### フォーカルポイント
+
+編集者はメディアライブラリで画像のフォーカルポイントを設定します。ファイルを開いて画像をクリックします（**フォーカルポイント：画像をクリックするか、矢印キーで設定します**）。`fit=cover` のトリミングではその点が表示範囲に残り、フォーカルポイントを変更すると、そのファイルのキャッシュされた描画結果は破棄されます。
+
+### プリセット
+
+プリセットは、誰でも要求できるように許可する変換です。`[upload.transforms.presets]` で定義します。
+
+```toml title="verdin.toml"
+[upload.transforms.presets]
+thumb = { w = 300, h = 300 }
+card = { w = 640, h = 360, format = "webp" }
+hero = { w = 1600, h = 600, fit = "cover", format = "jpeg", q = 85 }
+```
+
+```html
+<img src="https://cms.example.com/uploads/team_4f1c2a.jpg?preset=card" alt="…" />
+```
+
+不明なプリセットは `400` を返します。
+
+### 署名付きのパラメーター
+
+`w`、`h`、`fit`、`format`、`q` のそれ以外の組み合わせには署名が必要です。そうすることで、誰もサーバーに無制限の数のバリエーションを描画（そして保存）させることができなくなります。サーバーと、画像の URL を組み立てるコードの環境変数にシークレットを設定します。
+
+```sh title="Terminal"
+export VERDIN_IMAGE_SECRET="$(openssl rand -hex 32)"
+```
+
+署名 `s` は、そのシークレットを鍵にした `<file>?<canonical query>` の HMAC-SHA256 の 16 進表記です。正規化したクエリには、設定したパラメーターを `fit=cover`（デフォルト）を除いて名前順（`fit`、`format`、`h`、`q`、`w`）に並べ、JPEG は `jpeg` と書きます。
+
+```ts title="src/image-url.ts"
+import { createHmac } from 'node:crypto';
+
+type Transform = { w?: number; h?: number; fit?: 'cover' | 'inside' | 'fill'; format?: 'jpeg' | 'png' | 'webp'; q?: number };
+
+export function imageUrl(cms: string, url: string, t: Transform): string {
+  const file = url.replace(/^\/uploads\//, '');
+  const params: [string, string][] = [];
+  if (t.fit && t.fit !== 'cover') params.push(['fit', t.fit]);
+  if (t.format) params.push(['format', t.format]);
+  if (t.h) params.push(['h', String(t.h)]);
+  if (t.q) params.push(['q', String(t.q)]);
+  if (t.w) params.push(['w', String(t.w)]);
+  const query = params.map(([k, v]) => `${k}=${v}`).join('&');
+  const s = createHmac('sha256', process.env.VERDIN_IMAGE_SECRET!).update(`${file}?${query}`).digest('hex');
+  return `${cms}/uploads/${file}?${query}&s=${s}`;
+}
+```
+
+これらの URL はサーバー上で（またはビルド時に）組み立ててください。シークレットがブラウザーに届いてはいけません。`VERDIN_IMAGE_SECRET` がない場合や署名が誤っている場合、リクエストは `403` を返します。
+
+<Aside type="caution">
+`[upload.transforms].allow_arbitrary = true` にすると、署名なしで任意のパラメーターを受け付けます。すると異なる URL がすべて描画されてキャッシュされるので、誰でもディスクを埋め、CPU を使えてしまいます。信頼できるネットワークからしかサーバーに到達できない場合にだけオンにしてください。
+</Aside>
+
+### キャッシュと制限
+
+- 描画結果は `[upload.transforms].cache_dir`（デフォルトは `.cache/transforms`）に書き込まれ、以降はそこから提供されます。このディレクトリは削除しても安全です。
+- ファイルを置き換えたりフォーカルポイントを動かしたりすると、キャッシュされた描画結果は破棄されます。
+- 変換されたレスポンスは、ブラウザーと CDN で 1 日キャッシュされます（`Cache-Control: public, max-age=86400`）。元のファイルは名前が変わらないので 1 年キャッシュされます。
+- 描画は CPU コアの数まで並列に実行され、それを超えるリクエストは待機します。
+- `max_image_megapixels` より大きい画像は拒否されます（`422`）。
+
+変換をオフにするには、`[upload.transforms].enabled = false` を設定します。キーは [`[upload.transforms]`](/ja/reference/configuration/) を参照してください。
+
+### S3 やその他のプロバイダーの場合
+
+S3 プロバイダーでは、ファイルは Verdin ではなくバケットやその CDN から提供されるので、変換のパラメーターは効果がありません。レスポンシブなフォーマットを使うか、バケットの `public_url` の前に CDN の画像サービス（Cloudflare Images や imgix など）を置いてください。
+
+Strapi には組み込みの変換はありません。レスポンシブなフォーマットと `breakpoints` は Verdin と同じように動きます。

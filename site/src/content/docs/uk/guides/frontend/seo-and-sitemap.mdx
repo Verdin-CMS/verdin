@@ -1,0 +1,176 @@
+---
+title: SEO та мапа сайту
+description: Зіставте типи вмісту зі шляхами свого сайту, віддавайте sitemap.xml з усіма опублікованими записами й додайте стандартний SEO-компонент.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Функція **SEO та мапа сайту** повідомляє Verdin, де на вашому сайті розташований кожен запис.
+На цій основі він віддає `sitemap.xml` з усіма опублікованими записами, дає
+[меню](/uk/guides/frontend/menus/) шляхи записів, на які вони посилаються, і пропонує готовий
+компонент `shared.seo` для мета-тегів.
+
+Це одна з чотирьох функцій сайту разом із [перенаправленнями](/uk/guides/frontend/redirects/),
+[меню](/uk/guides/frontend/menus/) і [формами](/uk/guides/frontend/forms/). Strapi покриває те
+саме плагінами спільноти (SEO, sitemap); у Verdin це вбудовано.
+
+## Увімкнення
+
+<Steps>
+
+1. У **Налаштування → Функції** увімкніть **SEO та мапа сайту**.
+2. На її картці виберіть **Налаштувати SEO**.
+3. Введіть **URL сайту**: origin вашого сайту, наприклад `https://www.example.com`. URL у
+   мапі сайту починаються з нього.
+4. У розділі **Типи вмісту** задайте кожному типу, що має сторінки, **Шаблон шляху**. Типи без
+   шаблону не потрапляють у мапу сайту. За бажання задайте **Частота змін** і **Пріоритет**
+   (від 0 до 1) для мапи сайту.
+5. Збережіть, потім виберіть **Відкрити sitemap.xml**, щоб перевірити результат.
+
+</Steps>
+
+Зміна налаштувань потребує дозволу **Керування функціями** (`features.manage`). Див.
+[Дозволи](/uk/reference/permissions/).
+
+## Шаблони шляхів
+
+Шаблон — це шлях, що починається з `/`, із заповнювачами у фігурних дужках:
+
+| Шаблон | Запис | Шлях |
+| --- | --- | --- |
+| `/blog/{slug}` | Стаття зі slug `hello-world` | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | Її французька версія | `/fr/blog/bonjour` |
+| `/about` | Поодинокий тип Homepage | `/about` |
+
+Заповнювачі — це атрибути типу (зазвичай `uid`, як-от `slug`) і `{locale}`. Значення кодуються
+для URL. Запис із порожнім заповнювачем (скажімо, без slug) не має шляху й не потрапляє ні в
+мапу сайту, ні в меню. Діалог перелічує атрибути, які можна вставити, і відхиляє невідомі.
+
+Налаштування зберігаються як налаштування функції в такому вигляді:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` — одне з `always`, `hourly`, `daily`, `weekly`, `monthly`, `yearly` або `never`.
+
+## Мапа сайту
+
+Коли задано **URL сайту**, Verdin віддає `/sitemap.xml` у корені власного хоста
+(`https://cms.example.com/sitemap.xml`, поза префіксом API), з:
+
+- кожним **опублікованим** записом налаштованих типів, чий шаблон заповнюється;
+- останньою зміною кожного запису (`lastmod`), а також `changefreq` і `priority` типу;
+- для локалізованих типів — однією URL на локаль, пов'язаними між собою через
+  `<xhtml:link rel="alternate" hreflang="…">`;
+- щонайбільше 50 000 URL — ліміт одного файлу мапи сайту.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+Мапа сайту будується щонайбільше раз на десять хвилин і надсилається з
+`Cache-Control: public, max-age=600`, тож публікація з'являється в ній протягом десяти хвилин.
+
+Пошукові системи чекають мапу сайту на хості вашого сайту. Віддавайте її звідти через rewrite
+або невеликий маршрут, що отримує мапу з Verdin:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+Потім укажіть її у своєму `robots.txt`: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## SEO-компонент
+
+Verdin пропонує компонент `shared.seo` з полями SEO-плагіна Strapi:
+
+| Атрибут | Тип |
+| --- | --- |
+| `metaTitle` | string, обов'язковий, щонайбільше 60 символів |
+| `metaDescription` | text, обов'язковий, щонайбільше 160 символів |
+| `metaImage` | media (зображення) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+У діалозі **Налаштувати SEO** виберіть **Додати SEO-компонент**, потім **Створити компонент**.
+Створення змінює схему, тож кнопка доступна в режимі розробки (`verdin dev`) адміністраторам із
+**Керування типами вмісту**; інакше діалог натомість перелічує атрибути, які треба додати у
+файли схеми. Потім у конструкторі типів вмісту додайте поле-компонент із `shared.seo` до кожного
+типу вмісту, що має сторінки.
+
+<Aside type="tip">
+Коли ввімкнено [дії ШІ](/uk/guides/integrations/ai-actions/), компонент із текстовими атрибутами
+`metaTitle` і `metaDescription` отримує кнопку **Запропонувати**, яка заповнює їх із запису.
+</Aside>
+
+## Виведення мета-тегів
+
+Заповніть компонент через populate і запишіть теги в head сторінки:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+`shared.seo` у прикладі блогу має лише `metaTitle` і `metaDescription`; запропонований
+компонент додає решту. Якщо сторінка попереднього перегляду використовує
+[візуальне редагування](/uk/guides/frontend/visual-editing/), прибирайте невидимі позначки
+перед вимірюванням чи порівнянням мета-текстів.

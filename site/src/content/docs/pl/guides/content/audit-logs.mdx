@@ -1,0 +1,111 @@
+---
+title: Dzienniki audytu
+description: Sprawdzaj, kto co zmienił i kiedy, filtruj dzienniki audytu w panelu administracyjnym lub przez API i ustawiaj, jak długo wpisy są przechowywane.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Dzienniki audytu zapisują, kto co zmienił i kiedy: treść, multimedia, logowania i każdą
+zmianę wprowadzoną w panelu administracyjnym. Ten przewodnik pokazuje, co jest zapisywane,
+jak filtrować dzienniki i jak długo są przechowywane.
+
+W Strapi dzienniki audytu to funkcja Enterprise. W Verdin są częścią otwartego rdzenia.
+
+## Zanim zaczniesz
+
+- **Ustawienia → Funkcje → Dzienniki audytu** są domyślnie włączone. Wyłączenie zatrzymuje
+  zapisywanie nowych działań; istniejące wpisy pozostają do odczytu.
+- Odczyt dzienników wymaga **Odczyt dzienników audytu** (`audit.read`). Zobacz
+  [Uprawnienia](/pl/reference/permissions/).
+
+## Co jest zapisywane
+
+| Obszar | Działania | Uwagi |
+| --- | --- | --- |
+| Treść | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | Z każdego API: panelu administracyjnego, REST, GraphQL i wtyczek. Język jest w szczegółach. |
+| Przepływy recenzji | `entry.stage`, `entry.assign` | Zmiany etapów i przypisania. |
+| Multimedia | `media.create`, `media.update`, `media.delete` | Przesłania, zmiany i usunięcia plików. Nazwa pliku jest w szczegółach. |
+| Logowania | `admin.login` | Logowania hasłem i pierwszego administratora (zapisywane po drugim składniku, jeśli konto go ma) oraz logowania SSO z dostawcą. |
+| Zmiany administracyjne | `{METHOD} {route}`, np. `PUT /roles/{id}` | Każdy udany zapis w API administracyjnym: użytkownicy, role, tokeny API, ustawienia, funkcje, webhooki, języki, wtyczki, wydania… Parametry trasy są w szczegółach. |
+
+Każdy wpis ma czas, wykonawcę, działanie, obiekt (UID typu zawartości, `plugin::upload.file`
+albo zasób administracyjny, np. `roles`), identyfikator obiektu, szczegóły i, w przypadku
+żądań, adres IP klienta.
+
+Wykonawca to jeden z:
+
+- **Administrator**: zalogowany administrator, wymieniony z nazwy w dzienniku.
+- **API**: zmiana wykonana przez API treści lub GraphQL, z tokenem API, tokenem użytkownika
+  końcowego albo dostępem publicznym.
+- **System**: zapis w API administracyjnym bez zalogowanego administratora.
+
+Za reverse proxy ustaw `[server].trusted_proxies`, aby dzienniki pokazywały adres klienta
+zamiast adresu proxy. Zobacz [dokumentację konfiguracji](/pl/reference/configuration/).
+
+## Filtruj dzienniki
+
+<Steps>
+
+1. Otwórz **Ustawienia → Dzienniki audytu**.
+2. Użyj presetu z **Szybkich filtrów** (**Zawartość**, **Multimedia**, **Logowania**) albo
+   wypełnij filtry:
+   - **Działanie**: dokładne działanie, np. `entry.publish`, albo prefiks zakończony `*`,
+     np. `entry.*`.
+   - **Wykonawca**: jeden administrator albo **Każdy**.
+   - **Obiekt**: UID typu zawartości, np. `api::article`.
+   - **Od** i **Do**: zakres dat. Data bez godziny obejmuje cały ten dzień.
+3. Wybierz **Zastosuj**. Otwórz **Szczegóły** w wierszu, aby zobaczyć wszystko, co zostało
+   dla niego zapisane.
+
+</Steps>
+
+## Odpytuj API
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+Wpisy są zwracane od najnowszych, domyślnie 50 na stronę i najwyżej 200:
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` i `to` przyjmują daty lub daty z godziną w ISO 8601; cokolwiek innego to błąd `400`.
+
+## Ustaw, jak długo wpisy są przechowywane
+
+Wpisy starsze niż `[audit].retention_days` są usuwane raz dziennie. Domyślnie 90 dni.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+Aby przechowywać wpisy audytu dłużej, niż powinna twoja baza danych, regularnie kopiuj je do
+własnego magazynu za pomocą powyższego API.
+</Aside>

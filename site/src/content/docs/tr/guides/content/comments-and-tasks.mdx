@@ -1,0 +1,100 @@
+---
+title: Yorumlar ve görevler
+description: Kayıtları konularda tartışın, tek tek alanlara yorum yapın, diğer admin’lerden bahsedin ve bitiş tarihli görevler atayın.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Admin’ler düzenleyiciden ayrılmadan bir kaydı yorum konularında tartışabilir, bir alana yorum
+yapabilir, birbirlerinden bahsedebilir ve bitiş tarihli görevler atayabilir. Bu kılavuz ikisini,
+kimin neyi yapabileceğini ve admin API’yi anlatır. Strapi’de bunun karşılığı yoktur.
+
+## Başlamadan önce
+
+- **Ayarlar → Özellikler → Yorumlar ve görevler** varsayılan olarak açıktır.
+- Bir kaydın içerik tipini okuyabilmek, onun yorumlarını ve görevlerini okumak ve yazmak için
+  yeterlidir.
+- Bahsedilen admin’lere ve görev atananlara `[email]` üzerinden e-posta gönderilir. Varsayılan
+  `log` sağlayıcısıyla e-postalar yalnızca sunucu günlüğüne gider. Bkz.
+  [yapılandırma başvurusu](/tr/reference/configuration/).
+
+## Bir kayda yorum yapma
+
+<Steps>
+
+1. Kaydı açın ve **Yorumlar**’ı seçin. Düğme açık konuların sayısını gösterir.
+2. **Yorumlar** sekmesinde **Yeni yorum** alanına yazın. Bir admin’den bahsetmek için `@` yazın.
+3. **Yorum yap**’ı seçin ya da Control veya Command ile Enter’a basın.
+
+</Steps>
+
+Tek bir alana yorum yapmak için alanın yanındaki yorum düğmesini kullanın (**… üzerine yorum
+yap**, ardından alanın adı). Alan konuları o alanın **… hakkında** başlığı altında gösterilir;
+**Tümünü göster** tüm konuları yeniden listeler.
+
+Bir konuda şunları yapabilirsiniz:
+
+- **Yanıtla**.
+- Tartışma bittiğinde **Çöz** ve daha sonra **Yeniden aç**. Çözülen konular **Çözülen
+  konular**’a taşınır. Bir konuyu yalnızca ilk yorumu çözer.
+- Kendi yorumlarınızda **Yorumu düzenle**.
+- Kendi yorumlarınızda **Yorumu sil** veya **Konuyu sil**. Bir Super Admin herhangi bir yorumu
+  silebilir.
+
+Yorumlar yerelleştirilmiş tiplerde dil başına tutulur ve en fazla 10.000 karakter içerir.
+
+## Bir admin’den bahsetme
+
+Bahsedilen admin’ler, kaydı okuyabildikleri sürece yorumu ve kayda giden bir bağlantıyı içeren
+bir e-posta alır. Kendinizden bahsettiğiniz için size asla e-posta gönderilmez.
+
+## Görev atama
+
+<Steps>
+
+1. Aynı panelin **Görevler** sekmesini açın ve **Yeni görev**’i seçin.
+2. Bir **Başlık** ve isteğe bağlı olarak bir **Açıklama**, bir **Atanan kişi** ve bir **Bitiş
+   tarihi** girin. Atanan kişi kaydı okuyabilmelidir.
+3. **Görev oluştur**’u seçin.
+
+</Steps>
+
+Atanan kişiye, görevi kendine atamadıysa e-posta gönderilir. Bitiş tarihi geçmiş görevler
+gecikmiş olarak görünür. Bir görevi satırından tamamlandı olarak işaretleyin.
+
+Bir görevi oluşturan ve atanan kişi onu değiştirebilir veya tamamlayabilir. Onu yalnızca
+oluşturan siler. Bir Super Admin her ikisini de herhangi bir görevde yapabilir.
+
+Kayıtlar arasındaki açık görevlerinizi görmek için ana sayfaya **Görevlerim** widget’ını ekleyin:
+**Özelleştir**’i, ardından **Widget ekle**’yi seçin.
+
+## Canlı birlikte çalışma
+
+Başka bir admin açık olan kayıtta bir yorum veya görev eklediğinde, çözdüğünde ya da sildiğinde
+panel **Yorumlar güncellendi.** veya **Görevler güncellendi.** der ve değişikliği gösterir.
+
+## Admin API
+
+Tüm rotalar `/admin/api` altındadır. `uid`, `documentId` ve `locale` kaydı belirtir.
+
+| Rota | Yaptığı |
+| --- | --- |
+| `GET /comments?uid=&documentId=&locale=` | Kaydın konuları ve yanıtları. |
+| `POST /comments` | `{ uid, documentId, locale?, field?, parentId?, body }`. `parentId` bir yanıt oluşturur. |
+| `PUT /comments/{id}` | `{ body }`. Yalnızca kendi yorumlarınız. |
+| `DELETE /comments/{id}` | Kendi yorumlarınız ya da Super Admin olarak herhangi biri. |
+| `POST /comments/{id}/resolve`, `POST /comments/{id}/reopen` | Bir konunun ilk yorumunda. |
+| `GET /tasks?uid=&documentId=&locale=` | Kaydın görevleri. |
+| `GET /tasks?mine=true&status=open` | Hâlâ okuyabildiğiniz kayıtlardaki görevleriniz. |
+| `POST /tasks` | `{ uid, documentId, locale?, title, description?, assigneeId?, dueDate? }`; `dueDate` `YYYY-MM-DD` biçiminde. |
+| `PUT /tasks/{id}` | Oluşturan veya atanan kişi. `title`, `description`, `assigneeId`, `dueDate` (`null` temizler) ve `status` (`open` veya `done`) alanlarından herhangi biri. |
+| `DELETE /tasks/{id}` | Yalnızca oluşturan (veya bir Super Admin). |
+
+Bir yorum gövdesinde bahsetme `@[Name](user:12)` olarak yazılır; burada `12` admin’in kimliğidir.
+
+<Aside type="note">
+Özellik kapalıyken rotalar `404` yanıtını verir. Kapatmak yorumları ve görevleri gizler; yeniden
+açtığınızda kullanılmak üzere saklanırlar.
+</Aside>

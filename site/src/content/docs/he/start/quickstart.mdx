@@ -1,0 +1,256 @@
+---
+title: התחלה מהירה
+description: הריצו את Verdin עם Docker או עם הקובץ הבינארי, צרו את המנהל הראשון, מדלו סוג תוכן וקראו אותו מה-API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+העמוד הזה לוקח אתכם מכלום ועד תגובת API ראשונה בערך בעשר דקות: הפעלת Verdin, יצירת המנהל
+הראשון, מידול סוג תוכן, פתיחתו לציבור וקריאתו דרך REST, GraphQL או לקוח ה-TypeScript.
+
+צריך [Docker](https://docs.docker.com/get-docker/) או מכונה שיכולה להריץ את הקובץ הבינארי
+`verdin` (Linux, macOS או Windows על x86-64, Linux או macOS על ARM64).
+
+## 1. הפעלת Verdin
+
+<Tabs syncKey="install">
+  <TabItem label="Docker">
+
+צרו את הסודות פעם אחת, ואז הפעילו את האימג' במצב פיתוח:
+
+```sh title="Terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+ה-volume ‏`verdin-data` מחזיק את מסד הנתונים של SQLite (`/data/verdin.db`), את המדיה שהועלתה
+(`/data/uploads`) ו, ב-`dev`, את קובצי הסכמה שבונה סוגי התוכן כותב (`/data/schema`).
+
+  </TabItem>
+  <TabItem label="Binary">
+
+הורידו את הארכיון לפלטפורמה שלכם מ[דף הגרסאות](https://github.com/Verdin-CMS/verdin/releases),
+חלצו אותו ושימו את `verdin` ב-`PATH` שלכם. פאנל הניהול מובנה בקובץ הבינארי.
+
+צרו שלד של פרויקט והפעילו אותו במצב פיתוח:
+
+```sh title="Terminal"
+verdin new my-site            # verdin.toml, schema/, .env עם סודות חדשים, SQLite
+cd my-site
+verdin dev
+```
+
+`verdin new` מקבל `--database sqlite|postgres|mysql|mariadb` (SQLite כברירת מחדל) כדי לבחור
+את מסד הנתונים שה-`.env` שנוצר מצביע אליו. עבור PostgreSQL, MySQL ו-MariaDB, ערכו את
+`VERDIN_DATABASE_URL` ב-`.env` כך שיתאים לשרת שלכם לפני שאתם מריצים `verdin dev`.
+[מבנה הפרויקט](/he/start/project-structure/) מתאר כל קובץ שהוא יוצר.
+
+  </TabItem>
+</Tabs>
+
+כשביומן מופיע `verdin listening`, השרת עונה בפורט 1337. ההפעלה הראשונה יוצרת את טבלאות מסד
+הנתונים.
+
+## 2. סודות
+
+Verdin צריך שני סודות, כל אחד באורך 32 בייטים לפחות:
+
+| משתנה | על מה הוא מגן |
+| --- | --- |
+| `VERDIN_ADMIN_JWT_SECRET` | חותם על סשנים של ניהול. |
+| `VERDIN_TOKEN_PEPPER` | מגבב אסימוני API ומגן על סודות האימות הדו-שלבי ועל קודי השחזור. |
+
+`verdin secrets` מדפיס ערכים חדשים, ו-`verdin new` כותב אותם ל-`.env`. הסודות מגיעים רק
+מהסביבה, אף פעם לא מ-`verdin.toml`, והשרת לא עולה בלעדיהם. קובץ ה-`.env` שליד `verdin.toml`
+נטען בהפעלה; משתנים שכבר מוגדרים בסביבה גוברים.
+
+<Aside type="caution">
+צרו את הסודות פעם אחת לכל התקנה ושמרו עליהם. `VERDIN_ADMIN_JWT_SECRET` חדש מבטל את אסימוני
+ההתחברות הנוכחיים, קישורי תצוגה מקדימה פתוחים והתחברויות OAuth שבתהליך (פאנל הניהול מחדש
+את הסשן שלו בעצמו); `VERDIN_TOKEN_PEPPER` חדש פוסל כל אסימון API וכל הגדרת אימות דו-שלבי.
+השאירו את `.env` ואת `verdin.env` מחוץ לניהול הגרסאות.
+</Aside>
+
+## 3. יצירת המנהל הראשון
+
+פתחו את [http://localhost:1337/admin/](http://localhost:1337/admin/). כל עוד אין אף מנהל,
+פאנל הניהול מציג **ברוכים הבאים ל־Verdin**: הזינו את השם, כתובת הדוא"ל וסיסמה של 8 תווים
+לפחות, ואז בחרו **יצירת חשבון**. החשבון הראשון הזה הוא Super Admin עם כל ההרשאות.
+
+אפשר גם ליצור מנהלים משורת הפקודה; ראו
+[משתמשי ניהול משורת הפקודה](#משתמשי-ניהול-משורת-הפקודה).
+
+## 4. מידול סוג תוכן
+
+<Steps>
+
+1. בסרגל הצד, פתחו את **בונה סוגי התוכן** ובחרו **סוג תוכן חדש**.
+2. הגדירו את **שם תצוגה** ל-`Article`. Verdin ממלא את **שם ביחיד (מזהה API)** ב-`article`
+   ואת **שם ברבים (נתיב)** ב-`articles`; הנתיב הוא כתובת ה-URL של הסוג ב-API. השאירו את
+   **סוג** על **אוסף**.
+3. בחרו **הוספת שדה**, בחרו **טקסט קצר**, תנו לו את השם `title`, ובחרו **סיום**.
+4. בחרו **שמירה**. **בדיקת ההגירה** מפרטת את שלבי מסד הנתונים עם ה-SQL שלהם; בחרו **החלה**.
+
+</Steps>
+
+Verdin כותב את הסוג ל-`schema/content-types/article.json` ויוצר את הטבלה שלו. הבונה זמין רק
+ב-`verdin dev`: בייצור הסכמה מגיעה מהקבצים שלכם. ראו [מודל התוכן](/he/concepts/content-model/)
+לטיפוסי שדות ולאפשרויות.
+
+עכשיו הוסיפו רשומה: פתחו את **Article** תחת **אוספים**, בחרו **רשומה חדשה**, מלאו את הכותרת
+ובחרו **פרסום**. בסוגים חדשים **טיוטה ופרסום** פעיל, כך שהרשומות שלהם נשארות טיוטות, בלתי
+נראות ל-API הציבורי, עד שהן מתפרסמות.
+
+## 5. פתיחה לציבור
+
+API התוכן סגור עד שתעניקו הרשאות ציבוריות או תיצרו אסימוני API. פתחו את **הגדרות ← גישה
+ציבורית**, אפשרו **חיפוש** ו**חיפוש פריט אחד** עבור **Article**, ובחרו **שמירה**.
+
+כדי לקרוא בלי גישה ציבורית, צרו אסימון ב-**הגדרות ← אסימוני API** ושלחו אותו כ-
+`Authorization: Bearer <token>`. ראו [אסימוני API](/he/guides/auth/api-tokens/) ו
+[הרשאות](/he/concepts/permissions/).
+
+## 6. בקשה ראשונה
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl localhost:1337/api/articles
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "documentId": "01m3p88agn712n02wb8kkpe94p",
+      "title": "Hello Verdin",
+      "createdAt": "2026-09-29T09:34:39.637Z",
+      "updatedAt": "2026-09-29T09:34:39.637Z",
+      "publishedAt": "2026-09-29T09:34:39.637Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+לתגובה יש המבנה השטוח של Strapi v5. מסננים, מיון, עימוד ו-`populate` משתמשים באותם פרמטרי
+שאילתה; ראו את ה-[REST API](/he/api/rest/).
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+הפעילו את **הגדרות ← תכונות ← GraphQL**. אז `POST /graphql` מגיש סכמה שנוצרה מסוגי התוכן
+שלכם, עם אותן הרשאות כמו ה-REST API:
+
+```sh title="Terminal"
+curl localhost:1337/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+```json
+{ "data": { "articles": [{ "documentId": "01m3p88agn712n02wb8kkpe94p", "title": "Hello Verdin" }] } }
+```
+
+ראו את [GraphQL API](/he/api/graphql/).
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+צרו טיפוסים מהסכמה והתקינו את הלקוח בפרויקט הפרונטאנד שלכם:
+
+```sh title="Terminal"
+verdin types -o src/verdin-types.ts   # בפרויקט ה-Verdin
+npm install @verdin/client            # בפרויקט הפרונטאנד
+```
+
+עם Docker, האימג' יכול להדפיס את הטיפוסים מהסכמה שב-volume:
+`docker run --rm -v verdin-data:/data ghcr.io/verdin-cms/verdin types > src/verdin-types.ts`.
+
+```ts title="src/articles.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+
+const { data } = await verdin.collection('articles').find({ sort: ['publishedAt:desc'] });
+console.log(data.map((article) => article.title));
+```
+
+ראו [לקוח עם טיפוסים](/he/guides/frontend/typed-client/).
+
+  </TabItem>
+</Tabs>
+
+מכאן, המדריכים של [Astro](/he/start/tutorial-astro/) ושל [Next.js](/he/start/tutorial-nextjs/)
+בונים פרונטאנד של בלוג על אותו API.
+
+## מצב פיתוח ומצב ייצור
+
+| פקודה | מתאימה ל |
+| --- | --- |
+| `verdin dev` | פיתוח: הגירות בטוחות מוחלות אוטומטית, בונה סוגי התוכן יכול לערוך את קובצי הסכמה, והשרת נטען מחדש כשהם משתנים. |
+| `verdin start` | ייצור. מסרב לרוץ כשמסד הנתונים מפגר אחרי הסכמה. |
+| `verdin start --migrate` | ייצור, עם החלת הגירות בטוחות ממתינות לפני ההפעלה. זו פקודת ברירת המחדל של האימג' של Docker. |
+
+עוגיות הרענון הן `Secure` ב-`verdin start` ולא ב-`verdin dev`, ולכן התחברות לשרת `start`
+דורשת HTTPS. כדי לנסות את `start` מעל HTTP רגיל, הגדירו `VERDIN_ADMIN__SECURE_COOKIES=false`.
+
+בייצור, שמרו את הסכמה בניהול גרסאות וחברו אותה לקריאה בלבד. עם Docker:
+
+```sh title="Terminal"
+docker run -p 1337:1337 --env-file verdin.env \
+  -e VERDIN_DATABASE_URL=postgres://user:pass@db:5432/verdin \
+  -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
+```
+
+[רשימת הבדיקה לייצור](/he/deploy/production-checklist/) מכסה את השאר.
+
+## סכמה והגירות
+
+סוגי התוכן נמצאים ב-`schema/content-types/<singularName>.json` והרכיבים ב-
+`schema/components/<category>/<name>.json`, בפורמט של Strapi. כשהקבצים משתנים, Verdin מתכנן
+הגירה:
+
+```sh title="Terminal"
+verdin schema check                      # אימות כל קובצי הסכמה
+verdin migrate plan                      # שלבים, רמת סיכון ו-SQL מדויק
+verdin migrate apply                     # שלבים בטוחים בלבד
+verdin migrate apply --allow risky       # גם שינויי טיפוס ואילוצי ייחודיות חדשים
+verdin migrate apply --allow destructive # גם עמודות וטבלאות שהוסרו
+verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
+```
+
+ב-MySQL וב-MariaDB, שאין בהם DDL בטרנזקציה, הגירה שנקטעה ממשיכה מהשלב שנכשל ב-`migrate apply`
+הבא. ראו [הגירות סכמה](/he/concepts/schema-migrations/).
+
+## משתמשי ניהול משורת הפקודה
+
+```sh title="Terminal"
+verdin admin create --email other@example.com      # הסיסמה מ-VERDIN_ADMIN_PASSWORD או מ-stdin
+verdin admin reset-password --email you@example.com
+```
+
+`admin create` יוצר Super Admin. `reset-password` גם משחרר את נעילת החשבון ומסיים את הסשנים
+שלו. שתיהן דורשות שמסד הנתונים יהיה מעודכן מול הסכמה.
+
+## פקודות נוספות
+
+| פקודה | מה היא עושה |
+| --- | --- |
+| `verdin types -o src/verdin-types.ts` | כותבת הגדרות TypeScript של API התוכן (ל-standard output בלי `-o`). |
+| `verdin import strapi <export>` | מייבאת פרויקט Strapi; ראו [מעבר מ-Strapi](/he/migrate/from-strapi/). |
+| `verdin export <file.tar.gz>` | כותבת את הסכמה, התוכן והמדיה לארכיון; `verdin import verdin` קורא אותו בחזרה. |
+| `verdin version` | מדפיסה את הגרסה. |
+
+כל פקודה מקבלת `-c, --config <path>` (ברירת המחדל `verdin.toml`, או `VERDIN_CONFIG`).
+[תיעוד ה-CLI](/he/reference/cli/) מפרט כל פקודה ודגל, ו[תיעוד התצורה](/he/reference/configuration/)
+כל הגדרה.
+
+## בדיקות תקינות
+
+`GET /_health` עונה כל עוד התהליך רץ. `GET /_ready` בודק גם את מסד הנתונים ועונה 503 כשהוא לא
+יכול להגיע אליו: כוונו אליו מאזני עומסים (ראו [הרצת כמה מופעים](/he/deploy/scaling/)).

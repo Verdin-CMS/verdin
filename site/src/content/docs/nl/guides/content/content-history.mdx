@@ -1,0 +1,90 @@
+---
+title: Contentgeschiedenis
+description: Blader door de opgeslagen, gepubliceerde en gedepubliceerde versies van een item en herstel er een als het huidige concept.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Verdin bewaart een versie van een item telkens als het wordt aangemaakt, opgeslagen,
+gepubliceerd of gedepubliceerd, of als zijn concept wordt verworpen, via welke API dan ook. Deze
+gids laat zien hoe je een oude versie vindt en herstelt, hoeveel versies er worden bewaard, en de
+bijbehorende admin-API.
+
+Contentgeschiedenis werkt zoals die van Strapi, waar het een betaalde functie is.
+
+## Voordat je begint
+
+- **Instellingen → Functies → Contentgeschiedenis** staat standaard aan. Zolang het uit staat,
+  worden geen versies vastgelegd en is de geschiedenis niet beschikbaar.
+- De geschiedenis van een item lezen vereist leestoegang tot het item; herstellen vereist
+  toegang om bij te werken. Veldbeperkingen gelden: je ziet en herstelt alleen de velden die je rol
+  mag lezen of bijwerken. Zie [Rechten](/nl/reference/permissions/).
+
+## Een versie herstellen
+
+<Steps>
+
+1. Open het item en kies **Geschiedenis**.
+2. De lijst **Versies** toont elke versie met zijn event (**Aangemaakt**, **Opgeslagen**,
+   **Gepubliceerd**, **Publicatie ongedaan gemaakt**, **Concept verworpen**), zijn datum en wie hem
+   heeft gemaakt. Wijzigingen via de content-API tonen **API** als auteur.
+3. Kies een versie om zijn velden te bekijken.
+4. Kies **Herstellen** en bevestig.
+
+</Steps>
+
+De versie vervangt het huidige concept; publiceer het daarna wanneer je klaar bent. Bij types
+zonder concept en publicatie werkt herstellen het item direct bij.
+
+Wat bij het herstellen wordt weggelaten:
+
+- Velden die niet meer in het schema bestaan, worden getoond en niet hersteld.
+- Verwijzingen naar verwijderde items of bestanden vallen weg, en de editor vertelt je welke
+  velden ze zijn kwijtgeraakt.
+
+**Terug naar de editor** keert terug naar het item zonder iets te wijzigen.
+
+## Hoeveel versies worden bewaard
+
+Verdin bewaart de nieuwste `[history].max_versions` versies van elk item en elke locale
+(standaard 50) en verwijdert oudere zodra er nieuwe versies binnenkomen:
+
+```toml title="verdin.toml"
+[history]
+max_versions = 100
+```
+
+Elke locale van een gelokaliseerd item heeft zijn eigen geschiedenis. Een item, of een van zijn
+locales, verwijderen verwijdert ook de versies ervan. Zie de
+[configuratiereferentie](/nl/reference/configuration/).
+
+<Aside type="note">
+Anders dan in Strapi, waar de geschiedenis een aantal dagen wordt bewaard, bewaart Verdin een
+aantal versies per item, hoe oud ze ook zijn.
+</Aside>
+
+## Admin-API
+
+Alle routes staan onder `/admin/api`.
+
+| Route | Recht | Doet |
+| --- | --- | --- |
+| `GET /history/{uid}/{documentId}?locale=&page=&pageSize=` | het item lezen | Versies, nieuwste eerst, zonder hun gegevens (20 per pagina, hoogstens 100). |
+| `GET /history/versions/{id}` | het item lezen | Eén versie met zijn gegevens. |
+| `POST /history/versions/{id}/restore` | het item bijwerken | Herstelt de versie als het huidige concept. |
+
+Het antwoord op het herstellen somt op wat is weggevallen:
+
+```json
+{
+  "data": {
+    "documentId": "k3v9…",
+    "restored": 42,
+    "dropped": [{ "field": "tags", "count": 1 }]
+  }
+}
+```
+
+De routes antwoorden met `404` zolang de functie uit staat.

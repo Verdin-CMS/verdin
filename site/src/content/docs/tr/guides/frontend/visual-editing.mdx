@@ -1,0 +1,124 @@
+---
+title: Görsel düzenleme
+description: Editörlerin önizleme sayfanızdaki metne tıklayıp yönetim panelinde onu tutan alana gitmesini sağlayın.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Görsel düzenleme, önizleme sayfanızı yönetim panelinin bir haritasına dönüştürür: bir editör bir
+başlığın üzerine gelir, **Edit**’e tıklar ve kayıt o alan odaklanmış olarak açılır.
+[Önizleme](/tr/guides/content/preview/) üzerine kuruludur: önce önizleme URL’lerini ayarlayın,
+ardından aşağıdaki iki parçayı önizleme sayfasına ekleyin.
+
+Verdin döndürdüğü her metne küçük, görünmez bir kaynak haritası gizler (*stega* olarak bilinen bir
+teknik) ve bir kaplama (overlay) betiği bu metinleri sayfada bulur. Bileşenlerinizde hiçbir şey
+değişmez: işaretlenmiş metin diğer metinler gibi görüntülenir.
+
+<Diagram code={`flowchart LR
+  A[Önizleme sayfası] -- "x-verdin-stega: true" --> B[İçerik API’si]
+  B -- "metin + görünmez kaynak haritası" --> A
+  A -- "visual-editing.js: Edit’e tıkla" --> C[Yönetim paneli alanı]`} caption="Sayfa kaynak haritaları ister ve kaplama bunları alanlara giden bağlantılara dönüştürür." />
+
+## Kurulum
+
+<Steps>
+
+1. **Ayarlar → Özellikler** bölümünde **Önizleme**’yi açın, **Önizleme URL’lerini yapılandır**’ı
+   seçin ve her içerik tipine onu gösteren sayfanın URL’sini verin. Aynı diyaloğun **Görsel
+   düzenleme** bölümü sunucunuz için betik etiketini ve başlığı gösterir. Bkz.
+   [Önizleme](/tr/guides/content/preview/).
+
+2. Önizleme sayfasında içeriği bir token ve `x-verdin-stega: true` başlığıyla getirin. Token,
+   önizleme URL’sindeki önizleme token’ı (`?preview=…`, `x-verdin-preview` olarak geri gönderilir)
+   ya da bir API token’ıdır:
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. Kaplamayı aynı sayfada yükleyin:
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   Yol [`[admin].path`](/tr/reference/configuration/)’i izler: `{path}/api/visual-editing.js`.
+
+</Steps>
+
+[Tipli istemci](/tr/guides/frontend/typed-client/) ile her iki başlığı da `headers` içinde geçin:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+Kaynak haritaları GraphQL’e değil yalnızca REST yanıtlarına eklenir: önizleme içeriğini REST API
+üzerinden okuyun.
+
+Sayfadaki işaretlenmiş metnin üzerine gelin: yeşil bir çerçeve ve bir **Edit** düğmesi alır.
+Admin’in yan yana önizlemesinde (**Önizlemeyi aç** → **Yan yana**) düğme, admin’den alanı hemen
+orada açmasını ister. Sayfa kendi başına açıkken düğme kaydı yeni bir sekmede açar.
+
+<Aside type="note">
+Kaynak haritaları yalnızca `x-verdin-stega: true` **ve** bir token (`Authorization` veya
+`x-verdin-preview`) gönderen `GET` isteklerine eklenir. Herkese açık trafik ve CDN’inizin önbelleğe
+aldığı hiçbir şey bunları asla taşımaz; işaretlenmiş yanıtlar `Cache-Control: private, no-store`
+ile gönderilir.
+</Aside>
+
+## Neler işaretlenir
+
+| İşaretlenir | İşaretlenmez |
+| --- | --- |
+| `string`, `text` ve `richtext` nitelikleri | `uid`, `email`, `password`, `enumeration` |
+| Bir `blocks` niteliğinin her bloğunun ilk metni | Sayılar, boolean’lar, tarihler, JSON |
+| Bileşenlerin ve dinamik bölgelerin içindeki aynıları (`seo.metaTitle`, `blocks.2.title`) | Boş string’ler |
+| İlişkili kayda işaret eden, populate edilmiş ilişkiler | Medya alanları |
+
+Kaplama ayrıca `alt` ve `title` niteliklerindeki işaretleri de okur; böylece bunlardan birine
+koyduğunuz işaretlenmiş bir metin (örneğin `alt` olarak kullanılan bir açıklama alanı)
+tıklanabilir kalır.
+
+## Metnin veri olduğu yerlerde işaretleri temizleme
+
+İşaretler metne eklenen görünmez karakterlerdir. Bir değeri göstermek yerine veri olarak
+kullandığınız yerlerde (bir anahtar, bir URL, bir karşılaştırma, bir `<title>` uzunluk denetimi)
+önce bunları temizleyin:
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+`uid` slug’ları ve enumeration’lar gibi doğası gereği veri olan alanlar asla işaretlenmez; bu
+yüzden `slug`’a göre yönlendirme olduğu gibi çalışır.
+
+## Bir işaret nasıl kodlanır
+
+İşaretleri kendisi okuyan araçlar için: bir işaret U+2064, ardından şunun her UTF-8 baytı
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+U+200B, U+200C, U+200D ve U+2060 ile yazılmış dört taban-4 basamak olarak (en anlamlısı önce),
+ardından U+2063’tür. Admin URL’si [`[server].public_url`](/tr/reference/configuration/) ve
+`[admin].path` değerlerinden gelir. Kaplama `postMessage` ile üst pencereye
+`{ type: 'verdin:edit', href }` gönderir; admin bunu yalnızca önizleme URL’sinin origin’inden
+geldiğinde işler.

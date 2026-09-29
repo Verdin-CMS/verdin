@@ -1,0 +1,115 @@
+---
+title: Audit-Logs
+description: Sieh nach, wer was wann geändert hat, filtere die Audit-Logs im Admin-Panel oder über die API und leg fest, wie lange Einträge aufbewahrt werden.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Die Audit-Logs halten fest, wer was wann geändert hat: Inhalte, Medien, Anmeldungen und jede
+Änderung im Admin-Panel. Diese Anleitung zeigt, was aufgezeichnet wird, wie du die Logs
+filterst und wie lange sie aufbewahrt werden.
+
+Audit-Logs sind in Strapi eine Enterprise-Funktion. In Verdin gehören sie zum
+Open-Source-Kern.
+
+## Bevor du anfängst
+
+- **Einstellungen → Funktionen → Audit-Logs** ist standardmäßig an. Schaltest du es aus, werden
+  keine neuen Aktionen mehr aufgezeichnet; die bestehenden Einträge bleiben lesbar.
+- Die Logs zu lesen braucht **Audit-Logs lesen** (`audit.read`). Siehe
+  [Berechtigungen](/de/reference/permissions/).
+
+## Was aufgezeichnet wird
+
+| Bereich | Aktionen | Hinweise |
+| --- | --- | --- |
+| Inhalte | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | Aus jeder API: Admin-Panel, REST, GraphQL und Plugins. Die Sprache steht in den Details. |
+| Review-Workflows | `entry.stage`, `entry.assign` | Phasenwechsel und Zuweisungen. |
+| Medien | `media.create`, `media.update`, `media.delete` | Uploads, Änderungen und Löschungen von Dateien. Der Dateiname steht in den Details. |
+| Anmeldungen | `admin.login` | Anmeldungen mit Passwort und des ersten Admins (bei Konten mit zweitem Faktor nach diesem aufgezeichnet) sowie SSO-Anmeldungen mit dem Anbieter. |
+| Admin-Änderungen | `{METHOD} {route}`, zum Beispiel `PUT /roles/{id}` | Jeder erfolgreiche Schreibvorgang auf der Admin-API: Benutzer, Rollen, API-Tokens, Einstellungen, Funktionen, Webhooks, Sprachen, Plugins, Releases… Die Parameter der Route stehen in den Details. |
+
+Jeder Eintrag hat einen Zeitpunkt, einen Akteur, eine Aktion, ein Objekt (eine UID eines
+Inhaltstyps, `plugin::upload.file` oder die Admin-Ressource wie `roles`), die ID des Objekts,
+Details und bei Anfragen die IP-Adresse des Clients.
+
+Der Akteur ist einer der folgenden:
+
+- **Administrator**: ein angemeldeter Admin, im Log mit Namen genannt.
+- **API**: eine Änderung über die Content-API oder GraphQL, mit einem API-Token, dem Token eines
+  Endnutzers oder öffentlichem Zugriff.
+- **System**: ein Schreibvorgang auf der Admin-API ohne angemeldeten Admin.
+
+Hinter einem Reverse Proxy setzt du `[server].trusted_proxies`, damit die Logs die Adresse des
+Clients zeigen statt die des Proxys. Siehe die
+[Konfigurationsreferenz](/de/reference/configuration/).
+
+## Die Logs filtern
+
+<Steps>
+
+1. Öffne **Einstellungen → Audit-Logs**.
+2. Nutze eine Voreinstellung unter **Schnellfilter** (**Inhalte**, **Medien**,
+   **Anmeldungen**), oder füll die Filter aus:
+   - **Aktion**: eine genaue Aktion wie `entry.publish` oder ein Präfix, das auf `*` endet, wie
+     `entry.*`.
+   - **Akteur**: ein Admin, oder **Alle**.
+   - **Objekt**: eine UID eines Inhaltstyps wie `api::article`.
+   - **Von** und **Bis**: ein Datumsbereich. Ein Datum ohne Uhrzeit schließt den ganzen Tag ein.
+3. Wähle **Anwenden**. Öffne **Details** in einer Zeile, um alles zu sehen, was dazu
+   aufgezeichnet wurde.
+
+</Steps>
+
+## Die API abfragen
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+Die Einträge kommen, das Neueste zuerst, standardmäßig 50 pro Seite und höchstens 200:
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` und `to` akzeptieren ISO-8601-Datumswerte oder Zeitstempel; alles andere ist ein
+`400`-Fehler.
+
+## Festlegen, wie lange Einträge aufbewahrt werden
+
+Einträge, die älter als `[audit].retention_days` sind, werden einmal am Tag gelöscht. Der
+Standard ist 90 Tage.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+Um Audit-Einträge länger aufzubewahren, als deine Datenbank sollte, kopiere sie regelmäßig mit
+der API oben in deinen eigenen Speicher.
+</Aside>

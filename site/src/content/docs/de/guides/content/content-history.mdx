@@ -1,0 +1,92 @@
+---
+title: Inhaltsverlauf
+description: Die gespeicherten, veröffentlichten und zurückgezogenen Versionen eines Eintrags durchsehen und eine davon als aktuellen Entwurf wiederherstellen.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Verdin hält jedes Mal eine Version eines Eintrags fest, wenn er angelegt, gespeichert,
+veröffentlicht oder zurückgezogen wird oder sein Entwurf verworfen wird, aus jeder API. Diese
+Anleitung zeigt, wie du eine alte Version findest und wiederherstellst, wie viele Versionen
+aufbewahrt werden und die passende Admin-API.
+
+Der Inhaltsverlauf funktioniert wie der von Strapi, wo er eine kostenpflichtige Funktion ist.
+
+## Bevor du anfängst
+
+- **Einstellungen → Funktionen → Inhaltsverlauf** ist standardmäßig an. Solange es aus ist,
+  werden keine Versionen aufgezeichnet, und der Verlauf ist nicht verfügbar.
+- Den Verlauf eines Eintrags zu lesen braucht Lesezugriff auf den Eintrag; Wiederherstellen
+  braucht Schreibzugriff. Feldbeschränkungen gelten: Du siehst und stellst nur die Felder wieder
+  her, die deine Rolle lesen bzw. ändern darf. Siehe
+  [Berechtigungen](/de/reference/permissions/).
+
+## Eine Version wiederherstellen
+
+<Steps>
+
+1. Öffne den Eintrag und wähle **Verlauf**.
+2. Die Liste **Versionen** zeigt jede Version mit ihrem Ereignis (**Erstellt**,
+   **Gespeichert**, **Veröffentlicht**, **Veröffentlichung zurückgenommen**,
+   **Entwurf verworfen**), ihrem Datum und wer sie erzeugt hat. Änderungen über die Content-API
+   zeigen **API** als Autor.
+3. Wähle eine Version, um ihre Felder anzusehen.
+4. Wähle **Wiederherstellen** und bestätige.
+
+</Steps>
+
+Die Version ersetzt den aktuellen Entwurf; veröffentliche ihn danach, wenn du so weit bist. Bei
+Typen ohne Entwurf und Veröffentlichung aktualisiert das Wiederherstellen den Eintrag direkt.
+
+Was beim Wiederherstellen wegfällt:
+
+- Felder, die es im Schema nicht mehr gibt, werden aufgelistet und nicht wiederhergestellt.
+- Verweise auf gelöschte Einträge oder Dateien entfallen, und der Editor sagt dir, welche
+  Felder sie verloren haben.
+
+**Zurück zum Editor** kehrt zum Eintrag zurück, ohne etwas zu ändern.
+
+## Wie viele Versionen aufbewahrt werden
+
+Verdin behält die neuesten `[history].max_versions` Versionen jedes Eintrags und jeder Sprache
+(standardmäßig 50) und entfernt ältere, wenn neue hinzukommen:
+
+```toml title="verdin.toml"
+[history]
+max_versions = 100
+```
+
+Jede Sprache eines lokalisierten Eintrags hat ihren eigenen Verlauf. Wird ein Eintrag oder eine
+seiner Sprachen gelöscht, werden auch seine Versionen gelöscht. Siehe die
+[Konfigurationsreferenz](/de/reference/configuration/).
+
+<Aside type="note">
+Anders als Strapi, das den Verlauf eine bestimmte Zahl von Tagen aufbewahrt, behält Verdin eine
+bestimmte Zahl von Versionen pro Eintrag, egal wie alt sie sind.
+</Aside>
+
+## Admin-API
+
+Alle Routen liegen unter `/admin/api`.
+
+| Route | Berechtigung | Tut |
+| --- | --- | --- |
+| `GET /history/{uid}/{documentId}?locale=&page=&pageSize=` | den Eintrag lesen | Versionen, die neueste zuerst, ohne ihre Daten (20 pro Seite, höchstens 100). |
+| `GET /history/versions/{id}` | den Eintrag lesen | Eine Version mit ihren Daten. |
+| `POST /history/versions/{id}/restore` | den Eintrag ändern | Stellt die Version als aktuellen Entwurf wieder her. |
+
+Die Antwort auf die Wiederherstellung listet, was entfallen ist:
+
+```json
+{
+  "data": {
+    "documentId": "k3v9…",
+    "restored": 42,
+    "dropped": [{ "field": "tags", "count": 1 }]
+  }
+}
+```
+
+Solange die Funktion aus ist, antworten die Routen mit `404`.

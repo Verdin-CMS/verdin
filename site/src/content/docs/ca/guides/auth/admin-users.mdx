@@ -1,0 +1,172 @@
+---
+title: Usuaris administradors i rols
+description: Crea el primer administrador, convida'n d'altres, assigna'ls rols, restableix contrasenyes des del tauler o la CLI i gestiona les sessions.
+sidebar:
+  order: 1
+  label: Usuaris administradors
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Els administradors són les persones que inicien la sessió al tauler d'administració. Són
+diferents dels [usuaris finals](/ca/guides/auth/end-users/) dels teus llocs i aplicacions.
+Aquesta guia crea el primer administrador, convida els altres, els assigna rols i els ajuda a
+tornar a entrar quan es queden bloquejats.
+
+## Abans de començar
+
+- Verdin necessita `VERDIN_ADMIN_JWT_SECRET` i `VERDIN_TOKEN_PEPPER` a l'entorn. Genera'ls un
+  sol cop amb `verdin secrets`.
+- Gestionar administradors necessita **Gestiona els usuaris** (`users.manage`); gestionar rols
+  necessita **Gestiona els rols** (`roles.manage`). Consulta [Permisos](/ca/reference/permissions/).
+- Les invitacions i els restabliments de contrasenya s'envien per correu a través d'`[email]`.
+  Amb el proveïdor per defecte `log`, els correus, enllaços inclosos, s'escriuen al registre del
+  servidor.
+
+## Crea el primer administrador
+
+Obre el tauler d'administració (`http://localhost:1337/admin/` per defecte). Mentre no hi hagi
+cap administrador, et demana el primer, que es converteix en Super Admin. Les contrasenyes tenen
+de 8 a 128 caràcters.
+
+Sense navegador, fes servir la CLI o l'API:
+
+<Tabs>
+<TabItem label="CLI">
+
+```sh title="Terminal"
+verdin admin create --email you@example.com
+```
+
+La contrasenya surt de `VERDIN_ADMIN_PASSWORD` o es llegeix de l'entrada estàndard. L'ordre crea
+un Super Admin i funciona en qualsevol moment, no només per al primer.
+
+</TabItem>
+<TabItem label="API">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/register-first-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+```
+
+Aquesta ruta només funciona mentre no hi ha cap administrador.
+
+</TabItem>
+</Tabs>
+
+## Convida un administrador
+
+<Steps>
+
+1. Obre **Configuració → Usuaris** i selecciona **Afegeix un usuari**.
+2. Introdueix el correu electrònic i, opcionalment, el **Nom** i els **Cognoms**.
+3. Tria un o més **Rols**.
+4. Deixa **Estableix una contrasenya ara** desactivat per enviar una invitació, o activa-ho per
+   definir tu mateix la contrasenya.
+5. Selecciona **Convida** (o **Desa** amb una contrasenya).
+
+</Steps>
+
+El diàleg **Enllaç d’invitació** mostra l'enllaç i indica si s'ha enviat per correu. Comparteix-lo
+tu mateix quan no s'hagi enviat, cosa que sempre passa amb el proveïdor `log`. L'enllaç funciona
+un sol cop, durant 7 dies; l'administrador convidat l'obre, tria una contrasenya i inicia la
+sessió.
+
+Mentre l'administrador no hagi iniciat mai la sessió, **Enllaç d’invitació nou** a la seva fila
+substitueix l'enllaç antic. Un cop ha iniciat la sessió, recupera l'accés amb un restabliment de
+contrasenya.
+
+## Rols
+
+Verdin crea tres rols, com Strapi:
+
+| Rol | Pot |
+| --- | --- |
+| **Super Admin** | Tot. Els seus permisos no es poden canviar. |
+| **Editor** | Crear, editar, publicar i eliminar tot el contingut; gestionar la mediateca; executar desplegaments; gestionar SEO, redireccions, menús i formularis. |
+| **Author** | Crear contingut, i editar i eliminar les seves pròpies entrades i fitxers. No pot publicar. |
+
+Crea'n més a **Configuració → Rols** amb **Rol nou**. Per a cada rol, tria:
+
+- **Contingut**: per tipus de contingut (o **Tots els tipus de contingut**), el nivell de
+  **Llegeix**, **Crea**, **Actualitza**, **Suprimeix** i **Publica**: **Sense accés**,
+  **Pròpies** (només les entrades que ha creat l'administrador) o **Totes**. **Camps** limita una
+  acció a alguns camps, i **Idiomes** a alguns idiomes.
+- **Mediateca**: les accions sobre fitxers, per a **Tots els fitxers** o **Fitxers propis**.
+- **Configuració**: l'accés a les àrees d'administració, com ara **Gestiona els usuaris** o
+  **Consulta els registres d’auditoria**.
+- **Requereix autenticació de dos factors**: consulta
+  [Autenticació de dos factors](/ca/guides/auth/two-factor/).
+
+Un administrador amb diversos rols rep la unió dels seus permisos. La llista completa és a la
+[referència de permisos](/ca/reference/permissions/).
+
+Només un Super Admin pot assignar el rol Super Admin, o editar, eliminar o restablir un altre
+Super Admin.
+
+## Desactiva o elimina un administrador
+
+Edita l'administrador a **Configuració → Usuaris** i desactiva **Actiu**: els usuaris inactius no
+poden iniciar la sessió. **Suprimeix** elimina el compte definitivament; aleshores els seus
+comentaris es mostren com a escrits per un administrador eliminat.
+
+## Restableix una contrasenya
+
+- **L'administrador mateix la restableix:** **Has oblidat la contrasenya?** a la pàgina d'inici
+  de sessió envia per correu un enllaç que funciona durant una hora. Totes les sessions del
+  compte es tanquen quan canvia la contrasenya.
+- **Un altre administrador la defineix:** edita l'administrador a **Configuració → Usuaris** i
+  escriu una contrasenya nova. Deixa el camp buit per conservar l'actual.
+- **Des del servidor:** quan ningú no pot iniciar la sessió, executa
+
+  ```sh title="Terminal"
+  verdin admin reset-password --email you@example.com
+  ```
+
+  amb la contrasenya a `VERDIN_ADMIN_PASSWORD` o a l'entrada estàndard. Defineix la contrasenya,
+  desbloqueja el compte i en tanca les sessions. No elimina l'autenticació de dos factors: un
+  administrador que ha perdut el segon factor necessita que un altre administrador el
+  [restableixi](/ca/guides/auth/two-factor/).
+
+## Protecció de l'inici de sessió
+
+- Després de 5 contrasenyes incorrectes seguides, el compte es bloqueja durant 15 minuts.
+- Les peticions d'inici de sessió, registre i refresc estan limitades per IP del client amb
+  `[admin].auth_rate_limit` (20 per minut per defecte).
+- Una sessió d'administració és un token d'accés de 15 minuts renovat amb una galeta de refresc
+  que dura 30 dies. La galeta és `Secure` a `verdin start`; consulta `[admin].secure_cookies`.
+
+Cada administrador veu els dispositius amb la sessió iniciada a **Sessions** al seu **Perfil**, i
+pot fer **Tanca la sessió** en un o en tots els altres. Canviar la contrasenya tanca la sessió a
+tots els altres dispositius.
+
+## API d'administració
+
+Inicia la sessió per obtenir un token d'accés per a l'API d'administració:
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+# → { "data": { "user": {…}, "accessToken": "…", "accessTokenExpiresAt": "…" } }
+```
+
+| Ruta | Permís | Fa |
+| --- | --- | --- |
+| `GET /users`, `GET /users/{id}` | `users.manage` | Administradors amb els seus rols. |
+| `POST /users` | `users.manage` | `{ email, firstname?, lastname?, roles: [ids], isActive?, password? }`. Sense `password`, el `meta` de la resposta té `inviteUrl` i `emailed`. |
+| `PUT /users/{id}`, `DELETE /users/{id}` | `users.manage` | Canviar o eliminar un administrador. |
+| `POST /users/{id}/invite` | `users.manage` | Un enllaç d'invitació nou, per als administradors que no han iniciat mai la sessió. |
+| `GET /roles`, `POST /roles`, `PUT /roles/{id}`, `DELETE /roles/{id}` | `roles.manage` | Rols i els seus permisos. |
+| `POST /auth/forgot-password` | públic | `{ email }`. Sempre respon `204`. |
+| `GET /auth/sessions`, `DELETE /auth/sessions/{id}` | sessió iniciada | Les teves sessions. |
+
+Totes les rutes són sota `/admin/api`. Consulta l'[API d'administració](/ca/api/admin/).
+
+<Aside type="caution">
+Els secrets mai no van a `verdin.toml`. Mantén tots dos secrets estables entre reinicis i
+instàncies: `VERDIN_ADMIN_JWT_SECRET` signa els tokens d'accés, els JWT dels usuaris finals i els
+enllaços de previsualització, i `VERDIN_TOKEN_PEPPER` protegeix els tokens d'API i els segons
+factors (consulta [Tokens d'API](/ca/guides/auth/api-tokens/)).
+</Aside>

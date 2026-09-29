@@ -1,0 +1,126 @@
+---
+title: Importare ed esportare voci
+description: Esporta le voci di una lista in CSV o JSON, e crea o aggiorna voci da un file CSV o JSON, con una prova preliminare.
+sidebar:
+  order: 9
+  label: Import ed export
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+La lista admin di ogni tipo di contenuto esporta le sue voci in CSV o JSON, e le reimporta
+dallo stesso tipo di file: per correggere molte voci in un foglio di calcolo, caricare un
+catalogo prodotti, o copiare voci tra progetti. Questa guida copre entrambe le direzioni e il
+formato dei file.
+
+Serve per le voci di un tipo di contenuto alla volta. Per spostare un intero progetto, vedi
+[`verdin export` e `verdin import verdin`](/it/reference/cli/). Per arrivare da Strapi, vedi
+[Migrare da Strapi](/it/migrate/from-strapi/).
+
+## Prima di iniziare
+
+- Esportare richiede l'accesso in lettura al tipo di contenuto. Vengono esportati solo i
+  campi che il tuo ruolo può leggere.
+- Importare richiede l'accesso in creazione, in aggiornamento o entrambi: le righe che creano
+  voci richiedono la creazione, quelle che le aggiornano l'aggiornamento. Pubblicare le righe
+  importate richiede anche la pubblicazione. Vedi [Permessi](/it/reference/permissions/).
+
+## Esporta le voci
+
+<Steps>
+
+1. Apri la lista del tipo di contenuto e configurala come vuoi l'export: filtri, ricerca,
+   ordinamento, stato e lingua.
+2. Seleziona **Esporta**, poi **Esporta come CSV** o **Esporta come JSON**.
+
+</Steps>
+
+Il file contiene le voci mostrate dalla lista, con i suoi filtri, la ricerca e
+l'ordinamento, su tutte le pagine, fino a 50.000 voci. Ogni riga inizia con `documentId`,
+seguito dai campi.
+
+## Importa le voci
+
+<Steps>
+
+1. Apri la lista del tipo di contenuto e seleziona **Importa**.
+2. Scegli un **File**: un file `.csv` con una riga di intestazione, o un file `.json` che
+   contiene una lista di oggetti, fino a 1 MB.
+3. Sotto **Colonne**, scegli il campo in cui va ogni colonna. Le colonne con il nome di un
+   campo sono già abbinate. Scegli **Ignora** per escludere una colonna, e **ID documento
+   (aggiornamento)** per la colonna che indica le voci esistenti.
+4. Opzionalmente, attiva **Pubblica le voci importate**. Altrimenti vengono salvate come
+   bozze.
+5. Seleziona **Verifica**. Verdin controlla ogni riga, vincoli e riferimenti compresi, senza
+   scrivere nulla, e riporta le righe che creerebbe, aggiornerebbe o rifiuterebbe.
+6. Correggi il file se serve, poi seleziona **Importa**.
+
+</Steps>
+
+Come vengono scritte le righe:
+
+- Una riga con un `documentId` aggiorna quella voce; le altre creano nuove voci.
+- Le righe vengono scritte una per una. Una riga che fallisce viene segnalata con il suo
+  campo e il problema, e saltata; le altre vengono comunque scritte.
+- Il report elenca fino a 100 righe con errori, e le colonne che non corrispondono a nessun
+  campo.
+- Un import accetta al massimo 5.000 righe. Dividi i file più grandi.
+- Le voci vengono scritte nella lingua attuale della lista.
+
+<Aside type="caution">
+Un import passa le tue righe per la stessa validazione dell'editor, ma non si può annullare.
+Esegui prima **Verifica**, ed esporta la lista prima di un aggiornamento grande così da
+poterla ripristinare. Con la [cronologia dei contenuti](/it/guides/content/content-history/)
+attiva, ogni voce aggiornata conserva la sua versione precedente.
+</Aside>
+
+## Formato dei file
+
+I campi usano le stesse forme del formato di scrittura della content API:
+
+| Campo | Valore |
+| --- | --- |
+| Testo, numeri, booleani, date | Come nell'API (`true`/`false`, date ISO 8601). |
+| Relazioni | `documentId` delle voci collegate. |
+| Media | Id dei file della libreria media. |
+| Relazioni polimorfiche | `uid:documentId`, per esempio `api::article:k3v9…`. |
+| Componenti, zone dinamiche, blocks e JSON | JSON. |
+
+In CSV, le liste (più relazioni o file) sono unite con `|`.
+
+```csv title="articles.csv"
+documentId,title,slug,featured,tags
+,Hello world,hello-world,true,t1a2b3|t4c5d6
+k3v9x8…,Updated title,updated-title,false,
+```
+
+Le stesse righe in JSON:
+
+```json title="articles.json"
+[
+  { "title": "Hello world", "slug": "hello-world", "featured": true, "tags": ["t1a2b3", "t4c5d6"] },
+  { "documentId": "k3v9x8…", "title": "Updated title", "slug": "updated-title", "featured": false }
+]
+```
+
+L'export di una lista è sempre un file di import valido per lo stesso tipo di contenuto.
+
+## API admin
+
+- `GET /admin/api/content/{uid}/export?format=csv` (o `json`) accetta i parametri di query
+  della lista: `filters`, `_q`, `sort`, `status` e `locale`.
+- `POST /admin/api/content/{uid}/import?locale=` accetta il contenuto del file come stringa:
+
+```json
+{
+  "format": "csv",
+  "data": "title,slug\nHello world,hello-world\n",
+  "mapping": { "slug": "slug", "notes": null },
+  "dryRun": true,
+  "publish": false
+}
+```
+
+`mapping` associa una colonna a un campo; `null` salta la colonna, e le colonne non mappate
+mantengono il loro nome. Il corpo della richiesta è limitato da `[server].body_limit` (1 MB di
+default).

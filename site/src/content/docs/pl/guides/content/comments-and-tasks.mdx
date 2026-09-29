@@ -1,0 +1,104 @@
+---
+title: Komentarze i zadania
+description: Omawiaj wpisy w wątkach, komentuj pojedyncze pola, wspominaj innych administratorów i przypisuj zadania z terminami.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Administratorzy mogą omawiać wpis w wątkach komentarzy, komentować jedno pole, wspominać się
+nawzajem i przypisywać zadania z terminami, bez wychodzenia z edytora. Ten przewodnik opisuje
+jedno i drugie, kto co może zrobić i API administracyjne. Strapi nie ma odpowiednika.
+
+## Zanim zaczniesz
+
+- **Ustawienia → Funkcje → Komentarze i zadania** są domyślnie włączone.
+- Do czytania i pisania komentarzy oraz zadań wpisu wystarczy dostęp do odczytu jego typu
+  zawartości.
+- Wspomniani administratorzy i osoby przypisane do zadań dostają e-maile przez `[email]`.
+  Z domyślnym dostawcą `log` e-maile trafiają tylko do logu serwera. Zobacz
+  [dokumentację konfiguracji](/pl/reference/configuration/).
+
+## Skomentuj wpis
+
+<Steps>
+
+1. Otwórz wpis i wybierz **Komentarze**. Przycisk pokazuje liczbę otwartych wątków.
+2. Na karcie **Komentarze** pisz w polu **Nowy komentarz**. Wpisz `@`, aby wspomnieć
+   administratora.
+3. Wybierz **Komentuj** albo naciśnij Control lub Command i Enter.
+
+</Steps>
+
+Aby skomentować jedno pole, użyj przycisku komentarza obok pola (**Komentuj pole** i nazwa
+pola). Wątki pola są pokazywane pod **O polu** tego pola; **Pokaż wszystkie** ponownie
+wymienia wszystkie wątki.
+
+W wątku możesz:
+
+- **Odpowiedz** — odpowiedzieć.
+- **Rozwiąż** — zamknąć go po zakończeniu dyskusji, a później **Otwórz ponownie**.
+  Rozwiązane wątki trafiają do **Rozwiązanych wątków**. Wątek rozwiązuje tylko jego pierwszy
+  komentarz.
+- **Edytuj komentarz** — edytować własne komentarze.
+- **Usuń komentarz** lub **Usuń wątek** — usuwać własne komentarze. Super Admin może usunąć
+  każdy komentarz.
+
+W typach lokalizowanych komentarze są przechowywane per język i mieszczą do 10 000 znaków.
+
+## Wspomnij administratora
+
+Wspomniani administratorzy dostają e-mail z komentarzem i linkiem do wpisu, o ile mogą go
+czytać. Nigdy nie dostajesz e-maila za wspomnienie samego siebie.
+
+## Przypisz zadanie
+
+<Steps>
+
+1. Otwórz kartę **Zadania** w tym samym panelu i wybierz **Nowe zadanie**.
+2. Wpisz **Tytuł** i opcjonalnie **Opis**, **Osobę przypisaną** i **Termin wykonania**. Osoba
+   przypisana musi mieć możliwość odczytu wpisu.
+3. Wybierz **Utwórz zadanie**.
+
+</Steps>
+
+Osoba przypisana dostaje e-mail, chyba że przypisała zadanie sama sobie. Zadania po terminie
+są oznaczane jako zaległe. Oznacz zadanie jako wykonane w jego wierszu.
+
+Twórca i osoba przypisana mogą zmienić lub zakończyć zadanie. Usunąć je może tylko twórca.
+Super Admin może zrobić jedno i drugie z każdym zadaniem.
+
+Aby zobaczyć swoje otwarte zadania we wszystkich wpisach, dodaj widget **Moje zadania** do
+strony głównej: wybierz **Dostosuj**, a potem **Dodaj widget**.
+
+## Wspólna praca na żywo
+
+Gdy inny administrator doda, rozwiąże lub usunie komentarz albo zadanie we wpisie, który masz
+otwarty, panel wyświetla **Komentarze zostały zaktualizowane.** lub **Zadania zostały
+zaktualizowane.** i pokazuje zmianę.
+
+## API administracyjne
+
+Wszystkie trasy są pod `/admin/api`. `uid`, `documentId` i `locale` wskazują wpis.
+
+| Trasa | Działanie |
+| --- | --- |
+| `GET /comments?uid=&documentId=&locale=` | Wątki wpisu z odpowiedziami. |
+| `POST /comments` | `{ uid, documentId, locale?, field?, parentId?, body }`. `parentId` tworzy odpowiedź. |
+| `PUT /comments/{id}` | `{ body }`. Tylko własne komentarze. |
+| `DELETE /comments/{id}` | Własne komentarze albo dowolne jako Super Admin. |
+| `POST /comments/{id}/resolve`, `POST /comments/{id}/reopen` | Na pierwszym komentarzu wątku. |
+| `GET /tasks?uid=&documentId=&locale=` | Zadania wpisu. |
+| `GET /tasks?mine=true&status=open` | Twoje zadania we wpisach, które nadal możesz czytać. |
+| `POST /tasks` | `{ uid, documentId, locale?, title, description?, assigneeId?, dueDate? }`, z `dueDate` w formacie `YYYY-MM-DD`. |
+| `PUT /tasks/{id}` | Twórca lub osoba przypisana. Dowolne z `title`, `description`, `assigneeId`, `dueDate` (`null` je czyści) oraz `status` (`open` lub `done`). |
+| `DELETE /tasks/{id}` | Tylko twórca (lub Super Admin). |
+
+W treści komentarza wspomnienie zapisuje się jako `@[Name](user:12)`, gdzie `12` to
+identyfikator administratora.
+
+<Aside type="note">
+Gdy funkcja jest wyłączona, trasy odpowiadają `404`. Wyłączenie ukrywa komentarze i zadania;
+są zachowywane na wypadek ponownego włączenia.
+</Aside>

@@ -1,0 +1,165 @@
+---
+title: نظرة عامة على البنية
+description: كيف بُني Verdin، من مبادئ تصميمه إلى الـ crates التي يمر بها الطلب، للمساهمين الذين يريدون قراءة الشيفرة أو تغييرها.
+sidebar:
+  order: 1
+  label: نظرة عامة
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+هذا القسم للأشخاص الذين يعملون على Verdin نفسه. يشرح كيف يُجمَّع الخادم ولوحة الإدارة، ولماذا بُنيا بهذه الطريقة، ومن أين تبدأ قراءة الشيفرة. لاستخدام Verdin، ابدأ بـ[البدء السريع](/ar/start/quickstart/) بدلًا من ذلك.
+
+Verdin نظام إدارة محتوى headless مكتوب بلغة Rust يتبع Strapi v5: تنمذج المحتوى بصريًا أو في ملفات JSON، وتحصل على REST API وGraphQL API بالإضافة إلى لوحة إدارة. يُشحن كملف تنفيذي واحد يضم الخادم وCLI ولوحة الإدارة المبنية بـ Angular، ويعمل على PostgreSQL وMySQL وMariaDB وSQLite.
+
+## الأهداف
+
+- **ملف تنفيذي واحد.** يحتوي `verdin` على الخادم وCLI ولوحة الإدارة المضمَّنة. لا يحتاج الإنتاج إلى Node.js ولا إلى `node_modules`.
+- **بدء سريع، واستهلاك ذاكرة صغير.**
+- **أربع قواعد بيانات، ومجموعة اختبارات واحدة.** PostgreSQL وMySQL وMariaDB وSQLite كلها من الدرجة الأولى وتغطيها الاختبارات نفسها.
+- **المخطط كشيفرة.** أنواع المحتوى ملفات JSON تضعها تحت إدارة الإصدارات في git.
+- **REST API متوافق مع Strapi v5** حيثما كان ذلك معقولًا، فتنتقل الواجهات الأمامية الموجودة بتغييرات قليلة.
+- **كل شيء مجاني.** لا توجد نسخة للمؤسسات: SSO وسجلات التدقيق ومسارات المراجعة وحزم النشر وكل ميزة أخرى تُشحن للجميع.
+
+ما شُحن إصدارًا بعد إصدار، وما سيأتي لاحقًا، موجود في [خارطة الطريق](/ar/project/roadmap/).
+
+### ما ليس من الأهداف
+
+- تشغيل إضافات JavaScript الخاصة بـ Strapi. إضافات Verdin وحدات WebAssembly (راجع [الإضافات](/ar/extending/plugins/)).
+- قراءة قاعدة بيانات Strapi كما هي. ينتقل المحتوى عبر أداة استيراد (راجع [الترحيل من Strapi](/ar/migrate/from-strapi/)).
+- عرض الصفحات. Verdin نظام headless.
+
+## مبادئ التصميم
+
+1. **المخطط هو مصدر الحقيقة.** الجداول، والتحقق، وواجهات REST وGraphQL، ومستند OpenAPI، ونماذج الإدارة كلها مشتقة منه.
+2. **لا يأتي أي معرّف SQL من طلب أبدًا.** أسماء الجداول والأعمدة تأتي فقط من المخطط المتحقق منه، وكل قيمة معامل مربوط.
+3. **اللهجات من الدرجة الأولى.** لا "يعمل على PostgreSQL، وMySQL لاحقًا". تُختبر كل ميزة على المحركات الأربعة.
+4. **آمن افتراضيًا.** يبقى API المحتوى مغلقًا حتى تمنح الصلاحيات، ولا تُكشف حقول `private` أبدًا، وحدود عمق الاستعلام وحجمه مفعّلة دائمًا.
+5. **العمليات المُدمِّرة صريحة.** حذف عمود أو جدول يحتاج إلى موافقتك؛ ولا يحدث أبدًا كأثر جانبي.
+6. **لا حالة عامة.** تُمرَّر الخدمات عبر حالة `axum` والمُنشئات؛ ولا توجد كائنات مفردة (singletons).
+
+## الصورة الكاملة
+
+يدخل الطلب الملف التنفيذي عبر مجموعة صغيرة من الطبقات المشتركة، ويصل إلى أحد موجّهات الـ API، وينتهي في خدمة المستندات، التي تبني SQL للهجة المتصلة. يغذّي سجل المخطط، المحمَّل من `schema/*.json`، كل خطوة، ويُبقي محرك الترحيل قاعدة البيانات متوافقة معه.
+
+<Diagram
+  caption="طلب API المحتوى، والـ crates التي يمر بها"
+  code={`flowchart LR
+  Client["الواجهة الأمامية أو لوحة الإدارة"] --> Layers["الطبقات المشتركة<br/>عنوان IP للعميل، ومعرّف الطلب، وCORS، والحدود"]
+  Layers --> Routers["verdin-api / verdin-graphql<br/>REST، وAPI الإدارة، وGraphQL، وMCP"]
+  Routers --> Auth["verdin-auth<br/>الرموز، والأدوار، والصلاحيات"]
+  Routers --> Query["verdin-query<br/>من المعاملات إلى استعلام مُنمَّط"]
+  Query --> Docs["verdin-content<br/>خدمة المستندات"]
+  Docs --> Db["verdin-db<br/>المجمّع وFlavor"]
+  Db --> Engines[("PostgreSQL، MySQL،<br/>MariaDB، SQLite")]
+  Schema["verdin-schema<br/>schema/*.json"] --> Migrate["verdin-migrate<br/>الفرق، والخطة، والتطبيق"]
+  Migrate --> Db`}
+/>
+
+- **API المحتوى** تحت `[api].prefix` (افتراضيًا `/api`): مسارات REST لكل نوع محتوى، وعمليات الرفع، ومستند OpenAPI. راجع [REST API](/ar/api/rest/).
+- **API الإدارة** تحت `{admin.path}/api` (افتراضيًا `/admin/api`): كل ما تفعله لوحة الإدارة. راجع [API الإدارة](/ar/api/admin/).
+- **GraphQL** على `/graphql` و**MCP** على `/mcp`، عندما تكون تلك الميزات مفعّلة. تُترجم وسائط GraphQL إلى شجرة المعاملات نفسها التي يقرؤها محلل REST، فتتشارك الواجهتان عوامل التصفية والتقسيم إلى صفحات والتعبئة وقواعد الصلاحيات.
+- **لوحة الإدارة** تحت `[admin].path` (افتراضيًا `/admin`)، تُقدَّم من الملف التنفيذي أو من `[admin].assets_dir`. راجع [داخليات لوحة الإدارة](/ar/internals/admin-panel/).
+- **المسارات التشغيلية**: `/_health`، و`/_ready`، و`/_metrics` عند تفعيل المقاييس. راجع [المراقبة](/ar/deploy/monitoring/).
+
+تمر كل عملية كتابة عبر [خدمة المستندات](/ar/internals/document-service/)، أيًا كان الـ API الذي جاءت منه. تتحقق من البيانات، وتكتب الصفوف وجداول الربط في معاملة واحدة، ثم تخبر المستمعين (الـ webhooks، وفهرس البحث، والسجل، والوقت الفعلي، وسجل التدقيق) بما تغيّر.
+
+عندما تُفعَّل الميزات أو تُعطَّل، أو عندما يغيّر منشئ أنواع المحتوى المخطط في `verdin dev`، يُعاد بناء الموجّه بأكمله ويُستبدل في مكانه (`ArcSwap`)، دون إعادة تشغيل.
+
+## التقنيات المستخدمة
+
+### الخادم (Rust، إصدار 2024)
+
+| المجال | الخيار | السبب |
+|---|---|---|
+| بيئة التشغيل | `tokio` | بيئة التشغيل غير المتزامنة القياسية |
+| HTTP | `axum`، `tower`، `tower-http` | middleware لـ CORS، وحدود الجسم، والمهل، ومعرّفات الطلبات، والتتبع |
+| مشغّل SQL | `sqlx` (postgres، mysql، sqlite) | غير متزامن، ومجمّع اتصالات، وTLS؛ يتشارك MySQL وMariaDB مشغّلًا واحدًا؛ وSQLite مصرَّف داخله |
+| بناء SQL | منشئات Verdin الخاصة: DDL في `verdin-migrate`، وDML في `verdin-query` و`verdin-content` | الجداول يعرّفها المخطط، لذا يُبنى SQL وقت التشغيل. والتحكم الدقيق لكل لهجة مطلوب على أي حال (`jsonb`، `datetime(3)`، الترتيبات الثنائية، قيم NULL المُنمَّطة، الصيغ النصية في SQLite). لا ORM، ولا `sea-query` |
+| سلاسل الاستعلام | محلل خاص لصيغة الأقواس في `verdin-query` | `filters[title][$eq]=…` على طريقة Strapi، مع حدود للعمق والطول وعدد الأزواج |
+| JSON | `serde`، `serde_json` | — |
+| الأرقام العشرية | `rust_decimal` | بلا فقد للدقة داخل الخادم |
+| التواريخ | `time` | — |
+| معرّفات المستندات | `ulid` | قابلة للترتيب، 26 حرفًا، محمولة |
+| OpenAPI | مولّد خاص في `verdin-api` | مسار ومخطط واحد لكل نوع محتوى، مبني من السجل |
+| GraphQL | `async-graphql` (مخطط ديناميكي) | مبني من مخطط المحتوى |
+| المصادقة | `argon2` (argon2id)، وJWT بـ HS256 على `hmac` + `sha2` | بضعة أسطر من HS256 تتجنب جلب حزمة RSA |
+| التهيئة | `figment` (TOML + البيئة)، `dotenvy` | الطبقات والتجاوزات لكل بيئة |
+| CLI | `clap` | — |
+| السجلات | `tracing`، `tracing-subscriber` | مقروءة للبشر افتراضيًا، وJSON مع `[log].format = "json"` |
+| تحديد المعدل | محدِّد خاص بنافذة ثابتة في `verdin-api` | مسارات تسجيل الدخول وحدود اختيارية لـ API المحتوى |
+| الوسائط | `object_store`، `image`، `infer` | قرص محلي أو تخزين متوافق مع S3؛ والصيغ وكشف نوع MIME |
+| البحث | `tantivy` | فهرس نص كامل اختياري داخل الملف التنفيذي |
+| الإضافات | `extism` | إضافات WebAssembly |
+| البريد الإلكتروني | `lettre`، `reqwest` | SMTP وResend وPostmark |
+| تضمين لوحة الإدارة | `rust-embed` (الميزة `embed-admin`) | تُشحن لوحة الإدارة داخل الملف التنفيذي |
+| مراقبة المخطط | `notify` | إعادة التحميل في `verdin dev` |
+| الأخطاء | `thiserror` في المكتبات، و`anyhow` في الملف التنفيذي | — |
+| الاختبارات | `cargo test`، و`insta` (لقطات DDL) | راجع [الاختبار](/ar/internals/testing/) |
+
+### لوحة الإدارة (Angular)
+
+| المجال | الخيار |
+|---|---|
+| إطار العمل | Angular 22: مكوّنات مستقلة، ودون zone، وsignals، ومسارات تُحمَّل عند الحاجة |
+| واجهة المستخدم | spartan/ui (عناصر brain الأولية، ومكوّنات helm منسوخة إلى `src/app/shared/ui`) على Tailwind CSS v4 |
+| الأيقونات | `@ng-icons` مع Lucide |
+| الحالة | signals في خدمات قابلة للحقن (بلا مكتبة store) |
+| النماذج | Signal Forms (`@angular/forms/signals`) |
+| عميل الـ API | أنواع مكتوبة يدويًا (`core/types.ts`) وغلاف صغير فوق `HttpClient` (`core/api.ts`) |
+| الترجمات | Transloco مع ICU MessageFormat عبر FormatJS |
+| النص المنسّق | محرر Markdown مع معاينة (`marked`، `DOMPurify`)؛ وحقول `blocks` مع TipTap |
+| الاختبارات | Vitest عبر منشئ الاختبارات الوحدوية في Angular، وPlaywright من طرف إلى طرف |
+
+### التوثيق
+
+Astro مع Starlight، في `site/`. ينسخ `site/scripts/sync-docs.mjs` بعض ملفات Markdown من `docs/` (خارطة الطريق، ودليل الترجمة) و`CHANGELOG.md` إلى قسم **Project** وقت البناء.
+
+## تنظيم المستودع
+
+<FileTree>
+- Cargo.toml مساحة العمل (الإصدار، والـ edition، وملف الإصدار)
+- crates/
+  - verdin-schema/ نموذج المخطط، ومحلل JSON، والتحقق، وقواعد التسمية
+  - verdin-db/ مجمّعات الاتصالات، واكتشاف الـ flavor والإصدار، والقيم المُنمَّطة
+  - verdin-migrate/ النموذج الفيزيائي، واللقطة، والفرق، والخطة، والتطبيق مع السجل، وجداول المنصة
+  - verdin-query/ من معاملات الاستعلام إلى استعلام مُنمَّط، وSQL لعوامل التصفية والترتيب
+  - verdin-content/ خدمة المستندات: التحقق، والمسودة والنشر، والعلاقات، والمكوّنات، والكتل، والأحداث
+  - verdin-auth/ المستخدمون المسؤولون، والجلسات، والمصادقة الثنائية ومفاتيح المرور، ورموز API، وRBAC، والصلاحيات العامة
+  - verdin-upload/ مكتبة الوسائط: موفّرو التخزين، والبيانات الوصفية للملفات، وصيغ الصور
+  - verdin-email/ إرسال البريد: SMTP وResend وPostmark وموفّر log
+  - verdin-search/ فهرس النص الكامل Tantivy
+  - verdin-plugins/ إضافات WebAssembly ‏(Extism): خطافات المستندات، والمسارات، والمهام المجدولة
+  - verdin-graphql/ GraphQL API مولَّد من المخطط
+  - verdin-api/ موجّهات axum: API المحتوى، وAPI الإدارة، وOpenAPI، وMCP، والوقت الفعلي، والـ webhooks…
+  - verdin-testkit/ أدوات مساعدة للاختبار (قاعدة بيانات جديدة لكل اختبار)؛ غير منشور
+  - verdin/ الملف التنفيذي: التهيئة، والإقلاع، وCLI، والمقاييس، ولوحة الإدارة المضمَّنة
+- admin/ لوحة الإدارة بـ Angular
+- packages/
+  - client/ `@verdin/client`، عميل TypeScript المُنمَّط
+- examples/
+  - blog/ مشروع مثالي
+- docker/ `compose.dev.yml` (قواعد البيانات، وRustFS، وMailpit) وصورة الإصدار
+- site/ موقع التوثيق هذا
+- docs/ خارطة الطريق، ودليل الترجمة، وملاحظات التصميم
+</FileTree>
+
+**قاعدة التبعيات.** `verdin-schema` و`verdin-db` هما الأساس. يبني `verdin-migrate` و`verdin-query` عليهما، و`verdin-content` على هذين، و`verdin-auth` و`verdin-upload` و`verdin-search` و`verdin-plugins` على الطبقات التي تحتها. يقع `verdin-api` و`verdin-graphql` قرب القمة، ويعتمد الملف التنفيذي `verdin` على كل شيء. يمنع Cargo الحلقات، والشيفرة `unsafe` ممنوعة في مساحة العمل كلها.
+
+## من أين تبدأ القراءة
+
+| لفهم | اقرأ |
+|---|---|
+| كيف يُقلع الملف التنفيذي ويجمّع موجّهاته | `crates/verdin/src/cli.rs` (`start`)، ثم `crates/verdin/src/app.rs` |
+| صيغة المخطط وقواعد التحقق منه | `crates/verdin-schema/src/raw.rs`، `validate.rs`، `naming.rs` |
+| كيف يصبح المخطط جداول | `crates/verdin-migrate/src/derive.rs`، ثم [التخزين](/ar/internals/storage/) |
+| الترحيلات | `crates/verdin-migrate/src/diff.rs`، `plan.rs`، `apply.rs`، و[محرك الترحيل](/ar/internals/migrations/) |
+| معالجات API المحتوى | `crates/verdin-api/src/handlers.rs` و`lib.rs` |
+| معاملات الاستعلام | `crates/verdin-query/src/params.rs` (المحلل)، `parse.rs` (التحقق)، `sql.rs` (SQL) |
+| القراءة والكتابة | `crates/verdin-content/src/service.rs` و`input.rs`، و[خدمة المستندات](/ar/internals/document-service/) |
+| لوحة الإدارة | `admin/src/app/app.routes.ts`، ثم `features/content/` و[داخليات لوحة الإدارة](/ar/internals/admin-panel/) |
+
+تصفّح الشيفرة على [GitHub](https://github.com/Verdin-CMS/verdin). يغطي باقي هذا القسم [التخزين](/ar/internals/storage/)، و[طبقة قاعدة البيانات](/ar/internals/database/)، و[الترحيلات](/ar/internals/migrations/)، و[خدمة المستندات](/ar/internals/document-service/)، و[لوحة الإدارة](/ar/internals/admin-panel/)، و[الاختبار](/ar/internals/testing/) و[سجل القرارات](/ar/internals/decisions/).
+
+السلوك الموجّه للمستخدم موثّق في مكان آخر: معاملات الاستعلام في [REST API](/ar/api/rest/)، والإعدادات في [مرجع التهيئة](/ar/reference/configuration/)، والأوامر في [مرجع CLI](/ar/reference/cli/)، والتقوية في [الأمان](/ar/deploy/security/).

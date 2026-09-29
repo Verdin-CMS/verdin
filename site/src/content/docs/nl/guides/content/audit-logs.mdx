@@ -1,0 +1,111 @@
+---
+title: Auditlogs
+description: Zie wie wat wanneer heeft gewijzigd, filter de auditlogs in het beheerpaneel of via de API, en stel in hoe lang regels worden bewaard.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+De auditlogs leggen vast wie wat heeft gewijzigd, en wanneer: content, media, logins en elke
+wijziging in het beheerpaneel. Deze gids laat zien wat wordt vastgelegd, hoe je de logs filtert,
+en hoe lang ze worden bewaard.
+
+Auditlogs zijn in Strapi een Enterprise-functie. In Verdin horen ze bij de open-source kern.
+
+## Voordat je begint
+
+- **Instellingen → Functies → Auditlogs** staat standaard aan. Als je het uitzet, worden geen
+  nieuwe acties meer vastgelegd; de bestaande regels blijven leesbaar.
+- De logs lezen vereist **Auditlogs lezen** (`audit.read`). Zie
+  [Rechten](/nl/reference/permissions/).
+
+## Wat wordt vastgelegd
+
+| Gebied | Acties | Opmerkingen |
+| --- | --- | --- |
+| Content | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | Vanuit elke API: het beheerpaneel, REST, GraphQL en plugins. De locale staat in de details. |
+| Reviewworkflows | `entry.stage`, `entry.assign` | Fasewijzigingen en toewijzingen. |
+| Media | `media.create`, `media.update`, `media.delete` | Uploads, wijzigingen en verwijderingen van bestanden. De bestandsnaam staat in de details. |
+| Logins | `admin.login` | Logins met wachtwoord en van de eerste beheerder (vastgelegd na de tweede factor als het account er een heeft), en SSO-logins met de provider. |
+| Wijzigingen in het beheer | `{METHOD} {route}`, bijvoorbeeld `PUT /roles/{id}` | Elke geslaagde schrijfactie op de admin-API: gebruikers, rollen, API-tokens, instellingen, functies, webhooks, locales, plugins, releases… De parameters van de route staan in de details. |
+
+Elke regel heeft een tijdstip, een uitvoerder, een actie, een onderwerp (een uid van een
+contenttype, `plugin::upload.file`, of de beheerresource zoals `roles`), het id van het onderwerp,
+details en, bij requests, het IP-adres van de client.
+
+De uitvoerder is een van:
+
+- **Beheerder**: een ingelogde beheerder, bij naam genoemd in het log.
+- **API**: een wijziging via de content-API of GraphQL, met een API-token, het token van een
+  eindgebruiker of openbare toegang.
+- **Systeem**: een schrijfactie op de admin-API zonder ingelogde beheerder.
+
+Stel achter een reverse proxy `[server].trusted_proxies` in, zodat de logs het adres van de client
+tonen in plaats van dat van de proxy. Zie de [configuratiereferentie](/nl/reference/configuration/).
+
+## De logs filteren
+
+<Steps>
+
+1. Open **Instellingen → Auditlogs**.
+2. Gebruik een voorinstelling uit **Snelle filters** (**Content**, **Media**, **Aanmeldingen**), of
+   vul de filters in:
+   - **Actie**: een exacte actie zoals `entry.publish`, of een prefix dat eindigt op `*`, zoals
+     `entry.*`.
+   - **Uitvoerder**: één beheerder, of **Iedereen**.
+   - **Onderwerp**: een uid van een contenttype, zoals `api::article`.
+   - **Van** en **Tot**: een datumbereik. Een datum zonder tijd omvat die hele dag.
+3. Kies **Toepassen**. Open **Details** op een rij om alles te zien wat ervoor is vastgelegd.
+
+</Steps>
+
+## De API bevragen
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+Regels komen nieuwste eerst, standaard 50 per pagina en hoogstens 200:
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` en `to` nemen ISO 8601-datums of -datetimes; al het andere is een fout `400`.
+
+## Instellen hoe lang regels worden bewaard
+
+Regels ouder dan `[audit].retention_days` worden één keer per dag verwijderd. De standaard is
+90 dagen.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+Om auditregels langer te bewaren dan je database zou moeten, kopieer je ze regelmatig naar je eigen
+opslag met de API hierboven.
+</Aside>

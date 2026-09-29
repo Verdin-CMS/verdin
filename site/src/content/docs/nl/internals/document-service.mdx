@@ -1,0 +1,92 @@
+---
+title: Document Service
+description: De ene interne API die content leest en schrijft in Verdin, wat die bij elke schrijfactie garandeert, en het pad dat een request aan de content-API aflegt om er te komen.
+sidebar:
+  order: 5
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+De Document Service (`DocumentService` in `crates/verdin-content/src/service.rs`) is de enige code die contentrijen leest en schrijft. De content-API, de admin-API, GraphQL, MCP, plugins, imports en de sitemap gaan er allemaal doorheen, dus validatie, concept en publicatie, relatieregels en events gedragen zich hetzelfde, welke API de aanroep ook deed. Net als de Document Service van Strapi v5 werkt hij op documenten (geïdentificeerd door `documentId`), niet op rijen.
+
+## API
+
+De belangrijkste methoden (vereenvoudigd; zie de broncode voor de exacte types):
+
+| Methode | Doet |
+|---|---|
+| `find_many(uid, &Query) -> Page` | Een pagina documenten, met `meta` in pagina- of offsetvorm |
+| `find_one(uid, document_id, &Query) -> Option<Json>` | Eén document in de status en locale van de query |
+| `single_document_id(uid)` | Het document van een enkel type, als het bestaat |
+| `create(uid, &data, WriteOptions) -> String` | Maakt een document aan en geeft zijn `documentId` terug |
+| `update(uid, document_id, &data, WriteOptions)` | Gedeeltelijke update van het concept (of de enige versie); maakt zo nodig een nieuwe localeversie aan |
+| `delete(uid, document_id)` | Verwijdert elke versie van het document in de huidige locale |
+| `publish(uid, document_id, actor)` | Kopieert het concept naar de gepubliceerde versie |
+| `unpublish(uid, document_id)` | Verwijdert de gepubliceerde versie |
+| `discard_draft(uid, document_id)` | Vervangt het concept door de gepubliceerde versie |
+| `uid_availability(…)` | Of een `uid`-waarde vrij is, met een vrije suggestie |
+| `document_locales`, `timeline`, `usage`… | Hulpmiddelen voor het beheerpaneel |
+
+`WriteOptions` heeft twee velden: `publish` (na het schrijven publiceren, bij types met concept en publicatie) en `actor` (de beheerder die in `created_by_id` / `updated_by_id` wordt vastgelegd).
+
+De service is een waarde die goedkoop te klonen is en met builder-methoden wordt geconfigureerd: `in_locale(locale)` voor gelokaliseerde types, `with_listener`, `with_hook`, `dry_run()` (een schrijfactie volledig valideren en terugdraaien, gebruikt door proefruns van imports) en `without_plugin_hooks()` (voor schrijfacties die plugins zelf doen).
+
+Hij weet niet wie aanroept. Rechten worden vóór de aanroep door de API-laag toegepast: die weigert acties die de aanroeper niet heeft, beperkt via welke types een query mag populeren of filteren, en voegt voorwaardefilters aan de query toe (de voorwaarde "eigen items" van de beheerdersrol **Author** wordt bijvoorbeeld `created_by_id = <admin id>`). Filters zijn onderdeel van de SQL, dus paginering en tellingen blijven exact.
+
+## Wat elke schrijfactie doet
+
+1. **Hooks.** `DocumentHook`s draaien eerst, op volgorde: fasen van reviewworkflows, dan plugins. Een hook kan de gegevens vervangen of de schrijfactie weigeren, wat een `400` wordt. Ze gebruiken de lifecyclenamen van Strapi (`beforeCreate`, `beforeUpdate`, `beforeDelete`, `beforePublish`, `beforeUnpublish`, `beforeDiscardDraft`).
+2. **Validatie van de input** (`input.rs`): onbekende sleutels, systeemvelden (`id`, `documentId`, tijdstempels) en inverse relatiekanten (`mappedBy`) zijn fouten; elke waarde wordt gecontroleerd tegen het type en de beperkingen van het attribuut (`min`, `max`, `minLength`, `maxLength`, `regex`, enumeratiewaarden, cardinaliteit van relaties, `allowedTypes` van media); componenten en dynamische zones worden recursief gevalideerd; `password`-waarden worden gehasht met argon2.
+3. **Verwijzingen.** Gerelateerde documenten en mediabestanden moeten bestaan, gecontroleerd binnen de transactie.
+4. **Rijen en koppelingen**, in één transactie: de rij wordt ingevoegd of bijgewerkt, daarna worden de koppeltabellen voor relaties, polymorfe relaties en media herschreven (posities opnieuw genummerd 1..n). Een doel van `oneToOne` of `oneToMany` koppelen, verplaatst het weg van andere documenten in dezelfde status.
+5. **Verplichte velden en regels.** Wanneer een versie gepubliceerd wordt, of bij elke schrijfactie naar types zonder concept en publicatie, worden `required`-attributen (inclusief die in componenten en dynamische zones) en validatieregels over meerdere velden gecontroleerd. Een mislukking draait de hele schrijfactie terug.
+6. **Uniciteit** wordt afgedwongen door de afgebakende unieke indexen. Een schending wordt teruggekoppeld aan het attribuut en gemeld als `ValidationError`, vrij van race conditions.
+7. **Commit, dan events.** Nadat de transactie is vastgelegd, roept de service elke `DocumentListener` aan met een `DocumentEvent` (`entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete`), met de uid, `documentId`, locale en uitvoerder.
+
+Validatiefouten gebruiken het formaat van Strapi: een lijst van `{ path, message, name: "ValidationError" }`, waarbij `path` naar een plek in de gegevens wijst (`["seo", "metaTitle"]`, `["blocks", 2, "text"]`). Het beheerpaneel koppelt ze terug aan zijn velden.
+
+Listeners houden afgeleide state in de pas met content zonder code per handler: webhooks, contentgeschiedenis, de responsecache, de after-write-hooks van plugins, de auditlog, realtime-events, opmerkingen en taken, gezien-markeringen, CDN-purges en de zoekindex. Een listener die faalt, logt zijn eigen fout; de schrijfactie is dan al geslaagd. Omdat listeners na de commit draaien, bereikt een proefrun ze nooit.
+
+## Leesacties
+
+Een leesactie selecteert de rijen van de gevraagde status en locale, past filters en sortering in SQL toe, en populeert daarna waar om is gevraagd:
+
+- **Relaties** worden geladen met gebundelde queries, één per relatie en niveau (`WHERE … IN (…)`, in blokken van 500 id's), nooit met trapsgewijze joins. Dat voorkomt zowel cartesische explosies als N+1-queries. Er worden hoogstens 1.000 gerelateerde items per item en relatie gepopuleerd; tellingen blijven exact.
+- Doelen worden in dezelfde versie gelezen als de bron: gepubliceerde documenten zien gepubliceerde doelen, concepten zien concepten.
+- **Componenten en dynamische zones** komen uit hun JSON-kolom; relaties en media daarin worden opgelost met dezelfde gebundelde queries.
+- **Zoeken met `_q`** gebruikt de Tantivy-index als `[search]` aan staat, en anders een hoofdletterongevoelige `$containsi` over de tekstvelden.
+
+Hoe de uitvoer eruitziet (platte documenten, waardeformaten, `populate`-syntaxis, limieten), staat in de [REST-API](/nl/api/rest/).
+
+## Levenscyclus van een request aan de content-API
+
+<Diagram
+  caption="Een request GET /api/articles, van de socket tot de database"
+  code={`sequenceDiagram
+  participant C as Client
+  participant L as Gedeelde lagen
+  participant H as handlers.rs
+  participant Q as verdin-query
+  participant D as Document Service
+  participant DB as Database
+  C->>L: GET /api/articles?filters…
+  L->>H: client-IP, request-id, CORS, limieten, cache
+  H->>H: routeren op pluralName, token of openbare rol autoriseren
+  H->>Q: parsen en valideren tegen het schema
+  Q-->>H: getypeerde Query
+  H->>D: find_many(uid, query)
+  D->>DB: SELECT … WHERE … ORDER BY … LIMIT
+  D->>DB: één gebundelde query per gepopuleerde relatie
+  D-->>H: documenten en paginameta
+  H-->>C: { data, meta }`}
+/>
+
+1. **Gedeelde lagen** (buitenste eerst): het clientadres wordt bepaald (met `X-Forwarded-For` alleen vanaf `[server].trusted_proxies`), metrics tellen het request als ze aan staan, er wordt een request-id ingesteld en doorgegeven als `x-request-id`, tracing opent een span, en CORS geldt voor de content-API en GraphQL als `[api].cors_origins` is ingesteld.
+2. **Lagen van de content-API**: rate limits per client, `ETag`s en de optionele cache voor anonieme leesacties, de limiet op de bodygrootte (`[server].body_limit`) en de request-time-out, CDN-cachetags op responses.
+3. **Routering.** Het padsegment wordt opgezocht tussen de `pluralName`s (collectietypes) en `singularName`s (enkele types) van de contenttypes. Onbekende namen geven `404`.
+4. **Autorisatie** (`verdin-auth`). Geen header `Authorization` betekent de openbare rol; `Bearer vd_…` is een API-token. Een ongeldig of verlopen token geeft `401`, nooit de openbare rol. De actie van de route (`find`, `findOne`, `create`, `update`, `delete`, `publish`) moet voor het type zijn verleend, anders is het antwoord `403`.
+5. **Query parsen** (`verdin-query`). De ruwe querystring wordt geparsed tot een haakjesboom (hoogstens 16 KB, 12 niveaus, 1.000 paren), en daarna tot een getypeerde `Query` die tegen de velden van het type wordt gevalideerd: onbekende en `private` velden geven `400`, en populate, relatiefilters en sorteringen op relaties zijn beperkt tot types die de aanroeper mag lezen. `?status=draft` lezen vereist ook `readDrafts`.
+6. **Document Service.** De handler roept `find_many`, `find_one`, `create`, `update`, `delete` of een actie aan. Schrijfacties zonder `?status=draft` publiceren op types met concept en publicatie (gedrag van Strapi v5), en lezen de geschreven versie terug voor de response.
+7. **Response.** `{ "data": …, "meta": … }`. Fouten gebruiken dezelfde envelop met `data: null` en een object `error`.
+
+Routes van de admin-API volgen hetzelfde pad met een beheerderssessie in plaats van een API-token, RBAC voor beheerders in plaats van grants van de content-API, en standaardwaarden waarin concepten voorop staan: ze lezen concepten en schrijven alleen concepten, en publiceren is een expliciete actie. GraphQL vertaalt zijn argumenten vóór stap 5 naar dezelfde parameterboom, dus het deelt de parser, de limieten en de rechtenregels.

@@ -1,0 +1,136 @@
+---
+title: "Bozza e pubblicazione"
+description: "I documenti, le loro versioni bozza e pubblicata, gli stati che attraversa una voce, e come ogni API li legge e li scrive."
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Bozza e pubblicazione permette ai redattori di lavorare su un documento senza cambiare ciò
+che mostra il tuo sito, e poi pubblicarlo quando è pronto. Questa pagina spiega il modello:
+documenti, versioni, le azioni che spostano i contenuti tra di esse, e come le tratta ogni
+API. Funziona come in Strapi v5.
+
+Attivalo per tipo di contenuto nel suo schema:
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+È disattivato quando manca `options.draftAndPublish`.
+
+## Documenti e versioni
+
+Un **documento** è una voce, identificata dal suo `documentId`. Con bozza e pubblicazione,
+un documento ha fino a due **versioni**:
+
+- una **bozza**, che ogni modifica cambia, e
+- una versione **pubblicata**, che la content API serve di default.
+
+Su un tipo [localizzato](/it/concepts/internationalization/), ogni lingua ha la propria bozza
+e la propria versione pubblicata, tutte con lo stesso `documentId`.
+
+I tipi senza bozza e pubblicazione hanno una sola versione per lingua, sempre pubblicata:
+ogni scrittura cambia ciò che vedono i lettori.
+
+## Stati
+
+Il pannello di amministrazione mostra lo stato di ogni voce nella lista e nell'editor:
+
+| Stato | Bozza | Versione pubblicata | Cosa vede chi legge i contenuti pubblicati |
+| --- | --- | --- | --- |
+| **Bozza** | sì | nessuna | Niente: il documento non è visibile. |
+| **Pubblicato** | uguale alla pubblicata | sì | La versione pubblicata. |
+| **Modificato** | cambiata dall'ultima pubblicazione | sì | La versione pubblicata, senza le nuove modifiche. |
+
+<Diagram
+  caption="Stati di un documento con bozza e pubblicazione, e le azioni tra di essi"
+  code={`stateDiagram-v2
+    [*] --> Draft: crea
+    Draft --> Published: pubblica
+    Published --> Modified: salva
+    Modified --> Published: pubblica o scarta modifiche
+    Published --> Draft: annulla pubblicazione
+    Modified --> Draft: annulla pubblicazione`}
+/>
+
+Le azioni spostano un documento tra questi stati:
+
+| Azione | Effetto | Da → a |
+| --- | --- | --- |
+| Salva | Scrive la bozza. | Bozza → Bozza, Pubblicato → Modificato |
+| **Pubblica** | Copia la bozza sulla versione pubblicata, creandola se serve. | Bozza o Modificato → Pubblicato |
+| **Annulla pubblicazione** | Elimina la versione pubblicata; la bozza resta. | Pubblicato o Modificato → Bozza |
+| **Scarta modifiche** | Sostituisce la bozza con una copia della versione pubblicata. | Modificato → Pubblicato |
+| Elimina | Rimuove tutte le versioni (della lingua richiesta, sui tipi localizzati). | qualsiasi → eliminato |
+
+La pubblicazione avviene in una sola transazione. Verifica sulla bozza i campi `required` e
+le [regole tra campi](/it/concepts/content-model/#validazioni-tra-campi) del tipo; una
+verifica fallita non pubblica nulla. Fino ad allora le bozze possono essere incomplete e
+violare quelle regole.
+
+`publishedAt` è `null` sulle bozze. La versione pubblicata riporta l'ora dell'ultima
+pubblicazione.
+
+## Relazioni e media seguono la versione
+
+Ogni versione ha i propri collegamenti a relazioni e media, e la pubblicazione copia i
+collegamenti della bozza sulla versione pubblicata. I collegamenti puntano a documenti, e
+vengono risolti nella versione letta: un articolo pubblicato mostra la versione pubblicata
+della sua categoria, e una bozza mostra la bozza della categoria. Se la pubblicazione della
+categoria viene annullata, questa scompare dall'articolo pubblicato finché non viene
+pubblicata di nuovo, senza che nessun collegamento venga riscritto. Vedi
+[Relazioni](/it/concepts/relations/#collegate-per-documento-non-per-riga).
+
+Componenti e zone dinamiche fanno parte della riga, quindi la pubblicazione li copia così
+come sono.
+
+## Leggere bozze e contenuti pubblicati
+
+| API | Legge di default | Per leggere le bozze |
+| --- | --- | --- |
+| [REST](/it/api/rest/#stato) | Versioni pubblicate | `?status=draft`, che richiede il permesso **Leggi bozze** |
+| [GraphQL](/it/api/graphql/) | Versioni pubblicate | `status: DRAFT`, con lo stesso permesso |
+| [API admin](/it/api/admin/) | Bozze | `?status=published` |
+
+Leggere le bozze è un permesso a sé (`readDrafts`), così un token che legge i contenuti del
+tuo sito non può leggere il lavoro non pubblicato. I token API in sola lettura non leggono
+mai le bozze.
+
+Per distinguere i documenti in base al fatto che siano mai stati pubblicati, filtra con
+`hasPublishedVersion`: `?status=draft&hasPublishedVersion=false` elenca i documenti mai
+pubblicati.
+
+## Scrivere tramite le API
+
+In scrittura le API seguono Strapi v5:
+
+- **REST e GraphQL**: `create` e `update` scrivono la bozza **e la pubblicano**, a meno che
+  la richiesta non chieda `status=draft` (`status: DRAFT` in GraphQL). Una pubblicazione
+  fallita annulla l'intera richiesta.
+- **Il pannello di amministrazione e l'API admin** salvano solo bozze. La pubblicazione è
+  sempre un'azione esplicita.
+
+L'API REST ha anche azioni esplicite, che Strapi non offre via REST:
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+Richiedono il permesso **Pubblica** sul tipo. Vedi [API REST](/it/api/rest/#azioni).
+
+## Altre funzionalità che pubblicano
+
+- I [rilasci](/it/guides/content/releases/) raggruppano documenti e li pubblicano o ne
+  annullano la pubblicazione insieme, subito o a una data.
+- I [flussi di revisione](/it/guides/content/review-workflows/) possono richiedere una fase
+  prima che un documento possa essere pubblicato.
+- Pubblicare e annullare la pubblicazione inviano gli
+  [eventi webhook](/it/api/webhooks/) e gli [eventi realtime](/it/api/realtime/)
+  `entry.publish` ed `entry.unpublish`. I salvataggi di una bozza inviano `entry.update`,
+  che via realtime ricevono solo i chiamanti autorizzati a leggere le bozze.

@@ -1,0 +1,150 @@
+---
+title: المعاينة
+description: افتح المسودات على موقعك من محرر الإدخال برمز معاينة قصير الأمد، واجعل موقعك يقرأ المسودة به.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+تفتح المعاينة مسودة إدخال على موقعك أنت، قبل نشرها. يبني المحرر
+رابطًا من قالب عنوان URL لكل نوع محتوى ويضيف رمزًا قصير الأمد يتيح
+لموقعك قراءة تلك المسودة وحدها. يعدّ هذا الدليل القوالب وجانب الموقع.
+
+للنقر على نص في المعاينة والانتقال إلى حقله، أضف
+[التحرير المرئي](/ar/guides/frontend/visual-editing/) فوق ذلك.
+
+## قبل أن تبدأ
+
+- فعّل **الإعدادات ← الميزات ← المعاينة**. وهي معطّلة افتراضيًا.
+- يتطلب تغيير إعدادات الميزة **إدارة الميزات** (`features.manage`).
+- يتطلب فتح المعاينة صلاحية القراءة على الإدخال. راجع
+  [الصلاحيات](/ar/reference/permissions/).
+
+## أعِدّ عناوين URL للمعاينة
+
+<Steps>
+
+1. في بطاقة **المعاينة** ضمن **الإعدادات ← الميزات**، اختر **إعداد عناوين URL للمعاينة**.
+2. تحت **قوالب عناوين URL**، أدخل صفحة موقعك التي تعرض مسودة كل نوع محتوى.
+   اترك نوعًا فارغًا لعدم منحه معاينة.
+3. اختياريًا، غيّر **مدة صلاحية الرابط (بالدقائق)**: 60 افتراضيًا، و10080 على الأكثر (7 أيام).
+4. احفظ.
+
+</Steps>
+
+القالب عنوان URL من نوع `http` أو `https` مع عناصر نائبة بين أقواس معقوفة:
+
+| العنصر النائب | يُملأ بـ |
+| --- | --- |
+| `{slug}`، `{title}`، `{locale}`… | أي حقل من المستوى الأعلى في المسودة. العناصر النائبة غير المعروفة تصبح فارغة. |
+| `{documentId}`، `{uid}` | معرّف المستند وuid نوع المحتوى. |
+| `{token}` | رمز المعاينة. بدون هذا العنصر النائب، يُضاف الرمز كمعامل الاستعلام `preview`. |
+
+لمقالات المشروع المثالي:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+يعطي `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+الإعدادات نفسها بصيغة JSON، كما تخزّنها الميزة (`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## افتح معاينة
+
+في محرر الإدخال، اختر **فتح المعاينة** لفتح المسودة على موقعك في تبويب جديد، أو
+**جنبًا إلى جنب** لعرضها في لوحة بجوار النموذج، بعروض **سطح المكتب** و**اللوحي** و
+**الجوال**. تُعاد تحميل اللوحة الجانبية بعد كل حفظ. إذا بقيت فارغة، فالأرجح أن موقعك
+يرفض أن يُضمَّن في إطار: استخدم **فتح في علامة تبويب جديدة**.
+
+## اقرأ المسودة على موقعك
+
+تأخذ صفحة المعاينة الرمز من عنوان URL وتعيده إلى API المحتوى في
+الترويسة `x-verdin-preview`، طالبةً المسودة:
+
+<Diagram
+  caption="طلب معاينة"
+  code={`sequenceDiagram
+  participant E as المحرر
+  participant V as Verdin
+  participant S as موقعك
+  E->>V: فتح المعاينة
+  V-->>E: عنوان URL مع رمز المعاينة
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: المسودة`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+يقرأ REST content API رمز المعاينة. اجلب المسودة عبر REST في صفحة
+المعاينة.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+تعمل الترويسة نفسها على الأنواع المفردة (`GET /api/<singularName>?status=draft`).
+
+ما يمنحه الرمز:
+
+- يتيح لحامله قراءة ذلك المستند وحده، بما في ذلك المسودات، حتى تنتهي صلاحيته.
+- لا يستطيع قراءة مستندات أخرى، أو سرد الإدخالات، أو كتابة أي شيء.
+- لا تُخزَّن استجابات طلبات المعاينة مؤقتًا أبدًا.
+
+<Aside type="caution">
+يستطيع أي شخص يملك الرابط قراءة المسودة حتى تنتهي صلاحية الرمز. أبقِ المدة قصيرة،
+ولا تشارك روابط المعاينة في أماكن عامة.
+</Aside>
+
+عادةً ما تبحث صفحة المعاينة عن الإدخال بحقل مثل `slug`. وبما أن الرمز
+يقرأ حسب `documentId`، ضع `{documentId}` في القالب أيضًا، أو احتفظ بعملية البحث من slug إلى المعرّف
+في جانبك.
+
+## API الإدارة
+
+يعيد `GET /admin/api/content/{uid}/{documentId}/preview?locale=` الرابط الخاص بزر
+المحرر:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+يحتاج إلى صلاحية القراءة على الإدخال، ويجيب بـ `404` عندما تكون الميزة معطّلة أو لا يملك النوع
+قالبًا.

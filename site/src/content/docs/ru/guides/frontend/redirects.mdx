@@ -1,0 +1,118 @@
+---
+title: Редиректы
+description: Ведите список редиректов в админ-панели и применяйте их в middleware своего сайта.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Функция **Редиректы** позволяет редакторам перенаправлять старые пути на новые без деплоя:
+они ведут список в админ-панели, а ваш сайт запрашивает его и отвечает редиректом. Verdin сам
+посетителей не перенаправляет, поскольку они приходят на ваш сайт, а не в CMS.
+
+## Включите функцию
+
+В **Настройки → Функции** включите **Редиректы**, затем выберите **Управление редиректами**
+(или перейдите в **Настройки → Редиректы**). Для управления редиректами нужно разрешение
+**Управление SEO, редиректами, меню и формами** (`site.manage`), которое есть у встроенной
+роли Editor. См. [Разрешения](/ru/reference/permissions/).
+
+## Добавьте редиректы
+
+<Steps>
+
+1. В **Настройки → Редиректы** выберите **Добавить редирект**.
+2. **Откуда**: старый путь, начинающийся с `/` (например, `/blog/2024/hello`).
+3. **Куда**: новый путь или полный URL `http(s)` на другом сайте.
+4. **Тип**: **301 · Постоянный**, **302 · Временный**, **307 · Временный (сохраняет метод)**
+   или **308 · Постоянный (сохраняет метод)**.
+5. Сохраните.
+
+</Steps>
+
+Verdin отклоняет редирект, который никогда не сработает:
+
+- второй редирект с того же пути;
+- путь, который перенаправляет сам на себя;
+- цепочку, которая зацикливается (`/a` → `/b` → `/a`).
+
+Чтобы добавить много редиректов сразу, используйте **Импортировать CSV** со столбцами
+`source`, `destination` и `status`. Строки, источник которых уже существует, обновляют этот
+редирект. **Экспортировать CSV** записывает тот же формат — удобно для миграции с другой CMS
+или проверки в таблице.
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## Примените их на сайте
+
+Сайты читают список из `GET /api/_redirects` без токена:
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+Ответ отправляется с `Cache-Control: public, max-age=60`, поэтому изменение доходит до сайтов
+примерно за минуту. Сравнивайте путь запроса с `source` на точное совпадение:
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+Для статического сайта запрашивайте список во время сборки и записывайте файл редиректов
+своего хостинга (`_redirects` в Netlify, `vercel.json` в Vercel, map в nginx). Сочетайте это
+с [кнопкой деплоя](/ru/guides/integrations/deploys-and-cdn/) или
+[вебхуком](/ru/guides/integrations/webhooks/), чтобы редакторы могли пересобрать сайт после
+изменения редиректов.
+
+<Aside type="note">
+Префикс API следует [`[api].prefix`](/ru/reference/configuration/). Когда функция выключена,
+`/api/_redirects` отвечает `404`.
+</Aside>
+
+## Admin API
+
+Админ-панель использует `/admin/api/site/redirects` (`GET`, `POST`) и
+`/admin/api/site/redirects/{id}` (`PUT`, `DELETE`) с токеном доступа администратора и
+`site.manage`. См. [Admin API](/ru/api/admin/).

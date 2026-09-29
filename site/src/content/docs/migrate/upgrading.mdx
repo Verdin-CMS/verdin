@@ -35,8 +35,8 @@ migrates in one run. Read the notes of every version in between.
 <Steps>
 
 1. Change the image tag in your Compose file, manifest or `Dockerfile`, for example
-   `ghcr.io/verdin-cms/verdin:0.9` → `ghcr.io/verdin-cms/verdin:0.10`. A minor tag
-   (`0.9`) follows its patch releases; pin a full version (`0.9.1`) to decide when
+   `ghcr.io/verdin-cms/verdin:0.10` → `ghcr.io/verdin-cms/verdin:0.11`. A minor tag
+   (`0.10`) follows its patch releases; pin a full version (`0.10.0`) to decide when
    those arrive too.
 
 2. Pull and restart:
@@ -59,12 +59,12 @@ migrates in one run. Read the notes of every version in between.
 
 1. Download the archive for your platform from the
    [releases page](https://github.com/Verdin-CMS/verdin/releases), for example
-   `verdin-v0.9.1-x86_64-unknown-linux-musl.tar.gz`, and check it against the release's
+   `verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz`, and check it against the release's
    `SHA256SUMS`:
 
    ```sh frame="terminal"
    sha256sum --ignore-missing -c SHA256SUMS
-   tar xzf verdin-v0.9.1-x86_64-unknown-linux-musl.tar.gz
+   tar xzf verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz
    ```
 
 2. Stop the server, replace the `verdin` binary, and check the version:
@@ -117,6 +117,24 @@ running side by side for longer than a rolling deploy takes.
 
 Notable and breaking changes per version, oldest last. The [changelog](/project/changelog/)
 has the complete list.
+
+### 0.9.1 → 0.10
+
+No database migration. The documentation moved from `docs/` to this site.
+
+- **Webhook consumers of `review-workflows.updateEntryStage`**: `model` is now the
+  singular name (`article`), as in entry events, and the uid moved to `uid`. Read `uid`
+  where you used `model`.
+- **Regenerate your TypeScript types** with `verdin types`: `Collections` and `Singles`
+  are type aliases now, which `createClient<VerdinSchema>` needs.
+- **Docker**: the image keeps the transformation cache and the search index in `/data`
+  and links `/app/public/uploads` to `/data/uploads`. If you set
+  `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR` or `VERDIN_SEARCH__DIR` only to work around the
+  read-only `/app`, you can drop them. The image has a `HEALTHCHECK`.
+- **CDN**: responses carry the tags of the types they can populate, so purges refresh
+  more of the cache than before; nothing to change.
+- Relation fields in the admin panel link entries through a dialog (**Link an entry**)
+  instead of an inline search box.
 
 ### 0.9.0 → 0.9.1
 

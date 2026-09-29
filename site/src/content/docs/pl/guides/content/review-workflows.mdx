@@ -1,0 +1,134 @@
+---
+title: Przepływy recenzji
+description: Przenoś wpisy przez etapy recenzji, przypisuj je recenzentom, ograniczaj, kto może je przenosić, i wymagaj etapu przed publikacją.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Przepływ recenzji to uporządkowana lista etapów, np. *To do*, *In review* i *Ready*, przez
+które przechodzą wpisy wybranych typów zawartości przed publikacją. Ten przewodnik
+konfiguruje przepływ, przenosi i przypisuje wpisy oraz pokazuje odpowiadające temu API
+administracyjne.
+
+W Strapi przepływy recenzji to funkcja Enterprise. W Verdin są częścią otwartego rdzenia.
+
+## Zanim zaczniesz
+
+- Włącz **Ustawienia → Funkcje → Przepływy recenzji**. Domyślnie są wyłączone.
+- Konfiguracja przepływów wymaga **Zarządzanie przepływami recenzji** (`workflows.manage`).
+- Przenoszenie i przypisywanie wpisu wymaga dostępu do jego aktualizacji. Zobacz
+  [Uprawnienia](/pl/reference/permissions/).
+
+## Utwórz przepływ
+
+<Steps>
+
+1. Otwórz **Ustawienia → Przepływy recenzji** i wybierz **Nowy przepływ**.
+2. Nadaj mu **Nazwę**.
+3. W sekcji **Typy zawartości** wybierz typy, których wpisy mają nim podążać. Typ podąża
+   najwyżej jednym przepływem.
+4. W sekcji **Etapy** wymień etapy w kolejności. Każdy ma **Nazwę etapu** i **Kolor**. Użyj
+   **Dodaj etap**, aby dodać kolejne, i przycisków ze strzałkami, aby zmienić kolejność. Nowe
+   wpisy zaczynają od pierwszego etapu.
+5. Opcjonalnie wybierz na etapie **Role, które mogą przenosić wpisy do tego etapu**. Bez
+   wybranych ról może to każdy, kto może aktualizować wpis.
+6. Opcjonalnie ustaw **Wymagany etap do publikacji**. Wpisy można wtedy publikować tylko
+   wtedy, gdy są w tym etapie. **Dowolny etap** nie wpływa na publikację.
+7. Zapisz.
+
+</Steps>
+
+<Diagram
+  caption="Przepływ redakcyjny z wymaganym etapem do publikacji"
+  code={`flowchart LR
+  A[To do] --> B[In review] --> C[Ready]
+  C -->|publikacja dozwolona| P((Opublikowano))
+  A -.->|publikacja odrzucona| X[400]`}
+/>
+
+Wpisy, które istniały, zanim ich typ dołączył do przepływu, są w pierwszym etapie.
+
+Gdy później zmieniasz przepływ:
+
+- Usunięcie etapu przenosi jego wpisy z powrotem do pierwszego etapu.
+- Usunięcie typu zawartości z przepływu czyści etapy jego wpisów.
+- Usunięcie przepływu czyści etapy i przypisane osoby jego wpisów.
+
+## Przenoś i przypisuj wpisy
+
+Edytor wpisu pokazuje panel **Recenzja** z polami **Etap** i **Przypisana osoba**.
+
+- Wybierz inny **Etap**, aby przenieść wpis. Etapów zarezerwowanych dla innych ról nie można
+  wybrać, a panel o tym informuje. Administratorzy z **Zarządzanie przepływami recenzji**
+  zawsze mogą przenosić wpisy.
+- Wybierz **Przypisaną osobę** spośród aktywnych administratorów, którzy mogą czytać typ
+  zawartości, albo wybierz **Usuń przypisaną osobę**. Przypisać wpis może każdy, kto może go
+  aktualizować.
+- Gdy przepływ ma wymagany etap, panel mówi, do którego etapu wpis musi dotrzeć, zanim
+  zadziała **Opublikuj**.
+
+Widok listy pokazuje kolumnę **Etap**, a strona główna wymienia wpisy przypisane do ciebie
+w sekcji **Przypisane do mnie**. Typy lokalizowane mają etap per język.
+
+## Co blokuje etap publikacji
+
+Wymagany etap dotyczy każdego sposobu publikacji: panelu administracyjnego, REST, GraphQL,
+wydań i wtyczek. Publikacja wpisu spoza tego etapu kończy się `400`:
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+W Strapi wymóg etapu dotyczy tylko panelu administracyjnego. Role etapów też działają
+inaczej: w Verdin ograniczają, kto przenosi wpisy *do* danego etapu.
+
+## Dzienniki audytu i webhooki
+
+- Zmiany etapów i przypisania są zapisywane w
+  [dziennikach audytu](/pl/guides/content/audit-logs/) jako `entry.stage` i `entry.assign`.
+- Webhooki mogą subskrybować **Zmieniono etap wpisu** (`review-workflows.updateEntryStage`).
+  Zobacz [Webhooki](/pl/guides/integrations/webhooks/).
+
+## API administracyjne
+
+Wszystkie trasy są pod `/admin/api` i przyjmują token dostępu administratora.
+
+| Trasa | Uprawnienie | Działanie |
+| --- | --- | --- |
+| `GET /review-workflows`, `GET /review-workflows/{id}` | `workflows.manage` | Przepływy z ich etapami. |
+| `POST /review-workflows`, `PUT /review-workflows/{id}` | `workflows.manage` | Tworzy lub zastępuje przepływ (treść poniżej). |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | Wpisy jego typów tracą etapy. |
+| `GET /content/{uid}/{documentId}/review?locale=` | odczyt wpisu | Etap, przypisana osoba i etapy, do których możesz przenieść wpis (`canMoveTo`). |
+| `PUT /content/{uid}/{documentId}/review?locale=` | aktualizacja wpisu | `{ "stageId": 3, "assigneeId": 7 }`. Oba pola są opcjonalne; `"assigneeId": null` usuwa przypisaną osobę. |
+| `GET /content/{uid}/review?documentIds=a,b` | odczyt typu | Etapy do 200 wpisów, z przepływem w `meta.workflow`. |
+| `GET /review/assigned` | zalogowany | Wpisy przypisane do ciebie. |
+| `GET /review/assignees?uid=` | aktualizacja typu | Aktywni administratorzy, którzy mogą czytać typ. |
+| `GET /review/roles` | `workflows.manage` | Kody i nazwy ról, dla ról etapów. |
+
+Przepływ w postaci wysyłanej do `POST` i `PUT`:
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- Przepływ ma od 1 do 50 etapów z unikalnymi nazwami i kolorami `#rrggbb`.
+- `publishStage` wskazuje jeden z etapów; pomiń go, jeśli nie ma być żadnego.
+- Wysyłaj istniejące etapy z ich `id`, aby ich wpisy zostały na miejscu. Etapy bez `id` są
+  nowe.
+
+<Aside type="note">
+Wyłączenie funkcji ukrywa etapy i przestaje egzekwować etap publikacji. Przepływy i etapy
+wpisów są zachowywane na wypadek ponownego włączenia.
+</Aside>

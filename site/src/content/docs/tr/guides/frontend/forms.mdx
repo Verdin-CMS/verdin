@@ -1,0 +1,155 @@
+---
+title: Formlar
+description: İletişim ve kayıt formlarını yönetim panelinde tanımlayın, sitenizden onlara gönderim yapın ve gönderimleri okuyun veya dışa aktarın.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**Formlar** özelliği, sitenizin formlarını (iletişim, bülten kaydı, etkinlik kaydı) bir form
+servisi olmadan yönetir. Editörler alanları yönetim panelinde tanımlar, siteniz onları gösterir ve
+Verdin’e gönderir; gönderimler doğrulanır, saklanır, e-postayla gönderilir ve CSV olarak dışa
+aktarılır.
+
+## Açma
+
+**Ayarlar → Özellikler** bölümünde **Formlar**’ı açın, ardından **Formları yönet**’i seçin (ya da
+**Ayarlar → Formlar**’a gidin). Formları yönetmek ve gönderimleri okumak, yerleşik Editor rolünün
+sahip olduğu **SEO, yönlendirmeleri, menüleri ve formları yönet** iznini (`site.manage`)
+gerektirir. Bkz. [İzinler](/tr/reference/permissions/).
+
+Bildirim e-postaları için [`[email]`](/tr/reference/configuration/) içinde bir sağlayıcı
+yapılandırın; varsayılan `log` sağlayıcısıyla e-postalar yalnızca sunucu günlüğüne yazılır.
+
+## Bir form oluşturma
+
+<Steps>
+
+1. **Ayarlar → Formlar** bölümünde **Yeni form**’u seçin.
+2. Ona bir ad (örneğin **İletişim**) ve bir **Slug** (`contact`) verin. Slug formun URL’sinin
+   parçasıdır.
+3. **Alanlar** sekmesinde her alan için **Etiket**, **Ad**, **Tip**, **Zorunlu**, **Yer tutucu**
+   ve **En fazla uzunluk** değerleriyle **Alan ekle**’yi seçin.
+4. **Ayarlar** sekmesinde şunları ayarlayın:
+   - **Bildir**: her gönderimi alan e-posta adresleri.
+   - **Başarı mesajı**: bir gönderimden sonra sitenize döndürülür.
+   - **Spam tuzağı**: varsayılan olarak açık (bkz. [Spam](#spam)).
+5. Kaydedin. **Entegrasyon** sekmesi herkese açık uç noktayı ve kopyalanacak bir örneği gösterir.
+
+</Steps>
+
+| Tip | Admin’deki etiket | Kabul ettiği |
+| --- | --- | --- |
+| `text` | **Metin** | Herhangi bir metin. |
+| `email` | **E-posta** | Bir e-posta adresi. |
+| `textarea` | **Uzun metin** | Herhangi bir metin. |
+| `number` | **Sayı** | Sayı olarak saklanan bir sayı. |
+| `select` | **Seçim** | **Seçenekler**’inden biri (satır başına bir tane). |
+| `checkbox` | **Onay kutusu** | `true`, `on`, `1` veya `yes` işaretli sayılır; diğer her şey işaretsizdir. Zorunlu bir onay kutusu işaretlenmelidir. |
+| `date` | **Tarih** | Herhangi bir metin (`<input type="date">` kullanın). |
+| `url` | **URL** | Bir URL. |
+| `tel` | **Telefon** | Herhangi bir metin. |
+
+Alan adları bir harfle başlar, ardından harfler, rakamlar veya `_` gelir ve formda benzersizdir.
+Bir formda 1 ile 50 arasında alan olur. Değerler en fazla **En fazla uzunluk** karakterdir
+(varsayılan 5.000, en fazla 20.000).
+
+## Formu gösterme
+
+`GET /api/_forms/{slug}` tanımı döndürür; böylece siteniz editörlerin seçtiği alanları
+gösterebilir:
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+Spam tuzağı kapalıyken `honeypot` `null`’dır. Tanım bir dakika önbelleğe alınır
+(`Cache-Control: public, max-age=60`).
+
+## Gönderme
+
+`POST /api/_forms/{slug}` değerleri JSON olarak (alanlar veya `{ "data": { … } }`) ya da düz bir
+form gönderimi olarak (`application/x-www-form-urlencoded`) alır. Token gerekmez.
+
+<Tabs syncKey="form">
+<TabItem label="HTML formu">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| Yanıt | Ne zaman |
+| --- | --- |
+| `{ "data": { "message": … } }` ile `201` | Kabul edildi. `message`, **Başarı mesajı** veya `Thank you!`’dır. |
+| `400` `ValidationError` | Bir değer eksik veya geçersiz. `details.errors` alan başına `{ path, message }` listeler. |
+| `404` | Bu slug’a sahip form yok ya da özellik kapalı. |
+| `413` | Gönderim 64 KB’tan büyük. |
+| `429` | Aynı ziyaretçi bu forma bir dakikada 10’dan fazla gönderim yaptı. |
+
+Değerler kırpılır ve alanlara karşı denetlenir. Bilinmeyen alanlar atılır; böylece bir ziyaretçi
+sizin istemediğiniz verileri ekleyemez.
+
+Düz bir HTML form gönderimi JSON yanıtını sayfa olarak alır. Daha iyi bir deneyim için `fetch` ile
+gönderin ve mesajı kendiniz gösterin. Tarayıcıdan başka bir origin’e gönderim yapmak, sitenizin
+origin’inin [`[api].cors_origins`](/tr/reference/configuration/) içinde olmasını gerektirir.
+
+### Spam
+
+**Spam tuzağı** açıkken forma gizli, boş bir `_gotcha` alanı ekleyin. Botlar her alanı doldurur;
+`_gotcha` doldurulmuş bir gönderim kabul edilmiş gibi (`201`) yanıtlanır ve atılır, böylece bot
+hiçbir şey öğrenmez. Hız sınırıyla birlikte bu, bir CAPTCHA olmadan form spam’inin çoğunu durdurur.
+
+## Gönderimleri okuma
+
+Formun **Gönderimler** sekmesi ziyaretçilerin gönderdiklerini **Alındı** zamanıyla listeler. Bir
+gönderimi silebilirsiniz; **CSV dışa aktar** hepsini indirir.
+
+Kabul edilen her gönderim ayrıca, admin’deki gönderimlere giden bir bağlantıyla
+([`[server].public_url`](/tr/reference/configuration/) değerinden oluşturulur) **Bildir**
+adreslerine e-postayla gönderilir.
+
+<Aside type="note">
+Verdin her gönderimin değerlerini, ziyaretçinin user agent’ını ve IP adresinin (adresin kendisi
+değil) anahtarlı bir hash’ini saklar; bu, insanları izlemeden bir seli fark etmeye yeter. Bir formu
+silmek gönderimlerini de siler.
+</Aside>
+
+## Admin API
+
+Yönetim paneli, bir admin’in erişim token’ı ve `site.manage` ile `/admin/api/site/forms` ve
+`/admin/api/site/forms/{id}`, ayrıca `/admin/api/site/forms/{id}/submissions` ve
+`…/submissions/export` (CSV) adreslerini kullanır. Bkz. [Admin API](/tr/api/admin/).

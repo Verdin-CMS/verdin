@@ -1,0 +1,268 @@
+---
+title: شروع سریع
+description: Verdin را با Docker یا فایل باینری اجرا کنید، نخستین مدیر را بسازید، یک نوع محتوا مدل کنید و آن را از API بخوانید.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+این صفحه شما را در حدود ده دقیقه از صفر به نخستین پاسخ API می‌رساند: Verdin را اجرا کنید،
+نخستین مدیر را بسازید، یک نوع محتوا مدل کنید، آن را برای عموم باز کنید و از طریق REST، GraphQL
+یا کلاینت TypeScript بخوانید.
+
+به [Docker](https://docs.docker.com/get-docker/) یا ماشینی نیاز دارید که بتواند فایل باینری
+`verdin` را اجرا کند (Linux، macOS یا Windows روی x86-64، و Linux یا macOS روی ARM64).
+
+## 1. اجرای Verdin
+
+<Tabs syncKey="install">
+  <TabItem label="Docker">
+
+کلیدهای محرمانه را یک بار تولید کنید، سپس ایمیج را در حالت توسعه اجرا کنید:
+
+```sh title="Terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+ولوم `verdin-data` پایگاه دادهٔ SQLite (`/data/verdin.db`)، رسانه‌های بارگذاری‌شده
+(`/data/uploads`) و، در `dev`، فایل‌های طرح‌واره‌ای را که سازندهٔ نوع محتوا می‌نویسد
+(`/data/schema`) نگه می‌دارد.
+
+  </TabItem>
+  <TabItem label="Binary">
+
+آرشیو مربوط به پلتفرم خود را از
+[صفحهٔ نسخه‌ها](https://github.com/Verdin-CMS/verdin/releases) دانلود کنید، آن را از حالت فشرده
+خارج کنید و `verdin` را در `PATH` قرار دهید. پنل مدیریت درون فایل باینری ساخته شده است.
+
+یک پروژه بسازید و آن را در حالت توسعه اجرا کنید:
+
+```sh title="Terminal"
+verdin new my-site            # verdin.toml, schema/, .env with fresh secrets, SQLite
+cd my-site
+verdin dev
+```
+
+`verdin new` گزینهٔ `--database sqlite|postgres|mysql|mariadb` را می‌پذیرد (به‌طور پیش‌فرض
+SQLite) تا پایگاه داده‌ای را که `.env` تولیدشده به آن اشاره می‌کند انتخاب کنید. برای PostgreSQL،
+MySQL و MariaDB، پیش از اجرای `verdin dev` مقدار `VERDIN_DATABASE_URL` را در `.env` مطابق سرور
+خود ویرایش کنید. [ساختار پروژه](/fa/start/project-structure/) همهٔ فایل‌هایی را که می‌سازد شرح
+می‌دهد.
+
+  </TabItem>
+</Tabs>
+
+وقتی لاگ `verdin listening` را نشان داد، سرور روی پورت 1337 پاسخ می‌دهد. نخستین اجرا
+جدول‌های پایگاه داده را می‌سازد.
+
+## 2. کلیدهای محرمانه
+
+Verdin به دو کلید محرمانه (secret) نیاز دارد که هر کدام دست‌کم 32 بایت طول دارند:
+
+| متغیر | از چه چیزی محافظت می‌کند |
+| --- | --- |
+| `VERDIN_ADMIN_JWT_SECRET` | نشست‌های مدیران را امضا می‌کند. |
+| `VERDIN_TOKEN_PEPPER` | توکن‌های API را هش می‌کند و از کلیدهای تأیید دومرحله‌ای و کدهای بازیابی محافظت می‌کند. |
+
+`verdin secrets` مقادیر تازه چاپ می‌کند و `verdin new` آن‌ها را در `.env` می‌نویسد. کلیدهای
+محرمانه فقط از محیط می‌آیند، هرگز از `verdin.toml`، و سرور بدون آن‌ها اجرا نمی‌شود. فایل `.env`
+کنار `verdin.toml` هنگام اجرا بارگذاری می‌شود؛ متغیرهایی که از قبل در محیط تنظیم شده‌اند
+اولویت دارند.
+
+<Aside type="caution">
+کلیدهای محرمانه را برای هر نصب یک بار تولید کنید و نگه دارید. یک `VERDIN_ADMIN_JWT_SECRET` تازه
+توکن‌های ورود فعلی، پیوندهای پیش‌نمایش باز و ورودهای OAuth در حال انجام را باطل می‌کند (پنل مدیریت
+نشست خود را خودش تمدید می‌کند)؛ یک `VERDIN_TOKEN_PEPPER` تازه همهٔ توکن‌های API و همهٔ
+تنظیمات تأیید دومرحله‌ای را باطل می‌کند. `.env` و `verdin.env` را بیرون از کنترل نسخه نگه دارید.
+</Aside>
+
+## 3. ساختن نخستین مدیر
+
+[http://localhost:1337/admin/](http://localhost:1337/admin/) را باز کنید. تا وقتی هیچ مدیری وجود
+ندارد، پنل مدیریت صفحهٔ **به Verdin خوش آمدید** را نشان می‌دهد: نام، ایمیل و یک گذرواژهٔ دست‌کم
+8 نویسه‌ای وارد کنید، سپس **ایجاد حساب** را انتخاب کنید. این نخستین حساب یک مدیر ارشد با همهٔ
+مجوزهاست.
+
+می‌توانید مدیران را از خط فرمان هم بسازید؛ ببینید
+[کاربران مدیر از خط فرمان](#کاربران-مدیر-از-خط-فرمان).
+
+## 4. مدل‌کردن یک نوع محتوا
+
+<Steps>
+
+1. در نوار کناری، **سازندهٔ نوع محتوا** را باز کنید و **نوع محتوای جدید** را انتخاب کنید.
+2. **نام نمایشی** را `Article` بگذارید. Verdin فیلد **نام مفرد (شناسهٔ API)** را با
+   `article` و **نام جمع (مسیر)** را با `articles` پر می‌کند؛ مسیر همان URL نوع در API است.
+   **گونه** را روی **مجموعه‌ای** نگه دارید.
+3. **افزودن فیلد** را انتخاب کنید، **متن کوتاه** را برگزینید، نامش را `title` بگذارید و
+   **تمام** را انتخاب کنید.
+4. **ذخیره** را انتخاب کنید. **بازبینی مهاجرت** گام‌های پایگاه داده را همراه با SQL آن‌ها
+   فهرست می‌کند؛ **اعمال** را انتخاب کنید.
+
+</Steps>
+
+Verdin نوع را در `schema/content-types/article.json` می‌نویسد و جدول آن را می‌سازد.
+سازنده فقط در `verdin dev` در دسترس است: در محیط تولید، طرح‌واره از فایل‌های شما می‌آید.
+برای نوع‌ها و گزینه‌های فیلد، [مدل محتوا](/fa/concepts/content-model/) را ببینید.
+
+حالا یک مدخل اضافه کنید: **Article** را زیر **مجموعه‌ها** باز کنید، **مدخل جدید** را انتخاب
+کنید، عنوان را پر کنید و **انتشار** را انتخاب کنید. نوع‌های تازه **پیش‌نویس و انتشار** را روشن
+دارند، پس مدخل‌هایشان تا وقتی منتشر نشده‌اند پیش‌نویس و از دید API عمومی پنهان می‌مانند.
+
+## 5. باز کردن آن برای عموم
+
+API محتوا تا وقتی مجوزهای عمومی ندهید یا توکن API نسازید بسته است.
+**تنظیمات ← دسترسی عمومی** را باز کنید، **یافتن** و **یافتن یکی** را برای **Article** مجاز کنید و
+**ذخیره** را انتخاب کنید.
+
+برای خواندن بدون دسترسی عمومی، در **تنظیمات ← توکن‌های API** یک توکن بسازید و آن را به‌صورت
+`Authorization: Bearer <token>` بفرستید. ببینید [توکن‌های API](/fa/guides/auth/api-tokens/) و
+[مجوزها](/fa/concepts/permissions/).
+
+## 6. نخستین درخواست
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl localhost:1337/api/articles
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "documentId": "01m3p88agn712n02wb8kkpe94p",
+      "title": "Hello Verdin",
+      "createdAt": "2026-09-29T09:34:39.637Z",
+      "updatedAt": "2026-09-29T09:34:39.637Z",
+      "publishedAt": "2026-09-29T09:34:39.637Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+پاسخ همان شکل تخت Strapi v5 را دارد. فیلترها، مرتب‌سازی، صفحه‌بندی و `populate` از همان
+پارامترهای کوئری استفاده می‌کنند؛ ببینید [REST API](/fa/api/rest/).
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+**تنظیمات ← قابلیت‌ها ← GraphQL** را روشن کنید. پس از آن `POST /graphql` طرح‌واره‌ای را ارائه
+می‌دهد که از نوع‌های محتوای شما تولید شده، با همان مجوزهای REST API:
+
+```sh title="Terminal"
+curl localhost:1337/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+```json
+{ "data": { "articles": [{ "documentId": "01m3p88agn712n02wb8kkpe94p", "title": "Hello Verdin" }] } }
+```
+
+ببینید [GraphQL API](/fa/api/graphql/).
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+نوع‌ها را از طرح‌واره تولید کنید و کلاینت را در پروژهٔ فرانت‌اند نصب کنید:
+
+```sh title="Terminal"
+verdin types -o src/verdin-types.ts   # in the Verdin project
+npm install @verdin/client            # in the frontend project
+```
+
+با Docker، ایمیج می‌تواند نوع‌ها را از طرح‌وارهٔ درون ولوم چاپ کند:
+`docker run --rm -v verdin-data:/data ghcr.io/verdin-cms/verdin types > src/verdin-types.ts`.
+
+```ts title="src/articles.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+
+const { data } = await verdin.collection('articles').find({ sort: ['publishedAt:desc'] });
+console.log(data.map((article) => article.title));
+```
+
+ببینید [کلاینت تایپ‌شده](/fa/guides/frontend/typed-client/).
+
+  </TabItem>
+</Tabs>
+
+از اینجا، آموزش‌های [Astro](/fa/start/tutorial-astro/) و [Next.js](/fa/start/tutorial-nextjs/)
+یک فرانت‌اند وبلاگ روی همین API می‌سازند.
+
+## حالت توسعه و حالت تولید
+
+| فرمان | کاربرد |
+| --- | --- |
+| `verdin dev` | توسعه: مهاجرت‌های امن خودکار اعمال می‌شوند، سازندهٔ نوع محتوا می‌تواند فایل‌های طرح‌واره را ویرایش کند، و سرور با تغییر آن‌ها دوباره بارگذاری می‌شود. |
+| `verdin start` | تولید. تا وقتی پایگاه داده از طرح‌واره عقب باشد، از اجرا خودداری می‌کند. |
+| `verdin start --migrate` | تولید، با اعمال مهاجرت‌های امنِ در انتظار پیش از شروع. این فرمان پیش‌فرض ایمیج Docker است. |
+
+کوکی‌های refresh در `verdin start` حالت `Secure` دارند و در `verdin dev` نه، پس ورود به سروری
+که با `start` اجرا شده به HTTPS نیاز دارد. برای امتحان `start` روی HTTP ساده،
+`VERDIN_ADMIN__SECURE_COOKIES=false` را تنظیم کنید.
+
+در محیط تولید، طرح‌واره را در کنترل نسخه نگه دارید و آن را فقط‌خواندنی mount کنید. با Docker:
+
+```sh title="Terminal"
+docker run -p 1337:1337 --env-file verdin.env \
+  -e VERDIN_DATABASE_URL=postgres://user:pass@db:5432/verdin \
+  -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
+```
+
+[چک‌لیست محیط تولید](/fa/deploy/production-checklist/) بقیهٔ موارد را پوشش می‌دهد.
+
+## طرح‌واره و مهاجرت‌ها
+
+نوع‌های محتوا در `schema/content-types/<singularName>.json` و کامپوننت‌ها در
+`schema/components/<category>/<name>.json` قرار دارند، با قالب Strapi. وقتی فایل‌ها تغییر
+می‌کنند، Verdin یک مهاجرت برنامه‌ریزی می‌کند:
+
+```sh title="Terminal"
+verdin schema check                      # validate every schema file
+verdin migrate plan                      # steps, risk level and exact SQL
+verdin migrate apply                     # safe steps only
+verdin migrate apply --allow risky       # also type changes and new unique constraints
+verdin migrate apply --allow destructive # also dropped columns and tables
+verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
+```
+
+در MySQL و MariaDB که DDL تراکنشی ندارند، مهاجرتی که قطع شده در `migrate apply` بعدی از گام
+شکست‌خورده ادامه می‌یابد. ببینید
+[مهاجرت طرح‌واره](/fa/concepts/schema-migrations/).
+
+## کاربران مدیر از خط فرمان
+
+```sh title="Terminal"
+verdin admin create --email other@example.com      # password from VERDIN_ADMIN_PASSWORD or stdin
+verdin admin reset-password --email you@example.com
+```
+
+`admin create` یک مدیر ارشد می‌سازد. `reset-password` حساب را از قفل هم خارج می‌کند و به
+نشست‌هایش پایان می‌دهد. هر دو نیاز دارند که پایگاه داده با طرح‌واره به‌روز باشد.
+
+## فرمان‌های دیگر
+
+| فرمان | چه می‌کند |
+| --- | --- |
+| `verdin types -o src/verdin-types.ts` | تعریف‌های TypeScript مربوط به API محتوا را می‌نویسد (بدون `-o` در خروجی استاندارد). |
+| `verdin import strapi <export>` | یک پروژهٔ Strapi را درون‌ریزی می‌کند؛ ببینید [درون‌ریزی از Strapi](/fa/migrate/from-strapi/). |
+| `verdin export <file.tar.gz>` | طرح‌واره، محتوا و رسانه را در یک آرشیو می‌نویسد؛ `verdin import verdin` آن را دوباره می‌خواند. |
+| `verdin version` | نسخه را چاپ می‌کند. |
+
+هر فرمان `-c, --config <path>` را می‌پذیرد (پیش‌فرض `verdin.toml`، یا `VERDIN_CONFIG`).
+[مرجع CLI](/fa/reference/cli/) همهٔ فرمان‌ها و گزینه‌ها را فهرست می‌کند، و
+[مرجع پیکربندی](/fa/reference/configuration/) همهٔ تنظیمات را.
+
+## بررسی سلامت
+
+`GET /_health` تا وقتی فرایند بالا است پاسخ می‌دهد. `GET /_ready` پایگاه داده را هم بررسی می‌کند
+و وقتی نتواند به آن برسد 503 برمی‌گرداند: load balancerها را به آن اشاره دهید (ببینید
+[مقیاس‌پذیری](/fa/deploy/scaling/)).

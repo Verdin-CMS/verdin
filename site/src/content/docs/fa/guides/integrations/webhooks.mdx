@@ -1,0 +1,187 @@
+---
+title: وب‌هوک‌ها
+description: هنگام تغییر محتوا یا رسانه، نقطه‌های پایانی خودتان را فراخوانی کنید، بررسی کنید که ارسال‌ها از Verdin می‌آیند، و تلاش‌های دوباره را مدیریت کنید.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+وب‌هوک‌ها وقتی محتوا یا رسانه تغییر کند یک `POST` از نوع HTTP به URLی از شما می‌فرستند: ساخت
+دوبارهٔ یک سایت ایستا، پاک کردن یک کش، همگام‌سازی یک ایندکس جستجو، ارسال پیام به یک چت. ارسال‌ها
+در صف قرار می‌گیرند، امضا می‌شوند، دوباره تلاش می‌شوند و ثبت می‌شوند.
+
+این صفحه راه‌اندازی و دریافت یک وب‌هوک را گام به گام نشان می‌دهد. رویدادها، بدنه‌ها و هدرها در
+[مرجع وب‌هوک‌ها](/fa/api/webhooks/) فهرست شده‌اند.
+
+## روشن کردن
+
+قابلیت **وب‌هوک‌ها** به‌طور پیش‌فرض روشن است؛ می‌توانید آن را در **تنظیمات ← قابلیت‌ها** خاموش
+کنید. مدیریت وب‌هوک‌ها به مجوز **مدیریت وب‌هوک‌ها** (`webhooks.manage`) نیاز دارد. نگاه کنید به
+[مجوزها](/fa/reference/permissions/).
+
+## ساخت یک وب‌هوک
+
+<Steps>
+
+1. به **تنظیمات ← وب‌هوک‌ها** بروید و **وب‌هوک جدید** را انتخاب کنید.
+2. زیر **عمومی**، یک **نام** و **نشانی URL**ای را که Verdin باید فراخوانی کند وارد کنید.
+3. زیر **رویدادها**، رویدادهایی را که یک ارسال را آغاز می‌کنند انتخاب کنید: **مدخل‌ها** (ایجاد،
+   به‌روزرسانی، انتشار، لغو انتشار، کنار گذاشتن پیش‌نویس، حذف)، **رسانه**، **بسته‌های انتشار**
+   (**بستهٔ انتشار منتشر شد**) و **گردش‌کارهای بازبینی** (**مرحلهٔ مدخل تغییر کرد**).
+4. زیر **نوع‌های محتوا**، **همهٔ نوع‌های محتوا** را نگه دارید یا چند نوع را انتخاب کنید. این فقط
+   رویدادهای مدخل را فیلتر می‌کند؛ رویدادهای رسانه در هر حال فرستاده می‌شوند.
+5. زیر **سرآیندها**، هر هدری که نقطهٔ پایانی شما لازم دارد اضافه کنید، مانند یک توکن
+   `authorization` (**افزودن سرآیند**). `content-type`، `host` و هدرهای `x-verdin-*` را Verdin
+   تنظیم می‌کند.
+6. زیر **امضا**، **امضای ارسال‌ها** را روشن نگه دارید (پیش‌فرض).
+7. **ایجاد** را انتخاب کنید. Verdin کلید محرمانهٔ امضا (`whsec_…`) را یک بار نشان می‌دهد: آن را
+   در پیکربندی نقطهٔ پایانی خود کپی کنید.
+
+</Steps>
+
+**فعال** یک وب‌هوک را بدون حذف آن خاموش می‌کند. وب‌هوک‌های غیرفعال هیچ رویدادی دریافت
+نمی‌کنند اما همچنان قابل آزمایش‌اند.
+
+## آزمایش
+
+روی وب‌هوک **ارسال رویداد آزمایشی** را انتخاب کنید. Verdin بی‌درنگ این را می‌فرستد:
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+ارسال در **گزارش ارسال‌ها**ی وب‌هوک با وضعیت، وضعیت HTTP، مدت زمان و ابتدای بدنهٔ پاسخ ظاهر
+می‌شود. برای دیدن بدنهٔ کامل و خطا، در صورت وجود، یک ارسال را باز کنید.
+
+برای دریافت وب‌هوک‌ها روی دستگاه خود در حین توسعه، سرور را با `verdin dev` اجرا کنید: این حالت
+URLهای `localhost` را مجاز می‌داند، که `verdin start` رد می‌کند (نگاه کنید به [امنیت](#امنیت)).
+
+## دریافت یک ارسال
+
+یک ارسال یک `POST` با بدنهٔ JSON و این هدرهاست:
+
+| هدر | مقدار |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | نام رویداد، مانند `entry.publish`. |
+| `x-verdin-delivery` | شناسهٔ ارسال. در تلاش‌های دوباره ثابت می‌ماند: از آن برای نادیده گرفتن تکراری‌ها استفاده کنید. |
+| `x-verdin-signature` | `t=<unix seconds>,v1=<hex>`، در وب‌هوک‌های امضاشده. |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+با هر وضعیت `2xx`، و سریع، پاسخ دهید. کارهای کند (یک ساخت کامل) را پس از پاسخ انجام دهید یا در
+صف بگذارید: ارسالی که بیشتر از مهلت زمانی (به‌طور پیش‌فرض 10 ثانیه) طول بکشد ناموفق حساب
+می‌شود.
+
+### بررسی امضا
+
+`v1` مقدار HMAC-SHA256 رشتهٔ `"<t>.<raw body>"` است که با کلید محرمانهٔ وب‌هوک ساخته می‌شود. برای
+بررسی یک ارسال:
+
+1. HMAC را روی بدنهٔ **خام** درخواست دوباره محاسبه کنید، نه روی JSON دوباره سریال‌شده.
+2. آن را در زمان ثابت با `v1` مقایسه کنید.
+3. برچسب‌های زمانی قدیمی‌تر از چند دقیقه را رد کنید تا یک ارسال رهگیری‌شده قابل بازپخش نباشد.
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+با Express، بدنهٔ خام را نگه دارید: `app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)`
+و `req.body.toString()` را پاس دهید.
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+`crypto.subtle.verify` در زمان ثابت مقایسه می‌کند.
+
+</TabItem>
+</Tabs>
+
+**چرخش رمز** یک کلید محرمانهٔ جدید صادر می‌کند (یک بار نشان داده می‌شود)؛ کلید قدیمی بی‌درنگ از
+کار می‌افتد. **توقف امضا** کلید محرمانه را حذف می‌کند و ارسال‌ها را بدون امضا می‌فرستد.
+
+## تلاش‌های دوباره
+
+ارسال‌ها هنگام commit شدن تغییر در پایگاه داده ذخیره می‌شوند و یک worker پس‌زمینه آن‌ها را
+می‌فرستد، بنابراین یک نقطهٔ پایانی کند هرگز ویرایشگران را کند نمی‌کند.
+
+- **موفقیت:** هر پاسخ `2xx`.
+- **شکست:** هر چیز دیگر، از جمله تغییرمسیرها (دنبال نمی‌شوند)، خطاهای اتصال و اتمام مهلت.
+- **تلاش‌های دوباره:** یک ارسال ناموفق پس از 30 ثانیه، 2 دقیقه، 10 دقیقه، 1 ساعت و 6 ساعت
+  دوباره تلاش می‌شود. پس از آن **ناموفق** علامت می‌خورد.
+
+برای فرستادن دوبارهٔ یک ارسال همین حالا، روی آن در گزارش **تلاش دوباره** را انتخاب کنید. گزارش
+30 روز نگه داشته می‌شود. چون تلاش‌های دوباره از همان `x-verdin-delivery` استفاده می‌کنند،
+handler خود را idempotent کنید: شناسه‌هایی را که پردازش کرده‌اید ذخیره کنید، یا کار را طوری
+بسازید که تکرارش بی‌خطر باشد.
+
+## امنیت
+
+با `verdin start`، URLهای وب‌هوک نمی‌توانند به نشانی‌های loopback، خصوصی، link-local یا دیگر
+نشانی‌های رزروشده اشاره کنند، از جمله نام‌های میزبانی که به یکی از آن‌ها resolve می‌شوند. این
+کار مانع می‌شود که یک مدیر از وب‌هوک‌ها برای رسیدن به سرویس‌های داخلی استفاده کند (SSRF).
+اعتبارنامه‌ها در URL (`https://user:pass@…`) رد می‌شوند؛ آن‌ها را در یک هدر بفرستید.
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+نگاه کنید به [`[webhooks]`](/fa/reference/configuration/).
+
+## آمدن از Strapi
+
+وب‌هوک‌های Verdin از رویدادها و بدنه‌های Strapi پیروی می‌کنند، با این تفاوت‌ها:
+
+- ارسال‌ها امضا می‌شوند، دوباره تلاش می‌شوند و ثبت می‌شوند؛
+- یک وب‌هوک را می‌توان به برخی نوع‌های محتوا محدود کرد؛
+- `entry.draft-discard` در Strapi اینجا `entry.discard-draft` نام دارد.
+
+برای ساخت دوبارهٔ یک سایت ایستا از پنل مدیریت با یک دکمه، به جای هر تغییر، نگاه کنید به
+[استقرارها و CDN](/fa/guides/integrations/deploys-and-cdn/).

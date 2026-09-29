@@ -72,9 +72,10 @@ démarrage ; les variables déjà définies dans l’environnement sont priorita
 
 <Aside type="caution">
 Générez les secrets une seule fois par installation et conservez-les. Un nouveau
-`VERDIN_ADMIN_JWT_SECRET` déconnecte tous les administrateurs ; un nouveau
-`VERDIN_TOKEN_PEPPER` invalide tous les jetons d’API et toutes les configurations à deux
-facteurs. Ne versionnez ni `.env` ni `verdin.env`.
+`VERDIN_ADMIN_JWT_SECRET` invalide les jetons de connexion en cours, les liens d’aperçu
+ouverts et les connexions OAuth en cours (le panneau d’administration renouvelle sa session de
+lui-même) ; un nouveau `VERDIN_TOKEN_PEPPER` invalide tous les jetons d’API et toutes les
+configurations à deux facteurs. Ne versionnez ni `.env` ni `verdin.env`.
 </Aside>
 
 ## 3. Créer le premier administrateur
@@ -83,7 +84,7 @@ Ouvrez [http://localhost:1337/admin/](http://localhost:1337/admin/). Tant qu’a
 administrateur n’existe, le panneau d’administration affiche **Bienvenue dans Verdin** :
 saisissez votre nom, votre adresse e-mail et un mot de passe d’au moins 8 caractères, puis
 sélectionnez **Créer le compte**. Ce premier compte est un Super Admin disposant de toutes
-les permissions.
+les autorisations.
 
 Vous pouvez aussi créer des administrateurs en ligne de commande ; voir
 [Administrateurs en ligne de commande](#administrateurs-en-ligne-de-commande).
@@ -116,13 +117,13 @@ invisibles pour l’API publique, jusqu’à leur publication.
 
 ## 5. L’ouvrir au public
 
-L’API de contenu est fermée tant que vous n’accordez pas de permissions publiques ou ne créez
+L’API de contenu est fermée tant que vous n’accordez pas de autorisations publiques ou ne créez
 pas de jetons d’API. Ouvrez **Paramètres → Accès public**, autorisez **Rechercher** et
 **Rechercher un** pour **Article**, puis sélectionnez **Enregistrer**.
 
 Pour lire sans accès public, créez un jeton dans **Paramètres → Jetons d’API** et envoyez-le
 sous la forme `Authorization: Bearer <token>`. Voir [Jetons d’API](/fr/guides/auth/api-tokens/)
-et [Permissions](/fr/concepts/permissions/).
+et [Autorisations](/fr/concepts/permissions/).
 
 ## 6. Envoyer une première requête
 
@@ -156,7 +157,7 @@ utilisent les mêmes paramètres de requête ; voir l’[API REST](/fr/api/rest/
   <TabItem label="GraphQL">
 
 Activez **Paramètres → Fonctionnalités → GraphQL**. `POST /graphql` sert alors un schéma
-généré à partir de vos types de contenu, avec les mêmes permissions que l’API REST :
+généré à partir de vos types de contenu, avec les mêmes autorisations que l’API REST :
 
 ```sh title="Terminal"
 curl localhost:1337/graphql -H 'content-type: application/json' \
@@ -204,9 +205,9 @@ Voir [Client typé](/fr/guides/frontend/typed-client/).
 
 | Commande | Usage |
 | --- | --- |
-| `verdin dev` | Développement : les migrations sûres s’appliquent automatiquement, le constructeur de types de contenu peut modifier les fichiers de schéma et le serveur se recharge quand ils changent. |
+| `verdin dev` | Développement : les migrations sans risque s’appliquent automatiquement, le constructeur de types de contenu peut modifier les fichiers de schéma et le serveur se recharge quand ils changent. |
 | `verdin start` | Production. Refuse de démarrer tant que la base de données est en retard sur le schéma. |
-| `verdin start --migrate` | Production, en appliquant les migrations sûres en attente avant le démarrage. C’est la commande par défaut de l’image Docker. |
+| `verdin start --migrate` | Production, en appliquant les migrations sans risque en attente avant le démarrage. C’est la commande par défaut de l’image Docker. |
 
 Les cookies de rafraîchissement sont `Secure` avec `verdin start` mais pas avec `verdin dev` :
 se connecter à un serveur lancé avec `start` nécessite donc HTTPS. Pour essayer `start` en HTTP
@@ -221,7 +222,7 @@ docker run -p 1337:1337 --env-file verdin.env \
   -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
 ```
 
-La [checklist de mise en production](/fr/deploy/production-checklist/) couvre le reste.
+La [check-list de production](/fr/deploy/production-checklist/) couvre le reste.
 
 ## Schéma et migrations
 
@@ -232,7 +233,7 @@ fichiers changent, Verdin planifie une migration :
 ```sh title="Terminal"
 verdin schema check                      # valide chaque fichier de schéma
 verdin migrate plan                      # étapes, niveau de risque et SQL exact
-verdin migrate apply                     # étapes sûres uniquement
+verdin migrate apply                     # étapes sans risque uniquement
 verdin migrate apply --allow risky       # aussi les changements de type et les nouvelles contraintes d'unicité
 verdin migrate apply --allow destructive # aussi les colonnes et tables supprimées
 verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
@@ -270,4 +271,4 @@ La [référence de la CLI](/fr/reference/cli/) liste toutes les commandes et opt
 
 `GET /_health` répond tant que le processus tourne. `GET /_ready` vérifie en plus la base de
 données et répond 503 lorsqu’elle est injoignable : c’est vers lui qu’il faut diriger les
-répartiteurs de charge (voir [Mise à l’échelle](/fr/deploy/scaling/)).
+répartiteurs de charge (voir [Exécuter plusieurs instances](/fr/deploy/scaling/)).

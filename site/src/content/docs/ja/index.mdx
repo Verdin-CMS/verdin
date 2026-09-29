@@ -1,0 +1,90 @@
+---
+title: Verdin — Rust で育つヘッドレス CMS
+description: Rust で書かれたオープンソースのヘッドレス CMS。Strapi v5 互換の API、単一のバイナリ、PostgreSQL、MySQL、MariaDB、SQLite に対応。
+template: splash
+editUrl: false
+tableOfContents: false
+lastUpdated: false
+hero:
+  title: <span class="metal">Rust</span> で育つヘッドレス CMS。
+  tagline: Strapi v5 互換の API と編集者のための管理パネルを、約 25 MB の 1 つのバイナリに。オープンソースで、すべての機能がそろっています。Enterprise エディションはありません。
+  actions:
+    - text: はじめる
+      link: /ja/start/quickstart/
+      icon: right-arrow
+    - text: Strapi から移行する
+      link: /ja/migrate/from-strapi/
+      variant: minimal
+---
+
+import { Card, CardGrid, Code, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Nameplate from '../../../components/landing/Nameplate.astro';
+
+<Nameplate />
+
+## 3 つのコマンドで Strapi から移行
+
+Strapi のプロジェクトをエクスポートし、新しい Verdin のプロジェクトにインポートして、起動します。コンテンツタイプ、下書きとロケールを含むエントリー、リレーション、メディアライブラリが移行されます。コンテンツ API の形は変わらないので、フロントエンドはそのまま動きます。
+
+```sh title="Terminal"
+npx strapi export --no-encrypt -f my-export        # Strapi のプロジェクトで実行
+verdin new my-site && cd my-site && verdin import strapi ../my-export.tar.gz
+verdin dev                                         # http://localhost:1337/admin
+```
+
+<LinkCard
+  title="Strapi のプロジェクトをインポートする"
+  description="インポートされるもの、ID の対応表、その後に確認すること。"
+  href="/ja/migrate/from-strapi/"
+/>
+
+## いつもと同じ方法でコンテンツを読む
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+    ```sh
+    curl 'localhost:1337/api/articles?filters[title][$containsi]=rust&populate=category&sort=publishedAt:desc'
+    ```
+  </TabItem>
+  <TabItem label="GraphQL">
+    ```graphql
+    query {
+      articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"]) {
+        documentId
+        title
+        category { name }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```ts
+    import { createClient } from '@verdin/client';
+    import type { VerdinSchema } from './verdin-types'; // verdin types -o src/verdin-types.ts
+
+    const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+    const { data } = await verdin.collection('articles').find({
+      filters: { title: { $containsi: 'rust' } },
+      populate: { category: true },
+      sort: ['publishedAt:desc'],
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## 編集者と開発者が得られるもの
+
+<CardGrid>
+  <Card title="ファイルで管理するスキーマ、読めるマイグレーション" icon="document">
+    コンテンツタイプは Strapi 形式の JSON ファイルで、git で管理します。スキーマの変更はすべて、実行前にリスクレベルと正確な SQL を示すマイグレーションプランになります。
+  </Card>
+  <Card title="編集者に好まれる管理パネル" icon="pencil">
+    下書きと公開、コンテンツ履歴、リリース、レビューワークフロー、コメントとライブのプレゼンス、自分のサイト上でのビジュアル編集。18 の言語に対応しています。
+  </Card>
+  <Card title="有料オプションではないセキュリティ" icon="approve-check">
+    SSO、パスキーによる二段階認証、フィールドとロケールまで絞り込めるロール、監査ログ、API トークン。すべてオープンソースのプロジェクトに含まれています。
+  </Card>
+  <Card title="安全に拡張する" icon="puzzle">
+    WebAssembly のプラグインは、書き込みにフックし、ルート、ジョブ、管理画面のウィジェットを追加し、宣言したものにだけアクセスします。
+  </Card>
+</CardGrid>

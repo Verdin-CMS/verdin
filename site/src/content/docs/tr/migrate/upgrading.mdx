@@ -1,0 +1,219 @@
+---
+title: Verdin’i yükseltme
+description: Bir Verdin kurulumunu yükseltin — ikili dosya veya Docker imajı, başlangıçta çalışan migrasyonlar ve her minor sürümün dikkate değer veya uyumsuz değişiklikleri.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+Bu sayfa bir projenin daha yeni bir Verdin sürümüne nasıl taşınacağını açıklar ve minor sürümler
+arasında neyin değiştiğini listeler. Verdin, 0.x’e özgü bir farkla
+[Semantic Versioning](https://semver.org/)’i izler: 1.0’a kadar bir **minor** sürüm (0.8 → 0.9)
+davranışı değiştirebilir, bir **patch** sürüm (0.9.0 → 0.9.1) ise yalnızca düzeltir ve güçlendirir.
+
+## Yükseltmeden önce
+
+1. Sürümünüzden yeni sürüme kadar **changelog’u okuyun**: [changelog](/tr/project/changelog/) her
+   değişikliği listeler ve [aşağıdaki notlar](#yükseltme-notları) işlem gerektirenleri özetler.
+2. Veritabanını ve medya depolamayı **yedekleyin** (bkz. [Yedekler](/tr/deploy/backups/)). Eski bir
+   sürüme dönmek o yedeği geri yüklemek anlamına gelir: eski sürümler yeni bir sürümün eklediği
+   tabloları ve sütunları geri almaz.
+3. Notlar frontend’inizin veya editörlerinizin dayandığı davranışlardan bahsediyorsa üretimin
+   **bir kopyasında deneyin**.
+
+Sürüm atlayabilirsiniz. Migrasyonlar her seferinde bir sürüm yeniden oynatılmaz; veritabanı ile yeni
+sürümün beklediği arasındaki farktan hesaplanır, bu yüzden 0.6 → 0.9 tek bir çalıştırmada migre
+olur. Aradaki her sürümün notlarını okuyun.
+
+## Yükseltme
+
+<Tabs syncKey="install">
+<TabItem label="Docker">
+
+<Steps>
+
+1. Compose dosyanızdaki, manifest’inizdeki veya `Dockerfile`’ınızdaki imaj etiketini değiştirin;
+   örneğin `ghcr.io/verdin-cms/verdin:0.10` → `ghcr.io/verdin-cms/verdin:0.11`. Bir minor etiket
+   (`0.10`) patch sürümlerini izler; bunların ne zaman geleceğine de siz karar vermek için tam bir
+   sürüme (`0.10.0`) sabitleyin.
+
+2. Çekin ve yeniden başlatın:
+
+   ```sh frame="terminal"
+   docker compose pull verdin
+   docker compose up -d verdin
+   docker compose logs -f verdin
+   ```
+
+   İmajın varsayılan komutu `start --migrate`, sunmadan önce yeni sürümün migrasyonlarını uygular.
+   Günlüklerde `applied migrations` ve `verdin listening` satırlarını arayın.
+
+</Steps>
+
+</TabItem>
+<TabItem label="Binary">
+
+<Steps>
+
+1. Platformunuz için arşivi [sürümler sayfasından](https://github.com/Verdin-CMS/verdin/releases)
+   indirin, örneğin `verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz`, ve sürümün `SHA256SUMS`
+   dosyasına karşı denetleyin:
+
+   ```sh frame="terminal"
+   sha256sum --ignore-missing -c SHA256SUMS
+   tar xzf verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz
+   ```
+
+2. Sunucuyu durdurun, `verdin` ikili dosyasını değiştirin ve sürümü denetleyin:
+
+   ```sh frame="terminal"
+   verdin version
+   ```
+
+3. Proje dizininden migrasyonları gözden geçirin ve uygulayın:
+
+   ```sh frame="terminal"
+   verdin migrate plan
+   verdin migrate apply
+   ```
+
+   Ya da önce güvenli adımları uygulayan `verdin start --migrate` ile başlatın.
+
+4. Sunucuyu her zamanki gibi başlatın (`verdin start`).
+
+</Steps>
+
+</TabItem>
+</Tabs>
+
+## Başlangıçta migrasyonlar
+
+Yeni bir sürüm çoğu zaman kendi tablolarını veya sütunlarını ekler (oturumlar, ayarlar, yeni
+özellikler). `verdin start`, veritabanını şemanın ve yeni sürümün ihtiyaç duyduklarıyla
+karşılaştırır:
+
+- Eşleşiyorlarsa başlar.
+- Bekleyen adımlar varsa başlamayı reddeder ve `verdin migrate plan` ile `verdin migrate apply`
+  çalıştırmanızı ya da `--migrate` ile başlatmanızı söyler.
+- `--migrate` yalnızca **güvenli** adımları uygular. Bir adım riskli veya yıkıcıysa başlatma
+  başarısız olur ve planı okuduktan sonra onu `verdin migrate apply --allow risky` (veya
+  `destructive`) ile kendiniz uygularsınız.
+- Şema değişikliklerinin bir transaction içinde çalışamadığı MySQL ve MariaDB’de, kesintiye uğrayan
+  bir migrasyon bir sonraki `verdin migrate apply`’da başarısız adımdan devam eder.
+
+Birden fazla örnekle kademeli bir yükseltme çalışır: ilk yeni örnek migrasyon kilidini alır ve
+migre eder, diğerleri onu bekler ve yapacak bir şey kalmadığını görür. Bkz.
+[Birden fazla örnek çalıştırma](/tr/deploy/scaling/).
+
+<Aside type="caution">
+Projenin tamamını tek bir sürüme yükseltin. İki minor sürümün örneklerini kademeli bir dağıtımın
+sürdüğünden daha uzun süre yan yana çalıştırmayın.
+</Aside>
+
+## Yükseltme notları
+
+Sürüm başına dikkate değer ve uyumsuz değişiklikler, en eskisi en sonda. Tam liste
+[changelog](/tr/project/changelog/) içindedir.
+
+### 0.9.1 → 0.10
+
+Veritabanı migrasyonu yok. Dokümantasyon `docs/`’tan bu siteye taşındı.
+
+- **`review-workflows.updateEntryStage` webhook’larını tüketenler**: `model` artık kayıt
+  olaylarında olduğu gibi tekil addır (`article`) ve uid `uid`’ye taşındı. `model` kullandığınız
+  yerde `uid`’yi okuyun.
+- **TypeScript tiplerinizi yeniden üretin** (`verdin types` ile): `Collections` ve `Singles`
+  artık tip takma adlarıdır; `createClient<VerdinSchema>` buna ihtiyaç duyar.
+- **Docker**: imaj dönüşüm önbelleğini ve arama dizinini `/data` içinde tutar ve
+  `/app/public/uploads`’u `/data/uploads`’a bağlar. `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR` veya
+  `VERDIN_SEARCH__DIR`’i yalnızca salt okunur `/app`’i aşmak için ayarladıysanız bunları
+  kaldırabilirsiniz. İmajın bir `HEALTHCHECK`’i var.
+- **CDN**: yanıtlar populate edebildikleri tiplerin etiketlerini taşır; bu yüzden temizlemeler
+  önbelleğin öncekinden daha büyük bir kısmını yeniler; değiştirilecek bir şey yok.
+- Yönetim panelindeki ilişki alanları kayıtları satır içi bir arama kutusu yerine bir iletişim
+  kutusu (**Bir kayıt bağla**) üzerinden bağlar.
+
+### 0.9.0 → 0.9.1
+
+Bir güçlendirme sürümü; her kurulum için yükseltme önerilir. Migrasyonu (bir yeni tablo, iki yeni
+sütun) başlangıçta çalışır.
+
+- **Bir reverse proxy arkasında `[server].trusted_proxies`’i ayarlayın.** İstemci adresi için
+  yalnızca listelenen proxy’lerin `X-Forwarded-For`’u kullanılır; aksi hâlde proxy arkasındaki her
+  istemci hız sınırları ve denetim kayıtları için tek bir adresi paylaşır.
+- **Başka bir origin’deki tarayıcı frontend’leri `[api].cors_origins` gerektirir.** 0.9.1 içerik
+  API’sine ve GraphQL’e CORS ekler; önceden CORS desteği yoktu.
+- **İlişkiler üzerinden okumalar izinleri izler.** `populate`, ilişki filtreleri ve ilişki
+  sıralamaları her API’de yalnızca çağıranın okuyabildiği tiplere ve alanlara ulaşır. `find` yetkisi
+  olmadığı tipleri populate eden herkese açık ve token istekleri artık daha az veri alır: eksik
+  izinleri verin.
+- **SSO daha katıdır.** Ayarları bir Super Admin gerektirir; `defaultRoles` ve `roleMap` Super Admin
+  veremez; sağlayıcının `email_verified` claim’i true olmalıdır (`trustUnverifiedEmail` olmadıkça);
+  sağlayıcıya bunun için güvenilmedikçe (`providerMfa`) admin’lerin ikinci faktörü uygulanır; issuer
+  ve token uç noktası herkese açık `https` URL’leri olmalıdır. Yükselttikten sonra SSO oturum
+  açmalarınızı denetleyin.
+- **Super Admin’ler** yalnızca başka bir Super Admin tarafından oluşturulabilir, düzenlenebilir,
+  silinebilir, yeniden davet edilebilir veya sıfırlanabilir.
+- **Son kullanıcı hesapları**, admin hesapları gibi, tekrarlanan yanlış parolalardan sonra
+  **kilitlenir**.
+- Populate edilen ilişkiler kayıt ve ilişki başına en fazla 1.000 kayıt döndürür.
+- Arama dizinleri ilk başlatmada yeniden oluşturulur (private bileşen alanları artık dizinlenmez).
+
+### 0.8 → 0.9
+
+- Admin listesinin arama kutusu başlık yerine her metin alanında (`_q`) arar.
+- Yeni admin izinleri `deploy.manage`, `deploy.trigger` ve `site.manage`; Editor’lar
+  `deploy.trigger` ve `site.manage` alır.
+- Yeni isteğe bağlı özellikler (gerçek zamanlı, yorumlar ve görevler, AI eylemleri, SEO ve site
+  haritası, yönlendirmeler, menüler, formlar) siz açana kadar kapalıdır. Metrikler
+  `[metrics].enabled = true` gerektirir.
+
+### 0.7 → 0.8
+
+- **Koşullu alanlar uygulanır**: `conditions` ile gizlenen bir alan artık zorunlu değildir. Böyle bir
+  alanın zorunlu olmasına dayanan içerik artık o alan olmadan kaydedilebilir.
+- Yeni `password` nitelik tipi; `verdin import strapi` artık Strapi’nin parola alanlarını içe
+  aktarır.
+
+### 0.7.0 → 0.7.1
+
+- Eklenti çalışma zamanı Wasmtime 48’e geçer. Mevcut eklentiler yeniden derlemeden çalışmaya devam
+  eder.
+- Kaynaktan derlemek Rust 1.95 veya sonrasını gerektirir.
+
+### 0.6 → 0.7
+
+- **Birden fazla örnek**: her örnek diğerlerinin değiştirdiği ayarları her
+  `[server].sync_interval_secs` (10 sn) aralığında okur. Birden fazla çalıştırıyorsanız biri dışında
+  hepsinde `[plugins].run_jobs = false` ayarlayın.
+- Eklentilerin host üzerinden yazdığı içerik artık inceleme iş akışı aşamaları gibi platformun
+  yazma öncesi denetimlerinden geçer. Eklentilerin kendi yazma öncesi hook’ları bu yazmalarda yine
+  atlanır; böylece bir eklenti kendini tetikleyemez.
+
+### 0.5 → 0.6
+
+- **Denetim kayıtları** varsayılan olarak açıktır ve girdileri `[audit].retention_days` (90) süre
+  tutar. İstemiyorsanız özelliği **Ayarlar → Özellikler** bölümünde kapatın.
+
+### 0.4 → 0.5
+
+- Değiştirilecek bir şey yok. Eklentiler `[plugins].path`’ten (`plugins/`) yüklenir ve açılana kadar
+  kapalı kalır.
+
+### 0.3 → 0.4
+
+- **`auth`, `users` ve `connect`**, `upload` ve `uploads` ile birlikte **ayrılmış rota adlarıdır**:
+  API adı bunlardan biri olan içerik tiplerini yükseltmeden önce yeniden adlandırın.
+
+### 0.2 → 0.3
+
+- Nitelik adları yalnızca camelCase yerine Strapi’nin kuralını (bir harf, ardından harfler, rakamlar
+  ve alt çizgiler) izler. Aynı sütuna eşlenen iki ad reddedilir.
+- `regex` seçenekleri JavaScript benzeri kalıpları kabul eder.
+
+### 0.1 → 0.2
+
+- Gövde boyutu sınırları ve zaman aşımları API router’ı başına uygulanır; yüklemelerin kendi
+  sınırları vardır (`[upload].max_file_size`).
+- Mevcut kurulumların yerleşik rolleri yeni izinleri bir kez alır.

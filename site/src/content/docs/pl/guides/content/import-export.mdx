@@ -1,0 +1,125 @@
+---
+title: Import i eksport wpisów
+description: Eksportuj wpisy z listy do CSV lub JSON i twórz lub aktualizuj wpisy z pliku CSV lub JSON, najpierw z próbnym przebiegiem.
+sidebar:
+  order: 9
+  label: Import i eksport
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Lista każdego typu zawartości w panelu eksportuje jego wpisy do CSV lub JSON i importuje je
+z powrotem z pliku tego samego rodzaju: aby poprawić wiele wpisów w arkuszu kalkulacyjnym,
+wczytać katalog produktów albo skopiować wpisy między projektami. Ten przewodnik opisuje oba
+kierunki i format pliku.
+
+Dotyczy to wpisów jednego typu zawartości naraz. Aby przenieść cały projekt, zobacz
+[`verdin export` i `verdin import verdin`](/pl/reference/cli/). Aby przejść ze Strapi, zobacz
+[Migracja ze Strapi](/pl/migrate/from-strapi/).
+
+## Zanim zaczniesz
+
+- Eksport wymaga dostępu do odczytu typu zawartości. Eksportowane są tylko pola, które twoja
+  rola może czytać.
+- Import wymaga dostępu do tworzenia, aktualizacji albo obu: wiersze, które tworzą wpisy,
+  wymagają tworzenia, a wiersze, które je aktualizują, wymagają aktualizacji. Publikacja
+  zaimportowanych wierszy wymaga też publikacji. Zobacz [Uprawnienia](/pl/reference/permissions/).
+
+## Eksportuj wpisy
+
+<Steps>
+
+1. Otwórz listę typu zawartości i ustaw ją tak, jak ma wyglądać eksport: filtry,
+   wyszukiwanie, sortowanie, status i język.
+2. Wybierz **Eksportuj**, a potem **Eksportuj jako CSV** lub **Eksportuj jako JSON**.
+
+</Steps>
+
+Plik zawiera wpisy pokazywane przez listę, z jej filtrami, wyszukiwaniem i sortowaniem, ze
+wszystkich stron, do 50 000 wpisów. Każdy wiersz zaczyna się od `documentId`, a dalej są
+pola.
+
+## Importuj wpisy
+
+<Steps>
+
+1. Otwórz listę typu zawartości i wybierz **Importuj**.
+2. Wybierz **Plik**: plik `.csv` z wierszem nagłówka albo plik `.json` z listą obiektów, do
+   1 MB.
+3. W sekcji **Kolumny** wybierz pole, do którego trafia każda kolumna. Kolumny nazwane jak
+   pole są już dopasowane. Wybierz **Pomiń**, aby pominąć kolumnę, i **ID dokumentu
+   (aktualizacja)** dla kolumny wskazującej istniejące wpisy.
+4. Opcjonalnie włącz **Publikuj zaimportowane wpisy**. W przeciwnym razie zostaną zapisane
+   jako szkice.
+5. Wybierz **Sprawdź**. Verdin sprawdza każdy wiersz, łącznie z ograniczeniami
+   i odwołaniami, niczego nie zapisując, i raportuje wiersze, które by utworzył, zaktualizował
+   lub odrzucił.
+6. W razie potrzeby popraw plik, a potem wybierz **Importuj**.
+
+</Steps>
+
+Jak zapisywane są wiersze:
+
+- Wiersz z `documentId` aktualizuje ten wpis; pozostałe tworzą nowe wpisy.
+- Wiersze są zapisywane jeden po drugim. Wiersz, który się nie powiedzie, jest raportowany
+  z polem i problemem i pomijany; pozostałe są nadal zapisywane.
+- Raport wymienia do 100 wierszy z błędami i kolumny, które nie pasowały do żadnego pola.
+- Import przyjmuje najwyżej 5000 wierszy. Większe pliki podziel.
+- Wpisy są zapisywane w bieżącym języku listy.
+
+<Aside type="caution">
+Import przepuszcza twoje wiersze przez tę samą walidację co edytor, ale nie ma cofania.
+Najpierw uruchom **Sprawdź**, a przed dużą aktualizacją wyeksportuj listę, aby móc ją
+odtworzyć. Z włączoną [historią treści](/pl/guides/content/content-history/) każdy
+zaktualizowany wpis zachowuje poprzednią wersję.
+</Aside>
+
+## Format pliku
+
+Pola używają tych samych kształtów co format zapisu API treści:
+
+| Pole | Wartość |
+| --- | --- |
+| Tekst, liczby, wartości logiczne, daty | Jak w API (`true`/`false`, daty ISO 8601). |
+| Relacje | `documentId` powiązanych wpisów. |
+| Multimedia | Identyfikatory plików z biblioteki multimediów. |
+| Relacje polimorficzne | `uid:documentId`, np. `api::article:k3v9…`. |
+| Komponenty, strefy dynamiczne, bloki i JSON | JSON. |
+
+W CSV listy (kilka relacji lub plików) są łączone przez `|`.
+
+```csv title="articles.csv"
+documentId,title,slug,featured,tags
+,Hello world,hello-world,true,t1a2b3|t4c5d6
+k3v9x8…,Updated title,updated-title,false,
+```
+
+Te same wiersze jako JSON:
+
+```json title="articles.json"
+[
+  { "title": "Hello world", "slug": "hello-world", "featured": true, "tags": ["t1a2b3", "t4c5d6"] },
+  { "documentId": "k3v9x8…", "title": "Updated title", "slug": "updated-title", "featured": false }
+]
+```
+
+Eksport listy jest zawsze poprawnym plikiem importu dla tego samego typu zawartości.
+
+## API administracyjne
+
+- `GET /admin/api/content/{uid}/export?format=csv` (lub `json`) przyjmuje parametry zapytania
+  listy: `filters`, `_q`, `sort`, `status` i `locale`.
+- `POST /admin/api/content/{uid}/import?locale=` przyjmuje zawartość pliku jako string:
+
+```json
+{
+  "format": "csv",
+  "data": "title,slug\nHello world,hello-world\n",
+  "mapping": { "slug": "slug", "notes": null },
+  "dryRun": true,
+  "publish": false
+}
+```
+
+`mapping` przypisuje kolumnę do pola; `null` pomija kolumnę, a nieprzypisane kolumny zachowują
+swoją nazwę. Treść żądania jest ograniczona przez `[server].body_limit` (domyślnie 1 MB).

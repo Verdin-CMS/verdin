@@ -18,7 +18,7 @@ on 2026-09-29; the setup was not deployed on a live Railway account. Values mark
 ## 1. Add a Dockerfile, a configuration and `railway.json`
 
 ```dockerfile title="Dockerfile"
-FROM ghcr.io/verdin-cms/verdin:0.9
+FROM ghcr.io/verdin-cms/verdin:0.10
 COPY verdin.toml /app/verdin.toml
 COPY schema /app/schema
 ```
@@ -76,7 +76,7 @@ migrations before it serves. Keep `.env` out of the repository.
    Generate the two secrets locally:
 
    ```sh frame="terminal"
-   docker run --rm ghcr.io/verdin-cms/verdin:0.9 secrets
+   docker run --rm ghcr.io/verdin-cms/verdin:0.10 secrets
    ```
 
 4. In the service's networking settings, click **Generate Domain** and set its target

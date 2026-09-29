@@ -1,0 +1,218 @@
+---
+title: النشر وCDN
+description: امنح المحررين زر نشر لموقعك الثابت، وتتبّع عمليات بنائه، وفرّغ الـ CDN عندما يتغير المحتوى.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+أداتان للمواقع التي تخزّن مؤقتًا ما يقدّمه Verdin:
+
+- **عمليات النشر (deploys)** تضع زر **نشر** في ترويسة لوحة الإدارة. يستدعي رابط البناء
+  لموقعك (Netlify أو Vercel أو Cloudflare Pages أو أي CI)، ويبلّغ الموفّر عن سير
+  عملية البناء.
+- **عمليات تفريغ CDN** توسم استجابات API المحتوى حسب نوع المحتوى وتفرّغ تلك الوسوم لدى
+  Cloudflare أو Fastly أو نقطة النهاية الخاصة بك عندما يتغير المحتوى علنًا.
+
+كلاهما جزء من النواة: لا يوجد مفتاح ميزة. تُعدّ عمليات النشر في
+**الإعدادات ← عمليات النشر**؛ والـ CDN في `verdin.toml`.
+
+## عمليات النشر
+
+<Diagram code={`sequenceDiagram
+  participant E as المحرر
+  participant V as Verdin
+  participant P as موفّر البناء
+  E->>V: نشر
+  V->>P: POST رابط البناء
+  P-->>V: رد اتصال: building
+  P-->>V: رد اتصال: ready (url)
+  V-->>E: "تم نشر موقع الإنتاج"`} caption="يستدعي زر النشر رابط البناء؛ ويبلّغ الموفّر عبر عنوان URL لرد الاتصال." />
+
+### أضف هدفًا
+
+<Steps>
+
+1. لدى موفّرك، أنشئ رابط بناء (build hook) للموقع وانسخ عنوان URL الخاص به (Netlify: **Build
+   hooks**؛ Vercel: **Deploy Hooks**؛ Cloudflare Pages: **Deploy hooks**؛ CI: أي عنوان URL
+   يبدأ مسار عمل عند `POST`).
+2. في Verdin، انتقل إلى **الإعدادات ← عمليات النشر** واختر **إضافة هدف**.
+3. امنحه **الاسم** (مثل **موقع الإنتاج**) والصق **عنوان URL لرابط البناء**.
+4. احفظ. عنوان URL للرابط سرّ: من الآن فصاعدًا لا يُعرض إلا مضيفه. لتوجيه الهدف
+   إلى رابط آخر، استخدم **استبدال عنوان URL**.
+
+</Steps>
+
+يرى المسؤولون الذين يستطيعون النشر الآن **نشر** في الترويسة. مع عدة أهداف، يفتح قائمة
+**نشر إلى**. بعد التأكيد، يرسل Verdin:
+
+```http
+POST <build hook URL>
+content-type: application/json
+
+{ "trigger": "verdin", "triggeredBy": "editor@example.com" }
+```
+
+ينشر الهدف مرة كل 10 ثوانٍ على الأكثر، فلا يبدأ النقر المزدوج عمليتي بناء.
+تنتهي مهلة الطلب بعد 15 ثانية ولا يتبع إعادات التوجيه. والرابط الذي يجيب
+بشيء غير `2xx` يُسجَّل على أنه **مرفوض**.
+
+### أبلغ عن حالات البناء
+
+بدون رد اتصال، تبقى عملية النشر في حالة **بدأ**. لرؤية **جارٍ البناء** و**جاهز** و
+**خطأ** في لوحة الإدارة، ورابط إلى الموقع المنشور، امنح الموفّر عنوان URL لرد الاتصال
+الخاص بالهدف: اختر زر **عنوان URL لرد الاتصال** للهدف وانسخه.
+
+<Tabs syncKey="deploy-provider">
+<TabItem label="Netlify">
+
+في **Site configuration ← Build & deploy ← Deploy notifications**، أضف webhook صادرًا
+لأحداث **Deploy started** و**Deploy succeeded** و**Deploy failed**، بعنوان URL لرد الاتصال.
+
+</TabItem>
+<TabItem label="Vercel">
+
+في **Team settings ← Webhooks**، أنشئ webhook لأحداث `deployment.created` و
+`deployment.succeeded` و`deployment.error`، بعنوان URL لرد الاتصال.
+
+</TabItem>
+<TabItem label="أداة CI أخرى">
+
+أرسل `POST` بصيغة JSON تحتوي على `status` (`building` أو `ready` أو `error`) و، اختياريًا،
+`url` المنشور و`message`:
+
+```sh title="Terminal"
+curl -X POST "$VERDIN_CALLBACK_URL" -H 'content-type: application/json' \
+  -d '{ "status": "ready", "url": "https://www.example.com" }'
+```
+
+</TabItem>
+</Tabs>
+
+يفهم Verdin `state` في Netlify، و`type` في Vercel، و`status` عاديًا، ويحدّث
+آخر عملية نشر للهدف. يجيب بـ `204`، أو `404` عندما يكون عنوان URL خاطئًا. عنوان URL لرد الاتصال
+هو `{public_url}{admin path}/api/deploy/callback/{id}/{secret}`، لذا عيّن
+[`[server].public_url`](/ar/reference/configuration/) إلى العنوان الذي يستطيع الموفّرون الوصول إليه.
+
+<Aside type="caution">
+يحتوي عنوان URL لرد الاتصال على سرّ: يستطيع أي شخص يملكه الإبلاغ عن حالات النشر لذلك
+الهدف. ولا يستطيع بدء عمليات نشر أو قراءة أي شيء.
+</Aside>
+
+يسرد **سجل النشر** أحدث 50 عملية نشر، الأحدث أولًا، مع هدفها ووقت بدئها،
+وحالتها، وحالة HTTP للرابط ورسالة الموفّر. حذف هدف يحذف
+سجله، لا رابط البناء.
+
+### الصلاحيات
+
+| الصلاحية | تسمح بـ |
+| --- | --- |
+| **بدء عمليات النشر** (`deploy.trigger`) | زر **نشر** في الترويسة. يملكها الدور المدمج Editor. |
+| **إدارة أهداف النشر و CDN** (`deploy.manage`) | **الإعدادات ← عمليات النشر**: الأهداف، وعناوين URL لرد الاتصال، وعمليات تفريغ CDN. |
+
+راجع [الصلاحيات](/ar/reference/permissions/). تتبع عناوين URL لروابط البناء قواعد العناوين نفسها
+التي تتبعها [الـ webhooks](/ar/guides/integrations/webhooks/): مع `verdin start` لا يجوز أن تشير إلى
+شبكات خاصة ما لم يسمح بذلك [`[webhooks].allow_private_networks`](/ar/reference/configuration/).
+
+### انشر مع كل تغيير بدلًا من ذلك
+
+يناسب الزر المواقع التي تُعاد بناؤها عند الطلب. لإعادة البناء مع كل نشر، أنشئ
+[webhook](/ar/guides/integrations/webhooks/) لـ `entry.publish` و`entry.unpublish` مع
+رابط البناء عنوانًا له. ولمجموعة تغييرات مجدولة، انشرها عبر
+[حزمة نشر](/ar/guides/content/releases/) واربط الـ webhook بـ `releases.publish`.
+
+## عمليات تفريغ CDN
+
+عندما يخزّن CDN استجابات API المحتوى مؤقتًا، فإنه يقدّم محتوى قديمًا حتى تنتهي صلاحية الذاكرة المؤقتة. مع
+تعيين `[cdn]`، يوسم Verdin استجاباته ويفرّغ الوسوم الصحيحة عندما يتغير المحتوى، فـ
+يمكنك التخزين المؤقت لمدة طويلة.
+
+### كيف يعمل الوسم
+
+كل `GET` ناجح على API المحتوى يحمل `vd` (كل شيء)، و`vd-<singularName>`
+(نوع المحتوى) ووسم كل نوع يمكن لمستنداته تعبئته: أهداف العلاقات،
+داخل المكوّنات والمناطق الديناميكية أيضًا، وصولًا إلى علاقاتها الخاصة. لمقالات مثال
+المدونة، بصيغتي الترويسة:
+
+```http
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
+```
+
+النوع الذي له علاقة متعددة الأشكال يمكن أن يصل إلى أي نوع، لذا تحمل استجاباته وسم كل
+نوع.
+
+يقرأ Cloudflare الترويسة `Cache-Tag`، ويقرأ Fastly `Surrogate-Key`. عندما يتغير المحتوى علنًا،
+يفرّغ Verdin وسم النوع:
+
+- عند نشر إدخال، أو إلغاء نشره، أو حذفه؛
+- عند أي كتابة على نوع لا يستخدم المسودة والنشر (فكتاباته عامة فورًا).
+
+حفظ مسودة لا يفرّغ شيئًا، لأن المسودات لا تُقدَّم علنًا. تُجمع التغييرات خلال
+ثانية واحدة (`debounce_ms`) في عملية تفريغ واحدة، ويُعاد التفريغ الفاشل مرتين.
+
+### هيّئه
+
+<Tabs syncKey="cdn">
+<TabItem label="Cloudflare">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "cloudflare"
+zone_id = "023e105f4ecef8ad9ca31a8372d0c353"
+```
+
+`VERDIN_CDN_TOKEN` رمز API لديه صلاحية **Cache Purge** على المنطقة (zone).
+
+</TabItem>
+<TabItem label="Fastly">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "fastly"
+service_id = "SU1Z0isxPaozGVKXdv0eY"
+```
+
+`VERDIN_CDN_TOKEN` رمز Fastly API مسموح له بتفريغ الخدمة.
+
+</TabItem>
+<TabItem label="Webhook">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "webhook"
+url = "https://purge.example.com/verdin"
+```
+
+يرسل Verdin `POST { "tags": ["vd-article"] }`، مع `Authorization: Bearer <VERDIN_CDN_TOKEN>`
+عند تعيين الرمز. استخدمه لـ CDN آخر، أو وكيل عكسي، أو API إعادة التحقق (revalidation)
+في إطار عملك.
+
+</TabItem>
+</Tabs>
+
+```sh title="Terminal"
+export VERDIN_CDN_TOKEN=...
+```
+
+يتحقق Verdin من القسم عند البدء ويرفض العمل دون `zone_id` أو
+`service_id` أو `url` أو الرمز الذي يحتاجه الموفّر. راجع [`[cdn]`](/ar/reference/configuration/).
+
+يظل الـ CDN هو من يقرر ما يُخزَّن مؤقتًا: أعِدّ قاعدة تخزين مؤقت لمسارات الـ API (مثلًا
+`/api/*` في طلبات `GET` المجهولة) مع TTL طويل على الحافة. أبقِ الطلبات الموثّقة، وقراءات
+المعاينة، و`/api/_events` خارج الذاكرة المؤقتة.
+
+### تحقّق وفرّغ يدويًا
+
+يعرض قسم **CDN** في **الإعدادات ← عمليات النشر** الموفّر و**عمليات التفريغ الأخيرة**
+(**تم التفريغ** أو **فشل**، مع الوسوم). يسقط **تفريغ كل شيء** كل استجابة
+موسومة بـ `vd`.
+
+لأن الاستجابات تحمل وسوم الأنواع التي يمكنها تعبئتها، فإن إعادة تسمية تصنيف تفرّغ أيضًا
+قوائم المقالات المخزّنة مؤقتًا التي يمكن أن تتضمنه، سواء طلب الطلب
+`populate` أم لا.
+
+ذاكرة التخزين المؤقت الخاصة بـ Verdin في الذاكرة ([`[api].cache_ttl_secs`](/ar/reference/configuration/))
+منفصلة: فهي تُفرَّغ مع كل تغيير.

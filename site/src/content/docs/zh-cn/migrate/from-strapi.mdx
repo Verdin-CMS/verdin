@@ -1,0 +1,169 @@
+---
+title: 从 Strapi 迁移
+description: 使用 verdin import strapi 把 Strapi v4 或 v5 项目迁移到 Verdin：导出、导入、哪些内容会迁移过来、id 映射、导入后的检查，以及前端需要的修改。
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+`verdin import strapi` 会把 Strapi v4 或 v5 项目导入 Verdin：其内容类型和组件会变成 schema 文件，其条目、语言区域、媒体库、关联、终端用户和公开权限都会被导入。本页一步步介绍迁移过程，并列出前端需要修改的地方。逐项功能的对比请参见[与 Strapi 的兼容性](/zh-cn/migrate/compatibility/)。
+
+<Diagram
+  caption="导入器读取 Strapi 的导出文件；它从不连接 Strapi 数据库。"
+  code={`flowchart LR
+  S[Strapi 项目] -->|strapi export| E[导出的 .tar.gz]
+  E -->|verdin import strapi| F[schema 文件]
+  F --> M[迁移数据库]
+  M --> D[条目、媒体、用户]
+  D --> R[strapi-id-map.json]`}
+/>
+
+## 开始之前
+
+- 一个可以运行 `strapi export` 的 Strapi v4 或 v5 项目。
+- 一个新的 Verdin 项目（`verdin new my-site`），或者一个没有同名 schema 文件的项目。参见[快速开始](/zh-cn/start/quickstart/)。
+- 如果可以的话，准备好 Verdin 项目在生产环境中要使用的数据库和媒体存储：导入期间，文件会被复制到所配置的上传提供方中。
+
+## 1. 从 Strapi 导出
+
+在 Strapi 项目中：
+
+```sh frame="terminal"
+npx strapi export --no-encrypt -f my-export      # 写入 my-export.tar.gz
+```
+
+Verdin 无法读取加密的导出文件（`.tar.gz.enc`）；请用 `--no-encrypt` 重新导出。未压缩的导出文件（`--no-compress`，即 `.tar`）以及解包后的导出目录同样可用。
+
+## 2. 导入 Verdin
+
+<Steps>
+
+1. 创建项目并导入导出文件：
+
+   ```sh frame="terminal"
+   verdin new my-site && cd my-site
+   verdin import strapi ../my-export.tar.gz
+   ```
+
+2. 阅读摘要。导入器会输出它导入了多少文档、版本、文件、文件夹、语言区域和链接，然后每条警告一行。
+
+3. 启动开发服务器并打开管理后台：
+
+   ```sh frame="terminal"
+   verdin dev
+   ```
+
+</Steps>
+
+该命令按顺序执行以下步骤：
+
+1. 为每个 `api::` 内容类型和每个组件在 `schema/` 中写入一个 schema 文件。如果转换后的 schema 无法通过校验，则什么都不会写入。
+2. 迁移数据库（安全步骤）。
+3. 导入语言区域、媒体文件夹和文件、条目（每个草稿、已发布版本和语言区域）、关联，以及附加在条目和组件上的媒体。
+4. 导入终端用户、他们的角色，以及 public 和 authenticated 权限。
+5. 在项目目录中写入 `strapi-id-map.json`。
+
+| 选项 | 作用 |
+| --- | --- |
+| `--schema-only` | 写入 schema 文件后就停止。便于先审查或调整 schema。 |
+| `--force` | 覆盖已有的 schema 文件，并导入到已有条目的内容类型中。 |
+
+不带 `--force` 时，如果要写入的 schema 文件已经存在，或者某个内容类型中已经有条目，导入就会停止。
+
+## 哪些内容会迁移过来
+
+| Strapi | Verdin |
+| --- | --- |
+| `api::…` 内容类型和组件 | schema 文件，保留 `collectionName`、草稿与发布、i18n 选项以及字段选项（`required`、`private`、`unique`、长度、`regex`、默认值……） |
+| `api::` 类型之间的关联 | 同样的关联 |
+| 组件内的关联 | `oneWay` / `manyWay` 引用 |
+| 多态关联（`morphToOne`、`morphToMany`、`morphOne`、`morphMany`） | 同样的关联，以及它们指向已导入内容类型的链接 |
+| 媒体字段（也包括组件中的） | 媒体字段 |
+| v5 的行（草稿和已发布） | 草稿和已发布版本 |
+| v4 的行 | 一个草稿，设置了 `publishedAt` 时再加一个已发布版本；`localizations` 会变成同一个文档的各语言区域 |
+| `plugin::i18n.locale` | 语言区域（Strapi 的默认语言区域仍为默认） |
+| `plugin::upload.file` 和 `folder` | 媒体库文件（及其格式）和文件夹 |
+| `password` 字段 | `password` 字段，保留 Strapi 的 bcrypt 哈希 |
+| 自定义字段（`customField`） | 该属性及其 `customField` 会被保留；见下文 |
+| 条件字段（`conditions`，Strapi 5.17） | 保留在 schema 中，并由编辑器应用 |
+| `plugin::users-permissions.user` | 终端用户，包括其 bcrypt 密码（下次登录时用 Argon2id 重新哈希）、`confirmed` 和 `blocked` |
+| 用户与权限的角色 | Public 角色的授权变为 Verdin 的公开权限；Authenticated 和自定义角色变为终端用户角色 |
+| 内容类型和上传上的角色权限 | `find`、`findOne`、`create`、`update` 和 `delete` 授权；上传的 `find`、`findOne`、`upload` 和 `destroy` |
+
+## 哪些内容不会迁移过来
+
+以警告形式报告：
+
+- 指向管理员用户、终端用户或其他插件类型的关联（只导入目标为 `api::` 的关联）。`createdBy` / `updatedBy` 字段会被省略。
+- `text`、`richtext`、`blocks` 和 `json` 属性上的 `unique`（Verdin 只在短文本类型上支持它）。
+- Verdin 不认识的属性类型，以及无法存储在组件内的关联类型。
+- `inversedBy` / `mappedBy` 与另一侧不匹配的关联的一半。
+- 无效的语言区域代码。
+
+完全不会导入的内容：管理员用户和管理员角色、API 令牌、传输令牌、webhook、发布计划、审核工作流阶段、内容历史和审计日志，以及 Strapi 插件的设置。你的 Strapi 代码（控制器、服务、路由、策略、中间件、生命周期钩子、cron 任务和管理后台定制）在 Verdin 中没有可以直接转换的对应物；参见[重写自定义代码](#重写自定义代码)。
+
+<Aside type="note">
+自定义字段会保留其 `customField` 名称，例如 `plugin::color-picker.color`。编辑器会通过提供该字段的[插件](/zh-cn/extending/plugins/)显示它们；如果没有这样的插件，则回退为存储类型对应的输入控件。
+</Aside>
+
+## id 映射
+
+Verdin 会生成新的文档 id：Strapi 的 `documentId` 有 24 个字符，而 Verdin 的有 26 个字符，因此每个文档都会获得一个新的 id。数字 `id` 也会改变。`strapi-id-map.json` 记录了映射关系：
+
+```json title="strapi-id-map.json"
+{
+  "documents": {
+    "api::article": {
+      "hq7xw1c6m2vkn0f3t8ybz5sd": "01k6b3xg0r9m2m7c1d4e5f6g7h"
+    }
+  },
+  "files": {
+    "12": 3
+  }
+}
+```
+
+- `documents` 以 Verdin 的内容类型 uid（`api::article`，即 Strapi 的 `api::article.article`）为键，然后以 Strapi 的 `documentId`（v5）或行 id（v4：一个 id 代表一个文档的所有语言区域）为键。
+- `files` 把 Strapi 文件 id 映射到 Verdin 文件 id。
+
+用它来重写存储在 CMS 之外的 id：前端代码中的链接、其他数据库中的 id、分析数据、书签。
+
+## 检查结果
+
+1. `verdin schema check` 通过，并且 `verdin migrate plan` 显示数据库已是最新状态。
+2. 在管理后台中打开每个集合，与 Strapi 比较条目、草稿和语言区域的数量。
+3. 打开几个带有关联、组件、动态区域和媒体的条目，检查链接是否指向正确的文档和文件。
+4. 打开 **媒体库**，检查文件夹和图片（及其格式）是否都在。
+5. 在 **设置 → 公开访问** 和 **设置 → 终端用户** 中，检查导入的权限和角色。
+6. 像前端那样调用你的 API，并与 Strapi 的响应进行比较。
+
+然后提交 `schema/`，创建管理员、API 令牌和 webhook，再进行部署（参见[生产环境检查清单](/zh-cn/deploy/production-checklist/)）。
+
+## 前端需要的修改
+
+内容 API 遵循 Strapi v5 的 REST 和 GraphQL 格式，因此大多数请求可以原样使用。需要修改的是：
+
+- **基础 URL。** 让前端指向 Verdin 服务器。内容 API 位于 `/api`（`[api].prefix`）下，在 **设置 → 功能** 中开启 GraphQL 后，它位于 `/graphql`。
+- **API 令牌。** 令牌不会被导入：请在 **设置 → API 令牌** 中创建新的令牌，并在前端的环境变量中替换它们。
+- **文档 id。** 每个 `documentId` 和数字 `id` 都是新的。请用 `strapi-id-map.json` 中的 id 替换前端中硬编码的 id，或者更好的做法是按 slug 或其他 `uid` 字段查找条目。
+- **媒体 URL。** 文件 URL 指向新的提供方：使用本地提供方时为 Verdin 服务器上的 `/uploads/…`，使用 S3 时为 `[upload.provider].public_url`。请更新框架所允许的图片域名（例如 Next.js 中的 `images.remotePatterns`）。
+- **已登录的终端用户**必须重新登录：他们的密码仍然有效，但 Strapi 签发的 JWT 无效。
+- **CORS。** 如果浏览器从其他源调用 API，请把该源列入 `[api].cors_origins`。
+- **Webhook。** 在 **设置 → Webhook** 中重新创建它们。Strapi 的 `entry.draft-discard` 事件在 Verdin 中叫做 `entry.discard-draft`，并且投递会经过签名（参见 [Webhook](/zh-cn/guides/integrations/webhooks/)）。
+- **Strapi v4 前端**还需要完成 v5 的改动：不带 `attributes` 的扁平响应、URL 中使用 `documentId` 而不是 `id`，以及使用 `status=draft` 而不是 `publicationState=preview`。
+
+如需类型化访问，请用 `verdin types` 生成 TypeScript 类型，并使用[类型化客户端](/zh-cn/guides/frontend/typed-client/)。
+
+## 重写自定义代码
+
+| Strapi | Verdin |
+| --- | --- |
+| 生命周期钩子、Document Service 中间件 | [WebAssembly 插件](/zh-cn/extending/plugins/)中的插件钩子（`beforeCreate`、`afterUpdate`……） |
+| 自定义路由和控制器 | 位于 `/api/plugins/<name>/` 下的插件路由 |
+| Cron 任务 | 插件任务（`[[jobs]]`） |
+| 自定义字段 | 插件自定义字段 |
+| 管理后台小组件 | 插件小组件，或内置的仪表盘小组件 |
+| 管理后台 logo、颜色和文字 | `verdin.toml` 中的 `[admin.branding]` |
+| `config/*.js` | `verdin.toml` 和环境变量（[配置参考](/zh-cn/reference/configuration/)） |

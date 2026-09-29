@@ -1,0 +1,293 @@
+---
+title: "教程：你的第一个插件"
+description: 用 Rust 构建一个 Verdin 插件：自动填写文章的阅读时长、记录发布事件，并提供一个小型 API 路由。
+sidebar:
+  order: 2
+  label: 插件教程
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+在本教程中，你将为博客示例构建一个名为 **reading-time** 的插件。它会：
+
+- 在文章的 `body` 被写入时，根据其内容填写 `readingTime`（一个 before 钩子）；
+- 在文章发布时向其日志写入一行（一个 after 钩子）；
+- 提供 `GET /api/plugins/reading-time/stats`，返回平均阅读时长（一个读取内容的路由）；
+- 提供一个 **Words per minute** 设置项。
+
+整个过程大约需要 20 分钟。插件是什么以及沙箱如何工作，请先阅读[插件](/zh-cn/extending/plugins/)。
+
+## 开始之前
+
+你需要：
+
+- 一个使用博客示例 schema 的 Verdin 项目：把 [`examples/blog/schema`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog/schema) 复制到用 `verdin new` 创建的项目中，或者直接运行该示例。插件会用到 `article` 类型的 `body`（`richtext`）和 `readingTime`（`integer`）属性。
+- 安装了 WebAssembly 目标的 Rust：
+
+  ```sh title="Terminal"
+  rustup target add wasm32-unknown-unknown
+  ```
+
+插件可以用任何提供 [Extism PDK](https://extism.org/docs/concepts/pdk) 的语言编写（JavaScript、Go、Zig、C 等）。本教程使用 Rust 和 `extism-pdk`。
+
+## 创建 crate
+
+<Steps>
+
+1. 在 Verdin 项目之外创建一个库 crate：
+
+   ```sh title="Terminal"
+   cargo new --lib reading-time
+   cd reading-time
+   ```
+
+2. 替换 `Cargo.toml`。插件是一个 `cdylib`；release 配置可以让模块保持小巧。
+
+   ```toml title="Cargo.toml"
+   [package]
+   name = "reading-time"
+   version = "0.1.0"
+   edition = "2024"
+   publish = false
+
+   [lib]
+   crate-type = ["cdylib"]
+
+   [dependencies]
+   extism-pdk = "1.4.1"
+   serde_json = "1"
+
+   [profile.release]
+   opt-level = "s"
+   lto = true
+   strip = true
+   ```
+
+</Steps>
+
+## 编写函数
+
+插件导出的每个函数都接收 JSON 并返回 JSON。Verdin 会为清单中指定的钩子、路由和任务调用它们；这些函数再通过宿主函数（`verdin_log`、`verdin_content`、`verdin_config`……）回调 Verdin。
+
+替换 `src/lib.rs`：
+
+```rust title="src/lib.rs"
+use extism_pdk::*;
+use serde_json::{Value, json};
+
+// Host functions Verdin provides (namespace `extism:host/user`).
+#[host_fn]
+extern "ExtismHost" {
+    fn verdin_log(input: Json<Value>);
+    fn verdin_content(input: Json<Value>) -> Json<Value>;
+    fn verdin_config() -> Json<Value>;
+}
+
+/// Minutes needed to read `text` at `per_minute` words a minute (at least 1).
+fn minutes(text: &str, per_minute: u64) -> u64 {
+    let words = text.split_whitespace().count() as u64;
+    words.div_ceil(per_minute.max(1)).max(1)
+}
+
+/// `beforeCreate` and `beforeUpdate` on articles: fills `readingTime` from `body`.
+#[plugin_fn]
+pub fn set_reading_time(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    // An update may leave the body out: then there is nothing to recompute.
+    let Some(body) = data["body"].as_str() else {
+        return Ok(Json(json!({})));
+    };
+    let config = unsafe { verdin_config()? }.0;
+    let per_minute = config["wordsPerMinute"].as_u64().unwrap_or(200);
+    data["readingTime"] = json!(minutes(body, per_minute));
+    Ok(Json(json!({ "data": data })))
+}
+
+/// `afterPublish` on articles: writes a line to the plugin's log.
+#[plugin_fn]
+pub fn log_publish(Json(input): Json<Value>) -> FnResult<()> {
+    let message = format!("published {}", input["documentId"].as_str().unwrap_or("?"));
+    unsafe { verdin_log(Json(json!({ "level": "info", "message": message })))? };
+    Ok(())
+}
+
+/// `GET /api/plugins/reading-time/stats`: the average reading time of published articles.
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    if request["method"] != "GET" || request["path"] != "/stats" {
+        return Ok(Json(json!({ "status": 404, "body": { "error": "not found" } })));
+    }
+    let found = unsafe {
+        verdin_content(Json(json!({
+            "op": "findMany",
+            "uid": "api::article",
+            "query": { "fields": ["readingTime"], "pagination": { "pageSize": 100 } }
+        })))?
+    }
+    .0;
+    if let Some(error) = found.get("error") {
+        return Ok(Json(json!({ "status": 500, "body": { "error": error } })));
+    }
+    let times: Vec<u64> = found["documents"]
+        .as_array()
+        .map(|documents| documents.iter().filter_map(|d| d["readingTime"].as_u64()).collect())
+        .unwrap_or_default();
+    let average = if times.is_empty() { 0.0 } else { times.iter().sum::<u64>() as f64 / times.len() as f64 };
+    Ok(Json(json!({
+        "status": 200,
+        "headers": { "cache-control": "max-age=60" },
+        "body": { "articles": times.len(), "averageMinutes": average }
+    })))
+}
+```
+
+每个函数的返回值：
+
+- **`set_reading_time`** 是一个 before 钩子。`{ "data": … }` 会替换正在写入的数据；`{}` 则保持不变。它也可以返回 `{ "error": "…" }`，以 400 拒绝这次写入。
+- **`log_publish`** 是一个 after 钩子：其输出会被忽略。
+- **`handle`** 处理 `/api/plugins/reading-time/` 下的所有请求。它收到该前缀之后的路径，并返回 `{ status, headers, body }`。
+
+## 构建模块
+
+```sh title="Terminal"
+cargo build --release --target wasm32-unknown-unknown
+```
+
+模块位于 `target/wasm32-unknown-unknown/release/reading_time.wasm`（Cargo 会把连字符转换为下划线），大约 120 KB。
+
+## 编写清单
+
+<Steps>
+
+1. 在你的 Verdin 项目中创建 `plugins/reading-time/`，并把模块复制进去，命名为 `plugin.wasm`：
+
+   ```sh title="Terminal"
+   mkdir -p plugins/reading-time
+   cp ../reading-time/target/wasm32-unknown-unknown/release/reading_time.wasm plugins/reading-time/plugin.wasm
+   ```
+
+2. 在它旁边创建清单。清单为插件命名、申请函数所需的能力，并把函数连接到钩子和路由：
+
+   ```toml title="plugins/reading-time/plugin.toml"
+   name = "reading-time"
+   version = "0.1.0"
+   description = "Fills an article's reading time from its body"
+
+   [capabilities]
+   read = ["api::article"]           # for the stats route
+
+   [[hooks]]
+   on = "beforeCreate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "beforeUpdate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "afterPublish"
+   uid = "api::article"
+   function = "log_publish"
+
+   [routes]
+   function = "handle"               # serves /api/plugins/reading-time/…
+
+   [[settings]]
+   key = "wordsPerMinute"
+   label = "Words per minute"
+   type = "integer"
+   min = 50
+   max = 1000
+   default = 200
+   ```
+
+   钩子不需要任何能力：它们修改的是传给它们的数据。只有路由中的 `verdin_content` 调用会读取内容，因此插件只申请对文章的 `read`，别无其他。
+
+</Steps>
+
+现在项目的结构如下：
+
+<FileTree>
+- verdin.toml
+- .env
+- plugins/
+  - reading-time/
+    - plugin.toml
+    - plugin.wasm
+- schema/
+  - content-types/
+    - article.json
+    - …
+</FileTree>
+
+## 开启插件
+
+<Steps>
+
+1. 启动（或重启）服务器：
+
+   ```sh title="Terminal"
+   verdin dev
+   ```
+
+   日志中会显示 `plugin found plugin=reading-time version=0.1.0`。
+
+2. 打开管理后台，进入 **设置 → 插件**。**reading-time** 卡片会列出它的访问权限（读取文章）、钩子和路由。开启它。
+
+3. 打开卡片上的 **设置**：表单中显示 **Words per minute** 及其默认值 200。超出 50 到 1,000 范围的值会被拒绝。保持不变即可。
+
+</Steps>
+
+## 试一试
+
+<Steps>
+
+1. 在管理后台中，或者用 API 令牌通过 API，创建一篇正文有几百个词的文章：
+
+   ```sh title="Terminal"
+   curl -X POST http://localhost:1337/api/articles \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "data": { "title": "Hello plugins", "slug": "hello-plugins", "body": "…450 words…" } }'
+   ```
+
+   响应中有 `"readingTime": 3`：450 个词，按每分钟 200 个词计算，向上取整。你并没有发送这个值；是钩子填写的。
+
+2. 只更新标题。`readingTime` 保持不变：这次更新的数据中没有 `body`，因此钩子返回 `{}`。更新正文后，它会被重新计算。
+
+3. 发布这篇文章，然后打开插件卡片上的 **日志**：其中显示 `published <documentId>`。（通过 API 创建时，如果不带 `?status=draft` 会直接发布，因此这一行已经在那里了。）
+
+4. 调用路由：
+
+   ```sh title="Terminal"
+   curl -i http://localhost:1337/api/plugins/reading-time/stats
+   ```
+
+   ```text
+   HTTP/1.1 200 OK
+   content-type: application/json
+   cache-control: max-age=60
+
+   {"articles":1,"averageMinutes":3.0}
+   ```
+
+   它统计的是已发布的文章：除非查询要求 `status: "draft"`，否则 `verdin_content` 读取已发布版本。
+
+</Steps>
+
+<Aside type="caution">
+这个路由会响应任何人：插件路由不受 **公开访问** 的约束。这里它只返回一个平均值，但返回或修改内容的路由必须自行检查 `request.actor`（`{ "kind": "public" }`、`{ "kind": "token", "id": … }` 或 `{ "kind": "user", "id": … }`）。
+</Aside>
+
+## 修改插件
+
+- 编辑代码，再次运行 `cargo build --release --target wasm32-unknown-unknown`，复制模块并重启 Verdin。开关状态和设置会被保留。
+- 修改 `plugin.toml` 同样需要重启。设置的修改会立即生效。
+- 如果某次调用失败，错误会出现在服务器日志和 **日志** 中。panic 或超时只会让那一次调用失败；对于 before 钩子，写入会照常进行，只是不包含插件的修改。
+
+## 下一步
+
+- 添加一个[定时任务、GraphQL 字段或管理后台小组件](/zh-cn/extending/plugin-reference/)。
+- 使用 `kv` 能力以及 `verdin_kv_get` / `verdin_kv_set` 在调用之间保存状态。
+- 代码仓库中的测试插件 [`crates/verdin-plugins/tests/fixtures/sample`](https://github.com/Verdin-CMS/verdin/tree/main/crates/verdin-plugins/tests/fixtures/sample) 用到了所有宿主函数。

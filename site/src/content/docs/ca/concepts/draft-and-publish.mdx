@@ -1,0 +1,136 @@
+---
+title: "Esborrany i publicació"
+description: "Els documents, les seves versions d'esborrany i publicada, els estats pels quals passa una entrada i com els llegeix i escriu cada API."
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+L'esborrany i publicació permet als editors treballar en un document sense canviar el que mostra
+el teu lloc, i publicar-lo quan estigui a punt. Aquesta pàgina explica el model: documents,
+versions, les accions que mouen el contingut entre elles i com les tracta cada API. Funciona com
+a Strapi v5.
+
+Activa-ho per a cada tipus de contingut al seu esquema:
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+Està desactivat quan falta `options.draftAndPublish`.
+
+## Documents i versions
+
+Un **document** és una entrada, identificada pel seu `documentId`. Amb esborrany i publicació, un
+document té fins a dues **versions**:
+
+- un **esborrany**, que canvia amb cada edició, i
+- una versió **publicada**, que l'API de contingut serveix per defecte.
+
+En un tipus [localitzat](/ca/concepts/internationalization/), cada idioma té el seu propi
+esborrany i la seva pròpia versió publicada, i tots comparteixen el `documentId`.
+
+Els tipus sense esborrany i publicació tenen una sola versió per idioma, que sempre està
+publicada: cada escriptura canvia el que veuen els lectors.
+
+## Estats
+
+El tauler d'administració mostra l'estat de cada entrada a la llista i a l'editor:
+
+| Estat | Esborrany | Versió publicada | Què veuen els lectors del contingut publicat |
+| --- | --- | --- | --- |
+| **Esborrany** | sí | cap | Res: el document no és visible. |
+| **Publicat** | igual que la publicada | sí | La versió publicada. |
+| **Modificat** | canviat des de l'última publicació | sí | La versió publicada, sense els canvis nous. |
+
+<Diagram
+  caption="Estats d'un document amb esborrany i publicació, i les accions entre ells"
+  code={`stateDiagram-v2
+    state "Esborrany" as Draft
+    state "Publicat" as Published
+    state "Modificat" as Modified
+    [*] --> Draft: crea
+    Draft --> Published: publica
+    Published --> Modified: desa
+    Modified --> Published: publica o descarta els canvis
+    Published --> Draft: despublica
+    Modified --> Draft: despublica`}
+/>
+
+Les accions mouen un document entre aquests estats:
+
+| Acció | Efecte | De → a |
+| --- | --- | --- |
+| Desar | Escriu l'esborrany. | Esborrany → Esborrany, Publicat → Modificat |
+| **Publica** | Copia l'esborrany sobre la versió publicada, i la crea si cal. | Esborrany o Modificat → Publicat |
+| **Despublica** | Elimina la versió publicada; l'esborrany es manté. | Publicat o Modificat → Esborrany |
+| **Descarta els canvis** | Substitueix l'esborrany per una còpia de la versió publicada. | Modificat → Publicat |
+| Eliminar | Elimina totes les versions (de l'idioma demanat, als tipus localitzats). | qualsevol → desapareix |
+
+La publicació s'executa en una sola transacció. Comprova els camps `required` i les
+[regles entre camps](/ca/concepts/content-model/#validacions-entre-camps) del tipus sobre
+l'esborrany; si la comprovació falla, no es publica res. Fins aleshores, els esborranys poden
+estar incomplets i incomplir aquestes regles.
+
+`publishedAt` és `null` als esborranys. La versió publicada porta l'hora de l'última publicació.
+
+## Les relacions i la multimèdia segueixen la versió
+
+Cada versió té els seus propis enllaços de relacions i multimèdia, i publicar copia els enllaços
+de l'esborrany a la versió publicada. Els enllaços apunten a documents i es resolen en la versió
+que s'està llegint: un article publicat mostra la versió publicada de la seva categoria, i un
+esborrany mostra l'esborrany de la categoria. Si es despublica la categoria, desapareix de
+l'article publicat fins que es torna a publicar, sense que es reescrigui cap enllaç. Consulta
+[Relacions](/ca/concepts/relations/#enllaçades-per-document-no-per-fila).
+
+Els components i les zones dinàmiques formen part de la fila, així que publicar els copia tal
+qual.
+
+## Lectura d'esborranys i de contingut publicat
+
+| API | Llegeix per defecte | Per llegir esborranys |
+| --- | --- | --- |
+| [REST](/ca/api/rest/#estat) | Versions publicades | `?status=draft`, que necessita el permís **Llegeix esborranys** |
+| [GraphQL](/ca/api/graphql/) | Versions publicades | `status: DRAFT`, amb el mateix permís |
+| [API d'administració](/ca/api/admin/) | Esborranys | `?status=published` |
+
+Llegir esborranys és un permís propi (`readDrafts`) perquè un token que llegeix el contingut del
+teu lloc no pugui llegir la feina no publicada. Els tokens d'API de només lectura mai no llegeixen
+esborranys.
+
+Per distingir els documents segons si s'han publicat mai, filtra amb `hasPublishedVersion`:
+`?status=draft&hasPublishedVersion=false` llista els documents que no s'han publicat mai.
+
+## Escriptura a través de les API
+
+Les API segueixen Strapi v5 en les escriptures:
+
+- A **REST i GraphQL**, `create` i `update` escriuen l'esborrany **i el publiquen**, tret que la
+  petició demani `status=draft` (`status: DRAFT` a GraphQL). Una publicació fallida desfà tota la
+  petició.
+- **El tauler d'administració i l'API d'administració** només desen esborranys. Publicar és
+  sempre una acció explícita.
+
+L'API REST també té accions explícites, que Strapi no ofereix per REST:
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+Necessiten el permís **Publica** sobre el tipus. Consulta l'[API REST](/ca/api/rest/#accions).
+
+## Altres funcionalitats que publiquen
+
+- Els [llançaments](/ca/guides/content/releases/) agrupen documents i els publiquen o
+  despubliquen junts, ara o en una data.
+- Els [fluxos de revisió](/ca/guides/content/review-workflows/) poden exigir una etapa abans que
+  un document es pugui publicar.
+- Publicar i despublicar envien els [esdeveniments de webhook](/ca/api/webhooks/) i els
+  [esdeveniments en temps real](/ca/api/realtime/) `entry.publish` i `entry.unpublish`. Desar un
+  esborrany envia `entry.update`, que en temps real només reben els clients que poden llegir
+  esborranys.

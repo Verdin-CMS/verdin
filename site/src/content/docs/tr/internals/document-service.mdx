@@ -1,0 +1,92 @@
+---
+title: Document Service
+description: Verdin’de içerik okuyan ve yazan tek dahili API, her yazmada neyi garanti ettiği ve bir içerik API’si isteğinin ona ulaşmak için izlediği yol.
+sidebar:
+  order: 5
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Document Service (`crates/verdin-content/src/service.rs` içindeki `DocumentService`), içerik satırlarını okuyan ve yazan tek koddur. İçerik API’si, admin API, GraphQL, MCP, eklentiler, içe aktarmalar ve site haritası hepsi ondan geçer; böylece doğrulama, taslak ve yayınlama, ilişki kuralları ve olaylar, çağrıyı hangi API yapmış olursa olsun aynı davranır. Strapi v5’in Document Service’i gibi satırlar üzerinde değil, belgeler (`documentId` ile tanımlanan) üzerinde çalışır.
+
+## API
+
+Ana metotlar (basitleştirilmiş; kesin tipler için kaynağa bakın):
+
+| Metot | Yaptığı |
+|---|---|
+| `find_many(uid, &Query) -> Page` | Sayfa veya offset biçiminde `meta` ile bir belge sayfası |
+| `find_one(uid, document_id, &Query) -> Option<Json>` | Sorgunun durumu ve dilinde tek bir belge |
+| `single_document_id(uid)` | Varsa tekil bir tipin belgesi |
+| `create(uid, &data, WriteOptions) -> String` | Bir belge oluşturur ve `documentId`’sini döndürür |
+| `update(uid, document_id, &data, WriteOptions)` | Taslağın (veya tek sürümün) kısmi güncellemesi; gerektiğinde yeni bir dil sürümü oluşturur |
+| `delete(uid, document_id)` | Belgenin mevcut dildeki tüm sürümlerini siler |
+| `publish(uid, document_id, actor)` | Taslağı yayınlanmış sürümün üzerine kopyalar |
+| `unpublish(uid, document_id)` | Yayınlanmış sürümü siler |
+| `discard_draft(uid, document_id)` | Taslağı yayınlanmış sürümle değiştirir |
+| `uid_availability(…)` | Bir `uid` değerinin boş olup olmadığı, boş bir öneriyle |
+| `document_locales`, `timeline`, `usage`… | Yönetim paneli için yardımcılar |
+
+`WriteOptions`’ın iki alanı vardır: `publish` (taslak ve yayınlama kullanan tiplerde yazdıktan sonra yayınla) ve `actor` (`created_by_id` / `updated_by_id` içine kaydedilen admin).
+
+Servis, builder metotlarıyla yapılandırılan, kopyalanması ucuz bir değerdir: yerelleştirilmiş tipler için `in_locale(locale)`, `with_listener`, `with_hook`, `dry_run()` (bir yazmayı tamamen doğrula ve geri al; içe aktarma deneme çalıştırmalarında kullanılır) ve `without_plugin_hooks()` (eklentilerin kendilerinin yaptığı yazmalar için).
+
+Kimin çağırdığını bilmez. İzinler çağrıdan önce API katmanı tarafından uygulanır: çağıranın sahip olmadığı eylemleri reddeder, bir sorgunun hangi tipler üzerinden populate edebileceğini veya filtreleyebileceğini kısıtlar ve sorguya koşul filtreleri ekler (örneğin admin **Author** rolünün "kendi kayıtları" koşulu `created_by_id = <admin id>` olur). Filtreler SQL’in parçasıdır; bu yüzden sayfalama ve sayımlar kesin kalır.
+
+## Her yazmanın yaptıkları
+
+1. **Hook’lar.** Önce `DocumentHook`’lar sırayla çalışır: inceleme iş akışı aşamaları, ardından eklentiler. Bir hook veriyi değiştirebilir veya yazmayı reddedebilir; bu bir `400` olur. Strapi’nin lifecycle adlarını kullanırlar (`beforeCreate`, `beforeUpdate`, `beforeDelete`, `beforePublish`, `beforeUnpublish`, `beforeDiscardDraft`).
+2. **Girdinin doğrulanması** (`input.rs`): bilinmeyen anahtarlar, sistem alanları (`id`, `documentId`, zaman damgaları) ve ters (`mappedBy`) ilişki tarafları hatadır; her değer nitelik tipine ve kısıtlarına (`min`, `max`, `minLength`, `maxLength`, `regex`, enumeration değerleri, ilişki kardinalitesi, medya `allowedTypes`) karşı denetlenir; bileşenler ve dinamik bölgeler özyinelemeli olarak doğrulanır; `password` değerleri argon2 ile hash’lenir.
+3. **Referanslar.** İlişkili belgeler ve medya dosyaları var olmalıdır; transaction içinde denetlenir.
+4. **Satırlar ve bağlantılar**, tek bir transaction içinde: satır eklenir veya güncellenir, ardından ilişki, polimorfik ve medya bağlantı tabloları yeniden yazılır (konumlar 1..n olarak yeniden numaralandırılır). Bir `oneToOne` veya `oneToMany` hedefini bağlamak onu aynı durumdaki diğer belgelerden uzaklaştırır.
+5. **Zorunlu alanlar ve kurallar.** Bir sürüm yayınlandığında ya da taslak ve yayınlama kullanmayan tiplere yapılan her yazmada, `required` nitelikler (bileşenlerin ve dinamik bölgelerin içindekiler dâhil) ve alanlar arası doğrulama kuralları denetlenir. Bir hata tüm yazmayı geri alır.
+6. **Benzersizlik**, kapsamlı benzersiz indekslerle uygulanır. Bir ihlal niteliğine geri eşlenir ve yarış koşulu olmadan bir `ValidationError` olarak bildirilir.
+7. **Commit, sonra olaylar.** Transaction commit edildikten sonra servis her `DocumentListener`’ı uid, `documentId`, dil ve actor’ı taşıyan bir `DocumentEvent` (`entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete`) ile çağırır.
+
+Doğrulama hataları Strapi’nin biçimini kullanır: `path` değerinin veriye işaret ettiği (`["seo", "metaTitle"]`, `["blocks", 2, "text"]`) bir `{ path, message, name: "ValidationError" }` listesi. Yönetim paneli bunları kendi alanlarına geri eşler.
+
+Dinleyiciler, işleyici başına kod olmadan türetilmiş durumu içerikle uyumlu tutar: webhook’lar, içerik geçmişi, yanıt önbelleği, eklentilerin yazma sonrası hook’ları, denetim kaydı, gerçek zamanlı olaylar, yorumlar ve görevler, "görüldü" işaretleri, CDN temizlemeleri ve arama dizini. Başarısız olan bir dinleyici kendi hatasını günlüğe yazar; yazma zaten başarılı olmuştur. Dinleyiciler commit’ten sonra çalıştığı için bir deneme çalıştırması onlara asla ulaşmaz.
+
+## Okumalar
+
+Bir okuma istenen durum ve dildeki satırları seçer, filtreleri ve sıralamayı SQL’de uygular, ardından istenenleri populate eder:
+
+- **İlişkiler**, asla kademeli join’lerle değil, ilişki ve düzey başına bir toplu sorguyla (`WHERE … IN (…)`, 500 kimlikten oluşan parçalar hâlinde) yüklenir. Bu hem kartezyen patlamaları hem de N+1 sorgularını önler. Kayıt ve ilişki başına en fazla 1.000 ilişkili kayıt populate edilir; sayımlar kesin kalır.
+- Hedefler kaynakla aynı sürümde okunur: yayınlanmış belgeler yayınlanmış hedefleri, taslaklar taslakları görür.
+- **Bileşenler ve dinamik bölgeler** JSON sütunlarından gelir; içlerindeki ilişkiler ve medya aynı toplu sorgularla çözümlenir.
+- **`_q` araması**, `[search]` açıkken Tantivy dizinini, aksi hâlde metin alanları üzerinde büyük/küçük harfe duyarsız bir `$containsi` kullanır.
+
+Çıktının nasıl göründüğü (düz belgeler, değer biçimleri, `populate` sözdizimi, sınırlar) [REST API](/tr/api/rest/) sayfasında belgelenmiştir.
+
+## İçerik API’si istek yaşam döngüsü
+
+<Diagram
+  caption="Soketten veritabanına bir GET /api/articles isteği"
+  code={`sequenceDiagram
+  participant C as İstemci
+  participant L as Paylaşılan katmanlar
+  participant H as handlers.rs
+  participant Q as verdin-query
+  participant D as Document Service
+  participant DB as Veritabanı
+  C->>L: GET /api/articles?filters…
+  L->>H: istemci IP’si, istek kimliği, CORS, sınırlar, önbellek
+  H->>H: pluralName ile yönlendir, token’ı veya public rolünü yetkilendir
+  H->>Q: şemaya karşı ayrıştır ve doğrula
+  Q-->>H: tipli Query
+  H->>D: find_many(uid, query)
+  D->>DB: SELECT … WHERE … ORDER BY … LIMIT
+  D->>DB: populate edilen ilişki başına bir toplu sorgu
+  D-->>H: belgeler ve sayfa meta verisi
+  H-->>C: { data, meta }`}
+/>
+
+1. **Paylaşılan katmanlar** (en dıştaki önce): istemci adresi çözümlenir (`X-Forwarded-For` yalnızca `[server].trusted_proxies`’ten kullanılarak), metrikler etkinse isteği sayar, bir istek kimliği ayarlanır ve `x-request-id` olarak yayılır, tracing bir span açar ve `[api].cors_origins` ayarlıyken CORS içerik API’sine ve GraphQL’e uygulanır.
+2. **İçerik API’si katmanları**: istemci başına hız sınırları, `ETag`’ler ve anonim okumaların isteğe bağlı önbelleği, gövde boyutu sınırı (`[server].body_limit`) ve istek zaman aşımı, yanıtlarda CDN önbellek etiketleri.
+3. **Yönlendirme.** Yol segmenti, içerik tiplerinin `pluralName`’leri (koleksiyon tipleri) ve `singularName`’leri (tekil tipler) arasında aranır. Bilinmeyen adlar `404`’tür.
+4. **Yetkilendirme** (`verdin-auth`). `Authorization` başlığı yoksa public rolü; `Bearer vd_…` bir API token’ıdır. Geçersiz veya süresi dolmuş bir token `401`’dir, asla public rolü değildir. Rotanın eylemi (`find`, `findOne`, `create`, `update`, `delete`, `publish`) tip için verilmiş olmalıdır, aksi hâlde yanıt `403`’tür.
+5. **Sorgu ayrıştırma** (`verdin-query`). Ham sorgu string’i bir köşeli parantez ağacına (en fazla 16 KB, 12 düzey, 1.000 çift), ardından tipin alanlarına karşı doğrulanan tipli bir `Query`’ye ayrıştırılır: bilinmeyen ve `private` alanlar `400`’dür; populate, ilişki filtreleri ve ilişki sıralamaları çağıranın okuyabildiği tiplerle sınırlıdır. `?status=draft` okumak ayrıca `readDrafts` gerektirir.
+6. **Document Service.** İşleyici `find_many`, `find_one`, `create`, `update`, `delete` veya bir eylem çağırır. `?status=draft` olmadan yazmalar taslak ve yayınlama kullanan tiplerde yayınlar (Strapi v5 davranışı) ve yanıt için yazılan sürümü geri okur.
+7. **Yanıt.** `{ "data": …, "meta": … }`. Hatalar `data: null` ve bir `error` nesnesiyle aynı zarfı kullanır.
+
+Admin API rotaları aynı yolu; bir API token’ı yerine bir admin oturumuyla, içerik API’si yetkileri yerine admin RBAC ile ve önce taslak varsayılanlarıyla izler: taslakları okur ve yalnızca taslak yazarlar; yayınlama açık bir eylemdir. GraphQL, argümanlarını 5. adımdan önce aynı parametre ağacına çevirir; böylece ayrıştırıcıyı, sınırları ve izin kurallarını paylaşır.

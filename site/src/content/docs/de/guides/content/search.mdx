@@ -1,0 +1,90 @@
+---
+title: Suche
+description: Einträge mit _q durchsuchen und den Tantivy-Volltextindex für nach Relevanz sortierte, akzentunabhängige Ergebnisse einschalten.
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Content-API und Admin-Panel durchsuchen Einträge wie in Strapi mit dem Parameter `_q`.
+Standardmäßig findet `_q` Textfelder, die die Wörter enthalten. Schalte den Index `[search]`
+ein, um die Ergebnisse mit einer im Server eingebauten Volltext-Engine (Tantivy) nach Relevanz
+zu sortieren. Diese Anleitung zeigt beides und wann sich der Index lohnt.
+
+## Mit `_q` suchen
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/api/articles' --data-urlencode '_q=rust cms'
+```
+
+`_q` lässt sich mit den anderen Parametern kombinieren: `filters`, `status`, `locale`,
+`pagination`, `fields` und `populate`. Das Suchfeld der Admin-Liste schickt denselben
+Parameter.
+
+Welche Felder durchsucht werden:
+
+- Textfelder: `string`, `text`, `richtext`, `email`, `uid` und `enumeration`.
+- Mit dem Index auch der Text in `blocks`, Komponenten und Dynamic Zones.
+- Nie private Felder oder Passwörter.
+
+`_q` ist ein REST-Parameter. GraphQL und die Abfrageoptionen des TypeScript-Clients haben kein
+Suchargument; nimm dort einen `$containsi`-Filter.
+
+## Ohne den Index
+
+Ohne `[search]` findet `_q` Einträge, in denen irgendein Textfeld den ganzen Suchtext enthält,
+ohne Beachtung der Groß-/Kleinschreibung, wie `$containsi` von Strapi. Die Ergebnisse folgen der
+üblichen Sortierung. Das braucht keine Einrichtung und funktioniert auf jeder Datenbank, liest
+aber die ganze Tabelle und sortiert nicht nach Relevanz.
+
+## Den Volltextindex einschalten
+
+<Steps>
+
+1. Aktiviere den Index in `verdin.toml`:
+
+   ```toml title="verdin.toml"
+   [search]
+   enabled = true
+   ```
+
+2. Starte Verdin neu. Es baut den Index im Hintergrund aus allen Einträgen auf; bis er fertig
+   ist, fällt `_q` auf `$containsi` zurück.
+
+</Steps>
+
+| Schlüssel | Standard | Beschreibung |
+| --- | --- | --- |
+| `enabled` | `false` | `_q` mit dem Volltextindex sortieren. |
+| `dir` | `"data/search"` | Indexverzeichnis, relativ zum Projekt. |
+| `memory_mb` | `50` | Speicherbudget fürs Indexieren, in Megabyte. |
+
+Siehe die [Konfigurationsreferenz](/de/reference/configuration/).
+
+Wie der Index vergleicht:
+
+- Wörter werden an allem getrennt, was kein Buchstabe und keine Ziffer ist, kleingeschrieben
+  und von Akzenten befreit, sodass `cafe` auch `Café` findet.
+- Jedes Wort muss passen. Das letzte Wort passt auch als Präfix, sodass Ergebnisse schon
+  während des Tippens erscheinen.
+- Der Titel (das erste Textfeld des Typs) zählt doppelt.
+- Ohne `sort` kommen die Ergebnisse nach bester Übereinstimmung. Mit `sort` werden die Treffer
+  so sortiert, wie du es angibst. Pro Suche werden höchstens 1.000 Treffer berücksichtigt.
+- Entwürfe und veröffentlichte Versionen sowie jede Sprache werden getrennt durchsucht,
+  entsprechend `status` und `locale`.
+
+Der Index folgt jedem Schreibvorgang aus jeder API. Er wird neu aufgebaut, wenn das Schema die
+durchsuchbaren Felder ändert und wenn sein Verzeichnis fehlt.
+
+## Mehrere Instanzen
+
+Der Index liegt auf der Festplatte der Instanz und folgt den Schreibvorgängen dieser Instanz.
+Betreibst du mehrere Instanzen, erreichen Schreibvorgänge auf einer nicht den Index der anderen.
+Halte die Suche auf einer einzigen Instanz, oder baue nach einem Deploy neu auf, indem du das
+Indexverzeichnis vor dem Start löschst. Siehe [Skalierung](/de/deploy/scaling/).
+
+<Aside type="tip">
+Das Indexverzeichnis kannst du gefahrlos löschen. Halte es aus Backups und der
+Versionskontrolle heraus; Verdin baut es aus der Datenbank neu auf.
+</Aside>

@@ -1,0 +1,156 @@
+---
+title: Previsualització
+description: Obre els esborranys al teu lloc des de l'editor d'entrades amb un token de previsualització de curta durada, i fes que el teu lloc llegeixi l'esborrany amb aquest token.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+La previsualització obre l'esborrany d'una entrada al teu propi lloc, abans que es publiqui.
+L'editor construeix un enllaç a partir d'una plantilla d'URL per tipus de contingut i hi afegeix un
+token de curta durada que permet al teu lloc llegir aquell esborrany concret. Aquesta guia
+configura les plantilles i la part del lloc.
+
+Per fer clic sobre un text de la previsualització i saltar al seu camp, afegeix-hi
+l'[edició visual](/ca/guides/frontend/visual-editing/).
+
+## Abans de començar
+
+- Activa **Configuració → Funcionalitats → Previsualització**. Està desactivada per defecte.
+- Canviar la configuració de la funcionalitat necessita **Gestiona les funcionalitats**
+  (`features.manage`).
+- Obrir una previsualització necessita accés de lectura a l'entrada. Consulta
+  [Permisos](/ca/reference/permissions/).
+
+## Configura els URL de previsualització
+
+<Steps>
+
+1. A la targeta **Previsualització** de **Configuració → Funcionalitats**, selecciona **Configura
+   els URL de previsualització**.
+2. A **Plantilles d’URL**, introdueix la pàgina del teu lloc que mostra l'esborrany de cada tipus
+   de contingut. Deixa un tipus buit per no donar-li previsualització.
+3. Opcionalment, canvia **Durada de l’enllaç (minuts)**: 60 per defecte, com a màxim 10080 (7
+   dies).
+4. Desa.
+
+</Steps>
+
+Una plantilla és un URL `http` o `https` amb marcadors entre claus:
+
+| Marcador | S'omple amb |
+| --- | --- |
+| `{slug}`, `{title}`, `{locale}`… | Qualsevol camp de primer nivell de l'esborrany. Els marcadors desconeguts queden buits. |
+| `{documentId}`, `{uid}` | L'id del document i l'uid del tipus de contingut. |
+| `{token}` | El token de previsualització. Sense aquest marcador, el token s'afegeix com a paràmetre de consulta `preview`. |
+
+Per als articles del projecte d'exemple:
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+dona `https://example.com/blog/hello-world?locale=en&preview=<token>`.
+
+La mateixa configuració en JSON, tal com la desa la funcionalitat
+(`PUT /admin/api/features/preview`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## Obre una previsualització
+
+A l'editor d'entrades, selecciona **Obre la previsualització** per obrir l'esborrany al teu lloc en
+una pestanya nova, o **Costat a costat** per mostrar-lo en un panell al costat del formulari, amb
+amplades **Escriptori**, **Tauleta** i **Mòbil**. El panell lateral es recarrega després de cada
+desament. Si es queda en blanc, probablement el teu lloc no accepta ser inserit en un marc: fes
+servir **Obre en una pestanya nova**.
+
+## Llegeix l'esborrany al teu lloc
+
+La teva pàgina de previsualització agafa el token de l'URL i el torna a enviar a l'API de contingut
+a la capçalera `x-verdin-preview`, demanant l'esborrany:
+
+<Diagram
+  caption="Una petició de previsualització"
+  code={`sequenceDiagram
+  participant E as Editor
+  participant V as Verdin
+  participant S as El teu lloc
+  E->>V: Obre la previsualització
+  V-->>E: URL amb el token de previsualització
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: l'esborrany`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+El token de previsualització el llegeix l'API de contingut REST. Obtén l'esborrany per REST a la
+teva pàgina de previsualització.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+La mateixa capçalera funciona amb els tipus únics (`GET /api/<singularName>?status=draft`).
+
+Què concedeix el token:
+
+- Permet a qui el porta llegir aquell document concret, esborranys inclosos, fins que caduca.
+- No pot llegir altres documents, llistar entrades ni escriure res.
+- Les respostes a les peticions de previsualització mai no es desen a la memòria cau.
+
+<Aside type="caution">
+Qualsevol que tingui l'enllaç pot llegir l'esborrany fins que caduqui el token. Mantén la durada
+curta, i no comparteixis enllaços de previsualització en llocs públics.
+</Aside>
+
+La teva pàgina de previsualització sol buscar l'entrada per un camp com `slug`. Com que el token
+llegeix per `documentId`, posa també `{documentId}` a la plantilla, o mantén la correspondència
+entre slug i id a la teva banda.
+
+## API d'administració
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` retorna l'enllaç per al botó de
+l'editor:
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+Necessita accés de lectura a l'entrada, i respon `404` quan la funcionalitat està desactivada o el
+tipus no té plantilla.

@@ -1,0 +1,107 @@
+---
+title: メニュー
+description: 管理パネルでリンクとエントリーからなるナビゲーションメニューを作り、サイトで表示します。
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+**メニュー**の機能は、ページ、エントリー、他のサイトにリンクする、名前付きのナビゲーションツリー（ヘッダー、フッター、サイドバー）を編集者に提供します。サイトはスラッグでメニューを取得して表示します。エントリーへのリンクは、その公開状態とパスに従います。
+
+Strapi では通常、ナビゲーションのプラグインや手作りのメニュー用コンテンツタイプが必要ですが、Verdin では組み込まれています。
+
+## オンにする
+
+**設定 → 機能**で**メニュー**をオンにし、**メニューを管理**を選びます（または**設定 → メニュー**に移動します）。メニューの管理には**SEO、リダイレクト、メニュー、フォームの管理**の権限（`site.manage`）が必要で、組み込みの Editor ロールはこれを持っています。[権限](/ja/reference/permissions/)を参照してください。
+
+エントリーをパスでリンクするには、[SEO とサイトマップ](/ja/guides/frontend/seo-and-sitemap/)でパスパターンも設定してください。
+
+## メニューを作る
+
+<Steps>
+
+1. **設定 → メニュー**で**新規メニュー**を選びます。
+2. 名前（**メインナビゲーション**など）と**スラッグ**（`main`）を付けます。スラッグは小文字の英字、数字、ダッシュからなります。サイトはスラッグでメニューを取得します。
+3. **項目を追加**を選び、項目を入力します。
+   - **ラベル**: リンクのテキスト。最大 255 文字。
+   - **リンク先**: **URL**、**エントリー**、または**なし（見出し）**。
+   - **URL**: パス（`/about`）、アンカー（`#team`）、または `http(s)`、`mailto:`、`tel:` のリンク。
+   - エントリーの場合は**エントリーを選択**を選びます。複数の型をリンクできる場合は**コンテンツタイプ**を選び、エントリーを検索して 1 件選びます。
+   - **開き方**: **同じタブ**または**新しいタブ**。
+4. 項目をドラッグして並べ替えたりネストしたりするか、項目のボタンを使います。キーボードでは、ドラッグハンドル上で Alt+↑ と Alt+↓ で項目を移動し、Alt+→ で上の項目の下にネストし、Alt+← でネストから出します。
+5. 保存します。
+
+</Steps>
+
+メニューは最大 5 階層、500 項目までです。
+
+## メニューを取得する
+
+サイトは、トークンなしで `GET /api/_menus/{slug}` からメニューを読みます。多言語化されたコンテンツには `?locale=` を付けます。
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+エントリーへのリンクの解決方法:
+
+- リクエストしたロケールで公開されていないエントリーは、その子とともにメニューから除かれます。メニューから下書きが漏れることはありません。
+- `entry.path` は、[SEO とサイトマップ](/ja/guides/frontend/seo-and-sitemap/)の型のパターンに、エントリーのフィールドとロケールを当てはめて作られます。型にパターンがない場合や、エントリーでパターンを埋められない場合は `null` です。
+- 項目に独自の `url` がない場合は、パスが `url` になるので、ほとんどのサイトは `url` を読むだけで済みます。
+
+`locale` がない場合、エントリーはデフォルトのロケールで読まれます。レスポンスは `Cache-Control: public, max-age=60` 付きで送られます。
+
+## 表示する
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+メニューを削除すると、機能をオフにしたときと同様に、`/api/_menus/{slug}` は `404` を返します。サイト側で、たとえばナビゲーションを表示しないようにして対処してください。
+</Aside>
+
+## Admin API
+
+管理パネルは、管理者のアクセストークンと `site.manage` を使って、`/admin/api/site/menus`（`GET`、`POST`）と `/admin/api/site/menus/{id}`（`GET`、`PUT`、`DELETE`）を利用します。[Admin API](/ja/api/admin/) を参照してください。

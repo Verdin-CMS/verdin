@@ -1,0 +1,159 @@
+---
+title: Webhook
+description: コンテンツやメディアが変わったときに自分のエンドポイントを呼び出し、配信が Verdin から来たことを確認し、再試行に対処します。
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Webhook は、コンテンツやメディアが変わったときに、あなたの URL へ HTTP `POST` を送ります。静的サイトの再ビルド、キャッシュのパージ、検索インデックスの同期、チャットへの投稿などに使えます。配信はキューに入り、署名され、再試行され、ログに記録されます。
+
+このページでは、Webhook を設定して受信するまでの手順を説明します。イベント、ペイロード、ヘッダーは [Webhook のリファレンス](/ja/api/webhooks/)に一覧されています。
+
+## オンにする
+
+**Webhook** の機能はデフォルトでオンで、**設定 → 機能**でオフにできます。Webhook の管理には **Webhookの管理**の権限（`webhooks.manage`）が必要です。[権限](/ja/reference/permissions/)を参照してください。
+
+## Webhook を作成する
+
+<Steps>
+
+1. **設定 → Webhook** に移動し、**新規Webhook**を選びます。
+2. **一般**で、**名前**と、Verdin が呼び出す **URL** を設定します。
+3. **イベント**で、配信のきっかけになるイベントを選びます: **エントリー**（作成、更新、公開、非公開、下書きの破棄、削除）、**メディア**、**リリース**（**リリースの公開**）、**レビューワークフロー**（**エントリーの段階変更**）。
+4. **コンテンツタイプ**で、**すべてのコンテンツタイプ**のままにするか、一部を選びます。これはエントリーのイベントだけを絞り込み、メディアのイベントは関係なく送られます。
+5. **ヘッダー**で、`authorization` トークンなど、エンドポイントに必要なヘッダーを追加します（**ヘッダーを追加**）。`content-type`、`host`、`x-verdin-*` のヘッダーは Verdin が設定します。
+6. **署名**で、**配信に署名する**をオンのままにします（デフォルト）。
+7. **作成**を選びます。Verdin は署名用のシークレット（`whsec_…`）を一度だけ表示するので、エンドポイントの設定にコピーしてください。
+
+</Steps>
+
+**有効**を切り替えると、削除せずに Webhook をオフにできます。無効な Webhook はイベントを受け取りませんが、テストはできます。
+
+## テストする
+
+Webhook で**テストイベントを送信**を選びます。Verdin はすぐに次を送ります。
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+配信は、Webhook の**配信ログ**に、状態、HTTP ステータス、所要時間、レスポンスボディの先頭とともに表示されます。配信を開くと、ペイロード全体と、あればエラーが表示されます。
+
+開発中に自分のマシンで Webhook を受け取るには、`verdin dev` でサーバーを実行してください。`verdin start` では拒否される `localhost` の URL が許可されます（[セキュリティ](#セキュリティ)を参照）。
+
+## 配信を受け取る
+
+配信は、JSON のボディと次のヘッダーを持つ `POST` です。
+
+| ヘッダー | 値 |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | `entry.publish` のようなイベント名。 |
+| `x-verdin-delivery` | 配信 ID。再試行しても変わらないので、重複を無視するのに使います。 |
+| `x-verdin-signature` | 署名された Webhook では `t=<unix seconds>,v1=<hex>`。 |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+任意の `2xx` ステータスで、すばやく応答してください。時間のかかる処理（完全な再ビルド）は応答の後に行うか、キューに入れます。タイムアウト（デフォルトは 10 秒）より長くかかった配信は失敗とみなされます。
+
+### 署名を検証する
+
+`v1` は、Webhook のシークレットを鍵にした `"<t>.<raw body>"` の HMAC-SHA256 です。配信を確認する手順は次のとおりです。
+
+1. 再シリアライズした JSON ではなく、**生の**リクエストボディに対して HMAC を計算し直します。
+2. `v1` と定数時間で比較します。
+3. 数分より古いタイムスタンプを拒否して、傍受された配信が再送されないようにします。
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+Express では、生のボディを保ってください: `app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)` とし、`req.body.toString()` を渡します。
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+`crypto.subtle.verify` は定数時間で比較します。
+
+</TabItem>
+</Tabs>
+
+**シークレットを更新**は新しいシークレットを発行し（一度だけ表示）、古いシークレットはすぐに使えなくなります。**署名を停止**はシークレットを削除し、配信を署名なしで送ります。
+
+## 再試行
+
+配信は変更がコミットされた時点でデータベースに保存され、バックグラウンドのワーカーが送信するので、遅いエンドポイントが編集者を遅くすることはありません。
+
+- **成功:** `2xx` の応答すべて。
+- **失敗:** それ以外すべて。リダイレクト（追いかけません）、接続エラー、タイムアウトを含みます。
+- **再試行:** 失敗した配信は 30 秒後、2 分後、10 分後、1 時間後、6 時間後に再試行されます。その後は**失敗**として記録されます。
+
+ログの配信で**再試行**を選ぶと、今すぐもう一度送ります。ログは 30 日間保持されます。再試行は同じ `x-verdin-delivery` を使うので、ハンドラーは冪等にしてください。処理した ID を保存するか、処理を繰り返しても安全なものにします。
+
+## セキュリティ
+
+`verdin start` では、Webhook の URL にループバック、プライベート、リンクローカル、その他の予約済みアドレスは使えません。それらに解決されるホスト名も同じです。これにより、管理者が Webhook を使って内部サービスに到達すること（SSRF）を防ぎます。URL 内の認証情報（`https://user:pass@…`）は拒否されるので、代わりにヘッダーで送ってください。
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+[`[webhooks]`](/ja/reference/configuration/) を参照してください。
+
+## Strapi から移行する場合
+
+Verdin の Webhook は Strapi のイベントとペイロードに従っていますが、次の違いがあります。
+
+- 配信は署名され、再試行され、ログに記録されます。
+- Webhook を一部のコンテンツタイプに限定できます。
+- Strapi の `entry.draft-discard` は `entry.discard-draft` という名前です。
+
+変更のたびにではなく、管理画面のボタンで静的サイトを再ビルドするには、[デプロイと CDN](/ja/guides/integrations/deploys-and-cdn/)を参照してください。

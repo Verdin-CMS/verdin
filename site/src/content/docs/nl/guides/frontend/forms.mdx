@@ -1,0 +1,157 @@
+---
+title: Formulieren
+description: Definieer contact- en aanmeldformulieren in het beheerpaneel, post ernaar vanaf je site, en lees of exporteer de inzendingen.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+De functie **Formulieren** regelt de formulieren van je site (contact, aanmelding voor een
+nieuwsbrief, inschrijving voor een evenement) zonder formulierendienst. Redacteuren definiëren de
+velden in het beheerpaneel, je site toont ze en post naar Verdin, en inzendingen worden
+gevalideerd, opgeslagen, gemaild en als CSV geëxporteerd.
+
+## Aanzetten
+
+Zet in **Instellingen → Functies** **Formulieren** aan en kies daarna **Formulieren beheren** (of
+ga naar **Instellingen → Formulieren**). Formulieren beheren en inzendingen lezen vereist het recht
+**SEO, redirects, menu's en formulieren beheren** (`site.manage`), dat de ingebouwde rol Editor
+heeft. Zie [Rechten](/nl/reference/permissions/).
+
+Configureer voor meldingsmails een provider in [`[email]`](/nl/reference/configuration/); met de
+standaardprovider `log` worden e-mails alleen naar het serverlog geschreven.
+
+## Een formulier aanmaken
+
+<Steps>
+
+1. Kies in **Instellingen → Formulieren** **Nieuw formulier**.
+2. Geef het een naam (zoals **Contact**) en een **Slug** (`contact`). De slug maakt deel uit van
+   de URL van het formulier.
+3. Kies op het tabblad **Velden** voor elk veld **Een veld toevoegen**, met zijn **Label**,
+   **Naam**, **Type**, **Verplicht**, **Plaatshouder** en **Maximale lengte**.
+4. Stel op het tabblad **Instellingen** in:
+   - **Meldingen**: e-mailadressen die elke inzending ontvangen.
+   - **Succesbericht**: na een inzending teruggestuurd naar je site.
+   - **Spamval**: standaard aan (zie [Spam](#spam)).
+5. Sla op. Het tabblad **Integratie** toont het openbare endpoint en een voorbeeld om te kopiëren.
+
+</Steps>
+
+| Type | Label in het beheerpaneel | Accepteert |
+| --- | --- | --- |
+| `text` | **Tekst** | Willekeurige tekst. |
+| `email` | **E-mail** | Een e-mailadres. |
+| `textarea` | **Lange tekst** | Willekeurige tekst. |
+| `number` | **Getal** | Een getal, opgeslagen als getal. |
+| `select` | **Keuze** | Een van zijn **Opties** (één per regel). |
+| `checkbox` | **Selectievakje** | `true`, `on`, `1` of `yes` is aangevinkt; al het andere niet. Een verplicht selectievakje moet zijn aangevinkt. |
+| `date` | **Datum** | Willekeurige tekst (gebruik `<input type="date">`). |
+| `url` | **URL** | Een URL. |
+| `tel` | **Telefoon** | Willekeurige tekst. |
+
+Veldnamen beginnen met een letter, gevolgd door letters, cijfers of `_`, en zijn uniek binnen het
+formulier. Een formulier heeft 1 tot 50 velden. Waarden hebben hoogstens **Maximale lengte**
+tekens (standaard 5.000, hoogstens 20.000).
+
+## Het formulier tonen
+
+`GET /api/_forms/{slug}` geeft de definitie terug, zodat je site de velden kan tonen die de
+redacteuren hebben gekozen:
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+`honeypot` is `null` als de spamval uit staat. De definitie wordt een minuut gecachet
+(`Cache-Control: public, max-age=60`).
+
+## Versturen
+
+`POST /api/_forms/{slug}` neemt de waarden als JSON (de velden, of `{ "data": { … } }`) of als
+gewone formulierpost (`application/x-www-form-urlencoded`). Er is geen token nodig.
+
+<Tabs syncKey="form">
+<TabItem label="HTML-formulier">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| Antwoord | Wanneer |
+| --- | --- |
+| `201` met `{ "data": { "message": … } }` | Geaccepteerd. `message` is het **Succesbericht**, of `Thank you!`. |
+| `400` `ValidationError` | Een waarde ontbreekt of is ongeldig. `details.errors` somt per veld `{ path, message }` op. |
+| `404` | Geen formulier met die slug, of de functie staat uit. |
+| `413` | De inzending is groter dan 64 KB. |
+| `429` | Dezelfde bezoeker stuurde binnen een minuut meer dan 10 inzendingen naar dit formulier. |
+
+Waarden worden getrimd en tegen de velden gecontroleerd. Onbekende velden vallen weg, dus een
+bezoeker kan geen gegevens toevoegen waar je niet om hebt gevraagd.
+
+Een gewone HTML-formulierpost krijgt het JSON-antwoord als pagina. Voor een betere ervaring
+verstuur je met `fetch` en toon je het bericht zelf. Vanuit de browser naar een andere origin
+posten vereist de origin van je site in [`[api].cors_origins`](/nl/reference/configuration/).
+
+### Spam
+
+Met **Spamval** aan voeg je een verborgen, leeg veld `_gotcha` aan het formulier toe. Bots vullen
+elk veld in; een inzending met `_gotcha` ingevuld wordt beantwoord als geaccepteerd (`201`) en
+weggegooid, zodat de bot niets leert. Samen met de rate limit houdt dit de meeste formulierspam
+tegen zonder CAPTCHA.
+
+## Inzendingen lezen
+
+Het tabblad **Inzendingen** van het formulier toont wat bezoekers hebben gestuurd, met het tijdstip
+waarop het is **Ontvangen**. Je kunt een inzending verwijderen, en **CSV exporteren** downloadt ze
+allemaal.
+
+Elke geaccepteerde inzending wordt ook gemaild naar de adressen bij **Meldingen**, met een link
+naar de inzendingen in het beheerpaneel (opgebouwd uit
+[`[server].public_url`](/nl/reference/configuration/)).
+
+<Aside type="note">
+Verdin slaat van elke inzending de waarden op, de user agent van de bezoeker, en een hash met
+sleutel van zijn IP-adres (niet het adres zelf): genoeg om een stortvloed te herkennen zonder
+mensen te volgen. Een formulier verwijderen verwijdert zijn inzendingen.
+</Aside>
+
+## Admin-API
+
+Het beheerpaneel gebruikt `/admin/api/site/forms` en `/admin/api/site/forms/{id}`, plus
+`/admin/api/site/forms/{id}/submissions` en `…/submissions/export` (CSV), met het access token
+van een beheerder en `site.manage`. Zie [Admin-API](/nl/api/admin/).

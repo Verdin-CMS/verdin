@@ -1,0 +1,114 @@
+---
+title: Registres d'auditoria
+description: Consulta qui ha canviat què i quan, filtra els registres d'auditoria al tauler d'administració o a l'API, i defineix quant de temps es conserven les entrades.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Els registres d'auditoria enregistren qui ha canviat què, i quan: contingut, multimèdia, inicis de
+sessió i tots els canvis fets al tauler d'administració. Aquesta guia mostra què s'enregistra, com
+filtrar els registres i quant de temps es conserven.
+
+Els registres d'auditoria són una funcionalitat Enterprise a Strapi. A Verdin formen part del nucli
+de codi obert.
+
+## Abans de començar
+
+- **Configuració → Funcionalitats → Registres d’auditoria** està activat per defecte. Desactivar-ho
+  deixa d'enregistrar accions noves; les entrades existents continuen sent llegibles.
+- Llegir els registres necessita **Consulta els registres d’auditoria** (`audit.read`). Consulta
+  [Permisos](/ca/reference/permissions/).
+
+## Què s'enregistra
+
+| Àrea | Accions | Notes |
+| --- | --- | --- |
+| Contingut | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | Des de totes les API: el tauler d'administració, REST, GraphQL i connectors. L'idioma és als detalls. |
+| Fluxos de revisió | `entry.stage`, `entry.assign` | Canvis d'etapa i assignacions. |
+| Multimèdia | `media.create`, `media.update`, `media.delete` | Pujades, canvis i eliminacions de fitxers. El nom del fitxer és als detalls. |
+| Inicis de sessió | `admin.login` | Inicis de sessió amb contrasenya i del primer administrador (enregistrats després del segon factor quan el compte en té), i inicis de sessió SSO amb el proveïdor. |
+| Canvis d'administració | `{METHOD} {route}`, per exemple `PUT /roles/{id}` | Totes les escriptures correctes a l'API d'administració: usuaris, rols, tokens d'API, configuració, funcionalitats, webhooks, idiomes, connectors, llançaments… Els paràmetres de la ruta són als detalls. |
+
+Cada entrada té una hora, un autor, una acció, un objecte (un uid de tipus de contingut,
+`plugin::upload.file`, o el recurs d'administració com ara `roles`), l'id de l'objecte, detalls i,
+per a les peticions, l'adreça IP del client.
+
+L'autor és un d'aquests:
+
+- **Administrador**: un administrador amb la sessió iniciada, que s'anomena al registre.
+- **API**: un canvi fet a través de l'API de contingut o GraphQL, amb un token d'API, el token
+  d'un usuari final o l'accés públic.
+- **Sistema**: una escriptura a l'API d'administració sense cap administrador amb la sessió
+  iniciada.
+
+Darrere d'un proxy invers, defineix `[server].trusted_proxies` perquè els registres mostrin
+l'adreça del client en lloc de la del proxy. Consulta la
+[referència de configuració](/ca/reference/configuration/).
+
+## Filtra els registres
+
+<Steps>
+
+1. Obre **Configuració → Registres d’auditoria**.
+2. Fes servir un preajust de **Filtres ràpids** (**Contingut**, **Multimèdia**, **Inicis de
+   sessió**), o omple els filtres:
+   - **Acció**: una acció exacta com `entry.publish`, o un prefix acabat en `*`, com `entry.*`.
+   - **Autor**: un administrador, o **Qualsevol**.
+   - **Objecte**: un uid de tipus de contingut com `api::article`.
+   - **Des de** i **Fins a**: un interval de dates. Una data sense hora inclou tot aquell dia.
+3. Selecciona **Aplica**. Obre **Detalls** en una fila per veure tot el que s'ha enregistrat.
+
+</Steps>
+
+## Consulta l'API
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+Les entrades arriben de la més recent a la més antiga, 50 per pàgina per defecte i com a màxim
+200:
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` i `to` accepten dates o dates i hores ISO 8601; qualsevol altra cosa és un error `400`.
+
+## Defineix quant de temps es conserven les entrades
+
+Les entrades més antigues que `[audit].retention_days` s'eliminen un cop al dia. El valor per
+defecte és de 90 dies.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+Per conservar les entrades d'auditoria més temps del que hauria de guardar la teva base de dades,
+copia-les regularment al teu propi emmagatzematge amb l'API anterior.
+</Aside>

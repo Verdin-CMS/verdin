@@ -1,0 +1,130 @@
+---
+title: Menüs
+description: Navigationsmenüs aus Links und Einträgen im Admin-Panel bauen und auf deiner Website rendern.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Die Funktion **Menüs** gibt Redakteuren benannte Navigationsbäume (eine Kopfzeile, eine
+Fußzeile, eine Seitenleiste), die auf Seiten, Einträge oder andere Websites verweisen. Deine
+Website holt ein Menü über seinen Slug und rendert es; Links auf Einträge folgen deren
+Veröffentlichungsstatus und Pfad.
+
+In Strapi braucht das meist ein Navigations-Plugin oder einen selbst gebauten Inhaltstyp für
+Menüs; in Verdin ist es eingebaut.
+
+## Einschalten
+
+Schalte unter **Einstellungen → Funktionen** **Menüs** ein und wähle dann **Menüs verwalten**
+(oder geh zu **Einstellungen → Menüs**). Menüs zu verwalten braucht die Berechtigung
+**SEO, Weiterleitungen, Menüs und Formulare verwalten** (`site.manage`), die die eingebaute
+Rolle Editor hat. Siehe [Berechtigungen](/de/reference/permissions/).
+
+Um Einträge über ihren Pfad zu verlinken, richte außerdem Pfadmuster unter
+[SEO und Sitemap](/de/guides/frontend/seo-and-sitemap/) ein.
+
+## Ein Menü bauen
+
+<Steps>
+
+1. Wähle unter **Einstellungen → Menüs** **Neues Menü**.
+2. Gib ihm einen Namen (etwa **Hauptnavigation**) und einen **Slug** (`main`):
+   Kleinbuchstaben, Ziffern und Bindestriche. Websites holen das Menü über seinen Slug.
+3. Wähle **Element hinzufügen** und füll das Element aus:
+   - **Bezeichnung**: der Text des Links, bis zu 255 Zeichen.
+   - **Verweist auf**: **Eine URL**, **Ein Eintrag** oder **Nichts (eine Überschrift)**.
+   - **URL**: ein Pfad (`/about`), ein Anker (`#team`) oder ein `http(s)`-, `mailto:`- oder
+     `tel:`-Link.
+   - Für einen Eintrag wähle **Eintrag wählen**: Wähle den **Inhaltstyp**, wenn mehrere
+     verknüpft werden können, durchsuche die Einträge und wähle einen aus.
+   - **Öffnet in**: **Demselben Tab** oder **Einem neuen Tab**.
+4. Zieh Elemente, um sie zu ordnen und zu verschachteln, oder nutze ihre Buttons. Mit der
+   Tastatur auf einem Ziehgriff: Alt+↑ und Alt+↓ verschieben ein Element, Alt+→ verschachtelt es
+   unter dem darüber, Alt+← holt es heraus.
+5. Speichere.
+
+</Steps>
+
+Ein Menü hat höchstens 5 Ebenen und 500 Elemente.
+
+## Ein Menü holen
+
+Websites lesen ein Menü unter `GET /api/_menus/{slug}`, ohne Token. Hänge `?locale=` für
+lokalisierte Inhalte an:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+Wie Links auf Einträge aufgelöst werden:
+
+- Ein Eintrag, der in der angefragten Sprache nicht veröffentlicht ist, wird aus dem Menü
+  weggelassen (samt seiner Kinder). Menüs geben nie Entwürfe preis.
+- `entry.path` kommt aus dem Muster des Typs unter
+  [SEO und Sitemap](/de/guides/frontend/seo-and-sitemap/), gefüllt mit den Feldern des Eintrags
+  und der Sprache. Es ist `null`, wenn der Typ kein Muster hat oder der Eintrag es nicht füllt.
+- Hat das Element keine eigene `url`, bekommt es den Pfad als `url`, die meisten Websites müssen
+  also nur `url` lesen.
+
+Ohne `locale` werden Einträge in der Standardsprache gelesen. Die Antwort wird mit
+`Cache-Control: public, max-age=60` gesendet.
+
+## Rendern
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+Wird ein Menü gelöscht, antwortet `/api/_menus/{slug}` mit `404`, ebenso wenn die Funktion
+ausgeschaltet wird. Fang das auf deiner Website ab, zum Beispiel indem du keine Navigation
+renderst.
+</Aside>
+
+## Admin-API
+
+Das Admin-Panel nutzt `/admin/api/site/menus` (`GET`, `POST`) und
+`/admin/api/site/menus/{id}` (`GET`, `PUT`, `DELETE`), mit dem Access-Token eines Admins und
+`site.manage`. Siehe [Admin-API](/de/api/admin/).

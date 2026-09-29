@@ -1,0 +1,97 @@
+---
+title: Migrasyon motoru
+description: Verdin’in şema değişikliklerini DDL’e nasıl dönüştürdüğü, her adımı riske göre nasıl sınıflandırdığı ve planları transactional DDL olan ve olmayan motorlarda nasıl güvenle uyguladığı.
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Bu sayfa `verdin-migrate`’in veritabanını şemayla nasıl uyumlu hâle getirdiğini açıklar: farkı nasıl hesapladığı, her adımı nasıl derecelendirdiği ve bir planı, bir hatanın sizi asla tahmin yürütmek zorunda bırakmayacağı şekilde nasıl uyguladığı. Günlük iş akışı (`verdin migrate plan`, `--allow`, yeniden adlandırmalar) için önce [şema migrasyonları](/tr/concepts/schema-migrations/) sayfasını okuyun; komut bayrakları [CLI başvurusundadır](/tr/reference/cli/).
+
+## Akış
+
+<Diagram
+  caption="Şema dosyalarından uygulanmış DDL’e"
+  code={`flowchart LR
+  Files["schema/*.json"] -->|ayrıştır, doğrula| Schema
+  Schema -->|türet| Desired["DbModel<br/>istenen"]
+  Snapshot[("vd_schema_snapshots")] --> Current["DbModel<br/>mevcut"]
+  Current --> Diff{"fark"}
+  Desired --> Diff
+  Diff -->|değişiklikler| Plan["Flavor için plan<br/>adımlar, risk, SQL, ön denetimler"]
+  Plan -->|uygula| Db[("veritabanı")]`}
+/>
+
+1. `verdin-schema` dosyaları ayrıştırır ve bir `Schema`’ya doğrular.
+2. `derive_model` (`derive.rs`) onu bir `DbModel`’e dönüştürür: şemanın ihtiyaç duyduğu, bağlantı tabloları ve [platform tabloları](/tr/internals/storage/#platform-tabloları) dâhil her tablo, sütun, indeks ve yabancı anahtar.
+3. Son uygulanan model `vd_schema_snapshots`’tan okunur.
+4. `diff` (`diff.rs`) iki modeli karşılaştırır ve yeniden adlandırma ipuçlarıyla birlikte bir `Change` listesi döndürür.
+5. `build_plan` (`plan.rs`) her değişikliği bağlı flavor için SQL’e dönüştürür, derecelendirir ve gerekli yerde bir ön denetim ekler.
+6. `apply` (`apply.rs`) planı çalıştırır, ardından istenen modeli yeni anlık görüntü olarak saklar.
+
+**Anlık görüntü şemayı değil fiziksel modeli saklar.** Sonraki bir Verdin sürümü aynı şemadan daha fazla tablo türettiğinde (yeni bir özellik için bağlantı tabloları, yeni bir platform tablosu), fark bunları hiçbir şema değişikliği olmadan oluşturur.
+
+**Fark canlı veritabanına karşı değil, anlık görüntüye karşı çalışır.** Bu onu deterministik tutar ve her motorun kendi yapısını bildirme biçimindeki farklılıklardan kaçınır. Verdin veritabanını incelemez (introspect); bu yüzden tablolarda elle yapılan değişiklikler (drift) algılanmaz.
+
+Bir dialect’te aynı DDL’e dönüşen değişiklikler hiçbir adım üretmez. Örneğin `string` → `text`, PostgreSQL ve MySQL’de bir tip değişikliğidir, ancak SQLite’ta ikisi de `text`’tir; bu yüzden SQLite hiçbir adım almaz.
+
+## Değişiklik kategorileri
+
+Her adımın bir risk düzeyi vardır (`diff.rs` içindeki `Risk`). `apply` yalnızca izin verdiğiniz düzeye kadar olan adımları çalıştırır ve bir adım bunun üzerindeyse hiçbir şey çalıştırmadan tüm planı reddeder.
+
+| Risk | Değişiklikler |
+|---|---|
+| **Safe** | Tablo oluşturma; nullable veya varsayılan değerli bir sütun ekleme; bir sütunu gevşetme (nullable yapma, aynı tip ve varsayılan); benzersiz olmayan bir indeks veya yeni bir tabloda benzersiz bir indeks oluşturma; bir indeksi kaldırma; bir tabloyu veya sütunu yeniden adlandırma |
+| **Risky** | Varsayılanı olmayan bir `NOT NULL` sütun ekleme; bir sütunun tipini, nullable’lığını veya varsayılanını başka şekilde değiştirme; mevcut bir tabloya benzersiz indeks ekleme; sütun kaldırmadan bir SQLite tablosunu yeniden oluşturma |
+| **Destructive** | Bir sütunu kaldırma; bir tabloyu kaldırma; sütun kaldıran bir SQLite tablosu yeniden oluşturma |
+
+Her nitelik sütunu nullable olduğu için (bkz. [depolama](/tr/internals/storage/#sistem-sütunları)), zorunlu olanlar dâhil nitelik eklemek her zaman güvenlidir. `enumeration` değerleri sütun tarafından değil uygulama tarafından denetlenir; bu yüzden bir değer eklemek veya kaldırmak hiçbir DDL’i değiştirmez.
+
+**Ön denetimler** bir planın ilk ifadesinden önce çalışır; böylece başarılı olamayacak riskli bir adım, veritabanına dokunulmamışken çalıştırmayı durdurur:
+
+| Adım | Ön denetim |
+|---|---|
+| Mevcut bir tabloda benzersiz indeks | İndekslenen sütunlarda yinelenen NULL olmayan değer yok |
+| Varsayılanı olmayan `NOT NULL` sütun | Tabloda satır yok |
+| Sütun `NOT NULL` olur | Sütunda NULL yok |
+
+**Yeniden adlandırmalar.** Aynı tabloda kaldırılan bir sütun artı aynı sütun tipinde eklenen bir sütun, bir yeniden adlandırma olarak *önerilir*: `verdin migrate plan` `--rename-column articles.title=headline` gibi bir ipucu yazdırır ve içerik tipi oluşturucusu onu kabul etmeyi önerir. Asla sessizce çıkarılmaz; bayrak olmadan plan eski sütunu kaldırır ve yenisini ekler. Kaldırılan bir tablo artı aynı sütunlara sahip oluşturulan bir tablo da aynı şekilde bir `--rename-table old=new` ipucu alır. Yeniden adlandırmalar güvenli adımlardır ve yeniden adlandırılan bir tablo bağlantı tablolarını da yanında götürür.
+
+**SQLite yeniden oluşturmaları.** SQLite bir sütunu değiştiremez; bu yüzden bir tabloda herhangi bir sütun değişikliği olduğunda planlayıcı o tablonun tüm sütun ve indeks değişikliklerini tek bir yeniden oluşturmayla değiştirir: yeni biçimi geçici bir adla oluştur, kalan sütunları kopyala, eski tabloyu kaldır, yenisini yeniden adlandır, indeksleri yeniden oluştur.
+
+## Modlar
+
+| Komut | Ne olur |
+|---|---|
+| `verdin start` | Bekleyen adımlar, `verdin migrate plan`’a işaret eden bir mesajla açılışı durdurur. Şema dosyaları salt okunurdur. |
+| `verdin start --migrate` | Bekleyen **güvenli** adımlar sunucu başlamadan önce uygulanır; daha riskli olan her şey açılışı durdurur. |
+| `verdin dev` | Güvenli adımlar açılışta uygulanır. `schema/` üzerindeki bir dosya izleyicisi her değişiklikte yeniden yükler: güvenli migrasyonlar uygulanır ve uygulama yerinde değiştirilir; daha riskli değişiklikler günlüğe yazılır ve çalışan uygulama olduğu gibi kalır. |
+| İçerik tipi oluşturucusu (yalnızca `verdin dev`) | `POST /schema/plan` adımları, risklerini, SQL’lerini ve yeniden adlandırma ipuçlarını gösterir. `POST /schema/apply` onları kullanıcının onayladığı risk düzeyinde çalıştırır. |
+| `verdin migrate plan` | Her adımı riski ve bağlı dialect için kesin SQL’iyle, planın ihtiyaç duyduğu `--allow` düzeyini ve yeniden adlandırma ipuçlarını yazdırır. |
+| `verdin migrate apply` | Planı çalıştırır. Plan bu tür adımlar içerdiğinde `--allow risky` veya `--allow destructive` gerekir. |
+
+Oluşturucu bir değişikliği uyguladığında önce migre eder, ardından `schema/*.json` dosyalarını yazar, sonra uygulamayı değiştirir. Migrasyon başarısız olursa dosyalar ve çalışan uygulama olduğu gibi kalır. Oluşturucunun çıktısı dosyalar olduğu için akış bir git commit’iyle biter.
+
+## Transactional olmayan DDL’den etkilenmeyen çalıştırma
+
+PostgreSQL ve SQLite DDL’i transaction’lar içinde çalıştırır. MySQL ve MariaDB her DDL ifadesinde örtük olarak commit eder; bu yüzden bir planın ortasındaki bir hata veritabanını iki durum arasında bırakırdı. `apply` her ikisini de ele alır.
+
+**Her motorda:**
+
+1. Özel bir bağlantıda migrasyon kilidini alın: PostgreSQL’de `pg_advisory_lock`; MySQL ve MariaDB’de 60 saniyeye kadar bekleyerek `GET_LOCK('verdin_migrate:<database>')`; SQLite’ta `BEGIN IMMEDIATE` yazıcıları sıraya koyar. SQLite’ta motor ayrıca çalıştırma boyunca `foreign_keys`’i kapatır; böylece tablo yeniden oluşturmaları bağlantı tablolarına cascade olmaz.
+2. Planı anlık görüntüden yeniden hesaplayın ve izin verilen riski denetleyin.
+3. İlk DDL ifadesinden önce her ön denetimi çalıştırın.
+
+**PostgreSQL ve SQLite’ta** tüm plan, yeni anlık görüntü ve bir `completed` günlük satırı tek bir transaction içinde çalışır. Bir hata her şeyi geri alır.
+
+**MySQL ve MariaDB’de** her adım tek bir ifadedir ve ilerleme adım adım kaydedilir:
+
+1. Planı (planın hash’i ve adımları) `running` durumuyla `vd_migrations_journal` içine kaydedin.
+2. Her adımı çalıştırın ve her birinden sonra tamamlanan adım sayısını kaydedin.
+3. Bir adım başarısız olursa günlük hatayı tutar ve `running` olarak kalır. Bu durumda `verdin migrate plan` kesintiye uğramış çalıştırmayı, kaç adımın uygulandığını ve son hatayı bildirir.
+4. Sonraki `apply` planı yeniden hesaplar. Hash’i günlükle eşleşirse başarısız adımdan **devam eder**: tek DDL ifadeleri bu motorlarda atomiktir, bu yüzden başarısız adım yeniden çalışır. Devam ederken ön denetimler atlanır, çünkü önceki adımlar veritabanını zaten değiştirmiştir.
+5. Bu arada şema değiştiyse hash’ler farklıdır ve `apply`, planın yapıldığı şemayı geri yüklemenizi isteyerek reddeder.
+6. Son adım başarılı olduğunda yeni anlık görüntü ve günlüğün `completed` durumu tek bir transaction içinde birlikte yazılır.
+
+Plan hash’i flavor’ı ve her ifadeyi kapsar; böylece devam eden bir çalıştırma tam olarak planlanan SQL’i yürütür.

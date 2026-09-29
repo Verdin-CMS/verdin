@@ -1,0 +1,228 @@
+---
+title: Duyarlı görseller
+description: Görselleri Verdin’in yüklemede ürettiği formatlarla ve URL ile anında dönüştürmelerle doğru boyutta sunun.
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin bir görseli sayfanın ihtiyaç duyduğu boyutta sunmanız için iki yol sunar:
+
+- **Duyarlı formatlar**, görsel yüklendiğinde bir kez üretilir (`thumbnail`, `small`, `medium`,
+  `large`), tam olarak Strapi’nin upload eklentisi gibi. Her yükleme sağlayıcısıyla çalışırlar.
+- **Dönüştürmeler**, URL parametrelerinden (`?preset=thumb` veya imzayla `?w=800&format=webp`)
+  istek üzerine oluşturulur ve diskte önbelleğe alınır. Yerel sağlayıcıyla çalışırlar.
+
+Her ikisi de her zaman açık olan medya kütüphanesinin parçasıdır. Dosya yüklemek ve düzenlemek
+için bkz. [Medya](/tr/concepts/media/).
+
+## Duyarlı formatlar
+
+Bir JPEG, PNG, WebP, TIFF veya BMP görsel yüklendiğinde Verdin onun daha küçük kopyalarını yazar ve
+bunları dosyanın `formats` alanında listeler:
+
+| Format | Boyut |
+| --- | --- |
+| `thumbnail` | 245 × 156 piksele sığar. |
+| `large` | 1000 piksel genişlik. |
+| `medium` | 750 piksel genişlik. |
+| `small` | 500 piksel genişlik. |
+
+Görsel zaten daha küçükse format atlanır; bu yüzden 600 piksel genişliğindeki bir görsel yalnızca
+`thumbnail` ve `small` alır. Kopyalar orijinalin formatını (JPEG’ler 80 kalitesiyle kodlanır) ve
+EXIF yönelimini korur. GIF’lere dokunulmaz, çünkü animasyonlu olabilirler.
+
+Onları almak için medya alanını populate edin. Örnekler Article üzerinde bir `cover` medya
+niteliği kullanır; örnek blog’da yoktur, bu yüzden takip etmek için içerik tipi oluşturucusunda bir
+tane ekleyin.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?populate[cover]=true'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles {
+    title
+    cover { url width height alternativeText formats }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ populate: { cover: true } });
+const formats = data[0].cover?.formats; // Record<string, MediaFormat> | null
+```
+
+</TabItem>
+</Tabs>
+
+```json
+"cover": {
+  "url": "/uploads/team_4f1c2a.jpg",
+  "width": 2400,
+  "height": 1600,
+  "alternativeText": "The team at the office",
+  "formats": {
+    "thumbnail": { "url": "/uploads/thumbnail_team_4f1c2a.jpg", "width": 234, "height": 156 },
+    "large": { "url": "/uploads/large_team_4f1c2a.jpg", "width": 1000, "height": 667 },
+    "medium": { "url": "/uploads/medium_team_4f1c2a.jpg", "width": 750, "height": 500 },
+    "small": { "url": "/uploads/small_team_4f1c2a.jpg", "width": 500, "height": 333 }
+  }
+}
+```
+
+Bunlardan bir `srcset` oluşturun. Yerel sağlayıcıyla `url`’ler Verdin host’undaki yollardır;
+başlarına onun origin’ini ekleyin:
+
+```ts
+const CMS = 'https://cms.example.com';
+
+function srcset(image: Media): string {
+  const sources = Object.values(image.formats ?? {}).map((f) => `${CMS}${f.url} ${f.width}w`);
+  return [...sources, `${CMS}${image.url} ${image.width}w`].join(', ');
+}
+```
+
+```html
+<img src="…/uploads/large_team_4f1c2a.jpg" srcset="…" sizes="(min-width: 60rem) 50vw, 100vw"
+     width="2400" height="1600" alt="The team at the office" />
+```
+
+### Formatları değiştirme
+
+Formatlar `verdin.toml` içindeki `[upload]`’dan gelir:
+
+```toml title="verdin.toml"
+[upload]
+breakpoints = [{ name = "large", width = 1600 }, { name = "small", width = 640 }]
+# responsive_formats = false  # no copies at all
+# max_original_size = 3000    # scale larger originals down on upload (drops EXIF and GPS)
+```
+
+`breakpoints`, Strapi’nin aynı adlı ayarıdır. Değişiklikler yeni yüklemelere uygulanır; mevcut
+dosyalar sahip oldukları formatları korur. Sıkıştırma bombalarına karşı koruyan çözme sınırı
+`max_image_megapixels` (varsayılan 100 megapiksel) dâhil her anahtar için bkz.
+[`[upload]`](/tr/reference/configuration/).
+
+## Dönüştürmeler
+
+Yerel sağlayıcıyla Verdin `/uploads/<file>` adresini kendisi sunar ve bir görselin başka boyut ve
+formatlarını istek üzerine oluşturabilir:
+
+```
+/uploads/team_4f1c2a.jpg?preset=thumb
+/uploads/team_4f1c2a.jpg?w=800&format=webp&s=<signature>
+```
+
+| Parametre | Değerler |
+| --- | --- |
+| `w`, `h` | 1’den `max_size`’a (varsayılan 4096) kadar piksel cinsinden genişlik ve yükseklik. Yalnızca biriyle, diğeri en-boy oranını izler. Hiçbiri olmadan görsel boyutunu korur (bir format değişikliği). |
+| `fit` | `cover` (varsayılan) kutuyu doldurur ve dosyanın odak noktasını görünür tutarak geri kalanı kırpar. `inside` görseli kutunun içine sığdırır. `fill` onu kutuya göre uzatır. |
+| `format` | `jpeg` (veya `jpg`), `png` ya da `webp`. WebP çıktısı kayıpsızdır. Belirtilmezse görsel formatını korur (TIFF ve BMP JPEG olur). |
+| `q` | 1’den 100’e JPEG kalitesi. Varsayılan 80. |
+| `preset` | Yapılandırmadan adlandırılmış bir dönüştürme. Diğer parametrelerle birleştirilemez. |
+| `s` | Parametreler bir ön ayar olmadığında imza. |
+
+Görseller asla büyütülmez: `w=1200` ile istenen 600 piksel genişliğindeki bir görsel 600 olarak
+döner. Dönüştürmeler JPEG, PNG, WebP, TIFF ve BMP dosyalarında çalışır, GIF’lerde çalışmaz.
+
+### Odak noktası
+
+Editörler bir görselin odak noktasını medya kütüphanesinde ayarlar: dosyayı açın ve görsele
+tıklayın (**Odak noktası: belirlemek için görsele tıklayın veya ok tuşlarını kullanın**).
+`fit=cover` kırpmaları o noktayı görünür tutar ve onu değiştirmek dosyanın önbelleğe alınmış
+oluşturmalarını atar.
+
+### Ön ayarlar
+
+Ön ayarlar, herkesin istemesine izin verdiğiniz dönüştürmelerdir. Bunları
+`[upload.transforms.presets]` içinde tanımlayın:
+
+```toml title="verdin.toml"
+[upload.transforms.presets]
+thumb = { w = 300, h = 300 }
+card = { w = 640, h = 360, format = "webp" }
+hero = { w = 1600, h = 600, fit = "cover", format = "jpeg", q = 85 }
+```
+
+```html
+<img src="https://cms.example.com/uploads/team_4f1c2a.jpg?preset=card" alt="…" />
+```
+
+Bilinmeyen bir ön ayar `400` yanıtını verir.
+
+### İmzalı parametreler
+
+`w`, `h`, `fit`, `format` ve `q` değerlerinin başka herhangi bir birleşimi bir imza gerektirir;
+böylece kimse sunucuya sınırsız sayıda varyant oluşturtamaz (ve sakladıramaz). Sunucunun ve görsel
+URL’lerini oluşturan kodun ortamında bir secret ayarlayın:
+
+```sh title="Terminal"
+export VERDIN_IMAGE_SECRET="$(openssl rand -hex 32)"
+```
+
+`s` imzası, o secret ile anahtarlanmış `<file>?<canonical query>` değerinin hex HMAC-SHA256’sıdır.
+Kanonik sorgu, `fit=cover` (varsayılan) dışında ayarladığınız parametreleri ada göre sıralanmış
+olarak (`fit`, `format`, `h`, `q`, `w`), JPEG için `jpeg` ile listeler:
+
+```ts title="src/image-url.ts"
+import { createHmac } from 'node:crypto';
+
+type Transform = { w?: number; h?: number; fit?: 'cover' | 'inside' | 'fill'; format?: 'jpeg' | 'png' | 'webp'; q?: number };
+
+export function imageUrl(cms: string, url: string, t: Transform): string {
+  const file = url.replace(/^\/uploads\//, '');
+  const params: [string, string][] = [];
+  if (t.fit && t.fit !== 'cover') params.push(['fit', t.fit]);
+  if (t.format) params.push(['format', t.format]);
+  if (t.h) params.push(['h', String(t.h)]);
+  if (t.q) params.push(['q', String(t.q)]);
+  if (t.w) params.push(['w', String(t.w)]);
+  const query = params.map(([k, v]) => `${k}=${v}`).join('&');
+  const s = createHmac('sha256', process.env.VERDIN_IMAGE_SECRET!).update(`${file}?${query}`).digest('hex');
+  return `${cms}/uploads/${file}?${query}&s=${s}`;
+}
+```
+
+Bu URL’leri sunucuda (veya build sırasında) oluşturun: secret tarayıcıya ulaşmamalıdır.
+`VERDIN_IMAGE_SECRET` olmadan veya yanlış bir imzayla istek `403` yanıtını verir.
+
+<Aside type="caution">
+`[upload.transforms].allow_arbitrary = true` imzasız herhangi bir parametreyi kabul eder. Bu durumda
+her farklı URL oluşturulur ve önbelleğe alınır; böylece herkes diski doldurabilir ve CPU’yu
+kullanabilir. Bunu yalnızca sunucuya sadece güvenilir ağlardan ulaşılabildiğinde açın.
+</Aside>
+
+### Önbellek ve sınırlar
+
+- Oluşturmalar `[upload.transforms].cache_dir` (varsayılan `.cache/transforms`) içine yazılır ve
+  sonrasında oradan sunulur. Dizini silmek güvenlidir.
+- Bir dosyayı değiştirmek veya odak noktasını taşımak önbelleğe alınmış oluşturmalarını atar.
+- Dönüştürülmüş yanıtlar tarayıcılar ve CDN’ler tarafından bir gün önbelleğe alınır
+  (`Cache-Control: public, max-age=86400`); düz dosyalar ise adları asla değişmediği için bir yıl.
+- Oluşturmalar CPU çekirdeği sayısına kadar paralel çalışır; fazla istekler bekler.
+- `max_image_megapixels`’ten büyük görseller reddedilir (`422`).
+
+Dönüştürmeleri kapatmak için `[upload.transforms].enabled = false` ayarlayın. Anahtarlar için bkz.
+[`[upload.transforms]`](/tr/reference/configuration/).
+
+### S3 ve diğer sağlayıcılarla
+
+S3 sağlayıcısıyla dosyalar Verdin tarafından değil bucket veya onun CDN’i tarafından sunulur; bu
+yüzden dönüştürme parametreleri hiçbir şey yapmaz. Duyarlı formatları ya da bucket’ın
+`public_url`’inin önünde CDN’inizin görsel servisini (örneğin Cloudflare Images veya imgix)
+kullanın.
+
+Strapi’de yerleşik dönüştürmeler yoktur; duyarlı formatları ve `breakpoints` Verdin’inkilerle aynı
+şekilde davranır.

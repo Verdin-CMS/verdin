@@ -1,0 +1,165 @@
+---
+title: 아키텍처 개요
+description: 설계 원칙부터 요청이 거쳐 가는 크레이트까지, 코드를 읽거나 바꾸려는 기여자를 위한 Verdin의 구조.
+sidebar:
+  order: 1
+  label: 개요
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+이 섹션은 Verdin 자체를 작업하는 사람들을 위한 것입니다. 서버와 관리자 패널이 어떻게 구성되어 있는지, 왜 그렇게 만들었는지, 코드를 어디서부터 읽으면 되는지 설명합니다. Verdin을 사용하려면 대신 [빠른 시작](/ko/start/quickstart/)부터 보세요.
+
+Verdin은 Strapi v5를 따르는, Rust로 작성한 헤드리스 CMS입니다. 콘텐츠를 시각적으로 또는 JSON 파일로 모델링하면 REST와 GraphQL API, 그리고 관리자 패널이 생깁니다. 서버, CLI, Angular 관리자 패널을 담은 바이너리 하나로 배포되며, PostgreSQL, MySQL, MariaDB, SQLite에서 실행됩니다.
+
+## 목표
+
+- **바이너리 하나.** `verdin`에는 서버, CLI, 내장 관리자 패널이 들어 있습니다. 프로덕션에는 Node.js도 `node_modules`도 필요 없습니다.
+- **빠른 시작, 작은 메모리 사용량.**
+- **데이터베이스 넷, 테스트 스위트 하나.** PostgreSQL, MySQL, MariaDB, SQLite 모두 일급 지원이며 모두 같은 테스트로 검증합니다.
+- **코드로서의 스키마.** 콘텐츠 타입은 git으로 버전 관리하는 JSON 파일입니다.
+- 합리적인 범위에서 **Strapi v5 호환 REST API**. 기존 프런트엔드가 약간의 변경만으로 옮겨 옵니다.
+- **모두 무료.** 엔터프라이즈 에디션이 없습니다. SSO, 감사 로그, 검토 워크플로, 릴리스 등 모든 기능을 모두에게 제공합니다.
+
+릴리스마다 제공된 것과 다음 계획은 [로드맵](/ko/project/roadmap/)에 있습니다.
+
+### 목표가 아닌 것
+
+- Strapi의 JavaScript 플러그인 실행. Verdin 플러그인은 WebAssembly 모듈입니다([플러그인](/ko/extending/plugins/) 참고).
+- Strapi 데이터베이스를 그대로 읽기. 콘텐츠는 임포터로 옮겨 옵니다([Strapi에서 마이그레이션](/ko/migrate/from-strapi/) 참고).
+- 페이지 렌더링. Verdin은 헤드리스입니다.
+
+## 설계 원칙
+
+1. **스키마가 진실의 원천입니다.** 테이블, 검증, REST와 GraphQL API, OpenAPI 문서, 관리자 폼은 모두 스키마에서 도출합니다.
+2. **SQL 식별자는 절대 요청에서 오지 않습니다.** 테이블과 컬럼 이름은 검증된 스키마에서만 오며, 모든 값은 바인딩된 파라미터입니다.
+3. **방언은 일급입니다.** "PostgreSQL에서 동작, MySQL은 나중에"는 없습니다. 모든 기능을 네 엔진 모두에서 테스트합니다.
+4. **기본적으로 안전합니다.** 콘텐츠 API는 권한을 허용하기 전까지 닫혀 있고, `private` 필드는 절대 노출되지 않으며, 쿼리 깊이와 크기 한도는 항상 켜져 있습니다.
+5. **파괴적인 작업은 명시적입니다.** 컬럼이나 테이블 삭제에는 승인이 필요하며, 부수 효과로 일어나는 일은 없습니다.
+6. **전역 상태가 없습니다.** 서비스는 `axum` state와 생성자로 전달하며, 싱글톤이 없습니다.
+
+## 전체 그림
+
+요청은 작은 공유 계층 스택을 거쳐 바이너리로 들어오고, API 라우터 중 하나에 도달한 뒤, 연결된 방언용 SQL을 만드는 Document Service에서 끝납니다. `schema/*.json`에서 로드한 스키마 레지스트리가 모든 단계에 정보를 주고, 마이그레이션 엔진이 데이터베이스를 스키마에 맞춥니다.
+
+<Diagram
+  caption="콘텐츠 API 요청과 그 요청이 거쳐 가는 크레이트"
+  code={`flowchart LR
+  Client["프런트엔드 또는 관리자 패널"] --> Layers["공유 계층<br/>클라이언트 IP, 요청 id, CORS, 한도"]
+  Layers --> Routers["verdin-api / verdin-graphql<br/>REST, admin API, GraphQL, MCP"]
+  Routers --> Auth["verdin-auth<br/>토큰, 역할, 권한"]
+  Routers --> Query["verdin-query<br/>파라미터를 타입 있는 쿼리로"]
+  Query --> Docs["verdin-content<br/>Document Service"]
+  Docs --> Db["verdin-db<br/>풀과 Flavor"]
+  Db --> Engines[("PostgreSQL, MySQL,<br/>MariaDB, SQLite")]
+  Schema["verdin-schema<br/>schema/*.json"] --> Migrate["verdin-migrate<br/>diff, plan, apply"]
+  Migrate --> Db`}
+/>
+
+- **콘텐츠 API**는 `[api].prefix`(기본값 `/api`) 아래에 있습니다. 콘텐츠 타입별 REST 라우트, 업로드, OpenAPI 문서입니다. [REST API](/ko/api/rest/)를 참고하세요.
+- **Admin API**는 `{admin.path}/api`(기본값 `/admin/api`) 아래에 있으며, 관리자 패널이 하는 모든 일을 합니다. [admin API](/ko/api/admin/)를 참고하세요.
+- 해당 기능이 켜져 있으면 **GraphQL**은 `/graphql`, **MCP**는 `/mcp`에 있습니다. GraphQL 인자는 REST 파서가 읽는 것과 같은 파라미터 트리로 변환되므로, 두 API가 필터, 페이지네이션, populate, 권한 규칙을 공유합니다.
+- **관리자 패널**은 `[admin].path`(기본값 `/admin`) 아래에 있으며, 바이너리나 `[admin].assets_dir`에서 제공합니다. [관리자 패널 내부 구조](/ko/internals/admin-panel/)를 참고하세요.
+- **운영 라우트**: `/_health`, `/_ready`, 그리고 메트릭이 켜져 있으면 `/_metrics`. [모니터링](/ko/deploy/monitoring/)을 참고하세요.
+
+모든 쓰기는 어떤 API에서 왔든 [Document Service](/ko/internals/document-service/)를 거칩니다. 데이터를 검증하고, 행과 링크 테이블을 트랜잭션 하나로 쓴 뒤, 리스너(웹훅, 검색 인덱스, 기록, 실시간, 감사 로그)에게 무엇이 바뀌었는지 알립니다.
+
+기능을 켜거나 끌 때, 또는 `verdin dev`에서 콘텐츠 타입 빌더가 스키마를 바꿀 때, 라우터 전체를 다시 만들어 재시작 없이 제자리에서 교체합니다(`ArcSwap`).
+
+## 기술 스택
+
+### 서버 (Rust, edition 2024)
+
+| 영역 | 선택 | 이유 |
+|---|---|---|
+| 런타임 | `tokio` | 표준 비동기 런타임 |
+| HTTP | `axum`, `tower`, `tower-http` | CORS, 본문 한도, 타임아웃, 요청 id, tracing 미들웨어 |
+| SQL 드라이버 | `sqlx` (postgres, mysql, sqlite) | 비동기, 풀링, TLS. MySQL과 MariaDB는 드라이버 하나를 공유. SQLite는 컴파일되어 들어감 |
+| SQL 작성 | Verdin 자체 빌더: `verdin-migrate`의 DDL, `verdin-query`와 `verdin-content`의 DML | 테이블은 스키마가 정의하므로 SQL은 런타임에 만듦. 어차피 방언별 정밀 제어가 필요함(`jsonb`, `datetime(3)`, binary collation, 타입 있는 NULL, SQLite 텍스트 형식). ORM도 `sea-query`도 없음 |
+| 쿼리 문자열 | `verdin-query`의 자체 대괄호 표기법 파서 | Strapi 스타일 `filters[title][$eq]=…`, 깊이·길이·쌍 한도 포함 |
+| JSON | `serde`, `serde_json` | — |
+| Decimal | `rust_decimal` | 서버 안에서 정밀도 손실 없음 |
+| 날짜 | `time` | — |
+| 문서 id | `ulid` | 정렬 가능, 26자, 이식 가능 |
+| OpenAPI | `verdin-api`의 자체 생성기 | 레지스트리로 만드는 콘텐츠 타입별 경로와 스키마 |
+| GraphQL | `async-graphql` (동적 스키마) | 콘텐츠 스키마로 만듦 |
+| 인증 | `argon2` (argon2id), `hmac` + `sha2` 기반 HS256 JWT | 몇 줄의 HS256으로 RSA 스택을 끌어오지 않음 |
+| 설정 | `figment` (TOML + 환경 변수), `dotenvy` | 계층화와 환경별 재정의 |
+| CLI | `clap` | — |
+| 로그 | `tracing`, `tracing-subscriber` | 기본은 사람이 읽기 좋은 형식, `[log].format = "json"`이면 JSON |
+| 요청 한도 | `verdin-api`의 자체 고정 윈도 limiter | 로그인 라우트와 선택 사항인 콘텐츠 API 한도 |
+| 미디어 | `object_store`, `image`, `infer` | 로컬 디스크나 S3 호환 스토리지. 포맷과 MIME 판별 |
+| 검색 | `tantivy` | 바이너리 안의 선택 사항인 전문 검색 인덱스 |
+| 플러그인 | `extism` | WebAssembly 플러그인 |
+| 이메일 | `lettre`, `reqwest` | SMTP, Resend, Postmark |
+| 관리자 내장 | `rust-embed` (`embed-admin` 기능) | 관리자 패널이 바이너리 안에 들어감 |
+| 스키마 감시 | `notify` | `verdin dev`에서 다시 로드 |
+| 오류 | 라이브러리는 `thiserror`, 바이너리는 `anyhow` | — |
+| 테스트 | `cargo test`, `insta` (DDL 스냅샷) | [테스트](/ko/internals/testing/) 참고 |
+
+### 관리자 패널 (Angular)
+
+| 영역 | 선택 |
+|---|---|
+| 프레임워크 | Angular 22: standalone 컴포넌트, zoneless, signals, 지연 로딩 라우트 |
+| UI | Tailwind CSS v4 기반 spartan/ui(brain 프리미티브, `src/app/shared/ui`에 복사한 helm 컴포넌트) |
+| 아이콘 | Lucide와 함께 `@ng-icons` |
+| 상태 | 주입 가능한 서비스 안의 signals(스토어 라이브러리 없음) |
+| 폼 | Signal Forms (`@angular/forms/signals`) |
+| API 클라이언트 | 직접 작성한 타입(`core/types.ts`)과 `HttpClient`를 감싼 작은 래퍼(`core/api.ts`) |
+| 번역 | FormatJS를 통한 ICU MessageFormat을 쓰는 Transloco |
+| 리치 텍스트 | 미리 보기가 있는 Markdown 편집기(`marked`, `DOMPurify`), TipTap을 쓰는 `blocks` 필드 |
+| 테스트 | Angular unit-test builder를 통한 Vitest, Playwright end-to-end |
+
+### 문서
+
+`site/`의 Astro와 Starlight. `site/scripts/sync-docs.mjs`가 빌드할 때 `docs/`의 몇몇 Markdown 파일(로드맵, 번역 가이드)과 `CHANGELOG.md`를 **Project** 섹션으로 복사합니다.
+
+## 저장소 구조
+
+<FileTree>
+- Cargo.toml 워크스페이스(버전, edition, 릴리스 프로필)
+- crates/
+  - verdin-schema/ 스키마 모델, JSON 파서, 검증, 이름 규칙
+  - verdin-db/ 연결 풀, flavor와 버전 감지, 타입 있는 값
+  - verdin-migrate/ 물리 모델, 스냅샷, diff, 플랜, 저널 기반 적용, 플랫폼 테이블
+  - verdin-query/ 쿼리 파라미터를 타입 있는 쿼리로, 필터와 정렬용 SQL
+  - verdin-content/ Document Service: 검증, 초안과 게시, 관계, 컴포넌트, blocks, 이벤트
+  - verdin-auth/ 관리자 사용자, 세션, 2단계 인증과 패스키, API 토큰, RBAC, 공개 권한
+  - verdin-upload/ 미디어 라이브러리: 스토리지 프로바이더, 파일 메타데이터, 이미지 포맷
+  - verdin-email/ 이메일 전송: SMTP, Resend, Postmark, log 프로바이더
+  - verdin-search/ Tantivy 전문 검색 인덱스
+  - verdin-plugins/ WebAssembly 플러그인(Extism): 문서 훅, 라우트, 예약 작업
+  - verdin-graphql/ 스키마로 생성하는 GraphQL API
+  - verdin-api/ axum 라우터: 콘텐츠 API, admin API, OpenAPI, MCP, 실시간, 웹훅…
+  - verdin-testkit/ 테스트 헬퍼(테스트마다 새 데이터베이스). 게시하지 않음
+  - verdin/ 바이너리: 설정, 부트스트랩, CLI, 메트릭, 내장 관리자 패널
+- admin/ Angular 관리자 패널
+- packages/
+  - client/ 타입 TypeScript 클라이언트 `@verdin/client`
+- examples/
+  - blog/ 예제 프로젝트
+- docker/ `compose.dev.yml`(데이터베이스, RustFS, Mailpit)과 릴리스 이미지
+- site/ 이 문서 사이트
+- docs/ 로드맵, 번역 가이드, 설계 노트
+</FileTree>
+
+**의존성 규칙.** `verdin-schema`와 `verdin-db`가 기반입니다. `verdin-migrate`와 `verdin-query`가 그 위에, `verdin-content`가 그 위에, 그리고 `verdin-auth`, `verdin-upload`, `verdin-search`, `verdin-plugins`가 그 아래 계층들 위에 있습니다. `verdin-api`와 `verdin-graphql`은 꼭대기 근처에 있고, `verdin` 바이너리는 모든 것에 의존합니다. Cargo가 순환을 금지하며, 워크스페이스 전체에서 `unsafe` 코드를 금지합니다.
+
+## 어디서부터 읽을까
+
+| 이해하려는 것 | 읽을 곳 |
+|---|---|
+| 바이너리가 부팅하고 라우터를 조립하는 방법 | `crates/verdin/src/cli.rs`(`start`), 그다음 `crates/verdin/src/app.rs` |
+| 스키마 형식과 검증 규칙 | `crates/verdin-schema/src/raw.rs`, `validate.rs`, `naming.rs` |
+| 스키마가 테이블이 되는 방법 | `crates/verdin-migrate/src/derive.rs`, 그다음 [스토리지](/ko/internals/storage/) |
+| 마이그레이션 | `crates/verdin-migrate/src/diff.rs`, `plan.rs`, `apply.rs`, 그리고 [마이그레이션 엔진](/ko/internals/migrations/) |
+| 콘텐츠 API 핸들러 | `crates/verdin-api/src/handlers.rs`와 `lib.rs` |
+| 쿼리 파라미터 | `crates/verdin-query/src/params.rs`(파서), `parse.rs`(검증), `sql.rs`(SQL) |
+| 읽기와 쓰기 | `crates/verdin-content/src/service.rs`와 `input.rs`, 그리고 [Document Service](/ko/internals/document-service/) |
+| 관리자 패널 | `admin/src/app/app.routes.ts`, 그다음 `features/content/`와 [관리자 패널 내부 구조](/ko/internals/admin-panel/) |
+
+[GitHub](https://github.com/Verdin-CMS/verdin)에서 코드를 둘러보세요. 이 섹션의 나머지는 [스토리지](/ko/internals/storage/), [데이터베이스 계층](/ko/internals/database/), [마이그레이션](/ko/internals/migrations/), [Document Service](/ko/internals/document-service/), [관리자 패널](/ko/internals/admin-panel/), [테스트](/ko/internals/testing/), [결정 기록](/ko/internals/decisions/)을 다룹니다.
+
+사용자에게 보이는 동작은 다른 곳에 문서화되어 있습니다. 쿼리 파라미터는 [REST API](/ko/api/rest/), 설정은 [설정 레퍼런스](/ko/reference/configuration/), 명령은 [CLI 레퍼런스](/ko/reference/cli/), 보안 강화는 [보안](/ko/deploy/security/)에 있습니다.

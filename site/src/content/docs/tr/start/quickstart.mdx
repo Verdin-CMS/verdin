@@ -1,0 +1,262 @@
+---
+title: Hızlı başlangıç
+description: Verdin’i Docker veya ikili dosyayla çalıştırın, ilk admin’i oluşturun, bir içerik tipi modelleyin ve onu API’den okuyun.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Bu sayfa sizi yaklaşık on dakikada sıfırdan ilk API yanıtına götürür: Verdin’i başlatın, ilk admin’i
+oluşturun, bir içerik tipi modelleyin, onu herkese açın ve REST, GraphQL veya TypeScript istemcisi
+üzerinden okuyun.
+
+[Docker](https://docs.docker.com/get-docker/)’a ya da `verdin` ikili dosyasını çalıştırabilen bir
+makineye (x86-64’te Linux, macOS veya Windows; ARM64’te Linux veya macOS) ihtiyacınız var.
+
+## 1. Verdin’i başlatın
+
+<Tabs syncKey="install">
+  <TabItem label="Docker">
+
+Secret’ları bir kez oluşturun, ardından imajı geliştirme modunda başlatın:
+
+```sh title="Terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+`verdin-data` volume’ü SQLite veritabanını (`/data/verdin.db`), yüklenen medyayı (`/data/uploads`)
+ve `dev` içinde içerik tipi oluşturucusunun yazdığı şema dosyalarını (`/data/schema`) tutar.
+
+  </TabItem>
+  <TabItem label="Binary">
+
+Platformunuz için arşivi [sürümler sayfasından](https://github.com/Verdin-CMS/verdin/releases)
+indirin, açın ve `verdin`’i `PATH`’inize koyun. Yönetim paneli ikili dosyaya yerleşiktir.
+
+Bir proje iskeleti oluşturun ve geliştirme modunda başlatın:
+
+```sh title="Terminal"
+verdin new my-site            # verdin.toml, schema/, yeni secret’larla .env, SQLite
+cd my-site
+verdin dev
+```
+
+`verdin new`, üretilen `.env`’nin işaret ettiği veritabanını seçmek için
+`--database sqlite|postgres|mysql|mariadb` alır (varsayılan SQLite). PostgreSQL, MySQL ve MariaDB
+için `verdin dev` çalıştırmadan önce `.env` içindeki `VERDIN_DATABASE_URL`’i sunucunuza uyacak
+şekilde düzenleyin. [Proje yapısı](/tr/start/project-structure/) oluşturduğu her dosyayı açıklar.
+
+  </TabItem>
+</Tabs>
+
+Günlük `verdin listening` gösterdiğinde sunucu 1337 portunda yanıt verir. İlk başlatma veritabanı
+tablolarını oluşturur.
+
+## 2. Gizli anahtarlar
+
+Verdin, her biri en az 32 bayt uzunluğunda iki secret gerektirir:
+
+| Değişken | Koruduğu |
+| --- | --- |
+| `VERDIN_ADMIN_JWT_SECRET` | Admin oturumlarını imzalar. |
+| `VERDIN_TOKEN_PEPPER` | API token’larını hash’ler ve iki adımlı doğrulama secret’larını ve kurtarma kodlarını korur. |
+
+`verdin secrets` yeni değerler yazdırır ve `verdin new` onları `.env`’ye yazar. Secret’lar asla
+`verdin.toml`’dan değil, yalnızca ortamdan gelir ve sunucu onlar olmadan başlamaz. `verdin.toml`’un
+yanındaki `.env` dosyası başlangıçta yüklenir; ortamda zaten ayarlanmış değişkenler üstün gelir.
+
+<Aside type="caution">
+Secret’ları kurulum başına bir kez oluşturun ve saklayın. Yeni bir `VERDIN_ADMIN_JWT_SECRET` mevcut
+oturum token’larını, açık önizleme bağlantılarını ve devam eden OAuth oturum açmalarını geçersiz
+kılar (yönetim paneli oturumunu kendiliğinden yeniler); yeni bir `VERDIN_TOKEN_PEPPER` her API
+token’ını ve her iki adımlı doğrulama kurulumunu geçersiz kılar. `.env` ve `verdin.env` dosyalarını
+sürüm denetiminin dışında tutun.
+</Aside>
+
+## 3. İlk admin’i oluşturun
+
+[http://localhost:1337/admin/](http://localhost:1337/admin/) adresini açın. Hiç yönetici yokken
+yönetim paneli **Verdin’e hoş geldiniz** gösterir: adınızı, e-postanızı ve en az 8 karakterlik bir
+parolayı girin, ardından **Hesap oluştur**’u seçin. Bu ilk hesap her izne sahip bir Super Admin’dir.
+
+Admin’leri komut satırından da oluşturabilirsiniz; bkz.
+[Komut satırından admin kullanıcılar](#komut-satırından-admin-kullanıcılar).
+
+## 4. Bir içerik tipi modelleyin
+
+<Steps>
+
+1. Kenar çubuğunda **İçerik Tipi Oluşturucu**’yu açın ve **Yeni içerik tipi**’ni seçin.
+2. **Görünen ad** değerini `Article` yapın. Verdin **Tekil ad (API kimliği)** alanını `article`,
+   **Çoğul ad (rota)** alanını `articles` ile doldurur; rota, tipin API’deki URL’sidir. **Tür**’ü
+   **Koleksiyon** olarak bırakın.
+3. **Alan ekle**’yi seçin, **Kısa metin**’i seçin, ona `title` adını verin ve **Bitti**’yi seçin.
+4. **Kaydet**’i seçin. **Migrasyonu inceleyin** veritabanı adımlarını SQL’leriyle listeler;
+   **Uygula**’yı seçin.
+
+</Steps>
+
+Verdin tipi `schema/content-types/article.json` dosyasına yazar ve tablosunu oluşturur. Oluşturucu
+yalnızca `verdin dev` içinde kullanılabilir: üretimde şema dosyalarınızdan gelir. Alan tipleri ve
+seçenekler için bkz. [İçerik modeli](/tr/concepts/content-model/).
+
+Şimdi bir kayıt ekleyin: **Koleksiyonlar** altında **Article**’ı açın, **Yeni kayıt**’ı seçin,
+başlığı doldurun ve **Yayınla**’yı seçin. Yeni tiplerde **Taslak ve yayınlama** açıktır; bu yüzden
+kayıtları yayınlanana kadar herkese açık API’de görünmeyen taslaklar olarak kalır.
+
+## 5. Herkese açın
+
+İçerik API’si, herkese açık izinler verene veya API token’ları oluşturana kadar kapalıdır.
+**Ayarlar → Herkese açık erişim**’i açın, **Article** için **Listele** ve **Tekini getir**’e izin
+verin ve **Kaydet**’i seçin.
+
+Herkese açık erişim olmadan okumak için **Ayarlar → API token’ları** bölümünde bir token oluşturun ve
+onu `Authorization: Bearer <token>` olarak gönderin. Bkz. [API token’ları](/tr/guides/auth/api-tokens/)
+ve [İzinler](/tr/concepts/permissions/).
+
+## 6. İlk isteği yapın
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl localhost:1337/api/articles
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "documentId": "01m3p88agn712n02wb8kkpe94p",
+      "title": "Hello Verdin",
+      "createdAt": "2026-09-29T09:34:39.637Z",
+      "updatedAt": "2026-09-29T09:34:39.637Z",
+      "publishedAt": "2026-09-29T09:34:39.637Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+Yanıt Strapi v5’in düz biçimindedir. Filtreler, sıralama, sayfalama ve `populate` aynı sorgu
+parametrelerini kullanır; bkz. [REST API](/tr/api/rest/).
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+**Ayarlar → Özellikler → GraphQL**’i açın. Ardından `POST /graphql`, REST API ile aynı izinlerle
+içerik tiplerinizden üretilen bir şema sunar:
+
+```sh title="Terminal"
+curl localhost:1337/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+```json
+{ "data": { "articles": [{ "documentId": "01m3p88agn712n02wb8kkpe94p", "title": "Hello Verdin" }] } }
+```
+
+Bkz. [GraphQL API](/tr/api/graphql/).
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+Şemadan tipleri üretin ve istemciyi frontend projenize kurun:
+
+```sh title="Terminal"
+verdin types -o src/verdin-types.ts   # Verdin projesinde
+npm install @verdin/client            # frontend projesinde
+```
+
+Docker ile imaj, volume’deki şemadan tipleri yazdırabilir:
+`docker run --rm -v verdin-data:/data ghcr.io/verdin-cms/verdin types > src/verdin-types.ts`.
+
+```ts title="src/articles.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+
+const { data } = await verdin.collection('articles').find({ sort: ['publishedAt:desc'] });
+console.log(data.map((article) => article.title));
+```
+
+Bkz. [Tipli istemci](/tr/guides/frontend/typed-client/).
+
+  </TabItem>
+</Tabs>
+
+Buradan sonra [Astro](/tr/start/tutorial-astro/) ve [Next.js](/tr/start/tutorial-nextjs/)
+eğitimleri aynı API üzerinde bir blog frontend’i geliştirir.
+
+## Geliştirme ve üretim modu
+
+| Komut | Kullanım amacı |
+| --- | --- |
+| `verdin dev` | Geliştirme: güvenli migrasyonlar otomatik uygulanır, içerik tipi oluşturucusu şema dosyalarını düzenleyebilir ve sunucu dosyalar değiştiğinde yeniden yüklenir. |
+| `verdin start` | Üretim. Veritabanı şemanın gerisindeyken çalışmayı reddeder. |
+| `verdin start --migrate` | Başlamadan önce bekleyen güvenli migrasyonları uygulayarak üretim. Docker imajının varsayılan komutu budur. |
+
+Yenileme çerezleri `verdin start` içinde `Secure`’dur, `verdin dev` içinde değildir; bu yüzden bir
+`start` sunucusunda oturum açmak HTTPS gerektirir. `start`’ı düz HTTP üzerinden denemek için
+`VERDIN_ADMIN__SECURE_COOKIES=false` ayarlayın.
+
+Üretimde şemayı sürüm denetiminde tutun ve salt okunur bağlayın. Docker ile:
+
+```sh title="Terminal"
+docker run -p 1337:1337 --env-file verdin.env \
+  -e VERDIN_DATABASE_URL=postgres://user:pass@db:5432/verdin \
+  -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
+```
+
+Gerisini [üretim kontrol listesi](/tr/deploy/production-checklist/) kapsar.
+
+## Şema ve migrasyonlar
+
+İçerik tipleri `schema/content-types/<singularName>.json`, bileşenler ise
+`schema/components/<category>/<name>.json` içinde, Strapi biçiminde bulunur. Dosyalar değiştiğinde
+Verdin bir migrasyon planlar:
+
+```sh title="Terminal"
+verdin schema check                      # her şema dosyasını doğrula
+verdin migrate plan                      # adımlar, risk düzeyi ve tam SQL
+verdin migrate apply                     # yalnızca güvenli adımlar
+verdin migrate apply --allow risky       # tip değişiklikleri ve yeni benzersiz kısıtlar da
+verdin migrate apply --allow destructive # kaldırılan sütunlar ve tablolar da
+verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
+```
+
+Transactional DDL’i olmayan MySQL ve MariaDB’de, kesintiye uğrayan bir migrasyon bir sonraki
+`migrate apply`’da başarısız adımdan devam eder. Bkz. [Şema migrasyonları](/tr/concepts/schema-migrations/).
+
+## Komut satırından admin kullanıcılar
+
+```sh title="Terminal"
+verdin admin create --email other@example.com      # parola VERDIN_ADMIN_PASSWORD’dan veya stdin’den
+verdin admin reset-password --email you@example.com
+```
+
+`admin create` bir Super Admin oluşturur. `reset-password` ayrıca hesabın kilidini açar ve
+oturumlarını sonlandırır. Her ikisi de veritabanının şemayla güncel olmasını gerektirir.
+
+## Diğer komutlar
+
+| Komut | Yaptığı |
+| --- | --- |
+| `verdin types -o src/verdin-types.ts` | İçerik API’sinin TypeScript tanımlarını yazar (`-o` olmadan standart çıktıya). |
+| `verdin import strapi <export>` | Bir Strapi projesini içe aktarır; bkz. [Strapi’den içe aktarma](/tr/migrate/from-strapi/). |
+| `verdin export <file.tar.gz>` | Şemayı, içeriği ve medyayı bir arşive yazar; `verdin import verdin` onu geri okur. |
+| `verdin version` | Sürümü yazdırır. |
+
+Her komut `-c, --config <path>` alır (varsayılan `verdin.toml` veya `VERDIN_CONFIG`).
+[CLI başvurusu](/tr/reference/cli/) her komutu ve bayrağı, [yapılandırma başvurusu](/tr/reference/configuration/)
+ise her ayarı listeler.
+
+## Sağlık denetimleri
+
+`GET /_health` süreç ayaktayken yanıt verir. `GET /_ready` ayrıca veritabanını denetler ve ona
+ulaşamadığında 503 yanıtını verir: yük dengeleyicileri ona yönlendirin (bkz.
+[Ölçekleme](/tr/deploy/scaling/)).

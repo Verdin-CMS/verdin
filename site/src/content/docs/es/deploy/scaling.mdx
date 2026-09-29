@@ -1,0 +1,119 @@
+---
+title: Ejecutar varias instancias
+description: Ejecuta varias instancias de Verdin de un mismo proyecto detrás de un balanceador de carga — qué comparten a través de la base de datos, qué se queda en cada instancia y qué ajustes cambiar.
+sidebar:
+  order: 8
+  label: Varias instancias
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Verdin guarda su estado en la base de datos, así que puedes ejecutar varias instancias del mismo
+proyecto detrás de un balanceador de carga, por disponibilidad o por carga. Esta página enumera
+lo que comparten las instancias, lo que cada una se guarda para sí y los ajustes que importan.
+
+<Diagram
+  caption="Las instancias comparten la base de datos y el almacenamiento de medios; las cachés, los límites de peticiones y los flujos de eventos se quedan en cada instancia."
+  code={`flowchart LR
+  LB[Balanceador de carga] --> A[Instancia 1]
+  LB --> B[Instancia 2]
+  LB --> C[Instancia 3]
+  A --> DB[(Base de datos)]
+  B --> DB
+  C --> DB
+  A --> S3[(Medios en S3)]
+  B --> S3
+  C --> S3`}
+/>
+
+## Lista de comprobación
+
+- **Una base de datos compartida.** PostgreSQL, MySQL o MariaDB. SQLite es un archivo en una
+  máquina y no funciona con varias instancias.
+- **La misma configuración en todas partes.** Todas las instancias usan el mismo
+  `verdin.toml`, los mismos archivos de esquema y los mismos secretos
+  (`VERDIN_ADMIN_JWT_SECRET`, `VERDIN_TOKEN_PEPPER`, `VERDIN_SSO_<ID>_SECRET`…). Con secretos
+  distintos, las sesiones y los tokens de API creados en una instancia los rechazan las demás.
+- **Modo producción.** Ejecuta `verdin start`, no `verdin dev`. Cambia el esquema en
+  desarrollo, confírmalo en git y migra una vez por despliegue.
+- **Almacenamiento de medios compartido.** Usa el proveedor S3
+  (`[upload] provider = { name = "s3", … }`), o monta el mismo volumen en todas las instancias
+  para el proveedor local.
+- **Comprobaciones de salud.** Apunta el balanceador de carga a `GET /_ready`, que responde
+  `503` cuando no se puede llegar a la base de datos. `GET /_health` solo indica que el proceso
+  está en marcha; úsalo para la comprobación de liveness.
+- **Tareas de plugins en una sola instancia.** Define `[plugins].run_jobs = false` en todas las
+  instancias salvo una; si no, cada instancia ejecuta las tareas programadas.
+- **Métricas por instancia.** Con `[metrics].enabled = true`, cada instancia sirve su propio
+  `/_metrics`; haz scrape de cada una.
+
+## Migraciones con varias instancias
+
+`verdin start --migrate` se puede ejecutar sin riesgo en todas las instancias a la vez. Cada
+ejecución de migración mantiene un bloqueo en la base de datos (un advisory lock en PostgreSQL,
+`GET_LOCK` en MySQL y MariaDB, con una espera de hasta 60 segundos), así que la primera
+instancia aplica los pasos y las demás encuentran la base de datos al día.
+
+Durante un despliegue progresivo, las instancias de la versión antigua siguen funcionando un
+tiempo contra la base de datos migrada. Los pasos seguros crean tablas, añaden columnas que
+admiten nulos o tienen valor por defecto e índices, amplían columnas de texto o añaden valores
+de enum, cosas que la versión antigua no nota. Aplica los pasos arriesgados o destructivos
+(`verdin migrate apply --allow risky|destructive`) en un despliegue aparte, cuando ninguna
+instancia del esquema antiguo necesite ya los datos. Consulta
+[Migraciones de esquema](/es/concepts/schema-migrations/).
+
+## Qué se comparte
+
+| Qué | Cómo |
+| --- | --- |
+| Sesiones de administración, tokens de API, permisos | En la base de datos; no hacen falta sesiones persistentes. |
+| Interruptores de funcionalidades y de plugins, idiomas, flujos de revisión | En la base de datos. Cada instancia los vuelve a leer cada `[server].sync_interval_secs` (10 s), así que un cambio hecho en una instancia llega a las demás dentro de ese plazo. |
+| Envíos de webhooks | Una cola en la base de datos. Una instancia reclama un envío antes de mandarlo, así que cada uno sale una sola vez. |
+| Lanzamientos programados | Se reclaman en la base de datos antes de ejecutarse, así que cada uno se ejecuta una vez. |
+| Resumen diario | La ejecución de cada día se reclama en la base de datos, así que los administradores reciben un solo correo. |
+| Desafíos de passkeys | Los desafíos usados se registran en la base de datos, así que cada uno se responde una sola vez entre todas las instancias. |
+| Purga del registro de auditoría | Se ejecuta en todas las instancias; borrar dos veces las filas antiguas no hace daño. |
+| Almacén clave-valor de los plugins | En la base de datos. |
+
+## Qué se queda en cada instancia
+
+- **Los límites de peticiones** los cuenta cada instancia. Con `n` instancias, un cliente puede
+  hacer hasta `n` veces `[api].public_rate_limit` peticiones por minuto. Si necesitas un límite
+  global, aplícalo en el balanceador de carga.
+- **La caché de respuestas anónimas** (`[api].cache_ttl_secs`). Una escritura vacía la caché de
+  la instancia que la hizo; las demás pueden servir la respuesta anterior hasta que caduque su
+  entrada. Mantén el TTL en unos pocos segundos, o en `0`.
+- **Los eventos en tiempo real y la presencia** son los de la instancia a la que está conectado
+  cada cliente. Usa sesiones persistentes para los flujos de eventos (consulta
+  [Tiempo real](/es/guides/frontend/realtime/)).
+- **El índice de búsqueda** (`[search]`) vive en el disco de la instancia y solo sigue las
+  escrituras que hace esa instancia. Actívalo en una instancia y envía allí las peticiones con
+  `_q`, o acepta que las demás se queden atrás hasta que arranquen con un directorio de índice
+  vacío.
+- **Las transformaciones de imágenes** (`[upload.transforms]`) se cachean por instancia en
+  `cache_dir`. Pon una CDN delante de `/uploads` para compartirlas.
+- **Las tareas programadas de los plugins**: consulta `run_jobs` más arriba.
+
+## Ajustes
+
+```toml title="verdin.toml"
+[server]
+# How often to read settings that other instances changed; 0 turns it off.
+sync_interval_secs = 10
+
+[plugins]
+# Run the plugins' scheduled jobs here (true on one instance only).
+run_jobs = true
+
+[api]
+# Short-lived when each instance keeps its own cache.
+cache_ttl_secs = 5
+```
+
+Define `run_jobs` por instancia con `VERDIN_PLUGINS__RUN_JOBS=false`.
+
+## Conexiones a la base de datos
+
+Cada instancia abre hasta `[database].pool_max` conexiones (10 por defecto). Mantén
+`instances × pool_max` por debajo del límite del servidor, con margen para migraciones, copias
+de seguridad y mantenimiento. El límite por defecto de PostgreSQL es de 100 conexiones.

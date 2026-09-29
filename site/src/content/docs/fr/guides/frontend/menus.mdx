@@ -1,0 +1,129 @@
+---
+title: Menus
+description: Construisez dans le panneau d’administration des menus de navigation composés de liens et d’entrées, et affichez-les sur votre site.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+La fonctionnalité **Menus** donne aux rédacteurs des arbres de navigation nommés (un en-tête, un
+pied de page, une barre latérale) qui pointent vers des pages, des entrées ou d’autres sites.
+Votre site récupère un menu par son slug et l’affiche ; les liens vers des entrées suivent leur
+état de publication et leur chemin.
+
+Dans Strapi, cela demande généralement un plugin de navigation ou un type de contenu de menu fait
+maison ; dans Verdin, c’est intégré.
+
+## L’activer
+
+Dans **Paramètres → Fonctionnalités**, activez **Menus**, puis choisissez **Gérer les menus** (ou
+allez dans **Paramètres → Menus**). Gérer les menus nécessite l’autorisation
+**Gérer le SEO, les redirections, les menus et les formulaires** (`site.manage`), dont dispose le
+rôle intégré Editor. Voir [Autorisations](/fr/reference/permissions/).
+
+Pour lier des entrées par leur chemin, configurez aussi des modèles de chemin dans
+[SEO et sitemap](/fr/guides/frontend/seo-and-sitemap/).
+
+## Construire un menu
+
+<Steps>
+
+1. Dans **Paramètres → Menus**, choisissez **Nouveau menu**.
+2. Donnez-lui un nom (par exemple **Main navigation**) et un **Slug** (`main`) : lettres
+   minuscules, chiffres et tirets. Les sites récupèrent le menu par son slug.
+3. Choisissez **Ajouter un élément** et remplissez l’élément :
+   - **Libellé** : le texte du lien, jusqu’à 255 caractères.
+   - **Lien vers** : **Une URL**, **Une entrée** ou **Rien (un titre)**.
+   - **URL** : un chemin (`/about`), une ancre (`#team`), ou un lien `http(s)`, `mailto:` ou
+     `tel:`.
+   - Pour une entrée, choisissez **Choisir une entrée** : sélectionnez le **Type de contenu** si
+     plusieurs peuvent être liés, recherchez parmi les entrées et sélectionnez-en une.
+   - **S’ouvre dans** : **Le même onglet** ou **Un nouvel onglet**.
+4. Faites glisser les éléments pour les ordonner et les imbriquer, ou utilisez leurs boutons. Au
+   clavier, sur une poignée de glissement : Alt+↑ et Alt+↓ déplacent un élément, Alt+→ l’imbrique
+   sous celui du dessus, Alt+← le fait sortir d’un niveau.
+5. Enregistrez.
+
+</Steps>
+
+Un menu a au plus 5 niveaux et 500 éléments.
+
+## Récupérer un menu
+
+Les sites lisent un menu sur `GET /api/_menus/{slug}`, sans jeton. Ajoutez `?locale=` pour le
+contenu localisé :
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+Comment les liens vers des entrées sont résolus :
+
+- Une entrée qui n’est pas publiée, dans la langue demandée, est retirée du menu (avec ses
+  enfants). Les menus ne révèlent jamais de brouillons.
+- `entry.path` provient du modèle du type dans [SEO et sitemap](/fr/guides/frontend/seo-and-sitemap/),
+  rempli avec les champs de l’entrée et la langue. Il vaut `null` quand le type n’a pas de modèle
+  ou que l’entrée ne le remplit pas.
+- Quand l’élément n’a pas de `url` propre, il reçoit le chemin comme `url` : la plupart des sites
+  n’ont donc besoin de lire que `url`.
+
+Sans `locale`, les entrées sont lues dans la langue par défaut. La réponse est envoyée avec
+`Cache-Control: public, max-age=60`.
+
+## L’afficher
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+Supprimer un menu fait répondre `404` à `/api/_menus/{slug}`, tout comme la désactivation de la
+fonctionnalité. Gérez ce cas sur votre site, par exemple en n’affichant aucune navigation.
+</Aside>
+
+## API d’administration
+
+Le panneau d’administration utilise `/admin/api/site/menus` (`GET`, `POST`) et
+`/admin/api/site/menus/{id}` (`GET`, `PUT`, `DELETE`), avec le jeton d’accès d’un administrateur
+et `site.manage`. Voir [API d’administration](/fr/api/admin/).

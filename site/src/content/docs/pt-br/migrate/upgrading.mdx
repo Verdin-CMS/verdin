@@ -1,0 +1,226 @@
+---
+title: Atualização do Verdin
+description: Atualize uma instalação do Verdin — o binário ou a imagem Docker, as migrações que rodam na inicialização e as mudanças notáveis ou incompatíveis de cada versão minor.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+Esta página explica como levar um projeto para uma versão mais nova do Verdin e lista o que
+mudou entre as versões minor. O Verdin segue o [Versionamento Semântico](https://semver.org/)
+com uma particularidade da 0.x: até a 1.0, uma versão **minor** (0.8 → 0.9) pode mudar o
+comportamento, e uma versão **patch** (0.9.0 → 0.9.1) apenas corrige e endurece.
+
+## Antes de atualizar
+
+1. **Leia o changelog** da sua versão até a nova: o [changelog](/pt-br/project/changelog/) lista
+   todas as mudanças, e as [notas abaixo](#notas-de-atualização) resumem as que exigem ação.
+2. **Faça backup** do banco de dados e do armazenamento de mídia (veja
+   [Backups](/pt-br/deploy/backups/)). Voltar para uma versão mais antiga significa restaurar esse
+   backup: as versões mais antigas não desfazem as tabelas e as colunas que uma mais nova
+   adicionou.
+3. **Teste em uma cópia** da produção se as notas mencionarem um comportamento do qual o seu
+   frontend ou os seus editores dependem.
+
+Você pode pular versões. As migrações são calculadas a partir da diferença entre o banco de
+dados e o que a nova versão espera, não reproduzidas uma versão por vez, então 0.6 → 0.9 migra
+em uma única execução. Leia as notas de todas as versões intermediárias.
+
+## Atualize
+
+<Tabs syncKey="install">
+<TabItem label="Docker">
+
+<Steps>
+
+1. Mude a tag da imagem no seu arquivo Compose, no manifesto ou no `Dockerfile`, por exemplo
+   `ghcr.io/verdin-cms/verdin:0.10` → `ghcr.io/verdin-cms/verdin:0.11`. Uma tag minor (`0.10`)
+   acompanha as suas versões patch; fixe uma versão completa (`0.10.0`) para decidir também
+   quando elas chegam.
+
+2. Baixe a imagem e reinicie:
+
+   ```sh frame="terminal"
+   docker compose pull verdin
+   docker compose up -d verdin
+   docker compose logs -f verdin
+   ```
+
+   O comando padrão da imagem, `start --migrate`, aplica as migrações da nova versão antes de
+   servir. Procure `applied migrations` e `verdin listening` nos logs.
+
+</Steps>
+
+</TabItem>
+<TabItem label="Binary">
+
+<Steps>
+
+1. Baixe o arquivo da sua plataforma na
+   [página de releases](https://github.com/Verdin-CMS/verdin/releases), por exemplo
+   `verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz`, e confira-o com o `SHA256SUMS` da versão:
+
+   ```sh frame="terminal"
+   sha256sum --ignore-missing -c SHA256SUMS
+   tar xzf verdin-v0.10.0-x86_64-unknown-linux-musl.tar.gz
+   ```
+
+2. Pare o servidor, substitua o binário `verdin` e confira a versão:
+
+   ```sh frame="terminal"
+   verdin version
+   ```
+
+3. Revise e aplique as migrações a partir do diretório do projeto:
+
+   ```sh frame="terminal"
+   verdin migrate plan
+   verdin migrate apply
+   ```
+
+   Ou inicie com `verdin start --migrate`, que aplica antes os passos seguros.
+
+4. Inicie o servidor como de costume (`verdin start`).
+
+</Steps>
+
+</TabItem>
+</Tabs>
+
+## Migrações na inicialização
+
+Uma nova versão muitas vezes adiciona tabelas ou colunas próprias (sessões, configurações, novos
+recursos). O `verdin start` compara o banco de dados com o que o schema e a nova versão precisam:
+
+- Se corresponderem, ele inicia.
+- Se houver passos pendentes, ele se recusa a iniciar e diz para você rodar `verdin migrate plan`
+  e `verdin migrate apply`, ou iniciar com `--migrate`.
+- O `--migrate` aplica apenas os passos **seguros**. Se um passo for arriscado ou destrutivo, a
+  inicialização falha e você o aplica você mesmo com `verdin migrate apply --allow risky` (ou
+  `destructive`) depois de ler o plano.
+- No MySQL e no MariaDB, onde as alterações de schema não podem rodar em uma transação, uma
+  migração interrompida é retomada a partir do passo que falhou no próximo
+  `verdin migrate apply`.
+
+Com várias instâncias, uma atualização gradual funciona: a primeira instância nova obtém o lock
+de migração e migra, e as outras esperam por ela e não encontram mais nada a fazer. Veja
+[Como rodar várias instâncias](/pt-br/deploy/scaling/).
+
+<Aside type="caution">
+Atualize o projeto inteiro para uma única versão. Não mantenha instâncias de duas versões minor
+rodando lado a lado por mais tempo do que um rolling deploy leva.
+</Aside>
+
+## Notas de atualização
+
+As mudanças notáveis e incompatíveis por versão, da mais recente para a mais antiga. O
+[changelog](/pt-br/project/changelog/) tem a lista completa.
+
+### 0.9.1 → 0.10
+
+Sem migração de banco de dados. A documentação saiu de `docs/` e veio para este site.
+
+- **Consumidores de webhooks de `review-workflows.updateEntryStage`**: `model` agora é o nome
+  no singular (`article`), como nos eventos de entrada, e o uid passou para `uid`. Leia `uid`
+  onde você usava `model`.
+- **Gere de novo os seus tipos TypeScript** com `verdin types`: `Collections` e `Singles` agora
+  são aliases de tipo, que é o que o `createClient<VerdinSchema>` precisa.
+- **Docker**: a imagem guarda o cache de transformações e o índice de busca em `/data` e liga
+  `/app/public/uploads` a `/data/uploads`. Se você definia `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR`
+  ou `VERDIN_SEARCH__DIR` só para contornar o `/app` somente leitura, pode removê-las. A imagem
+  tem um `HEALTHCHECK`.
+- **CDN**: as respostas trazem as tags dos tipos que elas podem popular, então as limpezas
+  atualizam mais do cache do que antes; não há nada a mudar.
+- Os campos de relação do painel de administração vinculam entradas por meio de um diálogo
+  (**Vincular uma entrada**) em vez de uma caixa de busca embutida.
+
+### 0.9.0 → 0.9.1
+
+Uma versão de endurecimento; a atualização é recomendada para todas as instalações. A sua
+migração (uma nova tabela, duas novas colunas) roda na inicialização.
+
+- **Atrás de um proxy reverso, defina `[server].trusted_proxies`.** Apenas o `X-Forwarded-For`
+  dos proxies listados é usado para o endereço do cliente; caso contrário, todos os clientes
+  atrás do proxy compartilham um único endereço para os limites de taxa e os logs de auditoria.
+- **Os frontends de navegador em outra origem precisam de `[api].cors_origins`.** A 0.9.1
+  adiciona CORS à API de conteúdo e ao GraphQL; antes não havia suporte a CORS.
+- **As leituras por relações seguem as permissões.** O `populate`, os filtros por relação e as
+  ordenações por relação só alcançam os tipos e os campos que o cliente pode ler, em todas as
+  APIs. As requisições públicas e com token que populavam tipos sobre os quais não tinham
+  permissão `find` agora recebem menos dados: conceda as permissões que faltam.
+- **O SSO ficou mais estrito.** As suas configurações exigem um Super Admin; `defaultRoles` e
+  `roleMap` não podem conceder Super Admin; o claim `email_verified` do provedor precisa ser
+  true (a menos que `trustUnverifiedEmail`); o segundo fator dos administradores se aplica, a
+  menos que o provedor seja considerado confiável para isso (`providerMfa`); o issuer e o
+  endpoint de token precisam ser URLs `https` públicas. Confira os seus logins via SSO depois de
+  atualizar.
+- **Os Super Admins** só podem ser criados, editados, excluídos, convidados de novo ou
+  redefinidos por outro Super Admin.
+- **As contas de usuários finais são bloqueadas** após senhas erradas repetidas, como as contas
+  de administração.
+- As relações populadas retornam no máximo 1.000 entradas por entrada e relação.
+- Os índices de busca são reconstruídos na primeira inicialização (os campos privados dos
+  componentes não são mais indexados).
+
+### 0.8 → 0.9
+
+- A caixa de busca da lista na administração busca em todos os campos de texto (`_q`) em vez de
+  apenas no título.
+- Novas permissões de administração `deploy.manage`, `deploy.trigger` e `site.manage`; os
+  Editors recebem `deploy.trigger` e `site.manage`.
+- Os novos recursos opcionais (tempo real, comentários e tarefas, ações de IA, SEO e sitemap,
+  redirecionamentos, menus, formulários) ficam desativados até você ativá-los. As métricas
+  exigem `[metrics].enabled = true`.
+
+### 0.7 → 0.8
+
+- **Os campos condicionais são aplicados**: um campo oculto pelas suas `conditions` não é mais
+  obrigatório. O conteúdo que dependia de um campo assim ser obrigatório agora pode ser salvo sem
+  ele.
+- Novo tipo de atributo `password`; o `verdin import strapi` agora importa os campos de senha do
+  Strapi.
+
+### 0.7.0 → 0.7.1
+
+- O runtime de plugins passa para o Wasmtime 48. Os plugins existentes continuam funcionando sem
+  recompilação.
+- Compilar a partir do código-fonte exige Rust 1.95 ou posterior.
+
+### 0.6 → 0.7
+
+- **Várias instâncias**: cada instância relê as configurações alteradas pelas outras a cada
+  `[server].sync_interval_secs` (10 s). Se você roda mais de uma, defina
+  `[plugins].run_jobs = false` em todas menos uma.
+- O conteúdo que os plugins escrevem pelo host agora passa pelas verificações de pré-escrita da
+  plataforma, como as etapas dos fluxos de revisão. Os próprios hooks de pré-escrita dos plugins
+  continuam sendo pulados nessas escritas, para que um plugin não dispare a si mesmo.
+
+### 0.5 → 0.6
+
+- **Os logs de auditoria** vêm ativados por padrão e mantêm as entradas por
+  `[audit].retention_days` (90). Desative o recurso em **Configurações → Recursos** se não os
+  quiser.
+
+### 0.4 → 0.5
+
+- Nada a mudar. Os plugins são carregados de `[plugins].path` (`plugins/`) e ficam desativados
+  até serem ativados.
+
+### 0.3 → 0.4
+
+- **`auth`, `users` e `connect` são nomes de rota reservados**, junto com `upload` e `uploads`:
+  renomeie os tipos de conteúdo cujo nome de API seja um deles antes de atualizar.
+
+### 0.2 → 0.3
+
+- Os nomes de atributos seguem a regra do Strapi (uma letra, seguida de letras, dígitos e
+  underscores) em vez de apenas camelCase. Dois nomes que correspondem à mesma coluna são
+  recusados.
+- As opções `regex` aceitam padrões no estilo do JavaScript.
+
+### 0.1 → 0.2
+
+- Os limites de tamanho do corpo e os timeouts se aplicam por router de API; os uploads têm os
+  seus próprios limites (`[upload].max_file_size`).
+- As funções integradas das instalações existentes recebem as novas permissões uma única vez.

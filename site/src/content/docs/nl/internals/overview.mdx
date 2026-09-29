@@ -1,0 +1,165 @@
+---
+title: Architectuuroverzicht
+description: Hoe Verdin is gebouwd, van zijn ontwerpprincipes tot de crates waar een request doorheen gaat, voor bijdragers die de code willen lezen of wijzigen.
+sidebar:
+  order: 1
+  label: Overzicht
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Deze sectie is voor mensen die aan Verdin zelf werken. Ze legt uit hoe de server en het beheerpaneel in elkaar zitten, waarom ze zo zijn gebouwd, en waar je begint met het lezen van de code. Begin in plaats daarvan met de [quickstart](/nl/start/quickstart/) als je Verdin wilt gebruiken.
+
+Verdin is een headless CMS geschreven in Rust dat Strapi v5 volgt: je modelleert content visueel of in JSON-bestanden, en je krijgt een REST- en GraphQL-API plus een beheerpaneel. Het wordt geleverd als één binary met de server, de CLI en het Angular-beheerpaneel, en draait op PostgreSQL, MySQL, MariaDB en SQLite.
+
+## Doelen
+
+- **Eén binary.** `verdin` bevat de server, de CLI en het ingebedde beheerpaneel. Productie heeft geen Node.js en geen `node_modules` nodig.
+- **Snel opstarten, weinig geheugengebruik.**
+- **Vier databases, één testsuite.** PostgreSQL, MySQL, MariaDB en SQLite zijn allemaal volwaardig en worden allemaal door dezelfde tests gedekt.
+- **Schema als code.** Contenttypes zijn JSON-bestanden die je in git versioneert.
+- **Met Strapi v5 compatibele REST-API** waar redelijk, zodat bestaande frontends met weinig wijzigingen overstappen.
+- **Alles gratis.** Er is geen enterprise-editie: SSO, auditlogs, reviewworkflows, releases en elke andere functie zijn er voor iedereen.
+
+Wat er per release is uitgebracht, en wat er daarna komt, staat in de [roadmap](/nl/project/roadmap/).
+
+### Geen doelen
+
+- De JavaScript-plugins van Strapi draaien. Verdin-plugins zijn WebAssembly-modules (zie [plugins](/nl/extending/plugins/)).
+- Een Strapi-database lezen zoals hij is. Content verhuist via een importer (zie [migreren vanaf Strapi](/nl/migrate/from-strapi/)).
+- Pagina's renderen. Verdin is headless.
+
+## Ontwerpprincipes
+
+1. **Het schema is de bron van waarheid.** Tabellen, validatie, de REST- en GraphQL-API's, het OpenAPI-document en de formulieren van het beheerpaneel worden er allemaal uit afgeleid.
+2. **Geen enkele SQL-identifier komt ooit uit een request.** Tabel- en kolomnamen komen alleen uit het gevalideerde schema, en elke waarde is een gebonden parameter.
+3. **Dialecten zijn volwaardig.** Geen "werkt op PostgreSQL, MySQL later". Elke functie wordt op alle vier de engines getest.
+4. **Standaard veilig.** De content-API is dicht totdat je rechten verleent, `private` velden worden nooit blootgesteld, en limieten op querydiepte en -grootte staan altijd aan.
+5. **Destructieve bewerkingen zijn expliciet.** Een kolom of tabel verwijderen vereist je goedkeuring; het gebeurt nooit als neveneffect.
+6. **Geen globale state.** Services worden doorgegeven via de state van `axum` en constructors; er zijn geen singletons.
+
+## Het grote plaatje
+
+Een request komt de binary binnen via een kleine stapel gedeelde lagen, bereikt een van de API-routers, en eindigt in de Document Service, die SQL bouwt voor het verbonden dialect. Het schemaregister, geladen uit `schema/*.json`, voedt elke stap, en de migratie-engine houdt de database ermee in lijn.
+
+<Diagram
+  caption="Een request aan de content-API, en de crates waar het doorheen gaat"
+  code={`flowchart LR
+  Client["Frontend of beheerpaneel"] --> Layers["Gedeelde lagen<br/>client-IP, request-id, CORS, limieten"]
+  Layers --> Routers["verdin-api / verdin-graphql<br/>REST, admin-API, GraphQL, MCP"]
+  Routers --> Auth["verdin-auth<br/>tokens, rollen, grants"]
+  Routers --> Query["verdin-query<br/>parameters naar getypeerde query"]
+  Query --> Docs["verdin-content<br/>Document Service"]
+  Docs --> Db["verdin-db<br/>pool en Flavor"]
+  Db --> Engines[("PostgreSQL, MySQL,<br/>MariaDB, SQLite")]
+  Schema["verdin-schema<br/>schema/*.json"] --> Migrate["verdin-migrate<br/>diff, plan, apply"]
+  Migrate --> Db`}
+/>
+
+- **Content-API** onder `[api].prefix` (standaard `/api`): REST-routes per contenttype, uploads, en het OpenAPI-document. Zie de [REST-API](/nl/api/rest/).
+- **Admin-API** onder `{admin.path}/api` (standaard `/admin/api`): alles wat het beheerpaneel doet. Zie de [admin-API](/nl/api/admin/).
+- **GraphQL** op `/graphql` en **MCP** op `/mcp`, als die functies aan staan. GraphQL-argumenten worden vertaald naar dezelfde parameterboom die de REST-parser leest, dus beide API's delen filters, paginering, populate en rechtenregels.
+- **Beheerpaneel** onder `[admin].path` (standaard `/admin`), geserveerd vanuit de binary of vanuit `[admin].assets_dir`. Zie [interne werking van het beheerpaneel](/nl/internals/admin-panel/).
+- **Operationele routes**: `/_health`, `/_ready`, en `/_metrics` als metrics aan staan. Zie [monitoring](/nl/deploy/monitoring/).
+
+Elke schrijfactie gaat door de [Document Service](/nl/internals/document-service/), van welke API ze ook komt. Die valideert de gegevens, schrijft de rijen en koppeltabellen in één transactie, en vertelt daarna listeners (webhooks, zoekindex, geschiedenis, realtime, auditlog) wat er is veranderd.
+
+Als functies aan- of uitgezet worden, of als de contenttype-bouwer het schema in `verdin dev` wijzigt, wordt de hele router opnieuw gebouwd en ter plekke omgewisseld (een `ArcSwap`), zonder herstart.
+
+## Techstack
+
+### Server (Rust, edition 2024)
+
+| Gebied | Keuze | Waarom |
+|---|---|---|
+| Runtime | `tokio` | De standaard async-runtime |
+| HTTP | `axum`, `tower`, `tower-http` | Middleware voor CORS, bodylimieten, time-outs, request-id's, tracing |
+| SQL-driver | `sqlx` (postgres, mysql, sqlite) | Async, pooling, TLS; MySQL en MariaDB delen één driver; SQLite is ingecompileerd |
+| SQL bouwen | Eigen builders van Verdin: DDL in `verdin-migrate`, DML in `verdin-query` en `verdin-content` | Tabellen worden door het schema gedefinieerd, dus SQL wordt tijdens runtime gebouwd. Exacte controle per dialect is toch nodig (`jsonb`, `datetime(3)`, binaire collaties, getypeerde NULLs, tekstformaten van SQLite). Geen ORM, geen `sea-query` |
+| Querystrings | Eigen parser voor haakjesnotatie in `verdin-query` | `filters[title][$eq]=…` in Strapi-stijl, met limieten op diepte, lengte en paren |
+| JSON | `serde`, `serde_json` | — |
+| Decimalen | `rust_decimal` | Geen verlies van precisie binnen de server |
+| Datums | `time` | — |
+| Document-id's | `ulid` | Sorteerbaar, 26 tekens, draagbaar |
+| OpenAPI | Eigen generator in `verdin-api` | Eén pad en schema per contenttype, opgebouwd uit het register |
+| GraphQL | `async-graphql` (dynamisch schema) | Opgebouwd uit het contentschema |
+| Auth | `argon2` (argon2id), HS256-JWT op `hmac` + `sha2` | Een paar regels HS256 voorkomen dat er een RSA-stack wordt meegetrokken |
+| Configuratie | `figment` (TOML + omgeving), `dotenvy` | Lagen en overschrijvingen per omgeving |
+| CLI | `clap` | — |
+| Logs | `tracing`, `tracing-subscriber` | Standaard leesbaar voor mensen, JSON met `[log].format = "json"` |
+| Rate limiting | Eigen limiter met vaste vensters in `verdin-api` | Inlogroutes en optionele limieten voor de content-API |
+| Media | `object_store`, `image`, `infer` | Lokale schijf of S3-compatibele opslag; formaten en MIME-sniffing |
+| Zoeken | `tantivy` | Optionele full-text-index in de binary |
+| Plugins | `extism` | WebAssembly-plugins |
+| E-mail | `lettre`, `reqwest` | SMTP, Resend, Postmark |
+| Beheerpaneel inbedden | `rust-embed` (feature `embed-admin`) | Het beheerpaneel wordt in de binary meegeleverd |
+| Schema in de gaten houden | `notify` | Herlaadt in `verdin dev` |
+| Fouten | `thiserror` in bibliotheken, `anyhow` in de binary | — |
+| Tests | `cargo test`, `insta` (DDL-snapshots) | Zie [testen](/nl/internals/testing/) |
+
+### Beheerpaneel (Angular)
+
+| Gebied | Keuze |
+|---|---|
+| Framework | Angular 22: standalone componenten, zoneless, signals, lazy routes |
+| UI | spartan/ui (brain-primitieven, helm-componenten gekopieerd naar `src/app/shared/ui`) op Tailwind CSS v4 |
+| Iconen | `@ng-icons` met Lucide |
+| State | Signals in injecteerbare services (geen store-bibliotheek) |
+| Formulieren | Signal Forms (`@angular/forms/signals`) |
+| API-client | Handgeschreven types (`core/types.ts`) en een kleine wrapper rond `HttpClient` (`core/api.ts`) |
+| Vertalingen | Transloco met ICU MessageFormat via FormatJS |
+| Rich text | Markdown-editor met voorbeeld (`marked`, `DOMPurify`); `blocks`-velden met TipTap |
+| Tests | Vitest via de unit-test-builder van Angular, Playwright end-to-end |
+
+### Documentatie
+
+Astro met Starlight, in `site/`. `site/scripts/sync-docs.mjs` kopieert tijdens de build een paar Markdown-bestanden uit `docs/` (roadmap, vertaalgids) en `CHANGELOG.md` naar de sectie **Project**.
+
+## Indeling van de repository
+
+<FileTree>
+- Cargo.toml de workspace (versie, edition, releaseprofiel)
+- crates/
+  - verdin-schema/ schemamodel, JSON-parser, validatie, naamgevingsregels
+  - verdin-db/ verbindingspools, detectie van flavor en versie, getypeerde waarden
+  - verdin-migrate/ fysiek model, snapshot, diff, plan, apply met journaal, platformtabellen
+  - verdin-query/ queryparameters naar een getypeerde query, en SQL voor filters en sorteringen
+  - verdin-content/ Document Service: validatie, concept en publicatie, relaties, componenten, blocks, events
+  - verdin-auth/ beheerders, sessies, tweefactor en toegangssleutels, API-tokens, RBAC, openbare grants
+  - verdin-upload/ mediabibliotheek: opslagproviders, bestandsmetadata, afbeeldingsformaten
+  - verdin-email/ e-mailbezorging: SMTP, Resend, Postmark en een logprovider
+  - verdin-search/ Tantivy-full-text-index
+  - verdin-plugins/ WebAssembly-plugins (Extism): documenthooks, routes, geplande jobs
+  - verdin-graphql/ GraphQL-API gegenereerd uit het schema
+  - verdin-api/ axum-routers: content-API, admin-API, OpenAPI, MCP, realtime, webhooks…
+  - verdin-testkit/ testhulpmiddelen (een verse database per test); niet gepubliceerd
+  - verdin/ de binary: configuratie, bootstrap, CLI, metrics, ingebed beheerpaneel
+- admin/ Angular-beheerpaneel
+- packages/
+  - client/ `@verdin/client`, de getypeerde TypeScript-client
+- examples/
+  - blog/ voorbeeldproject
+- docker/ `compose.dev.yml` (databases, RustFS, Mailpit) en het releaseimage
+- site/ deze documentatiesite
+- docs/ roadmap, vertaalgids en ontwerpnotities
+</FileTree>
+
+**Afhankelijkheidsregel.** `verdin-schema` en `verdin-db` vormen de basis. `verdin-migrate` en `verdin-query` bouwen daarop voort, `verdin-content` op die twee, en `verdin-auth`, `verdin-upload`, `verdin-search` en `verdin-plugins` op de lagen daaronder. `verdin-api` en `verdin-graphql` zitten bijna bovenaan, en de binary `verdin` hangt van alles af. Cargo verbiedt cycli, en `unsafe`-code is in de hele workspace verboden.
+
+## Waar je begint met lezen
+
+| Om te begrijpen | Lees |
+|---|---|
+| Hoe de binary opstart en zijn routers samenstelt | `crates/verdin/src/cli.rs` (`start`), daarna `crates/verdin/src/app.rs` |
+| Het schemaformaat en zijn validatieregels | `crates/verdin-schema/src/raw.rs`, `validate.rs`, `naming.rs` |
+| Hoe een schema tabellen wordt | `crates/verdin-migrate/src/derive.rs`, daarna [opslag](/nl/internals/storage/) |
+| Migraties | `crates/verdin-migrate/src/diff.rs`, `plan.rs`, `apply.rs`, en de [migratie-engine](/nl/internals/migrations/) |
+| Handlers van de content-API | `crates/verdin-api/src/handlers.rs` en `lib.rs` |
+| Queryparameters | `crates/verdin-query/src/params.rs` (parser), `parse.rs` (validatie), `sql.rs` (SQL) |
+| Lees- en schrijfacties | `crates/verdin-content/src/service.rs` en `input.rs`, en de [Document Service](/nl/internals/document-service/) |
+| Het beheerpaneel | `admin/src/app/app.routes.ts`, daarna `features/content/` en de [interne werking van het beheerpaneel](/nl/internals/admin-panel/) |
+
+Blader door de code op [GitHub](https://github.com/Verdin-CMS/verdin). De rest van deze sectie behandelt [opslag](/nl/internals/storage/), de [databaselaag](/nl/internals/database/), [migraties](/nl/internals/migrations/), de [Document Service](/nl/internals/document-service/), het [beheerpaneel](/nl/internals/admin-panel/), [testen](/nl/internals/testing/) en het [beslissingslog](/nl/internals/decisions/).
+
+Gedrag voor gebruikers staat elders beschreven: queryparameters in de [REST-API](/nl/api/rest/), instellingen in de [configuratiereferentie](/nl/reference/configuration/), commando's in de [CLI-referentie](/nl/reference/cli/), en verharding in [beveiliging](/nl/deploy/security/).

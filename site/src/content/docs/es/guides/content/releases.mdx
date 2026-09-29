@@ -1,0 +1,111 @@
+---
+title: Lanzamientos
+description: Agrupa entradas y publícalas o despublícalas juntas, en el momento o en una fecha programada.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Un lanzamiento agrupa entradas que se publican, o se retiran, a la vez: el lanzamiento de un
+producto, una campaña, un conjunto de traducciones. Lo publicas a mano o le das una fecha. Esta
+guía crea un lanzamiento, le añade entradas, lo ejecuta y muestra la API de administración.
+
+Los lanzamientos funcionan como los Releases de Strapi, que forman parte de sus planes de pago.
+
+## Antes de empezar
+
+- **Configuración → Funcionalidades → Lanzamientos** está activado por defecto. Mientras está
+  desactivado, la página **Lanzamientos** y sus rutas no están disponibles y los lanzamientos
+  programados esperan.
+- Gestionar lanzamientos necesita **Gestionar lanzamientos** (`releases.manage`).
+- Añadir una entrada necesita además **Publicar** sobre su tipo de contenido, y el tipo debe usar
+  [borrador y publicación](/es/concepts/draft-and-publish/).
+
+## Crea un lanzamiento
+
+<Steps>
+
+1. Abre **Lanzamientos** en la barra lateral y selecciona **Nuevo lanzamiento**.
+2. Introduce un **Nombre**.
+3. Opcionalmente, define **Publicar el (opcional)**: la fecha y la hora, en tu zona horaria, en
+   que se ejecuta el lanzamiento. Sin fecha, el lanzamiento espera hasta que lo publiques.
+4. Selecciona **Crear**.
+
+</Steps>
+
+## Añade entradas
+
+<Steps>
+
+1. Abre una entrada en el editor. El panel **Lanzamientos** enumera los lanzamientos en los que
+   está.
+2. Selecciona **Añadir a un lanzamiento**.
+3. Elige el **Lanzamiento** y, en **Cuando se ejecute el lanzamiento**, elige **Publicar** o
+   **Despublicar**.
+4. Selecciona **Añadir**.
+
+</Steps>
+
+En los tipos localizados, solo se añade la versión del idioma actual del editor. Añade cada
+idioma que quieras lanzar. Añadir una entrada que ya está en el lanzamiento sustituye su acción.
+
+La página del lanzamiento enumera sus entradas con su tipo de contenido y su acción. Quita una
+con el botón de su fila.
+
+## Publica el lanzamiento
+
+- **Ahora:** abre el lanzamiento y selecciona **Publicar ahora**.
+- **En su fecha:** una tarea en segundo plano comprueba cada 30 segundos y ejecuta los
+  lanzamientos que tocan, en nombre del administrador que los creó.
+
+<Diagram
+  caption="Estados de un lanzamiento"
+  code={`flowchart LR
+  P[Pendiente] -->|Publicar ahora o fecha alcanzada| R[En curso]
+  R -->|todas las acciones correctas| D[Hecho]
+  R -->|algunas acciones fallaron| F[Fallido]`}
+/>
+
+Cada acción registra si ha tenido éxito. Cuando una falla, por ejemplo porque la entrada se
+eliminó o no pasa la validación, las demás acciones se ejecutan igualmente y el lanzamiento
+termina como **Fallido**, con el error de cada acción fallida en su fila.
+
+<Aside type="caution">
+Un lanzamiento que ya se ha ejecutado no se puede cambiar. Para reintentar las acciones
+fallidas, añade esas entradas a un lanzamiento nuevo.
+</Aside>
+
+Un lanzamiento se publica en bloque: no espera a las
+[etapas de revisión](/es/guides/content/review-workflows/). Si un flujo exige una etapa para
+publicar, las entradas que no están en esa etapa fallan como cualquier otra publicación.
+
+Los webhooks pueden suscribirse a **Lanzamiento publicado** (`releases.publish`), que se envía
+cuando se ejecuta un lanzamiento. Consulta [Webhooks](/es/guides/integrations/webhooks/).
+
+## API de administración
+
+Todas las rutas están bajo `/admin/api` y necesitan `releases.manage`.
+
+```http
+GET    /admin/api/releases?status=pending
+POST   /admin/api/releases                    { "name": "Launch", "scheduledAt": "2026-10-01T08:00:00Z" }
+GET    /admin/api/releases/{id}
+PUT    /admin/api/releases/{id}               { "name": "Launch", "scheduledAt": null }
+DELETE /admin/api/releases/{id}
+POST   /admin/api/releases/{id}/actions       { "uid": "api::article", "documentId": "…", "locale": "fr", "action": "publish" }
+DELETE /admin/api/releases/{id}/actions/{actionId}
+POST   /admin/api/releases/{id}/publish
+GET    /admin/api/content/{uid}/{documentId}/releases
+```
+
+- `status` es `pending`, `running`, `done` o `failed`; cada acción tiene su propio `status` y su
+  `error`.
+- Cambiar, añadir entradas o publicar un lanzamiento que ya no está pendiente responde `409`.
+- `action` es `publish` o `unpublish`. Añadir una acción necesita además `content.publish` sobre
+  el tipo. El idioma se resuelve al añadir la acción, así que un cambio posterior del idioma por
+  defecto no la mueve.
+- Eliminar un lanzamiento elimina su lista de entradas. Las entradas en sí no cambian.
+- `GET /content/{uid}/{documentId}/releases` necesita acceso de lectura a la entrada y devuelve
+  una lista vacía a los administradores sin `releases.manage`.

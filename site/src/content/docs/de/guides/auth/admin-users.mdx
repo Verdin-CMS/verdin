@@ -1,0 +1,173 @@
+---
+title: Admin-Benutzer und Rollen
+description: Den ersten Admin anlegen, weitere einladen, ihnen Rollen geben, Passwörter im Panel oder per CLI zurücksetzen und Sitzungen verwalten.
+sidebar:
+  order: 1
+  label: Admin-Benutzer
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Admins sind die Menschen, die sich im Admin-Panel anmelden. Sie sind getrennt von den
+[Endnutzern](/de/guides/auth/end-users/) deiner Websites und Apps. Diese Anleitung legt den
+ersten Admin an, lädt die übrigen ein, gibt ihnen Rollen und hilft ihnen zurück ins Panel, wenn
+sie ausgesperrt sind.
+
+## Bevor du anfängst
+
+- Verdin braucht `VERDIN_ADMIN_JWT_SECRET` und `VERDIN_TOKEN_PEPPER` in der Umgebung. Erzeuge
+  sie einmalig mit `verdin secrets`.
+- Admins zu verwalten braucht **Benutzer verwalten** (`users.manage`); Rollen zu verwalten
+  braucht **Rollen verwalten** (`roles.manage`). Siehe
+  [Berechtigungen](/de/reference/permissions/).
+- Einladungen und Passwort-Resets werden über `[email]` verschickt. Mit dem Standard-Provider
+  `log` landen die E-Mails samt Links im Server-Log.
+
+## Den ersten Admin anlegen
+
+Öffne das Admin-Panel (standardmäßig `http://localhost:1337/admin/`). Solange kein Admin
+existiert, fragt es nach dem ersten, der Super Admin wird. Passwörter haben 8 bis 128 Zeichen.
+
+Ohne Browser nimmst du die CLI oder die API:
+
+<Tabs>
+<TabItem label="CLI">
+
+```sh title="Terminal"
+verdin admin create --email you@example.com
+```
+
+Das Passwort kommt aus `VERDIN_ADMIN_PASSWORD` oder wird von der Standardeingabe gelesen. Der
+Befehl legt einen Super Admin an und funktioniert jederzeit, nicht nur für den ersten.
+
+</TabItem>
+<TabItem label="API">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/register-first-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+```
+
+Diese Route funktioniert nur, solange kein Admin existiert.
+
+</TabItem>
+</Tabs>
+
+## Einen Admin einladen
+
+<Steps>
+
+1. Öffne **Einstellungen → Benutzer** und wähle **Benutzer hinzufügen**.
+2. Gib die E-Mail-Adresse ein, optional auch **Vorname** und **Nachname**.
+3. Wähle eine oder mehrere **Rollen**.
+4. Lass **Jetzt ein Passwort festlegen** aus, um eine Einladung zu verschicken, oder schalte es
+   ein, um das Passwort selbst festzulegen.
+5. Wähle **Einladen** (oder **Speichern** mit Passwort).
+
+</Steps>
+
+Der Dialog **Einladungslink** zeigt den Link und sagt, ob er per E-Mail verschickt wurde. Wurde
+er das nicht, gib ihn selbst weiter; mit dem Provider `log` ist das immer der Fall. Der Link
+funktioniert einmal, 7 Tage lang; der eingeladene Admin öffnet ihn, wählt ein Passwort und ist
+angemeldet.
+
+Solange sich der Admin nie angemeldet hat, ersetzt **Neuer Einladungslink** in seiner Zeile den
+alten Link. Hat er sich angemeldet, bekommt er seinen Zugang stattdessen über einen
+Passwort-Reset zurück.
+
+## Rollen
+
+Verdin legt wie Strapi drei Rollen an:
+
+| Rolle | Kann |
+| --- | --- |
+| **Super Admin** | Alles. Ihre Berechtigungen lassen sich nicht ändern. |
+| **Editor** | Alle Inhalte anlegen, bearbeiten, veröffentlichen und löschen; die Medienbibliothek verwalten; Deploys auslösen; SEO, Weiterleitungen, Menüs und Formulare verwalten. |
+| **Author** | Inhalte anlegen sowie die eigenen Einträge und Dateien bearbeiten und löschen. Kann nicht veröffentlichen. |
+
+Weitere legst du unter **Einstellungen → Rollen** mit **Neue Rolle** an. Für jede Rolle wählst
+du:
+
+- **Inhalte**: pro Inhaltstyp (oder für **Alle Inhaltstypen**) die Stufe für **Lesen**,
+  **Erstellen**, **Aktualisieren**, **Löschen** und **Veröffentlichen**: **Kein Zugriff**,
+  **Eigene** (nur Einträge, die der Admin angelegt hat) oder **Alle**. **Felder** beschränkt eine
+  Aktion auf bestimmte Felder, **Sprachen** auf bestimmte Sprachen.
+- **Medienbibliothek**: die Dateiaktionen, für **Alle Dateien** oder **Eigene Dateien**.
+- **Einstellungen**: Zugriff auf die Verwaltungsbereiche, etwa **Benutzer verwalten** oder
+  **Audit-Logs lesen**.
+- **Zwei-Faktor-Authentifizierung erfordern**: siehe
+  [Zwei-Faktor-Authentifizierung](/de/guides/auth/two-factor/).
+
+Ein Admin mit mehreren Rollen bekommt die Vereinigung ihrer Berechtigungen. Die vollständige
+Liste steht in der [Referenz der Berechtigungen](/de/reference/permissions/).
+
+Nur ein Super Admin kann die Rolle Super Admin vergeben oder einen anderen Super Admin
+bearbeiten, löschen oder zurücksetzen.
+
+## Einen Admin deaktivieren oder entfernen
+
+Bearbeite den Admin unter **Einstellungen → Benutzer** und schalte **Aktiv** aus: Inaktive
+Benutzer können sich nicht anmelden. **Löschen** entfernt das Konto endgültig; seine Kommentare
+erscheinen dann als von einem gelöschten Admin geschrieben.
+
+## Ein Passwort zurücksetzen
+
+- **Der Admin setzt es selbst zurück:** **Passwort vergessen?** auf der Anmeldeseite schickt
+  einen Link per E-Mail, der eine Stunde lang gilt. Sobald sich das Passwort ändert, enden alle
+  Sitzungen des Kontos.
+- **Ein anderer Admin setzt es:** Bearbeite den Admin unter **Einstellungen → Benutzer** und gib
+  ein neues Passwort ein. Lass das Feld leer, um das aktuelle zu behalten.
+- **Vom Server aus:** Wenn sich niemand anmelden kann, führe
+
+  ```sh title="Terminal"
+  verdin admin reset-password --email you@example.com
+  ```
+
+  mit dem Passwort in `VERDIN_ADMIN_PASSWORD` oder auf der Standardeingabe aus. Der Befehl setzt
+  das Passwort, entsperrt das Konto und beendet seine Sitzungen. Die
+  Zwei-Faktor-Authentifizierung entfernt er nicht: Ein Admin, der seinen zweiten Faktor verloren
+  hat, braucht einen anderen Admin, der ihn
+  [zurücksetzt](/de/guides/auth/two-factor/).
+
+## Schutz der Anmeldung
+
+- Nach 5 falschen Passwörtern in Folge wird das Konto für 15 Minuten gesperrt.
+- Anfragen zur Anmeldung, Registrierung und zum Refresh sind pro Client-IP durch
+  `[admin].auth_rate_limit` begrenzt (standardmäßig 20 pro Minute).
+- Eine Admin-Sitzung ist ein Access-Token mit 15 Minuten Gültigkeit, das über ein
+  Refresh-Cookie mit 30 Tagen Laufzeit erneuert wird. Das Cookie ist unter `verdin start`
+  `Secure`; siehe `[admin].secure_cookies`.
+
+Jeder Admin sieht seine angemeldeten Geräte unter **Sitzungen** in seinem **Profil** und kann
+eines oder alle anderen **abmelden**. Eine Passwortänderung meldet jedes andere Gerät ab.
+
+## Admin-API
+
+Melde dich an, um ein Access-Token für die Admin-API zu bekommen:
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+# → { "data": { "user": {…}, "accessToken": "…", "accessTokenExpiresAt": "…" } }
+```
+
+| Route | Berechtigung | Tut |
+| --- | --- | --- |
+| `GET /users`, `GET /users/{id}` | `users.manage` | Admins mit ihren Rollen. |
+| `POST /users` | `users.manage` | `{ email, firstname?, lastname?, roles: [ids], isActive?, password? }`. Ohne `password` enthält das `meta` der Antwort `inviteUrl` und `emailed`. |
+| `PUT /users/{id}`, `DELETE /users/{id}` | `users.manage` | Einen Admin ändern oder entfernen. |
+| `POST /users/{id}/invite` | `users.manage` | Ein neuer Einladungslink, für Admins, die sich nie angemeldet haben. |
+| `GET /roles`, `POST /roles`, `PUT /roles/{id}`, `DELETE /roles/{id}` | `roles.manage` | Rollen und ihre Berechtigungen. |
+| `POST /auth/forgot-password` | öffentlich | `{ email }`. Antwortet immer mit `204`. |
+| `GET /auth/sessions`, `DELETE /auth/sessions/{id}` | angemeldet | Deine Sitzungen. |
+
+Alle Routen liegen unter `/admin/api`. Siehe die [Admin-API](/de/api/admin/).
+
+<Aside type="caution">
+Secrets gehören nie in `verdin.toml`. Halte beide Secrets über Neustarts und Instanzen hinweg
+stabil: `VERDIN_ADMIN_JWT_SECRET` signiert Access-Tokens, die JWTs der Endnutzer und
+Vorschaulinks, und `VERDIN_TOKEN_PEPPER` schützt API-Tokens und zweite Faktoren (siehe
+[API-Tokens](/de/guides/auth/api-tokens/)).
+</Aside>

@@ -1,0 +1,146 @@
+---
+title: AI eylemleri
+description: Editörlere yönetim panelinde, seçtiğiniz model sağlayıcısıyla AI yardımı (çeviri, alternatif metin, özetler ve SEO meta verisi) verin.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+AI eylemleri yönetim paneline dört yardımcı ekler: bir kaydı başka bir dilden çevirmek, bir görsel
+için alternatif metin yazmak, uzun bir metni kısa bir alana özetlemek ve SEO meta verisi önermek.
+Kendi anahtarınızla yapılandırdığınız bir model sağlayıcısını (Anthropic, OpenAI veya Ollama gibi
+yerel bir sunucu) kullanırlar.
+
+Her eylem formu dolduran bir öneri döndürür. Editör onu inceleyip kaydedene kadar hiçbir şey
+kaydedilmez ve her eylem geri alınabilir.
+
+## Kurulum
+
+AI eylemleri hem `verdin.toml` içinde bir sağlayıcı hem de açılmış özellik gerektirir.
+
+<Steps>
+
+1. Bir `[ai]` bölümü ekleyin ve anahtarı sunucuya `VERDIN_AI_KEY` içinde verin:
+
+   <Tabs syncKey="ai-provider">
+   <TabItem label="Anthropic">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "anthropic"
+   # model = "claude-sonnet-5"   # the default
+   ```
+
+   </TabItem>
+   <TabItem label="OpenAI">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai"
+   model = "gpt-4.1-mini"        # required: name the model you want
+   ```
+
+   </TabItem>
+   <TabItem label="Yerel (Ollama)">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai-compatible"
+   base_url = "http://localhost:11434/v1"
+   model = "llama3.2-vision"
+   ```
+
+   Yerel sunucular `VERDIN_AI_KEY` gerektirmez. LM Studio, vLLM ve OpenAI uyumlu API’si olan diğer
+   sunucular aynı şekilde çalışır.
+
+   </TabItem>
+   </Tabs>
+
+   ```sh title="Terminal"
+   export VERDIN_AI_KEY=sk-...
+   ```
+
+2. Verdin’i yeniden başlatın. Bölüm eksik olduğunda başlamayı reddeder: eksik bir anahtar ya da
+   sağlayıcının ihtiyaç duyduğu yerde eksik bir `model` veya `base_url`.
+3. **Ayarlar → Özellikler** bölümünde **AI eylemleri**’ni açın.
+
+</Steps>
+
+| Anahtar | Varsayılan | Açıklama |
+| --- | --- | --- |
+| `provider` | `"none"` | `anthropic`, `openai` veya `openai-compatible`. |
+| `model` | `anthropic` için `claude-sonnet-5` | Model. Diğer sağlayıcılar için zorunlu. |
+| `base_url` | Sağlayıcınınki | Başka bir uç nokta: bir proxy veya yerel bir sunucu (`openai-compatible` için zorunlu). |
+| `max_tokens` | `2048` | Token cinsinden en uzun yanıt. |
+
+Bkz. [`[ai]`](/tr/reference/configuration/). Özellik açık ama `[ai]` bölümü yokken admin **AI
+eylemleri bu sunucuda kullanılamıyor.** gösterir.
+
+Alternatif metin eylemi görsel gönderir; bu yüzden onu istiyorsanız görsel kabul eden bir model
+seçin.
+
+## Eylemlerin yaptıkları
+
+### Bir kaydı çevirme
+
+Yerelleştirilmiş bir kaydın düzenleyicisinde **Şuradan çevir: _dil_…**, **AI ile çevir**’i açar.
+**Şuradan çevir** ile kaynak dili seçin ve **Çevir**’i seçin. O dilin kaydedilmiş taslağının metin
+alanları (string’ler, metinler, zengin metin, bloklar ve bileşenlerin ve dinamik bölgelerin içindeki
+metin) mevcut dile çevrilir ve formdaki o alanların yerini alır.
+
+- Diller arasında paylaşılan alanlara dokunulmaz.
+- Kaynak dildeki kaydedilmemiş değişiklikler dâhil edilmez: önce onu kaydedin.
+- Markdown, HTML, URL’ler, kimlikler ve blok tipleri olduğu gibi korunur.
+- Çevrilen alanlar işaretlenir; onları inceleyin, ardından kaydedin ya da **Çeviriyi geri al**’ı
+  seçin.
+
+Bu, kaydı hedef dilde güncelleme ve kaynak dilde okuma izni gerektirir.
+
+### Alternatif metin yazma
+
+Medya kütüphanesinde bir görsel açın ve **Alternatif metin oluştur**’u seçin. Model görseli
+varsayılan dilin dilinde (yaklaşık 125 karaktere kadar) tanımlar ve boşsa açıklama yazısını
+doldurur. JPEG, PNG, WebP ve GIF görsellerde çalışır ve varsa `small` veya `medium` formatını
+gönderir; böylece büyük orijinaller sağlayıcıya yüklenmez. Medya kütüphanesinin güncelleme iznini
+gerektirir (**Kendi dosyaları** için dosya üzerinde).
+
+### Bir alana özetleme
+
+Özet gibi adlandırılmış metin alanları (`description`, `summary`, `excerpt`, `abstract`, `intro`,
+`introduction`, `lead`, `teaser`), kayıtta bir zengin metin veya blocks alanı ya da `body`,
+`content`, `text` veya `article` adlı bir metin alanı olduğunda bir **_alan_ alanını özetle**
+düğmesi alır. Örnek blog’da **Excerpt**, **Body alanını özetle** düğmesini alır. Özet alanın en
+fazla uzunluğuna sığar.
+
+### SEO meta verisi önerme
+
+[Önerilen `shared.seo`](/tr/guides/frontend/seo-and-sitemap/) gibi `metaTitle` ve
+`metaDescription` metin niteliklerine sahip bir bileşen bir **Öner** düğmesi alır. Bu düğme meta
+başlığı, açıklamayı ve bileşende varsa `keywords`’ü kaydın kaydedilmiş taslağından doldurur.
+
+## Sınırlar
+
+- Her admin dakikada 30 AI isteği yapabilir; fazlası **Çok fazla AI isteği. Bir dakika bekleyip
+  tekrar deneyin.** yanıtını verir.
+- Özetler ve SEO önerileri en fazla 40.000 karakter metin gönderir.
+- Sağlayıcıya yapılan bir istek 120 saniye sonra zaman aşımına uğrar.
+
+## Gizlilik
+
+<Aside type="caution">
+AI eylemleri içeriği yapılandırdığınız sağlayıcıya gönderir: çevrilen, özetlenen veya tanımlanan
+alanları ve alternatif metin için görselleri. Kuruluşunuzun bu içerik için izin verdiği bir
+sağlayıcı ve plan seçin, veri saklama koşullarını denetleyin ve ağınızdan çıkmaması gereken içerik
+için yerel bir model (`openai-compatible`) düşünün.
+</Aside>
+
+- İstekler Verdin sunucusundan sağlayıcıya gider; anahtar asla tarayıcıya ulaşmaz.
+- Yalnızca eylemin girdisi gönderilir: kaydın metin alanları, özetlenecek metin ya da bir görsel ve
+  dosya adı. Private nitelikler ve diğer kayıtlar gönderilmez.
+- Eylemler yalnızca admin’in zaten okuyabildiklerini okur ve öneriler saklanmaz.
+
+Admin hangi modelin yanıt verdiğini gösterir (**Öneriler: _model_ (_sağlayıcı_).**).
+
+AI ajanlarının admin dışında içerik okuyup yazmasına izin vermek için bkz.
+[MCP sunucusu](/tr/guides/integrations/mcp/).

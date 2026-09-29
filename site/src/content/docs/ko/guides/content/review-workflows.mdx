@@ -1,0 +1,123 @@
+---
+title: 검토 워크플로
+description: 항목을 검토 단계에 따라 이동시키고, 검토자에게 할당하고, 이동할 수 있는 사람을 제한하고, 게시 전에 특정 단계를 요구합니다.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+검토 워크플로는 *To do*, *In review*, *Ready* 같은 순서가 있는 단계 목록으로, 일부 콘텐츠 타입의 항목이 게시되기 전에
+거쳐 갑니다. 이 가이드에서는 워크플로를 설정하고, 항목을 이동하고 할당하고, 해당 admin API를 보여 줍니다.
+
+Strapi에서 검토 워크플로는 Enterprise 기능입니다. Verdin에서는 오픈 소스 코어의 일부입니다.
+
+## 시작하기 전에
+
+- **설정 → 기능 → 검토 워크플로**를 켭니다. 기본적으로 꺼져 있습니다.
+- 워크플로를 설정하려면 **검토 워크플로 관리**(`workflows.manage`)가 필요합니다.
+- 항목을 이동하고 할당하려면 그 항목에 대한 수정 권한이 필요합니다. [권한](/ko/reference/permissions/)을 참고하세요.
+
+## 워크플로 만들기
+
+<Steps>
+
+1. **설정 → 검토 워크플로**를 열고 **새 워크플로**를 선택합니다.
+2. **이름**을 줍니다.
+3. **콘텐츠 타입** 아래에서 항목이 이 워크플로를 따를 타입을 고릅니다. 타입은 최대 한 워크플로만 따릅니다.
+4. **단계** 아래에 단계를 순서대로 나열합니다. 각 단계에는 **단계 이름**과 **색상**이 있습니다. 더 추가하려면
+   **단계 추가**를, 순서를 바꾸려면 화살표 버튼을 쓰세요. 새 항목은 첫 단계에서 시작합니다.
+5. 선택적으로 단계에서 **이 단계로 항목을 이동할 수 있는 역할**을 고릅니다. 역할을 고르지 않으면 항목을 수정할 수
+   있는 누구나 이동할 수 있습니다.
+6. 선택적으로 **게시에 필요한 단계**를 설정합니다. 그러면 항목이 그 단계에 있을 때만 게시할 수 있습니다.
+   **모든 단계**는 게시에 제한을 두지 않습니다.
+7. 저장합니다.
+
+</Steps>
+
+<Diagram
+  caption="게시에 필요한 단계가 있는 편집 워크플로"
+  code={`flowchart LR
+  A[To do] --> B[In review] --> C[Ready]
+  C -->|게시 허용| P((게시됨))
+  A -.->|게시 거부| X[400]`}
+/>
+
+타입이 워크플로에 들어가기 전부터 있던 항목은 첫 단계에 있습니다.
+
+나중에 워크플로를 바꾸면:
+
+- 단계를 제거하면 그 단계의 항목은 첫 단계로 돌아갑니다.
+- 워크플로에서 콘텐츠 타입을 제거하면 그 항목들의 단계가 지워집니다.
+- 워크플로를 삭제하면 그 항목들의 단계와 담당자가 지워집니다.
+
+## 항목 이동과 할당
+
+항목 편집기에는 **단계**와 **담당자**가 있는 **검토** 패널이 있습니다.
+
+- 다른 **단계**를 골라 항목을 이동합니다. 다른 역할에 예약된 단계는 고를 수 없으며, 패널이 그렇다고 알려 줍니다.
+  **검토 워크플로 관리**를 가진 관리자는 항상 항목을 이동할 수 있습니다.
+- 콘텐츠 타입을 읽을 수 있는 활성 관리자 중에서 **담당자**를 고르거나, **담당자 삭제**를 선택합니다. 항목을 수정할
+  수 있는 누구나 할당할 수 있습니다.
+- 워크플로에 필요한 단계가 있으면, 패널은 **게시**가 동작하기 전에 항목이 도달해야 할 단계를 알려 줍니다.
+
+목록 보기에는 **단계** 열이 있고, 홈 페이지는 여러분에게 할당된 항목을 **나에게 할당됨** 아래에 나열합니다.
+로컬라이즈된 타입은 로케일마다 단계를 유지합니다.
+
+## 게시 단계가 막는 것
+
+필요한 단계는 모든 게시 방식에 적용됩니다: 관리자 패널, REST, GraphQL, 릴리스, 플러그인. 그 단계 밖에 있는 항목을
+게시하면 `400`으로 실패합니다.
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+Strapi에서 단계 요구 사항은 관리자 패널에만 적용됩니다. 단계 역할도 다릅니다. Verdin에서는 단계 *안으로* 항목을
+이동할 수 있는 사람을 제한합니다.
+
+## 감사 로그와 웹훅
+
+- 단계 변경과 할당은 [감사 로그](/ko/guides/content/audit-logs/)에 `entry.stage`와 `entry.assign`으로 기록됩니다.
+- 웹훅은 **항목 단계 변경**(`review-workflows.updateEntryStage`)을 구독할 수 있습니다.
+  [웹훅](/ko/guides/integrations/webhooks/)을 참고하세요.
+
+## Admin API
+
+모든 라우트는 `/admin/api` 아래에 있으며 관리자 액세스 토큰을 받습니다.
+
+| 라우트 | 권한 | 하는 일 |
+| --- | --- | --- |
+| `GET /review-workflows`, `GET /review-workflows/{id}` | `workflows.manage` | 단계를 포함한 워크플로. |
+| `POST /review-workflows`, `PUT /review-workflows/{id}` | `workflows.manage` | 워크플로 생성 또는 대체(본문은 아래 참고). |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | 해당 타입의 항목은 단계를 잃습니다. |
+| `GET /content/{uid}/{documentId}/review?locale=` | 항목 읽기 | 단계, 담당자, 그리고 항목을 이동할 수 있는 단계(`canMoveTo`). |
+| `PUT /content/{uid}/{documentId}/review?locale=` | 항목 수정 | `{ "stageId": 3, "assigneeId": 7 }`. 두 필드 모두 선택 사항이며, `"assigneeId": null`은 담당자를 지웁니다. |
+| `GET /content/{uid}/review?documentIds=a,b` | 타입 읽기 | 최대 200개 항목의 단계와 `meta.workflow`의 워크플로. |
+| `GET /review/assigned` | 로그인 필요 | 자신에게 할당된 항목. |
+| `GET /review/assignees?uid=` | 타입 수정 | 타입을 읽을 수 있는 활성 관리자. |
+| `GET /review/roles` | `workflows.manage` | 단계 역할용 역할 코드와 이름. |
+
+`POST`와 `PUT`에 보내는 워크플로:
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- 워크플로에는 고유한 이름과 `#rrggbb` 색상을 가진 단계가 1~50개 있습니다.
+- `publishStage`는 단계 중 하나를 지정합니다. 없으면 생략하세요.
+- 기존 단계는 `id`와 함께 보내야 항목이 제자리에 남습니다. `id`가 없는 단계는 새 단계입니다.
+
+<Aside type="note">
+기능을 끄면 단계가 숨겨지고 게시 단계 강제가 멈춥니다. 워크플로와 항목의 단계는 다시 켤 때를 위해 보관됩니다.
+</Aside>

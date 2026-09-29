@@ -1,0 +1,159 @@
+---
+title: Webhook
+description: 在内容或媒体变化时调用你自己的端点，校验投递确实来自 Verdin，并处理重试。
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+当内容或媒体发生变化时，webhook 会向你的某个 URL 发送一个 HTTP `POST`：用于重新构建静态网站、清除缓存、同步搜索索引、向聊天工具发消息。投递会进入队列、经过签名、失败时重试，并记录日志。
+
+本页一步步介绍如何设置和接收 webhook。事件、负载和请求头请参见 [webhook 参考](/zh-cn/api/webhooks/)。
+
+## 开启
+
+**Webhook** 功能默认开启；你可以在 **设置 → 功能** 中关闭它。管理 webhook 需要 **管理 Webhook** 权限（`webhooks.manage`）。参见[权限](/zh-cn/reference/permissions/)。
+
+## 创建 webhook
+
+<Steps>
+
+1. 前往 **设置 → Webhook**，选择 **新建 Webhook**。
+2. 在 **常规** 下，为它设置 **名称** 以及 Verdin 应当调用的 **URL**。
+3. 在 **事件** 下，选择触发投递的事件：**条目**（创建、更新、发布、取消发布、丢弃草稿、删除）、**媒体**、**发布计划**（**发布计划已执行**）和 **审核工作流**（**条目阶段已变更**）。
+4. 在 **内容类型** 下，保持 **所有内容类型**，或者选择其中一部分。这只会过滤条目事件；媒体事件始终会发送。
+5. 在 **请求头** 下，添加你的端点所需的请求头，例如 `authorization` 令牌（**添加请求头**）。`content-type`、`host` 和 `x-verdin-*` 请求头由 Verdin 设置。
+6. 在 **签名** 下，保持 **对投递签名** 开启（默认）。
+7. 选择 **创建**。Verdin 会显示一次签名密钥（`whsec_…`）：把它复制到你的端点配置中。
+
+</Steps>
+
+**已启用** 可以在不删除 webhook 的情况下将其关闭。已停用的 webhook 不会收到事件，但仍然可以测试。
+
+## 测试
+
+在 webhook 上选择 **发送测试事件**。Verdin 会立即发送：
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+该投递会出现在 webhook 的 **投递日志** 中，显示其状态、HTTP 状态码、耗时以及响应体的开头部分。打开某次投递即可查看完整的负载以及错误（如果有）。
+
+开发期间如果要在自己的机器上接收 webhook，请用 `verdin dev` 运行服务器：它允许 `localhost` URL，而 `verdin start` 会拒绝这些 URL（参见[安全](#安全)）。
+
+## 接收投递
+
+一次投递是一个带有 JSON 请求体和以下请求头的 `POST`：
+
+| 请求头 | 值 |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | 事件名，例如 `entry.publish`。 |
+| `x-verdin-delivery` | 投递 id。重试时保持不变：可用它忽略重复投递。 |
+| `x-verdin-signature` | `t=<unix seconds>,v1=<hex>`，用于启用签名的 webhook。 |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+请尽快以任意 `2xx` 状态码响应。耗时的工作（完整的重新构建）请在响应之后再做，或者放入队列：耗时超过超时时间（默认 10 秒）的投递会被视为失败。
+
+### 校验签名
+
+`v1` 是以 webhook 密钥为密钥、对 `"<t>.<raw body>"` 计算出的 HMAC-SHA256。校验一次投递的步骤：
+
+1. 对**原始**请求体重新计算 HMAC，而不是对重新序列化的 JSON 计算。
+2. 以恒定时间与 `v1` 进行比较。
+3. 拒绝超过几分钟的时间戳，这样被截获的投递就无法被重放。
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+使用 Express 时，请保留原始请求体：`app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)`，并传入 `req.body.toString()`。
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+`crypto.subtle.verify` 以恒定时间进行比较。
+
+</TabItem>
+</Tabs>
+
+**轮换密钥** 会生成一个新密钥（只显示一次）；旧密钥立即失效。**停止签名** 会删除密钥，此后投递不再签名。
+
+## 重试
+
+变更提交时，投递会存入数据库，由后台 worker 发送，因此响应缓慢的端点永远不会拖慢编辑。
+
+- **成功：** 任何 `2xx` 响应。
+- **失败：** 其他任何情况，包括重定向（不会跟随）、连接错误和超时。
+- **重试：** 失败的投递会在 30 秒、2 分钟、10 分钟、1 小时和 6 小时后重试。之后会被标记为 **失败**。
+
+在日志中的某次投递上选择 **重试**，即可立即重新发送。日志保留 30 天。由于重试使用相同的 `x-verdin-delivery`，请让你的处理程序具备幂等性：保存已处理过的 id，或者让处理工作可以安全地重复执行。
+
+## 安全
+
+在 `verdin start` 下，webhook URL 不能指向回环地址、私有地址、链路本地地址或其他保留地址，包括解析到这些地址的主机名。这可以防止管理员借助 webhook 访问内部服务（SSRF）。URL 中的凭据（`https://user:pass@…`）会被拒绝；请改为在请求头中发送。
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+参见 [`[webhooks]`](/zh-cn/reference/configuration/)。
+
+## 从 Strapi 迁移过来
+
+Verdin 的 webhook 遵循 Strapi 的事件和负载，区别如下：
+
+- 投递会经过签名、失败时重试，并记录日志；
+- webhook 可以限定于部分内容类型；
+- Strapi 的 `entry.draft-discard` 在 Verdin 中叫做 `entry.discard-draft`。
+
+如果想通过管理后台中的按钮而不是在每次变更时重新构建静态网站，请参见[部署与 CDN](/zh-cn/guides/integrations/deploys-and-cdn/)。

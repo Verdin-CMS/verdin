@@ -1,0 +1,255 @@
+---
+title: לקוח עם טיפוסים
+description: קראו וכתבו תוכן של Verdin מ-TypeScript עם @verdin/client ועם טיפוסים שנוצרים מהסכמה שלכם על ידי `verdin types`.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`@verdin/client` הוא לקוח TypeScript קטן עבור API התוכן: מסמכי REST, ספריית המדיה ו-GraphQL.
+שלבו אותו עם `verdin types`, שכותב הגדרות TypeScript של סוגי התוכן שלכם, והעורך שלכם בודק
+שמות נתיבים, שדות ו-payloads של כתיבה תוך כדי הקלדה.
+
+ללקוח אין תלויות והוא רץ בכל מקום שיש בו `fetch`: דפדפנים, Node 20 ומעלה, Deno, Bun ו-edge
+workers. הוא אופציונלי; כל קריאה ממופה לבקשת HTTP רגילה של ה-[REST API](/he/api/rest/).
+
+## התקנה ויצירת טיפוסים
+
+<Steps>
+
+1. התקינו את החבילה בפרויקט הפרונטאנד שלכם:
+
+   ```sh title="Terminal"
+   npm install @verdin/client
+   ```
+
+2. בפרויקט ה-Verdin (התיקייה עם `verdin.toml`), צרו את הטיפוסים:
+
+   ```sh title="Terminal"
+   verdin types -o ../site/src/verdin-types.ts
+   ```
+
+   בלי `-o` (`--out`) ההגדרות הולכות ל-standard output. הפקודה רק קוראת את קובצי הסכמה; היא
+   לא צריכה מסד נתונים.
+
+3. צרו לקוח עם ה-`VerdinSchema` שנוצר:
+
+   ```ts title="src/verdin.ts"
+   import { createClient } from '@verdin/client';
+   import type { VerdinSchema } from './verdin-types';
+
+   export const verdin = createClient<VerdinSchema>({
+     url: 'https://cms.example.com',
+     token: process.env.VERDIN_TOKEN, // omit to use the public role
+   });
+   ```
+
+</Steps>
+
+הריצו שוב `verdin types` אחרי כל שינוי סכמה; הקובץ אומר זאת בשורה הראשונה שלו. commit שלו
+ליד קוד הפרונטאנד, או יצירה מחדש שלו ב-CI, שומרים על שני הצדדים מתואמים.
+
+<Aside type="caution">
+האסימון נותן למחזיק בו את ההרשאות של האסימון. השאירו אסימונים עם גישה מלאה ואסימונים מותאמים
+בשרת (SSR, סקריפטי build, נתיבי API). חבילה לדפדפן צריכה להשתמש בלי אסימון (התפקיד הציבורי)
+או באסימון לקריאה בלבד. ראו [אסימוני API](/he/guides/auth/api-tokens/).
+</Aside>
+
+## מה `verdin types` יוצר
+
+עבור [הבלוג לדוגמה](https://github.com/Verdin-CMS/verdin/blob/main/examples/blog/) (מאמרים,
+קטגוריות, תגיות, סוג יחיד של דף בית והרכיבים `shared.seo`, `blocks.hero` ו-`blocks.quote`)
+הקובץ מכיל:
+
+| טיפוס | מה הוא |
+| --- | --- |
+| `Article`, `Category`, `Tag`, `Homepage` | ממשק אחד לכל סוג תוכן, שנקרא על שם ה-`singularName` שלו, ומרחיב את `DocumentBase` (`id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt`). מאפיינים פרטיים מושמטים. |
+| `ArticleInput`, … | טיפוסי הכתיבה: כל מאפיין אופציונלי, קשרים כמחרוזות `documentId` (או `connect` / `disconnect` / `set`), מדיה כמזהי קבצים, צדדים הפוכים של קשרים מושמטים. |
+| `ComponentSharedSeo`, `ComponentBlocksHero`, … | ממשק אחד לכל רכיב, ובנוסף טיפוס ה-`…Input` שלו. פריטי אזור דינמי נושאים `__component` עם טיפוס. |
+| `Media`, `MediaFormat`, `Blocks` | קבצים של ספריית המדיה, הפורמטים הרספונסיביים שלהם ופורמט הבלוקים של הטקסט העשיר. |
+| `Collections`, `Singles`, `VerdinSchema` | נתיבים (`articles`, `homepage`) שממופים לטיפוסי המסמך והקלט שלהם, עבור הלקוח. |
+
+קשרים, מדיה, רכיבים ואזורים דינמיים הם מאפיינים אופציונליים (`category?:`), כי ה-API מחזיר
+אותם רק כשמבצעים להם `populate`. מספרים שלמים גדולים הם `string`, כי הם לא נכנסים למספרים
+של JavaScript.
+
+בלי הטיפוסים שנוצרו הלקוח עדיין עובד: כל נתיב מתקבל והמסמכים הם `Record<string, unknown>`.
+
+## קריאת תוכן
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[title][$containsi]=rust&populate[category]=true&populate[seo]=true&sort[0]=publishedAt:desc&pagination[page]=1&pagination[pageSize]=10' \
+  -H "Authorization: Bearer $VERDIN_TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { title: { containsi: "rust" } }
+    sort: ["publishedAt:desc"]
+    pagination: { page: 1, pageSize: 10 }
+  ) {
+    documentId
+    title
+    slug
+    category { name }
+    seo { metaTitle metaDescription }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { verdin } from './verdin';
+
+const { data, meta } = await verdin.collection('articles').find({
+  filters: { title: { $containsi: 'rust' } },
+  populate: { category: true, seo: true },
+  sort: ['publishedAt:desc'],
+  pagination: { page: 1, pageSize: 10 },
+});
+
+data[0].title; // string
+data[0].category?.name; // string | null | undefined
+meta.pagination.total;
+```
+
+</TabItem>
+</Tabs>
+
+פרמטרי השאילתה משתמשים בפורמט של Strapi v5 ומסודרים בכתיב סוגריים, כך שכל מסנן, מיון,
+`fields`, `populate`, `status` או `locale` שעובד ב-REST API עובד גם כאן. לתחביר המלא, ראו
+[REST API](/he/api/rest/).
+
+| קריאה | בקשה |
+| --- | --- |
+| `collection(route).find(params?)` | `GET /api/:route` |
+| `collection(route).findOne(documentId, params?)` | `GET /api/:route/:documentId` |
+| `collection(route).create(data, params?)` | `POST /api/:route` (מפרסם אלא אם `status: 'draft'`) |
+| `collection(route).update(documentId, data, params?)` | `PUT /api/:route/:documentId` |
+| `collection(route).delete(documentId)` | `DELETE /api/:route/:documentId` |
+| `collection(route).publish(documentId)`, `unpublish`, `discardDraft` | `POST /api/:route/:documentId/actions/publish` (`unpublish`, `discard-draft`) |
+| `single(route).find(params?)`, `update(data, params?)`, `delete()` | `GET`, `PUT`, `DELETE /api/:route` |
+| `upload(files, info?)` | `POST /api/upload` (multipart) |
+| `files(params?)` | `GET /api/upload/files` |
+| `graphql(query, variables?)` | `POST /graphql` |
+
+גם `stringify(params)` מיוצא, כדי לבנות מחרוזות שאילתה בעצמכם (למשל עבור
+`<link rel="preload">`).
+
+## כתיבת תוכן
+
+```ts
+const { data: article } = await verdin.collection('articles').create(
+  {
+    title: 'Hello from TypeScript',
+    category: 'hx2n8r3w0c1kq5v7m4j6b9a0',       // a category's documentId
+    tags: { connect: ['t1…', 't2…'] },
+    seo: { metaTitle: 'Hello', metaDescription: 'A first post' },
+  },
+  { status: 'draft' },
+);
+
+await verdin.collection('articles').publish(article.documentId);
+```
+
+כמו ב-Strapi v5, `create` מפרסם את המסמך מיד בסוגים עם טיוטה ופרסום, אלא אם מעבירים
+`status: 'draft'`. כתיבות דורשות אסימון עם `create`, `update` או `publish` על הסוג; ראו
+[הרשאות](/he/reference/permissions/).
+
+העלו קבצים עם `upload`, ואז הפנו אליהם לפי מזהה:
+
+```ts
+const [cover] = await verdin.upload(file, { alternativeText: 'The team at the office' });
+```
+
+`file` הוא `Blob` או `File` (או רשימה שלהם). העלאות דורשות את ההרשאה `create` על ספריית
+המדיה.
+
+## GraphQL
+
+`graphql()` שולח ל-`/graphql`, ולכן התכונה **GraphQL** חייבת להיות פעילה ב-**הגדרות ←
+תכונות**. הוא מחזיר את ה-`data` של התגובה וזורק שגיאה על השגיאה הראשונה.
+
+```ts
+const data = await verdin.graphql<{ articles: Array<{ title: string }> }>(
+  `query ($q: String) { articles(filters: { title: { containsi: $q } }) { title } }`,
+  { q: 'rust' },
+);
+```
+
+הטיפוסים שנוצרו מתארים את ה-REST API. עבור GraphQL, העבירו בעצמכם את טיפוס התוצאה, כמו למעלה,
+או השתמשו במחולל קוד של GraphQL מול נקודת הקצה. ראו [GraphQL](/he/api/graphql/).
+
+## שגיאות
+
+כל בקשה שנכשלת נדחית עם `VerdinError`, שנושא את השגיאה שה-API שלח בפורמט של Strapi:
+
+| מאפיין | דוגמה |
+| --- | --- |
+| `status` | `400`, `401`, `403`, `404`, `429` |
+| `name` | `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `RateLimitError`, `GraphQLError` |
+| `message` | תיאור קריא. |
+| `details` | הפרטים של השגיאה, כמו רשימת השדות הלא תקינים של `ValidationError`. |
+
+```ts
+import { VerdinError } from '@verdin/client';
+
+try {
+  const { data } = await verdin.collection('articles').findOne(id);
+  return data;
+} catch (error) {
+  if (error instanceof VerdinError && error.status === 404) return null;
+  throw error;
+}
+```
+
+## אפשרויות
+
+| אפשרות | תיאור |
+| --- | --- |
+| `url` | המקור של השרת, כמו `https://cms.example.com`. חובה. |
+| `token` | אסימון API או JWT של משתמש קצה, שנשלח כ-`Authorization: Bearer …`. השמיטו אותו לתפקיד הציבורי. |
+| `prefix` | הקידומת של API התוכן. ברירת המחדל `/api`; התאימו ל-[`[api].prefix`](/he/reference/configuration/) אם שיניתם אותו. |
+| `fetch` | מימוש של `fetch` לשימוש במקום הגלובלי. |
+| `headers` | כותרות נוספות שנשלחות עם כל בקשה. |
+
+## רינדור בצד השרת וסביבות edge
+
+הלקוח קורא רק ל-`fetch`, ולכן הוא רץ בלי שינוי ב-server components, בנתיבי API, בסקריפטי
+build ובפונקציות edge. העבירו `fetch` מותאם כדי להוסיף את אפשרויות המטמון של framework לכל
+בקשה. למשל, עם Next.js:
+
+```ts title="src/verdin.ts"
+export const verdin = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  token: process.env.VERDIN_TOKEN,
+  fetch: (input, init) => fetch(input, { ...init, next: { revalidate: 60, tags: ['verdin'] } }),
+});
+```
+
+כדי לקרוא טיוטות בדף תצוגה מקדימה, שלחו ככותרת את אסימון התצוגה המקדימה שהפאנל שם בכתובת
+התצוגה המקדימה:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  headers: { 'x-verdin-preview': searchParams.get('preview') ?? '' },
+});
+const { data } = await preview.collection('articles').findOne(id, { status: 'draft' });
+```
+
+ראו [תצוגה מקדימה](/he/guides/content/preview/) לאופן שבו קישורי תצוגה מקדימה עובדים,
+ו[עריכה חזותית](/he/guides/frontend/visual-editing/) כדי להוסיף לחיצה-לעריכה לאותו דף.
+
+קריאה ל-API מדפדפן במקור אחר דורשת את המקור הזה ב-
+[`[api].cors_origins`](/he/reference/configuration/).

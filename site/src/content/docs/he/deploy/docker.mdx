@@ -1,0 +1,381 @@
+---
+title: Docker
+description: הריצו את Verdin מהאימג' הרשמי עם Docker או Docker Compose, עם PostgreSQL, MySQL, MariaDB או SQLite, עם הסכמה מחוברת לקריאה בלבד והמדיה ב-volume או ב-S3.
+sidebar:
+  order: 3
+---
+
+import { Aside, FileTree, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+האימג' הרשמי מריץ שרת Verdin אחד עם פאנל הניהול בפנים. העמוד הזה מכסה מה האימג' מכיל,
+קובץ Compose לכל מסד נתונים, ואיך להוסיף תצורה משלכם. שאר עמודי הפלטפורמות נשענים עליו.
+
+## האימג'
+
+`ghcr.io/verdin-cms/verdin` מתפרסם עבור `linux/amd64` ו-`linux/arm64` בכל גרסה, עם תגיות
+של הגרסה המלאה (`0.10.0`), הגרסה המשנית (`0.10`) ו-`latest`. בייצור, קבעו גרסה משנית: גרסאות
+משניות של 0.x עשויות לשנות התנהגות (ראו [שדרוג](/he/migrate/upgrading/)).
+
+| | |
+| --- | --- |
+| בסיס | Distroless (`gcr.io/distroless/static-debian12:nonroot`): בלי shell, בלי מנהל חבילות, בלי `curl`. |
+| משתמש | `nonroot` (uid ו-gid `65532`). |
+| Entrypoint | `/usr/local/bin/verdin` |
+| פקודת ברירת מחדל | `start --migrate`: מחילה הגירות בטוחות ממתינות, ואז מגישה. |
+| פורט | `1337` |
+| Volume | `/data`: מסד הנתונים של SQLite, העלאות מקומיות ו, עם `dev`, הסכמה. |
+| תצורה | `/app/verdin.toml` (`VERDIN_CONFIG=/app/verdin.toml`). |
+
+התצורה המובנית:
+
+```toml title="/app/verdin.toml"
+[server]
+host = "0.0.0.0"
+port = 1337
+
+[schema]
+path = "/data/schema"
+
+[log]
+format = "json"
+
+[upload.transforms]
+cache_dir = "/data/.cache/transforms"
+
+[search]
+dir = "/data/search"
+```
+
+ו-`VERDIN_DATABASE_URL=sqlite:///data/verdin.db`. `/app/public/uploads`, שאליו ספק ההעלאות
+המקומי כותב כברירת מחדל, הוא קישור ל-`/data/uploads`. אפשר לדרוס כל מפתח עם משתנה
+`VERDIN_<SECTION>__<KEY>` (ראו את [תיעוד התצורה](/he/reference/configuration/)).
+
+## נסו את זה
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+`dev` מפעיל את בונה סוגי התוכן, שכותב את הסכמה ל-`/data/schema` ב-volume. פתחו את
+`http://localhost:1337/admin/` ורשמו את המנהל הראשון. לייצור, שמרו את הסכמה במאגר שלכם
+והריצו את ברירת המחדל `start --migrate`, כמו בהמשך.
+
+## הרצה עם Compose
+
+שימו את הסכמה שעשיתם לה commit ליד קובץ ה-Compose:
+
+<FileTree>
+- compose.yaml
+- .env              סיסמת מסד הנתונים, עבור Compose
+- verdin.env        סודות מ-`verdin secrets`
+- schema/
+  - content-types/
+  - components/
+</FileTree>
+
+<Steps>
+
+1. צרו את הסודות פעם אחת והשאירו אותם מחוץ לניהול הגרסאות:
+
+   ```sh frame="terminal"
+   docker run --rm ghcr.io/verdin-cms/verdin:0.10 secrets > verdin.env
+   echo "DB_PASSWORD=$(openssl rand -hex 24)" > .env
+   ```
+
+2. כתבו `compose.yaml` עבור מסד הנתונים שלכם. החליפו את `https://cms.example.com` בכתובת
+   שהדפדפנים ישתמשו בה.
+
+   <Tabs syncKey="db">
+   <TabItem label="PostgreSQL">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD}@db:5432/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: postgres:17
+       restart: unless-stopped
+       environment:
+         POSTGRES_USER: verdin
+         POSTGRES_PASSWORD: ${DB_PASSWORD}
+         POSTGRES_DB: verdin
+       volumes:
+         - db-data:/var/lib/postgresql/data
+       healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U verdin -d verdin"]
+         interval: 5s
+         retries: 20
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   </TabItem>
+   <TabItem label="MySQL">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: mysql://verdin:${DB_PASSWORD}@db:3306/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: mysql:8.4
+       restart: unless-stopped
+       environment:
+         MYSQL_USER: verdin
+         MYSQL_PASSWORD: ${DB_PASSWORD}
+         MYSQL_DATABASE: verdin
+         MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+       volumes:
+         - db-data:/var/lib/mysql
+       healthcheck:
+         test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+         interval: 5s
+         retries: 30
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   </TabItem>
+   <TabItem label="MariaDB">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         VERDIN_DATABASE_URL: mysql://verdin:${DB_PASSWORD}@db:3306/verdin
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+       depends_on:
+         db:
+           condition: service_healthy
+
+     db:
+       image: mariadb:11.4
+       restart: unless-stopped
+       environment:
+         MARIADB_USER: verdin
+         MARIADB_PASSWORD: ${DB_PASSWORD}
+         MARIADB_DATABASE: verdin
+         MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+       volumes:
+         - db-data:/var/lib/mysql
+       healthcheck:
+         test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+         interval: 5s
+         retries: 30
+
+   volumes:
+     verdin-data:
+     db-data:
+   ```
+
+   MariaDB משתמש בכתובות `mysql://`; Verdin מזהה את השרת שהוא מדבר איתו.
+
+   </TabItem>
+   <TabItem label="SQLite">
+
+   ```yaml title="compose.yaml"
+   services:
+     verdin:
+       image: ghcr.io/verdin-cms/verdin:0.10
+       restart: unless-stopped
+       ports: ["1337:1337"]
+       env_file: verdin.env
+       environment:
+         # The image's default; the file lives in the volume.
+         VERDIN_DATABASE_URL: sqlite:///data/verdin.db
+         VERDIN_SERVER__PUBLIC_URL: https://cms.example.com
+       volumes:
+         - verdin-data:/data
+         - ./schema:/data/schema:ro
+
+   volumes:
+     verdin-data:
+   ```
+
+   עם SQLite, הריצו קונטיינר יחיד: מסד הנתונים הוא קובץ ב-volume שלו.
+
+   </TabItem>
+   </Tabs>
+
+   סיסמה עם תווים כמו `@`, `:` או `/` חייבת להיות מקודדת ב-percent-encoding ב-URL; הסיסמה
+   של `openssl rand -hex` שלמעלה לא צריכה קידוד.
+
+3. הפעילו אותו ועקבו אחרי היומנים:
+
+   ```sh frame="terminal"
+   docker compose up -d
+   docker compose logs -f verdin
+   ```
+
+   ההפעלה הראשונה יוצרת את כל הטבלאות. חכו ל-`verdin listening`.
+
+4. רשמו את המנהל הראשון ב-`/admin/` מיד, או משורת הפקודה (היא מבקשת את הסיסמה):
+
+   ```sh frame="terminal"
+   docker compose exec -it verdin verdin admin create --email you@example.com
+   ```
+
+</Steps>
+
+שימו reverse proxy שמסיים TLS לפני פורט 1337 (Caddy, nginx, Traefik או מאזן העומסים
+שלכם), וציינו אותו ב-`VERDIN_SERVER__TRUSTED_PROXIES`. ברשת Compose הכתובת של ה-proxy
+נמצאת בטווחים הפרטיים של Docker; `'["172.16.0.0/12"]'` מכסה את רשתות ברירת המחדל של
+Docker, אבל בדקו את שלכם עם `docker network inspect`.
+
+## Volumes
+
+| נתיב | מחזיק | הערות |
+| --- | --- | --- |
+| `/data` | מסד הנתונים של SQLite, העלאות מקומיות (`/data/uploads`) | volume עם שם שומר על הבעלות של האימג' (`65532`). bind mount חייב להיות ניתן לכתיבה על ידי uid `65532`. |
+| `/data/schema` | קובצי סכמה | חברו את הסכמה שעשיתם לה commit לקריאה בלבד (`:ro`) עם `start`. `dev` צריך אותה ניתנת לכתיבה. |
+
+האימג' לא כותב לשום מקום אחר: גם המטמון של המרות התמונות ואינדקס החיפוש נמצאים ב-volume
+(`/data/.cache/transforms`, `/data/search`). אימג'ים לפני 0.10 שמרו את שניהם תחת `/app`,
+שהמשתמש `nonroot` לא יכול לכתוב אליו; שם, הגדירו את `VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR`
+ואת `VERDIN_SEARCH__DIR` לנתיבים תחת `/data`.
+
+העלאות מוזרמות לתיקייה הזמנית של המערכת (`/tmp`) לפני שהן נשמרות.
+
+## בדיקות תקינות
+
+האימג' מצהיר על `HEALTHCHECK` שמריץ את [`verdin healthcheck`](/he/reference/cli/): הוא שואל
+את `/_health` בממשק ה-loopback, כך ש-`docker ps` מציג את הקונטיינר כ-`healthy`
+ו-`depends_on: condition: service_healthy` של Compose עובד. באימג' אין shell או `curl`; כדי
+לכתוב בדיקת Compose משלכם, קראו לקובץ הבינארי באותה דרך:
+
+```yaml
+healthcheck:
+  test: ["CMD", "/usr/local/bin/verdin", "healthcheck"]
+  interval: 30s
+```
+
+proxies, מאזני עומסים ו-orchestrators צריכים לקרוא ל-`GET /_ready` (200 כשמסד הנתונים עונה,
+503 אחרת) ול-`GET /_health` לבדיקת חיוּת. ראו [ניטור](/he/deploy/monitoring/).
+
+## קובץ תצורה משלכם
+
+משתני סביבה מכסים את רוב ההגדרות, כולל ספק ההעלאות S3
+(`VERDIN_UPLOAD__PROVIDER__NAME=s3`, `VERDIN_UPLOAD__PROVIDER__BUCKET`,
+`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`, …; לפני 0.10 המפתח המובנה `dir` של האימג' גרם לזה
+להיכשל). השתמשו בקובץ תצורה כשאתם מעדיפים לשמור את ההגדרות בקובץ אחד עם ניהול גרסאות.
+
+כתבו `verdin.toml` עבור קונטיינרים:
+
+```toml title="verdin.toml"
+[server]
+host = "0.0.0.0"
+port = 1337
+public_url = "https://cms.example.com"
+trusted_proxies = ["172.16.0.0/12"]
+
+[schema]
+path = "/data/schema"
+
+[log]
+format = "json"
+
+[upload]
+provider = { name = "s3", bucket = "media", region = "auto",
+             endpoint = "https://<account>.r2.cloudflarestorage.com",
+             public_url = "https://media.example.com" }
+
+[email]
+provider = "smtp"
+from = "Verdin <cms@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+username = "cms@example.com"
+```
+
+וחברו אותו מעל הקובץ המובנה:
+
+```yaml title="compose.yaml"
+services:
+  verdin:
+    # …as above
+    environment:
+      VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD}@db:5432/verdin
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+    volumes:
+      - verdin-data:/data
+      - ./verdin.toml:/app/verdin.toml:ro
+      - ./schema:/data/schema:ro
+```
+
+השאירו סודות מחוץ לקובץ: `VERDIN_EMAIL_SMTP_PASSWORD`, `AWS_*` והשאר נשארים בסביבה.
+
+## אימג' משלכם
+
+בפלטפורמות שבהן אי אפשר לחבר קבצים (Fly.io, Render, Railway, רוב ההתקנות של Kubernetes),
+בנו אימג' קטן מעל האימג' הרשמי עם התצורה והסכמה שלכם בפנים. כך כל פריסה שולחת בדיוק את
+הסכמה שעשיתם לה commit:
+
+```dockerfile title="Dockerfile"
+FROM ghcr.io/verdin-cms/verdin:0.10
+COPY verdin.toml /app/verdin.toml
+COPY schema /app/schema
+# Plugins, if you use them: COPY plugins /app/plugins
+```
+
+עם `[schema] path = "schema"` באותו `verdin.toml` (הנתיבים יחסיים לקובץ, כלומר
+`/app/schema`). הקבצים בבעלות root ולקריאה בלבד עבור השרת, וזה מה ש-`verdin start` צריך.
+
+הקובץ שלכם מחליף לגמרי את הקובץ המובנה. חזרו על המפתחות שאתם עדיין רוצים ממנו
+(`host`, `[log] format = "json"`, נתיבי `/data` עבור מטמון ההמרות ואינדקס החיפוש). תיקיית
+ברירת המחדל של ספק ההעלאות המקומי, `public/uploads`, כבר מצביעה לתוך ה-volume.
+
+<Aside type="caution">
+העתיקו קבצים לפי שם, כמו למעלה. לעולם לא `COPY . /app`: זה יכניס לאימג' את ה-`.env` שלכם
+עם הסודות שבו.
+</Aside>
+
+## בניית האימג' מקוד המקור
+
+ה-`Dockerfile` של המאגר בונה את פאנל הניהול ואת השרת:
+
+```sh frame="terminal"
+git clone https://github.com/Verdin-CMS/verdin && cd verdin
+docker build -t verdin .
+```
+
+הוא משתמש ב-`gcr.io/distroless/cc-debian12:nonroot` כבסיס; מלבד זאת הוא מתנהג כמו האימג'
+שמתפרסם.

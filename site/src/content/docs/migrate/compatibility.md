@@ -9,7 +9,7 @@ Verdin keeps Strapi v5's content model and content APIs so that frontends and co
 can move over (see [Migrating from Strapi](/migrate/from-strapi/)). It is not a drop-in
 replacement for a Strapi *codebase*: there is no JavaScript runtime, so custom code is
 rebuilt as WebAssembly plugins. This page lists each area with its status, as of
-Verdin 0.9.1.
+Verdin 0.10.0.
 
 **Supported** works as in Strapi v5 (differences noted). **Partial** covers the common
 cases; the note says what is missing. **Not supported** has no equivalent.

@@ -1,0 +1,164 @@
+---
+title: Çoklu oturum açma
+description: Admin’lerin Microsoft Entra ID, Google Workspace, Okta veya Keycloak gibi bir OpenID Connect sağlayıcısıyla, gruptan role eşlemeyle oturum açmasını sağlayın.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Admin’ler herhangi bir OpenID Connect sağlayıcısı üzerinden oturum açabilir: Microsoft Entra ID,
+Google Workspace, Okta, Auth0, Keycloak, Authentik, GitLab ve diğerleri. Her sağlayıcı oturum
+açma sayfasında bir düğme alır ve parolayla oturum açma yanında çalışmaya devam eder. Bu kılavuz
+bir uygulama kaydeder, sağlayıcıyı Verdin’de yapılandırır ve grupları rollere eşler.
+
+SSO, Strapi’de bir Enterprise özelliğidir. Verdin’de açık kaynak çekirdeğin parçasıdır.
+Sitelerinizin son kullanıcıları için bunun yerine
+[son kullanıcılar için OAuth ile oturum açma](/tr/guides/auth/end-users/) sayfasına bakın.
+
+## Başlamadan önce
+
+- SSO’yu yapılandırmak **Özellikleri yönet** (`features.manage`) gerektirir.
+- `[server].public_url`’i admin’lerin Verdin’e ulaştığı adrese ayarlayın; örneğin
+  `https://cms.example.com`. Yönlendirme URI’si buradan oluşturulur.
+
+## Kurulum
+
+<Steps>
+
+1. Sağlayıcıda bu yönlendirme URI’siyle **bir uygulama kaydedin** (bir "web" istemcisi):
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>`, 3. adımda seçtiğiniz sağlayıcı kimliğidir, örneğin `corp`. Admin yolu
+   `[admin].path`’i izler.
+
+2. **İstemci secret’ını ortama koyun** ve Verdin’i yeniden başlatın:
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   Değişken `VERDIN_SSO_<ID>_SECRET` biçimindedir; kimlik büyük harfle, tireler alt çizgiyle
+   yazılır. Herkese açık istemciler (yalnızca PKCE, secret yok) değişken gerektirmez.
+
+3. **Sağlayıcıyı ekleyin.** **Ayarlar → Özellikler → Çoklu oturum açma**’yı açın,
+   **Sağlayıcıları yapılandır**’ı, ardından **Sağlayıcı ekle**’yi seçin ve şunları doldurun:
+
+   - **Kimlik**: küçük harfler, rakamlar ve tireler, en fazla 32 karakter.
+   - **Düğme metni**: oturum açma sayfasında "… ile devam et" olarak gösterilir.
+   - **Yayımcı (issuer) URL’si**: Verdin bunun altındaki `/.well-known/openid-configuration`
+     adresini okur. `localhost` dışında `https` kullanmalıdır.
+   - **İstemci kimliği** ve **Kapsamlar** (varsayılan `openid email profile`; `openid`
+     zorunludur).
+
+   Diyalog **Sağlayıcıya kaydedilecek yönlendirme URI’si** değerini ve secret değişkeninin
+   adını gösterir. Kaydedin.
+
+4. Gizli bir pencerede **deneyin**: oturum açma sayfası **Corp account ile devam et**
+   düğmesini gösterir.
+
+</Steps>
+
+## Kimler hangi rollerle oturum açabilir
+
+| Ayar | JSON anahtarı | Etkisi |
+| --- | --- | --- |
+| **İzin verilen e-posta alan adları** | `allowedDomains` | Yalnızca bu e-posta alan adları oturum açabilir. Boş, herhangi biri anlamına gelir. |
+| **İlk girişte hesap oluştur** | `autoCreate` | Biri ilk kez oturum açtığında bir admin hesabı oluşturur. Bu olmadan yalnızca zaten hesabı olan e-postalar oturum açabilir. |
+| **Varsayılan roller** | `defaultRoles` | Rol eşlemesi rol vermediğinde oluşturulan hesapların rol kodları. |
+| **Rol claim’i** | `roleClaim` | Kullanıcının gruplarını listeleyen ID token claim’i, örneğin `groups` veya `roles`. |
+| **Rol eşlemesi** | `roleMap` | Her claim değerinin hangi rol kodunu verdiği. |
+| **Doğrulanmamış e-postalara güven** | `trustUnverifiedEmail` | Sağlayıcının doğrulanmış olarak işaretlemediği e-postaları kabul eder. |
+| **Sağlayıcı MFA zorunlu kılıyor** | `providerMfa` | Bu sağlayıcıdan sonra admin’lerden Verdin ikinci faktörlerini istemez. |
+
+- Hesap oluşturan bir sağlayıcı varsayılan roller veya bir rol eşlemesi gerektirir.
+- Hiçbiri Super Admin rolünü veremez; admin’leri **Ayarlar → Kullanıcılar** bölümünde elle
+  yükseltin.
+- Roller yalnızca hesap oluşturulduğunda ayarlanır. Sonrasında onları **Ayarlar →
+  Kullanıcılar** bölümünde yönetin.
+- Oluşturulan bir hesabın adı ve soyadı `given_name` ve `family_name` claim’lerinden gelir.
+
+Özelliğin sakladığı şekliyle JSON olarak aynı sağlayıcı (`PUT /admin/api/features/sso`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## Sağlayıcı notları
+
+- **Microsoft Entra ID**, ID token’larına `email_verified` koymaz: onun için **Doğrulanmamış
+  e-postalara güven**’i açın. Grupları eşlemek için uygulamanın token yapılandırmasına `groups`
+  claim’ini ekleyin; değerleri grup kimlikleridir.
+- **Google Workspace**: issuer `https://accounts.google.com`’dur. Oturum açmaları **İzin verilen
+  e-posta alan adları** ile alan adınızla sınırlayın.
+- **Keycloak**: issuer realm URL’sidir, `https://<host>/realms/<realm>`.
+
+## İki adımlı doğrulama
+
+Varsayılan olarak, bir Verdin [ikinci faktörü](/tr/guides/auth/two-factor/) olan admin’den,
+sağlayıcı onu geri gönderdikten sonra bu faktör istenir. Sağlayıcı zaten MFA uyguluyorsa,
+iki kez sorulmamaları için **Sağlayıcı MFA zorunlu kılıyor**’u açın.
+
+## Nasıl çalışır
+
+<Diagram
+  caption="Bir SSO oturum açması"
+  code={`sequenceDiagram
+  participant B as Tarayıcı
+  participant V as Verdin
+  participant P as Sağlayıcı
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: state ve PKCE challenge ile yönlendirme
+  B->>P: oturum açma
+  P-->>B: kodla callback’e yönlendirme
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: kod değişimi (TLS)
+  V-->>B: oturum çerezi, /admin/ adresine yönlendirme`}
+/>
+
+- Verdin, PKCE (S256) ile authorization code akışını kullanır. `state` imzalanır ve kısa ömürlü
+  bir `HttpOnly` çereze bağlanır; `nonce` da ondan türetilir.
+- ID token’ın issuer’ını, audience’ını (birden fazla olduğunda `azp`’yi de), süresini ve
+  nonce’unu denetler. **Doğrulanmamış e-postalara güven** açık değilse `email_verified: true`
+  içeren bir `email` claim’i gerektirir.
+- Sağlayıcının uç noktaları `https` kullanmalıdır.
+- Her SSO oturum açması, sağlayıcıyla birlikte `admin.login` olarak
+  [denetim kayıtlarına](/tr/guides/content/audit-logs/) yazılır.
+
+Bir oturum açma başarısız olduğunda tarayıcı nedeniyle birlikte ("Çoklu oturum açma başarısız
+oldu") oturum açma sayfasına döner ve neden sunucu günlüğüne yazılır. Yaygın olanlar:
+
+| Neden | Çözüm |
+| --- | --- |
+| the provider did not verify the email | **Doğrulanmamış e-postalara güven**’i açın ya da sağlayıcının claim’ini düzeltin. |
+| this email domain may not sign in | Alan adını **İzin verilen e-posta alan adları**’na ekleyin. |
+| no admin account for this identity | **İlk girişte hesap oluştur**’u açın ya da önce admin’i oluşturun. |
+| the sign-in request expired or was not started here | Aynı tarayıcıda oturum açma sayfasından yeniden başlayın. |
+
+<Aside type="note">
+Devre dışı bırakılmış bir admin SSO üzerinden de oturum açamaz.
+</Aside>

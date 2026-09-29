@@ -1,0 +1,92 @@
+---
+title: Document Service
+description: La única API interna que lee y escribe contenido en Verdin, lo que garantiza en cada escritura y el camino que recorre una petición a la API de contenido hasta llegar a ella.
+sidebar:
+  order: 5
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+El Document Service (`DocumentService` en `crates/verdin-content/src/service.rs`) es el único código que lee y escribe filas de contenido. La API de contenido, la API de administración, GraphQL, MCP, los plugins, las importaciones y el sitemap pasan todos por él, así que la validación, el borrador y la publicación, las reglas de las relaciones y los eventos se comportan igual sea cual sea la API que hizo la llamada. Como el Document Service de Strapi v5, trabaja con documentos (identificados por `documentId`), no con filas.
+
+## API
+
+Los métodos principales (simplificados; consulta el código fuente para ver los tipos exactos):
+
+| Método | Hace |
+|---|---|
+| `find_many(uid, &Query) -> Page` | Una página de documentos, con `meta` en forma de página o de desplazamiento |
+| `find_one(uid, document_id, &Query) -> Option<Json>` | Un documento en el estado y el idioma de la consulta |
+| `single_document_id(uid)` | El documento de un tipo único, si existe |
+| `create(uid, &data, WriteOptions) -> String` | Crea un documento y devuelve su `documentId` |
+| `update(uid, document_id, &data, WriteOptions)` | Actualización parcial del borrador (o de la única versión); crea una versión de idioma nueva cuando hace falta |
+| `delete(uid, document_id)` | Elimina todas las versiones del documento en el idioma actual |
+| `publish(uid, document_id, actor)` | Copia el borrador sobre la versión publicada |
+| `unpublish(uid, document_id)` | Elimina la versión publicada |
+| `discard_draft(uid, document_id)` | Sustituye el borrador por la versión publicada |
+| `uid_availability(…)` | Si un valor `uid` está libre, con una sugerencia libre |
+| `document_locales`, `timeline`, `usage`… | Utilidades para el panel de administración |
+
+`WriteOptions` tiene dos campos: `publish` (publicar después de escribir, en los tipos con borrador y publicación) y `actor` (el administrador que se registra en `created_by_id` / `updated_by_id`).
+
+El servicio es un valor barato de clonar que se configura con métodos de construcción: `in_locale(locale)` para los tipos localizados, `with_listener`, `with_hook`, `dry_run()` (valida una escritura por completo y la revierte, lo usan las comprobaciones previas de las importaciones) y `without_plugin_hooks()` (para las escrituras que hacen los propios plugins).
+
+No sabe quién llama. Los permisos los aplica la capa de API antes de la llamada: rechaza las acciones que el cliente no tiene, restringe por qué tipos puede popular o filtrar una consulta y añade filtros de condición a la consulta (por ejemplo, la condición «entradas propias» del rol de administración **Author** se convierte en `created_by_id = <admin id>`). Los filtros forman parte del SQL, así que la paginación y los recuentos siguen siendo exactos.
+
+## Qué hace cada escritura
+
+1. **Hooks.** Primero se ejecutan los `DocumentHook`s, en orden: las etapas de los flujos de revisión y después los plugins. Un hook puede sustituir los datos o rechazar la escritura, lo que se convierte en un `400`. Usan los nombres de los ciclos de vida de Strapi (`beforeCreate`, `beforeUpdate`, `beforeDelete`, `beforePublish`, `beforeUnpublish`, `beforeDiscardDraft`).
+2. **Validación de la entrada** (`input.rs`): las claves desconocidas, los campos del sistema (`id`, `documentId`, marcas de tiempo) y los lados inversos (`mappedBy`) de las relaciones son errores; cada valor se comprueba contra el tipo y las restricciones de su atributo (`min`, `max`, `minLength`, `maxLength`, `regex`, valores de la enumeración, cardinalidad de las relaciones, `allowedTypes` de los medios); los componentes y las zonas dinámicas se validan de forma recursiva; los valores `password` se hashean con argon2.
+3. **Referencias.** Los documentos relacionados y los archivos de medios deben existir, lo que se comprueba dentro de la transacción.
+4. **Filas y enlaces**, en una sola transacción: se inserta o actualiza la fila y después se reescriben sus tablas de enlaces de relaciones, polimórficas y de medios (con las posiciones renumeradas 1..n). Enlazar un destino `oneToOne` u `oneToMany` lo aparta de los demás documentos en el mismo estado.
+5. **Campos obligatorios y reglas.** Cuando una versión pasa a estar publicada, o en cada escritura en los tipos sin borrador y publicación, se comprueban los atributos `required` (incluidos los que están dentro de componentes y zonas dinámicas) y las reglas de validación entre campos. Un fallo revierte toda la escritura.
+6. **La unicidad** se garantiza con los índices únicos acotados. Una violación se asocia de vuelta a su atributo y se informa como `ValidationError`, sin condiciones de carrera.
+7. **Commit y después eventos.** Cuando se confirma la transacción, el servicio llama a cada `DocumentListener` con un `DocumentEvent` (`entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete`), que lleva el uid, el `documentId`, el idioma y el autor.
+
+Los errores de validación usan el formato de Strapi: una lista de `{ path, message, name: "ValidationError" }`, donde `path` apunta a los datos (`["seo", "metaTitle"]`, `["blocks", 2, "text"]`). El panel de administración los asocia de vuelta a sus campos.
+
+Los listeners mantienen el estado derivado al día con el contenido sin código por handler: los webhooks, el historial de contenido, la caché de respuestas, los hooks after de los plugins, el registro de auditoría, los eventos en tiempo real, los comentarios y las tareas, las marcas de «visto», las purgas de la CDN y el índice de búsqueda. Un listener que falla registra su propio error; la escritura ya ha tenido éxito. Como los listeners se ejecutan después del commit, una comprobación previa nunca llega a ellos.
+
+## Lecturas
+
+Una lectura selecciona las filas del estado y el idioma pedidos, aplica los filtros y la ordenación en SQL y después popula lo que se ha pedido:
+
+- **Las relaciones** se cargan con consultas agrupadas, una por relación y nivel (`WHERE … IN (…)`, en bloques de 500 ids), nunca con joins en cascada. Así se evitan tanto las explosiones cartesianas como las consultas N+1. Se populan como máximo 1.000 entradas relacionadas por entrada y relación; los recuentos siguen siendo exactos.
+- Los destinos se leen en la misma versión que el origen: los documentos publicados ven los destinos publicados y los borradores ven los borradores.
+- **Los componentes y las zonas dinámicas** salen de su columna JSON; las relaciones y los medios que contienen se resuelven con las mismas consultas agrupadas.
+- **La búsqueda `_q`** usa el índice Tantivy cuando `[search]` está activado y, si no, un `$containsi` sin distinguir mayúsculas sobre los campos de texto.
+
+Cómo es la salida (documentos planos, formatos de los valores, sintaxis de `populate`, límites) está documentado en la [API REST](/es/api/rest/).
+
+## Ciclo de vida de una petición a la API de contenido
+
+<Diagram
+  caption="Una petición GET /api/articles, del socket a la base de datos"
+  code={`sequenceDiagram
+  participant C as Cliente
+  participant L as Capas compartidas
+  participant H as handlers.rs
+  participant Q as verdin-query
+  participant D as Document Service
+  participant DB as Base de datos
+  C->>L: GET /api/articles?filters…
+  L->>H: IP del cliente, id de petición, CORS, límites, caché
+  H->>H: enrutado por pluralName, autorización del token o del rol público
+  H->>Q: análisis y validación contra el esquema
+  Q-->>H: Query tipada
+  H->>D: find_many(uid, query)
+  D->>DB: SELECT … WHERE … ORDER BY … LIMIT
+  D->>DB: una consulta agrupada por relación populada
+  D-->>H: documentos y meta de la página
+  H-->>C: { data, meta }`}
+/>
+
+1. **Capas compartidas** (de la más externa a la más interna): se resuelve la dirección del cliente (usando `X-Forwarded-For` solo desde `[server].trusted_proxies`), las métricas cuentan la petición si están activadas, se asigna un id de petición que se propaga como `x-request-id`, el tracing abre un span, y CORS se aplica a la API de contenido y a GraphQL cuando `[api].cors_origins` está definido.
+2. **Capas de la API de contenido**: límites de peticiones por cliente, `ETag`s y la caché opcional de las lecturas anónimas, el límite de tamaño del cuerpo (`[server].body_limit`) y el tiempo máximo de la petición, y las etiquetas de caché de la CDN en las respuestas.
+3. **Enrutado.** El segmento de la ruta se busca entre los `pluralName`s (tipos de colección) y los `singularName`s (tipos únicos) de los tipos de contenido. Los nombres desconocidos dan `404`.
+4. **Autorización** (`verdin-auth`). Sin cabecera `Authorization` se usa el rol público; `Bearer vd_…` es un token de API. Un token no válido o caducado da `401`, nunca el rol público. La acción de la ruta (`find`, `findOne`, `create`, `update`, `delete`, `publish`) debe estar concedida para el tipo, o la respuesta es `403`.
+5. **Análisis de la consulta** (`verdin-query`). La query string sin procesar se analiza en un árbol de corchetes (como máximo 16 KB, 12 niveles, 1.000 pares) y después en una `Query` tipada validada contra los campos del tipo: los campos desconocidos y `private` dan `400`, y populate, los filtros por relación y la ordenación por relación se limitan a los tipos que el cliente puede leer. Leer con `?status=draft` necesita además `readDrafts`.
+6. **Document Service.** El handler llama a `find_many`, `find_one`, `create`, `update`, `delete` o a una acción. Las escrituras sin `?status=draft` publican en los tipos con borrador y publicación (comportamiento de Strapi v5), y vuelven a leer la versión escrita para la respuesta.
+7. **Respuesta.** `{ "data": …, "meta": … }`. Los errores usan el mismo envoltorio con `data: null` y un objeto `error`.
+
+Las rutas de la API de administración siguen el mismo camino con una sesión de administración en lugar de un token de API, el RBAC de administración en lugar de los permisos de la API de contenido y valores por defecto centrados en los borradores: leen borradores y solo escriben borradores, y publicar es una acción explícita. GraphQL traduce sus argumentos al mismo árbol de parámetros antes del paso 5, así que comparte el parser, los límites y las reglas de permisos.

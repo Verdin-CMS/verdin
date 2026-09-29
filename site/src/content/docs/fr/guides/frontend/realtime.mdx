@@ -1,0 +1,147 @@
+---
+title: Mises à jour en temps réel
+description: Rafraîchissez votre frontend dès que le contenu change, en vous abonnant aux server-sent events de Verdin.
+sidebar:
+  order: 8
+  label: Temps réel
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Avec la fonctionnalité **Temps réel** activée, Verdin diffuse un petit événement chaque fois
+qu’une entrée ou un fichier de média change. Un frontend s’abonne au flux et recharge ce qui a
+changé : un live blog, un tableau des scores, un tableau de bord qui n’a jamais besoin d’être
+rechargé. Chaque abonné ne reçoit que les événements concernant le contenu qu’il peut lire.
+
+Cette page montre comment utiliser le flux depuis un frontend. Les noms d’événements, les
+payloads et les règles figurent dans la [référence de l’API temps réel](/fr/api/realtime/).
+Strapi v5 n’a pas d’équivalent intégré.
+
+## L’activer
+
+<Steps>
+
+1. Dans **Paramètres → Fonctionnalités**, activez **Temps réel**.
+2. Décidez qui s’abonne. Le flux utilise les autorisations de l’API de contenu :
+   - pour tout le monde, autorisez **Rechercher** ou **Rechercher un** sur les types dans
+     **Paramètres → Accès public** ;
+   - pour un serveur ou une application, créez un [jeton d’API](/fr/guides/auth/api-tokens/)
+     avec ces autorisations (et **Lire les brouillons** pour recevoir les événements qui ne
+     concernent que les brouillons) ;
+   - pour les utilisateurs finaux connectés, leur JWT fonctionne aussi (voir
+     [Utilisateurs finaux](/fr/guides/auth/end-users/)).
+
+</Steps>
+
+Le flux est `GET /api/_events`. Ajoutez `?types=` avec une liste d’UID de types de contenu
+séparés par des virgules pour ne recevoir que ceux-ci (`plugin::upload` désigne la médiathèque) :
+
+```sh title="Terminal"
+curl -N "https://cms.example.com/api/_events?types=api::article,api::category"
+```
+
+```
+event: ready
+data: {}
+
+event: entry.publish
+data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","locale":"en"}
+```
+
+## S’abonner depuis un navigateur
+
+Les événements transportent des identifiants, pas le contenu. À chaque événement, rechargez ce
+que vous affichez, via la même API et avec les mêmes autorisations que toute autre lecture.
+
+<Tabs syncKey="auth">
+<TabItem label="Public">
+
+Avec le rôle public, l’`EventSource` du navigateur suffit, et il se reconnecte tout seul :
+
+```js
+const CMS = 'https://cms.example.com';
+const events = new EventSource(`${CMS}/api/_events?types=api::article`);
+
+for (const name of ['entry.publish', 'entry.unpublish', 'entry.delete']) {
+  events.addEventListener(name, (event) => {
+    const { documentId } = JSON.parse(event.data);
+    refreshArticle(documentId);
+  });
+}
+
+events.addEventListener('lagged', () => refreshEverything());
+```
+
+</TabItem>
+<TabItem label="Avec un jeton">
+
+`EventSource` ne peut pas envoyer d’en-tête `Authorization`. Lisez plutôt le flux avec `fetch`,
+et reconnectez-vous quand il se termine :
+
+```js
+async function subscribe(token, onEvent) {
+  for (;;) {
+    try {
+      const response = await fetch(`${CMS}/api/_events?types=api::article`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) return; // token refused
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const name = block.match(/^event: (.*)$/m)?.[1];
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (name && data) onEvent(name, JSON.parse(data));
+        }
+      }
+    } catch {
+      // network error: retry below
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+```
+
+N’importe quelle bibliothèque cliente SSE qui prend en charge les en-têtes fonctionne aussi.
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution">
+Un jeton dans du code exécuté par le navigateur est lisible par quiconque ouvre la page. Ne
+livrez qu’un jeton en lecture seule limité aux types qu’affiche la page, ou abonnez-vous depuis
+votre serveur et transmettez les mises à jour au navigateur.
+</Aside>
+
+Appeler le flux depuis un site sur une autre origine nécessite cette origine dans
+[`[api].cors_origins`](/fr/reference/configuration/).
+
+## Garder le flux en bonne santé
+
+- Le premier événement est `ready` : l’abonnement est actif.
+- Un flux se termine au bout d’une heure. Reconnectez-vous alors : `EventSource` le fait
+  automatiquement, et la reconnexion vérifie aussi à nouveau le jeton, si bien qu’un jeton révoqué
+  cesse de recevoir des événements.
+- Un événement nommé `lagged` signifie que le client a lu trop lentement et a manqué des
+  événements. Rechargez tout ce qu’affiche la page.
+- Les événements qui ne concernent que les brouillons (`entry.create`, `entry.update` et
+  `entry.discard-draft` sur les types avec brouillon et publication) n’atteignent que les
+  appelants disposant de **Lire les brouillons**. Un site public écoute généralement
+  `entry.publish`, `entry.unpublish` et `entry.delete`.
+
+## Derrière un répartiteur de charge
+
+Les événements sont ceux de l’instance à laquelle un client est connecté. Avec plusieurs
+instances, utilisez des sticky sessions pour `/api/_events`, ou faites pointer les clients temps
+réel vers une seule instance. Voir [Exécuter plusieurs instances](/fr/deploy/scaling/).
+
+Le panneau d’administration utilise son propre flux (`/admin/api/events`) pour les mises à jour
+en direct, la présence et les verrous souples pendant l’édition ; voir la
+[référence de l’API temps réel](/fr/api/realtime/).

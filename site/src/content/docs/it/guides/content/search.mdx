@@ -1,0 +1,90 @@
+---
+title: Ricerca
+description: Cerca le voci con _q, e attiva l'indice full-text Tantivy per risultati ordinati per rilevanza e insensibili agli accenti.
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+La content API e il pannello di amministrazione cercano le voci con il parametro `_q`, come in
+Strapi. Di default `_q` trova i campi di testo che contengono le parole. Attiva l'indice
+`[search]` per ordinare i risultati con un motore full-text (Tantivy) integrato nel server.
+Questa guida mostra entrambi e quando usare l'indice.
+
+## Cercare con `_q`
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/api/articles' --data-urlencode '_q=rust cms'
+```
+
+`_q` si combina con gli altri parametri: `filters`, `status`, `locale`, `pagination`,
+`fields` e `populate`. La casella di ricerca della lista admin invia lo stesso parametro.
+
+Quali campi vengono cercati:
+
+- Campi di testo: `string`, `text`, `richtext`, `email`, `uid` ed `enumeration`.
+- Con l'indice, anche il testo dentro `blocks`, componenti e zone dinamiche.
+- Mai campi privati o password.
+
+`_q` è un parametro REST. GraphQL e le opzioni di query del client TypeScript non hanno un
+argomento di ricerca; lì usa un filtro `$containsi`.
+
+## Senza l'indice
+
+Senza `[search]`, `_q` trova le voci in cui un campo di testo contiene l'intero testo
+cercato, ignorando maiuscole/minuscole, come `$containsi` di Strapi. I risultati seguono
+l'ordinamento abituale. Non richiede configurazione e funziona su ogni database, ma scansiona
+la tabella e non ordina per rilevanza.
+
+## Attiva l'indice full-text
+
+<Steps>
+
+1. Abilita l'indice in `verdin.toml`:
+
+   ```toml title="verdin.toml"
+   [search]
+   enabled = true
+   ```
+
+2. Riavvia Verdin. Costruisce l'indice in background da tutte le voci; finché non è pronto,
+   `_q` ricade su `$containsi`.
+
+</Steps>
+
+| Chiave | Default | Descrizione |
+| --- | --- | --- |
+| `enabled` | `false` | Ordina `_q` con l'indice full-text. |
+| `dir` | `"data/search"` | Directory dell'indice, relativa al progetto. |
+| `memory_mb` | `50` | Budget di memoria per l'indicizzazione, in megabyte. |
+
+Vedi il [riferimento della configurazione](/it/reference/configuration/).
+
+Come trova le corrispondenze l'indice:
+
+- Le parole vengono separate su tutto ciò che non è una lettera o una cifra, convertite in
+  minuscolo e private degli accenti, così `cafe` trova `Café`.
+- Ogni parola deve corrispondere. L'ultima parola corrisponde anche come prefisso, così i
+  risultati compaiono mentre si digita.
+- Il titolo (il primo campo di testo del tipo) pesa il doppio.
+- Senza un `sort`, i risultati arrivano dalla corrispondenza migliore. Con un `sort`, le
+  corrispondenze vengono ordinate a modo tuo. Vengono considerate al massimo 1.000
+  corrispondenze per ricerca.
+- Bozze e versioni pubblicate, e ogni lingua, vengono cercate separatamente, seguendo
+  `status` e `locale`.
+
+L'indice segue ogni scrittura da qualsiasi API. Viene ricostruito quando lo schema cambia i
+campi ricercabili, e quando la sua directory manca.
+
+## Più istanze
+
+L'indice vive sul disco dell'istanza e segue le scritture di quell'istanza. Quando esegui più
+istanze, le scritture su una non raggiungono l'indice delle altre. Tieni la ricerca su una
+sola istanza, o ricostruisci dopo un deploy eliminando la directory dell'indice prima
+dell'avvio. Vedi [Più istanze](/it/deploy/scaling/).
+
+<Aside type="tip">
+La directory dell'indice si può eliminare senza rischi. Tienila fuori dai backup e dal
+controllo di versione; Verdin la ricostruisce dal database.
+</Aside>

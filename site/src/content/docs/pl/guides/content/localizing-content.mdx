@@ -1,0 +1,173 @@
+---
+title: Lokalizowanie treści
+description: Dodawaj języki, lokalizuj typ zawartości, tłumacz wpisy w panelu administracyjnym oraz odczytuj i zapisuj każdy język przez API.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Lokalizowany typ zawartości przechowuje jedną wersję każdego wpisu na język. Ten przewodnik
+dodaje języki, w których publikujesz, włącza lokalizację dla typu, tłumaczy wpisy w panelu
+administracyjnym oraz odczytuje i zapisuje każdy język przez API. Model, który za tym stoi
+(pola współdzielone, relacje między typami lokalizowanymi), opisuje
+[Internacjonalizacja](/pl/concepts/internationalization/).
+
+Lokalizacja jest częścią rdzenia: nie ma funkcji do włączenia. Działa jak wtyczka i18n
+w Strapi v5 i przyjmuje ten sam parametr `locale`.
+
+## Zanim zaczniesz
+
+- Aby dodawać, zmieniać nazwy lub usuwać języki, potrzebujesz **Zarządzanie językami**
+  (`locales.manage`).
+- Aby zlokalizować typ, edytujesz jego schemat, w **Kreatorze typów zawartości**
+  (`verdin dev`) albo w `schema/content-types/<name>.json`.
+- Uprawnienia do treści potrzebne redaktorom opisuje strona
+  [Uprawnienia](/pl/reference/permissions/).
+
+## Dodaj języki
+
+Pierwsze uruchomienie tworzy angielski (`en`) jako język domyślny. Żądania, które nie podają
+języka, używają domyślnego, a nowe wpisy zaczynają się w nim.
+
+<Steps>
+
+1. Otwórz **Ustawienia → Internacjonalizacja** i wybierz **Dodaj język**.
+2. Wpisz **Kod**: kod języka małymi literami, opcjonalnie z regionem lub pismem, np. `fr`,
+   `pt-BR` czy `zh-Hans`. Nazwa jest uzupełniana automatycznie i można ją zmienić.
+3. Zaznacz **Ustaw jako język domyślny**, jeśli żądania bez języka mają go używać, i zapisz.
+
+</Steps>
+
+Aby później zmienić domyślny język, wybierz **Ustaw jako domyślny** na innym języku.
+Domyślnego języka nie można usunąć.
+
+<Aside type="caution" title="Usunięcie języka usuwa jego wpisy">
+Usunięcie języka trwale usuwa każdy napisany w nim wpis, we wszystkich typach zawartości,
+łącznie z opublikowanymi wersjami. Okno prosi o wpisanie kodu języka dla potwierdzenia.
+</Aside>
+
+## Zlokalizuj typ zawartości
+
+W **Kreatorze typów zawartości** otwórz typ i włącz **Zlokalizowany** w jego ustawieniach.
+Potem zdecyduj, pole po polu, które wartości różnią się między językami: pole z wyłączonym
+**Zlokalizowany** ma jedną wartość wspólną dla wszystkich języków.
+
+To samo w pliku schematu, dla typu `article` z przykładowego projektu:
+
+```json title="schema/content-types/article.json" {6,9}
+{
+  "kind": "collectionType",
+  "singularName": "article",
+  "pluralName": "articles",
+  "displayName": "Article",
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "title": { "type": "string", "required": true },
+    "readingTime": { "type": "integer", "pluginOptions": { "i18n": { "localized": false } } }
+  }
+}
+```
+
+Jak zachowują się pola współdzielone:
+
+- Zapisanie pola współdzielonego w jednym języku zapisuje je w szkicach wszystkich języków.
+- Publikacja języka kopiuje jego pola współdzielone do opublikowanych wersji pozostałych
+  języków.
+- Relacje i pola multimediów też mogą być współdzielone.
+
+Typy bez `pluginOptions.i18n.localized` nie są lokalizowane i ignorują parametry `locale`.
+Zmiana lokalizacji typu to zmiana schematu: przed wdrożeniem przejrzyj migrację przez
+`verdin migrate plan`.
+
+## Przetłumacz wpis w panelu administracyjnym
+
+<Steps>
+
+1. Otwórz wpis i wybierz docelowy język w przełączniku **Język** na górze edytora. Języki bez
+   wersji pokazują **Jeszcze nie utworzono**.
+2. Edytor informuje, że wpis nie ma jeszcze wersji w tym języku i że zapis ją utworzy. Pola
+   współdzielone już pokazują swoje wartości.
+3. Aby zacząć od istniejącego tłumaczenia, wybierz w tym komunikacie **Wypełnij z innego
+   języka**. Wybierz źródło w **Kopiuj z** i wybierz **Kopiuj pola**. Kopiuje to pola
+   lokalizowane, łącznie z relacjami i multimediami, do formularza. Nic nie jest jeszcze
+   zapisywane.
+4. Edytuj pola, a potem **Zapisz szkic** lub **Opublikuj**. Każdy język ma własny szkic
+   i opublikowaną wersję.
+
+</Steps>
+
+Widok listy ma ten sam przełącznik **Język**: wymienia wersje w jednym języku naraz.
+Usunięcie z edytora usuwa tylko wersję w bieżącym języku; pozostałe języki są zachowywane.
+
+Z włączoną funkcją **Działania AI** edytor może też tłumaczyć pola tekstowe ze szkicu w innym
+języku. Zobacz [Działania AI](/pl/guides/integrations/ai-actions/).
+
+## Ogranicz redaktorów do wybranych języków
+
+Uprawnienia do treści roli mogą obejmować tylko wybrane języki. W **Ustawienia → Role**
+otwórz rolę, znajdź typ zawartości i wybierz **Języki**. Wybierz **Tylko te języki**
+i zaznacz je. Administratorzy z tą rolą nie mogą czytać ani zmieniać wersji w pozostałych
+językach; przełącznik **Język** pokazuje te języki jako „(brak dostępu)”.
+
+## Odczyt i zapis języków przez API
+
+Dodaj `locale` do dowolnego żądania REST albo przekaż go jako argument w GraphQL. Bez niego
+używany jest język domyślny. Nieznany język to błąd `400`.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+# Odczytaj francuskie wersje
+curl 'http://localhost:1337/api/articles?locale=fr'
+
+# Utwórz lub zaktualizuj francuską wersję dokumentu
+curl -X PUT 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"data":{"title":"Bonjour"}}'
+
+# Usuń tylko francuską wersję
+curl -X DELETE 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(locale: "fr") {
+    documentId
+    title
+    locale
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ locale: 'fr' });
+```
+
+</TabItem>
+</Tabs>
+
+Czego się spodziewać:
+
+- `PUT` z `locale` tworzy wersję w tym języku, gdy dokument jeszcze jej nie ma.
+- Odpowiedzi typów lokalizowanych zawierają `locale`. Wszystkie wersje mają wspólny
+  `documentId`.
+- `DELETE` usuwa tylko wersję w żądanym języku (w domyślnym, gdy żaden nie jest podany).
+  Powiązania wskazujące dokument są usuwane, gdy nie zostanie żaden język.
+- Gdy typ lokalizowany wskazuje inny typ lokalizowany, odczyty rozwiązują cel w tym samym
+  języku, a filtry przez relacje działają tak samo. Cele nielokalizowane są wspólne dla
+  wszystkich języków.
+- Payloady webhooków i wersje historii zapisują język.
+
+W przeciwieństwie do Strapi API treści nie ma trasy `/api/i18n/locales`. Języki są wymienione
+w API administracyjnym pod `GET /admin/api/i18n/locales` i zarządzane przez `POST`,
+`PUT /admin/api/i18n/locales/{code}` i `DELETE /admin/api/i18n/locales/{code}`
+(`locales.manage`).

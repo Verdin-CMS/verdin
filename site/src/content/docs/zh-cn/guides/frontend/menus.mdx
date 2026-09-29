@@ -1,0 +1,107 @@
+---
+title: 菜单
+description: 在管理后台中用链接和条目构建导航菜单，并在你的网站上渲染它们。
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+**菜单** 功能为编辑提供具名的导航树（页眉、页脚、侧边栏），可以链接到页面、条目或其他网站。你的网站按 slug 获取菜单并渲染它；指向条目的链接会跟随条目的发布状态和路径。
+
+在 Strapi 中，这通常需要一个导航插件或手工建立的菜单内容类型；而在 Verdin 中，它是内置的。
+
+## 开启
+
+在 **设置 → 功能** 中开启 **菜单**，然后选择 **管理菜单**（或者前往 **设置 → 菜单**）。管理菜单需要 **管理 SEO、重定向、菜单和表单** 权限（`site.manage`），内置的 Editor 角色拥有该权限。参见[权限](/zh-cn/reference/permissions/)。
+
+要按路径链接条目，还需要在 [SEO 与站点地图](/zh-cn/guides/frontend/seo-and-sitemap/)中设置路径模式。
+
+## 构建菜单
+
+<Steps>
+
+1. 在 **设置 → 菜单** 中选择 **新建菜单**。
+2. 为它设置名称（例如 **主导航**）和 **Slug**（`main`）：小写字母、数字和连字符。网站按 slug 获取菜单。
+3. 选择 **添加项目** 并填写该项目：
+   - **标签**：链接的文字，最多 255 个字符。
+   - **链接到**：**一个 URL**、**一个条目** 或 **无（作为标题）**。
+   - **URL**：一个路径（`/about`）、一个锚点（`#team`），或者 `http(s)`、`mailto:`、`tel:` 链接。
+   - 对于条目，选择 **选择条目**：如果可以链接多个内容类型，先选择 **内容类型**，然后搜索条目并选择一个。
+   - **打开方式**：**当前标签页** 或 **新标签页**。
+4. 拖动项目以调整顺序和嵌套，或者使用它们的按钮。使用键盘时，在拖动手柄上：Alt+↑ 和 Alt+↓ 移动项目，Alt+→ 把它嵌套到上一个项目之下，Alt+← 把它移出。
+5. 保存。
+
+</Steps>
+
+一个菜单最多 5 层、500 个项目。
+
+## 获取菜单
+
+网站通过 `GET /api/_menus/{slug}` 读取菜单，无需令牌。对于本地化内容，加上 `?locale=`：
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+条目链接的解析方式：
+
+- 在所请求的语言区域中未发布的条目会从菜单中省略（连同其子项）。菜单永远不会泄露草稿。
+- `entry.path` 来自 [SEO 与站点地图](/zh-cn/guides/frontend/seo-and-sitemap/)中该类型的模式，用条目的字段和语言区域填充。当该类型没有模式，或者条目无法填满模式时，它为 `null`。
+- 当项目本身没有 `url` 时，会把路径作为其 `url`，因此大多数网站只需读取 `url`。
+
+不带 `locale` 时，条目以默认语言区域读取。响应带有 `Cache-Control: public, max-age=60`。
+
+## 渲染
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+删除菜单后，`/api/_menus/{slug}` 会返回 `404`，关闭该功能也是如此。请在网站上处理这种情况，例如不渲染导航。
+</Aside>
+
+## 管理 API
+
+管理后台使用 `/admin/api/site/menus`（`GET`、`POST`）和 `/admin/api/site/menus/{id}`（`GET`、`PUT`、`DELETE`），需要管理员的访问令牌和 `site.manage`。参见[管理 API](/zh-cn/api/admin/)。

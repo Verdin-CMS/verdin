@@ -1,0 +1,144 @@
+---
+title: Autenticación de dos factores
+description: Protege las cuentas de administración con una aplicación de autenticación o con claves de acceso (passkeys), exige un segundo factor por rol y recupera o restablece los factores perdidos.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+La autenticación de dos factores añade un segundo paso después de la contraseña: un código de 6
+dígitos de una aplicación de autenticación, o una clave de acceso (passkey: huella, cara,
+bloqueo de pantalla o llave de seguridad). Esta guía configura ambos, los hace obligatorios para
+un rol y explica qué hacer cuando un administrador pierde los suyos. Strapi no tiene un
+equivalente integrado.
+
+La autenticación de dos factores es para los administradores. Los
+[usuarios finales](/es/guides/auth/end-users/) inician sesión con una contraseña o un proveedor
+OAuth.
+
+## Antes de empezar
+
+- No hay ninguna funcionalidad que activar: cualquier administrador puede configurar un segundo
+  factor en su perfil.
+- Las claves de acceso quedan ligadas a la dirección del panel de administración. Define
+  `[server].public_url` con la dirección que abren los administradores, como
+  `https://cms.example.com`. Los navegadores solo ofrecen claves de acceso sobre `https://` (y en
+  `localhost`).
+- Mantén estable `VERDIN_TOKEN_PEPPER`: los secretos de autenticación y los códigos de
+  recuperación se protegen con él, y cambiarlo los inutiliza.
+
+## Configura una aplicación de autenticación
+
+<Steps>
+
+1. Abre tu **Perfil** y busca **Autenticación de dos factores**.
+2. En **Aplicación de autenticación**, selecciona **Configurar** y confirma tu contraseña.
+3. Escanea el código QR con una aplicación como 1Password, Google Authenticator o Authy. Si no
+   puedes escanearlo, introduce la clave de configuración que aparece debajo.
+4. Introduce el **Código de 6 dígitos** que muestra la aplicación y selecciona **Activar**.
+5. Guarda los **Códigos de recuperación** que muestra Verdin: **Descargar** o cópialos, y
+   selecciona **Ya los he guardado**.
+
+</Steps>
+
+Los códigos siguen el esquema TOTP estándar (pasos de 30 segundos, SHA-1, 6 dígitos). También
+se acepta un código del paso anterior o del siguiente, para tolerar desajustes del reloj. Si se
+rechazan los códigos, comprueba la hora de tu dispositivo.
+
+## Añade una clave de acceso
+
+<Steps>
+
+1. En **Claves de acceso**, selecciona **Añadir una clave de acceso**.
+2. Dale un **Nombre**, como "MacBook Touch ID", y confirma tu contraseña.
+3. Sigue las indicaciones de tu navegador.
+
+</Steps>
+
+Puedes registrar hasta 20 claves de acceso y quitarlas con **Quitar**. Las claves de acceso son
+un segundo factor después de la contraseña, no la sustituyen.
+
+## Códigos de recuperación
+
+Recibes 10 códigos de recuperación cuando configuras tu primer factor. Cada uno te permite
+iniciar sesión una vez si pierdes tu aplicación o tus claves de acceso. El perfil muestra
+cuántos te quedan; **Generar códigos nuevos** los sustituye todos (los antiguos dejan de
+funcionar).
+
+<Aside type="caution">
+Los códigos se muestran una sola vez. Guárdalos en un gestor de contraseñas o en algún sitio sin
+conexión, no junto al dispositivo que tiene tu aplicación de autenticación.
+</Aside>
+
+## Inicia sesión con un segundo factor
+
+<Diagram
+  caption="Inicio de sesión con autenticación de dos factores"
+  code={`flowchart LR
+  A[Correo y contraseña] --> B{¿Segundo factor?}
+  B -->|no| S[Sesión iniciada]
+  B -->|sí| C[Código, clave de acceso o código de recuperación]
+  C -->|en menos de 5 minutos| S`}
+/>
+
+Después de la contraseña, la página de inicio de sesión pide el **Código de autenticación**.
+Elige **Usar una clave de acceso** o **Usar un código de recuperación** para cambiar de método.
+Tienes 5 minutos para terminar; después, vuelve a introducir tu contraseña.
+
+## Exige la autenticación de dos factores para un rol
+
+<Steps>
+
+1. Abre **Configuración → Roles** y el rol.
+2. Activa **Requerir autenticación de dos factores** y guarda.
+
+</Steps>
+
+A los miembros sin segundo factor se les pide que configuren uno al iniciar sesión. Hasta que lo
+hagan, solo pueden abrir su perfil. En **Configuración → Usuarios**, su fila muestra
+**Falta 2FA**; los administradores que tienen un segundo factor muestran **2FA**.
+
+Mientras tu rol exija un segundo factor, Verdin se niega a quitar el último que tengas: añade una
+clave de acceso antes de desactivar la aplicación, u otro factor antes de quitar tu única clave
+de acceso.
+
+## Restablece el segundo factor de otro administrador
+
+Cuando un administrador pierde su dispositivo y sus códigos de recuperación:
+
+<Steps>
+
+1. Abre **Configuración → Usuarios** y busca al administrador.
+2. Selecciona **Restablecer la autenticación de dos factores** y confirma.
+
+</Steps>
+
+Esto elimina su aplicación de autenticación, sus claves de acceso y sus códigos de recuperación,
+así que inicia sesión solo con su contraseña. Si su rol exige autenticación de dos factores,
+tendrá que volver a configurarla. Necesita **Gestionar usuarios**; solo un Super Admin puede
+restablecer a otro Super Admin.
+
+`verdin admin reset-password` solo restablece la contraseña, no el segundo factor.
+
+## Inicio de sesión único
+
+A los administradores que inician sesión mediante [inicio de sesión único](/es/guides/auth/sso/)
+también se les pide su segundo factor de Verdin, salvo que el proveedor tenga marcado
+**El proveedor exige MFA**.
+
+## API de administración
+
+Todas las rutas están bajo `/admin/api`. Las que cambian factores reciben tu `password`.
+
+| Ruta | Hace |
+| --- | --- |
+| `POST /auth/login` | Con un segundo factor, responde `{ twoFactorRequired: true, twoFactorToken, methods }` en lugar de una sesión. |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }` (código TOTP o de recuperación), o `{ twoFactorToken, challengeToken, credential }` para una clave de acceso. Responde con la sesión. |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }`: el desafío de la clave de acceso. |
+| `GET /auth/two-factor` | Tus factores: `totp`, `passkeys`, `recoveryCodesLeft`, `required`. |
+| `POST /auth/two-factor/totp/setup`, `/totp/enable`, `/totp/disable` | Configura (contraseña), activa (código) y desactiva (contraseña) la aplicación de autenticación. |
+| `POST /auth/two-factor/recovery-codes` | Códigos de recuperación nuevos. |
+| `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/{id}` | Registra y quita claves de acceso. |
+| `DELETE /users/{id}/two-factor` | Restablece los factores de otro administrador (`users.manage`). |

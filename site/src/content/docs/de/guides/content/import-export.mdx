@@ -1,0 +1,129 @@
+---
+title: Einträge importieren und exportieren
+description: Die Einträge einer Liste als CSV oder JSON exportieren und Einträge aus einer CSV- oder JSON-Datei anlegen oder aktualisieren, vorher mit einem Probelauf.
+sidebar:
+  order: 9
+  label: Import und Export
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Die Admin-Liste jedes Inhaltstyps exportiert ihre Einträge als CSV oder JSON und importiert sie
+aus derselben Art von Datei zurück: um viele Einträge in einer Tabellenkalkulation zu
+korrigieren, einen Produktkatalog zu laden oder Einträge zwischen Projekten zu kopieren. Diese
+Anleitung behandelt beide Richtungen und das Dateiformat.
+
+Das gilt jeweils für die Einträge eines einzelnen Inhaltstyps. Um ein ganzes Projekt
+umzuziehen, siehe [`verdin export` und `verdin import verdin`](/de/reference/cli/). Wenn du von
+Strapi kommst, siehe [Von Strapi migrieren](/de/migrate/from-strapi/).
+
+## Bevor du anfängst
+
+- Exportieren braucht Lesezugriff auf den Inhaltstyp. Nur die Felder, die deine Rolle lesen
+  darf, werden exportiert.
+- Importieren braucht Anlege- oder Schreibzugriff oder beides: Zeilen, die Einträge anlegen,
+  brauchen create, Zeilen, die sie aktualisieren, brauchen update. Die importierten Zeilen zu
+  veröffentlichen braucht außerdem publish. Siehe
+  [Berechtigungen](/de/reference/permissions/).
+
+## Einträge exportieren
+
+<Steps>
+
+1. Öffne die Liste des Inhaltstyps und richte sie so ein, wie du den Export haben willst:
+   Filter, Suche, Sortierung, Status und Sprache.
+2. Wähle **Exportieren**, dann **Als CSV exportieren** oder **Als JSON exportieren**.
+
+</Steps>
+
+Die Datei enthält die Einträge, die die Liste zeigt, mit ihren Filtern, ihrer Suche und
+Sortierung, über alle Seiten, bis zu 50.000 Einträge. Jede Zeile beginnt mit `documentId`,
+gefolgt von den Feldern.
+
+## Einträge importieren
+
+<Steps>
+
+1. Öffne die Liste des Inhaltstyps und wähle **Importieren**.
+2. Wähle eine **Datei**: eine `.csv`-Datei mit Kopfzeile oder eine `.json`-Datei mit einer
+   Liste von Objekten, bis zu 1 MB.
+3. Wähle unter **Spalten** das Feld, in das jede Spalte geht. Spalten, die wie ein Feld heißen,
+   sind schon zugeordnet. Wähle **Überspringen**, um eine Spalte wegzulassen, und
+   **Dokument-ID (aktualisieren)** für die Spalte, die bestehende Einträge benennt.
+4. Schalte optional **Importierte Einträge veröffentlichen** ein. Sonst werden sie als Entwürfe
+   gespeichert.
+5. Wähle **Prüfen**. Verdin prüft jede Zeile, Einschränkungen und Referenzen eingeschlossen,
+   ohne etwas zu schreiben, und meldet die Zeilen, die es anlegen, aktualisieren oder ablehnen
+   würde.
+6. Korrigiere bei Bedarf die Datei und wähle dann **Importieren**.
+
+</Steps>
+
+Wie Zeilen geschrieben werden:
+
+- Eine Zeile mit `documentId` aktualisiert diesen Eintrag; die anderen legen neue Einträge an.
+- Zeilen werden einzeln geschrieben. Eine Zeile, die scheitert, wird mit ihrem Feld und dem
+  Problem gemeldet und übersprungen; die anderen werden trotzdem geschrieben.
+- Der Bericht listet bis zu 100 Zeilen mit Fehlern sowie die Spalten, die zu keinem Feld
+  passten.
+- Ein Import umfasst höchstens 5.000 Zeilen. Teile größere Dateien auf.
+- Einträge werden in der aktuellen Sprache der Liste geschrieben.
+
+<Aside type="caution">
+Ein Import schickt deine Zeilen durch dieselbe Validierung wie der Editor, aber es gibt kein
+Rückgängig. Führe zuerst **Prüfen** aus, und exportiere die Liste vor einem großen Update,
+damit du sie wiederherstellen kannst. Mit eingeschaltetem
+[Inhaltsverlauf](/de/guides/content/content-history/) behält jeder aktualisierte Eintrag seine
+vorherige Version.
+</Aside>
+
+## Dateiformat
+
+Felder haben dieselben Formen wie im Schreibformat der Content-API:
+
+| Feld | Wert |
+| --- | --- |
+| Text, Zahlen, Booleans, Datumswerte | Wie in der API (`true`/`false`, ISO-8601-Datumswerte). |
+| Relationen | `documentId`s der verknüpften Einträge. |
+| Medien | Datei-IDs aus der Medienbibliothek. |
+| Polymorphe Relationen | `uid:documentId`, zum Beispiel `api::article:k3v9…`. |
+| Komponenten, Dynamic Zones, Blocks und JSON | JSON. |
+
+In CSV werden Listen (mehrere Relationen oder Dateien) mit `|` verbunden.
+
+```csv title="articles.csv"
+documentId,title,slug,featured,tags
+,Hello world,hello-world,true,t1a2b3|t4c5d6
+k3v9x8…,Updated title,updated-title,false,
+```
+
+Dieselben Zeilen als JSON:
+
+```json title="articles.json"
+[
+  { "title": "Hello world", "slug": "hello-world", "featured": true, "tags": ["t1a2b3", "t4c5d6"] },
+  { "documentId": "k3v9x8…", "title": "Updated title", "slug": "updated-title", "featured": false }
+]
+```
+
+Der Export einer Liste ist immer eine gültige Importdatei für denselben Inhaltstyp.
+
+## Admin-API
+
+- `GET /admin/api/content/{uid}/export?format=csv` (oder `json`) akzeptiert die
+  Query-Parameter der Liste: `filters`, `_q`, `sort`, `status` und `locale`.
+- `POST /admin/api/content/{uid}/import?locale=` nimmt den Inhalt der Datei als String:
+
+```json
+{
+  "format": "csv",
+  "data": "title,slug\nHello world,hello-world\n",
+  "mapping": { "slug": "slug", "notes": null },
+  "dryRun": true,
+  "publish": false
+}
+```
+
+`mapping` ordnet eine Spalte einem Feld zu; `null` überspringt die Spalte, und nicht
+zugeordnete Spalten behalten ihren Namen. Der Request-Body ist durch `[server].body_limit`
+begrenzt (standardmäßig 1 MB).

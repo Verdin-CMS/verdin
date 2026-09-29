@@ -1,0 +1,183 @@
+---
+title: Estructura del projecte
+description: Els fitxers que crea verdin new, els que afegeix Verdin mentre s'executa, i quins d'aquests van a git.
+sidebar:
+  order: 5
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+Un projecte Verdin és un directori amb un fitxer de configuració i l'esquema. Aquesta pàgina llista
+què crea `verdin new`, què hi afegeix el servidor mentre s'executa i què cal confirmar a git.
+
+## Què crea `verdin new`
+
+```sh title="Terminal"
+verdin new my-site
+```
+
+<FileTree>
+- my-site/
+  - verdin.toml configuració del projecte
+  - .env secrets i l'URL de la base de dades, només llegible per tu
+  - .gitignore
+  - schema/
+    - content-types/ un fitxer JSON per tipus de contingut
+    - components/ una carpeta per categoria de components
+  - data/ la base de dades SQLite (només amb `--database sqlite`)
+</FileTree>
+
+El directori no ha d'existir o ha d'estar buit. El nom del projecte a l'URL de la base de dades
+surt del nom del directori, en minúscules, amb els altres caràcters substituïts per `_`
+(`My Site` es converteix en `my_site`).
+
+### `verdin.toml`
+
+La configuració. El fitxer generat defineix el port, el prefix de l'API de contingut i les mides de
+pàgina, i el camí de l'administració:
+
+```toml title="verdin.toml"
+[server]
+port = 1337
+# public_url = "https://cms.example.com"
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+
+[admin]
+path = "/admin"
+# secure_cookies = true
+```
+
+Totes les claus tenen un valor per defecte, així que el fitxer pot estar buit o no existir. Les
+claus desconegudes aturen el servidor amb un error. Qualsevol clau es pot sobreescriure des de
+l'entorn com a `VERDIN_<SECTION>__<KEY>`, per exemple `VERDIN_SERVER__PORT=8080`. Les ordres
+llegeixen `verdin.toml` del directori actual; passa `-c <path>` o defineix `VERDIN_CONFIG` per fer
+servir un altre fitxer. Els camins del fitxer, com els directoris de l'esquema o de les pujades,
+són relatius al directori que el conté. Totes les opcions són a la
+[referència de configuració](/ca/reference/configuration/).
+
+### `.env`
+
+```sh title=".env"
+# Secrets locals: mantén aquest fitxer fora del control de versions.
+VERDIN_DATABASE_URL=sqlite://data/verdin.db
+VERDIN_ADMIN_JWT_SECRET=…
+VERDIN_TOKEN_PEPPER=…
+```
+
+`verdin new` hi posa dos secrets aleatoris i un URL de base de dades per al motor que has triat amb
+`--database`:
+
+| `--database` | `VERDIN_DATABASE_URL` generada |
+| --- | --- |
+| `sqlite` (per defecte) | `sqlite://data/verdin.db` |
+| `postgres` | `postgres://verdin:change-me@localhost:5432/<name>` |
+| `mysql`, `mariadb` | `mysql://verdin:change-me@localhost:3306/<name>` |
+
+Substitueix l'usuari i la contrasenya per a PostgreSQL, MySQL i MariaDB. Els camins relatius de
+SQLite es resolen a partir del directori del projecte, no del directori des d'on executes l'ordre.
+
+Totes les ordres carreguen el `.env` que hi ha al costat de `verdin.toml`; les variables ja
+definides a l'entorn tenen prioritat. A Linux i macOS, el fitxer es crea només llegible pel seu
+propietari. En producció, defineix aquestes variables al magatzem de secrets de la teva plataforma
+en lloc de distribuir un fitxer `.env`. L'[Inici ràpid](/ca/start/quickstart/#2-secrets) explica els
+dos secrets.
+
+### `schema/`
+
+El model de contingut, en el format d'esquema de Strapi:
+
+- `schema/content-types/<singularName>.json`, un fitxer per tipus de col·lecció o tipus únic.
+- `schema/components/<category>/<name>.json`, un fitxer per component; l'uid del component és
+  `<category>.<name>`.
+
+El constructor de tipus de contingut escriu aquests fitxers a `verdin dev`, i els pots editar a mà:
+`verdin dev` es recarrega quan canvien. L'esquema del blog d'exemple té aquest aspecte:
+
+<FileTree>
+- schema/
+  - content-types/
+    - article.json
+    - category.json
+    - homepage.json tipus únic
+    - tag.json
+  - components/
+    - blocks/
+      - hero.json `blocks.hero`
+      - quote.json `blocks.quote`
+    - shared/
+      - seo.json `shared.seo`
+</FileTree>
+
+Els fitxers són la font de veritat: Verdin en deriva les taules de la base de dades, la validació,
+les API REST i GraphQL, el document OpenAPI, els tipus TypeScript i els formularis de
+l'administració. Consulta [Model de contingut](/ca/concepts/content-model/) i
+[Migracions d'esquema](/ca/concepts/schema-migrations/). El directori de l'esquema és
+`[schema].path` a `verdin.toml`, `schema` per defecte.
+
+## Què apareix quan Verdin s'executa
+
+<FileTree>
+- my-site/
+  - verdin.toml
+  - .env
+  - schema/
+  - data/
+    - verdin.db base de dades SQLite, amb els seus fitxers `-wal` i `-shm`
+    - search/ índex de text complet, quan `[search].enabled` està activat
+  - public/
+    - uploads/ fitxers de la mediateca, servits a `/uploads`
+  - .cache/
+    - transforms/ imatges redimensionades, regenerades sota demanda
+  - plugins/ connectors WebAssembly, una carpeta per connector (la crees tu)
+  - strapi-id-map.json escrit per `verdin import strapi`
+</FileTree>
+
+| Camí | Escrit per | Opció |
+| --- | --- | --- |
+| `data/verdin.db` | El servidor, amb SQLite | `VERDIN_DATABASE_URL` |
+| `public/uploads/` | Les pujades amb el proveïdor local (el per defecte) | `[upload].provider` |
+| `.cache/transforms/` | Les transformacions d'imatge demanades a `/uploads` | `[upload.transforms].cache_dir` |
+| `data/search/` | L'índex de text complet | `[search].dir` |
+| `plugins/` | Tu: cada connector a la seva pròpia carpeta | `[plugins].path` |
+| `strapi-id-map.json` | `verdin import strapi`: ids de Strapi associats a ids de Verdin | — |
+
+Amb PostgreSQL, MySQL o MariaDB no hi ha `data/verdin.db`: el contingut viu al servidor de base de
+dades. Amb el proveïdor S3, els fitxers multimèdia viuen al bucket i `public/uploads` es queda buit.
+
+## Què va a git
+
+| Confirma | Mantén fora de git |
+| --- | --- |
+| `verdin.toml` | `.env` (secrets) |
+| `schema/` (tipus de contingut i components) | `data/` (base de dades SQLite, índex de cerca) |
+| `plugins/`, si fas servir connectors | `public/uploads/` (multimèdia) |
+| `.gitignore` | `.cache/` |
+
+El `.gitignore` generat els cobreix tots:
+
+```sh title=".gitignore"
+.env
+data/
+*.db
+*.db-*
+.cache/
+# Local media library ([upload.provider] dir).
+public/uploads/
+```
+
+Als projectes creats abans de la 0.10 els falta la línia `public/uploads/`: afegeix-la.
+
+<Aside>
+El contingut i la multimèdia són dades, no codi. Fes-ne còpies de seguretat amb `verdin export` o
+amb les eines de la teva base de dades en lloc de confirmar-los; consulta
+[Còpies de seguretat](/ca/deploy/backups/).
+</Aside>
+
+Confirma l'esquema juntament amb el codi que en depèn, com els tipus generats del teu frontend. En
+producció, desplega l'esquema confirmat i executa `verdin start --migrate`: el constructor de tipus
+de contingut està desactivat fora de `verdin dev`, de manera que l'esquema només canvia a través
+del teu repositori.

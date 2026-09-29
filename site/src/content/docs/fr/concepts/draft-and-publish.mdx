@@ -1,0 +1,139 @@
+---
+title: "Brouillon et publication"
+description: "Les documents, leurs versions brouillon et publiée, les états par lesquels passe une entrée, et comment chaque API les lit et les écrit."
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Le brouillon et la publication permettent aux rédacteurs de travailler sur un document sans
+modifier ce que montre votre site, puis de le publier quand il est prêt. Cette page explique
+le modèle : les documents, les versions, les actions qui font passer le contenu de l’une à
+l’autre, et la façon dont chaque API les traite. Le fonctionnement est le même que dans
+Strapi v5.
+
+Activez-le par type de contenu dans son schéma :
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+Il est désactivé quand `options.draftAndPublish` est absent.
+
+## Documents et versions
+
+Un **document** est une entrée, identifiée par son `documentId`. Avec brouillon et
+publication, un document a jusqu’à deux **versions** :
+
+- un **brouillon**, que chaque modification change, et
+- une version **publiée**, que l’API de contenu sert par défaut.
+
+Sur un type [localisé](/fr/concepts/internationalization/), chaque langue a son propre
+brouillon et sa propre version publiée, qui partagent tous le `documentId`.
+
+Les types sans brouillon et publication ont une seule version par langue, toujours publiée :
+chaque écriture modifie ce que voient les lecteurs.
+
+## États
+
+Le panneau d’administration affiche l’état de chaque entrée dans la liste et dans l’éditeur :
+
+| État | Brouillon | Version publiée | Ce que voient les lecteurs du contenu publié |
+| --- | --- | --- | --- |
+| **Brouillon** | oui | aucune | Rien : le document n’est pas visible. |
+| **Publié** | identique à la version publiée | oui | La version publiée. |
+| **Modifié** | modifié depuis la dernière publication | oui | La version publiée, sans les nouvelles modifications. |
+
+<Diagram
+  caption="États d’un document avec brouillon et publication, et actions qui les relient"
+  code={`stateDiagram-v2
+    state "Brouillon" as Draft
+    state "Publié" as Published
+    state "Modifié" as Modified
+    [*] --> Draft: créer
+    Draft --> Published: publier
+    Published --> Modified: enregistrer
+    Modified --> Published: publier ou annuler les modifications
+    Published --> Draft: dépublier
+    Modified --> Draft: dépublier`}
+/>
+
+Les actions font passer un document d’un état à l’autre :
+
+| Action | Effet | De → vers |
+| --- | --- | --- |
+| Enregistrer | Écrit le brouillon. | Brouillon → Brouillon, Publié → Modifié |
+| **Publier** | Copie le brouillon sur la version publiée, en la créant si nécessaire. | Brouillon ou Modifié → Publié |
+| **Dépublier** | Supprime la version publiée ; le brouillon reste. | Publié ou Modifié → Brouillon |
+| **Annuler les modifications** | Remplace le brouillon par une copie de la version publiée. | Modifié → Publié |
+| Supprimer | Supprime toutes les versions (de la langue demandée, sur les types localisés). | tout état → supprimé |
+
+La publication s’exécute dans une seule transaction. Elle vérifie les champs `required` et
+les [règles inter-champs](/fr/concepts/content-model/#validations-inter-champs) du type sur le
+brouillon ; une vérification en échec ne publie rien. Jusque-là, les brouillons peuvent être
+incomplets et enfreindre ces règles.
+
+`publishedAt` vaut `null` sur les brouillons. La version publiée porte l’heure de sa dernière
+publication.
+
+## Les relations et les médias suivent la version
+
+Chaque version a ses propres liens de relations et de médias, et la publication copie les
+liens du brouillon vers la version publiée. Les liens pointent vers des documents et sont
+résolus dans la version en cours de lecture : un article publié affiche la version publiée de
+sa catégorie, et un brouillon affiche le brouillon de la catégorie. Si la catégorie est
+dépubliée, elle disparaît de l’article publié jusqu’à sa republication, sans qu’aucun lien ne
+soit réécrit. Voir [Relations](/fr/concepts/relations/#liées-par-document-pas-par-ligne).
+
+Les composants et les zones dynamiques font partie de la ligne : la publication les copie tels
+quels.
+
+## Lire les brouillons et le contenu publié
+
+| API | Lit par défaut | Pour lire les brouillons |
+| --- | --- | --- |
+| [REST](/fr/api/rest/#statut) | Les versions publiées | `?status=draft`, qui nécessite l’autorisation **Lire les brouillons** |
+| [GraphQL](/fr/api/graphql/) | Les versions publiées | `status: DRAFT`, avec la même autorisation |
+| [API d’administration](/fr/api/admin/) | Les brouillons | `?status=published` |
+
+La lecture des brouillons est une autorisation à part entière (`readDrafts`), pour qu’un jeton
+qui lit le contenu de votre site ne puisse pas lire le travail non publié. Les jetons d’API en
+lecture seule ne lisent jamais les brouillons.
+
+Pour distinguer les documents selon qu’ils ont déjà été publiés ou non, filtrez avec
+`hasPublishedVersion` : `?status=draft&hasPublishedVersion=false` liste les documents qui
+n’ont jamais été publiés.
+
+## Écrire via les API
+
+Les API suivent Strapi v5 pour les écritures :
+
+- En **REST et GraphQL**, `create` et `update` écrivent le brouillon **et le publient**, sauf si
+  la requête demande `status=draft` (`status: DRAFT` en GraphQL). Une publication en échec
+  annule toute la requête.
+- **Le panneau d’administration et l’API d’administration** n’enregistrent que des brouillons.
+  La publication est toujours une action explicite.
+
+L’API REST propose aussi des actions explicites, que Strapi n’offre pas en REST :
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+Elles nécessitent l’autorisation **Publier** sur le type. Voir [API REST](/fr/api/rest/#actions).
+
+## Autres fonctionnalités qui publient
+
+- Les [releases](/fr/guides/content/releases/) regroupent des documents et les publient ou les
+  dépublient ensemble, immédiatement ou à une date donnée.
+- Les [workflows de relecture](/fr/guides/content/review-workflows/) peuvent exiger une étape
+  avant qu’un document puisse être publié.
+- La publication et la dépublication envoient les [événements de webhook](/fr/api/webhooks/)
+  `entry.publish` et `entry.unpublish` et les [événements temps réel](/fr/api/realtime/)
+  correspondants. Les enregistrements d’un brouillon envoient `entry.update`, que seuls les
+  appelants autorisés à lire les brouillons reçoivent en temps réel.

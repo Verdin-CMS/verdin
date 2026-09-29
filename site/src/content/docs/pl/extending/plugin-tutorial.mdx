@@ -1,0 +1,326 @@
+---
+title: "Samouczek: twoja pierwsza wtyczka"
+description: Zbuduj w Rust wtyczkę Verdin, która wypełnia czas czytania artykułu, loguje publikacje i serwuje małą trasę API.
+sidebar:
+  order: 2
+  label: Samouczek wtyczki
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+W tym samouczku zbudujesz **reading-time**, wtyczkę dla przykładu bloga. Wtyczka:
+
+- wypełnia `readingTime` artykułu na podstawie jego `body` przy każdym zapisie treści (hook
+  „before”);
+- zapisuje linię do swojego logu, gdy artykuł zostaje opublikowany (hook „after”);
+- serwuje `GET /api/plugins/reading-time/stats` ze średnim czasem czytania (trasa, która
+  czyta treść);
+- ma ustawienie **Words per minute**.
+
+Zajmuje to około 20 minut. Czym są wtyczki i jak działa piaskownica, przeczytasz najpierw
+w [Wtyczkach](/pl/extending/plugins/).
+
+## Zanim zaczniesz
+
+Potrzebujesz:
+
+- Projektu Verdin ze schematem przykładu bloga: skopiuj
+  [`examples/blog/schema`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog/schema)
+  do projektu utworzonego przez `verdin new` albo uruchom sam przykład. Wtyczka używa
+  atrybutów `body` (`richtext`) i `readingTime` (`integer`) typu `article`.
+- Rusta z targetem WebAssembly:
+
+  ```sh title="Terminal"
+  rustup target add wasm32-unknown-unknown
+  ```
+
+Wtyczki można pisać w dowolnym języku z [Extism PDK](https://extism.org/docs/concepts/pdk)
+(JavaScript, Go, Zig, C i inne). Ten samouczek używa Rusta i `extism-pdk`.
+
+## Utwórz crate
+
+<Steps>
+
+1. Utwórz crate biblioteki, poza projektem Verdin:
+
+   ```sh title="Terminal"
+   cargo new --lib reading-time
+   cd reading-time
+   ```
+
+2. Zastąp `Cargo.toml`. Wtyczka to `cdylib`; profil release utrzymuje mały rozmiar modułu.
+
+   ```toml title="Cargo.toml"
+   [package]
+   name = "reading-time"
+   version = "0.1.0"
+   edition = "2024"
+   publish = false
+
+   [lib]
+   crate-type = ["cdylib"]
+
+   [dependencies]
+   extism-pdk = "1.4.1"
+   serde_json = "1"
+
+   [profile.release]
+   opt-level = "s"
+   lto = true
+   strip = true
+   ```
+
+</Steps>
+
+## Napisz funkcje
+
+Każda funkcja eksportowana przez wtyczkę przyjmuje JSON i zwraca JSON. Verdin wywołuje je
+dla hooków, tras i zadań wskazanych w manifeście; funkcje wywołują Verdin z powrotem przez
+funkcje hosta (`verdin_log`, `verdin_content`, `verdin_config`…).
+
+Zastąp `src/lib.rs`:
+
+```rust title="src/lib.rs"
+use extism_pdk::*;
+use serde_json::{Value, json};
+
+// Host functions Verdin provides (namespace `extism:host/user`).
+#[host_fn]
+extern "ExtismHost" {
+    fn verdin_log(input: Json<Value>);
+    fn verdin_content(input: Json<Value>) -> Json<Value>;
+    fn verdin_config() -> Json<Value>;
+}
+
+/// Minutes needed to read `text` at `per_minute` words a minute (at least 1).
+fn minutes(text: &str, per_minute: u64) -> u64 {
+    let words = text.split_whitespace().count() as u64;
+    words.div_ceil(per_minute.max(1)).max(1)
+}
+
+/// `beforeCreate` and `beforeUpdate` on articles: fills `readingTime` from `body`.
+#[plugin_fn]
+pub fn set_reading_time(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    // An update may leave the body out: then there is nothing to recompute.
+    let Some(body) = data["body"].as_str() else {
+        return Ok(Json(json!({})));
+    };
+    let config = unsafe { verdin_config()? }.0;
+    let per_minute = config["wordsPerMinute"].as_u64().unwrap_or(200);
+    data["readingTime"] = json!(minutes(body, per_minute));
+    Ok(Json(json!({ "data": data })))
+}
+
+/// `afterPublish` on articles: writes a line to the plugin's log.
+#[plugin_fn]
+pub fn log_publish(Json(input): Json<Value>) -> FnResult<()> {
+    let message = format!("published {}", input["documentId"].as_str().unwrap_or("?"));
+    unsafe { verdin_log(Json(json!({ "level": "info", "message": message })))? };
+    Ok(())
+}
+
+/// `GET /api/plugins/reading-time/stats`: the average reading time of published articles.
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    if request["method"] != "GET" || request["path"] != "/stats" {
+        return Ok(Json(json!({ "status": 404, "body": { "error": "not found" } })));
+    }
+    let found = unsafe {
+        verdin_content(Json(json!({
+            "op": "findMany",
+            "uid": "api::article",
+            "query": { "fields": ["readingTime"], "pagination": { "pageSize": 100 } }
+        })))?
+    }
+    .0;
+    if let Some(error) = found.get("error") {
+        return Ok(Json(json!({ "status": 500, "body": { "error": error } })));
+    }
+    let times: Vec<u64> = found["documents"]
+        .as_array()
+        .map(|documents| documents.iter().filter_map(|d| d["readingTime"].as_u64()).collect())
+        .unwrap_or_default();
+    let average = if times.is_empty() { 0.0 } else { times.iter().sum::<u64>() as f64 / times.len() as f64 };
+    Ok(Json(json!({
+        "status": 200,
+        "headers": { "cache-control": "max-age=60" },
+        "body": { "articles": times.len(), "averageMinutes": average }
+    })))
+}
+```
+
+Co zwraca każda funkcja:
+
+- **`set_reading_time`** to hook „before”. `{ "data": … }` zastępuje zapisywane dane; `{}`
+  zostawia je bez zmian. Mógłby też zwrócić `{ "error": "…" }`, aby odrzucić zapis z 400.
+- **`log_publish`** to hook „after”: jego wyjście jest ignorowane.
+- **`handle`** obsługuje każde żądanie pod `/api/plugins/reading-time/`. Dostaje ścieżkę po
+  tym prefiksie i odpowiada `{ status, headers, body }`.
+
+## Zbuduj moduł
+
+```sh title="Terminal"
+cargo build --release --target wasm32-unknown-unknown
+```
+
+Moduł to `target/wasm32-unknown-unknown/release/reading_time.wasm` (Cargo zamienia myślnik
+na podkreślenie), około 120 KB.
+
+## Napisz manifest
+
+<Steps>
+
+1. W projekcie Verdin utwórz `plugins/reading-time/` i skopiuj do niego moduł jako
+   `plugin.wasm`:
+
+   ```sh title="Terminal"
+   mkdir -p plugins/reading-time
+   cp ../reading-time/target/wasm32-unknown-unknown/release/reading_time.wasm plugins/reading-time/plugin.wasm
+   ```
+
+2. Obok utwórz manifest. Nadaje on wtyczce nazwę, prosi o to, czego potrzebują funkcje,
+   i podłącza je do hooków i tras:
+
+   ```toml title="plugins/reading-time/plugin.toml"
+   name = "reading-time"
+   version = "0.1.0"
+   description = "Fills an article's reading time from its body"
+
+   [capabilities]
+   read = ["api::article"]           # for the stats route
+
+   [[hooks]]
+   on = "beforeCreate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "beforeUpdate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "afterPublish"
+   uid = "api::article"
+   function = "log_publish"
+
+   [routes]
+   function = "handle"               # serves /api/plugins/reading-time/…
+
+   [[settings]]
+   key = "wordsPerMinute"
+   label = "Words per minute"
+   type = "integer"
+   min = 50
+   max = 1000
+   default = 200
+   ```
+
+   Hooki nie potrzebują żadnej capability: zmieniają dane, które dostają. Treść czyta tylko
+   wywołanie `verdin_content` w trasie, więc wtyczka prosi o `read` na artykułach i o nic
+   więcej.
+
+</Steps>
+
+Projekt wygląda teraz tak:
+
+<FileTree>
+- verdin.toml
+- .env
+- plugins/
+  - reading-time/
+    - plugin.toml
+    - plugin.wasm
+- schema/
+  - content-types/
+    - article.json
+    - …
+</FileTree>
+
+## Włącz ją
+
+<Steps>
+
+1. Uruchom (lub zrestartuj) serwer:
+
+   ```sh title="Terminal"
+   verdin dev
+   ```
+
+   Log pokazuje `plugin found plugin=reading-time version=0.1.0`.
+
+2. Otwórz panel administracyjny, a potem **Ustawienia → Wtyczki**. Karta **reading-time**
+   wymienia jej dostęp (czyta artykuły), hooki i trasę. Włącz ją.
+
+3. Otwórz **Ustawienia** na karcie: formularz pokazuje **Words per minute** z wartością
+   domyślną 200. Wartości spoza zakresu od 50 do 1000 są odrzucane. Zostaw bez zmian.
+
+</Steps>
+
+## Wypróbuj
+
+<Steps>
+
+1. Utwórz artykuł z treścią liczącą kilkaset słów, w panelu administracyjnym albo przez API
+   z tokenem API:
+
+   ```sh title="Terminal"
+   curl -X POST http://localhost:1337/api/articles \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "data": { "title": "Hello plugins", "slug": "hello-plugins", "body": "…450 words…" } }'
+   ```
+
+   Odpowiedź ma `"readingTime": 3`: 450 słów przy 200 słowach na minutę, zaokrąglone w górę.
+   Nie wysłałeś tej wartości; wypełnił ją hook.
+
+2. Zaktualizuj tylko tytuł. `readingTime` zostaje: dane aktualizacji nie mają `body`, więc
+   hook zwraca `{}`. Zaktualizuj treść, a wartość zostanie przeliczona.
+
+3. Opublikuj artykuł, a potem otwórz **Logi** na karcie wtyczki: pokazują
+   `published <documentId>`. (Przez API tworzenie bez `?status=draft` od razu publikuje, więc
+   linia już tam jest).
+
+4. Wywołaj trasę:
+
+   ```sh title="Terminal"
+   curl -i http://localhost:1337/api/plugins/reading-time/stats
+   ```
+
+   ```text
+   HTTP/1.1 200 OK
+   content-type: application/json
+   cache-control: max-age=60
+
+   {"articles":1,"averageMinutes":3.0}
+   ```
+
+   Liczy opublikowane artykuły: `verdin_content` czyta opublikowane wersje, chyba że
+   zapytanie prosi o `status: "draft"`.
+
+</Steps>
+
+<Aside type="caution">
+Trasa odpowiada każdemu: trasy wtyczek nie są objęte **Dostępem publicznym**. Tutaj zwraca
+tylko średnią, ale trasa, która zwraca lub zmienia treść, musi sama sprawdzać
+`request.actor` (`{ "kind": "public" }`, `{ "kind": "token", "id": … }` lub
+`{ "kind": "user", "id": … }`).
+</Aside>
+
+## Zmiany
+
+- Edytuj kod, ponownie uruchom `cargo build --release --target wasm32-unknown-unknown`,
+  skopiuj moduł i zrestartuj Verdin. Przełącznik i ustawienia są zachowywane.
+- Zmiany w `plugin.toml` też wymagają restartu. Zmiany ustawień działają od razu.
+- Jeśli wywołanie się nie powiedzie, błąd jest w logu serwera i w **Logach**. Panic lub
+  przekroczenie czasu przerywa tylko to wywołanie; w przypadku hooka „before” zapis przebiega
+  dalej bez zmiany wtyczki.
+
+## Dalsze kroki
+
+- Dodaj [zaplanowane zadanie, pole GraphQL lub widżet panelu](/pl/extending/plugin-reference/).
+- Przechowuj stan między wywołaniami za pomocą capability `kv` i `verdin_kv_get` /
+  `verdin_kv_set`.
+- Testowa wtyczka z repozytorium,
+  [`crates/verdin-plugins/tests/fixtures/sample`](https://github.com/Verdin-CMS/verdin/tree/main/crates/verdin-plugins/tests/fixtures/sample),
+  używa wszystkich funkcji hosta.

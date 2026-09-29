@@ -1,0 +1,261 @@
+---
+title: العميل المُنمَّط
+description: اقرأ محتوى Verdin واكتبه من TypeScript باستخدام @verdin/client وأنواع مولّدة من مخططك بواسطة `verdin types`.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`@verdin/client` عميل TypeScript صغير لـ API المحتوى: مستندات REST، و
+مكتبة الوسائط، وGraphQL. اقرنه بـ `verdin types`، الذي يكتب تعريفات TypeScript
+لأنواع محتواك، فيتحقق محررك من أسماء المسارات والحقول وحمولات
+الكتابة أثناء الكتابة.
+
+ليس للعميل أي تبعيات ويعمل في أي مكان يوجد فيه `fetch`: المتصفحات، وNode 20 وما
+بعده، وDeno، وBun، وedge workers. وهو اختياري؛ فكل استدعاء يقابل طلب HTTP عاديًا
+في [REST API](/ar/api/rest/).
+
+## ثبّته وولّد الأنواع
+
+<Steps>
+
+1. ثبّت الحزمة في مشروع الواجهة الأمامية:
+
+   ```sh title="Terminal"
+   npm install @verdin/client
+   ```
+
+2. في مشروع Verdin (المجلد الذي يحتوي على `verdin.toml`)، ولّد الأنواع:
+
+   ```sh title="Terminal"
+   verdin types -o ../site/src/verdin-types.ts
+   ```
+
+   بدون `-o` (`--out`) تذهب التعريفات إلى المخرج القياسي. لا يقرأ الأمر إلا
+   ملفات المخطط؛ ولا يحتاج إلى قاعدة بيانات.
+
+3. أنشئ عميلًا بـ `VerdinSchema` المولَّد:
+
+   ```ts title="src/verdin.ts"
+   import { createClient } from '@verdin/client';
+   import type { VerdinSchema } from './verdin-types';
+
+   export const verdin = createClient<VerdinSchema>({
+     url: 'https://cms.example.com',
+     token: process.env.VERDIN_TOKEN, // omit to use the public role
+   });
+   ```
+
+</Steps>
+
+شغّل `verdin types` من جديد بعد كل تغيير في المخطط؛ والملف يقول ذلك في سطره الأول.
+اعتماده بجوار شيفرة الواجهة الأمامية، أو إعادة توليده في CI، يُبقي الجانبين
+متوافقين.
+
+<Aside type="caution">
+يمنح الرمز حامله صلاحيات الرمز. أبقِ الرموز ذات الوصول الكامل والمخصصة على
+الخادم (SSR، وسكربتات البناء، ومسارات API). يجب ألا تستخدم حزمة المتصفح أي رمز (الدور
+العام) أو أن تستخدم رمزًا للقراءة فقط. راجع [رموز API](/ar/guides/auth/api-tokens/).
+</Aside>
+
+## ما يولّده `verdin types`
+
+لـ[مثال المدونة](https://github.com/Verdin-CMS/verdin/blob/main/examples/blog/)
+(المقالات، والتصنيفات، والوسوم، ونوع مفرد للصفحة الرئيسية، والمكوّنات `shared.seo` و`blocks.hero`
+و`blocks.quote`) يحتوي الملف على:
+
+| النوع | ما هو |
+| --- | --- |
+| `Article`، `Category`، `Tag`، `Homepage` | واجهة (interface) واحدة لكل نوع محتوى، تحمل اسم `singularName` الخاص به، وتمدّد `DocumentBase` (`id`، `documentId`، `createdAt`، `updatedAt`، `publishedAt`). تُستبعد السمات الخاصة. |
+| `ArticleInput`، … | أنواع الكتابة: كل سمة اختيارية، والعلاقات كسلاسل `documentId` (أو `connect` / `disconnect` / `set`)، والوسائط كمعرّفات ملفات، والجوانب العكسية للعلاقات مستبعدة. |
+| `ComponentSharedSeo`، `ComponentBlocksHero`، … | واجهة واحدة لكل مكوّن، بالإضافة إلى نوع `…Input` الخاص به. تحمل عناصر المنطقة الديناميكية `__component` مُنمَّطًا. |
+| `Media`، `MediaFormat`، `Blocks` | ملفات مكتبة الوسائط، وصيغها المتجاوبة، وصيغة كتل النص المنسّق. |
+| `Collections`، `Singles`، `VerdinSchema` | المسارات (`articles`، `homepage`) مربوطة بأنواع مستنداتها ومدخلاتها، للعميل. |
+
+العلاقات والوسائط والمكوّنات والمناطق الديناميكية خصائص اختيارية (`category?:`)،
+لأن الـ API لا يعيدها إلا عندما تعبّئها بـ `populate`. الأعداد الصحيحة الكبيرة من نوع `string`،
+لأنها لا تتسع في أرقام JavaScript.
+
+بدون الأنواع المولّدة يظل العميل يعمل: يُقبل أي مسار وتكون المستندات
+من نوع `Record<string, unknown>`.
+
+## اقرأ المحتوى
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[title][$containsi]=rust&populate[category]=true&populate[seo]=true&sort[0]=publishedAt:desc&pagination[page]=1&pagination[pageSize]=10' \
+  -H "Authorization: Bearer $VERDIN_TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { title: { containsi: "rust" } }
+    sort: ["publishedAt:desc"]
+    pagination: { page: 1, pageSize: 10 }
+  ) {
+    documentId
+    title
+    slug
+    category { name }
+    seo { metaTitle metaDescription }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { verdin } from './verdin';
+
+const { data, meta } = await verdin.collection('articles').find({
+  filters: { title: { $containsi: 'rust' } },
+  populate: { category: true, seo: true },
+  sort: ['publishedAt:desc'],
+  pagination: { page: 1, pageSize: 10 },
+});
+
+data[0].title; // string
+data[0].category?.name; // string | null | undefined
+meta.pagination.total;
+```
+
+</TabItem>
+</Tabs>
+
+تستخدم معاملات الاستعلام صيغة Strapi v5 وتُسلسَل بصيغة الأقواس المربعة، لذا فإن أي
+عامل تصفية أو ترتيب أو `fields` أو `populate` أو `status` أو `locale` يعمل في REST API يعمل
+هنا. راجع [REST API](/ar/api/rest/) للصيغة الكاملة.
+
+| الاستدعاء | الطلب |
+| --- | --- |
+| `collection(route).find(params?)` | `GET /api/:route` |
+| `collection(route).findOne(documentId, params?)` | `GET /api/:route/:documentId` |
+| `collection(route).create(data, params?)` | `POST /api/:route` (ينشر ما لم يكن `status: 'draft'`) |
+| `collection(route).update(documentId, data, params?)` | `PUT /api/:route/:documentId` |
+| `collection(route).delete(documentId)` | `DELETE /api/:route/:documentId` |
+| `collection(route).publish(documentId)`، `unpublish`، `discardDraft` | `POST /api/:route/:documentId/actions/publish` (`unpublish`، `discard-draft`) |
+| `single(route).find(params?)`، `update(data, params?)`، `delete()` | `GET`، `PUT`، `DELETE /api/:route` |
+| `upload(files, info?)` | `POST /api/upload` (multipart) |
+| `files(params?)` | `GET /api/upload/files` |
+| `graphql(query, variables?)` | `POST /graphql` |
+
+يُصدَّر `stringify(params)` أيضًا، لبناء سلاسل الاستعلام بنفسك (مثلًا لـ
+`<link rel="preload">`).
+
+## اكتب المحتوى
+
+```ts
+const { data: article } = await verdin.collection('articles').create(
+  {
+    title: 'Hello from TypeScript',
+    category: 'hx2n8r3w0c1kq5v7m4j6b9a0',       // a category's documentId
+    tags: { connect: ['t1…', 't2…'] },
+    seo: { metaTitle: 'Hello', metaDescription: 'A first post' },
+  },
+  { status: 'draft' },
+);
+
+await verdin.collection('articles').publish(article.documentId);
+```
+
+كما في Strapi v5، ينشر `create` المستند فورًا في أنواع المسودة والنشر
+ما لم تمرّر `status: 'draft'`. تحتاج عمليات الكتابة إلى رمز لديه `create` أو `update` أو
+`publish` على النوع؛ راجع [الصلاحيات](/ar/reference/permissions/).
+
+ارفع الملفات بـ `upload`، ثم أشِر إليها بالمعرّف:
+
+```ts
+const [cover] = await verdin.upload(file, { alternativeText: 'The team at the office' });
+```
+
+`file` هو `Blob` أو `File` (أو قائمة منهما). تحتاج عمليات الرفع إلى صلاحية `create` على
+مكتبة الوسائط.
+
+## GraphQL
+
+يرسل `graphql()` إلى `/graphql`، لذا يجب أن تكون ميزة **GraphQL** مفعّلة في
+**الإعدادات ← الميزات**. يعيد `data` الخاصة بالاستجابة ويرمي استثناءً عند أول
+خطأ.
+
+```ts
+const data = await verdin.graphql<{ articles: Array<{ title: string }> }>(
+  `query ($q: String) { articles(filters: { title: { containsi: $q } }) { title } }`,
+  { q: 'rust' },
+);
+```
+
+تصف الأنواع المولّدة REST API. لـ GraphQL، مرّر نوع النتيجة بنفسك، كما
+في الأعلى، أو استخدم مولّد شيفرة GraphQL على نقطة النهاية. راجع [GraphQL](/ar/api/graphql/).
+
+## الأخطاء
+
+كل طلب فاشل يُرفض بـ `VerdinError`، يحمل الخطأ الذي أرسله الـ API بـ
+صيغة Strapi:
+
+| الخاصية | مثال |
+| --- | --- |
+| `status` | `400`، `401`، `403`، `404`، `429` |
+| `name` | `ValidationError`، `UnauthorizedError`، `ForbiddenError`، `NotFoundError`، `RateLimitError`، `GraphQLError` |
+| `message` | وصف مقروء. |
+| `details` | تفاصيل الخطأ، مثل قائمة الحقول غير الصالحة في `ValidationError`. |
+
+```ts
+import { VerdinError } from '@verdin/client';
+
+try {
+  const { data } = await verdin.collection('articles').findOne(id);
+  return data;
+} catch (error) {
+  if (error instanceof VerdinError && error.status === 404) return null;
+  throw error;
+}
+```
+
+## الخيارات
+
+| الخيار | الوصف |
+| --- | --- |
+| `url` | مصدر الخادم، مثل `https://cms.example.com`. مطلوب. |
+| `token` | رمز API أو JWT لمستخدم نهائي، يُرسل على شكل `Authorization: Bearer …`. أغفله للدور العام. |
+| `prefix` | بادئة API المحتوى. افتراضيًا `/api`؛ طابِق [`[api].prefix`](/ar/reference/configuration/) إن كنت قد غيّرته. |
+| `fetch` | تنفيذ لـ `fetch` يُستخدم بدلًا من التنفيذ العام. |
+| `headers` | ترويسات إضافية تُرسل مع كل طلب. |
+
+## العرض على الخادم وبيئات edge
+
+لا يستدعي العميل إلا `fetch`، لذا يعمل دون تغيير في مكوّنات الخادم، ومسارات API،
+وسكربتات البناء، ودوال edge. مرّر `fetch` مخصصًا لإضافة خيارات التخزين المؤقت الخاصة بإطار عمل
+إلى كل طلب. مثلًا، مع Next.js:
+
+```ts title="src/verdin.ts"
+export const verdin = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  token: process.env.VERDIN_TOKEN,
+  fetch: (input, init) => fetch(input, { ...init, next: { revalidate: 60, tags: ['verdin'] } }),
+});
+```
+
+لقراءة المسودات في صفحة معاينة، أرسل رمز المعاينة الذي وضعته لوحة الإدارة في عنوان URL للمعاينة
+كترويسة:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  headers: { 'x-verdin-preview': searchParams.get('preview') ?? '' },
+});
+const { data } = await preview.collection('articles').findOne(id, { status: 'draft' });
+```
+
+راجع [المعاينة](/ar/guides/content/preview/) لمعرفة كيف تعمل روابط المعاينة، و
+[التحرير المرئي](/ar/guides/frontend/visual-editing/) لإضافة النقر للتحرير إلى الصفحة نفسها.
+
+استدعاء الـ API من متصفح على مصدر آخر يحتاج إلى ذلك المصدر في
+[`[api].cors_origins`](/ar/reference/configuration/).

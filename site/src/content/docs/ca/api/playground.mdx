@@ -1,0 +1,33 @@
+---
+title: Entorn de proves de l'API
+description: Envia peticions a l'API de contingut del projecte de blog d'exemple des del navegador, contra el teu Verdin local.
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+Prova l'API de contingut del [projecte de blog d'exemple](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+sense escriure codi. Les peticions van del teu navegador al servidor que triïs a **Server**,
+per defecte `http://localhost:1337`.
+
+Per respondre-les, executa el projecte d'exemple en local i permet les peticions:
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- Crea el primer administrador a [localhost:1337/admin](http://localhost:1337/admin/) i afegeix-hi uns quants articles.
+- Permet `find` i `findOne` a **Configuració → Accés públic**, o
+  enganxa un token d'API a **Authentication**.
+- L'entorn de proves s'executa a l'origen d'aquest lloc, així que el servidor l'ha d'acceptar:
+  afegeix-lo a `[api].cors_origins` a `verdin.toml` (consulta [Configuració](/ca/reference/configuration/)).
+
+El teu projecte té la mateixa referència per al seu propi esquema a `/api/docs` un cop
+**Documentació pública** està activada a **Configuració → Funcionalitats → Documentació de l’API**.
+
+<Playground />

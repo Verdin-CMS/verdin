@@ -1,0 +1,36 @@
+---
+title: Bac à sable de l’API
+description: Envoyez depuis le navigateur des requêtes à l’API de contenu du projet de blog d’exemple, sur votre Verdin local.
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+Essayez l’API de contenu du [projet de blog d’exemple](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+sans écrire de code. Les requêtes partent de votre navigateur vers le serveur choisi dans
+**Server**, par défaut `http://localhost:1337`.
+
+Pour y répondre, lancez le projet d’exemple en local et autorisez les requêtes :
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- Créez le premier administrateur sur [localhost:1337/admin](http://localhost:1337/admin/) et
+  ajoutez quelques articles.
+- Autorisez `find` et `findOne` dans **Paramètres → Accès public**, ou collez un jeton d’API
+  sous **Authentication**.
+- Le bac à sable s’exécute sur l’origine de ce site, le serveur doit donc l’accepter :
+  ajoutez-la à `[api].cors_origins` dans `verdin.toml` (voir
+  [Configuration](/fr/reference/configuration/)).
+
+Votre propre projet dispose de la même référence pour son propre schéma sur `/api/docs` dès
+que **Documentation publique** est activé dans
+**Paramètres → Fonctionnalités → Documentation de l’API**.
+
+<Playground />

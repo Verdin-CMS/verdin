@@ -1,0 +1,197 @@
+---
+title: 终端用户
+description: 让使用你的网站的人通过内容 API 注册和登录，支持邮箱确认、OAuth 提供商和角色，使用 Strapi 的 users-permissions 路由。
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+终端用户是登录你的网站或应用的人，而不是登录管理后台的人。Verdin 为他们提供注册、登录、邮箱确认、密码重置、OAuth 提供商，以及决定他们在内容 API 中能做什么的角色。路由和负载与 Strapi v5 的 users-permissions 插件相同，因此现有的前端可以继续使用。
+
+## 开始之前
+
+<Steps>
+
+1. 开启 **设置 → 功能 → 用户与权限**（默认关闭），或者在 **设置 → 终端用户 → 设置** 中开启 **终端用户**。
+2. 如果使用邮箱确认或密码重置，请配置 `[email]`：
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend 和 Postmark 从 `VERDIN_EMAIL_API_KEY` 读取密钥。**设置 → 功能 → 电子邮件** 中有 **发送测试邮件**。本地开发时，`docker/compose.dev.yml` 包含 Mailpit（SMTP 端口 1025，收件箱位于 `http://localhost:8025`）。
+
+3. 设置 `[server].public_url`：邮件中的链接和 OAuth 回调都会使用它。
+
+</Steps>
+
+管理账户和角色需要 **管理终端用户**（`endusers.manage`）。修改设置标签页（注册、提供商、模板）需要 **管理功能**（`features.manage`）。
+
+## 配置注册和会话
+
+在 **设置 → 终端用户 → 设置** 的 **注册与会话** 下：
+
+| 设置 | 默认值 | 作用 |
+| --- | --- | --- |
+| **允许注册** | 开启 | 任何人都可以通过内容 API 创建账户。关闭时：`register` 返回 `400`。 |
+| **确认电子邮箱地址** | 关闭 | 新用户必须打开邮件中的链接后才能登录。 |
+| **默认角色** | Authenticated | 新账户的角色。 |
+| **会话** | 单个长期令牌 | **单个长期令牌**（Strapi 的旧模式）或 **带刷新机制的短期令牌**。 |
+| **会话时长（天）** | 30 | 长期令牌的有效期。 |
+| **访问令牌有效期（分钟）**、**刷新令牌有效期（天）** | 30、30 | 用于刷新令牌模式。 |
+
+在 **你的应用页面** 下，设置 **确认电子邮箱后**（用户的地址确认后跳转到的页面）和 **重置密码页面**（接收 `?code=` 并要求输入新密码的页面）。密码重置需要设置重置页面。
+
+## 设置角色
+
+每个请求都以以下身份之一发出：
+
+- **Public**：不带令牌的请求。其权限就是 **设置 → 公开访问** 中的权限。
+- **Authenticated**：授予新账户的内置角色。它不能被删除。
+- **自定义角色**：在 **设置 → 终端用户 → 角色** 中通过 **创建角色** 创建。
+
+角色的 **权限** 使用与公开访问和 API 令牌相同的矩阵：按内容类型设置 **查询**、**查询单个**、**创建**、**更新**、**删除**、**发布** 和 **读取草稿**，另外还有 **媒体库** 和 **用户**（`/api/users` 路由）。已登录的用户只获得其角色的权限，而不会同时获得公开访问的权限：当已登录用户需要公开读取权限时，也要把它们授予该角色。删除角色会把其用户转移到 Authenticated。
+
+要以某个用户的身份操作，前端以 `Authorization: Bearer <jwt>` 的形式发送其 JWT。API 令牌以 `vd_` 开头，Verdin 就是据此区分两者的。
+
+## 注册和登录
+
+<Tabs>
+<TabItem label="注册">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   开启邮箱确认时则为 { "user": … }
+```
+
+</TabItem>
+<TabItem label="登录">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` 是邮箱或用户名。
+
+</TabItem>
+<TabItem label="以该用户身份读取">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+被封禁的用户会被拒绝登录（"Your account has been blocked by an administrator"）；开启确认后，未确认的用户也会被拒绝（"Your account email is not confirmed"）。
+
+## 令牌和会话
+
+- **单个长期令牌**（`jwtManagement: "legacy-support"`）：JWT 的有效期为 **会话时长（天）**。
+- **带刷新机制的短期令牌**（`jwtManagement: "refresh"`，与 Strapi 5 相同）：JWT 的有效期为 **访问令牌有效期（分钟）**，登录响应中还会带有一个 `refreshToken`。用 `{ refreshToken }` 调用 `POST /api/auth/refresh` 即可获得一对新令牌。每个刷新令牌只能使用一次；出示已使用过的刷新令牌会结束整个会话。用 `{ refreshToken }` 调用 `POST /api/auth/logout` 可以主动结束会话。
+- 更改或重置密码会吊销该用户之前的令牌，封禁用户也是如此。
+- 登录、注册和重置请求按客户端 IP 限制为每分钟 20 次。
+- 密码使用 Argon2id 存储。从 Strapi 导入的账户会保留其 bcrypt 哈希，直到下次登录时重新哈希。
+
+## 确认邮箱地址和重置密码
+
+开启 **确认电子邮箱地址** 后，注册时会发送一封邮件，其中包含指向 `/api/auth/email-confirmation?confirmation=…` 的链接。打开它会确认账户，并重定向到 **确认电子邮箱后** 所设置的页面。用 `{ email }` 调用 `POST /api/auth/send-email-confirmation` 会发送一个新链接。
+
+忘记密码时：
+
+<Steps>
+
+1. 你的应用用 `{ email }` 调用 `POST /api/auth/forgot-password`。无论账户是否存在，响应都相同。
+2. 用户会收到一封邮件，其中的链接指向你的 **重置密码页面**，并带有 `?code=…`。该代码一小时内有效。
+3. 你的页面用 `{ code, password, passwordConfirmation }` 调用 `POST /api/auth/reset-password`，并获得 `{ jwt, user }`。
+
+</Steps>
+
+已登录的用户通过 `POST /api/auth/change-password`（`{ currentPassword, password, passwordConfirmation }`）更改密码。
+
+邮件在 **设置 → 终端用户 → 设置 → 电子邮件模板** 中编辑：为 **邮箱确认** 和 **密码重置** 分别设置 **主题**、**正文** 以及可选的 **HTML 正文（可选）**。它们支持占位符 `{{username}}`、`{{email}}` 和 `{{url}}`；在 HTML 正文中，值会经过 HTML 转义。
+
+## 使用 OAuth 提供商登录
+
+内置了 GitHub、Google、Microsoft、Discord、Facebook、GitLab 和 LinkedIn 的预设。其他任何名称都是通用的 OAuth 2 提供商，需要填写其 **授权 URL**、**令牌 URL** 和 **用户信息 URL**：Keycloak、Auth0 和 Okta 都以这种方式使用你的 realm 或租户的 URL。不支持 Sign in with Apple。
+
+<Steps>
+
+1. 在 **设置 → 终端用户 → 设置 → 登录提供商** 中，选择 **添加 GitHub**（或其他预设，或 **添加 OAuth 2 提供商**）。
+2. 在提供商处注册对话框中显示的 **需在该提供商处注册的回调 URL**：`https://cms.example.com/api/connect/github/callback`。
+3. 输入 **客户端 ID**、可选的 **作用域** 以及 **重定向到你的应用**：登录后接收 `?access_token=` 的前端页面。开启 **已启用**。
+4. 把客户端密钥放入服务器的环境变量并重启：
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   变量名为 `VERDIN_OAUTH_<PROVIDER>_SECRET`。密钥永远不会存储在数据库中。
+
+</Steps>
+
+登录遵循 Strapi 的流程：
+
+<Diagram
+  caption="终端用户的 OAuth 登录"
+  code={`sequenceDiagram
+  participant B as 浏览器
+  participant V as Verdin
+  participant P as 提供商
+  B->>V: GET /api/connect/github
+  V-->>B: 重定向到提供商
+  B->>P: 授权同意
+  P-->>B: 重定向到 /api/connect/github/callback
+  B->>V: 回调
+  V-->>B: 重定向到你的页面 ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+OAuth 的 `state` 经过签名，并通过 cookie 与浏览器绑定。账户按邮箱匹配；已被另一个提供商或邮箱密码账户使用的邮箱会被拒绝（"Email is already taken."）。
+
+## 在管理后台中管理账户
+
+**设置 → 终端用户 → 用户** 列出所有账户，支持按用户名或邮箱搜索。你可以 **添加用户**、编辑某个账户（用户名、邮箱、密码、角色、**已确认**、**已封禁**）、**封禁** 或 **解除封禁**，以及删除账户。
+
+## 路由
+
+这些路由位于内容 API 前缀（默认为 `/api`）下。请求和响应格式遵循 Strapi v5。
+
+| 路由 | 作用 |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }`，开启邮箱确认时为 `{ user }`。 |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`。 |
+| `GET /auth/email-confirmation?confirmation=` | 确认邮箱，然后重定向或返回该用户。 |
+| `POST /auth/send-email-confirmation` | `{ email }`：新的确认链接。 |
+| `POST /auth/forgot-password` | `{ email }`：通过邮件发送重置链接。 |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`。 |
+| `POST /auth/change-password` | 需要登录。`{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`。 |
+| `POST /auth/refresh`、`POST /auth/logout` | 仅限刷新模式：`{ refreshToken }`。 |
+| `GET /users/me` | 已登录的用户。 |
+| `GET /users`、`GET /users/count`、`GET /users/{id}` | 需要用户上的查询 / 查询单个权限。与 Strapi 一样返回普通 JSON，不带 `data` 包裹层。`populate=role` 会附加角色，`_q=` 搜索用户名和邮箱，`pagination[page]` 和 `pagination[pageSize]`（最多 100）用于分页。 |
+| `POST /users`、`PUT /users/{id}`、`DELETE /users/{id}` | 需要用户上的创建 / 更新 / 删除权限。`{ username, email, password, confirmed, blocked, role }`，其中 `role` 为角色 id。 |
+| `GET /connect/{provider}` | 开始 OAuth 登录。 |
+| `GET /auth/{provider}/callback?access_token=` | 用提供商的令牌换取 `{ jwt, user }`。 |
+
+`verdin import strapi` 会导入终端用户及其密码、自定义角色，以及 public、authenticated 和自定义角色的权限。参见[从 Strapi 迁移](/zh-cn/migrate/from-strapi/)。
+
+<Aside type="caution">
+在 **用户** 上拥有创建、更新或删除权限的角色，其成员可以管理所有终端用户账户。请只把它授予受信任的角色或 API 令牌。
+</Aside>

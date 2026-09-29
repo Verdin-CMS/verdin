@@ -1,0 +1,170 @@
+---
+title: Utenti admin e ruoli
+description: Crea il primo admin, invita gli altri, assegna i ruoli, reimposta le password dal pannello o dalla CLI, e gestisci le sessioni.
+sidebar:
+  order: 1
+  label: Utenti admin
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Gli admin sono le persone che accedono al pannello di amministrazione. Sono distinti dagli
+[utenti finali](/it/guides/auth/end-users/) dei tuoi siti e delle tue app. Questa guida crea
+il primo admin, invita gli altri, assegna loro i ruoli e li aiuta a rientrare quando restano
+chiusi fuori.
+
+## Prima di iniziare
+
+- Verdin richiede `VERDIN_ADMIN_JWT_SECRET` e `VERDIN_TOKEN_PEPPER` nell'ambiente. Generali
+  una volta con `verdin secrets`.
+- Gestire gli admin richiede **Gestisci utenti** (`users.manage`); gestire i ruoli richiede
+  **Gestisci ruoli** (`roles.manage`). Vedi [Permessi](/it/reference/permissions/).
+- Inviti e reimpostazioni della password vengono inviati per email tramite `[email]`. Con il
+  provider di default `log`, le email, link inclusi, vengono scritte nel log del server.
+
+## Crea il primo admin
+
+Apri il pannello di amministrazione (`http://localhost:1337/admin/` di default). Finché non
+esiste nessun admin, chiede di creare il primo, che diventa Super Admin. Le password hanno
+da 8 a 128 caratteri.
+
+Senza browser, usa la CLI o l'API:
+
+<Tabs>
+<TabItem label="CLI">
+
+```sh title="Terminal"
+verdin admin create --email you@example.com
+```
+
+La password arriva da `VERDIN_ADMIN_PASSWORD`, o viene letta dallo standard input. Il
+comando crea un Super Admin e funziona in qualsiasi momento, non solo per il primo.
+
+</TabItem>
+<TabItem label="API">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/register-first-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a long password"}'
+```
+
+Questa route funziona solo finché non esiste nessun admin.
+
+</TabItem>
+</Tabs>
+
+## Invita un admin
+
+<Steps>
+
+1. Apri **Impostazioni → Utenti** e seleziona **Aggiungi utente**.
+2. Inserisci l'email, e opzionalmente **Nome** e **Cognome**.
+3. Scegli uno o più **Ruoli**.
+4. Lascia disattivato **Imposta subito una password** per inviare un invito, o attivalo per
+   impostare tu la password.
+5. Seleziona **Invita** (o **Salva** con una password).
+
+</Steps>
+
+La finestra **Link di invito** mostra il link e dice se è stato inviato per email.
+Condividilo tu quando non lo è stato, cosa che con il provider `log` succede sempre. Il link
+funziona una sola volta, per 7 giorni; l'admin invitato lo apre, sceglie una password e
+accede.
+
+Finché l'admin non ha mai effettuato l'accesso, **Nuovo link di invito** sulla sua riga
+sostituisce il vecchio link. Una volta effettuato l'accesso, recupera invece l'accesso con
+una reimpostazione della password.
+
+## Ruoli
+
+Verdin crea tre ruoli, come Strapi:
+
+| Ruolo | Può |
+| --- | --- |
+| **Super Admin** | Tutto. I suoi permessi non possono essere modificati. |
+| **Editor** | Creare, modificare, pubblicare ed eliminare tutti i contenuti; gestire la libreria media; avviare deploy; gestire SEO, redirect, menu e form. |
+| **Author** | Creare contenuti, e modificare ed eliminare le proprie voci e i propri file. Non può pubblicare. |
+
+Creane altri in **Impostazioni → Ruoli** con **Nuovo ruolo**. Per ogni ruolo, scegli:
+
+- **Contenuti**: per tipo di contenuto (o **Tutti i tipi di contenuto**), il livello di
+  **Leggi**, **Crea**, **Aggiorna**, **Elimina** e **Pubblica**: **Nessun accesso**,
+  **Proprie** (solo le voci create dall'admin) o **Tutte**. **Campi** limita un'azione ad
+  alcuni campi, e **Lingue** ad alcune lingue.
+- **Libreria media**: le azioni sui file, per **Tutti i file** o **File propri**.
+- **Impostazioni**: l'accesso alle aree di amministrazione, come **Gestisci utenti** o
+  **Visualizza i log di audit**.
+- **Richiedi l’autenticazione a due fattori**: vedi
+  [Autenticazione a due fattori](/it/guides/auth/two-factor/).
+
+Un admin con più ruoli riceve l'unione dei loro permessi. L'elenco completo è nel
+[riferimento dei permessi](/it/reference/permissions/).
+
+Solo un Super Admin può assegnare il ruolo Super Admin, o modificare, eliminare o
+reimpostare un altro Super Admin.
+
+## Disattiva o rimuovi un admin
+
+Modifica l'admin in **Impostazioni → Utenti** e disattiva **Attivo**: gli utenti inattivi non
+possono accedere. **Elimina** rimuove l'account definitivamente; i suoi commenti vengono
+allora mostrati come scritti da un admin eliminato.
+
+## Reimposta una password
+
+- **La reimposta l'admin:** **Password dimenticata?** nella pagina di accesso invia per email
+  un link valido un'ora. Tutte le sessioni dell'account terminano quando la password cambia.
+- **La imposta un altro admin:** modifica l'admin in **Impostazioni → Utenti** e digita una
+  nuova password. Lascia il campo vuoto per mantenere quella attuale.
+- **Dal server:** quando nessuno riesce ad accedere, esegui
+
+  ```sh title="Terminal"
+  verdin admin reset-password --email you@example.com
+  ```
+
+  con la password in `VERDIN_ADMIN_PASSWORD` o sullo standard input. Imposta la password,
+  sblocca l'account e chiude le sue sessioni. Non rimuove l'autenticazione a due fattori:
+  un admin che ha perso il secondo fattore ha bisogno che un altro admin
+  [lo reimposti](/it/guides/auth/two-factor/).
+
+## Protezione dell'accesso
+
+- Dopo 5 password errate di fila, l'account viene bloccato per 15 minuti.
+- Le richieste di accesso, registrazione e refresh sono limitate per IP del client da
+  `[admin].auth_rate_limit` (20 al minuto di default).
+- Una sessione admin è un access token di 15 minuti rinnovato con un cookie di refresh che
+  dura 30 giorni. Il cookie è `Secure` in `verdin start`; vedi `[admin].secure_cookies`.
+
+Ogni admin vede i propri dispositivi connessi sotto **Sessioni** nel suo **Profilo**, e con
+**Disconnetti** può chiudere una sessione o tutte le altre. Cambiare la password disconnette tutti gli altri
+dispositivi.
+
+## API admin
+
+Accedi per ottenere un access token per l'API admin:
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/admin/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+# → { "data": { "user": {…}, "accessToken": "…", "accessTokenExpiresAt": "…" } }
+```
+
+| Route | Permesso | Fa |
+| --- | --- | --- |
+| `GET /users`, `GET /users/{id}` | `users.manage` | Gli admin con i loro ruoli. |
+| `POST /users` | `users.manage` | `{ email, firstname?, lastname?, roles: [ids], isActive?, password? }`. Senza `password`, il `meta` della risposta ha `inviteUrl` ed `emailed`. |
+| `PUT /users/{id}`, `DELETE /users/{id}` | `users.manage` | Modifica o rimuove un admin. |
+| `POST /users/{id}/invite` | `users.manage` | Un nuovo link di invito, per admin che non hanno mai effettuato l'accesso. |
+| `GET /roles`, `POST /roles`, `PUT /roles/{id}`, `DELETE /roles/{id}` | `roles.manage` | Ruoli e loro permessi. |
+| `POST /auth/forgot-password` | pubblico | `{ email }`. Risponde sempre `204`. |
+| `GET /auth/sessions`, `DELETE /auth/sessions/{id}` | autenticato | Le tue sessioni. |
+
+Tutte le route sono sotto `/admin/api`. Vedi l'[API admin](/it/api/admin/).
+
+<Aside type="caution">
+I segreti non vanno mai in `verdin.toml`. Mantieni stabili entrambi i segreti tra riavvii e
+istanze: `VERDIN_ADMIN_JWT_SECRET` firma gli access token, i JWT degli utenti finali e i link
+di anteprima, e `VERDIN_TOKEN_PEPPER` protegge i token API e i secondi fattori (vedi
+[Token API](/it/guides/auth/api-tokens/)).
+</Aside>

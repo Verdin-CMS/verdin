@@ -1,0 +1,28 @@
+---
+title: API 调试台
+description: 在浏览器中向示例博客项目的内容 API 发送请求，目标是你本地运行的 Verdin。
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+无需编写代码即可试用[示例博客项目](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)的内容 API。请求从你的浏览器发往你在 **Server** 中选择的服务器，默认为 `http://localhost:1337`。
+
+要让服务器响应这些请求，请在本地运行示例项目并允许这些请求：
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- 在 [localhost:1337/admin](http://localhost:1337/admin/) 创建第一个管理员，并添加几篇文章。
+- 在 **设置 → 公开访问** 中允许 `find` 和 `findOne`，或者在 **Authentication** 下粘贴一个 API 令牌。
+- 调试台运行在本站的源上，因此服务器必须接受它：把它添加到 `verdin.toml` 的 `[api].cors_origins` 中（参见[配置](/zh-cn/reference/configuration/)）。
+
+在 **设置 → 功能 → API 文档** 中开启 **公开文档** 后，你自己的项目也会在 `/api/docs` 提供针对其自身 schema 的同类参考。
+
+<Playground />

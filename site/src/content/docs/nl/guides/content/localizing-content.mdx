@@ -1,0 +1,174 @@
+---
+title: Content lokaliseren
+description: Voeg locales toe, maak een contenttype gelokaliseerd, vertaal items in het beheerpaneel en lees of schrijf elke locale via de API.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Een gelokaliseerd contenttype bewaart van elk item één versie per locale. Deze gids voegt de
+locales toe waarin je publiceert, zet lokalisatie aan voor een type, vertaalt items in het
+beheerpaneel en leest of schrijft elke locale via de API. Voor het model erachter (gedeelde
+velden, relaties tussen gelokaliseerde types), zie
+[Internationalisatie](/nl/concepts/internationalization/).
+
+Lokalisatie hoort bij de kern: er is geen functie om aan te zetten. Het werkt zoals de i18n-plugin
+van Strapi v5 en neemt dezelfde parameter `locale`.
+
+## Voordat je begint
+
+- Om locales toe te voegen, te hernoemen of te verwijderen, heb je **Talen beheren**
+  (`locales.manage`) nodig.
+- Om een type gelokaliseerd te maken, bewerk je zijn schema, in de **Contenttype-bouwer**
+  (`verdin dev`) of in `schema/content-types/<name>.json`.
+- Zie [Rechten](/nl/reference/permissions/) voor de contentrechten die redacteuren nodig hebben.
+
+## De locales toevoegen
+
+Bij de eerste start wordt Engels (`en`) als standaardlocale aangemaakt. Requests die geen locale
+noemen, gebruiken de standaardlocale, en nieuwe items beginnen erin.
+
+<Steps>
+
+1. Open **Instellingen → Internationalisatie** en kies **Taal toevoegen**.
+2. Vul een **Code** in: een taalcode in kleine letters, eventueel met een regio of schrift, zoals
+   `fr`, `pt-BR` of `zh-Hans`. De naam wordt voor je ingevuld en kan worden gewijzigd.
+3. Vink **Instellen als standaardtaal** aan als requests zonder locale hem moeten gebruiken, en sla
+   daarna op.
+
+</Steps>
+
+Om de standaard later te wijzigen, kies je **Instellen als standaard** bij een andere locale. De
+standaardlocale kan niet worden verwijderd.
+
+<Aside type="caution" title="Een locale verwijderen verwijdert zijn items">
+Een locale verwijderen verwijdert definitief elk item dat erin is geschreven, in elk contenttype,
+gepubliceerde versies inbegrepen. De dialoog vraagt je de localecode te typen om te bevestigen.
+</Aside>
+
+## Een contenttype gelokaliseerd maken
+
+Open in de **Contenttype-bouwer** het type en zet **Gelokaliseerd** aan in zijn instellingen.
+Bepaal daarna per veld welke waarden per locale verschillen: een veld met **Gelokaliseerd** uit
+bevat één waarde die door elke locale wordt gedeeld.
+
+Hetzelfde in het schemabestand, voor het type `article` van het voorbeeldproject:
+
+```json title="schema/content-types/article.json" {6,9}
+{
+  "kind": "collectionType",
+  "singularName": "article",
+  "pluralName": "articles",
+  "displayName": "Article",
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "title": { "type": "string", "required": true },
+    "readingTime": { "type": "integer", "pluginOptions": { "i18n": { "localized": false } } }
+  }
+}
+```
+
+Hoe gedeelde velden zich gedragen:
+
+- Een gedeeld veld in één locale opslaan, schrijft het naar de concepten van elke locale.
+- Een locale publiceren kopieert zijn gedeelde velden naar de gepubliceerde versies van de andere
+  locales.
+- Relaties en mediavelden kunnen ook worden gedeeld.
+
+Types zonder `pluginOptions.i18n.localized` zijn niet gelokaliseerd en negeren
+`locale`-parameters. De lokalisatie van een type wijzigen is een schemawijziging: bekijk de
+migratie met `verdin migrate plan` voordat je hem deployt.
+
+## Een item vertalen in het beheerpaneel
+
+<Steps>
+
+1. Open het item en kies de doeltaal in de keuzelijst **Taal** bovenaan de editor. Locales zonder
+   versie tonen **Nog niet aangemaakt**.
+2. De editor meldt dat het item nog geen versie in die locale heeft en dat opslaan hem aanmaakt.
+   Gedeelde velden tonen hun waarden al.
+3. Om uit te gaan van een bestaande vertaling, kies je **Vullen vanuit een andere taal** in die
+   melding. Kies de bron bij **Kopiëren van** en kies **Velden kopiëren**. Dat kopieert de
+   gelokaliseerde velden, relaties en media inbegrepen, naar het formulier. Er wordt nog niets
+   opgeslagen.
+4. Bewerk de velden en kies daarna **Concept opslaan** of **Publiceren**. Elke locale heeft een
+   eigen concept en gepubliceerde versie.
+
+</Steps>
+
+De lijstweergave heeft dezelfde keuzelijst **Taal**: die toont de versies in één locale
+tegelijk. Verwijderen vanuit de editor verwijdert alleen de versie in de huidige locale; de andere
+locales blijven behouden.
+
+Met de functie **AI-acties** aan kan de editor de tekstvelden ook vertalen vanuit het concept van
+een andere locale. Zie [AI-acties](/nl/guides/integrations/ai-actions/).
+
+## Redacteuren beperken tot bepaalde locales
+
+De contentrechten van een rol kunnen alleen bepaalde locales dekken. Open in
+**Instellingen → Rollen** de rol, zoek het contenttype en kies **Talen**. Kies
+**Alleen deze talen** en selecteer ze. Beheerders met die rol kunnen versies in de andere locales
+niet lezen of wijzigen; de keuzelijst **Taal** toont die locales met "(geen toegang)".
+
+## Locales lezen en schrijven via de API
+
+Voeg `locale` toe aan elk REST-request, of geef het mee als argument in GraphQL. Zonder deze
+parameter wordt de standaardlocale gebruikt. Een onbekende locale is een fout `400`.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+# De Franse versies lezen
+curl 'http://localhost:1337/api/articles?locale=fr'
+
+# De Franse versie van een document aanmaken of bijwerken
+curl -X PUT 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"data":{"title":"Bonjour"}}'
+
+# Alleen de Franse versie verwijderen
+curl -X DELETE 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(locale: "fr") {
+    documentId
+    title
+    locale
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ locale: 'fr' });
+```
+
+</TabItem>
+</Tabs>
+
+Wat je kunt verwachten:
+
+- `PUT` met een `locale` maakt de versie van die locale aan als het document er nog geen heeft.
+- Responses van gelokaliseerde types bevatten `locale`. Alle versies delen hetzelfde `documentId`.
+- `DELETE` verwijdert alleen de versie in de gevraagde locale (de standaardlocale als er geen is
+  opgegeven). Koppelingen die naar het document wijzen, worden verwijderd zodra er geen locale meer
+  over is.
+- Als een gelokaliseerd type naar een ander gelokaliseerd type koppelt, lossen leesacties het doel
+  op in dezelfde locale, en filters via relaties doen hetzelfde. Doelen die niet gelokaliseerd
+  zijn, worden door elke locale gedeeld.
+- Webhook-payloads en versies in de geschiedenis leggen de locale vast.
+
+Anders dan in Strapi heeft de content-API geen route `/api/i18n/locales`. De locales staan in de
+admin-API op `GET /admin/api/i18n/locales`, en worden beheerd met `POST`,
+`PUT /admin/api/i18n/locales/{code}` en `DELETE /admin/api/i18n/locales/{code}`
+(`locales.manage`).

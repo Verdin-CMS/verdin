@@ -1,0 +1,151 @@
+---
+title: Azioni IA
+description: Dai ai redattori l'aiuto dell'IA nel pannello di amministrazione (traduzione, testo alternativo, riassunti e metadati SEO) con il provider di modelli che scegli.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Le azioni IA aggiungono quattro aiuti al pannello di amministrazione: tradurre una voce da
+un'altra lingua, scrivere il testo alternativo di un'immagine, riassumere un testo lungo in un
+campo breve, e suggerire metadati SEO. Usano un provider di modelli che configuri tu
+(Anthropic, OpenAI, o un server locale come Ollama), con la tua chiave.
+
+Ogni azione restituisce un suggerimento che compila il form. Non viene salvato nulla finché il
+redattore non lo rivede e salva, e ogni azione si può annullare.
+
+## Configurazione
+
+Le azioni IA richiedono sia un provider in `verdin.toml` sia la funzionalità attiva.
+
+<Steps>
+
+1. Aggiungi una sezione `[ai]` e dai la chiave al server in `VERDIN_AI_KEY`:
+
+   <Tabs syncKey="ai-provider">
+   <TabItem label="Anthropic">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "anthropic"
+   # model = "claude-sonnet-5"   # the default
+   ```
+
+   </TabItem>
+   <TabItem label="OpenAI">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai"
+   model = "gpt-4.1-mini"        # required: name the model you want
+   ```
+
+   </TabItem>
+   <TabItem label="Locale (Ollama)">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai-compatible"
+   base_url = "http://localhost:11434/v1"
+   model = "llama3.2-vision"
+   ```
+
+   I server locali non richiedono `VERDIN_AI_KEY`. LM Studio, vLLM e altri server con
+   un'API compatibile OpenAI funzionano allo stesso modo.
+
+   </TabItem>
+   </Tabs>
+
+   ```sh title="Terminal"
+   export VERDIN_AI_KEY=sk-...
+   ```
+
+2. Riavvia Verdin. Si rifiuta di partire quando la sezione è incompleta: una chiave
+   mancante, o un `model` o un `base_url` mancante dove il provider ne richiede uno.
+3. In **Impostazioni → Funzionalità**, attiva **Azioni IA**.
+
+</Steps>
+
+| Chiave | Default | Descrizione |
+| --- | --- | --- |
+| `provider` | `"none"` | `anthropic`, `openai` o `openai-compatible`. |
+| `model` | `claude-sonnet-5` per `anthropic` | Il modello. Obbligatorio per gli altri provider. |
+| `base_url` | Quello del provider | Un altro endpoint: un proxy, o un server locale (obbligatorio per `openai-compatible`). |
+| `max_tokens` | `2048` | Risposta più lunga, in token. |
+
+Vedi [`[ai]`](/it/reference/configuration/). Con la funzionalità attiva ma senza sezione
+`[ai]`, l'admin mostra **Le azioni IA non sono disponibili su questo server.**
+
+L'azione del testo alternativo invia immagini, quindi scegli un modello che accetti immagini
+se la vuoi usare.
+
+## Cosa fanno le azioni
+
+### Tradurre una voce
+
+Nell'editor di una voce localizzata, **Traduci da _lingua_…** apre **Traduci con l’IA**.
+Scegli la lingua in **Traduci da** e scegli **Traduci**. I campi di testo della bozza salvata
+di quella lingua (string, text, rich text, blocks, e il testo dentro componenti e zone
+dinamiche) vengono tradotti nella lingua attuale e sostituiscono quei campi nel form.
+
+- I campi condivisi tra le lingue restano invariati.
+- Le modifiche non salvate nella lingua di origine non vengono incluse: salvala prima.
+- Markdown, HTML, URL, id e tipi di blocco vengono mantenuti così come sono.
+- I campi tradotti vengono contrassegnati; rivedili, poi salva, o scegli **Annulla
+  traduzione**.
+
+Richiede il permesso di aggiornare la voce nella lingua di destinazione e di leggerla nella
+lingua di origine.
+
+### Scrivere il testo alternativo
+
+Nella libreria media, apri un'immagine e scegli **Genera testo alternativo**. Il modello
+descrive l'immagine (fino a circa 125 caratteri) nella lingua di default, e compila la
+didascalia quando è vuota. Funziona con immagini JPEG, PNG, WebP e GIF, e invia il formato
+`small` o `medium` quando esiste, così gli originali grandi non vengono caricati presso il
+provider. Richiede il permesso di aggiornamento della libreria media (sul file, per **File
+propri**).
+
+### Riassumere in un campo
+
+I campi di testo con un nome da riassunto (`description`, `summary`, `excerpt`, `abstract`,
+`intro`, `introduction`, `lead`, `teaser`) ricevono un pulsante **Riassumi _campo_** quando
+la voce ha un campo rich text o blocks, o un campo di testo chiamato `body`, `content`,
+`text` o `article`. Nel blog di esempio, **Excerpt** riceve **Riassumi Body**. Il riassunto
+rispetta la lunghezza massima del campo.
+
+### Suggerire metadati SEO
+
+Un componente con gli attributi di testo `metaTitle` e `metaDescription`, come il
+[`shared.seo` suggerito](/it/guides/frontend/seo-and-sitemap/), riceve un pulsante
+**Suggerisci**. Compila meta title, description e, quando il componente ce l'ha, `keywords`,
+a partire dalla bozza salvata della voce.
+
+## Limiti
+
+- Ogni admin può fare 30 richieste all'IA al minuto; quelle in più rispondono
+  **Troppe richieste all’IA. Attendi un minuto e riprova.**
+- Riassunti e suggerimenti SEO inviano al massimo 40.000 caratteri di testo.
+- Una richiesta al provider va in timeout dopo 120 secondi.
+
+## Privacy
+
+<Aside type="caution">
+Le azioni IA inviano contenuti al provider che configuri: i campi da tradurre, riassumere o
+descrivere, e le immagini per il testo alternativo. Scegli un provider e un piano che la tua
+organizzazione consente per quei contenuti, controlla i termini di conservazione dei dati, e
+valuta un modello locale (`openai-compatible`) per i contenuti che non devono uscire dalla tua
+rete.
+</Aside>
+
+- Le richieste vanno dal server Verdin al provider; la chiave non raggiunge mai il browser.
+- Viene inviato solo l'input dell'azione: i campi di testo della voce, il testo da
+  riassumere, o un'immagine e il suo nome file. Gli attributi privati e le altre voci no.
+- Le azioni leggono solo ciò che l'admin può già leggere, e i suggerimenti non vengono
+  memorizzati.
+
+L'admin mostra quale modello ha risposto (**Suggerimenti di _modello_ (_provider_).**).
+
+Per permettere ad agenti IA esterni all'admin di leggere e scrivere contenuti, vedi
+[Server MCP](/it/guides/integrations/mcp/).

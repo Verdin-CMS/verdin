@@ -1,0 +1,481 @@
+---
+title: "REST API"
+description: "Verdin’in Strapi v5 uyumlu REST API’sinin rotaları, sorgu parametreleri (filters, sort, pagination, fields, populate, locale, status), istek gövdeleri, yanıtları, hataları ve sınırları."
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+Her içerik tipi, içerik API öneki altında (varsayılan olarak `/api`, `[api].prefix`) REST
+rotaları alır. Rotalar, parametreler ve yanıt biçimleri Strapi v5’i izler; bu yüzden Strapi
+için yazılmış frontend’lerin çoğu değişiklik yapmadan çalışır. Bu sayfa başvuru kaynağıdır;
+örnekler [blog örneğini](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+(makaleler, kategoriler, etiketler ve bir ana sayfa) kullanır.
+
+Sunucu ayrıca *sizin* şemanızın rotalarını `GET /api/_openapi.json` adresindeki bir OpenAPI 3.1
+belgesinde tanımlar. [Örnek içerik API’si](/api/example/) sayfaları blog’un belgesini
+gösterir; [API oyun alanı](/tr/api/playground/) ise istekleri denemenizi sağlar.
+
+## Örnek
+
+Her API’de aynı sorgu: bir kategorinin en son on makalesi, kategorinin adıyla birlikte.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+Bkz. [GraphQL API](/tr/api/graphql/) ve [Tipli istemci](/tr/guides/frontend/typed-client/).
+
+## Kimlik doğrulama
+
+| `Authorization` başlığı | Çağıran | İzinler |
+| --- | --- | --- |
+| yok | Herkese açık | **Ayarlar → Herkese açık erişim** |
+| `Bearer vd_…` | API token’ı | Token’ın tipi ve yetkileri |
+| `Bearer <JWT>` | Son kullanıcı | Son kullanıcı rolü |
+
+Bilinmeyen, süresi dolmuş veya hatalı biçimlendirilmiş bir token `401` döndürür; asla herkese
+açık erişime geri düşmez. Yetkisi olmayan geçerli bir çağıran `403` alır. Bkz.
+[İzinler](/tr/concepts/permissions/).
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+Başka origin’lerdeki tarayıcılar API’yi yalnızca `[api].cors_origins` onları listelediğinde
+çağırabilir.
+
+## Rotalar
+
+Koleksiyon tipleri `pluralName` değerlerinde sunulur:
+
+| Yöntem ve yol | Eylem | Yanıt |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`, bir belge sayfası |
+| `GET /api/articles/{documentId}` | `findOne` | `200`, tek bir belge |
+| `POST /api/articles` | `create` | `201`, oluşturulan belge |
+| `PUT /api/articles/{documentId}` | `update` | `200`, güncellenen belge |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`, gövde yok |
+
+Tekil tipler `singularName` değerlerinde sunulur:
+
+| Yöntem ve yol | Eylem | Yanıt |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200` veya ilk yazmadan önce `404` |
+| `PUT /api/homepage` | `update` | `200`; ilk `PUT` belgeyi oluşturur |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+Tekil bir tipte `POST`, `405` yanıtını verir.
+
+### Eylemler
+
+[Taslak ve yayınlama](/tr/concepts/draft-and-publish/) kullanan tiplerin, `publish` yetkisi
+gerektiren üç rotası daha vardır. Strapi’de bunların REST karşılığı yoktur.
+
+| Yöntem ve yol | Etkisi | Yanıt |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | Taslağı yayınlar. | Yayınlanan sürüm |
+| `POST /api/articles/{documentId}/actions/unpublish` | Yayınlanan sürümü siler. | Taslak |
+| `POST /api/articles/{documentId}/actions/discard-draft` | Taslağı yayınlanan sürümle değiştirir. | Taslak |
+
+Üçü de yerelleştirilmiş tiplerde `?locale=` alır.
+
+## Yazma
+
+`POST` ve `PUT`, bir `data` nesnesi içeren bir JSON gövdesi alır:
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` kısmi bir güncellemedir: dışarıda bıraktığınız nitelikler değerlerini korur.
+  Gönderdiğiniz bileşenler ve dinamik bölgeler saklanan değerin yerini alır.
+- Taslak ve yayınlama kullanan tiplerde `POST` ve `PUT`, Strapi v5’te olduğu gibi taslağı
+  yazar **ve yayınlar**. Yalnızca taslağı yazmak için `?status=draft` ekleyin. Yayınlama
+  doğrulamadan geçemezse hiçbir şey yazılmaz.
+- Bilinmeyen anahtarlar, sistem alanları (`id`, `documentId`, zaman damgaları) ve ters
+  (`mappedBy`) ilişki tarafları doğrulama hatasıdır.
+- İlişkiler `documentId`’ler, listeler, `null` veya `{ connect, disconnect, set }` alır; bkz.
+  [İlişkiler](/tr/concepts/relations/#yazma). Medya alanları dosya kimlikleri alır.
+- Yanıt, isteğin `fields` ve `populate` değerleriyle okunan yazılmış sürümdür.
+- `DELETE` belgenin tüm sürümlerini kaldırır (yerelleştirilmiş tiplerde, istenen dildeki
+  sürümü).
+
+## Sorgu parametreleri
+
+| Parametre | Örnek | Varsayılan |
+| --- | --- | --- |
+| [`filters`](#filtreler) | `filters[title][$containsi]=rust` | yok |
+| [`sort`](#sıralama) | `sort=publishedAt:desc` | `id`’ye göre, artan |
+| [`pagination`](#sayfalama) | `pagination[page]=2&pagination[pageSize]=10` | sayfa 1, sayfa başına 25 |
+| [`fields`](#alanlar) | `fields[0]=title&fields[1]=slug` | tüm skaler alanlar |
+| [`populate`](#populate) | `populate[category][fields][0]=name` | hiçbir şey |
+| [`status`](#durum) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#durum) | `hasPublishedVersion=false` | yok |
+| [`locale`](#dil) | `locale=fr` | varsayılan dil |
+| [`_q`](#arama) | `_q=ownership` | yok |
+
+Parametreler Strapi’nin köşeli parantez gösterimini kullanır. Listeler indekslerle
+(`sort[0]=a&sort[1]=b`), boş köşeli parantezlerle (`sort[]=a`) ya da anahtar tekrarlanarak
+(`sort=a&sort=b`) yazılabilir. Köşeli parantezleri ve değerleri bir URL’de olağan şekilde
+kodlayın; [`qs`](https://github.com/ljharb/qs) gibi istemciler veya
+[tipli istemci](/tr/guides/frontend/typed-client/) bu string’leri sizin için oluşturur.
+
+Bilinmeyen bir parametre, bilinmeyen veya `private` bir alan ya da hatalı biçimlendirilmiş bir
+değer, sorunu belirten bir `400` `ValidationError` hatasıdır. Hiçbir şey sessizce yok
+sayılmaz.
+
+## Filtreler
+
+`filters[field][operator]=value`. Operatörsüz bir değer `$eq` anlamına gelir:
+`filters[slug]=hello-verdin`.
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+Aynı düzeydeki birden fazla koşulun hepsi eşleşmelidir. Bunları mantıksal operatörlerle
+birleştirin:
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| Operatör | Eşleşme | Tipler |
+| --- | --- | --- |
+| `$eq`, `$ne` | Eşit, eşit değil | tüm skalerler |
+| `$eqi`, `$nei` | Büyük/küçük harf yok sayılarak eşit, eşit değil | metin |
+| `$lt`, `$lte`, `$gt`, `$gte` | Küçük, küçük veya eşit, büyük, büyük veya eşit | boolean’lar dışındaki tüm skalerler |
+| `$between` | İki değer arasında, sınırlar dâhil: `[$between][0]=1&[$between][1]=5` | boolean’lar dışındaki tüm skalerler |
+| `$in`, `$notIn` | Bir listede olan, olmayan: `[$in][0]=a&[$in][1]=b` | tüm skalerler |
+| `$contains`, `$notContains` | İçeren, içermeyen | metin |
+| `$containsi`, `$notContainsi` | Aynısı, büyük/küçük harf yok sayılarak | metin |
+| `$startsWith`, `$startsWithi` | İle başlayan (büyük/küçük harf yok sayılarak) | metin |
+| `$endsWith`, `$endsWithi` | İle biten (büyük/küçük harf yok sayılarak) | metin |
+| `$null`, `$notNull` | Boş, dolu: `[$null]=true` | tüm alanlar |
+| `$and`, `$or` | Bir listenin tüm, bazı koşulları | mantıksal |
+| `$not` | Bir filtre nesnesini olumsuzlar | mantıksal |
+
+- Metin tipleri `string`, `text`, `richtext`, `email`, `uid` ve `enumeration`’dır. `json` ve
+  `blocks` yalnızca `$null` ve `$notNull` alır.
+- Değerler alanın tipine dönüştürülür: tam sayılar, sayılar, `true`/`false` (veya `1`/`0`),
+  `YYYY-MM-DD` biçiminde tarihler, `HH:MM:SS` biçiminde saatler, ISO 8601 biçiminde tarih-saatler.
+- `id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt` ve yerelleştirilmiş tiplerde
+  `locale` üzerinde filtreleme yapabilirsiniz.
+- Metin karşılaştırmaları her veritabanında aynı davranır: `$eq`, `$contains` ve `i`
+  içermeyen diğer operatörler tam eşleşmedir; `…i` varyantları büyük/küçük harfi yok sayar
+  (MySQL ve MariaDB’de aksanları da; SQLite yalnızca ASCII harfleri dönüştürür).
+- Bir istekte en fazla 100 koşul olabilir.
+
+### İlişkiler üzerinden filtreleme
+
+İlişkili belgelerin alanlarına göre, ilişkinin her iki tarafında ve iç içe filtreleyin:
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+Çoklu (to-many) bir koşul, ilişkili belgelerden biri eşleştiğinde eşleşir. İlişkili belgeler,
+okunan sürüm ve dilde eşleştirilir. Polimorfik ilişkiler ve medya alanları filtrelenemez.
+
+### Bileşenler ve dinamik bölgeler üzerinde filtreleme
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+Bileşenlerin skaler alanları, iç içe olanlar dâhil filtrelenebilir; tekrarlanabilir bir bileşen,
+öğelerinden biri eşleştiğinde eşleşir. Dinamik bölgeler yalnızca `__component` ile filtrelenir.
+Bkz. [Bileşenler ve dinamik bölgeler](/tr/concepts/components-and-dynamic-zones/#filtreleme).
+
+## Sıralama
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` veya `field:asc|desc`; yön varsayılan olarak `asc`’dir.
+- `json` ve `blocks` dışındaki her skaler alan, sistem alanları dâhil sıralanabilir.
+- `relation.field`, tekli (to-one) bir ilişkinin alanına göre sıralar.
+- Boş değerler her iki yönde de en sona gelir ve eşitlikler `id` ile çözülür; böylece sayfalar
+  kararlı kalır.
+
+## Sayfalama
+
+Sayfa tabanlı veya offset tabanlı, ikisi birden değil:
+
+| Parametre | Varsayılan | Notlar |
+| --- | --- | --- |
+| `pagination[page]` | `1` | 1’den başlar. |
+| `pagination[pageSize]` | `25` (`[api].default_page_size`) | Üst sınırı `[api].max_page_size` (100). |
+| `pagination[start]` | `0` | Offset. |
+| `pagination[limit]` | `25` | Üst sınırla kısıtlanır; `-1` üst sınırı ister. |
+| `pagination[withCount]` | `true` | `false` sayımı atlar ve `total` ile `pageCount`’u dışarıda bırakır. |
+
+Yanıtın `meta.pagination` alanı kullandığınız modu izler:
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## Alanlar
+
+`fields` skaler nitelikleri seçer:
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id` ve `documentId` her zaman döndürülür. İlişkiler, medya, bileşenler ve dinamik bölgeler
+asla `fields` ile seçilmez: `populate` kullanın.
+
+## Populate
+
+İlişkiler, medya, bileşenler ve dinamik bölgeler yalnızca populate edildiklerinde döndürülür:
+
+| Biçim | Populate eder |
+| --- | --- |
+| `populate=*` | Tüm ilişkiler, medya alanları, bileşenler ve dinamik bölgeler, bir düzey derinlikte |
+| `populate=category,tags` veya `populate[0]=category&populate[1]=tags` | Adı verilen alanlar |
+| `populate[category]=true` | Adı verilen alan (`false` onu dışarıda bırakır) |
+| `populate[category][fields][0]=name` | Seçeneklerle birlikte alan |
+
+Populate edilen her ilişki `fields`, `filters`, `sort`, `populate` (iç içe, toplamda en fazla
+5 düzey) ve `count` kabul eder:
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- Tekli (to-one) bir ilişki bir nesne veya `null`’dır; çoklu (to-many) bir ilişki, bağlantı
+  sırasında veya populate’in `sort` sırasında bir dizidir.
+- `count=true`, belgeler yerine `{ "count": 12 }` döndürür (yalnızca çoklu ilişkilerde).
+- Belge ve ilişki başına en fazla 1.000 ilişkili belge döndürülür; `count` kesindir.
+- Bileşenler ve dinamik bölgeler, iç içe bileşenler ile bunların ilişkileri ve medyası dâhil
+  eksiksiz döner. Strapi’nin bunlar için düzey başına seçenekleri (`populate[blocks][on][…]`)
+  kabul edilir ve yok sayılır.
+- Medya alanları dosya nesneleri olarak döner.
+- Polimorfik ilişkiler yalnızca `count` kabul eder.
+- İlişkili belgeler, belgeyle aynı durum ve dilde okunur. Çağıranın okuyamadığı bir tipi
+  populate etmek `400` hatasıdır; `populate=*` onu atlar.
+
+Her düzey, ilişki başına bir toplu sorgudur; böylece derin populate’ler hızlı kalır ve asla
+yinelenen satır döndürmez.
+
+## Durum
+
+Taslak ve yayınlama kullanan tiplerde `status` sürümü seçer:
+
+- `status=published` (varsayılan) yayınlanan sürümleri okur.
+- `status=draft` taslakları okur ve `find` veya `findOne`’a ek olarak `readDrafts` yetkisi
+  gerektirir.
+
+`hasPublishedVersion=true|false`, yayınlanmış sürümü olan veya olmayan belgeleri tutar:
+`?status=draft&hasPublishedVersion=false` hiç yayınlanmamış belgeleri listeler. Taslak ve
+yayınlama kullanmayan tiplerde `400` hatasıdır.
+
+Yazmalarda `status=draft` taslağı yayınlamadan kaydeder. Bkz.
+[Taslak ve yayınlama](/tr/concepts/draft-and-publish/).
+
+## Dil
+
+`locale=fr`, yerelleştirilmiş tiplerin Fransızca sürümünü okur ve yazar. Belirtilmezse
+istekler varsayılan dili kullanır. Geçersiz veya bilinmeyen bir kod `400` hatasıdır.
+Yerelleştirilmemiş tipler bunu yok sayar. Bkz.
+[Uluslararasılaştırma](/tr/concepts/internationalization/).
+
+## Arama
+
+`_q`, metin alanları kelimeleri içeren belgeleri büyük/küçük harf yok sayarak bulur (en fazla
+200 karakter):
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+Arama dizini olmadan bu, Strapi’deki gibi private olmayan herhangi bir `string`, `text`,
+`richtext`, `email`, `uid` veya `enumeration` alanıyla eşleşir. `[search] enabled = true` ile
+sonuçlar, `sort` geçmediğiniz sürece alaka düzeyine göre sıralanır. Diğer filtreler ve
+sayfalama yine uygulanır. Bkz. [Arama](/tr/guides/content/search/).
+
+## Yanıtlar
+
+Bir liste:
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+Tek bir belge: `{ "data": { … }, "meta": {} }`.
+
+- Belgeler Strapi v5’teki gibi düzdür: `attributes` sarmalayıcısı yoktur.
+- Nitelikler şema sırasıyla, `id`/`documentId` ile zaman damgaları arasında gelir;
+  yerelleştirilmiş tipler `locale` ekler. `private` alanlar asla görünmez.
+- `biginteger` değerleri string’dir. `decimal` değerleri ölçeklerine yuvarlanmış sayılardır
+  (`[api].decimal_as_string = true` ile string). Tarihler `YYYY-MM-DD`, saatler
+  `HH:MM:SS.mmm`, tarih-saatler UTC’de `YYYY-MM-DDTHH:MM:SS.mmmZ` biçimindedir.
+
+Başarılı okumalar bir `ETag` taşır; `304 Not Modified` almak için onu `If-None-Match` içinde
+geri gönderin. Ayrıca CDN temizlemeleri için `Cache-Tag` ve `Surrogate-Key` başlıklarını da
+taşırlar (bkz. [Dağıtımlar ve CDN](/tr/guides/integrations/deploys-and-cdn/)).
+
+## Hatalar
+
+Hatalar Strapi’nin biçimindedir:
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| Durum | `name` | Ne zaman |
+| --- | --- | --- |
+| `400` | `ValidationError` | Geçersiz parametreler, gövde veya içerik. `details.errors` içerik sorunlarını yollarıyla listeler. |
+| `401` | `UnauthorizedError` | Hatalı biçimlendirilmiş, bilinmeyen veya süresi dolmuş token. |
+| `403` | `ForbiddenError` | Çağıranın yetkisi yok (taslaklar için `readDrafts`). |
+| `404` | `NotFoundError` | Bilinmeyen rota, içerik tipi veya belge. |
+| `405` | `MethodNotAllowedError` | Tekil bir tipte `POST` ya da bir koleksiyon tipinin rotasında `PUT` veya `DELETE`. |
+| `408` | | İstek `[server].request_timeout_secs` süresinden (30 sn) uzun sürdü. |
+| `413` | | Gövde `[server].body_limit` değerinden (1 MB) büyük. |
+| `429` | `RateLimitError` | `[api].public_rate_limit` veya `[api].token_rate_limit` aşıldı. `Retry-After` ne zaman yeniden deneneceğini söyler. |
+| `500` | `ApplicationError` | Beklenmeyen bir hata; ayrıntılar yalnızca sunucu günlüğündedir. |
+
+## Sınırlar
+
+| Sınır | Değer |
+| --- | --- |
+| Sayfa boyutu | `[api].max_page_size`, varsayılan 100 |
+| Populate derinliği | 5 düzey |
+| Belge ve ilişki başına ilişkili belge | 1.000 |
+| Filtre koşulları | 100 |
+| Bir parametrede köşeli parantez iç içeliği | 12 düzey |
+| İstek başına parametre | 1.000 |
+| Sorgu string’i | 16 KB |
+| `_q` | 200 karakter |
+
+Yalnızca sayfa boyutları yapılandırılabilir. `filters`, `sort`, `fields` ve `populate` içindeki
+her alan adı şemaya karşı denetlenir ve değerler her zaman SQL parametresi olarak bağlanır.
+
+## Medya kütüphanesi
+
+Strapi’nin upload rotaları, **Medya kütüphanesi** yetkilerine karşı denetlenir. Strapi’deki
+gibi `data` olmadan düz nesneler ve diziler döndürürler:
+
+| Rota | Yetki | Gövde veya parametreler |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart: `files` (en fazla 20), isteğe bağlı `fileInfo` JSON’u (`name`, `alternativeText`, `caption`, `folder`, `focalPoint`), dosya başına bir tane veya hepsi için bir tane |
+| `POST /api/upload?id={id}` | `update` | Multipart `fileInfo` ve isteğe bağlı olarak içeriği değiştiren yeni bir dosya |
+| `GET /api/upload/files` | `find` | `pagination[page]`, `pagination[pageSize]`, `sort`, `filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+Bkz. [Medya](/tr/concepts/media/).
+
+## Önek altındaki diğer rotalar
+
+| Rotalar | Sayfa |
+| --- | --- |
+| `/api/auth/*`, `/api/users/*`, `/api/connect/*` | [Son kullanıcılar](/tr/guides/auth/end-users/) (özellik açıkken) |
+| `/api/_events` | [Gerçek zamanlı API](/tr/api/realtime/) (özellik açıkken) |
+| `/api/_redirects`, `/api/_menus/{slug}`, `/api/_forms/{slug}` | [Yönlendirmeler](/tr/guides/frontend/redirects/), [Menüler](/tr/guides/frontend/menus/), [Formlar](/tr/guides/frontend/forms/) |
+| `/api/_openapi.json`, `/api/docs` | OpenAPI belgesi (**Ayarlar → Özellikler → API dokümantasyonu** bölümünde herkese açık yapılmadıkça yalnızca API token’ları) ve etkileşimli başvurusu (herkese açıkken) |
+| `/api/plugins/{name}/*` | [Eklentilerin](/tr/extending/plugins/) rotaları |

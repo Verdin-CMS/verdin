@@ -14,7 +14,7 @@ configuration. The other platform pages build on it.
 ## The image
 
 `ghcr.io/verdin-cms/verdin` is published for `linux/amd64` and `linux/arm64` on every
-release, tagged with the full version (`0.9.1`), the minor version (`0.9`) and `latest`.
+release, tagged with the full version (`0.10.0`), the minor version (`0.10`) and `latest`.
 Pin a minor version in production: 0.x minor releases may change behaviour (see
 [Upgrading](/migrate/upgrading/)).
 
@@ -82,7 +82,7 @@ Put the schema you committed next to the Compose file:
 1. Generate the secrets once and keep them out of version control:
 
    ```sh frame="terminal"
-   docker run --rm ghcr.io/verdin-cms/verdin:0.9 secrets > verdin.env
+   docker run --rm ghcr.io/verdin-cms/verdin:0.10 secrets > verdin.env
    echo "DB_PASSWORD=$(openssl rand -hex 24)" > .env
    ```
 
@@ -95,7 +95,7 @@ Put the schema you committed next to the Compose file:
    ```yaml title="compose.yaml"
    services:
      verdin:
-       image: ghcr.io/verdin-cms/verdin:0.9
+       image: ghcr.io/verdin-cms/verdin:0.10
        restart: unless-stopped
        ports: ["1337:1337"]
        env_file: verdin.env
@@ -134,7 +134,7 @@ Put the schema you committed next to the Compose file:
    ```yaml title="compose.yaml"
    services:
      verdin:
-       image: ghcr.io/verdin-cms/verdin:0.9
+       image: ghcr.io/verdin-cms/verdin:0.10
        restart: unless-stopped
        ports: ["1337:1337"]
        env_file: verdin.env
@@ -174,7 +174,7 @@ Put the schema you committed next to the Compose file:
    ```yaml title="compose.yaml"
    services:
      verdin:
-       image: ghcr.io/verdin-cms/verdin:0.9
+       image: ghcr.io/verdin-cms/verdin:0.10
        restart: unless-stopped
        ports: ["1337:1337"]
        env_file: verdin.env
@@ -216,7 +216,7 @@ Put the schema you committed next to the Compose file:
    ```yaml title="compose.yaml"
    services:
      verdin:
-       image: ghcr.io/verdin-cms/verdin:0.9
+       image: ghcr.io/verdin-cms/verdin:0.10
        restart: unless-stopped
        ports: ["1337:1337"]
        env_file: verdin.env
@@ -357,7 +357,7 @@ setups), build a small image on top of the official one with your configuration 
 schema inside. Each deploy then ships the exact schema you committed:
 
 ```dockerfile title="Dockerfile"
-FROM ghcr.io/verdin-cms/verdin:0.9
+FROM ghcr.io/verdin-cms/verdin:0.10
 COPY verdin.toml /app/verdin.toml
 COPY schema /app/schema
 # Plugins, if you use them: COPY plugins /app/plugins

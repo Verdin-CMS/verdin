@@ -1,0 +1,120 @@
+---
+title: Przekierowania
+description: Prowadź listę przekierowań w panelu administracyjnym i stosuj je w middleware swojej witryny.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Funkcja **Przekierowania** pozwala redaktorom kierować stare ścieżki na nowe bez wdrożenia:
+prowadzą listę w panelu administracyjnym, a twoja witryna ją pobiera i odpowiada
+przekierowaniem. Verdin sam nie przekierowuje odwiedzających, bo trafiają oni na twoją
+witrynę, a nie do CMS.
+
+## Włącz funkcję
+
+W **Ustawienia → Funkcje** włącz **Przekierowania**, a potem wybierz **Zarządzaj
+przekierowaniami** (albo przejdź do **Ustawienia → Przekierowania**). Zarządzanie
+przekierowaniami wymaga uprawnienia **Zarządzanie SEO, przekierowaniami, menu
+i formularzami** (`site.manage`), które ma wbudowana rola Editor. Zobacz
+[Uprawnienia](/pl/reference/permissions/).
+
+## Dodaj przekierowania
+
+<Steps>
+
+1. W **Ustawienia → Przekierowania** wybierz **Dodaj przekierowanie**.
+2. **Z**: stara ścieżka, zaczynająca się od `/` (np. `/blog/2024/hello`).
+3. **Do**: nowa ścieżka albo pełny URL `http(s)` w innej witrynie.
+4. **Typ**: **301 · Trwałe**, **302 · Tymczasowe**, **307 · Tymczasowe (zachowuje metodę)**
+   lub **308 · Trwałe (zachowuje metodę)**.
+5. Zapisz.
+
+</Steps>
+
+Verdin odrzuca przekierowanie, które nigdy by nie zadziałało:
+
+- drugie przekierowanie z tej samej ścieżki;
+- ścieżkę, która przekierowuje na samą siebie;
+- łańcuch, który się zapętla (`/a` → `/b` → `/a`).
+
+Przy wielu przekierowaniach naraz użyj **Importuj CSV** z kolumnami `source`, `destination`
+i `status`. Wiersze, których źródło już istnieje, aktualizują to przekierowanie.
+**Eksportuj CSV** zapisuje ten sam format, przydatny przy migracji z innego CMS albo
+przeglądzie w arkuszu kalkulacyjnym.
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## Stosuj je w swojej witrynie
+
+Witryny odczytują listę z `GET /api/_redirects`, bez tokenu:
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+Odpowiedź jest wysyłana z `Cache-Control: public, max-age=60`, więc zmiana dociera do witryn
+w ciągu mniej więcej minuty. Dopasowuj ścieżkę żądania dokładnie do `source`:
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+W witrynie statycznej pobierz listę w czasie buildu i zapisz plik przekierowań swojego
+hostingu (`_redirects` w Netlify, `vercel.json` w Vercel, mapa nginx). Połącz to
+z [przyciskiem wdrożenia](/pl/guides/integrations/deploys-and-cdn/) lub
+[webhookiem](/pl/guides/integrations/webhooks/), aby redaktorzy mogli przebudować witrynę po
+zmianie przekierowań.
+
+<Aside type="note">
+Prefiks API podąża za [`[api].prefix`](/pl/reference/configuration/). Gdy funkcja jest
+wyłączona, `/api/_redirects` odpowiada `404`.
+</Aside>
+
+## API administracyjne
+
+Panel administracyjny używa `/admin/api/site/redirects` (`GET`, `POST`)
+i `/admin/api/site/redirects/{id}` (`PUT`, `DELETE`), z tokenem dostępu administratora
+i `site.manage`. Zobacz [API administracyjne](/pl/api/admin/).

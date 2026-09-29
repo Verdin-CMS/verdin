@@ -1,0 +1,125 @@
+---
+title: Modifica visiva
+description: Permetti ai redattori di fare clic sul testo della tua pagina di anteprima e arrivare al campo che lo contiene nel pannello di amministrazione.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+La modifica visiva trasforma la tua pagina di anteprima in una mappa del pannello di
+amministrazione: un redattore passa sopra un titolo, fa clic su **Edit**, e la voce si apre
+con il focus su quel campo. Si basa sull'[Anteprima](/it/guides/content/preview/): configura
+prima gli URL di anteprima, poi aggiungi alla pagina di anteprima i due pezzi qui sotto.
+
+Verdin nasconde una piccola source map invisibile in ogni testo che restituisce (una tecnica
+nota come *stega*), e uno script di overlay trova quei testi nella pagina. Nei tuoi componenti
+non cambia nulla: il testo marcato viene mostrato come qualsiasi altro.
+
+<Diagram code={`flowchart LR
+  A[Pagina di anteprima] -- "x-verdin-stega: true" --> B[Content API]
+  B -- "testo + source map invisibile" --> A
+  A -- "visual-editing.js: clic su Edit" --> C[Campo nel pannello di amministrazione]`} caption="La pagina chiede le source map, e l'overlay le trasforma in link ai campi." />
+
+## Configurazione
+
+<Steps>
+
+1. Attiva **Anteprima** in **Impostazioni → Funzionalità**, scegli **Configura gli URL di
+   anteprima** e dai a ogni tipo di contenuto l'URL della pagina che lo mostra. La sezione
+   **Modifica visiva** della stessa finestra mostra il tag script e l'header per il tuo
+   server. Vedi [Anteprima](/it/guides/content/preview/).
+
+2. Nella pagina di anteprima, recupera i contenuti con un token e l'header
+   `x-verdin-stega: true`. Il token è il token di anteprima dell'URL di anteprima
+   (`?preview=…`, rimandato come `x-verdin-preview`) o un token API:
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. Carica l'overlay nella stessa pagina:
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   Il path segue [`[admin].path`](/it/reference/configuration/): `{path}/api/visual-editing.js`.
+
+</Steps>
+
+Con il [client tipizzato](/it/guides/frontend/typed-client/), passa entrambi gli header in
+`headers`:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+Le source map vengono aggiunte solo alle risposte REST, non a GraphQL: leggi i contenuti di
+anteprima tramite l'API REST.
+
+Passa sopra il testo marcato nella pagina: riceve un contorno verde e un pulsante **Edit**.
+Dentro l'anteprima affiancata dell'admin (**Apri anteprima** → **Affiancati**), il pulsante
+chiede all'admin di aprire il campo lì stesso. Quando la pagina è aperta da sola, il pulsante
+apre la voce in una nuova scheda.
+
+<Aside type="note">
+Le source map vengono aggiunte solo alle richieste `GET` che inviano `x-verdin-stega: true`
+**e** un token (`Authorization` o `x-verdin-preview`). Il traffico pubblico e tutto ciò che
+la tua CDN mette in cache non le portano mai, e le risposte marcate vengono inviate con
+`Cache-Control: private, no-store`.
+</Aside>
+
+## Cosa viene marcato
+
+| Marcato | Non marcato |
+| --- | --- |
+| Attributi `string`, `text` e `richtext` | `uid`, `email`, `password`, `enumeration` |
+| Il primo testo di ogni blocco di un attributo `blocks` | Numeri, booleani, date, JSON |
+| Lo stesso dentro componenti e zone dinamiche (`seo.metaTitle`, `blocks.2.title`) | Stringhe vuote |
+| Relazioni popolate, che puntano alla voce collegata | Campi media |
+
+L'overlay legge i marcatori anche negli attributi `alt` e `title`, così un testo marcato che
+metti in uno di essi (un campo didascalia usato come `alt`, per esempio) resta cliccabile.
+
+## Rimuovi i marcatori dove il testo è un dato
+
+I marcatori sono caratteri invisibili aggiunti al testo. Dove usi un valore come dato anziché
+mostrarlo (una chiave, un URL, un confronto, un controllo sulla lunghezza del `<title>`),
+rimuovili prima:
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+I campi che sono dati per natura, come gli slug `uid` e le enumerazioni, non vengono mai
+marcati, quindi il routing su `slug` funziona così com'è.
+
+## Come viene codificato un marcatore
+
+Per gli strumenti che leggono da sé i marcatori: un marcatore è U+2064, poi ogni byte UTF-8 di
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+come quattro cifre in base 4 (la più significativa per prima) scritte con U+200B, U+200C,
+U+200D e U+2060, poi U+2063. L'URL dell'admin deriva da
+[`[server].public_url`](/it/reference/configuration/) e da `[admin].path`. L'overlay invia
+`{ type: 'verdin:edit', href }` alla finestra genitore con `postMessage`; l'admin agisce
+solo quando arriva dall'origine dell'URL di anteprima.

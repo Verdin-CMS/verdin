@@ -1,0 +1,265 @@
+---
+title: البدء السريع
+description: شغّل Verdin باستخدام Docker أو الملف التنفيذي، وأنشئ المسؤول الأول، ونمذج نوع محتوى واقرأه من الـ API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+تأخذك هذه الصفحة من لا شيء إلى أول استجابة من الـ API في نحو عشر دقائق: شغّل
+Verdin، وأنشئ المسؤول الأول، ونمذج نوع محتوى، وافتحه للعامة واقرأه
+عبر REST أو GraphQL أو عميل TypeScript.
+
+تحتاج إما إلى [Docker](https://docs.docker.com/get-docker/) أو إلى جهاز يستطيع تشغيل
+الملف التنفيذي `verdin` (Linux أو macOS أو Windows على x86-64، وLinux أو macOS على ARM64).
+
+## 1. شغّل Verdin
+
+<Tabs syncKey="install">
+  <TabItem label="Docker">
+
+ولّد الأسرار مرة واحدة، ثم شغّل الصورة في وضع التطوير:
+
+```sh title="Terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+تحتوي وحدة التخزين `verdin-data` على قاعدة بيانات SQLite (`/data/verdin.db`)، والوسائط
+المرفوعة (`/data/uploads`)، وفي `dev`، ملفات المخطط التي يكتبها منشئ أنواع المحتوى
+(`/data/schema`).
+
+  </TabItem>
+  <TabItem label="Binary">
+
+نزّل الأرشيف الخاص بمنصتك من
+[صفحة الإصدارات](https://github.com/Verdin-CMS/verdin/releases)، وفكّه وضع
+`verdin` في `PATH` الخاص بك. لوحة الإدارة مدمجة في الملف التنفيذي.
+
+أنشئ هيكل مشروع وشغّله في وضع التطوير:
+
+```sh title="Terminal"
+verdin new my-site            # verdin.toml، وschema/، و.env بأسرار جديدة، وSQLite
+cd my-site
+verdin dev
+```
+
+يأخذ `verdin new` الخيار `--database sqlite|postgres|mysql|mariadb` (SQLite افتراضيًا) لـ
+اختيار قاعدة البيانات التي يشير إليها `.env` المولَّد. لـ PostgreSQL وMySQL وMariaDB،
+عدّل `VERDIN_DATABASE_URL` في `.env` ليطابق خادمك قبل أن تشغّل `verdin dev`.
+تصف [بنية المشروع](/ar/start/project-structure/) كل ملف ينشئه.
+
+  </TabItem>
+</Tabs>
+
+عندما يعرض السجل `verdin listening`، يجيب الخادم على المنفذ 1337. ينشئ التشغيل الأول
+جداول قاعدة البيانات.
+
+## 2. الأسرار
+
+يحتاج Verdin إلى سرّين، طول كل منهما 32 بايت على الأقل:
+
+| المتغير | ما يحميه |
+| --- | --- |
+| `VERDIN_ADMIN_JWT_SECRET` | يوقّع جلسات الإدارة. |
+| `VERDIN_TOKEN_PEPPER` | يجزّئ رموز API ويحمي أسرار المصادقة الثنائية ورموز الاسترداد. |
+
+يطبع `verdin secrets` قيمًا جديدة، ويكتبها `verdin new` في `.env`. تأتي الأسرار
+من البيئة فقط، لا من `verdin.toml` أبدًا، ولا يبدأ الخادم
+بدونها. يُحمَّل ملف `.env` المجاور لـ `verdin.toml` عند البدء؛ والمتغيرات المعيّنة
+بالفعل في البيئة لها الأولوية.
+
+<Aside type="caution">
+ولّد الأسرار مرة واحدة لكل تثبيت واحتفظ بها. قيمة `VERDIN_ADMIN_JWT_SECRET` جديدة
+تبطل رموز تسجيل الدخول الحالية، وروابط المعاينة المفتوحة، وتسجيلات الدخول عبر OAuth الجارية (تجدّد لوحة
+الإدارة جلستها تلقائيًا)؛ وقيمة `VERDIN_TOKEN_PEPPER` جديدة تبطل كل رمز API
+وكل إعداد للمصادقة الثنائية. أبقِ `.env` و`verdin.env` خارج إدارة الإصدارات.
+</Aside>
+
+## 3. أنشئ المسؤول الأول
+
+افتح [http://localhost:1337/admin/](http://localhost:1337/admin/). ما دام لا يوجد أي مسؤول، تعرض لوحة الإدارة
+**مرحبًا بك في Verdin**: أدخل اسمك وبريدك الإلكتروني وكلمة مرور من 8 أحرف على الأقل،
+ثم اختر **إنشاء حساب**. هذا الحساب الأول Super Admin لديه كل الصلاحيات.
+
+يمكنك أيضًا إنشاء المسؤولين من سطر الأوامر؛ راجع
+[المستخدمون المسؤولون من سطر الأوامر](#المستخدمون-المسؤولون-من-سطر-الأوامر).
+
+## 4. نمذج نوع محتوى
+
+<Steps>
+
+1. في الشريط الجانبي، افتح **منشئ أنواع المحتوى** واختر **نوع محتوى جديد**.
+2. عيّن **اسم العرض** إلى `Article`. يملأ Verdin **الاسم المفرد (معرّف API)** بـ
+   `article` و**الاسم الجمع (المسار)** بـ `articles`؛ والمسار هو عنوان URL
+   للنوع في الـ API. أبقِ **النوع** على **مجموعة**.
+3. اختر **إضافة حقل**، واختر **نص قصير**، وسمّه `title`، واختر **تم**.
+4. اختر **حفظ**. تسرد **مراجعة الترحيل** خطوات قاعدة البيانات مع SQL الخاص بها؛
+   اختر **تطبيق**.
+
+</Steps>
+
+يكتب Verdin النوع في `schema/content-types/article.json` وينشئ جدوله.
+المنشئ متاح في `verdin dev` فقط: في الإنتاج يأتي المخطط من
+ملفاتك. راجع [نموذج المحتوى](/ar/concepts/content-model/) لأنواع الحقول وخياراتها.
+
+الآن أضف إدخالًا: افتح **Article** تحت **المجموعات**، واختر **إدخال جديد**، واملأ
+العنوان واختر **نشر**. للأنواع الجديدة **المسودة والنشر** مفعّل، لذا تبقى إدخالاتها
+مسودات، غير مرئية للـ API العام، حتى تُنشر.
+
+## 5. افتحه للعامة
+
+يبقى API المحتوى مغلقًا حتى تمنح صلاحيات عامة أو تنشئ رموز API.
+افتح **الإعدادات ← الوصول العام**، واسمح بـ **بحث** و**بحث عن واحد** لـ **Article**، و
+اختر **حفظ**.
+
+للقراءة دون وصول عام، أنشئ رمزًا في **الإعدادات ← رموز API** وأرسله
+على شكل `Authorization: Bearer <token>`. راجع [رموز API](/ar/guides/auth/api-tokens/) و
+[الصلاحيات](/ar/concepts/permissions/).
+
+## 6. أرسل طلبًا أول
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl localhost:1337/api/articles
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "documentId": "01m3p88agn712n02wb8kkpe94p",
+      "title": "Hello Verdin",
+      "createdAt": "2026-09-29T09:34:39.637Z",
+      "updatedAt": "2026-09-29T09:34:39.637Z",
+      "publishedAt": "2026-09-29T09:34:39.637Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+للاستجابة الشكل المسطّح في Strapi v5. تستخدم عوامل التصفية والترتيب والتقسيم إلى صفحات و
+`populate` معاملات الاستعلام نفسها؛ راجع [REST API](/ar/api/rest/).
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+فعّل **الإعدادات ← الميزات ← GraphQL**. عندئذ يقدّم `POST /graphql` مخططًا مولَّدًا
+من أنواع محتواك، بالصلاحيات نفسها التي لـ REST API:
+
+```sh title="Terminal"
+curl localhost:1337/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+```json
+{ "data": { "articles": [{ "documentId": "01m3p88agn712n02wb8kkpe94p", "title": "Hello Verdin" }] } }
+```
+
+راجع [GraphQL API](/ar/api/graphql/).
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+ولّد الأنواع من المخطط وثبّت العميل في مشروع الواجهة الأمامية:
+
+```sh title="Terminal"
+verdin types -o src/verdin-types.ts   # في مشروع Verdin
+npm install @verdin/client            # في مشروع الواجهة الأمامية
+```
+
+مع Docker، يمكن للصورة طباعة الأنواع من المخطط الموجود في وحدة التخزين:
+`docker run --rm -v verdin-data:/data ghcr.io/verdin-cms/verdin types > src/verdin-types.ts`.
+
+```ts title="src/articles.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+
+const { data } = await verdin.collection('articles').find({ sort: ['publishedAt:desc'] });
+console.log(data.map((article) => article.title));
+```
+
+راجع [العميل المُنمَّط](/ar/guides/frontend/typed-client/).
+
+  </TabItem>
+</Tabs>
+
+من هنا، يبني درسا [Astro](/ar/start/tutorial-astro/) و[Next.js](/ar/start/tutorial-nextjs/)
+واجهة أمامية لمدونة على الـ API نفسه.
+
+## وضعا التطوير والإنتاج
+
+| الأمر | استخدمه لـ |
+| --- | --- |
+| `verdin dev` | التطوير: تُطبَّق الترحيلات الآمنة تلقائيًا، ويستطيع منشئ أنواع المحتوى تحرير ملفات المخطط، ويعيد الخادم التحميل عندما تتغير. |
+| `verdin start` | الإنتاج. يرفض العمل ما دامت قاعدة البيانات متأخرة عن المخطط. |
+| `verdin start --migrate` | الإنتاج، مع تطبيق الترحيلات الآمنة المعلّقة قبل البدء. هذا هو الأمر الافتراضي لصورة Docker. |
+
+ملفات تعريف ارتباط التجديد `Secure` في `verdin start` وليست كذلك في `verdin dev`، لذا يحتاج تسجيل الدخول إلى
+خادم `start` إلى HTTPS. لتجربة `start` عبر HTTP العادي، عيّن
+`VERDIN_ADMIN__SECURE_COOKIES=false`.
+
+في الإنتاج، أبقِ المخطط تحت إدارة الإصدارات وركّبه للقراءة فقط. مع Docker:
+
+```sh title="Terminal"
+docker run -p 1337:1337 --env-file verdin.env \
+  -e VERDIN_DATABASE_URL=postgres://user:pass@db:5432/verdin \
+  -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
+```
+
+تغطي [قائمة التحقق للإنتاج](/ar/deploy/production-checklist/) الباقي.
+
+## المخطط والترحيلات
+
+تعيش أنواع المحتوى في `schema/content-types/<singularName>.json` والمكوّنات في
+`schema/components/<category>/<name>.json`، بصيغة Strapi. عندما تتغير الملفات،
+يخطط Verdin لترحيل:
+
+```sh title="Terminal"
+verdin schema check                      # التحقق من كل ملف مخطط
+verdin migrate plan                      # الخطوات ومستوى المخاطر وSQL الدقيق
+verdin migrate apply                     # الخطوات الآمنة فقط
+verdin migrate apply --allow risky       # وأيضًا تغييرات الأنواع والقيود الفريدة الجديدة
+verdin migrate apply --allow destructive # وأيضًا حذف الأعمدة والجداول
+verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
+```
+
+على MySQL وMariaDB، اللذين لا يدعمان DDL ضمن المعاملات، يستأنف الترحيل المنقطع
+من الخطوة الفاشلة في `migrate apply` التالي. راجع
+[ترحيلات المخطط](/ar/concepts/schema-migrations/).
+
+## المستخدمون المسؤولون من سطر الأوامر
+
+```sh title="Terminal"
+verdin admin create --email other@example.com      # كلمة المرور من VERDIN_ADMIN_PASSWORD أو stdin
+verdin admin reset-password --email you@example.com
+```
+
+ينشئ `admin create` حساب Super Admin. ويفتح `reset-password` أيضًا قفل الحساب وينهي
+جلساته. يحتاج كلاهما إلى أن تكون قاعدة البيانات محدّثة مع المخطط.
+
+## أوامر أخرى
+
+| الأمر | ما يفعله |
+| --- | --- |
+| `verdin types -o src/verdin-types.ts` | يكتب تعريفات TypeScript لـ API المحتوى (إلى المخرج القياسي دون `-o`). |
+| `verdin import strapi <export>` | يستورد مشروع Strapi؛ راجع [الاستيراد من Strapi](/ar/migrate/from-strapi/). |
+| `verdin export <file.tar.gz>` | يكتب المخطط والمحتوى والوسائط في أرشيف؛ ويقرؤه `verdin import verdin` من جديد. |
+| `verdin version` | يطبع الإصدار. |
+
+يأخذ كل أمر `-c, --config <path>` (افتراضيًا `verdin.toml`، أو `VERDIN_CONFIG`).
+يسرد [مرجع CLI](/ar/reference/cli/) كل أمر وخيار، ويسرد
+[مرجع التهيئة](/ar/reference/configuration/) كل إعداد.
+
+## فحوص السلامة
+
+يجيب `GET /_health` ما دامت العملية تعمل. ويتحقق `GET /_ready` أيضًا من قاعدة البيانات
+ويجيب بـ 503 عندما يتعذر الوصول إليها: وجّه موازنات الأحمال إليه (راجع
+[التوسّع](/ar/deploy/scaling/)).

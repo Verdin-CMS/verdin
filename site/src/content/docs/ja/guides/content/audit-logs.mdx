@@ -1,0 +1,99 @@
+---
+title: 監査ログ
+description: 誰がいつ何を変更したかを確認し、管理パネルや API で監査ログを絞り込み、エントリーの保持期間を設定します。
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+監査ログには、誰がいつ何を変更したかが記録されます。対象は、コンテンツ、メディア、ログイン、そして管理パネルで行われたすべての変更です。このガイドでは、記録される内容、ログの絞り込み方、保持期間を説明します。
+
+Strapi では監査ログは Enterprise の機能です。Verdin ではオープンソースのコアの一部です。
+
+## 始める前に
+
+- **設定 → 機能 → 監査ログ**はデフォルトでオンです。オフにすると新しい操作の記録が止まりますが、既存のエントリーは引き続き読めます。
+- ログを読むには**監査ログの閲覧**（`audit.read`）が必要です。[権限](/ja/reference/permissions/)を参照してください。
+
+## 記録される内容
+
+| 領域 | 操作 | 備考 |
+| --- | --- | --- |
+| コンテンツ | `entry.create`、`entry.update`、`entry.publish`、`entry.unpublish`、`entry.discard-draft`、`entry.delete` | 管理パネル、REST、GraphQL、プラグインなど、すべての API から。ロケールは詳細に入ります。 |
+| レビューワークフロー | `entry.stage`、`entry.assign` | 段階の変更と割り当て。 |
+| メディア | `media.create`、`media.update`、`media.delete` | ファイルのアップロード、変更、削除。ファイル名は詳細に入ります。 |
+| ログイン | `admin.login` | パスワードと最初の管理者のログイン（アカウントに第二要素がある場合は第二要素の後に記録）、およびプロバイダー付きの SSO のログイン。 |
+| 管理画面での変更 | `{METHOD} {route}`（例: `PUT /roles/{id}`） | Admin API で成功したすべての書き込み。ユーザー、ロール、API トークン、設定、機能、Webhook、ロケール、プラグイン、リリースなどです。ルートのパラメーターは詳細に入ります。 |
+
+各エントリーには、時刻、実行者、操作、対象（コンテンツタイプの UID、`plugin::upload.file`、または `roles` のような管理画面のリソース）、対象の ID、詳細、そしてリクエストの場合はクライアントの IP アドレスがあります。
+
+実行者は次のいずれかです。
+
+- **管理者**: ログイン中の管理者。ログに名前が記録されます。
+- **API**: API トークン、エンドユーザーのトークン、または公開アクセスで、コンテンツ API や GraphQL を通じて行われた変更。
+- **システム**: ログイン中の管理者がいない Admin API の書き込み。
+
+リバースプロキシの背後では、ログにプロキシではなくクライアントのアドレスが表示されるように、`[server].trusted_proxies` を設定してください。[設定のリファレンス](/ja/reference/configuration/)を参照してください。
+
+## ログを絞り込む
+
+<Steps>
+
+1. **設定 → 監査ログ**を開きます。
+2. **クイックフィルター**のプリセット（**コンテンツ**、**メディア**、**ログイン**）を使うか、フィルターを入力します。
+   - **操作**: `entry.publish` のような正確な操作、または `entry.*` のような `*` で終わるプレフィックス。
+   - **実行者**: 1 人の管理者、または**すべて**。
+   - **対象**: `api::article` のようなコンテンツタイプの UID。
+   - **開始**と**終了**: 日付の範囲。時刻のない日付は、その日全体を含みます。
+3. **適用**を選びます。行の**詳細**を開くと、その行について記録されたすべてが表示されます。
+
+</Steps>
+
+## API で問い合わせる
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+エントリーは新しい順に並び、デフォルトは 1 ページ 50 件、最大 200 件です。
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` と `to` は ISO 8601 の日付または日時を受け付けます。それ以外は `400` エラーになります。
+
+## 保持期間を設定する
+
+`[audit].retention_days` より古いエントリーは、1 日に 1 回削除されます。デフォルトは 90 日です。
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+データベースに置くべき期間より長く監査エントリーを残したい場合は、上の API で定期的に自分のストレージにコピーしてください。
+</Aside>

@@ -1,0 +1,466 @@
+---
+title: "REST API"
+description: "Verdin의 Strapi v5 호환 REST API의 라우트, 쿼리 파라미터(filters, sort, pagination, fields, populate, locale, status), 요청 본문, 응답, 오류와 한도."
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+모든 콘텐츠 타입은 콘텐츠 API 접두사(기본값 `/api`, `[api].prefix`) 아래에 REST 라우트를 가집니다.
+라우트, 파라미터, 응답 형식은 Strapi v5를 따르므로 Strapi용으로 작성한 대부분의 프런트엔드가 그대로
+동작합니다. 이 페이지는 레퍼런스이며, 예제는
+[blog 예제](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)(글, 카테고리, 태그,
+홈페이지)를 사용합니다.
+
+서버는 *여러분의* 스키마의 라우트도 `GET /api/_openapi.json`의 OpenAPI 3.1 문서로 설명합니다.
+[예제 콘텐츠 API](/api/example/) 페이지는 블로그의 문서를 보여 주며,
+[API 플레이그라운드](/ko/api/playground/)에서 요청을 직접 보내 볼 수 있습니다.
+
+## 예제
+
+각 API로 같은 쿼리를 보냅니다. 한 카테고리의 최신 글 10개와 그 카테고리 이름입니다.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+[GraphQL API](/ko/api/graphql/)와 [타입 클라이언트](/ko/guides/frontend/typed-client/)를 참고하세요.
+
+## 인증
+
+| `Authorization` 헤더 | 호출자 | 권한 |
+| --- | --- | --- |
+| 없음 | 공개 | **설정 → 공개 접근** |
+| `Bearer vd_…` | API 토큰 | 토큰의 타입과 권한 |
+| `Bearer <JWT>` | 최종 사용자 | 해당 최종 사용자의 역할 |
+
+알 수 없거나, 만료되었거나, 형식이 잘못된 토큰은 `401`이며, 공개 접근으로 대체되지 않습니다.
+권한이 없는 유효한 호출자는 `403`을 받습니다. [권한](/ko/concepts/permissions/)을 참고하세요.
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+다른 출처의 브라우저는 `[api].cors_origins`에 그 출처가 나열된 경우에만 API를 호출할 수 있습니다.
+
+## 라우트
+
+컬렉션 타입은 `pluralName`으로 제공됩니다.
+
+| 메서드와 경로 | 액션 | 응답 |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`, 문서 한 페이지 |
+| `GET /api/articles/{documentId}` | `findOne` | `200`, 문서 하나 |
+| `POST /api/articles` | `create` | `201`, 생성된 문서 |
+| `PUT /api/articles/{documentId}` | `update` | `200`, 수정된 문서 |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`, 본문 없음 |
+
+싱글 타입은 `singularName`으로 제공됩니다.
+
+| 메서드와 경로 | 액션 | 응답 |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200`, 첫 쓰기 전에는 `404` |
+| `PUT /api/homepage` | `update` | `200`. 첫 `PUT`이 문서를 만듭니다 |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+싱글 타입에 `POST`를 보내면 `405`로 응답합니다.
+
+### 액션
+
+[초안과 게시](/ko/concepts/draft-and-publish/)를 쓰는 타입에는 라우트가 세 개 더 있으며,
+`publish` 권한이 필요합니다. Strapi에는 이에 해당하는 REST 라우트가 없습니다.
+
+| 메서드와 경로 | 효과 | 응답 |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | 초안을 게시합니다. | 게시된 버전 |
+| `POST /api/articles/{documentId}/actions/unpublish` | 게시된 버전을 삭제합니다. | 초안 |
+| `POST /api/articles/{documentId}/actions/discard-draft` | 초안을 게시된 버전으로 되돌립니다. | 초안 |
+
+세 라우트 모두 로컬라이즈된 타입에서 `?locale=`을 받습니다.
+
+## 쓰기
+
+`POST`와 `PUT`은 `data` 객체를 담은 JSON 본문을 받습니다.
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT`은 부분 업데이트입니다. 생략한 속성은 값을 유지합니다. 보낸 컴포넌트와 다이나믹 존은
+  저장된 값을 대체합니다.
+- 초안과 게시를 쓰는 타입에서 `POST`와 `PUT`은 Strapi v5처럼 초안을 쓰고 **게시까지 합니다**.
+  초안만 쓰려면 `?status=draft`를 추가하세요. 게시 검증에 실패하면 아무것도 쓰지 않습니다.
+- 알 수 없는 키, 시스템 필드(`id`, `documentId`, 타임스탬프), 역방향(`mappedBy`) 관계 쪽은
+  검증 오류입니다.
+- 관계는 `documentId`, 리스트, `null`, 또는 `{ connect, disconnect, set }`을 받습니다.
+  [관계](/ko/concepts/relations/#쓰기)를 참고하세요. 미디어 필드는 파일 id를 받습니다.
+- 응답은 요청의 `fields`와 `populate`로 읽은, 방금 쓴 버전입니다.
+- `DELETE`는 문서의 모든 버전을 삭제합니다(로컬라이즈된 타입에서는 요청한 로케일의 버전).
+
+## 쿼리 파라미터
+
+| 파라미터 | 예 | 기본값 |
+| --- | --- | --- |
+| [`filters`](#필터) | `filters[title][$containsi]=rust` | 없음 |
+| [`sort`](#정렬) | `sort=publishedAt:desc` | `id` 오름차순 |
+| [`pagination`](#페이지네이션) | `pagination[page]=2&pagination[pageSize]=10` | 1페이지, 페이지당 25개 |
+| [`fields`](#필드) | `fields[0]=title&fields[1]=slug` | 모든 스칼라 필드 |
+| [`populate`](#populate) | `populate[category][fields][0]=name` | 없음 |
+| [`status`](#상태) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#상태) | `hasPublishedVersion=false` | 없음 |
+| [`locale`](#로케일) | `locale=fr` | 기본 로케일 |
+| [`_q`](#검색) | `_q=ownership` | 없음 |
+
+파라미터는 Strapi의 대괄호 표기법을 씁니다. 리스트는 인덱스(`sort[0]=a&sort[1]=b`), 빈 대괄호
+(`sort[]=a`), 키 반복(`sort=a&sort=b`)으로 쓸 수 있습니다. 대괄호와 값은 URL에서 평소처럼
+인코딩하세요. [`qs`](https://github.com/ljharb/qs) 같은 클라이언트나
+[타입 클라이언트](/ko/guides/frontend/typed-client/)가 이런 문자열을 대신 만들어 줍니다.
+
+알 수 없는 파라미터, 알 수 없거나 `private`인 필드, 형식이 잘못된 값은 문제를 명시한 `400`
+`ValidationError`입니다. 조용히 무시되는 것은 없습니다.
+
+## 필터
+
+`filters[field][operator]=value`. 연산자 없는 값은 `$eq`입니다: `filters[slug]=hello-verdin`.
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+같은 단계의 여러 조건은 모두 일치해야 합니다. 논리 연산자로 조합하세요.
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| 연산자 | 일치 조건 | 타입 |
+| --- | --- | --- |
+| `$eq`, `$ne` | 같음, 같지 않음 | 모든 스칼라 |
+| `$eqi`, `$nei` | 대소문자 무시하고 같음, 같지 않음 | 텍스트 |
+| `$lt`, `$lte`, `$gt`, `$gte` | 미만, 이하, 초과, 이상 | 불리언을 제외한 모든 스칼라 |
+| `$between` | 두 값 사이(양 끝 포함): `[$between][0]=1&[$between][1]=5` | 불리언을 제외한 모든 스칼라 |
+| `$in`, `$notIn` | 리스트에 있음, 없음: `[$in][0]=a&[$in][1]=b` | 모든 스칼라 |
+| `$contains`, `$notContains` | 포함함, 포함하지 않음 | 텍스트 |
+| `$containsi`, `$notContainsi` | 위와 같으나 대소문자 무시 | 텍스트 |
+| `$startsWith`, `$startsWithi` | 시작 문자열(대소문자 무시) | 텍스트 |
+| `$endsWith`, `$endsWithi` | 끝 문자열(대소문자 무시) | 텍스트 |
+| `$null`, `$notNull` | 비어 있음, 값이 있음: `[$null]=true` | 모든 필드 |
+| `$and`, `$or` | 리스트의 모든 조건, 일부 조건 | 논리 |
+| `$not` | 필터 객체를 부정 | 논리 |
+
+- 텍스트 타입은 `string`, `text`, `richtext`, `email`, `uid`, `enumeration`입니다. `json`과
+  `blocks`는 `$null`과 `$notNull`만 받습니다.
+- 값은 필드 타입으로 변환됩니다. 정수, 숫자, `true`/`false`(또는 `1`/`0`), 날짜는 `YYYY-MM-DD`,
+  시간은 `HH:MM:SS`, 날짜시간은 ISO 8601입니다.
+- `id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt`, 그리고 로컬라이즈된 타입에서는
+  `locale`로도 필터링할 수 있습니다.
+- 텍스트 비교는 모든 데이터베이스에서 똑같이 동작합니다. `$eq`, `$contains` 등 `i`가 없는 연산자는
+  정확히 일치해야 하고, `…i` 변형은 대소문자를 무시합니다(MySQL과 MariaDB에서는 악센트도 무시하며,
+  SQLite는 ASCII 문자만 대소문자를 구분하지 않습니다).
+- 요청 하나에 조건은 최대 100개입니다.
+
+### 관계를 통한 필터링
+
+관련 문서의 필드로 필터링할 수 있으며, 관계의 양쪽 모두에서, 중첩해서도 가능합니다.
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+대다 조건은 관련 문서 중 하나라도 일치하면 일치합니다. 관련 문서는 읽고 있는 버전과 로케일에서
+비교됩니다. 다형성 관계와 미디어 필드로는 필터링할 수 없습니다.
+
+### 컴포넌트와 다이나믹 존 필터링
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+컴포넌트의 스칼라 필드는 중첩된 것을 포함해 필터링할 수 있으며, 반복 가능한 컴포넌트는 항목 중
+하나라도 일치하면 일치합니다. 다이나믹 존은 `__component`로만 필터링합니다.
+[컴포넌트와 다이나믹 존](/ko/concepts/components-and-dynamic-zones/#필터링)을 참고하세요.
+
+## 정렬
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` 또는 `field:asc|desc`. 방향 기본값은 `asc`입니다.
+- `json`과 `blocks`를 제외한 모든 스칼라 필드로 정렬할 수 있으며, 시스템 필드도 포함됩니다.
+- `relation.field`는 대일 관계의 필드로 정렬합니다.
+- 빈 값은 양방향 모두 마지막에 오고, 동률은 `id`로 결정되므로 페이지가 안정적입니다.
+
+## 페이지네이션
+
+페이지 기반 또는 오프셋 기반 중 하나만 씁니다.
+
+| 파라미터 | 기본값 | 참고 |
+| --- | --- | --- |
+| `pagination[page]` | `1` | 1부터 시작. |
+| `pagination[pageSize]` | `25` (`[api].default_page_size`) | 최대 `[api].max_page_size`(100). |
+| `pagination[start]` | `0` | 오프셋. |
+| `pagination[limit]` | `25` | 최댓값으로 제한. `-1`은 최댓값을 요청합니다. |
+| `pagination[withCount]` | `true` | `false`면 개수를 세지 않고 `total`과 `pageCount`를 뺍니다. |
+
+응답의 `meta.pagination`은 사용한 방식을 따릅니다.
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## 필드
+
+`fields`는 스칼라 속성을 선택합니다.
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id`와 `documentId`는 항상 반환됩니다. 관계, 미디어, 컴포넌트, 다이나믹 존은 `fields`로 선택되지
+않습니다. `populate`를 사용하세요.
+
+## Populate
+
+관계, 미디어, 컴포넌트, 다이나믹 존은 populate했을 때만 반환됩니다.
+
+| 형식 | populate 대상 |
+| --- | --- |
+| `populate=*` | 모든 관계, 미디어 필드, 컴포넌트, 다이나믹 존(한 단계) |
+| `populate=category,tags` 또는 `populate[0]=category&populate[1]=tags` | 지정한 필드 |
+| `populate[category]=true` | 지정한 필드(`false`면 제외) |
+| `populate[category][fields][0]=name` | 옵션을 지정한 필드 |
+
+populate한 각 관계는 `fields`, `filters`, `sort`, `populate`(중첩, 전체 최대 5단계), `count`를
+받습니다.
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- 대일 관계는 객체 또는 `null`이고, 대다 관계는 배열이며 연결 순서나 populate의 `sort` 순서를 따릅니다.
+- `count=true`는 문서 대신 `{ "count": 12 }`를 반환합니다(대다 관계만).
+- 문서와 관계당 관련 문서는 최대 1,000개까지 반환됩니다. `count`는 정확한 값입니다.
+- 컴포넌트와 다이나믹 존은 중첩 컴포넌트와 그 관계, 미디어를 포함해 통째로 반환됩니다. 이들에 대한
+  Strapi의 단계별 옵션(`populate[blocks][on][…]`)은 받아들이지만 무시합니다.
+- 미디어 필드는 파일 객체로 반환됩니다.
+- 다형성 관계는 `count`만 받습니다.
+- 관련 문서는 문서와 같은 상태와 로케일로 읽습니다. 호출자가 읽을 수 없는 타입을 populate하면
+  `400`이고, `populate=*`는 그 타입을 건너뜁니다.
+
+각 단계는 관계마다 배치 쿼리 하나이므로 깊은 populate도 빠르며 중복 행을 반환하지 않습니다.
+
+## 상태
+
+초안과 게시를 쓰는 타입에서 `status`는 버전을 고릅니다.
+
+- `status=published`(기본값)는 게시된 버전을 읽습니다.
+- `status=draft`는 초안을 읽으며, `find` 또는 `findOne` 외에 `readDrafts` 권한이 필요합니다.
+
+`hasPublishedVersion=true|false`는 게시된 버전이 있는(또는 없는) 문서만 남깁니다.
+`?status=draft&hasPublishedVersion=false`는 한 번도 게시되지 않은 문서를 나열합니다. 초안과 게시를
+쓰지 않는 타입에서는 `400`입니다.
+
+쓰기에서 `status=draft`는 게시하지 않고 초안만 저장합니다.
+[초안과 게시](/ko/concepts/draft-and-publish/)를 참고하세요.
+
+## 로케일
+
+`locale=fr`은 로컬라이즈된 타입의 프랑스어 버전을 읽고 씁니다. 지정하지 않으면 기본 로케일을
+사용합니다. 잘못되었거나 알 수 없는 코드는 `400`입니다. 로컬라이즈되지 않은 타입은 이를 무시합니다.
+[국제화](/ko/concepts/internationalization/)를 참고하세요.
+
+## 검색
+
+`_q`는 텍스트 필드에 단어가 포함된 문서를 대소문자 구분 없이 찾습니다(최대 200자).
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+검색 인덱스가 없으면 Strapi처럼 private이 아닌 `string`, `text`, `richtext`, `email`, `uid`,
+`enumeration` 필드 중 하나와 일치하면 됩니다. `[search] enabled = true`이면 `sort`를 넘기지 않는 한
+결과가 관련도순으로 정렬됩니다. 다른 필터와 페이지네이션도 그대로 적용됩니다.
+[검색](/ko/guides/content/search/)을 참고하세요.
+
+## 응답
+
+리스트:
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+문서 하나: `{ "data": { … }, "meta": {} }`.
+
+- 문서는 Strapi v5처럼 평평합니다. `attributes` 래퍼가 없습니다.
+- 속성은 `id`/`documentId`와 타임스탬프 사이에 스키마 순서대로 나오며, 로컬라이즈된 타입에는
+  `locale`이 추가됩니다. `private` 필드는 절대 나오지 않습니다.
+- `biginteger` 값은 문자열입니다. `decimal` 값은 스케일에 맞춰 반올림한 숫자입니다
+  (`[api].decimal_as_string = true`이면 문자열). 날짜는 `YYYY-MM-DD`, 시간은 `HH:MM:SS.mmm`,
+  날짜시간은 UTC 기준 `YYYY-MM-DDTHH:MM:SS.mmmZ`입니다.
+
+성공한 읽기에는 `ETag`가 붙습니다. `If-None-Match`로 다시 보내면 `304 Not Modified`를 받습니다.
+CDN 퍼지를 위한 `Cache-Tag`와 `Surrogate-Key` 헤더도 붙습니다
+([배포와 CDN](/ko/guides/integrations/deploys-and-cdn/) 참고).
+
+## 오류
+
+오류는 Strapi의 형식을 따릅니다.
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| 상태 | `name` | 발생 조건 |
+| --- | --- | --- |
+| `400` | `ValidationError` | 파라미터, 본문, 콘텐츠가 잘못되었습니다. `details.errors`에 콘텐츠 문제와 경로가 나열됩니다. |
+| `401` | `UnauthorizedError` | 형식이 잘못되었거나, 알 수 없거나, 만료된 토큰. |
+| `403` | `ForbiddenError` | 호출자에게 권한이 없습니다(초안의 경우 `readDrafts`). |
+| `404` | `NotFoundError` | 알 수 없는 라우트, 콘텐츠 타입, 문서. |
+| `405` | `MethodNotAllowedError` | 싱글 타입에 `POST`, 또는 컬렉션 타입의 라우트에 `PUT`이나 `DELETE`. |
+| `408` | | 요청이 `[server].request_timeout_secs`(30초)보다 오래 걸렸습니다. |
+| `413` | | 본문이 `[server].body_limit`(1 MB)보다 큽니다. |
+| `429` | `RateLimitError` | `[api].public_rate_limit` 또는 `[api].token_rate_limit`을 넘었습니다. `Retry-After`가 재시도 시점을 알려 줍니다. |
+| `500` | `ApplicationError` | 예상치 못한 오류. 자세한 내용은 서버 로그에만 있습니다. |
+
+## 한도
+
+| 한도 | 값 |
+| --- | --- |
+| 페이지 크기 | `[api].max_page_size`, 기본 100 |
+| populate 깊이 | 5단계 |
+| 문서와 관계당 관련 문서 | 1,000 |
+| 필터 조건 | 100 |
+| 파라미터의 대괄호 중첩 | 12단계 |
+| 요청당 파라미터 | 1,000 |
+| 쿼리 문자열 | 16 KB |
+| `_q` | 200자 |
+
+설정할 수 있는 것은 페이지 크기뿐입니다. `filters`, `sort`, `fields`, `populate`의 모든 필드 이름은
+스키마와 대조해 확인하며, 값은 항상 SQL 파라미터로 바인딩됩니다.
+
+## 미디어 라이브러리
+
+Strapi의 업로드 라우트이며, **미디어 라이브러리** 권한으로 확인합니다. Strapi처럼 `data` 없이
+일반 객체와 배열로 응답합니다.
+
+| 라우트 | 권한 | 본문 또는 파라미터 |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart: `files`(최대 20개), 선택 사항인 `fileInfo` JSON(`name`, `alternativeText`, `caption`, `folder`, `focalPoint`), 파일마다 하나 또는 전체에 하나 |
+| `POST /api/upload?id={id}` | `update` | Multipart `fileInfo`, 선택적으로 내용을 대체할 새 파일 |
+| `GET /api/upload/files` | `find` | `pagination[page]`, `pagination[pageSize]`, `sort`, `filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+[미디어](/ko/concepts/media/)를 참고하세요.
+
+## 접두사 아래의 기타 라우트
+
+| 라우트 | 페이지 |
+| --- | --- |
+| `/api/auth/*`, `/api/users/*`, `/api/connect/*` | [최종 사용자](/ko/guides/auth/end-users/)(기능이 켜져 있을 때) |
+| `/api/_events` | [Realtime API](/ko/api/realtime/)(기능이 켜져 있을 때) |
+| `/api/_redirects`, `/api/_menus/{slug}`, `/api/_forms/{slug}` | [리디렉션](/ko/guides/frontend/redirects/), [메뉴](/ko/guides/frontend/menus/), [폼](/ko/guides/frontend/forms/) |
+| `/api/_openapi.json`, `/api/docs` | OpenAPI 문서(**설정 → 기능 → API 문서**에서 공개하지 않으면 API 토큰 전용)와 대화형 레퍼런스(공개된 경우) |
+| `/api/plugins/{name}/*` | [플러그인](/ko/extending/plugins/)의 라우트 |

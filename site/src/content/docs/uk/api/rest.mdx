@@ -1,0 +1,477 @@
+---
+title: "REST API"
+description: "Маршрути, параметри запиту (filters, sort, pagination, fields, populate, locale, status), тіла запитів, відповіді, помилки та обмеження REST API Verdin, сумісного зі Strapi v5."
+sidebar:
+  order: 1
+  label: "REST"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+
+Кожен тип вмісту отримує REST-маршрути під префіксом API вмісту, типово `/api`
+(`[api].prefix`). Маршрути, параметри та формат відповідей відповідають Strapi v5, тож
+більшість фронтендів, написаних для Strapi, працюють без змін. Ця сторінка — довідник;
+приклади використовують [приклад блогу](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+(статті, категорії, теги та домашня сторінка).
+
+Сервер також описує маршрути *вашої* схеми в документі OpenAPI 3.1 за адресою
+`GET /api/_openapi.json`. Сторінки [прикладу API вмісту](/api/example/) показують документ
+блогу, а [пісочниця API](/uk/api/playground/) дає змогу спробувати запити.
+
+## Приклад
+
+Той самий запит у кожному API: десять останніх статей категорії з назвою їхньої категорії.
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" -G 'https://cms.example.com/api/articles' \
+  --data-urlencode 'filters[category][name][$eq]=News' \
+  --data-urlencode 'sort=publishedAt:desc' \
+  --data-urlencode 'pagination[pageSize]=10' \
+  --data-urlencode 'populate[category][fields][0]=name'
+```
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { category: { name: { eq: "News" } } }
+    sort: ["publishedAt:desc"]
+    pagination: { pageSize: 10 }
+  ) {
+    documentId
+    title
+    category { name }
+  }
+}
+```
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+
+const verdin = createClient({ url: 'https://cms.example.com', token: process.env.VERDIN_TOKEN });
+
+const { data } = await verdin.collection('articles').find({
+  filters: { category: { name: { $eq: 'News' } } },
+  sort: ['publishedAt:desc'],
+  pagination: { pageSize: 10 },
+  populate: { category: { fields: ['name'] } },
+});
+```
+
+  </TabItem>
+</Tabs>
+
+Див. [GraphQL API](/uk/api/graphql/) і [Типізований клієнт](/uk/guides/frontend/typed-client/).
+
+## Автентифікація
+
+| Заголовок `Authorization` | Клієнт | Дозволи |
+| --- | --- | --- |
+| немає | Публічний | **Налаштування → Публічний доступ** |
+| `Bearer vd_…` | API-токен | Тип і дозволи токена |
+| `Bearer <JWT>` | Кінцевий користувач | Його роль кінцевого користувача |
+
+Невідомий, прострочений або некоректний токен дає `401`; запит ніколи не переходить у
+публічний доступ. Автентифікований клієнт без потрібного дозволу отримує `403`. Див.
+[Дозволи](/uk/concepts/permissions/).
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'https://cms.example.com/api/articles'
+```
+
+Браузери з інших origin можуть викликати API, лише якщо їх перелічено в `[api].cors_origins`.
+
+## Маршрути
+
+Типи колекцій доступні за їхнім `pluralName`:
+
+| Метод і шлях | Дія | Відповідь |
+| --- | --- | --- |
+| `GET /api/articles` | `find` | `200`, сторінка документів |
+| `GET /api/articles/{documentId}` | `findOne` | `200`, один документ |
+| `POST /api/articles` | `create` | `201`, створений документ |
+| `PUT /api/articles/{documentId}` | `update` | `200`, оновлений документ |
+| `DELETE /api/articles/{documentId}` | `delete` | `204`, без тіла |
+
+Поодинокі типи доступні за їхнім `singularName`:
+
+| Метод і шлях | Дія | Відповідь |
+| --- | --- | --- |
+| `GET /api/homepage` | `find` | `200` або `404` до першого запису |
+| `PUT /api/homepage` | `update` | `200`; перший `PUT` створює документ |
+| `DELETE /api/homepage` | `delete` | `204` |
+
+`POST` для поодинокого типу відповідає `405`.
+
+### Дії
+
+Типи з [чернетками й публікацією](/uk/concepts/draft-and-publish/) мають ще три маршрути, яким
+потрібен дозвіл `publish`. У Strapi немає REST-відповідника.
+
+| Метод і шлях | Дія | Відповідь |
+| --- | --- | --- |
+| `POST /api/articles/{documentId}/actions/publish` | Публікує чернетку. | Опублікована версія |
+| `POST /api/articles/{documentId}/actions/unpublish` | Видаляє опубліковану версію. | Чернетка |
+| `POST /api/articles/{documentId}/actions/discard-draft` | Замінює чернетку опублікованою версією. | Чернетка |
+
+У локалізованих типах усі три приймають `?locale=`.
+
+## Запис даних
+
+`POST` і `PUT` приймають JSON-тіло з об'єктом `data`:
+
+```sh title="Terminal"
+curl -X POST 'https://cms.example.com/api/articles' \
+  -H "Authorization: Bearer $VERDIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "data": {
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "category": "k2m7q4…",
+      "tags": ["a7c1…", "p9x3…"],
+      "seo": { "metaTitle": "Hello, Verdin" }
+    }
+  }'
+```
+
+- `PUT` — це часткове оновлення: пропущені атрибути зберігають своє значення. Надіслані
+  компоненти й динамічні зони замінюють збережене значення.
+- У типах із чернетками й публікацією `POST` і `PUT` записують чернетку **і публікують її**, як
+  у Strapi v5. Додайте `?status=draft`, щоб записати лише чернетку. Якщо публікація не
+  проходить валідацію, нічого не записується.
+- Невідомі ключі, системні поля (`id`, `documentId`, мітки часу) та зворотні (`mappedBy`)
+  сторони зв'язків — це помилки валідації.
+- Зв'язки приймають `documentId`, списки, `null` або `{ connect, disconnect, set }`; див.
+  [Зв'язки](/uk/concepts/relations/#запис). Медіаполя приймають id файлів.
+- Відповідь — це записана версія, прочитана з `fields` і `populate` запиту.
+- `DELETE` видаляє всі версії документа (у локалізованих типах — версію в запитаній локалі).
+
+## Параметри запиту
+
+| Параметр | Приклад | Типово |
+| --- | --- | --- |
+| [`filters`](#фільтри) | `filters[title][$containsi]=rust` | немає |
+| [`sort`](#сортування) | `sort=publishedAt:desc` | за `id`, за зростанням |
+| [`pagination`](#пагінація) | `pagination[page]=2&pagination[pageSize]=10` | сторінка 1, 25 на сторінку |
+| [`fields`](#поля) | `fields[0]=title&fields[1]=slug` | усі скалярні поля |
+| [`populate`](#populate) | `populate[category][fields][0]=name` | нічого |
+| [`status`](#статус) | `status=draft` | `published` |
+| [`hasPublishedVersion`](#статус) | `hasPublishedVersion=false` | немає |
+| [`locale`](#локаль) | `locale=fr` | типова локаль |
+| [`_q`](#пошук) | `_q=ownership` | немає |
+
+Параметри використовують квадратні дужки, як у Strapi. Списки можна записувати з індексами
+(`sort[0]=a&sort[1]=b`), з порожніми дужками (`sort[]=a`) або повторюючи ключ
+(`sort=a&sort=b`). Кодуйте дужки й значення, як зазвичай в URL; клієнти на кшталт
+[`qs`](https://github.com/ljharb/qs) або [типізованого клієнта](/uk/guides/frontend/typed-client/)
+будують ці рядки за вас.
+
+Невідомий параметр, невідоме або `private` поле чи некоректне значення — це `400`
+`ValidationError` із назвою проблеми. Нічого не ігнорується мовчки.
+
+## Фільтри
+
+`filters[field][operator]=value`. Значення без оператора означає `$eq`: `filters[slug]=hello-verdin`.
+
+```http
+GET /api/articles?filters[title][$containsi]=rust&filters[readingTime][$lte]=5
+```
+
+Кілька умов на одному рівні мають виконуватися всі. Комбінуйте їх логічними операторами:
+
+```http
+GET /api/articles?filters[$or][0][featured][$eq]=true&filters[$or][1][readingTime][$gt]=10
+GET /api/articles?filters[$not][category][name][$eq]=News
+```
+
+| Оператор | Збіг | Типи |
+| --- | --- | --- |
+| `$eq`, `$ne` | Дорівнює, не дорівнює | усі скалярні |
+| `$eqi`, `$nei` | Дорівнює, не дорівнює, без урахування регістру | текстові |
+| `$lt`, `$lte`, `$gt`, `$gte` | Менше, менше або дорівнює, більше, більше або дорівнює | усі скалярні, крім булевих |
+| `$between` | Між двома значеннями включно: `[$between][0]=1&[$between][1]=5` | усі скалярні, крім булевих |
+| `$in`, `$notIn` | Є, немає у списку: `[$in][0]=a&[$in][1]=b` | усі скалярні |
+| `$contains`, `$notContains` | Містить, не містить | текстові |
+| `$containsi`, `$notContainsi` | Те саме, без урахування регістру | текстові |
+| `$startsWith`, `$startsWithi` | Починається з (без урахування регістру) | текстові |
+| `$endsWith`, `$endsWithi` | Закінчується на (без урахування регістру) | текстові |
+| `$null`, `$notNull` | Порожнє, задане: `[$null]=true` | усі поля |
+| `$and`, `$or` | Усі, хоча б одна умова зі списку | логічні |
+| `$not` | Заперечує об'єкт фільтра | логічні |
+
+- Текстові типи — це `string`, `text`, `richtext`, `email`, `uid` і `enumeration`. `json` і
+  `blocks` приймають лише `$null` і `$notNull`.
+- Значення перетворюються на тип поля: цілі числа, числа, `true`/`false` (або `1`/`0`),
+  дати як `YYYY-MM-DD`, час як `HH:MM:SS`, дати з часом як ISO 8601.
+- Фільтрувати можна за `id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt` і, у
+  локалізованих типах, за `locale`.
+- Порівняння тексту поводяться однаково в усіх базах даних: `$eq`, `$contains` та інші
+  оператори без `i` точні, а варіанти `…i` ігнорують регістр (і діакритику в MySQL та
+  MariaDB; SQLite зводить регістр лише для літер ASCII).
+- Запит має щонайбільше 100 умов.
+
+### Фільтрування через зв'язки
+
+Фільтруйте за полями пов'язаних документів, з будь-якого боку зв'язку та з вкладенням:
+
+```http
+GET /api/articles?filters[category][name][$eq]=News
+GET /api/articles?filters[tags][label][$in][0]=rust&filters[tags][label][$in][1]=cms
+GET /api/categories?filters[articles][tags][label][$eq]=rust
+GET /api/articles?filters[category][$null]=true
+```
+
+Умова to-many виконується, коли збігається хоча б один пов'язаний документ. Пов'язані
+документи порівнюються у версії та локалі, що читаються. Поліморфні зв'язки та медіаполя
+фільтрувати не можна.
+
+### Фільтрування за компонентами й динамічними зонами
+
+```http
+GET /api/articles?filters[seo][metaTitle][$containsi]=rust
+GET /api/articles?filters[blocks][__component][$eq]=blocks.quote
+```
+
+Скалярні поля компонентів, зокрема вкладених, можна фільтрувати; повторюваний компонент
+збігається, коли збігається хоча б один елемент. Динамічні зони фільтруються лише за
+`__component`. Див. [Компоненти й динамічні зони](/uk/concepts/components-and-dynamic-zones/#фільтрування).
+
+## Сортування
+
+```http
+GET /api/articles?sort=publishedAt:desc
+GET /api/articles?sort[0]=featured:desc&sort[1]=title:asc
+GET /api/articles?sort=title,createdAt:desc
+GET /api/articles?sort=category.name:asc
+```
+
+- `field` або `field:asc|desc`; типовий напрямок — `asc`.
+- Сортувати можна за будь-яким скалярним полем, крім `json` і `blocks`, зокрема за системними.
+- `relation.field` сортує за полем зв'язку to-one.
+- Порожні значення йдуть останніми в обох напрямках, а однакові впорядковуються за `id`, тож
+  сторінки стабільні.
+
+## Пагінація
+
+За сторінками або за зсувом, але не обидва способи разом:
+
+| Параметр | Типово | Примітки |
+| --- | --- | --- |
+| `pagination[page]` | `1` | Від 1. |
+| `pagination[pageSize]` | `25` (`[api].default_page_size`) | Не більше `[api].max_page_size` (100). |
+| `pagination[start]` | `0` | Зсув. |
+| `pagination[limit]` | `25` | Не більше максимуму; `-1` запитує максимум. |
+| `pagination[withCount]` | `true` | `false` пропускає підрахунок і не повертає `total` і `pageCount`. |
+
+`meta.pagination` у відповіді відповідає використаному режиму:
+
+```json
+{ "page": 2, "pageSize": 10, "pageCount": 9, "total": 87 }
+{ "start": 20, "limit": 10, "total": 87 }
+```
+
+## Поля
+
+`fields` вибирає скалярні атрибути:
+
+```http
+GET /api/articles?fields[0]=title&fields[1]=slug
+GET /api/articles?fields=title,slug
+```
+
+`id` і `documentId` повертаються завжди. Зв'язки, медіа, компоненти й динамічні зони ніколи
+не вибираються через `fields`: використовуйте `populate`.
+
+## Populate
+
+Зв'язки, медіа, компоненти й динамічні зони повертаються лише тоді, коли їх заповнено через
+`populate`:
+
+| Форма | Що заповнює |
+| --- | --- |
+| `populate=*` | Усі зв'язки, медіаполя, компоненти й динамічні зони на один рівень углиб |
+| `populate=category,tags` або `populate[0]=category&populate[1]=tags` | Названі поля |
+| `populate[category]=true` | Назване поле (`false` його пропускає) |
+| `populate[category][fields][0]=name` | Поле з параметрами |
+
+Кожен заповнюваний зв'язок приймає `fields`, `filters`, `sort`, `populate` (вкладено, загалом
+до 5 рівнів) і `count`:
+
+```http
+GET /api/articles?populate[category][fields][0]=name
+  &populate[tags][filters][label][$startsWith]=r&populate[tags][sort]=label:asc
+  &populate[category][populate][articles][count]=true
+```
+
+- Зв'язок to-one — це об'єкт або `null`; зв'язок to-many — масив у порядку зв'язування або в
+  порядку `sort` з populate.
+- `count=true` повертає `{ "count": 12 }` замість документів (лише для зв'язків to-many).
+- Для кожного документа й зв'язку повертається щонайбільше 1 000 пов'язаних документів; `count`
+  точний.
+- Компоненти й динамічні зони повертаються повністю, разом із вкладеними компонентами, їхніми
+  зв'язками та медіа. Параметри Strapi для окремих рівнів (`populate[blocks][on][…]`)
+  приймаються й ігноруються.
+- Медіаполя повертаються як об'єкти файлів.
+- Поліморфні зв'язки приймають лише `count`.
+- Пов'язані документи читаються в тому самому статусі й локалі, що й документ. Заповнення
+  типу, який клієнт не може читати, дає `400`; `populate=*` його пропускає.
+
+Кожен рівень — це один пакетний запит на зв'язок, тож глибокі populate залишаються швидкими й
+ніколи не повертають дубльованих рядків.
+
+## Статус
+
+У типах із чернетками й публікацією `status` вибирає версію:
+
+- `status=published` (типово) читає опубліковані версії.
+- `status=draft` читає чернетки й вимагає дозволу `readDrafts` на додачу до `find` або `findOne`.
+
+`hasPublishedVersion=true|false` залишає документи, які мають або не мають опублікованої
+версії: `?status=draft&hasPublishedVersion=false` перелічує документи, які ніколи не
+публікувалися. У типах без чернеток і публікації це `400`.
+
+Під час запису `status=draft` зберігає чернетку без публікації. Див.
+[Чернетки й публікація](/uk/concepts/draft-and-publish/).
+
+## Локаль
+
+`locale=fr` читає й записує французьку версію локалізованих типів. Без нього запити
+використовують типову локаль. Некоректний або невідомий код дає `400`. Нелокалізовані типи
+його ігнорують. Див. [Інтернаціоналізація](/uk/concepts/internationalization/).
+
+## Пошук
+
+`_q` знаходить документи, чиї текстові поля містять слова, без урахування регістру
+(щонайбільше 200 символів):
+
+```http
+GET /api/articles?_q=rust ownership
+```
+
+Без пошукового індексу, як і в Strapi, збіг шукається в будь-якому не-private полі `string`,
+`text`, `richtext`, `email`, `uid` або `enumeration`. З `[search] enabled = true` результати
+впорядковуються за релевантністю, якщо не передано `sort`. Інші фільтри та пагінація діють і
+далі. Див. [Пошук](/uk/guides/content/search/).
+
+## Відповіді
+
+Список:
+
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "documentId": "k2m7q4dx8n5t1v3b9c0e6a2wfr",
+      "title": "Hello, Verdin",
+      "slug": "hello-verdin",
+      "excerpt": null,
+      "body": "…",
+      "readingTime": 4,
+      "featured": false,
+      "createdAt": "2026-09-25T09:00:00.000Z",
+      "updatedAt": "2026-09-25T09:30:00.000Z",
+      "publishedAt": "2026-09-25T09:30:00.000Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+Один документ: `{ "data": { … }, "meta": {} }`.
+
+- Документи плоскі, як у Strapi v5: без обгортки `attributes`.
+- Атрибути йдуть у порядку схеми, між `id`/`documentId` і мітками часу; локалізовані типи
+  додають `locale`. Поля `private` ніколи не з'являються.
+- Значення `biginteger` — рядки. Значення `decimal` — числа, округлені до їхньої шкали
+  (рядки з `[api].decimal_as_string = true`). Дати мають формат `YYYY-MM-DD`, час —
+  `HH:MM:SS.mmm`, дати з часом — `YYYY-MM-DDTHH:MM:SS.mmmZ` в UTC.
+
+Успішні читання мають `ETag`; надішліть його назад в `If-None-Match`, щоб отримати
+`304 Not Modified`. Вони також мають заголовки `Cache-Tag` і `Surrogate-Key` для очищення
+CDN (див. [Розгортання і CDN](/uk/guides/integrations/deploys-and-cdn/)).
+
+## Помилки
+
+Помилки мають формат Strapi:
+
+```json
+{
+  "data": null,
+  "error": {
+    "status": 400,
+    "name": "ValidationError",
+    "message": "title is a required field (and 1 more errors)",
+    "details": {
+      "errors": [
+        { "path": ["title"], "message": "title is a required field", "name": "ValidationError" },
+        { "path": ["seo", "metaTitle"], "message": "must be at most 60 characters", "name": "ValidationError" }
+      ]
+    }
+  }
+}
+```
+
+| Статус | `name` | Коли |
+| --- | --- | --- |
+| `400` | `ValidationError` | Некоректні параметри, тіло або вміст. `details.errors` перелічує проблеми з вмістом разом із шляхом. |
+| `401` | `UnauthorizedError` | Некоректний, невідомий або прострочений токен. |
+| `403` | `ForbiddenError` | Клієнт не має дозволу (для чернеток — `readDrafts`). |
+| `404` | `NotFoundError` | Невідомий маршрут, тип вмісту або документ. |
+| `405` | `MethodNotAllowedError` | `POST` для поодинокого типу або `PUT` чи `DELETE` на маршруті типу колекції. |
+| `408` | | Запит тривав довше за `[server].request_timeout_secs` (30 с). |
+| `413` | | Тіло більше за `[server].body_limit` (1 МБ). |
+| `429` | `RateLimitError` | Перевищено `[api].public_rate_limit` або `[api].token_rate_limit`. `Retry-After` каже, коли повторити. |
+| `500` | `ApplicationError` | Неочікувана помилка; подробиці є лише в журналі сервера. |
+
+## Обмеження
+
+| Обмеження | Значення |
+| --- | --- |
+| Розмір сторінки | `[api].max_page_size`, типово 100 |
+| Глибина populate | 5 рівнів |
+| Пов'язаних документів на документ і зв'язок | 1 000 |
+| Умов фільтра | 100 |
+| Вкладеність дужок у параметрі | 12 рівнів |
+| Параметрів на запит | 1 000 |
+| Рядок запиту | 16 КБ |
+| `_q` | 200 символів |
+
+Налаштовуються лише розміри сторінок. Кожна назва поля в `filters`, `sort`, `fields` і
+`populate` перевіряється за схемою, а значення завжди передаються як SQL-параметри.
+
+## Медіатека
+
+Маршрути завантаження Strapi, що перевіряються за дозволами **Медіатека**. Вони повертають
+звичайні об'єкти й масиви, без `data`, як Strapi:
+
+| Маршрут | Дозвіл | Тіло або параметри |
+| --- | --- | --- |
+| `POST /api/upload` | `create` | Multipart: `files` (до 20), необов'язковий JSON `fileInfo` (`name`, `alternativeText`, `caption`, `folder`, `focalPoint`), по одному на файл або один для всіх |
+| `POST /api/upload?id={id}` | `update` | Multipart `fileInfo` і, за бажання, новий файл, що замінює вміст |
+| `GET /api/upload/files` | `find` | `pagination[page]`, `pagination[pageSize]`, `sort`, `filters[name][$containsi]` |
+| `GET /api/upload/files/{id}` | `findOne` | |
+| `DELETE /api/upload/files/{id}` | `delete` | |
+
+Див. [Медіа](/uk/concepts/media/).
+
+## Інші маршрути під префіксом
+
+| Маршрути | Сторінка |
+| --- | --- |
+| `/api/auth/*`, `/api/users/*`, `/api/connect/*` | [Кінцеві користувачі](/uk/guides/auth/end-users/) (коли функцію ввімкнено) |
+| `/api/_events` | [Realtime API](/uk/api/realtime/) (коли функцію ввімкнено) |
+| `/api/_redirects`, `/api/_menus/{slug}`, `/api/_forms/{slug}` | [Перенаправлення](/uk/guides/frontend/redirects/), [Меню](/uk/guides/frontend/menus/), [Форми](/uk/guides/frontend/forms/) |
+| `/api/_openapi.json`, `/api/docs` | Документ OpenAPI (лише для API-токенів, якщо його не зроблено публічним у **Налаштування → Функції → Документація API**) та його інтерактивний довідник (коли публічний) |
+| `/api/plugins/{name}/*` | Маршрути [плагінів](/uk/extending/plugins/) |

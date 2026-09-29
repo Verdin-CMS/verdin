@@ -57,7 +57,7 @@ Verdin 需要两个密钥，每个长度至少为 32 字节：
 `verdin secrets` 会输出新生成的值，`verdin new` 会把它们写入 `.env`。密钥只从环境变量读取，绝不从 `verdin.toml` 读取；缺少密钥时服务器不会启动。启动时会加载与 `verdin.toml` 位于同一目录的 `.env` 文件，环境中已设置的变量优先。
 
 <Aside type="caution">
-每个安装只生成一次密钥，并妥善保存。更换 `VERDIN_ADMIN_JWT_SECRET` 会让所有管理员退出登录；更换 `VERDIN_TOKEN_PEPPER` 会让所有 API 令牌和所有双因素设置失效。不要把 `.env` 和 `verdin.env` 提交到版本控制中。
+每个安装只生成一次密钥，并妥善保存。更换 `VERDIN_ADMIN_JWT_SECRET` 会使当前的登录令牌、已打开的预览链接以及正在进行的 OAuth 登录失效（管理后台会自动续期其会话）；更换 `VERDIN_TOKEN_PEPPER` 会让所有 API 令牌和所有双因素设置失效。不要把 `.env` 和 `verdin.env` 提交到版本控制中。
 </Aside>
 
 ## 3. 创建第一个管理员

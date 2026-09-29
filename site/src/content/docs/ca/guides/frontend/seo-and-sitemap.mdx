@@ -1,0 +1,177 @@
+---
+title: SEO i mapa del lloc
+description: Associa els tipus de contingut als camins del teu lloc, serveix un sitemap.xml amb totes les entrades publicades i afegeix un component SEO estàndard.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+La funcionalitat **SEO i mapa del lloc** diu a Verdin on viu cada entrada al teu lloc. A partir
+d'aquí serveix un `sitemap.xml` amb totes les entrades publicades, dona als
+[menús](/ca/guides/frontend/menus/) els camins de les entrades que enllacen i ofereix un component
+`shared.seo` a punt per a les metaetiquetes.
+
+És una de les quatre funcionalitats de lloc, amb les [redireccions](/ca/guides/frontend/redirects/),
+els [menús](/ca/guides/frontend/menus/) i els [formularis](/ca/guides/frontend/forms/). Strapi cobreix
+el mateix terreny amb connectors de la comunitat (SEO, sitemap); a Verdin ve integrat.
+
+## Activa-la
+
+<Steps>
+
+1. A **Configuració → Funcionalitats**, activa **SEO i mapa del lloc**.
+2. A la seva targeta, tria **Configura el SEO**.
+3. Introdueix l'**URL del lloc**: l'origen del teu lloc, com ara `https://www.example.com`. Els URL
+   del mapa del lloc comencen així.
+4. A **Tipus de contingut**, dona a cada tipus que tingui pàgines un **Patró de ruta**. Els tipus
+   sense patró queden fora del mapa del lloc. Opcionalment, defineix una **Freqüència de canvi** i
+   una **Prioritat** (de 0 a 1) per al mapa del lloc.
+5. Desa i després tria **Obre sitemap.xml** per comprovar el resultat.
+
+</Steps>
+
+Canviar la configuració necessita el permís **Gestiona les funcionalitats** (`features.manage`).
+Consulta [Permisos](/ca/reference/permissions/).
+
+## Patrons de camí
+
+Un patró és un camí que comença per `/`, amb marcadors entre claus:
+
+| Patró | Entrada | Camí |
+| --- | --- | --- |
+| `/blog/{slug}` | Article amb slug `hello-world` | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | La seva versió francesa | `/fr/blog/bonjour` |
+| `/about` | El tipus únic Homepage | `/about` |
+
+Els marcadors són els atributs del tipus (normalment un `uid` com `slug`) i `{locale}`. Els valors
+es codifiquen per a URL. Una entrada amb un marcador buit (un slug que falta, per exemple) no té
+camí, i queda fora del mapa del lloc i dels menús. El diàleg llista els atributs que pots inserir i
+rebutja els desconeguts.
+
+La configuració es desa com a configuració de la funcionalitat, amb aquesta forma:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` és un de `always`, `hourly`, `daily`, `weekly`, `monthly`, `yearly` o `never`.
+
+## El mapa del lloc
+
+Amb un **URL del lloc** definit, Verdin serveix `/sitemap.xml` a l'arrel del seu propi host
+(`https://cms.example.com/sitemap.xml`, fora del prefix de l'API), amb:
+
+- totes les entrades **publicades** dels tipus configurats que omplen el seu patró;
+- l'últim canvi de cada entrada (`lastmod`), i el `changefreq` i la `priority` del tipus;
+- per als tipus localitzats, un URL per idioma, enllaçats entre ells amb
+  `<xhtml:link rel="alternate" hreflang="…">`;
+- com a màxim 50.000 URL, el límit d'un fitxer de mapa del lloc.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+El mapa del lloc es construeix com a màxim cada deu minuts i s'envia amb
+`Cache-Control: public, max-age=600`, de manera que una publicació hi apareix en deu minuts.
+
+Els motors de cerca esperen el mapa del lloc al host del teu lloc. Serveix-lo des d'allà amb una
+reescriptura o una petita ruta que obtingui el de Verdin:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+Després indica'l al teu `robots.txt`: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## El component SEO
+
+Verdin suggereix un component `shared.seo` amb els camps del connector SEO de Strapi:
+
+| Atribut | Tipus |
+| --- | --- |
+| `metaTitle` | string, obligatori, com a màxim 60 caràcters |
+| `metaDescription` | text, obligatori, com a màxim 160 caràcters |
+| `metaImage` | media (imatges) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+Al diàleg **Configura el SEO**, tria **Afegeix el component SEO** i després **Crea el component**.
+Crear-lo canvia l'esquema, així que el botó hi és en mode de desenvolupament (`verdin dev`) per als
+administradors amb **Gestiona els tipus de contingut**; si no, el diàleg llista els atributs que
+has d'afegir als teus fitxers d'esquema. Després afegeix un camp de component que faci servir
+`shared.seo` a cada tipus de contingut amb pàgines, al constructor de tipus de contingut.
+
+<Aside type="tip">
+Amb les [accions d'IA](/ca/guides/integrations/ai-actions/) activades, un component que té atributs
+de text `metaTitle` i `metaDescription` rep un botó **Suggereix** que els omple a partir de
+l'entrada.
+</Aside>
+
+## Mostra les metaetiquetes
+
+Pobla el component i escriu les etiquetes al head de la pàgina:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+El `shared.seo` del blog d'exemple només té `metaTitle` i `metaDescription`; el component suggerit
+hi afegeix la resta. Si la pàgina de previsualització fa servir l'[edició visual](/ca/guides/frontend/visual-editing/),
+elimina les marques invisibles abans de mesurar o comparar els textos meta.

@@ -1,0 +1,105 @@
+---
+title: Kommentare und Aufgaben
+description: Einträge in Threads diskutieren, einzelne Felder kommentieren, andere Admins erwähnen und Aufgaben mit Fälligkeitsdatum zuweisen.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Admins können einen Eintrag in Kommentar-Threads diskutieren, ein einzelnes Feld kommentieren,
+einander erwähnen und Aufgaben mit Fälligkeitsdatum zuweisen, ohne den Editor zu verlassen.
+Diese Anleitung behandelt beides, wer was darf, und die Admin-API. Strapi hat dafür kein
+Gegenstück.
+
+## Bevor du anfängst
+
+- **Einstellungen → Funktionen → Kommentare und Aufgaben** ist standardmäßig an.
+- Wer den Inhaltstyp eines Eintrags lesen darf, darf auch seine Kommentare und Aufgaben lesen
+  und schreiben.
+- Erwähnte Admins und zugewiesene Personen bekommen eine E-Mail über `[email]`. Mit dem
+  Standard-Provider `log` landen die E-Mails nur im Server-Log. Siehe die
+  [Konfigurationsreferenz](/de/reference/configuration/).
+
+## Einen Eintrag kommentieren
+
+<Steps>
+
+1. Öffne den Eintrag und wähle **Kommentare**. Der Button zeigt die Zahl der offenen Threads.
+2. Schreib im Tab **Kommentare** in **Neuer Kommentar**. Tippe `@`, um einen Admin zu erwähnen.
+3. Wähle **Kommentieren** oder drücke Control bzw. Command und Enter.
+
+</Steps>
+
+Um ein einzelnes Feld zu kommentieren, nutze den Kommentar-Button neben dem Feld
+(**… kommentieren**, mit dem Namen des Felds). Feld-Threads erscheinen unter **Zu …** für
+dieses Feld; **Alle anzeigen** listet wieder jeden Thread.
+
+In einem Thread kannst du:
+
+- **Antworten**.
+- Ihn **Erledigen**, wenn die Diskussion vorbei ist, und später **Wieder öffnen**. Erledigte
+  Threads wandern zu **Erledigte Threads**. Nur der erste Kommentar eines Threads erledigt ihn.
+- **Kommentar bearbeiten** bei deinen eigenen Kommentaren.
+- **Kommentar löschen** oder **Thread löschen** bei deinen eigenen Kommentaren. Ein Super Admin
+  kann jeden Kommentar löschen.
+
+Bei lokalisierten Typen werden Kommentare pro Sprache geführt, und sie fassen bis zu 10.000
+Zeichen.
+
+## Einen Admin erwähnen
+
+Erwähnte Admins bekommen eine E-Mail mit dem Kommentar und einem Link zum Eintrag, sofern sie
+ihn lesen dürfen. Für eine Erwähnung deiner selbst bekommst du nie eine E-Mail.
+
+## Eine Aufgabe zuweisen
+
+<Steps>
+
+1. Öffne den Tab **Aufgaben** im selben Panel und wähle **Neue Aufgabe**.
+2. Gib einen **Titel** ein, optional eine **Beschreibung**, wem sie **Zugewiesen an** ist und ein
+   **Fälligkeitsdatum**. Die zugewiesene Person muss den Eintrag lesen dürfen.
+3. Wähle **Aufgabe erstellen**.
+
+</Steps>
+
+Die zugewiesene Person bekommt eine E-Mail, außer sie hat sich die Aufgabe selbst zugewiesen.
+Aufgaben nach ihrem Fälligkeitsdatum werden als überfällig angezeigt. Markiere eine Aufgabe in
+ihrer Zeile als erledigt.
+
+Ersteller und zugewiesene Person einer Aufgabe können sie ändern oder abschließen. Nur ihr
+Ersteller löscht sie. Ein Super Admin kann beides bei jeder Aufgabe.
+
+Um deine offenen Aufgaben über alle Einträge hinweg zu sehen, füge der Startseite das Widget
+**Meine Aufgaben** hinzu: Wähle **Anpassen**, dann **Widget hinzufügen**.
+
+## Live zusammenarbeiten
+
+Fügt ein anderer Admin in dem Eintrag, den du offen hast, einen Kommentar oder eine Aufgabe
+hinzu, erledigt oder löscht sie, meldet das Panel **Die Kommentare wurden aktualisiert.** bzw.
+**Die Aufgaben wurden aktualisiert.** und zeigt die Änderung.
+
+## Admin-API
+
+Alle Routen liegen unter `/admin/api`. `uid`, `documentId` und `locale` benennen den Eintrag.
+
+| Route | Tut |
+| --- | --- |
+| `GET /comments?uid=&documentId=&locale=` | Die Threads des Eintrags mit ihren Antworten. |
+| `POST /comments` | `{ uid, documentId, locale?, field?, parentId?, body }`. `parentId` macht daraus eine Antwort. |
+| `PUT /comments/{id}` | `{ body }`. Nur eigene Kommentare. |
+| `DELETE /comments/{id}` | Eigene Kommentare, oder jeden als Super Admin. |
+| `POST /comments/{id}/resolve`, `POST /comments/{id}/reopen` | Auf dem ersten Kommentar eines Threads. |
+| `GET /tasks?uid=&documentId=&locale=` | Die Aufgaben des Eintrags. |
+| `GET /tasks?mine=true&status=open` | Deine Aufgaben, über die Einträge hinweg, die du noch lesen darfst. |
+| `POST /tasks` | `{ uid, documentId, locale?, title, description?, assigneeId?, dueDate? }`, mit `dueDate` als `YYYY-MM-DD`. |
+| `PUT /tasks/{id}` | Ersteller oder zugewiesene Person. Beliebige aus `title`, `description`, `assigneeId`, `dueDate` (`null` leert sie) und `status` (`open` oder `done`). |
+| `DELETE /tasks/{id}` | Nur der Ersteller (oder ein Super Admin). |
+
+In einem Kommentartext wird eine Erwähnung als `@[Name](user:12)` geschrieben, wobei `12` die
+ID des Admins ist.
+
+<Aside type="note">
+Solange die Funktion aus ist, antworten die Routen mit `404`. Ausschalten verbirgt Kommentare
+und Aufgaben; sie bleiben erhalten, bis du die Funktion wieder einschaltest.
+</Aside>

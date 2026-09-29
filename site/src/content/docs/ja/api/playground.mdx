@@ -1,0 +1,28 @@
+---
+title: API プレイグラウンド
+description: ブラウザーから、ローカルの Verdin で動くサンプルブログプロジェクトのコンテンツ API にリクエストを送ります。
+sidebar:
+  order: 3
+tableOfContents: false
+pagefind: false
+---
+
+import Playground from '../../../../components/Playground.astro';
+
+コードを書かずに、[サンプルブログプロジェクト](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)のコンテンツ API を試せます。リクエストはブラウザーから、**Server** で選んだサーバー（デフォルトは `http://localhost:1337`）に送られます。
+
+リクエストに応答させるには、サンプルプロジェクトをローカルで起動し、リクエストを許可します。
+
+```sh title="Terminal"
+cd examples/blog
+verdin secrets > .env && echo 'VERDIN_DATABASE_URL=sqlite://data/blog.db' >> .env
+mkdir -p data && verdin dev
+```
+
+- [localhost:1337/admin](http://localhost:1337/admin/) で最初の管理者を作成し、記事をいくつか追加します。
+- **設定 → 公開アクセス**で `find` と `findOne` を許可するか、**Authentication** に API トークンを貼り付けます。
+- プレイグラウンドはこのサイトのオリジンで動くので、サーバー側で受け入れる必要があります。`verdin.toml` の `[api].cors_origins` にオリジンを追加してください（[設定](/ja/reference/configuration/)を参照）。
+
+自分のプロジェクトでも、**設定 → 機能 → APIドキュメント**で**公開ドキュメント**をオンにすると、`/api/docs` で自分のスキーマに対する同じリファレンスを使えます。
+
+<Playground />

@@ -1,0 +1,263 @@
+---
+title: Cliente tipado
+description: Leia e escreva conteúdo do Verdin a partir do TypeScript com o @verdin/client e com tipos gerados a partir do seu schema pelo `verdin types`.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+O `@verdin/client` é um pequeno cliente TypeScript para a API de conteúdo: documentos REST, a
+biblioteca de mídia e GraphQL. Combine-o com o `verdin types`, que grava definições TypeScript
+dos seus tipos de conteúdo, e o seu editor verifica os nomes das rotas, os campos e os payloads
+de escrita enquanto você digita.
+
+O cliente não tem dependências e roda em qualquer lugar onde exista `fetch`: navegadores, Node 20
+ou posterior, Deno, Bun e edge workers. Ele é opcional; cada chamada corresponde a uma
+requisição HTTP simples da [API REST](/pt-br/api/rest/).
+
+## Instale e gere os tipos
+
+<Steps>
+
+1. Instale o pacote no seu projeto de frontend:
+
+   ```sh title="Terminal"
+   npm install @verdin/client
+   ```
+
+2. No projeto Verdin (o diretório com o `verdin.toml`), gere os tipos:
+
+   ```sh title="Terminal"
+   verdin types -o ../site/src/verdin-types.ts
+   ```
+
+   Sem `-o` (`--out`), as definições vão para a saída padrão. O comando só lê os arquivos de
+   schema; não precisa de banco de dados.
+
+3. Crie um cliente com o `VerdinSchema` gerado:
+
+   ```ts title="src/verdin.ts"
+   import { createClient } from '@verdin/client';
+   import type { VerdinSchema } from './verdin-types';
+
+   export const verdin = createClient<VerdinSchema>({
+     url: 'https://cms.example.com',
+     token: process.env.VERDIN_TOKEN, // omit to use the public role
+   });
+   ```
+
+</Steps>
+
+Rode o `verdin types` de novo depois de cada alteração de schema; o arquivo diz isso na sua
+primeira linha. Commitá-lo ao lado do código do seu frontend, ou gerá-lo de novo na CI, mantém os
+dois lados em sincronia.
+
+<Aside type="caution">
+O token dá a quem o tem as permissões do token. Mantenha os tokens de acesso total e
+personalizados no servidor (SSR, scripts de build, rotas de API). Um bundle de navegador não deve
+usar token (a função pública) ou deve usar um somente leitura. Veja
+[Tokens de API](/pt-br/guides/auth/api-tokens/).
+</Aside>
+
+## O que o `verdin types` gera
+
+Para o [blog de exemplo](https://github.com/Verdin-CMS/verdin/blob/main/examples/blog/) (artigos,
+categorias, tags, um single type de página inicial e os componentes `shared.seo`, `blocks.hero` e
+`blocks.quote`), o arquivo contém:
+
+| Tipo | O que é |
+| --- | --- |
+| `Article`, `Category`, `Tag`, `Homepage` | Uma interface por tipo de conteúdo, com o nome do seu `singularName`, que estende `DocumentBase` (`id`, `documentId`, `createdAt`, `updatedAt`, `publishedAt`). Os atributos privados ficam de fora. |
+| `ArticleInput`, … | Os tipos de escrita: todos os atributos opcionais, relações como strings de `documentId` (ou `connect` / `disconnect` / `set`), mídia como ids de arquivo, lados inversos das relações de fora. |
+| `ComponentSharedSeo`, `ComponentBlocksHero`, … | Uma interface por componente, mais o seu tipo `…Input`. Os itens de zona dinâmica têm um `__component` tipado. |
+| `Media`, `MediaFormat`, `Blocks` | Os arquivos da biblioteca de mídia, os seus formatos responsivos e o formato de rich text blocks. |
+| `Collections`, `Singles`, `VerdinSchema` | As rotas (`articles`, `homepage`) associadas aos seus tipos de documento e de input, para o cliente. |
+
+Relações, mídia, componentes e zonas dinâmicas são propriedades opcionais (`category?:`), porque
+a API só os retorna quando você usa `populate`. Os inteiros grandes são `string`, já que não
+cabem nos números do JavaScript.
+
+Sem os tipos gerados, o cliente continua funcionando: qualquer rota é aceita e os documentos são
+`Record<string, unknown>`.
+
+## Leia conteúdo
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[title][$containsi]=rust&populate[category]=true&populate[seo]=true&sort[0]=publishedAt:desc&pagination[page]=1&pagination[pageSize]=10' \
+  -H "Authorization: Bearer $VERDIN_TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { title: { containsi: "rust" } }
+    sort: ["publishedAt:desc"]
+    pagination: { page: 1, pageSize: 10 }
+  ) {
+    documentId
+    title
+    slug
+    category { name }
+    seo { metaTitle metaDescription }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { verdin } from './verdin';
+
+const { data, meta } = await verdin.collection('articles').find({
+  filters: { title: { $containsi: 'rust' } },
+  populate: { category: true, seo: true },
+  sort: ['publishedAt:desc'],
+  pagination: { page: 1, pageSize: 10 },
+});
+
+data[0].title; // string
+data[0].category?.name; // string | null | undefined
+meta.pagination.total;
+```
+
+</TabItem>
+</Tabs>
+
+Os parâmetros de consulta usam o formato do Strapi v5 e são serializados na notação de colchetes,
+então qualquer filtro, ordenação, `fields`, `populate`, `status` ou `locale` que funciona na API
+REST funciona aqui. Veja a [API REST](/pt-br/api/rest/) para a sintaxe completa.
+
+| Chamada | Requisição |
+| --- | --- |
+| `collection(route).find(params?)` | `GET /api/:route` |
+| `collection(route).findOne(documentId, params?)` | `GET /api/:route/:documentId` |
+| `collection(route).create(data, params?)` | `POST /api/:route` (publica, a menos que `status: 'draft'`) |
+| `collection(route).update(documentId, data, params?)` | `PUT /api/:route/:documentId` |
+| `collection(route).delete(documentId)` | `DELETE /api/:route/:documentId` |
+| `collection(route).publish(documentId)`, `unpublish`, `discardDraft` | `POST /api/:route/:documentId/actions/publish` (`unpublish`, `discard-draft`) |
+| `single(route).find(params?)`, `update(data, params?)`, `delete()` | `GET`, `PUT`, `DELETE /api/:route` |
+| `upload(files, info?)` | `POST /api/upload` (multipart) |
+| `files(params?)` | `GET /api/upload/files` |
+| `graphql(query, variables?)` | `POST /graphql` |
+
+O `stringify(params)` também é exportado, para você mesmo montar query strings (por exemplo,
+para um `<link rel="preload">`).
+
+## Escreva conteúdo
+
+```ts
+const { data: article } = await verdin.collection('articles').create(
+  {
+    title: 'Hello from TypeScript',
+    category: 'hx2n8r3w0c1kq5v7m4j6b9a0',       // a category's documentId
+    tags: { connect: ['t1…', 't2…'] },
+    seo: { metaTitle: 'Hello', metaDescription: 'A first post' },
+  },
+  { status: 'draft' },
+);
+
+await verdin.collection('articles').publish(article.documentId);
+```
+
+Como no Strapi v5, o `create` publica o documento imediatamente nos tipos com rascunho e
+publicação, a menos que você passe `status: 'draft'`. As escritas exigem um token com `create`,
+`update` ou `publish` no tipo; veja [Permissões](/pt-br/reference/permissions/).
+
+Envie arquivos com `upload` e depois referencie-os pelo id:
+
+```ts
+const [cover] = await verdin.upload(file, { alternativeText: 'The team at the office' });
+```
+
+`file` é um `Blob` ou um `File` (ou uma lista deles). Os uploads exigem a permissão `create` na
+biblioteca de mídia.
+
+## GraphQL
+
+O `graphql()` envia para `/graphql`, então o recurso **GraphQL** precisa estar ativado em
+**Configurações → Recursos**. Ele retorna o `data` da resposta e lança uma exceção no primeiro
+erro.
+
+```ts
+const data = await verdin.graphql<{ articles: Array<{ title: string }> }>(
+  `query ($q: String) { articles(filters: { title: { containsi: $q } }) { title } }`,
+  { q: 'rust' },
+);
+```
+
+Os tipos gerados descrevem a API REST. Para o GraphQL, passe você mesmo o tipo do resultado, como
+acima, ou use um gerador de código GraphQL contra o endpoint. Veja [GraphQL](/pt-br/api/graphql/).
+
+## Erros
+
+Toda requisição que falha rejeita com um `VerdinError`, que traz o erro enviado pela API no
+formato do Strapi:
+
+| Propriedade | Exemplo |
+| --- | --- |
+| `status` | `400`, `401`, `403`, `404`, `429` |
+| `name` | `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `RateLimitError`, `GraphQLError` |
+| `message` | Uma descrição legível. |
+| `details` | Os detalhes do erro, como a lista de campos inválidos de um `ValidationError`. |
+
+```ts
+import { VerdinError } from '@verdin/client';
+
+try {
+  const { data } = await verdin.collection('articles').findOne(id);
+  return data;
+} catch (error) {
+  if (error instanceof VerdinError && error.status === 404) return null;
+  throw error;
+}
+```
+
+## Opções
+
+| Opção | Descrição |
+| --- | --- |
+| `url` | A origem do servidor, como `https://cms.example.com`. Obrigatória. |
+| `token` | Um token de API ou o JWT de um usuário final, enviado como `Authorization: Bearer …`. Omita-o para a função pública. |
+| `prefix` | O prefixo da API de conteúdo. O padrão é `/api`; faça-o corresponder a [`[api].prefix`](/pt-br/reference/configuration/) se você o alterou. |
+| `fetch` | Uma implementação de `fetch` a usar no lugar da global. |
+| `headers` | Cabeçalhos extras enviados em todas as requisições. |
+
+## Renderização no servidor e edge runtimes
+
+O cliente só chama `fetch`, então roda sem mudanças em server components, rotas de API, scripts
+de build e edge functions. Passe um `fetch` personalizado para adicionar as opções de cache de um
+framework a todas as requisições. Por exemplo, com Next.js:
+
+```ts title="src/verdin.ts"
+export const verdin = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  token: process.env.VERDIN_TOKEN,
+  fetch: (input, init) => fetch(input, { ...init, next: { revalidate: 60, tags: ['verdin'] } }),
+});
+```
+
+Para ler rascunhos em uma página de pré-visualização, envie como cabeçalho o token de
+pré-visualização que a administração colocou na URL de pré-visualização:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  headers: { 'x-verdin-preview': searchParams.get('preview') ?? '' },
+});
+const { data } = await preview.collection('articles').findOne(id, { status: 'draft' });
+```
+
+Veja [Pré-visualização](/pt-br/guides/content/preview/) para saber como os links de
+pré-visualização funcionam, e [Edição visual](/pt-br/guides/frontend/visual-editing/) para
+adicionar o clique para editar à mesma página.
+
+Chamar a API a partir de um navegador em outra origem exige essa origem em
+[`[api].cors_origins`](/pt-br/reference/configuration/).

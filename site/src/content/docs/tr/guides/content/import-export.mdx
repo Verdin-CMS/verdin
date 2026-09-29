@@ -1,0 +1,124 @@
+---
+title: Kayıtları içe ve dışa aktarma
+description: Bir listenin kayıtlarını CSV veya JSON olarak dışa aktarın ve önce bir deneme çalıştırmasıyla bir CSV ya da JSON dosyasından kayıt oluşturun veya güncelleyin.
+sidebar:
+  order: 9
+  label: İçe ve dışa aktarma
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Her içerik tipinin admin listesi kayıtlarını CSV veya JSON olarak dışa aktarır ve aynı türde bir
+dosyadan geri içe aktarır: birçok kaydı bir elektronik tabloda düzeltmek, bir ürün kataloğunu
+yüklemek veya kayıtları projeler arasında kopyalamak için. Bu kılavuz her iki yönü ve dosya
+biçimini anlatır.
+
+Bu, aynı anda tek bir içerik tipinin kayıtları içindir. Bütün bir projeyi taşımak için bkz.
+[`verdin export` ve `verdin import verdin`](/tr/reference/cli/). Strapi’den gelmek için bkz.
+[Strapi’den geçiş](/tr/migrate/from-strapi/).
+
+## Başlamadan önce
+
+- Dışa aktarmak içerik tipine okuma erişimi gerektirir. Yalnızca rolünüzün okuyabildiği alanlar
+  dışa aktarılır.
+- İçe aktarmak oluşturma erişimi, güncelleme erişimi veya ikisini birden gerektirir: kayıt
+  oluşturan satırlar oluşturma, onları güncelleyen satırlar güncelleme gerektirir. İçe aktarılan
+  satırları yayınlamak ayrıca yayınlama gerektirir. Bkz. [İzinler](/tr/reference/permissions/).
+
+## Kayıtları dışa aktarma
+
+<Steps>
+
+1. İçerik tipinin listesini açın ve dışa aktarmayı istediğiniz gibi ayarlayın: filtreler,
+   arama, sıralama, durum ve dil.
+2. **Dışa aktar**’ı, ardından **CSV olarak dışa aktar** veya **JSON olarak dışa aktar**’ı
+   seçin.
+
+</Steps>
+
+Dosya, listenin gösterdiği kayıtları filtreleri, araması ve sıralamasıyla, tüm sayfalar boyunca,
+en fazla 50.000 kayda kadar içerir. Her satır `documentId` ile başlar, ardından alanlar gelir.
+
+## Kayıtları içe aktarma
+
+<Steps>
+
+1. İçerik tipinin listesini açın ve **İçe aktar**’ı seçin.
+2. Bir **Dosya** seçin: başlık satırı olan bir `.csv` dosyası veya nesnelerden oluşan bir liste
+   tutan bir `.json` dosyası, en fazla 1 MB.
+3. **Sütunlar** altında her sütunun hangi alana gideceğini seçin. Bir alan gibi adlandırılmış
+   sütunlar zaten eşleştirilmiştir. Bir sütunu dışarıda bırakmak için **Atla**’yı, mevcut
+   kayıtları belirten sütun için **Belge kimliği (güncelle)**’yi seçin.
+4. İsteğe bağlı olarak **İçe aktarılan kayıtları yayınla**’yı açın. Aksi hâlde taslak olarak
+   kaydedilirler.
+5. **Kontrol et**’i seçin. Verdin hiçbir şey yazmadan, kısıtlar ve referanslar dâhil her satırı
+   denetler ve oluşturacağı, güncelleyeceği veya reddedeceği satırları raporlar.
+6. Gerekirse dosyayı düzeltin, ardından **İçe aktar**’ı seçin.
+
+</Steps>
+
+Satırlar nasıl yazılır:
+
+- `documentId` içeren bir satır o kaydı günceller; diğerleri yeni kayıtlar oluşturur.
+- Satırlar tek tek yazılır. Başarısız olan bir satır alanı ve sorunuyla raporlanır ve atlanır;
+  diğerleri yine de yazılır.
+- Rapor hatalı en fazla 100 satırı ve hiçbir alanla eşleşmeyen sütunları listeler.
+- Bir içe aktarma en fazla 5.000 satır alır. Daha büyük dosyaları bölün.
+- Kayıtlar listenin mevcut dilinde yazılır.
+
+<Aside type="caution">
+Bir içe aktarma satırlarınızı düzenleyiciyle aynı doğrulamadan geçirir, ancak geri alma yoktur.
+Önce **Kontrol et**’i çalıştırın ve büyük bir güncellemeden önce geri yükleyebilmek için listeyi
+dışa aktarın. [İçerik geçmişi](/tr/guides/content/content-history/) açıkken güncellenen her kayıt
+önceki sürümünü korur.
+</Aside>
+
+## Dosya biçimi
+
+Alanlar içerik API’sinin yazma biçimiyle aynı şekilleri kullanır:
+
+| Alan | Değer |
+| --- | --- |
+| Metin, sayılar, boolean’lar, tarihler | API’deki gibi (`true`/`false`, ISO 8601 tarihleri). |
+| İlişkiler | İlişkili kayıtların `documentId`’leri. |
+| Medya | Medya kütüphanesinden dosya kimlikleri. |
+| Polimorfik ilişkiler | `uid:documentId`, örneğin `api::article:k3v9…`. |
+| Bileşenler, dinamik bölgeler, bloklar ve JSON | JSON. |
+
+CSV’de listeler (birden fazla ilişki veya dosya) `|` ile birleştirilir.
+
+```csv title="articles.csv"
+documentId,title,slug,featured,tags
+,Hello world,hello-world,true,t1a2b3|t4c5d6
+k3v9x8…,Updated title,updated-title,false,
+```
+
+Aynı satırlar JSON olarak:
+
+```json title="articles.json"
+[
+  { "title": "Hello world", "slug": "hello-world", "featured": true, "tags": ["t1a2b3", "t4c5d6"] },
+  { "documentId": "k3v9x8…", "title": "Updated title", "slug": "updated-title", "featured": false }
+]
+```
+
+Bir listenin dışa aktarımı, aynı içerik tipi için her zaman geçerli bir içe aktarma dosyasıdır.
+
+## Admin API
+
+- `GET /admin/api/content/{uid}/export?format=csv` (veya `json`) listenin sorgu parametrelerini
+  alır: `filters`, `_q`, `sort`, `status` ve `locale`.
+- `POST /admin/api/content/{uid}/import?locale=` dosyanın içeriğini bir string olarak alır:
+
+```json
+{
+  "format": "csv",
+  "data": "title,slug\nHello world,hello-world\n",
+  "mapping": { "slug": "slug", "notes": null },
+  "dryRun": true,
+  "publish": false
+}
+```
+
+`mapping` bir sütunu bir alana eşler; `null` sütunu atlar ve eşlenmemiş sütunlar adlarını korur.
+İstek gövdesi `[server].body_limit` (varsayılan 1 MB) ile sınırlıdır.

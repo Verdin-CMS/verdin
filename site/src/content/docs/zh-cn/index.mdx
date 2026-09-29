@@ -1,0 +1,90 @@
+---
+title: Verdin —— 在 Rust 上生长的无头 CMS
+description: 用 Rust 编写的开源无头 CMS。与 Strapi v5 兼容的 API，单个二进制文件，支持 PostgreSQL、MySQL、MariaDB 和 SQLite。
+template: splash
+editUrl: false
+tableOfContents: false
+lastUpdated: false
+hero:
+  title: 在 <span class="metal">Rust</span> 上生长的无头 CMS。
+  tagline: 与 Strapi v5 兼容的 API，外加一个供编辑使用的管理后台，全部集成在一个约 25 MB 的二进制文件中。开源且功能完整——没有企业版。
+  actions:
+    - text: 开始使用
+      link: /zh-cn/start/quickstart/
+      icon: right-arrow
+    - text: 从 Strapi 迁移
+      link: /zh-cn/migrate/from-strapi/
+      variant: minimal
+---
+
+import { Card, CardGrid, Code, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Nameplate from '../../../components/landing/Nameplate.astro';
+
+<Nameplate />
+
+## 三条命令从 Strapi 迁移
+
+导出 Strapi 项目，导入到一个新的 Verdin 项目中，然后启动。内容类型、带有草稿和语言区域的条目、关联以及媒体库都会一并迁移；内容 API 保持原有结构，因此前端可以继续工作。
+
+```sh title="Terminal"
+npx strapi export --no-encrypt -f my-export        # 在 Strapi 项目中执行
+verdin new my-site && cd my-site && verdin import strapi ../my-export.tar.gz
+verdin dev                                         # http://localhost:1337/admin
+```
+
+<LinkCard
+  title="导入 Strapi 项目"
+  description="导入哪些内容、id 映射，以及导入后需要检查什么。"
+  href="/zh-cn/migrate/from-strapi/"
+/>
+
+## 用你熟悉的方式读取内容
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+    ```sh
+    curl 'localhost:1337/api/articles?filters[title][$containsi]=rust&populate=category&sort=publishedAt:desc'
+    ```
+  </TabItem>
+  <TabItem label="GraphQL">
+    ```graphql
+    query {
+      articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"]) {
+        documentId
+        title
+        category { name }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```ts
+    import { createClient } from '@verdin/client';
+    import type { VerdinSchema } from './verdin-types'; // verdin types -o src/verdin-types.ts
+
+    const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+    const { data } = await verdin.collection('articles').find({
+      filters: { title: { $containsi: 'rust' } },
+      populate: { category: true },
+      sort: ['publishedAt:desc'],
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## 编辑和开发者能得到什么
+
+<CardGrid>
+  <Card title="schema 在文件中，迁移清晰可读" icon="document">
+    内容类型是 Strapi 格式的 JSON 文件，纳入 git 管理。每次 schema 变更在执行之前，都会生成一份附带风险等级和确切 SQL 的迁移计划。
+  </Card>
+  <Card title="编辑喜爱的管理后台" icon="pencil">
+    草稿与发布、内容历史、发布计划、审核工作流、评论和实时在线状态，以及在你自己的网站上进行可视化编辑——支持 18 种语言。
+  </Card>
+  <Card title="安全不是增值项目" icon="approve-check">
+    SSO、支持通行密钥的双因素登录、细化到字段和语言区域的角色、审计日志和 API 令牌，全部包含在开源项目中。
+  </Card>
+  <Card title="安全地扩展" icon="puzzle">
+    WebAssembly 插件可以挂接写入操作，添加路由、任务和管理后台小组件，并且只能访问其声明的范围。
+  </Card>
+</CardGrid>

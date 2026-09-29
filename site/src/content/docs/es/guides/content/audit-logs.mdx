@@ -1,0 +1,115 @@
+---
+title: Registros de auditoría
+description: Consulta quién cambió qué y cuándo, filtra los registros de auditoría en el panel de administración o en la API y define cuánto tiempo se conservan las entradas.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Los registros de auditoría guardan quién cambió qué, y cuándo: contenido, medios, inicios de
+sesión y todos los cambios hechos en el panel de administración. Esta guía muestra qué se
+registra, cómo filtrar los registros y cuánto tiempo se conservan.
+
+Los registros de auditoría son una funcionalidad Enterprise en Strapi. En Verdin forman parte del
+núcleo de código abierto.
+
+## Antes de empezar
+
+- **Configuración → Funcionalidades → Registros de auditoría** está activado por defecto.
+  Desactivarlo deja de registrar acciones nuevas; las entradas existentes se siguen pudiendo
+  leer.
+- Leer los registros necesita **Leer los registros de auditoría** (`audit.read`). Consulta
+  [Permisos](/es/reference/permissions/).
+
+## Qué se registra
+
+| Área | Acciones | Notas |
+| --- | --- | --- |
+| Contenido | `entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete` | Desde todas las APIs: el panel de administración, REST, GraphQL y los plugins. El idioma está en los detalles. |
+| Flujos de revisión | `entry.stage`, `entry.assign` | Cambios de etapa y asignaciones. |
+| Medios | `media.create`, `media.update`, `media.delete` | Subidas, cambios y eliminaciones de archivos. El nombre del archivo está en los detalles. |
+| Inicios de sesión | `admin.login` | Inicios de sesión con contraseña y del primer administrador (registrados después del segundo factor cuando la cuenta lo tiene), e inicios de sesión con SSO con el proveedor. |
+| Cambios de administración | `{METHOD} {route}`, por ejemplo `PUT /roles/{id}` | Toda escritura correcta en la API de administración: usuarios, roles, tokens de API, ajustes, funcionalidades, webhooks, idiomas, plugins, lanzamientos… Los parámetros de la ruta están en los detalles. |
+
+Cada entrada tiene una hora, un autor, una acción, un objeto (un uid de tipo de contenido,
+`plugin::upload.file`, o el recurso de administración, como `roles`), el id del objeto, los
+detalles y, en las peticiones, la dirección IP del cliente.
+
+El autor es uno de estos:
+
+- **Administrador**: un administrador con sesión iniciada, cuyo nombre aparece en el registro.
+- **API**: un cambio hecho a través de la API de contenido o de GraphQL, con un token de API, el
+  token de un usuario final o el acceso público.
+- **Sistema**: una escritura en la API de administración sin administrador con sesión iniciada.
+
+Detrás de un proxy inverso, define `[server].trusted_proxies` para que los registros muestren la
+dirección del cliente en lugar de la del proxy. Consulta la
+[referencia de configuración](/es/reference/configuration/).
+
+## Filtra los registros
+
+<Steps>
+
+1. Abre **Configuración → Registros de auditoría**.
+2. Usa un ajuste de **Filtros rápidos** (**Contenido**, **Medios**, **Inicios de sesión**), o
+   rellena los filtros:
+   - **Acción**: una acción exacta como `entry.publish`, o un prefijo terminado en `*`, como
+     `entry.*`.
+   - **Autor**: un administrador, o **Cualquiera**.
+   - **Objeto**: un uid de tipo de contenido como `api::article`.
+   - **Desde** y **Hasta**: un rango de fechas. Una fecha sin hora incluye el día entero.
+3. Selecciona **Aplicar**. Abre **Detalles** en una fila para ver todo lo registrado en ella.
+
+</Steps>
+
+## Consulta la API
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/admin/api/audit-logs' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --data-urlencode 'action=entry.*' \
+  --data-urlencode 'subject=api::article' \
+  --data-urlencode 'actor=3' \
+  --data-urlencode 'from=2026-09-01' \
+  --data-urlencode 'to=2026-09-30' \
+  --data-urlencode 'page=1' --data-urlencode 'pageSize=50'
+```
+
+Las entradas llegan de la más reciente a la más antigua, 50 por página por defecto y como máximo
+200:
+
+```json
+{
+  "data": [
+    {
+      "id": 812,
+      "at": "2026-09-28T14:03:11.000Z",
+      "action": "entry.publish",
+      "subject": "api::article",
+      "subjectId": "k3v9…",
+      "details": { "locale": "fr" },
+      "ip": null,
+      "actor": { "kind": "admin", "id": 3, "email": "ana@example.com", "name": "Ana Ruiz" }
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 50, "total": 1, "pageCount": 1 } }
+}
+```
+
+`from` y `to` aceptan fechas o fechas con hora ISO 8601; cualquier otra cosa es un error `400`.
+
+## Define cuánto tiempo se conservan las entradas
+
+Las entradas con más antigüedad que `[audit].retention_days` se eliminan una vez al día. El valor
+por defecto es de 90 días.
+
+```toml title="verdin.toml"
+[audit]
+retention_days = 365
+```
+
+<Aside type="tip">
+Para conservar las entradas de auditoría más tiempo del que conviene en tu base de datos,
+cópialas con regularidad a tu propio almacenamiento con la API anterior.
+</Aside>

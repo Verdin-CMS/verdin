@@ -1,0 +1,165 @@
+---
+title: アーキテクチャの概要
+description: コードを読んだり変更したりしたいコントリビューター向けに、設計の原則からリクエストが通るクレートまで、Verdin の作りを説明します。
+sidebar:
+  order: 1
+  label: 概要
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+このセクションは、Verdin 自体に取り組む人のためのものです。サーバーと管理パネルがどう組み立てられているか、なぜそう作られているか、コードをどこから読み始めればよいかを説明します。Verdin を使うだけなら、代わりに[クイックスタート](/ja/start/quickstart/)から始めてください。
+
+Verdin は Strapi v5 に倣って Rust で書かれたヘッドレス CMS です。コンテンツを画面上か JSON ファイルでモデル化すると、REST と GraphQL の API、そして管理パネルが得られます。サーバー、CLI、Angular の管理パネルを含む 1 つのバイナリとして配布され、PostgreSQL、MySQL、MariaDB、SQLite で動きます。
+
+## 目標
+
+- **1 つのバイナリ。** `verdin` には、サーバー、CLI、埋め込まれた管理パネルが含まれます。本番環境に Node.js も `node_modules` も要りません。
+- **速い起動と小さなメモリ使用量。**
+- **4 つのデータベース、1 つのテストスイート。** PostgreSQL、MySQL、MariaDB、SQLite はすべて第一級の扱いで、すべて同じテストでカバーされます。
+- **コードとしてのスキーマ。** コンテンツタイプは、git でバージョン管理する JSON ファイルです。
+- 可能な限り **Strapi v5 互換の REST API**。既存のフロントエンドが少ない変更で移行できます。
+- **すべて無料。** Enterprise エディションはありません。SSO、監査ログ、レビューワークフロー、リリースなど、すべての機能が全員に提供されます。
+
+リリースごとに提供されたものと今後の予定は、[ロードマップ](/ja/project/roadmap/)にあります。
+
+### 目標としないこと
+
+- Strapi の JavaScript のプラグインを実行すること。Verdin のプラグインは WebAssembly のモジュールです（[プラグイン](/ja/extending/plugins/)を参照）。
+- Strapi のデータベースをそのまま読むこと。コンテンツはインポーターで移行します（[Strapi からの移行](/ja/migrate/from-strapi/)を参照）。
+- ページを描画すること。Verdin はヘッドレスです。
+
+## 設計の原則
+
+1. **スキーマが唯一の正です。** テーブル、バリデーション、REST と GraphQL の API、OpenAPI ドキュメント、管理画面のフォームは、すべてスキーマから導き出されます。
+2. **SQL の識別子がリクエストから来ることは決してありません。** テーブル名とカラム名は検証済みのスキーマからだけ来て、すべての値はバインドされたパラメーターです。
+3. **方言は第一級です。** 「PostgreSQL で動く、MySQL は後で」はありません。すべての機能が 4 つのエンジンすべてでテストされます。
+4. **デフォルトで安全です。** 権限を許可するまでコンテンツ API は閉じており、`private` なフィールドが公開されることはなく、クエリの深さとサイズの制限は常に有効です。
+5. **破壊的な操作は明示的です。** カラムやテーブルの削除にはあなたの承認が必要で、副作用として起きることはありません。
+6. **グローバルな状態はありません。** サービスは `axum` の state とコンストラクターを通じて渡され、シングルトンはありません。
+
+## 全体像
+
+リクエストは、共有の層からなる小さなスタックを通ってバイナリに入り、API のルーターの 1 つに届き、接続先の方言向けの SQL を組み立てる Document Service で終わります。`schema/*.json` から読み込まれるスキーマのレジストリがすべての段階に情報を与え、マイグレーションエンジンがデータベースをそれに合わせます。
+
+<Diagram
+  caption="コンテンツ API のリクエストと、それが通るクレート"
+  code={`flowchart LR
+  Client["フロントエンドまたは管理パネル"] --> Layers["共有の層<br/>クライアント IP、リクエスト ID、CORS、制限"]
+  Layers --> Routers["verdin-api / verdin-graphql<br/>REST、Admin API、GraphQL、MCP"]
+  Routers --> Auth["verdin-auth<br/>トークン、ロール、許可"]
+  Routers --> Query["verdin-query<br/>パラメーターから型付きクエリへ"]
+  Query --> Docs["verdin-content<br/>Document Service"]
+  Docs --> Db["verdin-db<br/>プールと Flavor"]
+  Db --> Engines[("PostgreSQL、MySQL、<br/>MariaDB、SQLite")]
+  Schema["verdin-schema<br/>schema/*.json"] --> Migrate["verdin-migrate<br/>diff、plan、apply"]
+  Migrate --> Db`}
+/>
+
+- **コンテンツ API** は `[api].prefix`（デフォルトは `/api`）配下にあります。コンテンツタイプごとの REST ルート、アップロード、OpenAPI ドキュメントです。[REST API](/ja/api/rest/) を参照してください。
+- **Admin API** は `{admin.path}/api`（デフォルトは `/admin/api`）配下にあります。管理パネルが行うすべてのことです。[Admin API](/ja/api/admin/) を参照してください。
+- **GraphQL** は `/graphql` に、**MCP** は `/mcp` にあり、それらの機能がオンの場合に使えます。GraphQL の引数は REST のパーサーが読むのと同じパラメーターツリーに変換されるので、両方の API がフィルター、ページネーション、populate、権限のルールを共有します。
+- **管理パネル**は `[admin].path`（デフォルトは `/admin`）配下にあり、バイナリか `[admin].assets_dir` から提供されます。[管理パネルの内部](/ja/internals/admin-panel/)を参照してください。
+- **運用のためのルート**: `/_health`、`/_ready`、そしてメトリクスがオンの場合は `/_metrics`。[監視](/ja/deploy/monitoring/)を参照してください。
+
+どの API から来たものでも、すべての書き込みは [Document Service](/ja/internals/document-service/) を通ります。データを検証し、行とリンクテーブルを 1 つのトランザクションで書き込み、それからリスナー（Webhook、検索インデックス、履歴、リアルタイム、監査ログ）に何が変わったかを伝えます。
+
+機能がオンやオフに切り替わったとき、または `verdin dev` でコンテンツタイプビルダーがスキーマを変えたときは、ルーター全体が再構築され、再起動なしでその場で置き換えられます（`ArcSwap`）。
+
+## 技術スタック
+
+### サーバー（Rust、edition 2024）
+
+| 領域 | 選択 | 理由 |
+|---|---|---|
+| ランタイム | `tokio` | 標準的な非同期ランタイム |
+| HTTP | `axum`、`tower`、`tower-http` | CORS、ボディの上限、タイムアウト、リクエスト ID、トレーシングのためのミドルウェア |
+| SQL のドライバー | `sqlx`（postgres、mysql、sqlite） | 非同期、プール、TLS。MySQL と MariaDB は 1 つのドライバーを共有。SQLite は組み込み |
+| SQL の組み立て | Verdin 独自のビルダー: DDL は `verdin-migrate`、DML は `verdin-query` と `verdin-content` | テーブルはスキーマで定義されるので、SQL は実行時に組み立てられる。いずれにせよ方言ごとの正確な制御（`jsonb`、`datetime(3)`、バイナリの照合順序、型付きの NULL、SQLite のテキスト形式）が必要。ORM も `sea-query` も使わない |
+| クエリ文字列 | `verdin-query` の独自の角かっこ記法のパーサー | Strapi 風の `filters[title][$eq]=…`。深さ、長さ、組の数に制限あり |
+| JSON | `serde`、`serde_json` | — |
+| 小数 | `rust_decimal` | サーバー内で精度が失われない |
+| 日付 | `time` | — |
+| ドキュメント ID | `ulid` | ソート可能、26 文字、移植性がある |
+| OpenAPI | `verdin-api` の独自のジェネレーター | コンテンツタイプごとに 1 つのパスとスキーマ。レジストリから構築 |
+| GraphQL | `async-graphql`（動的スキーマ） | コンテンツのスキーマから構築 |
+| 認証 | `argon2`（argon2id）、`hmac` + `sha2` 上の HS256 の JWT | 数行の HS256 で RSA のスタックを引き込まずに済む |
+| 設定 | `figment`（TOML + 環境変数）、`dotenvy` | 階層化と環境ごとの上書き |
+| CLI | `clap` | — |
+| ログ | `tracing`、`tracing-subscriber` | デフォルトは人が読める形式、`[log].format = "json"` で JSON |
+| レート制限 | `verdin-api` の独自の固定ウィンドウのリミッター | ログインのルートと、任意のコンテンツ API の制限 |
+| メディア | `object_store`、`image`、`infer` | ローカルのディスクまたは S3 互換ストレージ。フォーマットと MIME の判定 |
+| 検索 | `tantivy` | バイナリ内の任意の全文インデックス |
+| プラグイン | `extism` | WebAssembly のプラグイン |
+| メール | `lettre`、`reqwest` | SMTP、Resend、Postmark |
+| 管理画面の埋め込み | `rust-embed`（`embed-admin` フィーチャー） | 管理パネルがバイナリの中に入る |
+| スキーマの監視 | `notify` | `verdin dev` での再読み込み |
+| エラー | ライブラリでは `thiserror`、バイナリでは `anyhow` | — |
+| テスト | `cargo test`、`insta`（DDL のスナップショット） | [テスト](/ja/internals/testing/)を参照 |
+
+### 管理パネル（Angular）
+
+| 領域 | 選択 |
+|---|---|
+| フレームワーク | Angular 22: スタンドアロンコンポーネント、zoneless、シグナル、遅延読み込みのルート |
+| UI | Tailwind CSS v4 上の spartan/ui（brain のプリミティブ、`src/app/shared/ui` にコピーした helm のコンポーネント） |
+| アイコン | Lucide を使う `@ng-icons` |
+| 状態 | 注入可能なサービス内のシグナル（ストアのライブラリなし） |
+| フォーム | Signal Forms（`@angular/forms/signals`） |
+| API クライアント | 手書きの型（`core/types.ts`）と `HttpClient` を包む小さなラッパー（`core/api.ts`） |
+| 翻訳 | FormatJS による ICU MessageFormat を使う Transloco |
+| リッチテキスト | プレビュー付きの Markdown エディター（`marked`、`DOMPurify`）。`blocks` フィールドには TipTap |
+| テスト | Angular のユニットテストビルダーを通じた Vitest、エンドツーエンドには Playwright |
+
+### ドキュメント
+
+`site/` にある、Starlight を使った Astro です。`site/scripts/sync-docs.mjs` が、ビルド時に `docs/` のいくつかの Markdown ファイル（ロードマップ、翻訳ガイド）と `CHANGELOG.md` を **Project** セクションにコピーします。
+
+## リポジトリの構成
+
+<FileTree>
+- Cargo.toml ワークスペース（バージョン、edition、リリースプロファイル）
+- crates/
+  - verdin-schema/ スキーマのモデル、JSON パーサー、バリデーション、命名規則
+  - verdin-db/ 接続プール、flavor とバージョンの判別、型付きの値
+  - verdin-migrate/ 物理モデル、スナップショット、diff、plan、ジャーナル付きの apply、プラットフォームのテーブル
+  - verdin-query/ クエリパラメーターから型付きクエリへの変換と、フィルターとソートの SQL
+  - verdin-content/ Document Service: バリデーション、下書きと公開、リレーション、コンポーネント、blocks、イベント
+  - verdin-auth/ 管理者ユーザー、セッション、二段階認証とパスキー、API トークン、RBAC、公開の許可
+  - verdin-upload/ メディアライブラリ: ストレージプロバイダー、ファイルのメタデータ、画像のフォーマット
+  - verdin-email/ メールの配信: SMTP、Resend、Postmark、ログ出力のプロバイダー
+  - verdin-search/ Tantivy の全文インデックス
+  - verdin-plugins/ WebAssembly のプラグイン（Extism）: ドキュメントのフック、ルート、スケジュールされたジョブ
+  - verdin-graphql/ スキーマから生成される GraphQL API
+  - verdin-api/ axum のルーター: コンテンツ API、Admin API、OpenAPI、MCP、リアルタイム、Webhook など
+  - verdin-testkit/ テスト用のヘルパー（テストごとに新しいデータベース）。公開しない
+  - verdin/ バイナリ: 設定、起動、CLI、メトリクス、埋め込みの管理画面
+- admin/ Angular の管理パネル
+- packages/
+  - client/ 型付きの TypeScript クライアント `@verdin/client`
+- examples/
+  - blog/ サンプルプロジェクト
+- docker/ `compose.dev.yml`（データベース、RustFS、Mailpit）とリリース用のイメージ
+- site/ このドキュメントサイト
+- docs/ ロードマップ、翻訳ガイド、設計のメモ
+</FileTree>
+
+**依存関係のルール。** `verdin-schema` と `verdin-db` が基盤です。`verdin-migrate` と `verdin-query` がその上に、`verdin-content` がさらにその上に、そして `verdin-auth`、`verdin-upload`、`verdin-search`、`verdin-plugins` がその下の層の上に作られます。`verdin-api` と `verdin-graphql` は最上部の近くにあり、`verdin` バイナリはすべてに依存します。Cargo は循環を禁じ、ワークスペース全体で `unsafe` なコードは禁止されています。
+
+## どこから読み始めるか
+
+| 理解したいこと | 読むもの |
+|---|---|
+| バイナリの起動とルーターの組み立て | `crates/verdin/src/cli.rs`（`start`）、次に `crates/verdin/src/app.rs` |
+| スキーマの形式とそのバリデーションのルール | `crates/verdin-schema/src/raw.rs`、`validate.rs`、`naming.rs` |
+| スキーマがテーブルになる方法 | `crates/verdin-migrate/src/derive.rs`、次に[ストレージ](/ja/internals/storage/) |
+| マイグレーション | `crates/verdin-migrate/src/diff.rs`、`plan.rs`、`apply.rs`、そして[マイグレーションエンジン](/ja/internals/migrations/) |
+| コンテンツ API のハンドラー | `crates/verdin-api/src/handlers.rs` と `lib.rs` |
+| クエリパラメーター | `crates/verdin-query/src/params.rs`（パーサー）、`parse.rs`（バリデーション）、`sql.rs`（SQL） |
+| 読み取りと書き込み | `crates/verdin-content/src/service.rs` と `input.rs`、そして [Document Service](/ja/internals/document-service/) |
+| 管理パネル | `admin/src/app/app.routes.ts`、次に `features/content/` と[管理パネルの内部](/ja/internals/admin-panel/) |
+
+コードは [GitHub](https://github.com/Verdin-CMS/verdin) で閲覧できます。このセクションの残りでは、[ストレージ](/ja/internals/storage/)、[データベース層](/ja/internals/database/)、[マイグレーション](/ja/internals/migrations/)、[Document Service](/ja/internals/document-service/)、[管理パネル](/ja/internals/admin-panel/)、[テスト](/ja/internals/testing/)、[決定事項のログ](/ja/internals/decisions/)を扱います。
+
+利用者向けの動作は他の場所に記載されています。クエリパラメーターは [REST API](/ja/api/rest/)、設定は[設定のリファレンス](/ja/reference/configuration/)、コマンドは [CLI のリファレンス](/ja/reference/cli/)、堅牢化は[セキュリティ](/ja/deploy/security/)にあります。

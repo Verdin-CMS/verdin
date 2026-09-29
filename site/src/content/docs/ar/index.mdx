@@ -1,0 +1,96 @@
+---
+title: Verdin — نظام إدارة المحتوى headless الذي ينمو على Rust
+description: نظام إدارة محتوى headless مفتوح المصدر مكتوب بلغة Rust. واجهات API متوافقة مع Strapi v5، وملف تنفيذي واحد، وPostgreSQL وMySQL وMariaDB وSQLite.
+template: splash
+editUrl: false
+tableOfContents: false
+lastUpdated: false
+hero:
+  title: نظام إدارة المحتوى headless الذي ينمو على <span class="metal">Rust</span>.
+  tagline: واجهات API متوافقة مع Strapi v5 ولوحة إدارة لمحرريك، في ملف تنفيذي واحد بحجم 25 MB تقريبًا. مفتوح المصدر وكامل — لا توجد نسخة للمؤسسات.
+  actions:
+    - text: ابدأ الآن
+      link: /ar/start/quickstart/
+      icon: right-arrow
+    - text: قادم من Strapi
+      link: /ar/migrate/from-strapi/
+      variant: minimal
+---
+
+import { Card, CardGrid, Code, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Nameplate from '../../../components/landing/Nameplate.astro';
+
+<Nameplate />
+
+## من Strapi في ثلاثة أوامر
+
+صدِّر مشروع Strapi، واستورده إلى مشروع Verdin جديد، ثم شغّله. تنتقل أنواع المحتوى،
+والإدخالات مع مسوداتها ولغاتها، والعلاقات ومكتبة الوسائط؛ ويحافظ API المحتوى على شكله،
+فتستمر الواجهة الأمامية في العمل.
+
+```sh title="Terminal"
+npx strapi export --no-encrypt -f my-export        # في مشروع Strapi
+verdin new my-site && cd my-site && verdin import strapi ../my-export.tar.gz
+verdin dev                                         # http://localhost:1337/admin
+```
+
+<LinkCard
+  title="استيراد مشروع Strapi"
+  description="ما الذي يُستورد، وخريطة المعرّفات، وما يجب التحقق منه بعد ذلك."
+  href="/ar/migrate/from-strapi/"
+/>
+
+## اقرأ محتواك بالطريقة التي تعرفها
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+    ```sh
+    curl 'localhost:1337/api/articles?filters[title][$containsi]=rust&populate=category&sort=publishedAt:desc'
+    ```
+  </TabItem>
+  <TabItem label="GraphQL">
+    ```graphql
+    query {
+      articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"]) {
+        documentId
+        title
+        category { name }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```ts
+    import { createClient } from '@verdin/client';
+    import type { VerdinSchema } from './verdin-types'; // verdin types -o src/verdin-types.ts
+
+    const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+    const { data } = await verdin.collection('articles').find({
+      filters: { title: { $containsi: 'rust' } },
+      populate: { category: true },
+      sort: ['publishedAt:desc'],
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## ما يحصل عليه المحررون والمطورون
+
+<CardGrid>
+  <Card title="المخطط في ملفات، وترحيلات يمكنك قراءتها" icon="document">
+    أنواع المحتوى ملفات JSON بصيغة Strapi، محفوظة في git. يتحول كل تغيير في المخطط
+    إلى خطة ترحيل بمستوى مخاطر وبالـ SQL الدقيق قبل تنفيذه.
+  </Card>
+  <Card title="لوحة إدارة يحبها المحررون" icon="pencil">
+    المسودات والنشر، وسجل المحتوى، وحزم النشر، ومسارات المراجعة، والتعليقات
+    والحضور المباشر، والتحرير المرئي على موقعك — بـ 18 لغة.
+  </Card>
+  <Card title="أمان ليس ميزة مدفوعة" icon="approve-check">
+    SSO، وتسجيل دخول ثنائي بمفاتيح المرور، وأدوار تصل إلى مستوى الحقول واللغات، وسجلات
+    التدقيق ورموز API، كلها في المشروع مفتوح المصدر.
+  </Card>
+  <Card title="وسِّعه بأمان" icon="puzzle">
+    إضافات WebAssembly تتصل بعمليات الكتابة، وتضيف مسارات ومهامًا وأدوات للوحة الإدارة، ولا
+    تصل إلا إلى ما تعلنه.
+  </Card>
+</CardGrid>

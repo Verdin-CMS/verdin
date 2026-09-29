@@ -1,0 +1,128 @@
+---
+title: Menu
+description: Buduj menu nawigacyjne z linków i wpisów w panelu administracyjnym i renderuj je w swojej witrynie.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Funkcja **Menu** daje redaktorom nazwane drzewa nawigacji (nagłówek, stopka, pasek boczny),
+które prowadzą do stron, wpisów lub innych witryn. Twoja witryna pobiera menu po jego slugu
+i je renderuje; linki do wpisów podążają za ich stanem publikacji i ścieżką.
+
+W Strapi wymaga to zwykle wtyczki nawigacji albo ręcznie zrobionego typu zawartości menu;
+w Verdin jest wbudowane.
+
+## Włącz funkcję
+
+W **Ustawienia → Funkcje** włącz **Menu**, a potem wybierz **Zarządzaj menu** (albo przejdź
+do **Ustawienia → Menu**). Zarządzanie menu wymaga uprawnienia **Zarządzanie SEO,
+przekierowaniami, menu i formularzami** (`site.manage`), które ma wbudowana rola Editor.
+Zobacz [Uprawnienia](/pl/reference/permissions/).
+
+Aby wiązać wpisy przez ścieżkę, skonfiguruj też wzorce ścieżek w
+[SEO i mapie witryny](/pl/guides/frontend/seo-and-sitemap/).
+
+## Zbuduj menu
+
+<Steps>
+
+1. W **Ustawienia → Menu** wybierz **Nowe menu**.
+2. Nadaj mu nazwę (np. **Nawigacja główna**) i **Slug** (`main`): małe litery, cyfry
+   i myślniki. Witryny pobierają menu po jego slugu.
+3. Wybierz **Dodaj element** i wypełnij element:
+   - **Etykieta**: tekst linku, do 255 znaków.
+   - **Prowadzi do**: **Adres URL**, **Wpis** lub **Nic (nagłówek)**.
+   - **URL**: ścieżka (`/about`), kotwica (`#team`) albo link `http(s)`, `mailto:` lub
+     `tel:`.
+   - Dla wpisu wybierz **Wybierz wpis**: wybierz **Typ zawartości**, jeśli można powiązać
+     kilka, przeszukaj wpisy i wybierz jeden.
+   - **Otwiera się w**: **Tej samej karcie** lub **Nowej karcie**.
+4. Przeciągaj elementy, aby je uporządkować i zagnieździć, albo użyj ich przycisków.
+   Z klawiatury, na uchwycie przeciągania: Alt+↑ i Alt+↓ przesuwają element, Alt+→ zagnieżdża
+   go pod elementem powyżej, Alt+← wyciąga go na zewnątrz.
+5. Zapisz.
+
+</Steps>
+
+Menu ma najwyżej 5 poziomów i 500 elementów.
+
+## Pobierz menu
+
+Witryny odczytują menu z `GET /api/_menus/{slug}`, bez tokenu. Dodaj `?locale=` dla treści
+lokalizowanej:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+Jak rozwiązywane są linki do wpisów:
+
+- Wpis, który nie jest opublikowany w żądanym języku, jest pomijany w menu (razem z jego
+  dziećmi). Menu nigdy nie ujawniają szkiców.
+- `entry.path` pochodzi ze wzorca typu w [SEO i mapie witryny](/pl/guides/frontend/seo-and-sitemap/),
+  wypełnionego polami wpisu i językiem. Wynosi `null`, gdy typ nie ma wzorca albo wpis go nie
+  wypełnia.
+- Gdy element nie ma własnego `url`, dostaje ścieżkę jako `url`, więc większość witryn musi
+  czytać tylko `url`.
+
+Bez `locale` wpisy są odczytywane w języku domyślnym. Odpowiedź jest wysyłana
+z `Cache-Control: public, max-age=60`.
+
+## Wyrenderuj je
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+Po usunięciu menu `/api/_menus/{slug}` odpowiada `404`, podobnie jak po wyłączeniu funkcji.
+Obsłuż to w swojej witrynie, np. nie renderując nawigacji.
+</Aside>
+
+## API administracyjne
+
+Panel administracyjny używa `/admin/api/site/menus` (`GET`, `POST`)
+i `/admin/api/site/menus/{id}` (`GET`, `PUT`, `DELETE`), z tokenem dostępu administratora
+i `site.manage`. Zobacz [API administracyjne](/pl/api/admin/).

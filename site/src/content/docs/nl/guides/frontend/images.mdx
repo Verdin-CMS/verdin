@@ -1,0 +1,234 @@
+---
+title: Responsieve afbeeldingen
+description: Serveer afbeeldingen in de juiste grootte, met de formaten die Verdin bij het uploaden genereert en met transformaties op aanvraag via de URL.
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin geeft je twee manieren om een afbeelding te serveren in de grootte die een pagina nodig
+heeft:
+
+- **Responsieve formaten**, één keer gegenereerd wanneer de afbeelding wordt geüpload
+  (`thumbnail`, `small`, `medium`, `large`), precies zoals de uploadplugin van Strapi. Ze werken met
+  elke uploadprovider.
+- **Transformaties**, op verzoek gerenderd uit URL-parameters (`?preset=thumb`, of
+  `?w=800&format=webp` met een handtekening) en op schijf gecachet. Ze werken met de lokale
+  provider.
+
+Beide horen bij de mediabibliotheek, die altijd aan staat. Voor het uploaden en ordenen van
+bestanden, zie [Media](/nl/concepts/media/).
+
+## Responsieve formaten
+
+Wanneer een JPEG-, PNG-, WebP-, TIFF- of BMP-afbeelding wordt geüpload, schrijft Verdin er kleinere
+kopieën van en somt die op in de `formats` van het bestand:
+
+| Formaat | Grootte |
+| --- | --- |
+| `thumbnail` | Past binnen 245 × 156 pixels. |
+| `large` | 1000 pixels breed. |
+| `medium` | 750 pixels breed. |
+| `small` | 500 pixels breed. |
+
+Een formaat wordt overgeslagen als de afbeelding al kleiner is, dus een afbeelding van 600 pixels
+breed krijgt alleen `thumbnail` en `small`. Kopieën behouden het formaat van het origineel (JPEG's
+worden gecodeerd met kwaliteit 80) en zijn EXIF-oriëntatie. GIF's blijven ongemoeid, omdat ze
+geanimeerd kunnen zijn.
+
+Populeer het mediaveld om ze te krijgen. De voorbeelden gebruiken een media-attribuut `cover` op
+Article; de voorbeeldblog heeft er geen, dus voeg er een toe in de contenttype-bouwer om mee te
+doen.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?populate[cover]=true'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles {
+    title
+    cover { url width height alternativeText formats }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ populate: { cover: true } });
+const formats = data[0].cover?.formats; // Record<string, MediaFormat> | null
+```
+
+</TabItem>
+</Tabs>
+
+```json
+"cover": {
+  "url": "/uploads/team_4f1c2a.jpg",
+  "width": 2400,
+  "height": 1600,
+  "alternativeText": "The team at the office",
+  "formats": {
+    "thumbnail": { "url": "/uploads/thumbnail_team_4f1c2a.jpg", "width": 234, "height": 156 },
+    "large": { "url": "/uploads/large_team_4f1c2a.jpg", "width": 1000, "height": 667 },
+    "medium": { "url": "/uploads/medium_team_4f1c2a.jpg", "width": 750, "height": 500 },
+    "small": { "url": "/uploads/small_team_4f1c2a.jpg", "width": 500, "height": 333 }
+  }
+}
+```
+
+Bouw er een `srcset` van. Met de lokale provider zijn de `url`s paden op de Verdin-host; zet de
+origin ervoor:
+
+```ts
+const CMS = 'https://cms.example.com';
+
+function srcset(image: Media): string {
+  const sources = Object.values(image.formats ?? {}).map((f) => `${CMS}${f.url} ${f.width}w`);
+  return [...sources, `${CMS}${image.url} ${image.width}w`].join(', ');
+}
+```
+
+```html
+<img src="…/uploads/large_team_4f1c2a.jpg" srcset="…" sizes="(min-width: 60rem) 50vw, 100vw"
+     width="2400" height="1600" alt="The team at the office" />
+```
+
+### De formaten wijzigen
+
+De formaten komen uit `[upload]` in `verdin.toml`:
+
+```toml title="verdin.toml"
+[upload]
+breakpoints = [{ name = "large", width = 1600 }, { name = "small", width = 640 }]
+# responsive_formats = false  # no copies at all
+# max_original_size = 3000    # scale larger originals down on upload (drops EXIF and GPS)
+```
+
+`breakpoints` is de gelijknamige instelling van Strapi. Wijzigingen gelden voor nieuwe uploads;
+bestaande bestanden behouden hun formaten. Zie [`[upload]`](/nl/reference/configuration/) voor elke
+sleutel, inclusief `max_image_megapixels`, de decodeerlimiet die beschermt tegen
+decompressiebommen (standaard 100 megapixels).
+
+## Transformaties
+
+Met de lokale provider serveert Verdin `/uploads/<file>` zelf en kan het op verzoek andere
+groottes en formaten van een afbeelding renderen:
+
+```
+/uploads/team_4f1c2a.jpg?preset=thumb
+/uploads/team_4f1c2a.jpg?w=800&format=webp&s=<signature>
+```
+
+| Parameter | Waarden |
+| --- | --- |
+| `w`, `h` | Breedte en hoogte in pixels, van 1 tot `max_size` (standaard 4096). Met maar één van beide volgt de andere de beeldverhouding. Met geen van beide behoudt de afbeelding haar grootte (een formaatwijziging). |
+| `fit` | `cover` (de standaard) vult het kader en snijdt de rest af, met het focuspunt van het bestand in beeld. `inside` past de afbeelding binnen het kader. `fill` rekt haar uit tot het kader. |
+| `format` | `jpeg` (of `jpg`), `png` of `webp`. WebP-uitvoer is lossless. Zonder deze parameter behoudt de afbeelding haar formaat (TIFF en BMP worden JPEG). |
+| `q` | JPEG-kwaliteit, van 1 tot 100. Standaard 80. |
+| `preset` | Een benoemde transformatie uit de configuratie. Kan niet met de andere parameters worden gecombineerd. |
+| `s` | De handtekening, als de parameters geen preset zijn. |
+
+Afbeeldingen worden nooit vergroot: een afbeelding van 600 pixels breed die met `w=1200` wordt
+gevraagd, komt terug op 600. Transformaties werken op JPEG-, PNG-, WebP-, TIFF- en BMP-bestanden,
+niet op GIF's.
+
+### Focuspunt
+
+Redacteuren stellen het focuspunt van een afbeelding in de mediabibliotheek in: open het bestand en
+klik op de afbeelding (**Focuspunt: klik op de afbeelding of gebruik de pijltjestoetsen om het in
+te stellen**). Uitsneden met `fit=cover` houden dat punt in beeld, en als je het wijzigt, vervallen
+de gecachte renderingen van het bestand.
+
+### Presets
+
+Presets zijn de transformaties die je iedereen laat aanvragen. Definieer ze in
+`[upload.transforms.presets]`:
+
+```toml title="verdin.toml"
+[upload.transforms.presets]
+thumb = { w = 300, h = 300 }
+card = { w = 640, h = 360, format = "webp" }
+hero = { w = 1600, h = 600, fit = "cover", format = "jpeg", q = 85 }
+```
+
+```html
+<img src="https://cms.example.com/uploads/team_4f1c2a.jpg?preset=card" alt="…" />
+```
+
+Een onbekende preset antwoordt met `400`.
+
+### Ondertekende parameters
+
+Elke andere combinatie van `w`, `h`, `fit`, `format` en `q` vereist een handtekening, zodat
+niemand de server een onbeperkt aantal varianten kan laten renderen (en opslaan). Stel een geheim
+in in de omgeving van de server en van de code die afbeeldings-URL's opbouwt:
+
+```sh title="Terminal"
+export VERDIN_IMAGE_SECRET="$(openssl rand -hex 32)"
+```
+
+De handtekening `s` is de hex-HMAC-SHA256, met dat geheim als sleutel, van
+`<file>?<canonical query>`. De canonieke query somt de parameters op die je instelt, behalve
+`fit=cover` (de standaard), gesorteerd op naam (`fit`, `format`, `h`, `q`, `w`), met `jpeg` voor
+JPEG:
+
+```ts title="src/image-url.ts"
+import { createHmac } from 'node:crypto';
+
+type Transform = { w?: number; h?: number; fit?: 'cover' | 'inside' | 'fill'; format?: 'jpeg' | 'png' | 'webp'; q?: number };
+
+export function imageUrl(cms: string, url: string, t: Transform): string {
+  const file = url.replace(/^\/uploads\//, '');
+  const params: [string, string][] = [];
+  if (t.fit && t.fit !== 'cover') params.push(['fit', t.fit]);
+  if (t.format) params.push(['format', t.format]);
+  if (t.h) params.push(['h', String(t.h)]);
+  if (t.q) params.push(['q', String(t.q)]);
+  if (t.w) params.push(['w', String(t.w)]);
+  const query = params.map(([k, v]) => `${k}=${v}`).join('&');
+  const s = createHmac('sha256', process.env.VERDIN_IMAGE_SECRET!).update(`${file}?${query}`).digest('hex');
+  return `${cms}/uploads/${file}?${query}&s=${s}`;
+}
+```
+
+Bouw deze URL's op de server (of tijdens de build): het geheim mag de browser niet bereiken. Zonder
+`VERDIN_IMAGE_SECRET`, of met een verkeerde handtekening, antwoordt het request met `403`.
+
+<Aside type="caution">
+`[upload.transforms].allow_arbitrary = true` accepteert alle parameters zonder handtekening. Elke
+afzonderlijke URL wordt dan gerenderd en gecachet, dus iedereen kan de schijf vullen en de CPU
+gebruiken. Zet het alleen aan als de server uitsluitend vanuit vertrouwde netwerken bereikbaar is.
+</Aside>
+
+### Caching en limieten
+
+- Renderingen worden naar `[upload.transforms].cache_dir` geschreven (standaard
+  `.cache/transforms`) en daarna vanaf daar geserveerd. De map kan veilig worden verwijderd.
+- Een bestand vervangen of zijn focuspunt verplaatsen laat zijn gecachte renderingen vervallen.
+- Getransformeerde responses worden een dag door browsers en CDN's gecachet
+  (`Cache-Control: public, max-age=86400`); gewone bestanden een jaar, omdat hun namen nooit
+  veranderen.
+- Renderingen draaien parallel tot het aantal CPU-kernen; meer requests wachten.
+- Afbeeldingen groter dan `max_image_megapixels` worden geweigerd (`422`).
+
+Stel `[upload.transforms].enabled = false` in om transformaties uit te zetten. Zie
+[`[upload.transforms]`](/nl/reference/configuration/) voor de sleutels.
+
+### Met S3 en andere providers
+
+Met de S3-provider worden bestanden geserveerd door de bucket of zijn CDN, niet door Verdin, dus de
+transformatieparameters doen niets. Gebruik de responsieve formaten, of de afbeeldingsdienst van je
+CDN (bijvoorbeeld Cloudflare Images of imgix) vóór de `public_url` van de bucket.
+
+Strapi heeft geen ingebouwde transformaties; zijn responsieve formaten en `breakpoints` gedragen
+zich hetzelfde als die van Verdin.

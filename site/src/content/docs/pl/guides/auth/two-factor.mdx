@@ -1,0 +1,141 @@
+---
+title: Uwierzytelnianie dwuskładnikowe
+description: Chroń konta administratorów aplikacją uwierzytelniającą lub kluczami dostępu, wymagaj drugiego składnika dla roli i odzyskuj lub resetuj utracone składniki.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Uwierzytelnianie dwuskładnikowe dodaje drugi krok po haśle: 6-cyfrowy kod z aplikacji
+uwierzytelniającej albo klucz dostępu (odcisk palca, twarz, blokada ekranu lub klucz
+bezpieczeństwa). Ten przewodnik konfiguruje oba, czyni je obowiązkowymi dla roli i opisuje,
+co zrobić, gdy administrator je utraci. Strapi nie ma wbudowanego odpowiednika.
+
+Uwierzytelnianie dwuskładnikowe jest dla administratorów.
+[Użytkownicy końcowi](/pl/guides/auth/end-users/) logują się hasłem lub przez dostawcę OAuth.
+
+## Zanim zaczniesz
+
+- Nie ma funkcji do włączenia: każdy administrator może skonfigurować drugi składnik w swoim
+  profilu.
+- Klucze dostępu są powiązane z adresem panelu administracyjnego. Ustaw `[server].public_url`
+  na adres, który otwierają administratorzy, np. `https://cms.example.com`. Przeglądarki
+  oferują klucze dostępu tylko przez `https://` (i na `localhost`).
+- Nie zmieniaj `VERDIN_TOKEN_PEPPER`: chroni on sekrety aplikacji uwierzytelniających i kody
+  odzyskiwania, a jego zmiana czyni je bezużytecznymi.
+
+## Skonfiguruj aplikację uwierzytelniającą
+
+<Steps>
+
+1. Otwórz swój **Profil** i znajdź **Uwierzytelnianie dwuskładnikowe**.
+2. W sekcji **Aplikacja uwierzytelniająca** wybierz **Skonfiguruj** i potwierdź hasło.
+3. Zeskanuj kod QR aplikacją taką jak 1Password, Google Authenticator czy Authy. Jeśli nie
+   możesz go zeskanować, wpisz klucz konfiguracji pokazany pod nim.
+4. Wpisz **6-cyfrowy kod** pokazany przez aplikację i wybierz **Włącz**.
+5. Zachowaj **kody odzyskiwania** pokazane przez Verdin: **Pobierz** je lub skopiuj, a potem
+   wybierz **Zapisałem je**.
+
+</Steps>
+
+Kody są zgodne ze standardowym schematem TOTP (kroki 30-sekundowe, SHA-1, 6 cyfr). Kod
+z poprzedniego lub następnego kroku też jest akceptowany, aby uwzględnić rozjazd zegara.
+Jeśli kody są odrzucane, sprawdź czas na swoim urządzeniu.
+
+## Dodaj klucz dostępu
+
+<Steps>
+
+1. W sekcji **Klucze dostępu** wybierz **Dodaj klucz dostępu**.
+2. Nadaj mu **Nazwę**, np. „MacBook Touch ID”, i potwierdź hasło.
+3. Postępuj zgodnie z komunikatem przeglądarki.
+
+</Steps>
+
+Możesz zarejestrować do 20 kluczy dostępu i usuwać je przyciskiem **Usuń**. Klucze dostępu
+są drugim składnikiem po haśle, a nie jego zamiennikiem.
+
+## Kody odzyskiwania
+
+Przy konfiguracji pierwszego składnika dostajesz 10 kodów odzyskiwania. Każdy loguje cię raz,
+jeśli utracisz aplikację lub klucze dostępu. Profil pokazuje, ile zostało; **Wygeneruj nowe
+kody** zastępuje je wszystkie (stare przestają działać).
+
+<Aside type="caution">
+Kody są pokazywane raz. Przechowuj je w menedżerze haseł albo gdzieś offline, a nie obok
+urządzenia z aplikacją uwierzytelniającą.
+</Aside>
+
+## Logowanie z drugim składnikiem
+
+<Diagram
+  caption="Logowanie z uwierzytelnianiem dwuskładnikowym"
+  code={`flowchart LR
+  A[E-mail i hasło] --> B{Drugi składnik?}
+  B -->|nie| S[Zalogowano]
+  B -->|tak| C[Kod, klucz dostępu lub kod odzyskiwania]
+  C -->|w ciągu 5 minut| S`}
+/>
+
+Po haśle strona logowania prosi o **Kod uwierzytelniający**. Wybierz **Użyj klucza dostępu**
+lub **Użyj kodu odzyskiwania**, aby zmienić metodę. Masz 5 minut na dokończenie; potem wpisz
+hasło ponownie.
+
+## Wymagaj uwierzytelniania dwuskładnikowego dla roli
+
+<Steps>
+
+1. Otwórz **Ustawienia → Role** i wybraną rolę.
+2. Włącz **Wymagaj uwierzytelniania dwuskładnikowego** i zapisz.
+
+</Steps>
+
+Członkowie bez drugiego składnika są proszeni o jego skonfigurowanie przy logowaniu. Dopóki
+tego nie zrobią, mogą otworzyć tylko swój profil. W **Ustawienia → Użytkownicy** ich wiersz
+pokazuje **Brak 2FA**; administratorzy z drugim składnikiem mają **2FA**.
+
+Gdy twoja rola wymaga drugiego składnika, Verdin odmawia usunięcia ostatniego z nich: dodaj
+klucz dostępu, zanim wyłączysz aplikację, albo inny składnik, zanim usuniesz jedyny klucz
+dostępu.
+
+## Zresetuj drugi składnik innego administratora
+
+Gdy administrator utraci urządzenie i kody odzyskiwania:
+
+<Steps>
+
+1. Otwórz **Ustawienia → Użytkownicy** i znajdź administratora.
+2. Wybierz **Zresetuj dwuskładnikowe** i potwierdź.
+
+</Steps>
+
+To usuwa jego aplikację uwierzytelniającą, klucze dostępu i kody odzyskiwania, więc loguje
+się on samym hasłem. Jeśli jego rola wymaga uwierzytelniania dwuskładnikowego, musi je
+skonfigurować ponownie. Wymaga to **Zarządzanie użytkownikami**; tylko Super Admin może
+zresetować innego Super Admina.
+
+`verdin admin reset-password` resetuje tylko hasło, a nie drugi składnik.
+
+## Logowanie jednokrotne
+
+Administratorzy logujący się przez [logowanie jednokrotne](/pl/guides/auth/sso/) też są
+pytani o drugi składnik Verdin, chyba że dostawca jest oznaczony jako **Dostawca wymusza
+MFA**.
+
+## API administracyjne
+
+Wszystkie trasy są pod `/admin/api`. Te, które zmieniają składniki, przyjmują twoje
+`password`.
+
+| Trasa | Działanie |
+| --- | --- |
+| `POST /auth/login` | Przy drugim składniku odpowiada `{ twoFactorRequired: true, twoFactorToken, methods }` zamiast sesji. |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }` (TOTP lub kod odzyskiwania) albo `{ twoFactorToken, challengeToken, credential }` dla klucza dostępu. Odpowiada sesją. |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }`: wyzwanie klucza dostępu. |
+| `GET /auth/two-factor` | Twoje składniki: `totp`, `passkeys`, `recoveryCodesLeft`, `required`. |
+| `POST /auth/two-factor/totp/setup`, `/totp/enable`, `/totp/disable` | Konfiguracja (hasło), włączenie (kod) i wyłączenie (hasło) aplikacji uwierzytelniającej. |
+| `POST /auth/two-factor/recovery-codes` | Nowe kody odzyskiwania. |
+| `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/{id}` | Rejestracja i usuwanie kluczy dostępu. |
+| `DELETE /users/{id}/two-factor` | Reset składników innego administratora (`users.manage`). |

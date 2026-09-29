@@ -1,0 +1,222 @@
+---
+title: Dağıtımlar ve CDN
+description: Editörlere statik siteniz için bir Dağıt düğmesi verin, build’lerini izleyin ve içerik değiştiğinde CDN’inizi temizleyin.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Verdin’in sunduğunu önbelleğe alan siteler için iki araç:
+
+- **Dağıtımlar**, admin başlığına bir **Dağıt** düğmesi koyar. Bu düğme sitenizin build hook’unu
+  (Netlify, Vercel, Cloudflare Pages veya herhangi bir CI) çağırır ve sağlayıcı build’in nasıl
+  gittiğini geri bildirir.
+- **CDN temizlemeleri**, içerik API’si yanıtlarını içerik tipine göre etiketler ve içerik herkese
+  açık olarak değiştiğinde bu etiketleri Cloudflare’de, Fastly’de veya kendi uç noktanızda
+  temizler.
+
+Her ikisi de çekirdeğin parçasıdır: özellik anahtarı yoktur. Dağıtımlar **Ayarlar → Dağıtımlar**
+bölümünde, CDN ise `verdin.toml` içinde ayarlanır.
+
+## Dağıtımlar
+
+<Diagram code={`sequenceDiagram
+  participant E as Editör
+  participant V as Verdin
+  participant P as Build sağlayıcısı
+  E->>V: Dağıt
+  V->>P: POST build hook
+  P-->>V: callback: building
+  P-->>V: callback: ready (url)
+  V-->>E: "Üretim sitesi dağıtıldı"`} caption="Dağıt düğmesi build hook’u çağırır; sağlayıcı geri çağırma URL’sine bildirimde bulunur." />
+
+### Bir hedef ekleme
+
+<Steps>
+
+1. Sağlayıcınızda site için bir build hook oluşturun ve URL’sini kopyalayın (Netlify: **Build
+   hooks**; Vercel: **Deploy Hooks**; Cloudflare Pages: **Deploy hooks**; bir CI: `POST` ile bir
+   pipeline başlatan herhangi bir URL).
+2. Verdin’de **Ayarlar → Dağıtımlar**’a gidin ve **Hedef ekle**’yi seçin.
+3. Ona bir **Ad** (örneğin **Üretim sitesi**) verin ve **Build hook URL’si**’ni yapıştırın.
+4. Kaydedin. Hook URL’si bir secret’tır: bundan sonra yalnızca host’u gösterilir. Hedefi başka bir
+   hook’a yönlendirmek için **URL’yi değiştir**’i kullanın.
+
+</Steps>
+
+Dağıtım yapabilen admin’ler artık başlıkta **Dağıt**’ı görür. Birden fazla hedefle bir **Şuraya
+dağıt** menüsü açılır. Onayladıktan sonra Verdin şunu gönderir:
+
+```http
+POST <build hook URL>
+content-type: application/json
+
+{ "trigger": "verdin", "triggeredBy": "editor@example.com" }
+```
+
+Bir hedef en fazla 10 saniyede bir dağıtım yapar; böylece çift tıklama iki build başlatmaz. İstek
+15 saniye sonra zaman aşımına uğrar ve yönlendirmeleri izlemez. `2xx` dışında bir yanıt veren bir
+hook **Reddedildi** olarak kaydedilir.
+
+### Build durumlarını geri bildirme
+
+Bir callback olmadan bir dağıtım **Tetiklendi** durumunda kalır. Admin’de **Derleniyor**, **Hazır**
+ve **Hata** durumlarını ve dağıtılan siteye bir bağlantıyı görmek için sağlayıcıya hedefin geri
+çağırma URL’sini verin: hedefin **Geri çağırma URL’si** düğmesini seçin ve kopyalayın.
+
+<Tabs syncKey="deploy-provider">
+<TabItem label="Netlify">
+
+**Site configuration → Build & deploy → Deploy notifications** bölümünde, geri çağırma URL’siyle
+**Deploy started**, **Deploy succeeded** ve **Deploy failed** için giden bir webhook ekleyin.
+
+</TabItem>
+<TabItem label="Vercel">
+
+**Team settings → Webhooks** bölümünde, geri çağırma URL’siyle `deployment.created`,
+`deployment.succeeded` ve `deployment.error` olayları için bir webhook oluşturun.
+
+</TabItem>
+<TabItem label="Diğer CI">
+
+Bir `status` (`building`, `ready` veya `error`) ve isteğe bağlı olarak dağıtılan `url` ve bir
+`message` içeren JSON ile `POST` yapın:
+
+```sh title="Terminal"
+curl -X POST "$VERDIN_CALLBACK_URL" -H 'content-type: application/json' \
+  -d '{ "status": "ready", "url": "https://www.example.com" }'
+```
+
+</TabItem>
+</Tabs>
+
+Verdin, Netlify’ın `state`’ini, Vercel’in `type`’ını ve düz bir `status`’u anlar ve hedefin en son
+dağıtımını günceller. `204` ya da URL yanlışsa `404` yanıtını verir. Geri çağırma URL’si
+`{public_url}{admin path}/api/deploy/callback/{id}/{secret}` biçimindedir; bu yüzden
+[`[server].public_url`](/tr/reference/configuration/)’i sağlayıcıların ulaşabildiği adrese ayarlayın.
+
+<Aside type="caution">
+Geri çağırma URL’si bir secret içerir: ona sahip olan herkes o hedef için dağıtım durumlarını
+bildirebilir. Dağıtım başlatamaz veya hiçbir şey okuyamaz.
+</Aside>
+
+**Dağıtım geçmişi**, en yeniden başlayarak en son 50 dağıtımı hedefleri, başlangıç zamanları,
+durumları, hook’un HTTP durumu ve sağlayıcının mesajıyla listeler. Bir hedefi silmek geçmişini
+siler, build hook’u silmez.
+
+### İzinler
+
+| İzin | İzin verdiği |
+| --- | --- |
+| **Dağıtımları tetikle** (`deploy.trigger`) | Başlıktaki **Dağıt** düğmesi. Yerleşik Editor rolünde vardır. |
+| **Dağıtım hedeflerini ve CDN’i yönet** (`deploy.manage`) | **Ayarlar → Dağıtımlar**: hedefler, geri çağırma URL’leri ve CDN temizlemeleri. |
+
+Bkz. [İzinler](/tr/reference/permissions/). Build hook URL’leri
+[webhook’larla](/tr/guides/integrations/webhooks/) aynı adres kurallarını izler: `verdin start`
+ile [`[webhooks].allow_private_networks`](/tr/reference/configuration/) izin vermedikçe özel ağlara
+işaret edemezler.
+
+### Bunun yerine her değişiklikte dağıtma
+
+Düğme, istek üzerine yeniden derlenen sitelere uygundur. Her yayınlamada yeniden derlemek için URL’si
+build hook olan, `entry.publish` ve `entry.unpublish` için bir
+[webhook](/tr/guides/integrations/webhooks/) oluşturun. Zamanlanmış bir değişiklik grubu için onları
+bir [sürümle](/tr/guides/content/releases/) yayınlayın ve webhook’u `releases.publish`’e bağlayın.
+
+## CDN temizlemeleri
+
+Bir CDN içerik API’sini önbelleğe aldığında, önbelleğin süresi dolana kadar eski içerik sunar.
+`[cdn]` ayarlandığında Verdin yanıtlarını etiketler ve içerik değiştikçe doğru etiketleri temizler;
+böylece uzun süre önbelleğe alabilirsiniz.
+
+### Etiketleme nasıl çalışır
+
+İçerik API’sinin her başarılı `GET` yanıtı `vd` (her şey), `vd-<singularName>` (içerik tipi) ve
+belgelerinin populate edebildiği her tipin etiketini taşır: bileşenlerin ve dinamik bölgelerin
+içindekiler dâhil ilişki hedefleri, kendi ilişkilerine kadar izlenerek. Blog örneğinin makaleleri
+için, her iki başlık biçiminde:
+
+```http
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
+```
+
+Polimorfik bir ilişkisi olan bir tip herhangi bir tipe ulaşabilir; bu yüzden yanıtları her tipin
+etiketini taşır.
+
+Cloudflare `Cache-Tag`’i, Fastly `Surrogate-Key`’i okur. İçerik herkese açık olarak değiştiğinde
+Verdin tipin etiketini temizler:
+
+- bir kaydı yayınlama, yayından kaldırma veya silme;
+- taslak ve yayınlama kullanmayan bir tipe yapılan herhangi bir yazma (yazmaları hemen herkese
+  açıktır).
+
+Bir taslağı kaydetmek hiçbir şeyi temizlemez, çünkü taslaklar herkese açık sunulmaz. Bir saniye
+(`debounce_ms`) içindeki değişiklikler tek bir temizlemede toplanır ve başarısız bir temizleme iki
+kez yeniden denenir.
+
+### Yapılandırma
+
+<Tabs syncKey="cdn">
+<TabItem label="Cloudflare">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "cloudflare"
+zone_id = "023e105f4ecef8ad9ca31a8372d0c353"
+```
+
+`VERDIN_CDN_TOKEN`, bölge (zone) üzerinde **Cache Purge** iznine sahip bir API token’ıdır.
+
+</TabItem>
+<TabItem label="Fastly">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "fastly"
+service_id = "SU1Z0isxPaozGVKXdv0eY"
+```
+
+`VERDIN_CDN_TOKEN`, servisi temizlemesine izin verilen bir Fastly API token’ıdır.
+
+</TabItem>
+<TabItem label="Webhook">
+
+```toml title="verdin.toml"
+[cdn]
+provider = "webhook"
+url = "https://purge.example.com/verdin"
+```
+
+Verdin, token ayarlandığında `Authorization: Bearer <VERDIN_CDN_TOKEN>` ile
+`POST { "tags": ["vd-article"] }` gönderir. Bunu başka bir CDN, bir reverse proxy veya
+framework’ünüzün yeniden doğrulama (revalidation) API’si için kullanın.
+
+</TabItem>
+</Tabs>
+
+```sh title="Terminal"
+export VERDIN_CDN_TOKEN=...
+```
+
+Verdin bölümü başlangıçta denetler ve sağlayıcının ihtiyaç duyduğu `zone_id`, `service_id`, `url`
+veya token olmadan çalışmayı reddeder. Bkz. [`[cdn]`](/tr/reference/configuration/).
+
+Neyin önbelleğe alınacağına yine CDN’iniz karar verir: API yolları için (örneğin anonim
+`GET`’lerde `/api/*`) uzun bir edge TTL’li bir önbellek kuralı ayarlayın. Kimlik doğrulamalı
+istekleri, önizleme okumalarını ve `/api/_events`’i önbelleğin dışında tutun.
+
+### Denetleme ve elle temizleme
+
+**Ayarlar → Dağıtımlar** içindeki **CDN** bölümü sağlayıcıyı ve **Son temizlemeler**’i (etiketlerle
+birlikte **Temizlendi** veya **Başarısız**) gösterir. **Her şeyi temizle**, `vd` ile etiketlenmiş
+her yanıtı atar.
+
+Yanıtlar populate edebildikleri tiplerin etiketlerini taşıdığı için bir kategoriyi yeniden
+adlandırmak, istek `populate` istemiş olsun ya da olmasın, onu içerebilecek önbelleğe alınmış
+makale listelerini de temizler.
+
+Verdin’in kendi bellek içi önbelleği ([`[api].cache_ttl_secs`](/tr/reference/configuration/))
+ayrıdır: her değişiklikte boşaltılır.

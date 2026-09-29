@@ -1,0 +1,128 @@
+---
+title: Menu's
+description: Bouw navigatiemenu's van links en items in het beheerpaneel en toon ze op je site.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+De functie **Menu's** geeft redacteuren benoemde navigatiebomen (een header, een footer, een
+zijbalk) die linken naar pagina's, items of andere sites. Je site haalt een menu op via zijn slug
+en toont het; links naar items volgen hun publicatiestatus en pad.
+
+In Strapi vraagt dit meestal om een navigatieplugin of een zelfgemaakt contenttype voor menu's; in
+Verdin is het ingebouwd.
+
+## Aanzetten
+
+Zet in **Instellingen → Functies** **Menu's** aan en kies daarna **Menu's beheren** (of ga naar
+**Instellingen → Menu's**). Menu's beheren vereist het recht
+**SEO, redirects, menu's en formulieren beheren** (`site.manage`), dat de ingebouwde rol Editor
+heeft. Zie [Rechten](/nl/reference/permissions/).
+
+Om items via hun pad te linken, stel je ook padpatronen in bij
+[SEO en sitemap](/nl/guides/frontend/seo-and-sitemap/).
+
+## Een menu bouwen
+
+<Steps>
+
+1. Kies in **Instellingen → Menu's** **Nieuw menu**.
+2. Geef het een naam (zoals **Hoofdnavigatie**) en een **Slug** (`main`): kleine letters, cijfers
+   en streepjes. Sites halen het menu op via zijn slug.
+3. Kies **Een item toevoegen** en vul het item in:
+   - **Label**: de tekst van de link, tot 255 tekens.
+   - **Linkt naar**: **Een URL**, **Een item**, of **Niets (een kop)**.
+   - **URL**: een pad (`/about`), een anker (`#team`), of een `http(s)`-, `mailto:`- of
+     `tel:`-link.
+   - Kies voor een item **Item kiezen**: kies het **Contenttype** als er meerdere kunnen worden
+     gelinkt, doorzoek de items en selecteer er een.
+   - **Opent in**: **Hetzelfde tabblad** of **Een nieuw tabblad**.
+4. Sleep items om ze te ordenen en te nesten, of gebruik hun knoppen. Met het toetsenbord, op een
+   sleepgreep: Alt+↑ en Alt+↓ verplaatsen een item, Alt+→ nest het onder het item erboven, Alt+←
+   haalt het eruit.
+5. Sla op.
+
+</Steps>
+
+Een menu heeft hoogstens 5 niveaus en 500 items.
+
+## Een menu ophalen
+
+Sites lezen een menu vanaf `GET /api/_menus/{slug}`, zonder token. Voeg `?locale=` toe voor
+gelokaliseerde content:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+Hoe links naar items worden opgelost:
+
+- Een item dat in de gevraagde locale niet is gepubliceerd, wordt uit het menu weggelaten (met
+  zijn kinderen). Menu's lekken nooit concepten.
+- `entry.path` komt uit het patroon van het type in [SEO en sitemap](/nl/guides/frontend/seo-and-sitemap/),
+  ingevuld met de velden van het item en de locale. Het is `null` als het type geen patroon heeft
+  of het item het niet invult.
+- Als het menu-item geen eigen `url` heeft, krijgt het het pad als `url`, dus de meeste sites
+  hoeven alleen `url` te lezen.
+
+Zonder `locale` worden items in de standaardlocale gelezen. De response wordt verzonden met
+`Cache-Control: public, max-age=60`.
+
+## Het tonen
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+Een menu verwijderen laat `/api/_menus/{slug}` antwoorden met `404`, net als de functie uitzetten.
+Vang dat op je site op, bijvoorbeeld door geen navigatie te tonen.
+</Aside>
+
+## Admin-API
+
+Het beheerpaneel gebruikt `/admin/api/site/menus` (`GET`, `POST`) en
+`/admin/api/site/menus/{id}` (`GET`, `PUT`, `DELETE`), met het access token van een beheerder en
+`site.manage`. Zie [Admin-API](/nl/api/admin/).

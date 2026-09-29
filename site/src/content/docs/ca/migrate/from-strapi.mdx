@@ -1,0 +1,214 @@
+---
+title: Migrar des de Strapi
+description: Trasllada un projecte de Strapi v4 o v5 a Verdin amb verdin import strapi — exportació, importació, què s'hi porta, el mapa d'ids, les comprovacions posteriors i els canvis que necessita el teu frontend.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+`verdin import strapi` porta un projecte de Strapi v4 o v5 a Verdin: els seus tipus de contingut i
+components es converteixen en fitxers d'esquema, i se n'importen les entrades, els idiomes, la
+mediateca, les relacions, els usuaris finals i els permisos públics. Aquesta pàgina explica una
+migració pas a pas i llista què ha de canviar el teu frontend. Per a una comparació funcionalitat
+per funcionalitat, consulta [Compatibilitat amb Strapi](/ca/migrate/compatibility/).
+
+<Diagram
+  caption="L'importador llegeix el fitxer d'exportació de Strapi; mai no es connecta a la base de dades de Strapi."
+  code={`flowchart LR
+  S[Projecte Strapi] -->|strapi export| E[exportació .tar.gz]
+  E -->|verdin import strapi| F[fitxers d'esquema]
+  F --> M[migració de la base de dades]
+  M --> D[entrades, multimèdia, usuaris]
+  D --> R[strapi-id-map.json]`}
+/>
+
+## Abans de començar
+
+- Un projecte de Strapi v4 o v5 on puguis executar `strapi export`.
+- Un projecte Verdin nou (`verdin new my-site`), o un sense fitxers d'esquema amb els mateixos
+  noms. Consulta la [guia d'inici ràpid](/ca/start/quickstart/).
+- La base de dades i l'emmagatzematge de multimèdia que farà servir el projecte Verdin en
+  producció, si pots: els fitxers es copien al proveïdor de pujades configurat durant la
+  importació.
+
+## 1. Exporta des de Strapi
+
+Al projecte de Strapi:
+
+```sh frame="terminal"
+npx strapi export --no-encrypt -f my-export      # escriu my-export.tar.gz
+```
+
+Verdin no pot llegir exportacions xifrades (`.tar.gz.enc`); torna a exportar amb `--no-encrypt`.
+Les exportacions sense comprimir (`--no-compress`, un `.tar`) i un directori d'exportació
+desempaquetat també funcionen.
+
+## 2. Importa a Verdin
+
+<Steps>
+
+1. Crea el projecte i importa l'exportació:
+
+   ```sh frame="terminal"
+   verdin new my-site && cd my-site
+   verdin import strapi ../my-export.tar.gz
+   ```
+
+2. Llegeix el resum. L'importador imprimeix quants documents, versions, fitxers, carpetes, idiomes
+   i enllaços ha importat, i després una línia per avís.
+
+3. Inicia el servidor de desenvolupament i obre el tauler d'administració:
+
+   ```sh frame="terminal"
+   verdin dev
+   ```
+
+</Steps>
+
+L'ordre executa aquests passos per ordre:
+
+1. Escriu un fitxer d'esquema per cada tipus de contingut `api::` i per cada component a
+   `schema/`. Si l'esquema convertit no es valida, no s'escriu res.
+2. Migra la base de dades (passos segurs).
+3. Importa els idiomes, les carpetes i els fitxers de multimèdia, les entrades (tots els
+   esborranys, versions publicades i idiomes), les relacions i la multimèdia associada a entrades i
+   components.
+4. Importa els usuaris finals, els seus rols i els permisos públics i autenticats.
+5. Escriu `strapi-id-map.json` al directori del projecte.
+
+| Opció | Efecte |
+| --- | --- |
+| `--schema-only` | S'atura després d'escriure els fitxers d'esquema. Útil per revisar o ajustar primer l'esquema. |
+| `--force` | Sobreescriu els fitxers d'esquema existents, i importa en tipus de contingut que ja tenen entrades. |
+
+Sense `--force`, la importació s'atura si ja existeix un fitxer d'esquema que escriuria, o si un
+tipus de contingut ja té entrades.
+
+## Què s'hi porta
+
+| Strapi | Verdin |
+| --- | --- |
+| Tipus de contingut i components `api::…` | Fitxers d'esquema, conservant `collectionName`, esborrany i publicació, opcions d'i18n i opcions dels camps (`required`, `private`, `unique`, longituds, `regex`, valors per defecte…) |
+| Relacions entre tipus `api::` | Les mateixes relacions |
+| Relacions dins de components | Referències `oneWay` / `manyWay` |
+| Relacions polimòrfiques (`morphToOne`, `morphToMany`, `morphOne`, `morphMany`) | Les mateixes, amb els seus enllaços als tipus de contingut importats |
+| Camps de multimèdia (també en components) | Camps de multimèdia |
+| Files de v5 (esborrany i publicada) | Versions d'esborrany i publicada |
+| Files de v4 | Un esborrany, més una versió publicada quan `publishedAt` està definit; les `localizations` es converteixen en idiomes d'un sol document |
+| `plugin::i18n.locale` | Idiomes (el per defecte de Strapi continua sent el per defecte) |
+| `plugin::upload.file` i `folder` | Fitxers de la mediateca (amb els seus formats) i carpetes |
+| Camps `password` | Camps `password`, conservant els hashes bcrypt de Strapi |
+| Camps personalitzats (`customField`) | L'atribut amb el seu `customField` conservat; consulta més avall |
+| Camps condicionals (`conditions`, Strapi 5.17) | Es conserven a l'esquema i els aplica l'editor |
+| `plugin::users-permissions.user` | Usuaris finals, amb les seves contrasenyes bcrypt (que es tornen a calcular amb Argon2id al següent inici de sessió), `confirmed` i `blocked` |
+| Rols de Users & Permissions | Els permisos del rol Public es converteixen en els permisos públics de Verdin; Authenticated i els rols personalitzats es converteixen en rols d'usuari final |
+| Permisos de rols sobre tipus de contingut i pujades | Permisos `find`, `findOne`, `create`, `update` i `delete`; `find`, `findOne`, `upload` i `destroy` de les pujades |
+
+## Què no s'hi porta
+
+Informat com a avisos:
+
+- Relacions amb usuaris administradors, usuaris finals o tipus d'altres connectors (només
+  s'importen les destinacions `api::`). Els camps `createdBy` / `updatedBy` queden fora.
+- `unique` als atributs `text`, `richtext`, `blocks` i `json` (Verdin l'admet als tipus de text
+  curt).
+- Tipus d'atribut que Verdin no coneix, i tipus de relació que no pot desar dins d'un component.
+- Meitats de relacions els `inversedBy` / `mappedBy` de les quals no coincideixen amb l'altre costat.
+- Codis d'idioma no vàlids.
+
+No s'importa gens: els usuaris i els rols d'administració, els tokens d'API, els transfer tokens,
+els webhooks, els llançaments, les etapes dels fluxos de revisió, l'historial de contingut i els
+registres d'auditoria, ni la configuració dels connectors de Strapi. El teu codi de Strapi —
+controladors, serveis, rutes, policies, middlewares, lifecycle hooks, tasques cron i
+personalitzacions de l'administració — no té cap equivalent a Verdin al qual convertir-lo; consulta
+[Refés el codi personalitzat](#refés-el-codi-personalitzat).
+
+<Aside type="note">
+Els camps personalitzats conserven el seu nom `customField`, com ara `plugin::color-picker.color`.
+L'editor els mostra amb un [connector](/ca/extending/plugins/) que proporcioni aquest camp, i torna
+al camp d'entrada del tipus desat quan no n'hi ha cap.
+</Aside>
+
+## El mapa d'ids
+
+Verdin genera ids de document nous: els `documentId` de Strapi tenen 24 caràcters i els de Verdin
+26, de manera que cada document en rep un de nou. Els `id` numèrics també canvien.
+`strapi-id-map.json` en registra la correspondència:
+
+```json title="strapi-id-map.json"
+{
+  "documents": {
+    "api::article": {
+      "hq7xw1c6m2vkn0f3t8ybz5sd": "01k6b3xg0r9m2m7c1d4e5f6g7h"
+    }
+  },
+  "files": {
+    "12": 3
+  }
+}
+```
+
+- `documents` té com a clau l'uid del tipus de contingut de Verdin (`api::article`, l'
+  `api::article.article` de Strapi), i després el `documentId` de Strapi (v5) o un id de fila (v4:
+  un id representa tots els idiomes d'un document).
+- `files` associa els ids de fitxer de Strapi als ids de fitxer de Verdin.
+
+Fes-lo servir per reescriure els ids desats fora del CMS: enllaços al codi del teu frontend, ids en
+una altra base de dades, analítica, adreces d'interès.
+
+## Comprova el resultat
+
+1. `verdin schema check` passa, i `verdin migrate plan` diu que la base de dades està al dia.
+2. Al tauler d'administració, obre cada col·lecció i compara el nombre d'entrades, d'esborranys i
+   d'idiomes amb Strapi.
+3. Obre unes quantes entrades amb relacions, components, zones dinàmiques i multimèdia, i comprova
+   que els enllaços apunten als documents i fitxers correctes.
+4. Obre la **Mediateca** i comprova que hi ha les carpetes i les imatges (amb els seus formats).
+5. A **Configuració → Accés públic** i **Configuració → Usuaris finals**, revisa els permisos i els
+   rols importats.
+6. Crida la teva API com ho fa el teu frontend i compara les respostes amb les de Strapi.
+
+Després confirma `schema/`, crea els administradors, els tokens d'API i els webhooks, i desplega
+(consulta la [llista de comprovació per a producció](/ca/deploy/production-checklist/)).
+
+## Canvis al frontend
+
+L'API de contingut segueix les formes REST i GraphQL de Strapi v5, de manera que la majoria de
+peticions funcionen tal qual. Canvia això:
+
+- **URL base.** Apunta el frontend al servidor de Verdin. L'API de contingut és sota `/api`
+  (`[api].prefix`), i GraphQL a `/graphql` un cop l'activis a **Configuració → Funcionalitats**.
+- **Tokens d'API.** Els tokens no s'importen: crea'n de nous a **Configuració → Tokens d’API** i
+  substitueix-los a l'entorn del teu frontend.
+- **Ids de document.** Tots els `documentId` i els `id` numèrics són nous. Substitueix els ids
+  escrits al codi del frontend pels de `strapi-id-map.json` o, millor, busca les entrades per un
+  slug o un altre camp `uid`.
+- **URL de multimèdia.** Els URL dels fitxers apunten al proveïdor nou: `/uploads/…` al servidor de
+  Verdin per al proveïdor local, o `[upload.provider].public_url` per a S3. Actualitza els dominis
+  d'imatges permesos pel teu framework (per exemple `images.remotePatterns` a Next.js).
+- **Els usuaris finals amb sessió iniciada** han de tornar a iniciar la sessió: les seves
+  contrasenyes funcionen, però els JWT emesos per Strapi no.
+- **CORS.** Si un navegador crida l'API des d'un altre origen, afegeix-lo a `[api].cors_origins`.
+- **Webhooks.** Torna'ls a crear a **Configuració → Webhooks**. L'esdeveniment
+  `entry.draft-discard` de Strapi s'anomena `entry.discard-draft`, i els enviaments se signen
+  (consulta [Webhooks](/ca/guides/integrations/webhooks/)).
+- **Els frontends de Strapi v4** també necessiten els canvis de la v5: respostes planes sense
+  `attributes`, `documentId` en lloc d'`id` als URL, i `status=draft` en lloc de
+  `publicationState=preview`.
+
+Per a un accés tipat, genera els tipus TypeScript amb `verdin types` i fes servir el
+[client tipat](/ca/guides/frontend/typed-client/).
+
+## Refés el codi personalitzat
+
+| Strapi | Verdin |
+| --- | --- |
+| Lifecycle hooks, middlewares del document service | Hooks de connector (`beforeCreate`, `afterUpdate`…) en un [connector WebAssembly](/ca/extending/plugins/) |
+| Rutes i controladors personalitzats | Rutes de connector sota `/api/plugins/<name>/` |
+| Tasques cron | Tasques de connector (`[[jobs]]`) |
+| Camps personalitzats | Camps personalitzats de connector |
+| Widgets de l'administració | Widgets de connector, o els widgets integrats del tauler d'inici |
+| Logotip, colors i textos de l'administració | `[admin.branding]` a `verdin.toml` |
+| `config/*.js` | `verdin.toml` i variables d'entorn ([referència de configuració](/ca/reference/configuration/)) |

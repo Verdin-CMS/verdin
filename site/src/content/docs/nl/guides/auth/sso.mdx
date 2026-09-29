@@ -1,0 +1,163 @@
+---
+title: Single sign-on
+description: Laat beheerders inloggen met een OpenID Connect-provider zoals Microsoft Entra ID, Google Workspace, Okta of Keycloak, met toewijzing van groepen aan rollen.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Beheerders kunnen inloggen via elke OpenID Connect-provider: Microsoft Entra ID, Google Workspace,
+Okta, Auth0, Keycloak, Authentik, GitLab en andere. Elke provider krijgt een knop op de inlogpagina,
+en inloggen met een wachtwoord blijft ernaast werken. Deze gids registreert een applicatie,
+configureert de provider in Verdin en wijst groepen toe aan rollen.
+
+SSO is in Strapi een Enterprise-functie. In Verdin hoort het bij de open-source kern. Voor de
+eindgebruikers van je sites, zie in plaats daarvan
+[OAuth-login voor eindgebruikers](/nl/guides/auth/end-users/).
+
+## Voordat je begint
+
+- SSO configureren vereist **Functies beheren** (`features.manage`).
+- Stel `[server].public_url` in op het adres waarop beheerders Verdin bereiken, zoals
+  `https://cms.example.com`. De redirect-URI wordt daaruit opgebouwd.
+
+## Instellen
+
+<Steps>
+
+1. **Registreer een applicatie** (een "web"-client) bij de provider, met deze redirect-URI:
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>` is het provider-id dat je in stap 3 kiest, zoals `corp`. Het adminpad volgt
+   `[admin].path`.
+
+2. **Zet het clientgeheim in de omgeving** en herstart Verdin:
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   De variabele is `VERDIN_SSO_<ID>_SECRET`, met het id in hoofdletters en streepjes als
+   underscores. Openbare clients (alleen PKCE, geen geheim) hebben geen variabele nodig.
+
+3. **Voeg de provider toe.** Zet **Instellingen → Functies → Single sign-on** aan, kies
+   **Providers instellen**, daarna **Een provider toevoegen**, en vul in:
+
+   - **ID**: kleine letters, cijfers en streepjes, tot 32 tekens.
+   - **Knoptekst**: getoond op de inlogpagina als "Doorgaan met …".
+   - **Issuer-URL**: Verdin leest `/.well-known/openid-configuration` daaronder. Die moet `https`
+     gebruiken, behalve op `localhost`.
+   - **Client-ID** en **Scopes** (standaard `openid email profile`; `openid` is verplicht).
+
+   De dialoog toont de **Redirect-URI om bij de provider te registreren** en de naam van de
+   geheime variabele. Sla op.
+
+4. **Probeer het** in een privévenster: de inlogpagina toont **Doorgaan met Corp account**.
+
+</Steps>
+
+## Wie mag inloggen, en met welke rollen
+
+| Instelling | JSON-sleutel | Effect |
+| --- | --- | --- |
+| **Toegestane e-maildomeinen** | `allowedDomains` | Alleen deze e-maildomeinen mogen inloggen. Leeg betekent elk domein. |
+| **Accounts aanmaken bij de eerste aanmelding** | `autoCreate` | Maak een beheerdersaccount aan de eerste keer dat iemand inlogt. Zonder deze instelling mogen alleen e-mailadressen inloggen die al een account hebben. |
+| **Standaardrollen** | `defaultRoles` | Rolcodes van aangemaakte accounts als de roltoewijzing er geen geeft. |
+| **Rolclaim** | `roleClaim` | De claim in het ID-token die de groepen van de gebruiker opsomt, zoals `groups` of `roles`. |
+| **Roltoewijzing** | `roleMap` | Welke rolcode elke claimwaarde geeft. |
+| **Niet-geverifieerde e-mails vertrouwen** | `trustUnverifiedEmail` | Accepteer e-mailadressen die de provider niet als geverifieerd markeert. |
+| **De provider dwingt MFA af** | `providerMfa` | Vraag beheerders na deze provider niet om hun tweede factor van Verdin. |
+
+- Een provider die accounts aanmaakt, heeft standaardrollen of een roltoewijzing nodig.
+- Geen van beide kan de rol Super Admin geven; promoveer beheerders met de hand in
+  **Instellingen → Gebruikers**.
+- Rollen worden alleen ingesteld wanneer het account wordt aangemaakt. Beheer ze daarna in
+  **Instellingen → Gebruikers**.
+- De voor- en achternaam van een aangemaakt account komen uit de claims `given_name` en
+  `family_name`.
+
+Dezelfde provider als JSON, zoals de functie hem opslaat (`PUT /admin/api/features/sso`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## Opmerkingen per provider
+
+- **Microsoft Entra ID** laat `email_verified` weg uit zijn ID-tokens: zet daarvoor
+  **Niet-geverifieerde e-mails vertrouwen** aan. Voeg de claim `groups` toe in de tokenconfiguratie
+  van de app om groepen toe te wijzen; de waarden ervan zijn groeps-id's.
+- **Google Workspace**: de issuer is `https://accounts.google.com`. Beperk logins tot je domein met
+  **Toegestane e-maildomeinen**.
+- **Keycloak**: de issuer is de URL van de realm, `https://<host>/realms/<realm>`.
+
+## Tweefactorauthenticatie
+
+Standaard wordt een beheerder die een [tweede factor](/nl/guides/auth/two-factor/) in Verdin heeft,
+daarom gevraagd nadat de provider hem terugstuurt. Als de provider al MFA afdwingt, zet dan
+**De provider dwingt MFA af** aan, zodat er niet twee keer wordt gevraagd.
+
+## Hoe het werkt
+
+<Diagram
+  caption="Een SSO-login"
+  code={`sequenceDiagram
+  participant B as Browser
+  participant V as Verdin
+  participant P as Provider
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: redirect met state en PKCE-challenge
+  B->>P: inloggen
+  P-->>B: redirect naar callback met code
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: code inwisselen (TLS)
+  V-->>B: sessiecookie, redirect naar /admin/`}
+/>
+
+- Verdin gebruikt de authorization code flow met PKCE (S256). De `state` is ondertekend en
+  gekoppeld aan een kortlevende `HttpOnly`-cookie, en de `nonce` wordt daaruit afgeleid.
+- Het controleert de issuer, de audience (en `azp` als er meerdere zijn), de vervaldatum en de
+  nonce van het ID-token. Het heeft een claim `email` nodig met `email_verified: true`, tenzij
+  **Niet-geverifieerde e-mails vertrouwen** aan staat.
+- De endpoints van de provider moeten `https` gebruiken.
+- Elke SSO-login wordt in de [auditlogs](/nl/guides/content/audit-logs/) vastgelegd als
+  `admin.login`, met de provider.
+
+Als een login mislukt, keert de browser terug naar de inlogpagina met de reden ("Single sign-on is
+mislukt"), en de reden wordt naar het serverlog geschreven. Veelvoorkomende redenen:
+
+| Reden | Oplossing |
+| --- | --- |
+| the provider did not verify the email | Zet **Niet-geverifieerde e-mails vertrouwen** aan, of corrigeer de claim van de provider. |
+| this email domain may not sign in | Voeg het domein toe aan **Toegestane e-maildomeinen**. |
+| no admin account for this identity | Zet **Accounts aanmaken bij de eerste aanmelding** aan, of maak de beheerder eerst aan. |
+| the sign-in request expired or was not started here | Begin opnieuw vanaf de inlogpagina, in dezelfde browser. |
+
+<Aside type="note">
+Een gedeactiveerde beheerder kan ook niet via SSO inloggen.
+</Aside>

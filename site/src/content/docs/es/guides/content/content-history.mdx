@@ -1,0 +1,90 @@
+---
+title: Historial de contenido
+description: Recorre las versiones guardadas, publicadas y despublicadas de una entrada y restaura una como borrador actual.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Verdin guarda una versión de una entrada cada vez que se crea, se guarda, se publica, se
+despublica o se descarta su borrador, desde cualquier API. Esta guía muestra cómo encontrar una
+versión antigua y restaurarla, cuántas versiones se conservan y la API de administración
+correspondiente.
+
+El historial de contenido funciona como el de Strapi, donde es una funcionalidad de pago.
+
+## Antes de empezar
+
+- **Configuración → Funcionalidades → Historial de contenido** está activado por defecto.
+  Mientras está desactivado, no se registran versiones y el historial no está disponible.
+- Leer el historial de una entrada necesita acceso de lectura a la entrada; restaurar necesita
+  acceso de actualización. Se aplican las restricciones de campos: solo ves, y solo restauras,
+  los campos que tu rol puede leer o actualizar. Consulta [Permisos](/es/reference/permissions/).
+
+## Restaura una versión
+
+<Steps>
+
+1. Abre la entrada y selecciona **Historial**.
+2. La lista de **Versiones** muestra cada versión con su evento (**Creado**, **Guardado**,
+   **Publicado**, **Despublicado**, **Borrador descartado**), su fecha y quién la hizo. Los
+   cambios hechos a través de la API de contenido muestran **API** como autor.
+3. Selecciona una versión para ver sus campos.
+4. Selecciona **Restaurar** y confirma.
+
+</Steps>
+
+La versión sustituye al borrador actual; publícala después cuando estés listo. En los tipos sin
+borrador y publicación, restaurar actualiza la entrada directamente.
+
+Lo que se queda fuera al restaurar:
+
+- Los campos que ya no existen en el esquema se enumeran y no se restauran.
+- Las referencias a entradas o archivos eliminados se descartan, y el editor te indica qué
+  campos las han perdido.
+
+**Volver al editor** vuelve a la entrada sin cambiar nada.
+
+## Cuántas versiones se conservan
+
+Verdin conserva las `[history].max_versions` versiones más recientes de cada entrada e idioma
+(50 por defecto) y elimina las más antiguas a medida que llegan versiones nuevas:
+
+```toml title="verdin.toml"
+[history]
+max_versions = 100
+```
+
+Cada idioma de una entrada localizada tiene su propio historial. Eliminar una entrada, o uno de
+sus idiomas, elimina también sus versiones. Consulta la
+[referencia de configuración](/es/reference/configuration/).
+
+<Aside type="note">
+A diferencia de Strapi, donde el historial se conserva durante un número de días, Verdin
+conserva un número de versiones por entrada, sea cual sea su antigüedad.
+</Aside>
+
+## API de administración
+
+Todas las rutas están bajo `/admin/api`.
+
+| Ruta | Permiso | Hace |
+| --- | --- | --- |
+| `GET /history/{uid}/{documentId}?locale=&page=&pageSize=` | leer la entrada | Las versiones, de la más reciente a la más antigua, sin sus datos (20 por página, como máximo 100). |
+| `GET /history/versions/{id}` | leer la entrada | Una versión con sus datos. |
+| `POST /history/versions/{id}/restore` | actualizar la entrada | Restaura la versión como borrador actual. |
+
+La respuesta de la restauración enumera lo que se ha descartado:
+
+```json
+{
+  "data": {
+    "documentId": "k3v9…",
+    "restored": 42,
+    "dropped": [{ "field": "tags", "count": 1 }]
+  }
+}
+```
+
+Las rutas responden `404` mientras la funcionalidad está desactivada.

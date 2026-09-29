@@ -1,0 +1,118 @@
+---
+title: Перенаправлення
+description: Ведіть список перенаправлень в адмін-панелі й застосовуйте їх у middleware свого сайту.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Функція **Перенаправлення** дає редакторам змогу спрямовувати старі шляхи на нові без
+розгортання: вони ведуть список в адмін-панелі, а ваш сайт отримує його й відповідає
+перенаправленням. Verdin сам відвідувачів не перенаправляє, бо вони приходять на ваш сайт, а не
+в CMS.
+
+## Увімкнення
+
+У **Налаштування → Функції** увімкніть **Перенаправлення**, потім виберіть
+**Керувати перенаправленнями** (або перейдіть до **Налаштування → Перенаправлення**).
+Керування перенаправленнями потребує дозволу **Керування SEO, перенаправленнями, меню та
+формами** (`site.manage`), який має вбудована роль Editor. Див. [Дозволи](/uk/reference/permissions/).
+
+## Додайте перенаправлення
+
+<Steps>
+
+1. У **Налаштування → Перенаправлення** виберіть **Додати перенаправлення**.
+2. **Звідки**: старий шлях, що починається з `/` (наприклад, `/blog/2024/hello`).
+3. **Куди**: новий шлях або повна URL-адреса `http(s)` на іншому сайті.
+4. **Тип**: **301 · Постійне**, **302 · Тимчасове**, **307 · Тимчасове (зберігає метод)** або
+   **308 · Постійне (зберігає метод)**.
+5. Збережіть.
+
+</Steps>
+
+Verdin відхиляє перенаправлення, яке ніколи не працюватиме:
+
+- друге перенаправлення з того самого шляху;
+- шлях, що перенаправляє сам на себе;
+- ланцюжок, що зациклюється (`/a` → `/b` → `/a`).
+
+Для багатьох перенаправлень одразу використовуйте **Імпортувати CSV** зі стовпцями `source`,
+`destination` і `status`. Рядки, чиє джерело вже існує, оновлюють це перенаправлення.
+**Експортувати CSV** записує той самий формат — зручно для міграції з іншої CMS чи перегляду в
+електронній таблиці.
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## Застосування на сайті
+
+Сайти читають список з `GET /api/_redirects` без токена:
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+Відповідь надсилається з `Cache-Control: public, max-age=60`, тож зміна доходить до сайтів
+приблизно за хвилину. Порівнюйте шлях запиту з `source` точно:
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+Для статичного сайту отримуйте список під час збірки й записуйте файл перенаправлень вашого
+хостингу (`_redirects` у Netlify, `vercel.json` у Vercel, map у nginx). Поєднайте це з
+[кнопкою розгортання](/uk/guides/integrations/deploys-and-cdn/) або [вебхуком](/uk/guides/integrations/webhooks/),
+щоб редактори могли перезібрати сайт після зміни перенаправлень.
+
+<Aside type="note">
+Префікс API відповідає [`[api].prefix`](/uk/reference/configuration/). Коли функцію вимкнено,
+`/api/_redirects` відповідає `404`.
+</Aside>
+
+## Admin API
+
+Адмін-панель використовує `/admin/api/site/redirects` (`GET`, `POST`) і
+`/admin/api/site/redirects/{id}` (`PUT`, `DELETE`), з access token адміністратора й
+`site.manage`. Див. [Admin API](/uk/api/admin/).

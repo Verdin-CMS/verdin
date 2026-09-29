@@ -1,0 +1,150 @@
+---
+title: MCP-Server
+description: Lass Claude und andere KI-Agenten Verdin-Inhalte über das Model Context Protocol lesen und bearbeiten, mit den Berechtigungen eines API-Tokens.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin kann seine Inhalte über das [Model Context Protocol](https://modelcontextprotocol.io)
+(MCP) an KI-Agenten ausliefern. Verbinde Claude Code, Claude Desktop, Cursor oder einen anderen
+MCP-Client, und der Agent kann deine Inhaltstypen auflisten, Einträge mit den Filtern der
+REST-API abfragen und Einträge anlegen, aktualisieren oder veröffentlichen, im Rahmen der
+Berechtigungen des Tokens, das du ihm gibst.
+
+Strapi v5 hat keinen eingebauten MCP-Server.
+
+## Einschalten
+
+<Steps>
+
+1. Schalte unter **Einstellungen → Funktionen** **MCP-Server** ein. Seine Karte zeigt den
+   **Endpunkt** `https://cms.example.com/mcp`, auf demselben Host wie die Content-API.
+2. Wähle unter **Einstellungen → API-Tokens** **Token erstellen**. Nimm **Nur lesen**, sofern
+   der Agent nicht schreiben soll, oder **Benutzerdefiniert**, um nur bestimmte Typen und
+   Aktionen zu erlauben. Kopiere das Token: Es wird einmal angezeigt. Siehe
+   [API-Tokens](/de/guides/auth/api-tokens/).
+3. Verbinde deinen Client mit dem Endpunkt und dem Token (siehe unten).
+
+</Steps>
+
+## Einen Client verbinden
+
+Der Server spricht den Streamable-HTTP-Transport von MCP. Jeder Client braucht die URL und
+einen Header `Authorization: Bearer <token>`.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+Die Karte **MCP-Server** zeigt diesen Befehl unter **Zu Claude Code hinzufügen**
+(**Befehl kopieren**); ersetze `<token>` durch dein API-Token:
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+Die Konfigurationsdatei von Claude Desktop startet lokale Server; überbrücke deshalb mit
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) zum HTTP-Endpunkt:
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Die Konfigurationsformate der Clients ändern sich; sieh in der Dokumentation deines Clients
+nach, wenn ein Schlüssel nicht erkannt wird. Frag den Agenten dann etwa: *„Liste die Artikel,
+die diese Woche in der Kategorie News veröffentlicht wurden.“*
+
+## Tools
+
+| Tool | Braucht | Was es tut |
+| --- | --- | --- |
+| `list_content_types` | `find` oder `findOne` | Die Inhaltstypen, die der Aufrufer lesen darf, mit ihrer Art und ihren Attributen. |
+| `get_content_type` | `find` oder `findOne` | Die Attribute eines Inhaltstyps: Typen, Optionen und Relationen. |
+| `find_entries` | `find` | Einträge eines Typs. `query` nimmt die Parameter der REST-API als JSON (`filters`, `sort`, `fields`, `populate`, `pagination`); `status: "draft"` braucht außerdem `readDrafts`. |
+| `get_entry` | `findOne` | Ein Eintrag per `documentId` (bei Single Types ohne). |
+| `create_entry` | `create` | Legt einen Eintrag aus `data` an, wie in der REST-API. `status: "draft"` speichert einen Entwurf. |
+| `update_entry` | `update` | Aktualisiert einen Eintrag (bei Single Types ohne `documentId`). |
+| `delete_entry` | `delete` | Löscht einen Eintrag. |
+| `publish_entry`, `unpublish_entry` | `publish` | Veröffentlicht einen Eintrag oder zieht ihn zurück. |
+
+Die Tools nehmen `uid` (etwa `api::article`) und bei lokalisierten Typen `locale`. Jedes Tool
+prüft dieselbe Berechtigung wie die passende REST-Route, und Schreibvorgänge nehmen denselben
+Weg wie die REST-API: Validierung, Plugin-Hooks, Review-Phasen, Webhooks, Inhaltsverlauf und
+Audit-Logs. Ein Agent kann nichts, was sein Token über REST nicht kann.
+
+Die Aktionen der Content-API stehen unter [Berechtigungen](/de/reference/permissions/).
+
+## Authentifizierung
+
+Der Endpunkt nimmt dieselben Zugangsdaten wie die Content-API:
+
+- ein API-Token, die übliche Wahl für Agenten;
+- das JWT eines Endnutzers, für einen Agenten, der als angemeldeter Benutzer deiner App handelt;
+- keinen `Authorization`-Header, für die Berechtigungen der öffentlichen Rolle.
+
+Ein ungültiges Token ergibt `401`. Der Server hält keine Sitzungen und öffnet keine Streams:
+Jede Anfrage ist ein JSON-RPC-`POST`, der mit JSON beantwortet wird (`GET` ergibt `405`).
+
+### Browser-Origins
+
+Anfragen mit einem `Origin`-Header, den Browser senden, werden abgelehnt, sofern der Origin
+nicht unter **Erlaubte Browser-Origins** auf der Karte **MCP-Server** steht. Das schützt vor
+DNS-Rebinding, bei dem eine Webseite den Browser dazu bringt, einen Server in deinem Netz
+aufzurufen. Kommandozeilen- und Desktop-Clients senden kein `Origin`, die Liste ist also meist
+leer.
+
+<Aside type="caution">
+Ein Agent mit einem Token mit Vollzugriff kann Inhalte löschen und veröffentlichen. Gib Agenten
+Tokens mit Lesezugriff oder benutzerdefinierte Tokens, beschränkt auf das, was sie brauchen. Für
+Entwürfe, die ein Agent schreibt, hält ein
+[Review-Workflow](/de/guides/content/review-workflows/) einen Menschen zwischen Agent und
+Veröffentlichung.
+</Aside>
+
+Um Redakteuren stattdessen KI-Hilfe im Admin-Panel zu geben (Übersetzung, Alternativtext,
+SEO-Vorschläge), siehe [KI-Aktionen](/de/guides/integrations/ai-actions/).

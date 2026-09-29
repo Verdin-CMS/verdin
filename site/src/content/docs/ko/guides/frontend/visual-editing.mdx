@@ -1,0 +1,114 @@
+---
+title: 비주얼 에디팅
+description: 편집자가 미리 보기 페이지의 텍스트를 클릭하면 관리자 패널에서 그 텍스트를 담은 필드로 이동하게 합니다.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+비주얼 에디팅은 미리 보기 페이지를 관리자 패널의 지도로 바꿉니다. 편집자가 제목에 마우스를 올리고 **Edit**를 클릭하면
+그 필드에 포커스가 간 채로 항목이 열립니다. [미리 보기](/ko/guides/content/preview/) 위에 만들어지므로, 먼저 미리 보기
+URL을 설정한 뒤 미리 보기 페이지에 아래 두 가지를 추가하세요.
+
+Verdin은 반환하는 각 텍스트에 작고 보이지 않는 소스 맵을 숨기고(*stega*라고 알려진 기법), 오버레이 스크립트가 페이지에서
+그 텍스트를 찾습니다. 컴포넌트에서 바뀌는 것은 없습니다. 표시된 텍스트도 다른 텍스트처럼 렌더링됩니다.
+
+<Diagram code={`flowchart LR
+  A[미리 보기 페이지] -- "x-verdin-stega: true" --> B[콘텐츠 API]
+  B -- "텍스트 + 보이지 않는 소스 맵" --> A
+  A -- "visual-editing.js: Edit 클릭" --> C[관리자 패널 필드]`} caption="페이지가 소스 맵을 요청하고, 오버레이가 이를 필드로 가는 링크로 바꿉니다." />
+
+## 설정
+
+<Steps>
+
+1. **설정 → 기능**에서 **미리 보기**를 켜고, **미리 보기 URL 구성**을 선택해 각 콘텐츠 타입에 그 타입을 렌더링하는
+   페이지의 URL을 줍니다. 같은 대화 상자의 **비주얼 에디팅** 섹션에 서버용 스크립트 태그와 헤더가 표시됩니다.
+   [미리 보기](/ko/guides/content/preview/)를 참고하세요.
+
+2. 미리 보기 페이지에서 토큰과 `x-verdin-stega: true` 헤더로 콘텐츠를 가져옵니다. 토큰은 미리 보기 URL의 미리 보기
+   토큰(`?preview=…`, `x-verdin-preview`로 다시 보냄)이나 API 토큰입니다.
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. 같은 페이지에서 오버레이를 로드합니다.
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   경로는 [`[admin].path`](/ko/reference/configuration/)를 따릅니다: `{path}/api/visual-editing.js`.
+
+</Steps>
+
+[타입 클라이언트](/ko/guides/frontend/typed-client/)에서는 `headers`에 두 헤더를 넘기세요.
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+소스 맵은 GraphQL이 아니라 REST 응답에만 추가됩니다. 미리 보기 콘텐츠는 REST API로 읽으세요.
+
+페이지에서 표시된 텍스트에 마우스를 올리면 초록색 윤곽선과 **Edit** 버튼이 나타납니다. 관리자 패널의 나란히 보기 미리
+보기(**미리 보기 열기** → **나란히 보기**) 안에서는 버튼이 관리자에게 그 자리에서 필드를 열도록 요청합니다. 페이지를 따로
+열었을 때는 버튼이 새 탭에서 항목을 엽니다.
+
+<Aside type="note">
+소스 맵은 `x-verdin-stega: true`**와** 토큰(`Authorization` 또는 `x-verdin-preview`)을 함께 보낸 `GET` 요청에만
+추가됩니다. 공개 트래픽과 CDN이 캐시하는 것에는 절대 들어가지 않으며, 표시된 응답은 `Cache-Control: private, no-store`와
+함께 보냅니다.
+</Aside>
+
+## 표시되는 것
+
+| 표시됨 | 표시되지 않음 |
+| --- | --- |
+| `string`, `text`, `richtext` 속성 | `uid`, `email`, `password`, `enumeration` |
+| `blocks` 속성의 각 블록의 첫 텍스트 | 숫자, 불리언, 날짜, JSON |
+| 컴포넌트와 다이나믹 존 안의 같은 것(`seo.metaTitle`, `blocks.2.title`) | 빈 문자열 |
+| populate한 관계(관련 항목을 가리킴) | 미디어 필드 |
+
+오버레이는 `alt`와 `title` 속성 안의 표시도 읽으므로, 그 안에 넣은 표시된 텍스트(예: `alt`로 쓰는 캡션 필드)도 클릭할 수
+있습니다.
+
+## 텍스트를 데이터로 쓰는 곳에서는 표시 제거
+
+표시는 텍스트 뒤에 붙는 보이지 않는 문자입니다. 값을 보여 주는 대신 데이터로 쓰는 곳(키, URL, 비교, `<title>` 길이
+검사)에서는 먼저 제거하세요.
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+`uid` slug와 enumeration처럼 본질적으로 데이터인 필드는 절대 표시되지 않으므로, `slug`로 라우팅하는 것은 그대로
+동작합니다.
+
+## 표시의 인코딩 방식
+
+표시를 직접 읽는 도구를 위한 설명입니다. 표시는 U+2064, 그다음 다음 JSON의 각 UTF-8 바이트를
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+U+200B, U+200C, U+200D, U+2060으로 쓴 네 자리 4진수(상위 자리부터)로 표현한 것, 그리고 U+2063입니다. 관리자 URL은
+[`[server].public_url`](/ko/reference/configuration/)과 `[admin].path`에서 옵니다. 오버레이는 `postMessage`로 부모 창에
+`{ type: 'verdin:edit', href }`를 보내며, 관리자 패널은 메시지가 미리 보기 URL의 출처에서 왔을 때만 이에 반응합니다.

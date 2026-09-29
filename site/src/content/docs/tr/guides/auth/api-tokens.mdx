@@ -1,0 +1,153 @@
+---
+title: API token’ları
+description: İçerik API’si için salt okunur, tam erişimli veya özel API token’ları oluşturun, bunları yeniden oluşturun veya silin ve token pepper’ını güvende tutun.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+API token’ları, sitelerinizin, uygulamalarınızın ve betiklerinizin içerik API’sini herkese
+tanınandan daha fazla erişimle çağırmasını sağlar. Bu kılavuz bir token oluşturur, erişimini
+seçer, kullanır ve sızdığında onu değiştirir. Token’lar Strapi’nin API token’ları gibi çalışır.
+
+İçerik API’si varsayılan olarak kapalıdır: token olmadan istekler yalnızca **Ayarlar → Herkese
+açık erişim**’in izin verdiğini alır ve siz izin verene kadar bu hiçbir şeydir.
+
+## Başlamadan önce
+
+- Token’ları yönetmek **API token’larını yönet** (`tokens.manage`) izni gerektirir. Bkz.
+  [İzinler](/tr/reference/permissions/).
+- `VERDIN_TOKEN_PEPPER` ayarlanmış olmalıdır; bkz. [Pepper neden önemli](#pepper-neden-önemli).
+
+## Bir token oluşturma
+
+<Steps>
+
+1. **Ayarlar → API token’ları**’nı açın ve **Token oluştur**’u seçin.
+2. Bir **Ad** ve isteğe bağlı olarak bir **Açıklama** girin.
+3. **Tip**’i seçin:
+
+   | Tip | İzin verdiği |
+   | --- | --- |
+   | **Salt okunur** | Her içerik tipinde Listele ve Tekini getir; yalnızca yayınlanmış sürümler. |
+   | **Tam erişim** | Her içerik tipinde ve medya kütüphanesinde her eylem. |
+   | **Özel** | Yalnızca **İzinler** bölümünde işaretlediğiniz eylemler. |
+
+4. Ne zaman **Sona erme** olacağını seçin: **Asla** veya 7, 30 ya da 90 gün içinde.
+5. Özel bir token için **İzinler** altında içerik tipi başına eylemleri işaretleyin:
+   **Listele**, **Tekini getir**, **Oluştur**, **Güncelle**, **Sil**, **Yayınla** ve
+   **Taslakları oku**. **Medya kütüphanesi** satırı yüklemeleri, **Kullanıcılar** satırı ise
+   [son kullanıcıların](/tr/guides/auth/end-users/) `/api/users` rotalarını kapsar.
+6. **Oluştur**’u seçin, ardından token’ı kopyalayın. Yalnızca bu kez gösterilir.
+
+</Steps>
+
+Token’lar `vd_` ile başlar. Liste her birinin ilk karakterlerini, son ne zaman kullanıldığını ve
+ne zaman sona ereceğini gösterir.
+
+## Bir token kullanma
+
+Onu bir bearer token olarak gönderin:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $VERDIN_TOKEN" 'http://localhost:1337/api/articles?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/graphql \
+  -H "Authorization: Bearer $VERDIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({
+  url: 'http://localhost:1337',
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+</TabItem>
+</Tabs>
+
+- Bir token’ın erişimi herkese açık erişimin yerini alır; ona eklenmez. Bir tipte **Listele**
+  yetkisi olmayan özel bir token, herkes listeleyebilse bile onu listeleyemez.
+- Taslakları okumak (`?status=draft`) **Taslakları oku** gerektirir; salt okunur token’lar asla
+  taslak görmez.
+- Bilinmeyen ve süresi dolmuş token’lar `401` alır. Token’ın erişimi dışındaki eylemler `403`
+  alır.
+- `[api].token_rate_limit` token ve dakika başına istekleri sınırlar (varsayılan olarak kapalı).
+- Aynı token’lar GraphQL’i ve [MCP sunucusunu](/tr/guides/integrations/mcp/) yetkilendirir.
+
+<Aside type="caution">
+Bir tarayıcıdaki token her ziyaretçi tarafından görülebilir. Token’ları yalnızca sunuculardan,
+build adımlarından ve özel uygulamalardan kullanın; herkese açık sayfalar için ihtiyaç
+duyduklarını **Ayarlar → Herkese açık erişim** bölümünde verin.
+</Aside>
+
+## Bir token’ı yeniden oluşturma veya silme
+
+- Bir token’ın satırındaki **Yeniden oluştur**, aynı ad, tip ve izinlerle yeni bir anahtar
+  oluşturur. Mevcut anahtar hemen çalışmayı durdurur; bu yüzden onu kullanan uygulamalar siz
+  onları güncelleyene kadar hata alır.
+- **Sil** token’ı kaldırır; onu kullanan istemciler erişimini kaybeder.
+
+Bir token sızmış olabileceği anda bunlardan birini yapın.
+
+## Pepper neden önemli
+
+Verdin token’ları asla saklamaz. Her birinin `VERDIN_TOKEN_PEPPER` ile anahtarlanmış bir hash’ini
+(HMAC-SHA256) saklar; böylece veritabanının bir kopyası tek başına kimsenin onları kullanmasına
+izin vermez. Aynı pepper şunları korur:
+
+- API token’ları.
+- Admin’lerin kimlik doğrulayıcı secret’ları ve kurtarma kodları
+  ([iki adımlı doğrulama](/tr/guides/auth/two-factor/)).
+- Form gönderimleriyle saklanan hash’lenmiş IP adresleri.
+
+Pepper’ı `verdin secrets` ile bir kez oluşturun, `verdin.toml`’un ve veritabanı yedeklerinin
+dışında tutun ve her örneğe aynı değeri verin.
+
+<Aside type="caution" title="Pepper’ı değiştirme">
+Başka bir pepper ile tüm API token’ları ve tüm admin’lerin kimlik doğrulayıcı uygulamaları ve
+kurtarma kodları çalışmayı durdurur. Onu yalnızca sızdıysa değiştirin; ardından yeni token’lar
+oluşturun ve her admin’in iki adımlı doğrulamasını sıfırlayın. Geçiş anahtarları ve parolalar
+etkilenmez.
+</Aside>
+
+## Admin API
+
+Tüm rotalar `/admin/api` altındadır ve `tokens.manage` gerektirir.
+
+```http
+GET    /admin/api/api-tokens
+POST   /admin/api/api-tokens                  { "name": "Website", "kind": "custom", "expiresInDays": 90,
+                                                "permissions": [{ "subject": "api::article", "action": "find" }] }
+GET    /admin/api/api-tokens/{id}
+PUT    /admin/api/api-tokens/{id}             { "name": "…", "description": null, "kind": "read-only", "permissions": [...] }
+POST   /admin/api/api-tokens/{id}/regenerate
+DELETE /admin/api/api-tokens/{id}
+```
+
+- `kind` değeri `read-only`, `full-access` veya `custom`’dır; `expiresInDays` isteğe bağlıdır
+  (hiç sona ermez) ve sonradan değiştirilemez.
+- `permissions`, `{ subject, action }` çiftlerini listeler. `subject` bir içerik tipi uid’si,
+  `plugin::upload` (medya kütüphanesi) veya `plugin::users-permissions.user`’dır; `action` ise
+  `find`, `findOne`, `create`, `update`, `delete`, `publish` veya `readDrafts`’tır. `publish` ve
+  `readDrafts` son iki hedefe uygulanmaz.
+- `POST /api-tokens` ve `/regenerate` anahtarı bir kez, `accessKey` olarak döndürür.
+
+Herkese açık erişim aynı çiftleri kullanır: **Rolleri yönet** (`roles.manage`) gerektiren
+`PUT /admin/api/public-permissions` `{ "permissions": [...] }`.

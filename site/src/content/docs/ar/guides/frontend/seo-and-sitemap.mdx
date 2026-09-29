@@ -1,0 +1,178 @@
+---
+title: SEO وخريطة الموقع
+description: اربط أنواع المحتوى بمسارات موقعك، وقدّم sitemap.xml لكل إدخال منشور، وأضف مكوّن SEO قياسيًا.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+تخبر ميزة **SEO وخريطة الموقع** Verdin بمكان كل إدخال على موقعك. ومن
+ذلك يقدّم `sitemap.xml` لكل إدخال منشور، ويمنح [القوائم](/ar/guides/frontend/menus/)
+مسارات الإدخالات التي ترتبط بها، ويوفّر مكوّن `shared.seo` جاهزًا لـ
+وسوم meta.
+
+وهي واحدة من أربع ميزات للموقع، مع [إعادات التوجيه](/ar/guides/frontend/redirects/)
+و[القوائم](/ar/guides/frontend/menus/) و[النماذج](/ar/guides/frontend/forms/). يغطي Strapi
+المجال نفسه بإضافات المجتمع (SEO، وsitemap)؛ أما في Verdin فهي مدمجة.
+
+## فعّلها
+
+<Steps>
+
+1. في **الإعدادات ← الميزات**، فعّل **SEO وخريطة الموقع**.
+2. في بطاقتها، اختر **إعداد SEO**.
+3. أدخل **عنوان URL للموقع**: مصدر موقعك، مثل `https://www.example.com`. تبدأ
+   عناوين URL في خريطة الموقع به.
+4. تحت **أنواع المحتوى**، امنح كل نوع له صفحات **نمط المسار**. الأنواع التي ليس لها
+   نمط تبقى خارج خريطة الموقع. اختياريًا عيّن **تكرار التغيير** و
+   **الأولوية** (من 0 إلى 1) لخريطة الموقع.
+5. احفظ، ثم اختر **فتح sitemap.xml** للتحقق من النتيجة.
+
+</Steps>
+
+يتطلب تغيير الإعدادات الصلاحية **إدارة الميزات** (`features.manage`). راجع
+[الصلاحيات](/ar/reference/permissions/).
+
+## أنماط المسارات
+
+النمط مسار يبدأ بـ `/`، مع عناصر نائبة بين أقواس معقوفة:
+
+| النمط | الإدخال | المسار |
+| --- | --- | --- |
+| `/blog/{slug}` | مقالة بالـ slug `hello-world` | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | نسختها الفرنسية | `/fr/blog/bonjour` |
+| `/about` | النوع المفرد Homepage | `/about` |
+
+العناصر النائبة هي سمات النوع (عادةً `uid` مثل `slug`) و`{locale}`.
+تُرمَّز القيم لعنوان URL. الإدخال الذي يكون عنصره النائب فارغًا (slug مفقود مثلًا) ليس له
+مسار، ويُستبعد من خريطة الموقع ومن القوائم. تسرد نافذة الحوار السمات التي يمكنك
+إدراجها وترفض السمات غير المعروفة.
+
+تُخزَّن الإعدادات كإعدادات الميزة، بهذا الشكل:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` واحد من `always` أو `hourly` أو `daily` أو `weekly` أو `monthly` أو `yearly` أو
+`never`.
+
+## خريطة الموقع
+
+مع تعيين **عنوان URL للموقع**، يقدّم Verdin `/sitemap.xml` من جذر مضيفه
+(`https://cms.example.com/sitemap.xml`، خارج بادئة الـ API)، مع:
+
+- كل إدخال **منشور** من الأنواع المُعدّة يمتلئ نمطه؛
+- آخر تغيير لكل إدخال (`lastmod`)، و`changefreq` و`priority` الخاصين بالنوع؛
+- للأنواع المترجمة، عنوان URL واحد لكل لغة، مرتبطة ببعضها عبر
+  `<xhtml:link rel="alternate" hreflang="…">`؛
+- 50,000 عنوان URL على الأكثر، وهو حد ملف خريطة الموقع.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+تُبنى خريطة الموقع مرة كل عشر دقائق على الأكثر وتُرسل مع
+`Cache-Control: public, max-age=600`، فيظهر النشر خلال عشر دقائق.
+
+تتوقع محركات البحث خريطة الموقع على مضيف موقعك. قدّمها من هناك بإعادة كتابة (rewrite)
+أو بمسار صغير يجلب خريطة Verdin:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+ثم أدرجها في `robots.txt`: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## مكوّن SEO
+
+يقترح Verdin مكوّن `shared.seo` بحقول إضافة SEO في Strapi:
+
+| السمة | النوع |
+| --- | --- |
+| `metaTitle` | string، مطلوب، 60 حرفًا على الأكثر |
+| `metaDescription` | text، مطلوب، 160 حرفًا على الأكثر |
+| `metaImage` | media (صور) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+في نافذة **إعداد SEO**، اختر **إضافة مكوّن SEO**، ثم
+**إنشاء المكوّن**. إنشاؤه يغيّر المخطط، لذا يوجد الزر في
+وضع التطوير (`verdin dev`) للمسؤولين الذين لديهم **إدارة أنواع المحتوى**؛ وإلا فإن
+نافذة الحوار تسرد السمات التي يجب إضافتها في ملفات المخطط بدلًا من ذلك. ثم أضف حقل مكوّن يستخدم `shared.seo` إلى كل نوع محتوى له صفحات،
+في منشئ أنواع المحتوى.
+
+<Aside type="tip">
+مع تفعيل [إجراءات الذكاء الاصطناعي](/ar/guides/integrations/ai-actions/)، يحصل المكوّن الذي له سمتا `metaTitle`
+و`metaDescription` النصيتان على زر **اقتراح** يملؤهما من
+الإدخال.
+</Aside>
+
+## اعرض وسوم meta
+
+عبّئ المكوّن واكتب الوسوم في head الصفحة:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+لا يحتوي `shared.seo` في مثال المدونة إلا على `metaTitle` و`metaDescription`؛ ويضيف المكوّن
+المقترح البقية. إذا كانت صفحة المعاينة تستخدم [التحرير المرئي](/ar/guides/frontend/visual-editing/)،
+فأزِل العلامات غير المرئية قبل قياس نصوص meta أو مقارنتها.

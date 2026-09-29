@@ -1,0 +1,149 @@
+---
+title: Działania AI
+description: Daj redaktorom pomoc AI w panelu administracyjnym (tłumaczenie, tekst alternatywny, streszczenia i metadane SEO) z wybranym dostawcą modeli.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Działania AI dodają do panelu administracyjnego cztery pomoce: tłumaczenie wpisu z innego
+języka, pisanie tekstu alternatywnego dla obrazu, streszczanie długiego tekstu do krótkiego
+pola i proponowanie metadanych SEO. Używają skonfigurowanego przez ciebie dostawcy modeli
+(Anthropic, OpenAI albo lokalnego serwera, np. Ollama), z twoim własnym kluczem.
+
+Każde działanie zwraca sugestię, która wypełnia formularz. Nic nie jest zapisywane, dopóki
+redaktor jej nie przejrzy i nie zapisze, a każde działanie można cofnąć.
+
+## Konfiguracja
+
+Działania AI wymagają zarówno dostawcy w `verdin.toml`, jak i włączonej funkcji.
+
+<Steps>
+
+1. Dodaj sekcję `[ai]` i przekaż serwerowi klucz w `VERDIN_AI_KEY`:
+
+   <Tabs syncKey="ai-provider">
+   <TabItem label="Anthropic">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "anthropic"
+   # model = "claude-sonnet-5"   # the default
+   ```
+
+   </TabItem>
+   <TabItem label="OpenAI">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai"
+   model = "gpt-4.1-mini"        # required: name the model you want
+   ```
+
+   </TabItem>
+   <TabItem label="Lokalnie (Ollama)">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai-compatible"
+   base_url = "http://localhost:11434/v1"
+   model = "llama3.2-vision"
+   ```
+
+   Serwery lokalne nie potrzebują `VERDIN_AI_KEY`. LM Studio, vLLM i inne serwery z API
+   zgodnym z OpenAI działają tak samo.
+
+   </TabItem>
+   </Tabs>
+
+   ```sh title="Terminal"
+   export VERDIN_AI_KEY=sk-...
+   ```
+
+2. Zrestartuj Verdin. Odmawia startu, gdy sekcja jest niekompletna: brak klucza albo brak
+   `model` lub `base_url` tam, gdzie dostawca ich wymaga.
+3. W **Ustawienia → Funkcje** włącz **Działania AI**.
+
+</Steps>
+
+| Klucz | Domyślnie | Opis |
+| --- | --- | --- |
+| `provider` | `"none"` | `anthropic`, `openai` lub `openai-compatible`. |
+| `model` | `claude-sonnet-5` dla `anthropic` | Model. Wymagany dla pozostałych dostawców. |
+| `base_url` | Dostawcy | Inny endpoint: proxy albo lokalny serwer (wymagany dla `openai-compatible`). |
+| `max_tokens` | `2048` | Najdłuższa odpowiedź, w tokenach. |
+
+Zobacz [`[ai]`](/pl/reference/configuration/). Z włączoną funkcją, ale bez sekcji `[ai]`,
+panel pokazuje **Działania AI nie są dostępne na tym serwerze.**
+
+Działanie tekstu alternatywnego wysyła obrazy, więc jeśli go chcesz, wybierz model, który
+przyjmuje obrazy.
+
+## Co robią działania
+
+### Tłumaczenie wpisu
+
+W edytorze lokalizowanego wpisu **Przetłumacz z _język_…** otwiera **Tłumaczenie AI**.
+Wybierz język w **Tłumacz z** i wybierz **Tłumacz**. Pola tekstowe zapisanego szkicu w tym
+języku (stringi, teksty, rich text, bloki oraz tekst wewnątrz komponentów i stref
+dynamicznych) są tłumaczone na bieżący język i zastępują te pola w formularzu.
+
+- Pola współdzielone między językami pozostają bez zmian.
+- Niezapisane zmiany w języku źródłowym nie są uwzględniane: najpierw go zapisz.
+- Markdown, HTML, URL-e, identyfikatory i typy bloków zostają bez zmian.
+- Przetłumaczone pola są oznaczone; przejrzyj je, a potem zapisz albo wybierz **Cofnij
+  tłumaczenie**.
+
+Wymaga to uprawnienia do aktualizacji wpisu w języku docelowym i do jego odczytu w języku
+źródłowym.
+
+### Pisanie tekstu alternatywnego
+
+W bibliotece multimediów otwórz obraz i wybierz **Wygeneruj tekst alternatywny**. Model
+opisuje obraz (do około 125 znaków) w języku domyślnym i wypełnia podpis, gdy jest pusty.
+Działa na obrazach JPEG, PNG, WebP i GIF i wysyła format `small` lub `medium`, jeśli istnieje,
+więc duże oryginały nie są przesyłane do dostawcy. Wymaga uprawnienia do aktualizacji
+w bibliotece multimediów (na pliku, dla **Własne pliki**).
+
+### Streszczanie do pola
+
+Pola tekstowe nazwane jak streszczenie (`description`, `summary`, `excerpt`, `abstract`,
+`intro`, `introduction`, `lead`, `teaser`) dostają przycisk **Streść _pole_**, gdy wpis ma
+pole rich text lub blocks albo pole tekstowe o nazwie `body`, `content`, `text` lub
+`article`. W przykładowym blogu **Excerpt** dostaje **Streść Body**. Streszczenie mieści się
+w maksymalnej długości pola.
+
+### Proponowanie metadanych SEO
+
+Komponent z atrybutami tekstowymi `metaTitle` i `metaDescription`, taki jak
+[proponowany `shared.seo`](/pl/guides/frontend/seo-and-sitemap/), dostaje przycisk
+**Zasugeruj**. Wypełnia on meta tytuł, opis i, jeśli komponent je ma, `keywords` na podstawie
+zapisanego szkicu wpisu.
+
+## Limity
+
+- Każdy administrator może wykonać 30 żądań AI na minutę; kolejne dostają odpowiedź
+  **Zbyt wiele żądań AI. Odczekaj chwilę i spróbuj ponownie.**
+- Streszczenia i sugestie SEO wysyłają najwyżej 40 000 znaków tekstu.
+- Żądanie do dostawcy przekracza czas po 120 sekundach.
+
+## Prywatność
+
+<Aside type="caution">
+Działania AI wysyłają treść do skonfigurowanego dostawcy: tłumaczone, streszczane lub
+opisywane pola i obrazy dla tekstu alternatywnego. Wybierz dostawcę i plan, na które twoja
+organizacja pozwala dla takiej treści, sprawdź jego warunki przechowywania danych i rozważ
+model lokalny (`openai-compatible`) dla treści, które nie mogą opuścić twojej sieci.
+</Aside>
+
+- Żądania idą z serwera Verdin do dostawcy; klucz nigdy nie trafia do przeglądarki.
+- Wysyłane są tylko dane wejściowe działania: pola tekstowe wpisu, tekst do streszczenia albo
+  jeden obraz i jego nazwa pliku. Atrybuty prywatne i inne wpisy nie są wysyłane.
+- Działania czytają tylko to, co administrator już może czytać, a sugestie nie są
+  przechowywane.
+
+Panel pokazuje, który model odpowiedział (**Sugestie od _model_ (_dostawca_).**).
+
+Aby pozwolić agentom AI spoza panelu czytać i zapisywać treść, zobacz
+[Serwer MCP](/pl/guides/integrations/mcp/).

@@ -1,0 +1,78 @@
+---
+title: Redactiesamenvatting
+description: Ontvang dagelijks een e-mail met de items die zijn gewijzigd sinds je ze voor het laatst bekeek, en kies welke instantie hem verstuurt.
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+De redactiesamenvatting is een dagelijkse e-mail die elke beheerder vertelt hoeveel items er per
+contenttype zijn gewijzigd sinds hij ze voor het laatst bekeek. Hij staat voor iedereen uit totdat
+elke beheerder hem zelf aanzet. Deze gids behandelt de kant van de beheerder, de
+serverinstellingen en hoe het werkt met meerdere instanties.
+
+## Hoe "ongezien" werkt
+
+Een item wordt ongezien voor jou wanneer iemand anders het wijzigt, via welke API dan ook. Het is
+weer gezien zodra je het opent. Dezelfde markeringen sturen de badges **Nieuw** in de zijbalk (zet
+ze uit met **Badges voor nieuwe items tonen**) en de widget **Nog niet gezien** op de startpagina.
+
+## De samenvatting aanzetten
+
+<Steps>
+
+1. Open je **Profiel** (of het voorkeurenmenu in de bovenbalk).
+2. Zet onder **Voorkeuren** **Dagelijkse e-mail met ongeziene wijzigingen** aan.
+
+</Steps>
+
+De schakelaar stelt de voorkeur `"digest": "daily"` in op je account
+(`PUT /admin/api/users/me/preferences`). Zet hem op dezelfde manier uit.
+
+Wat je krijgt:
+
+- Een bericht met het aantal ongeziene items per contenttype dat je mag lezen, en een link naar het
+  beheerpaneel.
+- Niets op dagen waarop er niets nieuws is.
+- Alleen zolang je account actief is.
+
+## Serverinstellingen
+
+De samenvatting wordt verstuurd om `[digest].hour_utc`, via `[email]`:
+
+```toml title="verdin.toml"
+[email]
+provider = "smtp"
+from = "Verdin <no-reply@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+
+[digest]
+hour_utc = 7    # 0–23, UTC; 8 by default
+```
+
+| Sleutel | Standaard | Beschrijving |
+| --- | --- | --- |
+| `[digest].enabled` | `true` | De samenvatting vanaf deze instantie versturen. |
+| `[digest].hour_utc` | `8` | Het uur (UTC) waarop de samenvatting uitgaat. |
+
+De link in de e-mail gebruikt `[server].public_url`; stel die in als Verdin achter een proxy
+draait. Met de standaard e-mailprovider `log` worden de berichten alleen naar het serverlog
+geschreven. Zie de [configuratiereferentie](/nl/reference/configuration/).
+
+## Meerdere instanties
+
+Elke instantie met `[digest].enabled = true` probeert de samenvatting op het ingestelde uur te
+versturen. De eerste die de dag in de database claimt, verstuurt hem, en de andere slaan die dag
+over, dus beheerders krijgen één e-mail. Om de job op een bekende instantie te houden, stel je
+`enabled = false` in op de andere:
+
+```sh title="Terminal"
+VERDIN_DIGEST__ENABLED=false verdin start
+```
+
+<Aside type="note">
+De samenvatting is een toevoeging van Verdin; Strapi heeft geen equivalent.
+</Aside>

@@ -1,0 +1,135 @@
+---
+title: 预览
+description: 通过短期有效的预览令牌，从条目编辑器中在你的网站上打开草稿，并让网站用该令牌读取草稿。
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+预览会在条目发布之前，在你自己的网站上打开它的草稿。编辑器根据每个内容类型的 URL 模板生成链接，并附加一个短期有效的令牌，让你的网站可以读取这一个草稿。本指南介绍如何设置模板以及网站端的处理。
+
+如果想在预览中点击文本就跳转到对应字段，请在此基础上添加[可视化编辑](/zh-cn/guides/frontend/visual-editing/)。
+
+## 开始之前
+
+- 开启 **设置 → 功能 → 预览**。它默认关闭。
+- 修改该功能的设置需要 **管理功能**（`features.manage`）。
+- 打开预览需要对该条目的读取权限。参见[权限](/zh-cn/reference/permissions/)。
+
+## 设置预览 URL
+
+<Steps>
+
+1. 在 **设置 → 功能** 中的 **预览** 卡片上，选择 **配置预览 URL**。
+2. 在 **URL 模板** 下，填写网站上展示每个内容类型草稿的页面。某个类型留空则表示它没有预览。
+3. 可以选择修改 **链接有效期（分钟）**：默认 60，最大 10080（7 天）。
+4. 保存。
+
+</Steps>
+
+模板是一个 `http` 或 `https` URL，其中带有花括号占位符：
+
+| 占位符 | 填入内容 |
+| --- | --- |
+| `{slug}`、`{title}`、`{locale}`…… | 草稿的任意顶层字段。未知的占位符会变为空。 |
+| `{documentId}`、`{uid}` | 文档 id 和内容类型 uid。 |
+| `{token}` | 预览令牌。如果没有这个占位符，令牌会作为 `preview` 查询参数添加。 |
+
+对于示例项目中的文章：
+
+```text
+https://example.com/blog/{slug}?locale={locale}
+```
+
+会生成 `https://example.com/blog/hello-world?locale=en&preview=<token>`。
+
+同样的设置以 JSON 表示，即该功能所存储的形式（`PUT /admin/api/features/preview`）：
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "urls": { "api::article": "https://example.com/blog/{slug}?locale={locale}" },
+    "ttlMinutes": 60
+  }
+}
+```
+
+## 打开预览
+
+在条目编辑器中，选择 **打开预览** 会在新标签页中打开网站上的草稿，选择 **并排显示** 则会在表单旁边的面板中显示它，并提供 **桌面端**、**平板端** 和 **移动端** 三种宽度。每次保存后，侧边面板都会重新加载。如果它一直是空白的，很可能是你的网站拒绝被嵌入框架中：请使用 **在新标签页中打开**。
+
+## 在网站上读取草稿
+
+你的预览页面从 URL 中取出令牌，并在请求草稿时通过 `x-verdin-preview` 请求头把它发回内容 API：
+
+<Diagram
+  caption="一次预览请求"
+  code={`sequenceDiagram
+  participant E as 编辑器
+  participant V as Verdin
+  participant S as 你的网站
+  E->>V: 打开预览
+  V-->>E: 带预览令牌的 URL
+  E->>S: GET /blog/hello-world?preview=token
+  S->>V: GET /api/articles/documentId?status=draft<br/>x-verdin-preview: token
+  V-->>S: 草稿`}
+/>
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -H "x-verdin-preview: $PREVIEW_TOKEN" \
+  'https://cms.example.com/api/articles/<documentId>?status=draft'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+预览令牌由 REST 内容 API 读取。请在预览页面上通过 REST 获取草稿。
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const preview = createClient<VerdinSchema>({
+  url: 'https://cms.example.com',
+  headers: { 'x-verdin-preview': token },
+});
+const { data } = await preview
+  .collection('articles')
+  .findOne(documentId, { status: 'draft' });
+```
+
+</TabItem>
+</Tabs>
+
+同样的请求头也适用于单一类型（`GET /api/<singularName>?status=draft`）。
+
+令牌授予的权限：
+
+- 在过期之前，持有者可以读取这一个文档，包括草稿。
+- 它不能读取其他文档、列出条目或写入任何内容。
+- 对预览请求的响应永远不会被缓存。
+
+<Aside type="caution">
+在令牌过期之前，任何拿到链接的人都可以读取该草稿。请把有效期设得短一些，也不要在公开场合分享预览链接。
+</Aside>
+
+你的预览页面通常按 `slug` 之类的字段查找条目。由于令牌按 `documentId` 读取，请同时在模板中加入 `{documentId}`，或者在你这一侧维护 slug 到 id 的查找。
+
+## 管理 API
+
+`GET /admin/api/content/{uid}/{documentId}/preview?locale=` 返回编辑器按钮所用的链接：
+
+```json
+{ "data": { "url": "https://example.com/blog/hello-world?locale=en&preview=…", "token": "…", "expiresAt": "2026-09-29T11:00:00.000Z" } }
+```
+
+它需要对该条目的读取权限；功能关闭或该类型没有模板时返回 `404`。

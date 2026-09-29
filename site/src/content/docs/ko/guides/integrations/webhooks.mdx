@@ -1,0 +1,175 @@
+---
+title: 웹훅
+description: 콘텐츠나 미디어가 바뀌면 자체 엔드포인트를 호출하고, 전송이 Verdin에서 왔는지 확인하고, 재시도를 처리합니다.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+웹훅은 콘텐츠나 미디어가 바뀌면 여러분의 URL로 HTTP `POST`를 보냅니다. 정적 사이트 재빌드, 캐시 퍼지, 검색 인덱스 동기화,
+채팅 알림 등에 씁니다. 전송은 큐에 들어가고, 서명되고, 재시도되고, 기록됩니다.
+
+이 페이지에서는 웹훅을 설정하고 받는 과정을 안내합니다. 이벤트, 페이로드, 헤더는 [웹훅 레퍼런스](/ko/api/webhooks/)에
+나열되어 있습니다.
+
+## 켜기
+
+**웹훅** 기능은 기본적으로 켜져 있으며, **설정 → 기능**에서 끌 수 있습니다. 웹훅을 관리하려면 **웹훅 관리**
+권한(`webhooks.manage`)이 필요합니다. [권한](/ko/reference/permissions/)을 참고하세요.
+
+## 웹훅 만들기
+
+<Steps>
+
+1. **설정 → 웹훅**으로 가서 **새 웹훅**을 선택합니다.
+2. **일반** 아래에서 **이름**과 Verdin이 호출할 **URL**을 줍니다.
+3. **이벤트** 아래에서 전송을 일으킬 이벤트를 고릅니다: **항목**(생성, 수정, 게시, 게시 취소, 초안 폐기, 삭제),
+   **미디어**, **릴리스**(**릴리스 게시**), **검토 워크플로**(**항목 단계 변경**).
+4. **콘텐츠 타입** 아래에서 **모든 콘텐츠 타입**을 유지하거나 일부를 고릅니다. 이 설정은 항목 이벤트만 거르며, 미디어
+   이벤트는 상관없이 보냅니다.
+5. **헤더** 아래에서 엔드포인트에 필요한 헤더(예: `authorization` 토큰)를 추가합니다(**헤더 추가**). `content-type`,
+   `host`, `x-verdin-*` 헤더는 Verdin이 설정합니다.
+6. **서명** 아래에서 **전송에 서명**을 켜 둡니다(기본값).
+7. **생성**을 선택합니다. Verdin은 서명 시크릿(`whsec_…`)을 한 번만 보여 줍니다. 엔드포인트 설정에 복사하세요.
+
+</Steps>
+
+**사용**은 웹훅을 삭제하지 않고 끕니다. 비활성화된 웹훅은 이벤트를 받지 않지만 테스트는 할 수 있습니다.
+
+## 테스트
+
+웹훅에서 **테스트 이벤트 보내기**를 선택합니다. Verdin이 바로 다음을 보냅니다.
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+전송은 상태, HTTP 상태, 소요 시간, 응답 본문의 앞부분과 함께 웹훅의 **전송 로그**에 나타납니다. 전송을 열면 전체
+페이로드와 오류(있다면)를 볼 수 있습니다.
+
+개발하는 동안 자기 컴퓨터에서 웹훅을 받으려면 `verdin dev`로 서버를 실행하세요. `verdin start`가 거부하는 `localhost`
+URL을 허용합니다([보안](#보안) 참고).
+
+## 전송 받기
+
+전송은 JSON 본문과 다음 헤더를 가진 `POST`입니다.
+
+| 헤더 | 값 |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | `entry.publish` 같은 이벤트 이름. |
+| `x-verdin-delivery` | 전송 id. 재시도해도 바뀌지 않으므로 중복을 무시하는 데 쓰세요. |
+| `x-verdin-signature` | 서명된 웹훅에서 `t=<unix seconds>,v1=<hex>`. |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+아무 `2xx` 상태로 빠르게 응답하세요. 오래 걸리는 작업(전체 재빌드)은 응답한 뒤에 하거나 큐에 넣으세요. 타임아웃(기본
+10초)보다 오래 걸리는 전송은 실패로 취급합니다.
+
+### 서명 검증
+
+`v1`은 웹훅의 시크릿을 키로 `"<t>.<raw body>"`를 계산한 HMAC-SHA256입니다. 전송을 확인하는 방법은 다음과 같습니다.
+
+1. 다시 직렬화한 JSON이 아니라 **원본** 요청 본문으로 HMAC을 다시 계산합니다.
+2. 상수 시간 비교로 `v1`과 비교합니다.
+3. 가로챈 전송을 재사용할 수 없도록 몇 분보다 오래된 타임스탬프는 거부합니다.
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+Express에서는 원본 본문을 유지하세요: `app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)`로 받고
+`req.body.toString()`을 넘깁니다.
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+`crypto.subtle.verify`는 상수 시간으로 비교합니다.
+
+</TabItem>
+</Tabs>
+
+**시크릿 교체**는 새 시크릿을 발급하며(한 번만 표시), 이전 시크릿은 즉시 동작을 멈춥니다. **서명 중지**는 시크릿을 삭제하고
+서명 없이 전송합니다.
+
+## 재시도
+
+전송은 변경이 커밋될 때 데이터베이스에 저장되고 백그라운드 워커가 보내므로, 느린 엔드포인트가 편집자를 느리게 만들지
+않습니다.
+
+- **성공:** 모든 `2xx` 응답.
+- **실패:** 그 밖의 모든 것. 리디렉션(따라가지 않음), 연결 오류, 타임아웃을 포함합니다.
+- **재시도:** 실패한 전송은 30초, 2분, 10분, 1시간, 6시간 뒤에 다시 시도합니다. 그 뒤에는 **실패**로 표시됩니다.
+
+로그에서 전송의 **다시 시도**를 선택하면 지금 다시 보냅니다. 로그는 30일 동안 보관됩니다. 재시도는 같은
+`x-verdin-delivery`를 다시 쓰므로 핸들러를 멱등적으로 만드세요. 처리한 id를 저장하거나, 작업을 반복해도 안전하게 만드세요.
+
+## 보안
+
+`verdin start`에서는 웹훅 URL이 루프백, 사설, 링크 로컬 등 예약된 주소를 가리킬 수 없으며, 그런 주소로 해석되는 호스트
+이름도 마찬가지입니다. 관리자가 웹훅으로 내부 서비스에 접근하는 것(SSRF)을 막기 위해서입니다. URL의 자격 증명
+(`https://user:pass@…`)은 거부됩니다. 대신 헤더로 보내세요.
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+[`[webhooks]`](/ko/reference/configuration/)를 참고하세요.
+
+## Strapi에서 옮겨 온 경우
+
+Verdin의 웹훅은 Strapi의 이벤트와 페이로드를 따르며, 차이점은 다음과 같습니다.
+
+- 전송은 서명되고, 재시도되고, 기록됩니다.
+- 웹훅을 일부 콘텐츠 타입으로 제한할 수 있습니다.
+- Strapi의 `entry.draft-discard`는 `entry.discard-draft`라고 부릅니다.
+
+변경할 때마다가 아니라 관리자 패널의 버튼으로 정적 사이트를 다시 빌드하려면
+[배포와 CDN](/ko/guides/integrations/deploys-and-cdn/)을 참고하세요.

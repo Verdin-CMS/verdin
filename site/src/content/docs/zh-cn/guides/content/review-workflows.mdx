@@ -1,0 +1,113 @@
+---
+title: 审核工作流
+description: 让条目在各审核阶段之间流转、把条目指派给审核人、限制谁可以移动条目，以及要求发布前必须处于某个阶段。
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+审核工作流是一个有序的阶段列表，例如 *To do*、*In review* 和 *Ready*，某些内容类型的条目在发布之前需要依次经过这些阶段。本指南介绍如何设置工作流、移动和指派条目，以及对应的管理 API。
+
+在 Strapi 中，审核工作流是企业版功能。在 Verdin 中，它是开源核心的一部分。
+
+## 开始之前
+
+- 开启 **设置 → 功能 → 审核工作流**。它默认关闭。
+- 设置工作流需要 **管理审核工作流**（`workflows.manage`）。
+- 移动和指派条目需要对该条目的更新权限。参见[权限](/zh-cn/reference/permissions/)。
+
+## 创建工作流
+
+<Steps>
+
+1. 打开 **设置 → 审核工作流**，选择 **新建工作流**。
+2. 为它设置一个 **名称**。
+3. 在 **内容类型** 下，选择其条目遵循该工作流的类型。一个类型最多遵循一个工作流。
+4. 在 **阶段** 下，按顺序列出各个阶段。每个阶段都有 **阶段名称** 和 **颜色**。用 **添加阶段** 添加更多阶段，用箭头按钮调整顺序。新条目从第一个阶段开始。
+5. 可以选择在某个阶段上设置 **可以将条目移动到此阶段的角色**。不选择任何角色时，任何能更新该条目的人都可以移动。
+6. 可以选择设置 **发布所需阶段**。这样条目只有处于该阶段时才能发布。**任意阶段** 表示不限制发布。
+7. 保存。
+
+</Steps>
+
+<Diagram
+  caption="一个设置了发布所需阶段的编辑工作流"
+  code={`flowchart LR
+  A[To do] --> B[In review] --> C[Ready]
+  C -->|允许发布| P((已发布))
+  A -.->|拒绝发布| X[400]`}
+/>
+
+在其类型加入工作流之前就已存在的条目位于第一个阶段。
+
+之后修改工作流时：
+
+- 删除某个阶段会把其中的条目送回第一个阶段。
+- 从工作流中移除某个内容类型会清除其条目的阶段。
+- 删除工作流会清除其条目的阶段和负责人。
+
+## 移动和指派条目
+
+条目编辑器会显示一个 **审核** 面板，其中包含 **阶段** 和 **负责人**。
+
+- 选择另一个 **阶段** 即可移动条目。保留给其他角色的阶段无法选择，面板会对此进行说明。拥有 **管理审核工作流** 的管理员始终可以移动条目。
+- 从能够读取该内容类型的已启用管理员中选择一位 **负责人**，或者选择 **移除负责人**。任何能更新该条目的人都可以指派它。
+- 当工作流设置了发布所需阶段时，面板会说明条目必须到达哪个阶段，**发布** 才能生效。
+
+列表视图会显示 **阶段** 列，首页会在 **分配给我的** 下列出指派给你的条目。本地化类型按语言区域分别保存阶段。
+
+## 发布所需阶段会阻止什么
+
+发布所需阶段适用于所有发布方式：管理后台、REST、GraphQL、发布计划和插件。发布一个不在该阶段的条目会以 `400` 失败：
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+在 Strapi 中，阶段要求只适用于管理后台。阶段角色也有所不同：在 Verdin 中，它们限制的是谁可以把条目*移入*某个阶段。
+
+## 审计日志和 webhook
+
+- 阶段变更和指派会以 `entry.stage` 和 `entry.assign` 的形式记录在[审计日志](/zh-cn/guides/content/audit-logs/)中。
+- webhook 可以订阅 **条目阶段已变更**（`review-workflows.updateEntryStage`）。参见 [Webhook](/zh-cn/guides/integrations/webhooks/)。
+
+## 管理 API
+
+所有路由都位于 `/admin/api` 下，并使用管理员访问令牌。
+
+| 路由 | 权限 | 作用 |
+| --- | --- | --- |
+| `GET /review-workflows`、`GET /review-workflows/{id}` | `workflows.manage` | 工作流及其阶段。 |
+| `POST /review-workflows`、`PUT /review-workflows/{id}` | `workflows.manage` | 创建或替换工作流（请求体见下文）。 |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | 其类型的条目会失去阶段。 |
+| `GET /content/{uid}/{documentId}/review?locale=` | 读取该条目 | 阶段、负责人，以及你可以把条目移动到的阶段（`canMoveTo`）。 |
+| `PUT /content/{uid}/{documentId}/review?locale=` | 更新该条目 | `{ "stageId": 3, "assigneeId": 7 }`。两个字段都是可选的；`"assigneeId": null` 会移除负责人。 |
+| `GET /content/{uid}/review?documentIds=a,b` | 读取该类型 | 最多 200 个条目的阶段，工作流位于 `meta.workflow` 中。 |
+| `GET /review/assigned` | 已登录 | 指派给你的条目。 |
+| `GET /review/assignees?uid=` | 更新该类型 | 能够读取该类型的已启用管理员。 |
+| `GET /review/roles` | `workflows.manage` | 角色代码和名称，用于阶段角色。 |
+
+发送给 `POST` 和 `PUT` 的工作流：
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- 一个工作流有 1 到 50 个阶段，名称唯一，颜色为 `#rrggbb` 格式。
+- `publishStage` 指定其中一个阶段；不设置则表示没有发布所需阶段。
+- 发送现有阶段时请带上其 `id`，这样其中的条目会保持原位。不带 `id` 的阶段是新阶段。
+
+<Aside type="note">
+关闭该功能会隐藏阶段，并停止强制执行发布所需阶段。工作流和条目的阶段会被保留，待你重新开启时恢复。
+</Aside>

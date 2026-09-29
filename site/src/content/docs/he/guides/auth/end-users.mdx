@@ -1,0 +1,239 @@
+---
+title: משתמשי קצה
+description: אפשרו לאנשים שמשתמשים באתרים שלכם להירשם ולהתחבר דרך API התוכן, עם אימות דוא"ל, ספקי OAuth ותפקידים, באמצעות נתיבי ה-users-permissions של Strapi.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+משתמשי קצה הם האנשים שמתחברים לאתר או לאפליקציה שלכם, לא לפאנל הניהול. Verdin נותן להם
+הרשמה, התחברות, אימות דוא"ל, איפוס סיסמה, ספקי OAuth ותפקידים שקובעים מה הם יכולים לעשות
+ב-API התוכן. הנתיבים וה-payloads הם אלה של תוסף ה-users-permissions של Strapi v5, כך
+שפרונטאנדים קיימים ממשיכים לעבוד.
+
+## לפני שמתחילים
+
+<Steps>
+
+1. הפעילו את **הגדרות ← תכונות ← משתמשים והרשאות** (כבוי כברירת מחדל), או הפעילו את
+   **משתמשי קצה** ב-**הגדרות ← משתמשי קצה ← הגדרות**.
+2. הגדירו את `[email]` אם אתם משתמשים באימות דוא"ל או באיפוס סיסמה:
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend ו-Postmark קוראים את המפתח שלהם מ-`VERDIN_EMAIL_API_KEY`. ב-**הגדרות ← תכונות ←
+   דוא״ל** יש **שליחת דוא״ל בדיקה**. לעבודה מקומית, `docker/compose.dev.yml` כולל את
+   Mailpit (SMTP בפורט 1025, תיבת דואר ב-`http://localhost:8025`).
+
+3. הגדירו את `[server].public_url`: קישורים בהודעות דוא"ל וב-callbacks של OAuth משתמשים בו.
+
+</Steps>
+
+ניהול חשבונות ותפקידים דורש **ניהול משתמשי קצה** (`endusers.manage`). שינוי לשונית ההגדרות
+(הרשמה, ספקים, תבניות) דורש **ניהול תכונות** (`features.manage`).
+
+## הגדרת הרשמה וסשנים
+
+ב-**הגדרות ← משתמשי קצה ← הגדרות**, תחת **הרשמה והפעלות**:
+
+| הגדרה | ברירת מחדל | השפעה |
+| --- | --- | --- |
+| **לאפשר הרשמה** | פעיל | כל אחד יכול ליצור חשבון דרך API התוכן. כבוי: `register` עונה `400`. |
+| **אימות כתובות דוא״ל** | כבוי | משתמשים חדשים חייבים לפתוח קישור שנשלח בדוא"ל לפני שהם יכולים להתחבר. |
+| **תפקיד ברירת מחדל** | Authenticated | התפקיד של חשבונות חדשים. |
+| **הפעלות** | אסימון אחד ארוך טווח | **אסימון אחד ארוך טווח** (מצב ה-legacy של Strapi) או **אסימונים קצרים עם רענון**. |
+| **משך ההפעלה (בימים)** | 30 | משך החיים של האסימון ארוך הטווח. |
+| **משך תוקף אסימון הגישה (בדקות)**, **משך תוקף אסימון הרענון (בימים)** | 30, 30 | עם אסימוני רענון. |
+
+תחת **הדפים של האפליקציה שלך**, הגדירו את **לאחר אימות כתובת דוא״ל** (לאן משתמשים מגיעים
+ברגע שהכתובת שלהם אומתה) ואת **דף איפוס הסיסמה** (הדף שלכם שמקבל `?code=` ומבקש סיסמה חדשה).
+איפוס סיסמה דורש את דף האיפוס.
+
+## הגדרת תפקידים
+
+כל בקשה מתבצעת כאחד מהבאים:
+
+- **Public**: בקשות בלי אסימון. ההרשאות שלו הן אלה של **הגדרות ← גישה ציבורית**.
+- **Authenticated**: התפקיד המובנה שניתן לחשבונות חדשים. אי אפשר למחוק אותו.
+- **תפקידים מותאמים**: צרו אותם ב-**הגדרות ← משתמשי קצה ← תפקידים** עם **יצירת תפקיד**.
+
+ה**הרשאות** של תפקיד משתמשות באותה מטריצה כמו גישה ציבורית ואסימוני API: **חיפוש**,
+**חיפוש פריט אחד**, **יצירה**, **עדכון**, **מחיקה**, **פרסום** ו**קריאת טיוטות** לכל סוג
+תוכן, **ספריית המדיה**, ו**משתמשים** (נתיבי `/api/users`). משתמש מחובר מקבל רק את ההרשאות של
+התפקיד שלו, לא גם את הגישה הציבורית: העניקו לתפקיד גם את הקריאות הציבוריות כשמשתמשים
+מחוברים צריכים אותן. מחיקת תפקיד מעבירה את המשתמשים שלו ל-Authenticated.
+
+כדי לפעול בשם משתמש, הפרונטאנד שולח את ה-JWT שלו כ-`Authorization: Bearer <jwt>`. אסימוני API
+מתחילים ב-`vd_`, וכך Verdin מבחין בין השניים.
+
+## הרשמה והתחברות
+
+<Tabs>
+<TabItem label="הרשמה">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   או { "user": … } כשאימות הדוא"ל פעיל
+```
+
+</TabItem>
+<TabItem label="התחברות">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` הוא כתובת הדוא"ל או שם המשתמש.
+
+</TabItem>
+<TabItem label="קריאה כמשתמש">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+ההתחברות נדחית למשתמשים חסומים ("Your account has been blocked by an administrator") וכשהאימות
+פעיל, גם למשתמשים שלא אומתו ("Your account email is not confirmed").
+
+## אסימונים וסשנים
+
+- **אסימון אחד ארוך טווח** (`jwtManagement: "legacy-support"`): ה-JWT תקף למשך
+  **משך ההפעלה (בימים)**.
+- **אסימונים קצרים עם רענון** (`jwtManagement: "refresh"`, כמו ב-Strapi 5): ה-JWT תקף למשך
+  **משך תוקף אסימון הגישה (בדקות)**, ותשובות ההתחברות נושאות גם `refreshToken`. קראו
+  ל-`POST /api/auth/refresh` עם `{ refreshToken }` כדי לקבל זוג חדש. כל אסימון רענון עובד פעם
+  אחת; הצגה של אסימון שכבר נוצל מסיימת את כל הסשן. `POST /api/auth/logout` עם
+  `{ refreshToken }` מסיים אותו במכוון.
+- שינוי או איפוס של סיסמה מבטלים את האסימונים הקודמים של המשתמש, וכך גם חסימת המשתמש.
+- בקשות התחברות, הרשמה ואיפוס מוגבלות ל-20 בדקה לכל IP של לקוח.
+- סיסמאות נשמרות עם Argon2id. חשבונות שיובאו מ-Strapi שומרים על ה-hash של bcrypt שלהם עד
+  ההתחברות הבאה, שבה הוא מגובב מחדש.
+
+## אימות כתובות דוא"ל ואיפוס סיסמאות
+
+כש**אימות כתובות דוא״ל** פעיל, ההרשמה שולחת בדוא"ל קישור ל-
+`/api/auth/email-confirmation?confirmation=…`. פתיחתו מאמתת את החשבון ומפנה ל-**לאחר אימות
+כתובת דוא״ל**. `POST /api/auth/send-email-confirmation` עם `{ email }` שולח קישור חדש.
+
+לסיסמה שנשכחה:
+
+<Steps>
+
+1. האפליקציה שלכם קוראת ל-`POST /api/auth/forgot-password` עם `{ email }`. התשובה זהה בין אם
+   החשבון קיים ובין אם לא.
+2. המשתמש מקבל הודעת דוא"ל עם קישור ל**דף איפוס הסיסמה** שלכם, עם `?code=…`. הקוד עובד למשך
+   שעה.
+3. הדף שלכם קורא ל-`POST /api/auth/reset-password` עם
+   `{ code, password, passwordConfirmation }` ומקבל `{ jwt, user }`.
+
+</Steps>
+
+משתמשים מחוברים משנים את הסיסמה שלהם עם `POST /api/auth/change-password`
+(`{ currentPassword, password, passwordConfirmation }`).
+
+את הודעות הדוא"ל עורכים ב-**הגדרות ← משתמשי קצה ← הגדרות ← תבניות דוא״ל**: **נושא**,
+**הודעה** ו**גוף HTML (אופציונלי)** עבור **אימות דוא״ל** ו**איפוס סיסמה**. הן מקבלות את
+ממלאי המקום `{{username}}`, `{{email}}` ו-`{{url}}`; בגוף ה-HTML הערכים עוברים escape
+של HTML.
+
+## התחברות עם ספקי OAuth
+
+יש הגדרות מוכנות מובנות עבור GitHub, Google, Microsoft, Discord, Facebook, GitLab ו-LinkedIn.
+כל שם אחר הוא ספק OAuth 2 גנרי שצריך את **כתובת URL להרשאה**, **כתובת URL לאסימון**
+ו**כתובת URL לפרטי המשתמש** שלו: Keycloak, Auth0 ו-Okta עובדים כך עם הכתובות של ה-realm או
+ה-tenant שלכם. Sign in with Apple אינו נתמך.
+
+<Steps>
+
+1. ב-**הגדרות ← משתמשי קצה ← הגדרות ← ספקי התחברות**, בחרו **הוספת GitHub** (או הגדרה מוכנה
+   אחרת, או **הוספת ספק OAuth 2**).
+2. אצל הספק, רשמו את **כתובת Callback לרישום אצל הספק** שמוצגת בחלון:
+   `https://cms.example.com/api/connect/github/callback`.
+3. הזינו את **מזהה לקוח (Client ID)**, **הרשאות (Scopes)** אופציונליות, ו**הפניה לאפליקציה
+   שלך**: דף הפרונטאנד שלכם שמקבל `?access_token=` אחרי ההתחברות. הפעילו את **מופעל**.
+4. שימו את סוד הלקוח בסביבה של השרת והפעילו מחדש:
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   המשתנה הוא `VERDIN_OAUTH_<PROVIDER>_SECRET`. סודות אף פעם לא נשמרים במסד הנתונים.
+
+</Steps>
+
+ההתחברות עוקבת אחרי התהליך של Strapi:
+
+<Diagram
+  caption="התחברות OAuth של משתמשי קצה"
+  code={`sequenceDiagram
+  participant B as דפדפן
+  participant V as Verdin
+  participant P as ספק
+  B->>V: GET /api/connect/github
+  V-->>B: הפניה לספק
+  B->>P: הסכמה
+  P-->>B: הפניה ל-/api/connect/github/callback
+  B->>V: callback
+  V-->>B: הפניה לדף שלכם ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+ה-`state` של OAuth חתום וקשור לדפדפן באמצעות עוגייה. חשבונות מותאמים לפי כתובת דוא"ל; כתובת
+שכבר משמשת ספק אחר, או חשבון של דוא"ל וסיסמה, נדחית ("Email is already taken.").
+
+## ניהול חשבונות בפאנל הניהול
+
+**הגדרות ← משתמשי קצה ← משתמשים** מציג את החשבונות, עם חיפוש לפי שם משתמש או דוא"ל. אפשר
+לבצע **הוספת משתמש**, לערוך משתמש (שם משתמש, דוא"ל, סיסמה, תפקיד, **מאומת**, **חסום**), לבצע
+**חסימה** או **ביטול חסימה**, ולמחוק אותו.
+
+## נתיבים
+
+הנתיבים נמצאים תחת הקידומת של API התוכן, `/api` כברירת מחדל. מבנה הבקשות והתגובות עוקב אחרי
+Strapi v5.
+
+| נתיב | עושה |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }`, או `{ user }` כשאימות הדוא"ל פעיל. |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`. |
+| `GET /auth/email-confirmation?confirmation=` | מאמת את הדוא"ל, ואז מפנה או מחזיר את המשתמש. |
+| `POST /auth/send-email-confirmation` | `{ email }`: קישור אימות חדש. |
+| `POST /auth/forgot-password` | `{ email }`: שולח בדוא"ל את קישור האיפוס. |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/change-password` | מחובר. `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/refresh`, `POST /auth/logout` | במצב רענון בלבד: `{ refreshToken }`. |
+| `GET /users/me` | המשתמש המחובר. |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | דורש חיפוש / חיפוש פריט אחד על משתמשים. JSON פשוט, בלי מעטפת `data`, כמו Strapi. `populate=role` מוסיף את התפקיד, `_q=` מחפש בשמות משתמש ובכתובות דוא"ל, `pagination[page]` ו-`pagination[pageSize]` (עד 100) מדפדפים. |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | דורש יצירה / עדכון / מחיקה על משתמשים. `{ username, email, password, confirmed, blocked, role }`, כאשר `role` הוא מזהה תפקיד. |
+| `GET /connect/{provider}` | מתחיל התחברות OAuth. |
+| `GET /auth/{provider}/callback?access_token=` | מחליף את האסימון של הספק ב-`{ jwt, user }`. |
+
+`verdin import strapi` מביא משתמשי קצה עם הסיסמאות שלהם, תפקידים מותאמים, ואת ההרשאות של
+התפקידים public, authenticated והמותאמים. ראו [מעבר מ-Strapi](/he/migrate/from-strapi/).
+
+<Aside type="caution">
+תפקיד עם יצירה, עדכון או מחיקה על **משתמשים** מאפשר לחבריו לנהל כל חשבון של משתמש קצה. תנו
+אותו רק לתפקידים או לאסימוני API מהימנים.
+</Aside>

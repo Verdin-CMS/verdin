@@ -1,0 +1,261 @@
+---
+title: کلاینت تایپ‌شده
+description: محتوای Verdin را از TypeScript با @verdin/client و تایپ‌هایی که `verdin types` از طرح‌وارهٔ شما می‌سازد بخوانید و بنویسید.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`@verdin/client` یک کلاینت کوچک TypeScript برای content API است: سندهای REST، کتابخانهٔ
+رسانه و GraphQL. آن را با `verdin types` همراه کنید که تعریف‌های TypeScript نوع‌های محتوای
+شما را می‌نویسد؛ آن وقت ویرایشگرتان نام مسیرها، فیلدها و داده‌های نوشتن را همزمان با تایپ
+کردن بررسی می‌کند.
+
+این کلاینت هیچ وابستگی‌ای ندارد و هر جا `fetch` وجود داشته باشد اجرا می‌شود: مرورگرها، Node 20
+و بالاتر، Deno، Bun و edge workerها. استفاده از آن اختیاری است؛ هر فراخوانی به یک درخواست سادهٔ
+HTTP از [REST API](/fa/api/rest/) نگاشت می‌شود.
+
+## نصب و ساخت تایپ‌ها
+
+<Steps>
+
+1. بسته را در پروژهٔ فرانت‌اند خود نصب کنید:
+
+   ```sh title="Terminal"
+   npm install @verdin/client
+   ```
+
+2. در پروژهٔ Verdin (پوشه‌ای که `verdin.toml` در آن است)، تایپ‌ها را بسازید:
+
+   ```sh title="Terminal"
+   verdin types -o ../site/src/verdin-types.ts
+   ```
+
+   بدون `-o` (`--out`) تعریف‌ها به خروجی استاندارد می‌روند. این دستور فقط فایل‌های طرح‌واره را
+   می‌خواند و به پایگاه داده نیازی ندارد.
+
+3. با `VerdinSchema` ساخته‌شده یک کلاینت بسازید:
+
+   ```ts title="src/verdin.ts"
+   import { createClient } from '@verdin/client';
+   import type { VerdinSchema } from './verdin-types';
+
+   export const verdin = createClient<VerdinSchema>({
+     url: 'https://cms.example.com',
+     token: process.env.VERDIN_TOKEN, // omit to use the public role
+   });
+   ```
+
+</Steps>
+
+پس از هر تغییر طرح‌واره، `verdin types` را دوباره اجرا کنید؛ خط اول فایل هم همین را می‌گوید.
+commit کردن آن کنار کد فرانت‌اند، یا ساختن دوباره‌اش در CI، دو طرف را هماهنگ نگه می‌دارد.
+
+<Aside type="caution">
+توکن مجوزهای خودش را به دارندهٔ آن می‌دهد. توکن‌های full-access و سفارشی را روی سرور نگه دارید
+(SSR، اسکریپت‌های build، مسیرهای API). باندل مرورگر باید بدون توکن (نقش عمومی) یا با یک توکن
+فقط‌خواندنی کار کند. [توکن‌های API](/fa/guides/auth/api-tokens/) را ببینید.
+</Aside>
+
+## `verdin types` چه می‌سازد
+
+برای [بلاگ نمونه](https://github.com/Verdin-CMS/verdin/blob/main/examples/blog/)
+(مقاله‌ها، دسته‌ها، برچسب‌ها، یک نوع تکی homepage و کامپوننت‌های `shared.seo`، `blocks.hero`
+و `blocks.quote`) فایل شامل این موارد است:
+
+| تایپ | چیست |
+| --- | --- |
+| `Article`، `Category`، `Tag`، `Homepage` | برای هر نوع محتوا یک interface که به نام `singularName` آن است و `DocumentBase` (`id`، `documentId`، `createdAt`، `updatedAt`، `publishedAt`) را گسترش می‌دهد. ویژگی‌های خصوصی کنار گذاشته می‌شوند. |
+| `ArticleInput`، … | تایپ‌های نوشتن: همهٔ ویژگی‌ها اختیاری، روابط به‌صورت رشته‌های `documentId` (یا `connect` / `disconnect` / `set`)، رسانه به‌صورت شناسهٔ فایل، و طرف معکوس روابط کنار گذاشته می‌شود. |
+| `ComponentSharedSeo`، `ComponentBlocksHero`، … | برای هر کامپوننت یک interface، به‌علاوهٔ تایپ `…Input` آن. موارد ناحیهٔ پویا یک `__component` تایپ‌شده دارند. |
+| `Media`، `MediaFormat`، `Blocks` | فایل‌های کتابخانهٔ رسانه، فرمت‌های واکنش‌گرای آن‌ها و قالب بلوک‌های متن غنی. |
+| `Collections`، `Singles`، `VerdinSchema` | مسیرها (`articles`، `homepage`) که برای کلاینت به تایپ سند و ورودی خود نگاشت شده‌اند. |
+
+روابط، رسانه، کامپوننت‌ها و ناحیه‌های پویا ویژگی‌های اختیاری هستند (`category?:`)، چون API
+فقط وقتی آن‌ها را populate کنید برمی‌گرداند. اعداد صحیح بزرگ `string` هستند، چون در اعداد
+JavaScript جا نمی‌شوند.
+
+بدون تایپ‌های ساخته‌شده هم کلاینت کار می‌کند: هر مسیری پذیرفته می‌شود و سندها
+`Record<string, unknown>` هستند.
+
+## خواندن محتوا
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[title][$containsi]=rust&populate[category]=true&populate[seo]=true&sort[0]=publishedAt:desc&pagination[page]=1&pagination[pageSize]=10' \
+  -H "Authorization: Bearer $VERDIN_TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { title: { containsi: "rust" } }
+    sort: ["publishedAt:desc"]
+    pagination: { page: 1, pageSize: 10 }
+  ) {
+    documentId
+    title
+    slug
+    category { name }
+    seo { metaTitle metaDescription }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { verdin } from './verdin';
+
+const { data, meta } = await verdin.collection('articles').find({
+  filters: { title: { $containsi: 'rust' } },
+  populate: { category: true, seo: true },
+  sort: ['publishedAt:desc'],
+  pagination: { page: 1, pageSize: 10 },
+});
+
+data[0].title; // string
+data[0].category?.name; // string | null | undefined
+meta.pagination.total;
+```
+
+</TabItem>
+</Tabs>
+
+پارامترهای کوئری از قالب Strapi v5 استفاده می‌کنند و با نمادگذاری کروشه‌ای سریال می‌شوند؛
+بنابراین هر فیلتر، مرتب‌سازی، `fields`، `populate`، `status` یا `locale` که روی REST API کار کند
+اینجا هم کار می‌کند. برای نحو کامل، [REST API](/fa/api/rest/) را ببینید.
+
+| فراخوانی | درخواست |
+| --- | --- |
+| `collection(route).find(params?)` | `GET /api/:route` |
+| `collection(route).findOne(documentId, params?)` | `GET /api/:route/:documentId` |
+| `collection(route).create(data, params?)` | `POST /api/:route` (منتشر می‌کند مگر اینکه `status: 'draft'` باشد) |
+| `collection(route).update(documentId, data, params?)` | `PUT /api/:route/:documentId` |
+| `collection(route).delete(documentId)` | `DELETE /api/:route/:documentId` |
+| `collection(route).publish(documentId)`، `unpublish`، `discardDraft` | `POST /api/:route/:documentId/actions/publish` (`unpublish`، `discard-draft`) |
+| `single(route).find(params?)`، `update(data, params?)`، `delete()` | `GET`، `PUT`، `DELETE /api/:route` |
+| `upload(files, info?)` | `POST /api/upload` (multipart) |
+| `files(params?)` | `GET /api/upload/files` |
+| `graphql(query, variables?)` | `POST /graphql` |
+
+`stringify(params)` هم export شده است تا خودتان رشتهٔ کوئری بسازید (مثلاً برای یک
+`<link rel="preload">`).
+
+## نوشتن محتوا
+
+```ts
+const { data: article } = await verdin.collection('articles').create(
+  {
+    title: 'Hello from TypeScript',
+    category: 'hx2n8r3w0c1kq5v7m4j6b9a0',       // a category's documentId
+    tags: { connect: ['t1…', 't2…'] },
+    seo: { metaTitle: 'Hello', metaDescription: 'A first post' },
+  },
+  { status: 'draft' },
+);
+
+await verdin.collection('articles').publish(article.documentId);
+```
+
+مانند Strapi v5، `create` روی نوع‌های دارای پیش‌نویس و انتشار سند را بلافاصله منتشر می‌کند،
+مگر اینکه `status: 'draft'` بدهید. نوشتن به توکنی با `create`، `update` یا `publish` روی آن
+نوع نیاز دارد؛ [مجوزها](/fa/reference/permissions/) را ببینید.
+
+فایل‌ها را با `upload` بارگذاری کنید و سپس با شناسه به آن‌ها ارجاع دهید:
+
+```ts
+const [cover] = await verdin.upload(file, { alternativeText: 'The team at the office' });
+```
+
+`file` یک `Blob` یا `File` (یا فهرستی از آن‌ها) است. بارگذاری به مجوز `create` روی کتابخانهٔ
+رسانه نیاز دارد.
+
+## GraphQL
+
+`graphql()` به `/graphql` ارسال می‌کند، بنابراین قابلیت **GraphQL** باید در
+**تنظیمات ← قابلیت‌ها** روشن باشد. این تابع `data` پاسخ را برمی‌گرداند و با اولین خطا
+exception پرتاب می‌کند.
+
+```ts
+const data = await verdin.graphql<{ articles: Array<{ title: string }> }>(
+  `query ($q: String) { articles(filters: { title: { containsi: $q } }) { title } }`,
+  { q: 'rust' },
+);
+```
+
+تایپ‌های ساخته‌شده REST API را توصیف می‌کنند. برای GraphQL، مانند بالا تایپ نتیجه را خودتان
+بدهید، یا از یک تولیدکنندهٔ کد GraphQL روی آن نقطهٔ پایانی استفاده کنید.
+[GraphQL](/fa/api/graphql/) را ببینید.
+
+## خطاها
+
+هر درخواست ناموفق با یک `VerdinError` رد می‌شود که خطای ارسال‌شده از API را در قالب Strapi
+حمل می‌کند:
+
+| ویژگی | مثال |
+| --- | --- |
+| `status` | `400`، `401`، `403`، `404`، `429` |
+| `name` | `ValidationError`، `UnauthorizedError`، `ForbiddenError`، `NotFoundError`، `RateLimitError`، `GraphQLError` |
+| `message` | توضیحی خوانا. |
+| `details` | جزئیات خطا، مانند فهرست فیلدهای نامعتبر در یک `ValidationError`. |
+
+```ts
+import { VerdinError } from '@verdin/client';
+
+try {
+  const { data } = await verdin.collection('articles').findOne(id);
+  return data;
+} catch (error) {
+  if (error instanceof VerdinError && error.status === 404) return null;
+  throw error;
+}
+```
+
+## گزینه‌ها
+
+| گزینه | توضیح |
+| --- | --- |
+| `url` | origin سرور، مانند `https://cms.example.com`. الزامی. |
+| `token` | یک توکن API یا JWT یک کاربر نهایی که به‌صورت `Authorization: Bearer …` ارسال می‌شود. برای نقش عمومی آن را حذف کنید. |
+| `prefix` | پیشوند content API. پیش‌فرض `/api` است؛ اگر [`[api].prefix`](/fa/reference/configuration/) را تغییر داده‌اید، با آن هماهنگ کنید. |
+| `fetch` | پیاده‌سازی‌ای از `fetch` برای استفاده به‌جای نسخهٔ سراسری. |
+| `headers` | سرآیندهای اضافه که با هر درخواست ارسال می‌شوند. |
+
+## رندر سمت سرور و runtimeهای edge
+
+کلاینت فقط `fetch` را فراخوانی می‌کند، بنابراین بدون تغییر در server componentها، مسیرهای API،
+اسکریپت‌های build و توابع edge اجرا می‌شود. برای افزودن گزینه‌های کش یک فریم‌ورک به همهٔ
+درخواست‌ها، یک `fetch` سفارشی بدهید. برای مثال با Next.js:
+
+```ts title="src/verdin.ts"
+export const verdin = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  token: process.env.VERDIN_TOKEN,
+  fetch: (input, init) => fetch(input, { ...init, next: { revalidate: 60, tags: ['verdin'] } }),
+});
+```
+
+برای خواندن پیش‌نویس‌ها در یک صفحهٔ پیش‌نمایش، توکن پیش‌نمایشی را که پنل مدیریت در URL
+پیش‌نمایش گذاشته به‌صورت سرآیند بفرستید:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  headers: { 'x-verdin-preview': searchParams.get('preview') ?? '' },
+});
+const { data } = await preview.collection('articles').findOne(id, { status: 'draft' });
+```
+
+برای اینکه پیوندهای پیش‌نمایش چگونه کار می‌کنند [پیش‌نمایش](/fa/guides/content/preview/) را ببینید،
+و برای افزودن «کلیک برای ویرایش» به همان صفحه [ویرایش دیداری](/fa/guides/frontend/visual-editing/) را.
+
+فراخوانی API از مرورگری روی origin دیگر نیاز دارد که آن origin در
+[`[api].cors_origins`](/fa/reference/configuration/) باشد.

@@ -1,0 +1,150 @@
+---
+title: "Migracje schematu"
+description: "Jak Verdin zamienia zmiany schematu w migracje bazy danych: plan, poziomy ryzyka, co robią verdin dev i verdin start, zmiany nazw i --allow."
+sidebar:
+  order: 7
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Gdy zmieniasz plik schematu, baza danych musi za nim podążyć: nowy atrybut potrzebuje
+kolumny, nowa relacja tabeli powiązań. Verdin sam oblicza tę migrację, pokazuje ją przed
+wykonaniem i nigdy nie usuwa danych bez wyraźnego polecenia. Ta strona wyjaśnia, jak to
+działa.
+
+## Od schematu do planu
+
+Verdin nigdy nie prosi cię o napisanie migracji. Porównuje dwa modele bazy danych:
+
+1. **Docelowy**: wyprowadzony z twoich plików `schema/*.json`, z każdą potrzebną tabelą,
+   kolumną i indeksem (łącznie z tabelami powiązań i własnymi tabelami Verdin).
+2. **Bieżący**: model pozostawiony przez ostatnią migrację, zapisany w bazie danych jako
+   snapshot.
+
+Różnica to **plan**: lista kroków, każdy z SQL dla twojej bazy danych i poziomem ryzyka.
+Ponieważ plan pochodzi z zapisanego snapshotu, a nie z inspekcji bazy danych, jest
+deterministyczny i taki sam w każdym dialekcie. Zmiany, które dają ten sam SQL w twojej bazie
+danych, np. `integer` na `biginteger` w SQLite, nie tworzą żadnego kroku.
+
+<Diagram
+  caption="Jak zmiana schematu staje się migracją"
+  code={`flowchart LR
+    F[schema/*.json] --> D[Model docelowy]
+    S[(Zapisany snapshot)] --> C[Model bieżący]
+    D --> X{Diff}
+    C --> X
+    X --> P[Plan: kroki, ryzyko, SQL]
+    P --> A[apply --allow]
+    A --> B[(Baza danych i nowy snapshot)]`}
+/>
+
+`verdin migrate plan` go wypisuje. Tutaj atrybut `excerpt` bloga został przemianowany na
+`summary` w `article.json`:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [safe] add column articles.summary
+       ALTER TABLE "articles" ADD COLUMN "summary" text
+  2. [destructive] drop column articles.excerpt
+       ALTER TABLE "articles" DROP COLUMN "excerpt"
+
+requires: verdin migrate apply --allow destructive
+
+possible renames (pass them to keep the data):
+  --rename-column articles.excerpt=summary
+```
+
+## Poziomy ryzyka
+
+| Ryzyko | Kroki | Dlaczego |
+| --- | --- | --- |
+| **safe** | Utworzenie tabeli, dodanie kolumny, dodanie lub usunięcie nieunikalnego indeksu, zmiana nazwy tabeli lub kolumny. | Nie może stracić danych ani się nie udać na istniejących wierszach. |
+| **risky** | Zmiana typu kolumny, dodanie unikalnego indeksu do istniejącej tabeli, przebudowa tabeli SQLite (SQLite nie potrafi zmieniać kolumn w miejscu). | Może się nie udać na istniejących danych (duplikaty, wartości, których nie da się przekonwertować) albo je przepisać. |
+| **destructive** | Usunięcie kolumny lub tabeli. | Usuwa dane. |
+
+Każda kolumna atrybutu dopuszcza `NULL` (`required` jest sprawdzane przy publikacji), więc
+dodawanie atrybutów, wymaganych czy nie, jest zawsze bezpieczne. Dodanie `"unique": true` do
+tytułu artykułu w blogu jest ryzykowne, bo istniejące tytuły mogą się powtarzać:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [risky] create unique index articles_title_uq
+       CREATE UNIQUE INDEX "articles_title_uq" ON "articles" ("title", "locale", "publication_state")
+
+requires: verdin migrate apply --allow risky
+```
+
+Zanim wykona się pierwsza instrukcja, Verdin uruchamia sprawdzenie dla każdego ryzykownego
+kroku, który może się nie udać, np. szuka duplikatów przed utworzeniem unikalnego indeksu,
+i zatrzymuje się z komunikatem, jeśli któreś znajdzie problem. W tym momencie nic się jeszcze
+nie zmieniło.
+
+## Stosowanie planu
+
+`verdin migrate apply` wykonuje oczekujące kroki. Przyjmuje najwyższe ryzyko, które
+akceptujesz:
+
+```sh title="Terminal"
+verdin migrate apply                        # tylko bezpieczne kroki (domyślnie)
+verdin migrate apply --allow risky          # także zmiany typów i unikalne indeksy
+verdin migrate apply --allow destructive    # także usunięcia
+```
+
+Jeśli któryś krok przekracza dozwolone ryzyko, nic się nie wykonuje:
+
+```text title="Terminal"
+$ verdin migrate apply
+Error: these steps need explicit approval:
+  create unique index articles_title_uq (risky)
+```
+
+Migracja zakłada blokadę, więc dwie instancje nigdy nie migrują jednocześnie. W PostgreSQL
+i SQLite cały plan wykonuje się w jednej transakcji: błąd wycofuje wszystko. MySQL i MariaDB
+zatwierdzają każdą instrukcję DDL osobno, więc Verdin zapisuje postęp krok po kroku
+w dzienniku. Po błędzie usuń przyczynę i uruchom `verdin migrate apply` ponownie: wznowi od
+nieudanego kroku, jeśli plan się nie zmienił, i odmówi, jeśli schemat w międzyczasie się
+zmienił.
+
+## Zmiany nazw
+
+Usunięty atrybut i nowy wyglądają jak usunięcie i dodanie, co oznaczałoby utratę danych
+kolumny. Verdin nigdy nie zgaduje zmiany nazwy. Sugeruje ją, gdy znika kolumna, a w tej samej
+tabeli pojawia się kolumna tego samego typu (albo znika tabela, a pojawia się tabela z tymi
+samymi kolumnami), a ty potwierdzasz ją jawnie:
+
+```text title="Terminal"
+$ verdin migrate apply --rename-column articles.excerpt=summary
+applied 1 step
+```
+
+- `--rename-column TABLE.OLD=NEW` zmienia nazwę kolumny; `TABLE` to tabela typu zawartości
+  (jego `collectionName`).
+- `--rename-table OLD=NEW` zmienia nazwę tabeli. Tabele powiązań typu są przemianowywane
+  razem z nią.
+- Przekaż te same flagi do `migrate plan`, aby podejrzeć wynik.
+
+Zmiany nazw to bezpieczne kroki. Kreator typów zawartości proponuje te same sugestie w swoim
+oknie.
+
+## `verdin dev` i `verdin start`
+
+| | `verdin dev` | `verdin start` |
+| --- | --- | --- |
+| Przy starcie | Stosuje oczekujące bezpieczne kroki. Zatrzymuje się, jeśli czekają inne kroki. | Odmawia startu, dopóki czeka jakikolwiek krok, chyba że przekażesz `--migrate`, co najpierw stosuje bezpieczne kroki. |
+| Zmiany schematu w trakcie działania | **Kreator typów zawartości** pokazuje plan z ryzykiem i sugestiami zmian nazw i stosuje go po potwierdzeniu, łącznie z bardziej ryzykownymi krokami. Ręczne edycje (lub `git pull`) wychwytuje obserwator plików: bezpieczne plany są stosowane, a aplikacja się przeładowuje; pozostałe są zapisywane w logu, a działająca aplikacja zostaje bez zmian. | Schemat jest tylko do odczytu. Wdróż nowe pliki i wykonaj migrację. |
+
+Kreator najpierw migruje bazę danych, potem zapisuje pliki schematu, a potem przeładowuje
+API treści, API administracyjne, GraphQL i dokument OpenAPI bez restartu. Jeśli migracja się
+nie powiedzie, pliki i działająca aplikacja zostają bez zmian.
+
+W produkcji uruchom `verdin migrate plan` na kopii bazy danych, a potem `verdin migrate apply`
+z akceptowanym ryzykiem, przed uruchomieniem nowej wersji. Zobacz
+[Aktualizacja](/pl/migrate/upgrading/) i [Kopie zapasowe](/pl/deploy/backups/).
+
+## Porównanie ze Strapi
+
+Strapi synchronizuje bazę danych ze schematem przy starcie, nie pokazując, co zrobi. Verdin
+najpierw planuje, pokazuje SQL, bez pytania stosuje tylko bezpieczne kroki i wymaga `--allow`
+dla wszystkiego, co może się nie udać lub usunąć dane.

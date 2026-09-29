@@ -1,0 +1,139 @@
+---
+title: シングルサインオン
+description: Microsoft Entra ID、Google Workspace、Okta、Keycloak などの OpenID Connect プロバイダーで管理者がログインできるようにし、グループをロールにマッピングします。
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+管理者は、任意の OpenID Connect プロバイダー（Microsoft Entra ID、Google Workspace、Okta、Auth0、Keycloak、Authentik、GitLab など）でログインできます。各プロバイダーのボタンがログインページに表示され、その隣でパスワードによるログインも引き続き使えます。このガイドでは、アプリケーションを登録し、Verdin でプロバイダーを設定し、グループをロールにマッピングします。
+
+Strapi では SSO は Enterprise の機能です。Verdin ではオープンソースのコアの一部です。サイトのエンドユーザーについては、代わりに[エンドユーザーの OAuth ログイン](/ja/guides/auth/end-users/)を参照してください。
+
+## 始める前に
+
+- SSO の設定には**機能の管理**（`features.manage`）が必要です。
+- `[server].public_url` を、`https://cms.example.com` のような、管理者が Verdin にアクセスするアドレスに設定します。リダイレクト URI はこれをもとに作られます。
+
+## 設定する
+
+<Steps>
+
+1. **アプリケーションを登録します。** プロバイダーで（"web" クライアントとして）、次のリダイレクト URI を登録します。
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>` は、手順 3 で選ぶ `corp` のようなプロバイダーの ID です。管理画面のパスは `[admin].path` に従います。
+
+2. **クライアントシークレットを環境変数に入れ**、Verdin を再起動します。
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   変数名は `VERDIN_SSO_<ID>_SECRET` で、ID は大文字にし、ダッシュはアンダースコアにします。公開クライアント（PKCE のみでシークレットなし）には変数は不要です。
+
+3. **プロバイダーを追加します。** **設定 → 機能 → シングルサインオン**をオンにし、**プロバイダーを設定**、続いて**プロバイダーを追加**を選び、次を入力します。
+
+   - **ID**: 小文字の英字、数字、ダッシュからなる、最大 32 文字。
+   - **ボタンのテキスト**: ログインページに「…で続行」として表示されます。
+   - **発行者URL**: Verdin はその配下の `/.well-known/openid-configuration` を読みます。`localhost` を除き、`https` を使う必要があります。
+   - **クライアントID**と**スコープ**（デフォルトは `openid email profile`。`openid` は必須です）。
+
+   ダイアログに、**プロバイダーに登録するリダイレクトURI**とシークレットの変数名が表示されます。保存します。
+
+4. プライベートウィンドウで**試してみます**。ログインページに **Corp accountで続行**が表示されます。
+
+</Steps>
+
+## 誰がどのロールでログインできるか
+
+| 設定 | JSON のキー | 効果 |
+| --- | --- | --- |
+| **許可するメールドメイン** | `allowedDomains` | これらのメールドメインだけがログインできます。空の場合はすべて許可します。 |
+| **初回ログイン時にアカウントを作成** | `autoCreate` | 誰かが初めてログインしたときに、管理者のアカウントを作成します。オフの場合、すでにアカウントのあるメールアドレスだけがログインできます。 |
+| **デフォルトのロール** | `defaultRoles` | ロールのマッピングで何も与えられない場合の、作成されるアカウントのロールコード。 |
+| **ロールのクレーム** | `roleClaim` | ユーザーのグループを並べる ID トークンのクレーム。`groups` や `roles` など。 |
+| **ロールのマッピング** | `roleMap` | 各クレームの値がどのロールコードを与えるか。 |
+| **未確認のメールアドレスを信頼する** | `trustUnverifiedEmail` | プロバイダーが確認済みとしていないメールアドレスを受け入れます。 |
+| **プロバイダーが MFA を必須にしている** | `providerMfa` | このプロバイダーの後に、管理者に Verdin の第二要素を求めません。 |
+
+- アカウントを作成するプロバイダーには、デフォルトのロールかロールのマッピングが必要です。
+- どちらでも Super Admin のロールは与えられません。管理者の昇格は**設定 → ユーザー**で手動で行ってください。
+- ロールが設定されるのは、アカウントの作成時だけです。その後は**設定 → ユーザー**で管理してください。
+- 作成されたアカウントの名と姓は、`given_name` と `family_name` のクレームから取られます。
+
+機能が保存する形式（`PUT /admin/api/features/sso`）で、同じプロバイダーを JSON で表すと次のようになります。
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## プロバイダーごとの注意
+
+- **Microsoft Entra ID** は ID トークンに `email_verified` を含めないので、**未確認のメールアドレスを信頼する**をオンにしてください。グループをマッピングするには、アプリのトークン構成に `groups` クレームを追加します。値はグループの ID です。
+- **Google Workspace**: 発行者は `https://accounts.google.com` です。**許可するメールドメイン**で、ログインを自分のドメインに限定してください。
+- **Keycloak**: 発行者は realm の URL `https://<host>/realms/<realm>` です。
+
+## 二段階認証
+
+デフォルトでは、Verdin の[第二要素](/ja/guides/auth/two-factor/)を持つ管理者は、プロバイダーから戻ってきた後に第二要素を求められます。プロバイダーがすでに MFA を必須にしている場合は、二重に求められないように**プロバイダーが MFA を必須にしている**をオンにしてください。
+
+## 仕組み
+
+<Diagram
+  caption="SSO によるログイン"
+  code={`sequenceDiagram
+  participant B as ブラウザー
+  participant V as Verdin
+  participant P as プロバイダー
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: state と PKCE チャレンジ付きでリダイレクト
+  B->>P: ログイン
+  P-->>B: code 付きでコールバックへリダイレクト
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: code を交換（TLS）
+  V-->>B: セッション Cookie、/admin/ へリダイレクト`}
+/>
+
+- Verdin は、PKCE（S256）付きの認可コードフローを使います。`state` は署名され、有効期間の短い `HttpOnly` の Cookie に結び付けられ、`nonce` はそこから導出されます。
+- ID トークンの発行者、オーディエンス（複数ある場合は `azp` も）、有効期限、nonce を確認します。**未確認のメールアドレスを信頼する**がオンでない限り、`email_verified: true` を持つ `email` クレームが必要です。
+- プロバイダーのエンドポイントは `https` を使う必要があります。
+- すべての SSO ログインは、プロバイダー付きの `admin.login` として[監査ログ](/ja/guides/content/audit-logs/)に記録されます。
+
+ログインに失敗すると、ブラウザーは理由（「シングルサインオンに失敗しました」）付きでログインページに戻り、理由はサーバーのログにも書き込まれます。よくある理由:
+
+| 理由 | 対処 |
+| --- | --- |
+| the provider did not verify the email | **未確認のメールアドレスを信頼する**をオンにするか、プロバイダーのクレームを直します。 |
+| this email domain may not sign in | ドメインを**許可するメールドメイン**に追加します。 |
+| no admin account for this identity | **初回ログイン時にアカウントを作成**をオンにするか、先に管理者を作成します。 |
+| the sign-in request expired or was not started here | 同じブラウザーで、ログインページからやり直します。 |
+
+<Aside type="note">
+無効化された管理者は、SSO でもログインできません。
+</Aside>

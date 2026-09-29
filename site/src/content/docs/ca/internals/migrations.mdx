@@ -1,0 +1,144 @@
+---
+title: Motor de migracions
+description: Com converteix Verdin els canvis d'esquema en DDL, classifica cada pas pel seu risc i aplica els plans de manera segura en motors amb DDL transaccional i sense.
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Aquesta pàgina explica com `verdin-migrate` posa la base de dades d'acord amb l'esquema: com calcula
+la diferència, com valora cada pas i com aplica un pla perquè un error mai no et deixi amb dubtes.
+Per al flux de treball del dia a dia (`verdin migrate plan`, `--allow`, canvis de nom), llegeix
+primer [migracions d'esquema](/ca/concepts/schema-migrations/); els indicadors de les ordres són a la
+[referència de la CLI](/ca/reference/cli/).
+
+## Flux
+
+<Diagram
+  caption="Dels fitxers d'esquema al DDL aplicat"
+  code={`flowchart LR
+  Files["schema/*.json"] -->|anàlisi, validació| Schema
+  Schema -->|derivació| Desired["DbModel<br/>desitjat"]
+  Snapshot[("vd_schema_snapshots")] --> Current["DbModel<br/>actual"]
+  Current --> Diff{"diff"}
+  Desired --> Diff
+  Diff -->|canvis| Plan["pla per al Flavor<br/>passos, risc, SQL, comprovacions prèvies"]
+  Plan -->|apply| Db[("base de dades")]`}
+/>
+
+1. `verdin-schema` analitza i valida els fitxers en un `Schema`.
+2. `derive_model` (`derive.rs`) el converteix en un `DbModel`: totes les taules, columnes, índexs i
+   claus foranes que necessita l'esquema, incloses les taules d'enllaç i les
+   [taules de la plataforma](/ca/internals/storage/#taules-de-la-plataforma).
+3. L'últim model aplicat es llegeix de `vd_schema_snapshots`.
+4. `diff` (`diff.rs`) compara els dos models i retorna una llista de `Change`, més suggeriments de
+   canvi de nom.
+5. `build_plan` (`plan.rs`) converteix cada canvi en SQL per al flavor connectat, en valora el risc i
+   hi adjunta una comprovació prèvia quan cal.
+6. `apply` (`apply.rs`) executa el pla i després desa el model desitjat com a instantània nova.
+
+**La instantània desa el model físic, no l'esquema.** Quan una versió posterior de Verdin deriva més
+taules del mateix esquema (taules d'enllaç per a una funcionalitat nova, una taula de plataforma
+nova), el diff les crea sense cap canvi d'esquema.
+
+**El diff s'executa contra la instantània, no contra la base de dades en viu.** Això el manté
+determinista i evita les diferències en com informa cada motor de la seva pròpia estructura. Verdin
+no inspecciona la base de dades, de manera que els canvis manuals a les taules (drift) no es
+detecten.
+
+Els canvis que produeixen el mateix DDL en un dialecte no generen cap pas. Per exemple, `string` →
+`text` és un canvi de tipus a PostgreSQL i MySQL, però tots dos són `text` a SQLite, així que SQLite
+no rep cap pas.
+
+## Categories de canvis
+
+Cada pas té un nivell de risc (`Risk` a `diff.rs`). `apply` només executa els passos fins al nivell
+que permets, i rebutja tot el pla abans d'executar res si un pas el supera.
+
+| Risc | Canvis |
+|---|---|
+| **Safe** | Crear una taula; afegir una columna que admet nuls o té valor per defecte; relaxar una columna (fer-la nul·lable, amb el mateix tipus i valor per defecte); crear un índex no únic, o un índex únic en una taula nova; eliminar un índex; canviar el nom d'una taula o columna |
+| **Risky** | Afegir una columna `NOT NULL` sense valor per defecte; canviar d'una altra manera el tipus, la nul·labilitat o el valor per defecte d'una columna; afegir un índex únic a una taula existent; reconstruir una taula SQLite sense eliminar columnes |
+| **Destructive** | Eliminar una columna; eliminar una taula; reconstruir una taula SQLite que elimina columnes |
+
+Com que totes les columnes d'atribut admeten nuls (consulta
+[emmagatzematge](/ca/internals/storage/#columnes-del-sistema)), afegir atributs, inclosos els
+obligatoris, sempre és segur. Els valors d'`enumeration` els comprova l'aplicació, no la columna, de
+manera que afegir o treure un valor no canvia gens el DDL.
+
+**Les comprovacions prèvies** s'executen abans de la primera sentència d'un pla, de manera que un pas
+arriscat que no pot tenir èxit atura l'execució mentre la base de dades encara està intacta:
+
+| Pas | Comprovació prèvia |
+|---|---|
+| Índex únic en una taula existent | Cap valor no NULL duplicat a les columnes indexades |
+| Columna `NOT NULL` sense valor per defecte | La taula no té files |
+| Una columna passa a ser `NOT NULL` | La columna no té NULL |
+
+**Canvis de nom.** Una columna eliminada més una columna afegida del mateix tipus de columna a la
+mateixa taula es *proposa* com a canvi de nom: `verdin migrate plan` imprimeix un suggeriment com
+`--rename-column articles.title=headline`, i el constructor de tipus de contingut ofereix
+acceptar-lo. Mai no es dedueix en silenci; sense l'indicador, el pla elimina la columna antiga i
+n'afegeix una de nova. Una taula eliminada més una taula creada amb les mateixes columnes rep de la
+mateixa manera un suggeriment `--rename-table old=new`. Els canvis de nom són passos segurs, i una
+taula reanomenada s'emporta les seves taules d'enllaç.
+
+**Reconstruccions de SQLite.** SQLite no pot modificar una columna, així que quan una taula té
+qualsevol modificació de columna, el planificador substitueix tots els canvis de columnes i índexs
+d'aquella taula per una sola reconstrucció: crear la forma nova amb un nom temporal, copiar les
+columnes que es mantenen, eliminar la taula antiga, reanomenar la nova i tornar a crear els índexs.
+
+## Modes
+
+| Ordre | Què passa |
+|---|---|
+| `verdin start` | Els passos pendents aturen l'arrencada amb un missatge que remet a `verdin migrate plan`. Els fitxers d'esquema són de només lectura. |
+| `verdin start --migrate` | Els passos **segurs** pendents s'apliquen abans que s'iniciï el servidor; qualsevol cosa més arriscada atura l'arrencada. |
+| `verdin dev` | Els passos segurs s'apliquen en arrencar. Un observador de fitxers a `schema/` recarrega a cada canvi: les migracions segures s'apliquen i l'aplicació se substitueix in situ; els canvis més arriscats es registren i l'aplicació en execució es queda com estava. |
+| Constructor de tipus de contingut (només `verdin dev`) | `POST /schema/plan` mostra els passos, el seu risc, el seu SQL i els suggeriments de canvi de nom. `POST /schema/apply` els executa al nivell de risc que ha confirmat l'usuari. |
+| `verdin migrate plan` | Imprimeix cada pas amb el seu risc i el seu SQL exacte per al dialecte connectat, el nivell `--allow` que necessita el pla i els suggeriments de canvi de nom. |
+| `verdin migrate apply` | Executa el pla. Cal `--allow risky` o `--allow destructive` quan el pla conté passos d'aquest tipus. |
+
+Quan el constructor aplica un canvi, primer migra, després escriu `schema/*.json` i després
+substitueix l'aplicació. Si la migració falla, els fitxers i l'aplicació en execució es queden com
+estaven. Com que la sortida del constructor són fitxers, el flux acaba en un commit de git.
+
+## Una execució que sobreviu al DDL no transaccional
+
+PostgreSQL i SQLite executen el DDL dins de transaccions. MySQL i MariaDB fan un commit implícit a
+cada sentència DDL, de manera que un error a mig pla deixaria la base de dades entre dos estats.
+`apply` gestiona tots dos casos.
+
+**A tots els motors:**
+
+1. Agafa el bloqueig de migració en una connexió dedicada: `pg_advisory_lock` a PostgreSQL;
+   `GET_LOCK('verdin_migrate:<database>')` a MySQL i MariaDB, amb una espera de fins a 60 segons; a
+   SQLite, `BEGIN IMMEDIATE` serialitza els escriptors. A SQLite el motor també desactiva
+   `foreign_keys` durant l'execució, perquè les reconstruccions de taules no es propaguin en cascada
+   a les taules d'enllaç.
+2. Torna a calcular el pla a partir de la instantània i comprova el risc permès.
+3. Executa totes les comprovacions prèvies abans de la primera sentència DDL.
+
+**A PostgreSQL i SQLite**, tot el pla, la instantània nova i una fila de diari `completed`
+s'executen en una sola transacció. Un error ho desfà tot.
+
+**A MySQL i MariaDB**, cada pas és una sola sentència, i el progrés s'enregistra pas a pas:
+
+1. Enregistra el pla a `vd_migrations_journal` (el hash del pla i els seus passos) amb l'estat
+   `running`.
+2. Executa cada pas i enregistra el nombre de passos completats després de cadascun.
+3. Si un pas falla, el diari conserva l'error i es queda a `running`. Aleshores
+   `verdin migrate plan` informa de l'execució interrompuda, de quants passos s'han aplicat i de
+   l'últim error.
+4. El següent `apply` torna a calcular el pla. Si el seu hash coincideix amb el del diari,
+   **continua** des del pas que ha fallat: les sentències DDL individuals són atòmiques en aquests
+   motors, així que el pas fallit es torna a executar. Les comprovacions prèvies s'ometen en
+   continuar, perquè els passos anteriors ja han canviat la base de dades.
+5. Si l'esquema ha canviat entretant, els hashes són diferents i `apply` s'hi nega, i et demana que
+   restableixis l'esquema a partir del qual es va fer el pla.
+6. Quan l'últim pas té èxit, la instantània nova i l'estat `completed` del diari s'escriuen junts en
+   una sola transacció.
+
+El hash del pla cobreix el flavor i totes les sentències, de manera que una execució represa executa
+exactament l'SQL que es va planificar.

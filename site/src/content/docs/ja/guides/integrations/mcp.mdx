@@ -1,0 +1,124 @@
+---
+title: MCP サーバー
+description: Claude などの AI エージェントが、API トークンの権限で、Model Context Protocol を通じて Verdin のコンテンツを読み書きできるようにします。
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin は、[Model Context Protocol](https://modelcontextprotocol.io)（MCP）を通じて AI エージェントにコンテンツを提供できます。Claude Code、Claude Desktop、Cursor など任意の MCP クライアントを接続すると、エージェントは、渡したトークンの権限の範囲で、コンテンツタイプの一覧、REST API のフィルターを使ったエントリーの問い合わせ、エントリーの作成、更新、公開ができます。
+
+Strapi v5 には組み込みの MCP サーバーがありません。
+
+## オンにする
+
+<Steps>
+
+1. **設定 → 機能**で **MCPサーバー**をオンにします。そのカードに、コンテンツ API と同じホストの**エンドポイント** `https://cms.example.com/mcp` が表示されます。
+2. **設定 → APIトークン**で**トークンを作成**を選びます。エージェントに書き込みをさせないなら**読み取り専用**を、一部の型とアクションだけを許可するなら**カスタム**を選びます。トークンをコピーしてください。一度しか表示されません。[API トークン](/ja/guides/auth/api-tokens/)を参照してください。
+3. エンドポイントとトークンでクライアントを接続します（下記）。
+
+</Steps>
+
+## クライアントを接続する
+
+サーバーは、MCP の Streamable HTTP トランスポートを話します。どのクライアントにも、URL と `Authorization: Bearer <token>` ヘッダーが必要です。
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+**MCPサーバー**のカードの **Claude Codeに追加**に、このコマンドがあります（**コマンドをコピー**）。`<token>` を API トークンに置き換えてください。
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+Claude Desktop の設定ファイルはローカルのサーバーを起動するので、[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) で HTTP のエンドポイントにつなぎます。
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+クライアントの設定形式は変わることがあります。キーが認識されない場合は、クライアントのドキュメントを確認してください。その後、エージェントに *「News カテゴリーで今週公開された記事を一覧にして」* のように尋ねてみてください。
+
+## ツール
+
+| ツール | 必要なもの | 動作 |
+| --- | --- | --- |
+| `list_content_types` | `find` または `findOne` | 呼び出し元が読み取れるコンテンツタイプを、種類と属性とともに返します。 |
+| `get_content_type` | `find` または `findOne` | コンテンツタイプの属性: 型、オプション、リレーション。 |
+| `find_entries` | `find` | ある型のエントリー。`query` は REST API のパラメーター（`filters`、`sort`、`fields`、`populate`、`pagination`）を JSON で受け取ります。`status: "draft"` には `readDrafts` も必要です。 |
+| `get_entry` | `findOne` | `documentId` による 1 件のエントリー（シングルタイプでは不要）。 |
+| `create_entry` | `create` | REST API と同様に、`data` からエントリーを作成します。`status: "draft"` は下書きを保存します。 |
+| `update_entry` | `update` | エントリーを更新します（シングルタイプでは `documentId` なし）。 |
+| `delete_entry` | `delete` | エントリーを削除します。 |
+| `publish_entry`、`unpublish_entry` | `publish` | エントリーを公開または非公開にします。 |
+
+ツールは `uid`（`api::article` など）と、多言語化された型では `locale` を受け取ります。各ツールは対応する REST ルートと同じ権限を確認し、書き込みは REST API と同じ経路を通ります。バリデーション、プラグインのフック、レビューの段階、Webhook、コンテンツ履歴、監査ログです。エージェントは、そのトークンが REST でできないことは何もできません。
+
+コンテンツ API のアクションについては[権限](/ja/reference/permissions/)を参照してください。
+
+## 認証
+
+エンドポイントは、コンテンツ API と同じ認証情報を受け付けます。
+
+- API トークン。エージェントでは通常これを使います。
+- エンドユーザーの JWT。アプリのログイン済みユーザーとして動くエージェント向けです。
+- `Authorization` ヘッダーなし。公開ロールの権限になります。
+
+無効なトークンには `401` を返します。サーバーはセッションを保持せず、ストリームも開きません。各リクエストは JSON で応答される JSON-RPC の `POST` です（`GET` は `405` を返します）。
+
+### ブラウザーのオリジン
+
+ブラウザーが送る `Origin` ヘッダーを持つリクエストは、そのオリジンが **MCPサーバー**のカードの**許可するブラウザーオリジン**に登録されていない限り拒否されます。これは、Web ページがブラウザーをだましてネットワーク上のサーバーを呼び出させる DNS リバインディングを防ぎます。コマンドラインやデスクトップのクライアントは `Origin` を送らないので、通常このリストは空です。
+
+<Aside type="caution">
+フルアクセスのトークンを持つエージェントは、コンテンツを削除したり公開したりできます。エージェントには、必要な範囲に限定した読み取り専用かカスタムのトークンを与えてください。エージェントが書く下書きについては、[レビューワークフロー](/ja/guides/content/review-workflows/)を使うと、エージェントと公開の間に人が入ります。
+</Aside>
+
+代わりに管理パネル内で編集者を AI で支援する（翻訳、代替テキスト、SEO の提案）には、[AI アクション](/ja/guides/integrations/ai-actions/)を参照してください。

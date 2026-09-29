@@ -1,0 +1,133 @@
+---
+title: İnceleme iş akışları
+description: Kayıtları inceleme aşamalarından geçirin, inceleyicilere atayın, onları kimin taşıyabileceğini sınırlayın ve yayınlamadan önce bir aşama zorunlu kılın.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Bir inceleme iş akışı, bazı içerik tiplerinin kayıtlarının yayınlanmadan önce geçtiği *Yapılacak*,
+*İncelemede* ve *Hazır* gibi sıralı bir aşama listesidir. Bu kılavuz bir iş akışı kurar, kayıtları
+taşır ve atar ve ilgili admin API’yi gösterir.
+
+Strapi’de inceleme iş akışları bir Enterprise özelliğidir. Verdin’de açık kaynak çekirdeğin
+parçasıdır.
+
+## Başlamadan önce
+
+- **Ayarlar → Özellikler → İnceleme iş akışları**’nı açın. Varsayılan olarak kapalıdır.
+- İş akışlarını kurmak **İnceleme iş akışlarını yönet** (`workflows.manage`) gerektirir.
+- Bir kaydı taşımak ve atamak ona güncelleme erişimi gerektirir. Bkz.
+  [İzinler](/tr/reference/permissions/).
+
+## Bir iş akışı oluşturma
+
+<Steps>
+
+1. **Ayarlar → İnceleme iş akışları**’nı açın ve **Yeni iş akışı**’nı seçin.
+2. Ona bir **Ad** verin.
+3. **İçerik tipleri** altında kayıtları bu iş akışını izleyecek tipleri seçin. Bir tip en fazla
+   bir iş akışını izler.
+4. **Aşamalar** altında aşamaları sırayla listeleyin. Her birinin bir **Aşama adı** ve bir
+   **Renk** değeri vardır. Daha fazlası için **Aşama ekle**’yi, yeniden sıralamak için ok
+   düğmelerini kullanın. Yeni kayıtlar ilk aşamada başlar.
+5. İsteğe bağlı olarak bir aşamada **Kayıtları bu aşamaya taşıyabilecek roller**’i seçin. Hiç rol
+   seçilmezse kaydı güncelleyebilen herkes taşıyabilir.
+6. İsteğe bağlı olarak **Yayınlamak için gereken aşama**’yı ayarlayın. Bu durumda kayıtlar yalnızca
+   o aşamadayken yayınlanabilir. **Herhangi bir aşama** yayınlamaya dokunmaz.
+7. Kaydedin.
+
+</Steps>
+
+<Diagram
+  caption="Yayınlamak için gerekli bir aşama içeren editoryal bir iş akışı"
+  code={`flowchart LR
+  A[Yapılacak] --> B[İncelemede] --> C[Hazır]
+  C -->|yayınlamaya izin verilir| P((Yayınlandı))
+  A -.->|yayınlama reddedilir| X[400]`}
+/>
+
+Tipleri iş akışına katılmadan önce var olan kayıtlar ilk aşamadadır.
+
+Bir iş akışını daha sonra değiştirdiğinizde:
+
+- Bir aşamayı kaldırmak kayıtlarını ilk aşamaya geri gönderir.
+- Bir içerik tipini iş akışından çıkarmak kayıtlarının aşamalarını temizler.
+- İş akışını silmek kayıtlarının aşamalarını ve atanan kişilerini temizler.
+
+## Kayıtları taşıma ve atama
+
+Kayıt düzenleyicisi **Aşama** ve **Atanan kişi** içeren bir **İnceleme** paneli gösterir.
+
+- Kaydı taşımak için başka bir **Aşama** seçin. Diğer rollere ayrılmış aşamalar seçilemez ve panel
+  bunu söyler. **İnceleme iş akışlarını yönet** yetkisi olan admin’ler kayıtları her zaman
+  taşıyabilir.
+- İçerik tipini okuyabilen aktif admin’ler arasından bir **Atanan kişi** seçin ya da **Atanan
+  kişiyi kaldır**’ı seçin. Kaydı güncelleyebilen herkes onu atayabilir.
+- İş akışının gerekli bir aşaması olduğunda panel, **Yayınla** çalışmadan önce kaydın hangi
+  aşamaya ulaşması gerektiğini söyler.
+
+Liste görünümü bir **Aşama** sütunu gösterir ve ana sayfa size atanan kayıtları **Bana
+atananlar** altında listeler. Yerelleştirilmiş tipler dil başına bir aşama tutar.
+
+## Yayınlama aşamasının engelledikleri
+
+Gerekli aşama her yayınlama yoluna uygulanır: yönetim paneli, REST, GraphQL, sürümler ve
+eklentiler. O aşamanın dışındaki bir kaydın yayınlanması `400` ile başarısız olur:
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+Strapi’de aşama gereksinimi yalnızca yönetim paneline uygulanır. Aşama rolleri de farklıdır:
+Verdin’de kayıtları bir aşamanın *içine* kimin taşıyabileceğini sınırlarlar.
+
+## Denetim kayıtları ve webhook’lar
+
+- Aşama değişiklikleri ve atamalar [denetim kayıtlarına](/tr/guides/content/audit-logs/)
+  `entry.stage` ve `entry.assign` olarak yazılır.
+- Webhook’lar **Kayıt aşaması değişti** (`review-workflows.updateEntryStage`) olayına abone
+  olabilir. Bkz. [Webhook’lar](/tr/guides/integrations/webhooks/).
+
+## Admin API
+
+Tüm rotalar `/admin/api` altındadır ve bir admin erişim token’ı alır.
+
+| Rota | İzin | Yaptığı |
+| --- | --- | --- |
+| `GET /review-workflows`, `GET /review-workflows/{id}` | `workflows.manage` | Aşamalarıyla birlikte iş akışları. |
+| `POST /review-workflows`, `PUT /review-workflows/{id}` | `workflows.manage` | Bir iş akışı oluşturur veya değiştirir (gövde aşağıda). |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | Tiplerinin kayıtları aşamalarını kaybeder. |
+| `GET /content/{uid}/{documentId}/review?locale=` | kaydı okuma | Aşama, atanan kişi ve kaydı taşıyabileceğiniz aşamalar (`canMoveTo`). |
+| `PUT /content/{uid}/{documentId}/review?locale=` | kaydı güncelleme | `{ "stageId": 3, "assigneeId": 7 }`. Her iki alan da isteğe bağlıdır; `"assigneeId": null` atanan kişiyi kaldırır. |
+| `GET /content/{uid}/review?documentIds=a,b` | tipi okuma | `meta.workflow` içinde iş akışıyla birlikte en fazla 200 kaydın aşamaları. |
+| `GET /review/assigned` | oturum açmış | Size atanan kayıtlar. |
+| `GET /review/assignees?uid=` | tipi güncelleme | Tipi okuyabilen aktif admin’ler. |
+| `GET /review/roles` | `workflows.manage` | Aşama rolleri için rol kodları ve adları. |
+
+`POST` ve `PUT`’a gönderildiği şekliyle bir iş akışı:
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- Bir iş akışının benzersiz adlara ve `#rrggbb` renklerine sahip 1 ile 50 arasında aşaması vardır.
+- `publishStage` aşamalardan birini belirtir; hiçbiri için dışarıda bırakın.
+- Kayıtlarının yerinde kalması için mevcut aşamaları `id` değerleriyle gönderin. `id` içermeyen
+  aşamalar yenidir.
+
+<Aside type="note">
+Özelliği kapatmak aşamaları gizler ve yayınlama aşamasını uygulamayı durdurur. İş akışları ve
+kayıt aşamaları, yeniden açtığınızda kullanılmak üzere korunur.
+</Aside>

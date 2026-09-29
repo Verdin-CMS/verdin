@@ -1,0 +1,89 @@
+---
+title: Wyszukiwanie
+description: Wyszukuj wpisy przez _q i włącz pełnotekstowy indeks Tantivy dla wyników uszeregowanych według trafności i niewrażliwych na akcenty.
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+API treści i panel administracyjny wyszukują wpisy parametrem `_q`, jak w Strapi. Domyślnie
+`_q` dopasowuje pola tekstowe, które zawierają podane słowa. Włącz indeks `[search]`, aby
+szeregować wyniki silnikiem pełnotekstowym (Tantivy) wbudowanym w serwer. Ten przewodnik
+pokazuje oba sposoby i kiedy używać indeksu.
+
+## Wyszukiwanie przez `_q`
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/api/articles' --data-urlencode '_q=rust cms'
+```
+
+`_q` łączy się z pozostałymi parametrami: `filters`, `status`, `locale`, `pagination`,
+`fields` i `populate`. Pole wyszukiwania na liście w panelu wysyła ten sam parametr.
+
+Które pola są przeszukiwane:
+
+- Pola tekstowe: `string`, `text`, `richtext`, `email`, `uid` i `enumeration`.
+- Z indeksem także tekst wewnątrz `blocks`, komponentów i stref dynamicznych.
+- Nigdy pola prywatne ani hasła.
+
+`_q` to parametr REST. GraphQL i opcje zapytań klienta TypeScript nie mają argumentu
+wyszukiwania; użyj tam filtra `$containsi`.
+
+## Bez indeksu
+
+Bez `[search]` `_q` dopasowuje wpisy, w których dowolne pole tekstowe zawiera cały
+wyszukiwany tekst, bez rozróżniania wielkości liter, jak `$containsi` w Strapi. Wyniki mają
+zwykłe sortowanie. Nie wymaga to konfiguracji i działa w każdej bazie danych, ale skanuje
+tabelę i nie szereguje wyników.
+
+## Włącz indeks pełnotekstowy
+
+<Steps>
+
+1. Włącz indeks w `verdin.toml`:
+
+   ```toml title="verdin.toml"
+   [search]
+   enabled = true
+   ```
+
+2. Zrestartuj Verdin. Buduje on indeks w tle ze wszystkich wpisów; dopóki nie jest gotowy,
+   `_q` wraca do `$containsi`.
+
+</Steps>
+
+| Klucz | Domyślnie | Opis |
+| --- | --- | --- |
+| `enabled` | `false` | Szereguje `_q` indeksem pełnotekstowym. |
+| `dir` | `"data/search"` | Katalog indeksu, względem projektu. |
+| `memory_mb` | `50` | Budżet pamięci indeksowania, w megabajtach. |
+
+Zobacz [dokumentację konfiguracji](/pl/reference/configuration/).
+
+Jak indeks dopasowuje:
+
+- Słowa są dzielone na wszystkim, co nie jest literą ani cyfrą, sprowadzane do małych liter
+  i pozbawiane akcentów, więc `cafe` znajduje `Café`.
+- Każde słowo musi pasować. Ostatnie słowo pasuje też jako prefiks, więc wyniki pojawiają się
+  w trakcie pisania.
+- Tytuł (pierwsze pole tekstowe typu) waży podwójnie.
+- Bez `sort` wyniki są zwracane od najlepszego dopasowania. Z `sort` dopasowania są sortowane
+  po twojemu. Na jedno wyszukiwanie branych jest pod uwagę najwyżej 1000 dopasowań.
+- Szkice i opublikowane wersje oraz każdy język są przeszukiwane osobno, zgodnie ze `status`
+  i `locale`.
+
+Indeks śledzi każdy zapis z dowolnego API. Jest przebudowywany, gdy schemat zmienia
+przeszukiwane pola, i gdy brakuje jego katalogu.
+
+## Kilka instancji
+
+Indeks znajduje się na dysku instancji i śledzi zapisy tej instancji. Gdy uruchamiasz kilka
+instancji, zapisy na jednej nie docierają do indeksu pozostałych. Trzymaj wyszukiwanie na
+jednej instancji albo przebudowuj indeks po wdrożeniu, usuwając jego katalog przed startem.
+Zobacz [Skalowanie](/pl/deploy/scaling/).
+
+<Aside type="tip">
+Katalog indeksu można bezpiecznie usunąć. Trzymaj go poza kopiami zapasowymi i kontrolą
+wersji; Verdin odbudowuje go z bazy danych.
+</Aside>

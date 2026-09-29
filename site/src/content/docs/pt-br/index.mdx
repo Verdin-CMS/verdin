@@ -1,0 +1,96 @@
+---
+title: Verdin — o CMS headless que cresce sobre Rust
+description: CMS headless open source escrito em Rust. APIs compatíveis com o Strapi v5, um único binário, PostgreSQL, MySQL, MariaDB e SQLite.
+template: splash
+editUrl: false
+tableOfContents: false
+lastUpdated: false
+hero:
+  title: O CMS headless que cresce sobre <span class="metal">Rust</span>.
+  tagline: APIs compatíveis com o Strapi v5 e um painel de administração para os seus editores, em um único binário de cerca de 25 MB. Open source e completo — não existe edição enterprise.
+  actions:
+    - text: Começar
+      link: /pt-br/start/quickstart/
+      icon: right-arrow
+    - text: Vindo do Strapi
+      link: /pt-br/migrate/from-strapi/
+      variant: minimal
+---
+
+import { Card, CardGrid, Code, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Nameplate from '../../../components/landing/Nameplate.astro';
+
+<Nameplate />
+
+## Do Strapi em três comandos
+
+Exporte o projeto Strapi, importe-o em um novo projeto Verdin e inicie-o. Os tipos de conteúdo,
+as entradas com os seus rascunhos e idiomas, as relações e a biblioteca de mídia vêm junto; a API
+de conteúdo mantém o seu formato, então o frontend continua funcionando.
+
+```sh title="Terminal"
+npx strapi export --no-encrypt -f my-export        # no projeto Strapi
+verdin new my-site && cd my-site && verdin import strapi ../my-export.tar.gz
+verdin dev                                         # http://localhost:1337/admin
+```
+
+<LinkCard
+  title="Importação de um projeto Strapi"
+  description="O que é importado, o mapa de ids e o que conferir depois."
+  href="/pt-br/migrate/from-strapi/"
+/>
+
+## Leia o seu conteúdo do jeito que você já lê
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+    ```sh
+    curl 'localhost:1337/api/articles?filters[title][$containsi]=rust&populate=category&sort=publishedAt:desc'
+    ```
+  </TabItem>
+  <TabItem label="GraphQL">
+    ```graphql
+    query {
+      articles(filters: { title: { containsi: "rust" } }, sort: ["publishedAt:desc"]) {
+        documentId
+        title
+        category { name }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```ts
+    import { createClient } from '@verdin/client';
+    import type { VerdinSchema } from './verdin-types'; // verdin types -o src/verdin-types.ts
+
+    const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+    const { data } = await verdin.collection('articles').find({
+      filters: { title: { $containsi: 'rust' } },
+      populate: { category: true },
+      sort: ['publishedAt:desc'],
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## O que os editores e os desenvolvedores ganham
+
+<CardGrid>
+  <Card title="Schema em arquivos, migrações que você consegue ler" icon="document">
+    Os tipos de conteúdo são arquivos JSON no formato do Strapi, mantidos no git. Cada alteração
+    de schema vira um plano de migração com um nível de risco e o SQL exato antes de rodar.
+  </Card>
+  <Card title="Um painel de administração que os editores gostam de usar" icon="pencil">
+    Rascunhos e publicação, histórico de conteúdo, lançamentos, fluxos de revisão, comentários e
+    presença ao vivo, edição visual no seu próprio site — em 18 idiomas.
+  </Card>
+  <Card title="Segurança que não é vendida à parte" icon="approve-check">
+    SSO, login em dois fatores com chaves de acesso, funções que chegam a campos e idiomas, logs
+    de auditoria e tokens de API, tudo no projeto open source.
+  </Card>
+  <Card title="Estenda com segurança" icon="puzzle">
+    Os plugins WebAssembly se conectam às escritas, adicionam rotas, jobs e widgets de
+    administração, e só alcançam o que declaram.
+  </Card>
+</CardGrid>

@@ -24,7 +24,7 @@ kann.
   Funktionen brauchen, die Strapi den kostenpflichtigen Plänen vorbehält. Verdin hat keine
   Enterprise-Edition: SSO, Audit-Logs, Review-Workflows und Releases gehören zum
   Open-Source-Projekt.
-- **Redakteure**, die Entwürfe, Veröffentlichung, Versionsverlauf und Vorschau in einem
+- **Redakteure**, die Entwürfe, Veröffentlichung, Inhaltsverlauf und Vorschau in einem
   Admin-Panel bekommen, das in 18 Sprachen verfügbar ist.
 
 ## Was enthalten ist
@@ -38,7 +38,7 @@ zugleich. In Produktion gibt es keine Node.js-Laufzeit und kein `node_modules`.
 | Inhaltsmodell | Collection Types, Single Types, Komponenten, Dynamic Zones, Relationen, Medien, Rich Text in Markdown oder im Blocks-Format von Strapi. Das Schema besteht aus JSON-Dateien in deinem Projekt. |
 | Schemaänderungen | Jede Änderung wird zu einem Migrationsplan mit Risikostufe und exaktem SQL. Destruktive Schritte laufen nur, wenn du sie erlaubst. |
 | APIs | REST unter `/api` mit den Parametern von Strapi v5 (`filters`, `populate`, `sort`, `pagination`), ein optionaler GraphQL-Endpunkt, ein OpenAPI-Dokument und ein typisierter TypeScript-Client. |
-| Redaktion | Entwurf und Veröffentlichung, lokalisierte Inhalte, Versionsverlauf, Releases, Review-Workflows, Kommentare und Aufgaben, Live-Präsenz, Vorschau und visuelles Bearbeiten auf deiner eigenen Website. |
+| Redaktion | Entwurf und Veröffentlichung, lokalisierte Inhalte, Inhaltsverlauf, Releases, Review-Workflows, Kommentare und Aufgaben, Live-Präsenz, Vorschau und visuelles Bearbeiten auf deiner eigenen Website. |
 | Zugriff | Admin-Rollen bis auf Feld- und Sprachebene, API-Tokens, öffentliche Zugriffsfreigaben, SSO mit OpenID Connect, Zwei-Faktor-Anmeldung mit Passkeys, Audit-Logs. |
 | Website-Funktionen | Volltextsuche, Sitemap, Weiterleitungen, Menüs und Formulare, Webhooks, Echtzeit-Updates. |
 | Erweiterung | WebAssembly-Plugins, die sich in Schreibvorgänge einklinken, Routen und Jobs hinzufügen und Admin-Widgets sowie eigene Felder mitbringen, beschränkt auf die Fähigkeiten, die sie deklarieren. |
@@ -77,7 +77,7 @@ zugleich. In Produktion gibt es keine Node.js-Laufzeit und kein `node_modules`.
 - **Du bist auf Strapi-Plugins oder eigenen Servercode in JavaScript angewiesen.** Verdin kann
   sie nicht ausführen; du müsstest sie als WebAssembly-Plugins neu schreiben oder die Logik
   woandershin verlagern.
-- **Du brauchst eine stabile 1.0.** Verdin steht bei 0.9: Minor-Releases können Konfiguration
+- **Du brauchst eine stabile 1.0.** Verdin steht bei 0.10: Minor-Releases können Konfiguration
   und Verhalten noch ändern. Lies vor jedem Update [Aktualisieren](/de/migrate/upgrading/).
 - **Das CMS soll deine Seiten rendern.** Verdin ist headless; kombiniere es mit einem
   Frontend-Framework oder einem Static-Site-Generator.

@@ -1,0 +1,111 @@
+---
+title: Releases
+description: Groepeer items en publiceer ze of maak hun publicatie samen ongedaan, meteen of op een geplande datum.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Een release groepeert items die samen live gaan, of samen offline gaan: een productlancering, een
+campagne, een set vertalingen. Je publiceert hem met de hand of geeft hem een datum. Deze gids maakt
+een release aan, voegt items toe, voert hem uit en laat de admin-API zien.
+
+Releases werken zoals de Releases van Strapi, die daar bij de betaalde abonnementen horen.
+
+## Voordat je begint
+
+- **Instellingen → Functies → Releases** staat standaard aan. Zolang het uit staat, zijn de pagina
+  **Releases** en de routes niet beschikbaar en wachten geplande releases.
+- Releases beheren vereist **Releases beheren** (`releases.manage`).
+- Een item toevoegen vereist ook **Publiceren** op zijn contenttype, en het type moet
+  [concept en publicatie](/nl/concepts/draft-and-publish/) gebruiken.
+
+## Een release aanmaken
+
+<Steps>
+
+1. Open **Releases** in de zijbalk en kies **Nieuwe release**.
+2. Vul een **Naam** in.
+3. Stel eventueel **Publiceren op (optioneel)** in: de datum en tijd, in jouw tijdzone, waarop de
+   release wordt uitgevoerd. Zonder datum wacht de release totdat je hem publiceert.
+4. Kies **Aanmaken**.
+
+</Steps>
+
+## Items toevoegen
+
+<Steps>
+
+1. Open een item in de editor. Het paneel **Releases** toont de releases waarin het zit.
+2. Kies **Toevoegen aan release**.
+3. Kies de **Release**, en kies onder **Wanneer de release wordt uitgevoerd** **Publiceren** of
+   **Publicatie ongedaan maken**.
+4. Kies **Toevoegen**.
+
+</Steps>
+
+Bij gelokaliseerde types wordt alleen de versie in de huidige locale van de editor toegevoegd.
+Voeg elke locale toe die je wilt uitbrengen. Een item toevoegen dat al in de release zit, vervangt
+zijn actie.
+
+De pagina van de release toont zijn items met hun contenttype en actie. Verwijder er een met de
+knop op zijn rij.
+
+## De release publiceren
+
+- **Nu:** open de release en kies **Nu publiceren**.
+- **Op de ingestelde datum:** een taak op de achtergrond controleert elke 30 seconden en voert de
+  releases uit die aan de beurt zijn, namens de beheerder die ze heeft aangemaakt.
+
+<Diagram
+  caption="Statussen van een release"
+  code={`flowchart LR
+  P[In afwachting] -->|Nu publiceren of datum bereikt| R[Bezig]
+  R -->|elke actie geslaagd| D[Klaar]
+  R -->|sommige acties mislukt| F[Mislukt]`}
+/>
+
+Elke actie legt vast of ze is geslaagd. Als er een mislukt, bijvoorbeeld omdat het item is
+verwijderd of niet door de validatie komt, draaien de andere acties toch en eindigt de release als
+**Mislukt**, met de fout van elke mislukte actie op haar rij.
+
+<Aside type="caution">
+Een release die is uitgevoerd, kan niet meer worden gewijzigd. Om mislukte acties opnieuw te
+proberen, voeg je die items toe aan een nieuwe release.
+</Aside>
+
+Een release wordt als geheel gepubliceerd: hij wacht niet op
+[reviewfasen](/nl/guides/content/review-workflows/). Als een workflow een fase vereist om te
+publiceren, mislukken de items buiten die fase zoals bij elke andere publicatie.
+
+Webhooks kunnen zich abonneren op **Release gepubliceerd** (`releases.publish`), dat wordt
+verzonden wanneer een release draait. Zie [Webhooks](/nl/guides/integrations/webhooks/).
+
+## Admin-API
+
+Alle routes staan onder `/admin/api` en vereisen `releases.manage`.
+
+```http
+GET    /admin/api/releases?status=pending
+POST   /admin/api/releases                    { "name": "Launch", "scheduledAt": "2026-10-01T08:00:00Z" }
+GET    /admin/api/releases/{id}
+PUT    /admin/api/releases/{id}               { "name": "Launch", "scheduledAt": null }
+DELETE /admin/api/releases/{id}
+POST   /admin/api/releases/{id}/actions       { "uid": "api::article", "documentId": "…", "locale": "fr", "action": "publish" }
+DELETE /admin/api/releases/{id}/actions/{actionId}
+POST   /admin/api/releases/{id}/publish
+GET    /admin/api/content/{uid}/{documentId}/releases
+```
+
+- `status` is `pending`, `running`, `done` of `failed`; elke actie heeft haar eigen `status` en
+  `error`.
+- Een release die niet meer in afwachting is wijzigen, er iets aan toevoegen of hem publiceren,
+  antwoordt met `409`.
+- `action` is `publish` of `unpublish`. Een actie toevoegen vereist ook `content.publish` op het
+  type. De locale wordt bepaald wanneer de actie wordt toegevoegd, dus een latere wijziging van de
+  standaardlocale verplaatst haar niet.
+- Een release verwijderen verwijdert zijn lijst met items. De items zelf veranderen niet.
+- `GET /content/{uid}/{documentId}/releases` vereist leestoegang tot het item en geeft een lege
+  lijst terug aan beheerders zonder `releases.manage`.

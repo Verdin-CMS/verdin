@@ -1,0 +1,92 @@
+---
+title: Document Service
+description: L’unique API interne qui lit et écrit le contenu dans Verdin, ce qu’elle garantit à chaque écriture, et le chemin que suit une requête de l’API de contenu pour l’atteindre.
+sidebar:
+  order: 5
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Le Document Service (`DocumentService` dans `crates/verdin-content/src/service.rs`) est le seul code qui lit et écrit les lignes de contenu. L’API de contenu, l’API d’administration, GraphQL, MCP, les plugins, les imports et le sitemap passent tous par lui : la validation, le brouillon et la publication, les règles des relations et les événements se comportent donc de la même façon quelle que soit l’API à l’origine de l’appel. Comme le Document Service de Strapi v5, il travaille sur des documents (identifiés par `documentId`), pas sur des lignes.
+
+## API
+
+Les principales méthodes (simplifiées ; voir le code source pour les types exacts) :
+
+| Méthode | Effet |
+|---|---|
+| `find_many(uid, &Query) -> Page` | Une page de documents, avec `meta` sous forme de page ou de décalage |
+| `find_one(uid, document_id, &Query) -> Option<Json>` | Un document dans le statut et la langue de la requête |
+| `single_document_id(uid)` | Le document d’un type unique, s’il existe |
+| `create(uid, &data, WriteOptions) -> String` | Crée un document et renvoie son `documentId` |
+| `update(uid, document_id, &data, WriteOptions)` | Mise à jour partielle du brouillon (ou de la seule version) ; crée une nouvelle version de langue si nécessaire |
+| `delete(uid, document_id)` | Supprime toutes les versions du document dans la langue courante |
+| `publish(uid, document_id, actor)` | Copie le brouillon sur la version publiée |
+| `unpublish(uid, document_id)` | Supprime la version publiée |
+| `discard_draft(uid, document_id)` | Remplace le brouillon par la version publiée |
+| `uid_availability(…)` | Indique si une valeur `uid` est libre, avec une suggestion libre |
+| `document_locales`, `timeline`, `usage`… | Utilitaires pour le panneau d’administration |
+
+`WriteOptions` a deux champs : `publish` (publier après l’écriture, sur les types avec brouillon et publication) et `actor` (l’administrateur enregistré dans `created_by_id` / `updated_by_id`).
+
+Le service est une valeur peu coûteuse à cloner, configurée par des méthodes de type builder : `in_locale(locale)` pour les types localisés, `with_listener`, `with_hook`, `dry_run()` (valide entièrement une écriture puis l’annule, utilisé par les simulations d’import) et `without_plugin_hooks()` (pour les écritures que font les plugins eux-mêmes).
+
+Il ne sait pas qui appelle. Les autorisations sont appliquées par la couche API avant l’appel : elle refuse les actions dont l’appelant ne dispose pas, restreint les types qu’une requête peut peupler ou utiliser comme filtre, et ajoute des filtres de conditions à la requête (par exemple, la condition « ses propres entrées » du rôle **Author** devient `created_by_id = <admin id>`). Les filtres font partie du SQL : la pagination et les comptages restent donc exacts.
+
+## Ce que fait chaque écriture
+
+1. **Hooks.** Les `DocumentHook` s’exécutent en premier, dans l’ordre : étapes des workflows de relecture, puis plugins. Un hook peut remplacer les données ou refuser l’écriture, ce qui donne un `400`. Ils utilisent les noms du cycle de vie de Strapi (`beforeCreate`, `beforeUpdate`, `beforeDelete`, `beforePublish`, `beforeUnpublish`, `beforeDiscardDraft`).
+2. **Validation de l’entrée** (`input.rs`) : les clés inconnues, les champs système (`id`, `documentId`, horodatages) et les côtés inverses (`mappedBy`) des relations sont des erreurs ; chaque valeur est vérifiée par rapport au type et aux contraintes de son attribut (`min`, `max`, `minLength`, `maxLength`, `regex`, valeurs d’énumération, cardinalité des relations, `allowedTypes` des médias) ; les composants et les zones dynamiques sont validés récursivement ; les valeurs `password` sont hachées avec argon2.
+3. **Références.** Les documents liés et les fichiers de médias doivent exister, ce qui est vérifié dans la transaction.
+4. **Lignes et liens**, dans une seule transaction : la ligne est insérée ou mise à jour, puis ses tables de liaison de relations, de relations polymorphes et de médias sont réécrites (positions renumérotées de 1 à n). Lier une cible `oneToOne` ou `oneToMany` la retire des autres documents dans le même état.
+5. **Champs obligatoires et règles.** Quand une version devient publiée, ou à chaque écriture sur les types sans brouillon et publication, les attributs `required` (y compris ceux des composants et des zones dynamiques) et les règles de validation inter-champs sont vérifiés. Un échec annule toute l’écriture.
+6. **L’unicité** est garantie par les index uniques délimités. Une violation est rattachée à son attribut et signalée comme `ValidationError`, sans concurrence possible.
+7. **Commit, puis événements.** Après le commit de la transaction, le service appelle chaque `DocumentListener` avec un `DocumentEvent` (`entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete`), qui porte l’UID, le `documentId`, la langue et l’auteur.
+
+Les erreurs de validation utilisent le format de Strapi : une liste de `{ path, message, name: "ValidationError" }`, où `path` pointe dans les données (`["seo", "metaTitle"]`, `["blocks", 2, "text"]`). Le panneau d’administration les rattache à ses champs.
+
+Les listeners maintiennent l’état dérivé en phase avec le contenu sans code propre à chaque gestionnaire : webhooks, historique du contenu, cache des réponses, hooks after des plugins, journal d’audit, événements temps réel, commentaires et tâches, marques « vu », purges de CDN et index de recherche. Un listener qui échoue journalise sa propre erreur ; l’écriture a déjà réussi. Comme les listeners s’exécutent après le commit, une simulation ne les atteint jamais.
+
+## Lectures
+
+Une lecture sélectionne les lignes du statut et de la langue demandés, applique les filtres et le tri en SQL, puis peuple ce qui a été demandé :
+
+- Les **relations** sont chargées par des requêtes groupées, une par relation et par niveau (`WHERE … IN (…)`, par lots de 500 identifiants), jamais par des jointures en cascade. Cela évite à la fois les explosions cartésiennes et les requêtes N+1. Au plus 1 000 entrées liées sont peuplées par entrée et par relation ; les comptages restent exacts.
+- Les cibles sont lues dans la même version que la source : les documents publiés voient les cibles publiées, les brouillons voient les brouillons.
+- Les **composants et zones dynamiques** proviennent de leur colonne JSON ; les relations et les médias qu’ils contiennent sont résolus avec les mêmes requêtes groupées.
+- La **recherche `_q`** utilise l’index Tantivy quand `[search]` est activé, et sinon un `$containsi` insensible à la casse sur les champs texte.
+
+La forme de la sortie (documents à plat, formats des valeurs, syntaxe de `populate`, limites) est documentée dans l’[API REST](/fr/api/rest/).
+
+## Cycle de vie d’une requête de l’API de contenu
+
+<Diagram
+  caption="Une requête GET /api/articles, du socket jusqu’à la base de données"
+  code={`sequenceDiagram
+  participant C as Client
+  participant L as Couches partagées
+  participant H as handlers.rs
+  participant Q as verdin-query
+  participant D as Document Service
+  participant DB as Base de données
+  C->>L: GET /api/articles?filters…
+  L->>H: IP du client, identifiant de requête, CORS, limites, cache
+  H->>H: routage par pluralName, autorisation du jeton ou du rôle public
+  H->>Q: analyse et validation par rapport au schéma
+  Q-->>H: Query typée
+  H->>D: find_many(uid, query)
+  D->>DB: SELECT … WHERE … ORDER BY … LIMIT
+  D->>DB: une requête groupée par relation peuplée
+  D-->>H: documents et meta de page
+  H-->>C: { data, meta }`}
+/>
+
+1. **Couches partagées** (de la plus externe à la plus interne) : l’adresse du client est résolue (en utilisant `X-Forwarded-For` uniquement depuis `[server].trusted_proxies`), les métriques comptent la requête quand elles sont activées, un identifiant de requête est défini et propagé sous la forme `x-request-id`, le tracing ouvre un span, et CORS s’applique à l’API de contenu et à GraphQL quand `[api].cors_origins` est défini.
+2. **Couches de l’API de contenu** : limites de débit par client, `ETag` et cache facultatif des lectures anonymes, limite de taille du corps (`[server].body_limit`) et délai d’expiration de la requête, étiquettes de cache CDN sur les réponses.
+3. **Routage.** Le segment de chemin est recherché parmi les `pluralName` (types de collection) et les `singularName` (types uniques) des types de contenu. Les noms inconnus donnent `404`.
+4. **Autorisation** (`verdin-auth`). L’absence d’en-tête `Authorization` signifie le rôle public ; `Bearer vd_…` est un jeton d’API. Un jeton invalide ou expiré donne `401`, jamais le rôle public. L’action de la route (`find`, `findOne`, `create`, `update`, `delete`, `publish`) doit être accordée pour le type, sinon la réponse est `403`.
+5. **Analyse de la requête** (`verdin-query`). La chaîne de requête brute est analysée en arbre de crochets (16 Ko, 12 niveaux et 1 000 paires au maximum), puis en `Query` typée validée par rapport aux champs du type : les champs inconnus et `private` donnent `400`, et le populate, les filtres et les tris à travers les relations sont limités aux types que l’appelant peut lire. Lire `?status=draft` nécessite aussi `readDrafts`.
+6. **Document Service.** Le gestionnaire appelle `find_many`, `find_one`, `create`, `update`, `delete` ou une action. Les écritures sans `?status=draft` publient sur les types avec brouillon et publication (comportement de Strapi v5), et relisent la version écrite pour la réponse.
+7. **Réponse.** `{ "data": …, "meta": … }`. Les erreurs utilisent la même enveloppe avec `data: null` et un objet `error`.
+
+Les routes de l’API d’administration suivent le même chemin avec une session d’administration au lieu d’un jeton d’API, le RBAC d’administration au lieu des accès de l’API de contenu, et des valeurs par défaut orientées brouillon : elles lisent et écrivent uniquement des brouillons, et la publication est une action explicite. GraphQL traduit ses arguments dans le même arbre de paramètres avant l’étape 5 : il partage donc le parseur, les limites et les règles d’autorisation.

@@ -1,0 +1,89 @@
+---
+title: Historia treści
+description: Przeglądaj zapisane, opublikowane i wycofane z publikacji wersje wpisu i przywracaj wybraną jako bieżący szkic.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Verdin zachowuje wersję wpisu za każdym razem, gdy zostaje on utworzony, zapisany,
+opublikowany, wycofany z publikacji lub gdy jego szkic zostaje odrzucony, z dowolnego API.
+Ten przewodnik pokazuje, jak znaleźć starą wersję i ją przywrócić, ile wersji jest
+przechowywanych i odpowiadające temu API administracyjne.
+
+Historia treści działa jak w Strapi, gdzie jest funkcją płatną.
+
+## Zanim zaczniesz
+
+- **Ustawienia → Funkcje → Historia treści** jest domyślnie włączona. Gdy jest wyłączona,
+  wersje nie są zapisywane, a historia jest niedostępna.
+- Odczyt historii wpisu wymaga dostępu do odczytu wpisu; przywracanie wymaga dostępu do
+  aktualizacji. Obowiązują ograniczenia pól: widzisz i przywracasz tylko pola, które twoja
+  rola może czytać lub aktualizować. Zobacz [Uprawnienia](/pl/reference/permissions/).
+
+## Przywróć wersję
+
+<Steps>
+
+1. Otwórz wpis i wybierz **Historia**.
+2. Lista **Wersje** pokazuje każdą wersję z jej zdarzeniem (**Utworzono**, **Zapisano**,
+   **Opublikowano**, **Cofnięto publikację**, **Odrzucono szkic**), datą i autorem. Zmiany
+   wprowadzone przez API treści mają jako autora **API**.
+3. Wybierz wersję, aby zobaczyć jej pola.
+4. Wybierz **Przywróć** i potwierdź.
+
+</Steps>
+
+Wersja zastępuje bieżący szkic; opublikuj go potem, gdy będziesz gotowy. W typach bez szkiców
+i publikacji przywrócenie od razu aktualizuje wpis.
+
+Co jest pomijane przy przywracaniu:
+
+- Pola, których nie ma już w schemacie, są wymieniane i nieprzywracane.
+- Odwołania do usuniętych wpisów lub plików są usuwane, a edytor informuje, które pola je
+  straciły.
+
+**Wróć do edytora** wraca do wpisu bez żadnych zmian.
+
+## Ile wersji jest przechowywanych
+
+Verdin przechowuje `[history].max_versions` najnowszych wersji każdego wpisu i języka
+(domyślnie 50) i usuwa starsze, gdy pojawiają się nowe:
+
+```toml title="verdin.toml"
+[history]
+max_versions = 100
+```
+
+Każdy język lokalizowanego wpisu ma własną historię. Usunięcie wpisu lub jednego z jego
+języków usuwa też jego wersje. Zobacz [dokumentację konfiguracji](/pl/reference/configuration/).
+
+<Aside type="note">
+W przeciwieństwie do Strapi, gdzie historia jest przechowywana przez określoną liczbę dni,
+Verdin przechowuje określoną liczbę wersji na wpis, niezależnie od ich wieku.
+</Aside>
+
+## API administracyjne
+
+Wszystkie trasy są pod `/admin/api`.
+
+| Trasa | Uprawnienie | Działanie |
+| --- | --- | --- |
+| `GET /history/{uid}/{documentId}?locale=&page=&pageSize=` | odczyt wpisu | Wersje, od najnowszych, bez danych (20 na stronę, najwyżej 100). |
+| `GET /history/versions/{id}` | odczyt wpisu | Jedna wersja z danymi. |
+| `POST /history/versions/{id}/restore` | aktualizacja wpisu | Przywraca wersję jako bieżący szkic. |
+
+Odpowiedź przywracania wymienia, co zostało pominięte:
+
+```json
+{
+  "data": {
+    "documentId": "k3v9…",
+    "restored": 42,
+    "dropped": [{ "field": "tags", "count": 1 }]
+  }
+}
+```
+
+Gdy funkcja jest wyłączona, trasy odpowiadają `404`.

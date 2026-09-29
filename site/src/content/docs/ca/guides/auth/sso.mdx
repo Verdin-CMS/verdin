@@ -1,0 +1,165 @@
+---
+title: Inici de sessió únic
+description: Permet que els administradors iniciïn la sessió amb un proveïdor OpenID Connect com Microsoft Entra ID, Google Workspace, Okta o Keycloak, amb assignació de grups a rols.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Els administradors poden iniciar la sessió a través de qualsevol proveïdor OpenID Connect:
+Microsoft Entra ID, Google Workspace, Okta, Auth0, Keycloak, Authentik, GitLab i altres. Cada
+proveïdor té un botó a la pàgina d'inici de sessió, i l'inici de sessió amb contrasenya continua
+funcionant al costat. Aquesta guia registra una aplicació, configura el proveïdor a Verdin i
+assigna grups a rols.
+
+L'SSO és una funcionalitat Enterprise a Strapi. A Verdin forma part del nucli de codi obert. Per
+als usuaris finals dels teus llocs, consulta en canvi
+l'[inici de sessió OAuth per a usuaris finals](/ca/guides/auth/end-users/).
+
+## Abans de començar
+
+- Configurar l'SSO necessita **Gestiona les funcionalitats** (`features.manage`).
+- Defineix `[server].public_url` amb l'adreça on els administradors accedeixen a Verdin, com ara
+  `https://cms.example.com`. L'URI de redirecció es construeix a partir d'aquesta.
+
+## Configura-ho
+
+<Steps>
+
+1. **Registra una aplicació** (un client «web») al proveïdor, amb aquest URI de redirecció:
+
+   ```text
+   https://cms.example.com/admin/api/auth/sso/<id>/callback
+   ```
+
+   `<id>` és l'id del proveïdor que tries al pas 3, com ara `corp`. El camí d'administració
+   segueix `[admin].path`.
+
+2. **Posa el secret del client a l'entorn** i reinicia Verdin:
+
+   ```sh title=".env"
+   VERDIN_SSO_CORP_SECRET=…
+   ```
+
+   La variable és `VERDIN_SSO_<ID>_SECRET`, amb l'id en majúscules i els guions com a guions
+   baixos. Els clients públics (només PKCE, sense secret) no necessiten cap variable.
+
+3. **Afegeix el proveïdor.** Activa **Configuració → Funcionalitats → Inici de sessió únic**,
+   selecciona **Configura els proveïdors**, després **Afegeix un proveïdor** i omple:
+
+   - **ID**: lletres minúscules, dígits i guions, fins a 32 caràcters.
+   - **Text del botó**: es mostra a la pàgina d'inici de sessió com a «Continua amb …».
+   - **URL de l’emissor**: Verdin hi llegeix `/.well-known/openid-configuration`. Ha de fer
+     servir `https`, excepte a `localhost`.
+   - **ID de client** i **Àmbits** (`openid email profile` per defecte; `openid` és obligatori).
+
+   El diàleg mostra l'**URI de redirecció que cal registrar al proveïdor** i el nom de la
+   variable del secret. Desa.
+
+4. **Prova-ho** en una finestra privada: la pàgina d'inici de sessió mostra **Continua amb Corp
+   account**.
+
+</Steps>
+
+## Qui pot iniciar la sessió, i amb quins rols
+
+| Opció | Clau JSON | Efecte |
+| --- | --- | --- |
+| **Dominis de correu permesos** | `allowedDomains` | Només aquests dominis de correu poden iniciar la sessió. Buit vol dir qualsevol. |
+| **Crea comptes en el primer inici de sessió** | `autoCreate` | Crea un compte d'administrador la primera vegada que algú inicia la sessió. Sense això, només poden iniciar la sessió els correus que ja tenen compte. |
+| **Rols per defecte** | `defaultRoles` | Codis de rol dels comptes creats quan l'assignació de rols no en dona cap. |
+| **Claim de rol** | `roleClaim` | El claim de l'ID token que llista els grups de l'usuari, com ara `groups` o `roles`. |
+| **Assignació de rols** | `roleMap` | Quin codi de rol dona cada valor del claim. |
+| **Confia en correus no verificats** | `trustUnverifiedEmail` | Accepta correus que el proveïdor no marca com a verificats. |
+| **El proveïdor exigeix MFA** | `providerMfa` | No demana als administradors el seu segon factor de Verdin després d'aquest proveïdor. |
+
+- Un proveïdor que crea comptes necessita rols per defecte o una assignació de rols.
+- Cap dels dos pot donar el rol Super Admin; promociona els administradors a mà a
+  **Configuració → Usuaris**.
+- Els rols només es defineixen quan es crea el compte. Després, gestiona'ls a
+  **Configuració → Usuaris**.
+- El nom i els cognoms d'un compte creat surten dels claims `given_name` i `family_name`.
+
+El mateix proveïdor en JSON, tal com el desa la funcionalitat (`PUT /admin/api/features/sso`):
+
+```json
+{
+  "enabled": true,
+  "settings": {
+    "providers": [
+      {
+        "id": "corp",
+        "name": "Corp account",
+        "issuer": "https://login.microsoftonline.com/<tenant>/v2.0",
+        "clientId": "…",
+        "scopes": ["openid", "email", "profile"],
+        "autoCreate": true,
+        "defaultRoles": ["author"],
+        "roleClaim": "groups",
+        "roleMap": { "<editors group id>": "editor" },
+        "allowedDomains": ["corp.example"],
+        "trustUnverifiedEmail": true,
+        "providerMfa": true
+      }
+    ]
+  }
+}
+```
+
+## Notes sobre proveïdors
+
+- **Microsoft Entra ID** no inclou `email_verified` als seus ID tokens: activa-hi **Confia en
+  correus no verificats**. Afegeix el claim `groups` a la configuració de tokens de l'aplicació
+  per assignar grups; els seus valors són ids de grup.
+- **Google Workspace**: l'emissor és `https://accounts.google.com`. Limita els inicis de sessió
+  al teu domini amb **Dominis de correu permesos**.
+- **Keycloak**: l'emissor és la URL del realm, `https://<host>/realms/<realm>`.
+
+## Autenticació de dos factors
+
+Per defecte, a un administrador que té un [segon factor](/ca/guides/auth/two-factor/) de Verdin
+se li demana després que el proveïdor el torni a enviar. Quan el proveïdor ja exigeix MFA, activa
+**El proveïdor exigeix MFA** perquè no se li demani dues vegades.
+
+## Com funciona
+
+<Diagram
+  caption="Un inici de sessió SSO"
+  code={`sequenceDiagram
+  participant B as Navegador
+  participant V as Verdin
+  participant P as Proveïdor
+  B->>V: GET /admin/api/auth/sso/corp
+  V-->>B: redirecció amb state i repte PKCE
+  B->>P: inici de sessió
+  P-->>B: redirecció al callback amb el codi
+  B->>V: GET /admin/api/auth/sso/corp/callback
+  V->>P: intercanvi del codi (TLS)
+  V-->>B: galeta de sessió, redirecció a /admin/`}
+/>
+
+- Verdin fa servir el flux de codi d'autorització amb PKCE (S256). L'`state` està signat i lligat
+  a una galeta `HttpOnly` de curta durada, i el `nonce` se'n deriva.
+- Comprova l'emissor, l'audiència (i `azp` quan n'hi ha diverses), la caducitat i el nonce de
+  l'ID token. Necessita un claim `email` amb `email_verified: true`, tret que **Confia en correus
+  no verificats** estigui activat.
+- Els endpoints del proveïdor han de fer servir `https`.
+- Cada inici de sessió SSO queda enregistrat als [registres d'auditoria](/ca/guides/content/audit-logs/)
+  com a `admin.login`, amb el proveïdor.
+
+Quan un inici de sessió falla, el navegador torna a la pàgina d'inici de sessió amb el motiu
+(«L’inici de sessió únic ha fallat»), i el motiu s'escriu al registre del servidor. Els més
+habituals:
+
+| Motiu | Solució |
+| --- | --- |
+| the provider did not verify the email | Activa **Confia en correus no verificats**, o corregeix el claim del proveïdor. |
+| this email domain may not sign in | Afegeix el domini a **Dominis de correu permesos**. |
+| no admin account for this identity | Activa **Crea comptes en el primer inici de sessió**, o crea primer l'administrador. |
+| the sign-in request expired or was not started here | Torna a començar des de la pàgina d'inici de sessió, al mateix navegador. |
+
+<Aside type="note">
+Un administrador desactivat tampoc no pot iniciar la sessió per SSO.
+</Aside>

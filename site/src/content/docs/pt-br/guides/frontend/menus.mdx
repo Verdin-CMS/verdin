@@ -1,0 +1,128 @@
+---
+title: Menus
+description: Monte menus de navegação com links e entradas no painel de administração e renderize-os no seu site.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+O recurso **Menus** dá aos editores árvores de navegação nomeadas (um cabeçalho, um rodapé, uma
+barra lateral) com links para páginas, entradas ou outros sites. O seu site busca um menu pelo
+seu slug e o renderiza; os links para entradas seguem o estado de publicação e o caminho delas.
+
+No Strapi, isso normalmente exige um plugin de navegação ou um tipo de conteúdo de menu feito à
+mão; no Verdin, vem integrado.
+
+## Ative o recurso
+
+Em **Configurações → Recursos**, ative **Menus** e depois escolha **Gerenciar menus** (ou vá para
+**Configurações → Menus**). Gerenciar menus exige a permissão **Gerenciar SEO,
+redirecionamentos, menus e formulários** (`site.manage`), que a função integrada Editor tem. Veja
+[Permissões](/pt-br/reference/permissions/).
+
+Para vincular entradas por caminho, configure também os padrões de caminho em
+[SEO e sitemap](/pt-br/guides/frontend/seo-and-sitemap/).
+
+## Monte um menu
+
+<Steps>
+
+1. Em **Configurações → Menus**, escolha **Novo menu**.
+2. Dê a ele um nome (como **Navegação principal**) e um **Slug** (`main`): letras minúsculas,
+   dígitos e hífens. Os sites buscam o menu pelo seu slug.
+3. Escolha **Adicionar um item** e preencha o item:
+   - **Rótulo**: o texto do link, até 255 caracteres.
+   - **Link para**: **Uma URL**, **Uma entrada** ou **Nada (um título)**.
+   - **URL**: um caminho (`/about`), uma âncora (`#team`) ou um link `http(s)`, `mailto:` ou
+     `tel:`.
+   - Para uma entrada, escolha **Escolher uma entrada**: selecione o **Tipo de conteúdo** se
+     vários puderem ser vinculados, busque as entradas e selecione uma.
+   - **Abre em**: **A mesma aba** ou **Uma nova aba**.
+4. Arraste os itens para ordená-los e aninhá-los, ou use os seus botões. Com o teclado, em uma
+   alça de arrastar: Alt+↑ e Alt+↓ movem um item, Alt+→ o aninha sob o item de cima, Alt+← o
+   tira de dentro.
+5. Salve.
+
+</Steps>
+
+Um menu tem no máximo 5 níveis e 500 itens.
+
+## Busque um menu
+
+Os sites leem um menu em `GET /api/_menus/{slug}`, sem token. Adicione `?locale=` para conteúdo
+localizado:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+Como os links para entradas são resolvidos:
+
+- Uma entrada que não está publicada, no idioma solicitado, fica fora do menu (com os seus
+  filhos). Os menus nunca vazam rascunhos.
+- `entry.path` vem do padrão do tipo em [SEO e sitemap](/pt-br/guides/frontend/seo-and-sitemap/),
+  preenchido com os campos da entrada e o idioma. Ele é `null` quando o tipo não tem padrão ou
+  quando a entrada não o preenche.
+- Quando o item não tem uma `url` própria, ele recebe o caminho como `url`, então a maioria dos
+  sites só precisa ler `url`.
+
+Sem `locale`, as entradas são lidas no idioma padrão. A resposta é enviada com
+`Cache-Control: public, max-age=60`.
+
+## Renderize o menu
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+Excluir um menu faz `/api/_menus/{slug}` responder `404`, assim como desativar o recurso. Trate
+isso no seu site, por exemplo não renderizando nenhuma navegação.
+</Aside>
+
+## API de administração
+
+O painel de administração usa `/admin/api/site/menus` (`GET`, `POST`) e
+`/admin/api/site/menus/{id}` (`GET`, `PUT`, `DELETE`), com o token de acesso de um administrador
+e `site.manage`. Veja [API de administração](/pt-br/api/admin/).

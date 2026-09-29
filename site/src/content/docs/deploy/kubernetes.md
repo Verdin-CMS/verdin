@@ -20,7 +20,7 @@ each release ships the schema it was migrated with (see
 [Your own image](/deploy/docker/)):
 
 ```dockerfile title="Dockerfile"
-FROM ghcr.io/verdin-cms/verdin:0.9
+FROM ghcr.io/verdin-cms/verdin:0.10
 COPY verdin.toml /app/verdin.toml
 COPY schema /app/schema
 ```

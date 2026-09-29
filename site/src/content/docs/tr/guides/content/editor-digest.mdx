@@ -1,0 +1,77 @@
+---
+title: Editör özeti
+description: Son baktığınızdan beri değişen kayıtların günlük e-postasını alın ve onu hangi örneğin göndereceğini seçin.
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Editör özeti, her admin’e son baktığından beri içerik tipi başına kaç kaydın değiştiğini
+söyleyen günlük bir e-postadır. Her admin onu açana kadar herkes için kapalıdır. Bu kılavuz
+admin tarafını, sunucu ayarlarını ve birden fazla örnekle nasıl çalıştığını anlatır.
+
+## "Görülmemiş" nasıl çalışır
+
+Başka biri herhangi bir API’den bir kaydı değiştirdiğinde o kayıt sizin için görülmemiş olur.
+Onu açtığınızda yeniden görülmüş olur. Aynı işaretler kenar çubuğundaki **yeni** rozetlerini
+(**Yeni öğe rozetlerini göster** ile kapatın) ve ana sayfadaki **Henüz görülmedi** widget’ını
+yönetir.
+
+## Özeti açma
+
+<Steps>
+
+1. **Profil** sayfanızı (veya üst çubuktaki tercihler menüsünü) açın.
+2. **Tercihler** altında **Görülmemiş değişikliklerin günlük e-postası**’nı açın.
+
+</Steps>
+
+Anahtar hesabınızda `"digest": "daily"` tercihini ayarlar
+(`PUT /admin/api/users/me/preferences`). Aynı şekilde kapatın.
+
+Aldıklarınız:
+
+- Okuyabildiğiniz içerik tipi başına görülmemiş kayıt sayısını ve yönetim paneline bir bağlantıyı
+  içeren bir mesaj.
+- Yeni bir şey olmayan günlerde hiçbir şey.
+- Yalnızca hesabınız aktifken.
+
+## Sunucu ayarları
+
+Özet `[digest].hour_utc` saatinde, `[email]` üzerinden gönderilir:
+
+```toml title="verdin.toml"
+[email]
+provider = "smtp"
+from = "Verdin <no-reply@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+
+[digest]
+hour_utc = 7    # 0–23, UTC; 8 by default
+```
+
+| Anahtar | Varsayılan | Açıklama |
+| --- | --- | --- |
+| `[digest].enabled` | `true` | Özeti bu örnekten gönderir. |
+| `[digest].hour_utc` | `8` | Özetin gönderildiği saat (UTC). |
+
+E-postadaki bağlantı `[server].public_url`’i kullanır; Verdin bir proxy arkasında çalışıyorsa
+onu ayarlayın. Varsayılan `log` e-posta sağlayıcısıyla mesajlar yalnızca sunucu günlüğüne
+yazılır. Bkz. [yapılandırma başvurusu](/tr/reference/configuration/).
+
+## Birden fazla örnek
+
+`[digest].enabled = true` olan her örnek, ayarlanan saatte özeti göndermeye çalışır. Günü
+veritabanında ilk üstlenen gönderir, diğerleri o günü atlar; böylece admin’ler tek bir e-posta
+alır. Görevi bilinen bir örnekte tutmak için diğerlerinde `enabled = false` ayarlayın:
+
+```sh title="Terminal"
+VERDIN_DIGEST__ENABLED=false verdin start
+```
+
+<Aside type="note">
+Özet bir Verdin eklemesidir; Strapi’de bunun karşılığı yoktur.
+</Aside>

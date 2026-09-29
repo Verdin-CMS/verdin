@@ -1,0 +1,231 @@
+---
+title: 型付きクライアント
+description: "@verdin/client と、`verdin types` がスキーマから生成する型を使って、TypeScript から Verdin のコンテンツを読み書きします。"
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`@verdin/client` は、コンテンツ API（REST のドキュメント、メディアライブラリ、GraphQL）用の小さな TypeScript クライアントです。コンテンツタイプの TypeScript の定義を書き出す `verdin types` と組み合わせると、入力しながらエディターがルート名、フィールド、書き込みのペイロードを確認してくれます。
+
+このクライアントには依存関係がなく、`fetch` があればどこでも動きます。ブラウザー、Node 20 以降、Deno、Bun、エッジのワーカーです。使うかどうかは任意で、すべての呼び出しは [REST API](/ja/api/rest/) の素の HTTP リクエストに対応します。
+
+## インストールと型の生成
+
+<Steps>
+
+1. フロントエンドのプロジェクトにパッケージをインストールします。
+
+   ```sh title="Terminal"
+   npm install @verdin/client
+   ```
+
+2. Verdin のプロジェクト（`verdin.toml` のあるディレクトリ）で型を生成します。
+
+   ```sh title="Terminal"
+   verdin types -o ../site/src/verdin-types.ts
+   ```
+
+   `-o`（`--out`）がない場合、定義は標準出力に出ます。このコマンドはスキーマファイルを読むだけで、データベースは不要です。
+
+3. 生成された `VerdinSchema` を使ってクライアントを作成します。
+
+   ```ts title="src/verdin.ts"
+   import { createClient } from '@verdin/client';
+   import type { VerdinSchema } from './verdin-types';
+
+   export const verdin = createClient<VerdinSchema>({
+     url: 'https://cms.example.com',
+     token: process.env.VERDIN_TOKEN, // omit to use the public role
+   });
+   ```
+
+</Steps>
+
+スキーマを変更するたびに、`verdin types` を実行し直してください。ファイルの 1 行目にもそう書かれています。フロントエンドのコードの隣にコミットするか、CI で再生成すると、両者の足並みがそろいます。
+
+<Aside type="caution">
+トークンの持ち主は、そのトークンの権限を得ます。フルアクセスやカスタムのトークンはサーバー（SSR、ビルドスクリプト、API ルート）に置いてください。ブラウザー向けのバンドルでは、トークンなし（公開ロール）か読み取り専用のトークンを使います。[API トークン](/ja/guides/auth/api-tokens/)を参照してください。
+</Aside>
+
+## `verdin types` が生成するもの
+
+[ブログのサンプル](https://github.com/Verdin-CMS/verdin/blob/main/examples/blog/)（記事、カテゴリー、タグ、ホームページのシングルタイプ、そして `shared.seo`、`blocks.hero`、`blocks.quote` コンポーネント）の場合、ファイルには次が含まれます。
+
+| 型 | 内容 |
+| --- | --- |
+| `Article`、`Category`、`Tag`、`Homepage` | コンテンツタイプごとのインターフェース。`singularName` にちなんだ名前で、`DocumentBase`（`id`、`documentId`、`createdAt`、`updatedAt`、`publishedAt`）を拡張します。private な属性は除かれます。 |
+| `ArticleInput` など | 書き込み用の型。すべての属性が任意で、リレーションは `documentId` の文字列（または `connect` / `disconnect` / `set`）、メディアはファイル ID で、逆側のリレーションは除かれます。 |
+| `ComponentSharedSeo`、`ComponentBlocksHero` など | コンポーネントごとのインターフェースと、その `…Input` 型。ダイナミックゾーンの項目は型付きの `__component` を持ちます。 |
+| `Media`、`MediaFormat`、`Blocks` | メディアライブラリのファイル、そのレスポンシブなフォーマット、リッチテキストの blocks 形式。 |
+| `Collections`、`Singles`、`VerdinSchema` | クライアント用に、ルート（`articles`、`homepage`）をドキュメントと入力の型に対応付けたもの。 |
+
+リレーション、メディア、コンポーネント、ダイナミックゾーンは任意のプロパティ（`category?:`）です。API は `populate` した場合にしかそれらを返さないためです。大きな整数は JavaScript の数値に収まらないので `string` です。
+
+生成した型がなくてもクライアントは動きます。どのルートも受け付け、ドキュメントは `Record<string, unknown>` になります。
+
+## コンテンツを読む
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[title][$containsi]=rust&populate[category]=true&populate[seo]=true&sort[0]=publishedAt:desc&pagination[page]=1&pagination[pageSize]=10' \
+  -H "Authorization: Bearer $VERDIN_TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { title: { containsi: "rust" } }
+    sort: ["publishedAt:desc"]
+    pagination: { page: 1, pageSize: 10 }
+  ) {
+    documentId
+    title
+    slug
+    category { name }
+    seo { metaTitle metaDescription }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { verdin } from './verdin';
+
+const { data, meta } = await verdin.collection('articles').find({
+  filters: { title: { $containsi: 'rust' } },
+  populate: { category: true, seo: true },
+  sort: ['publishedAt:desc'],
+  pagination: { page: 1, pageSize: 10 },
+});
+
+data[0].title; // string
+data[0].category?.name; // string | null | undefined
+meta.pagination.total;
+```
+
+</TabItem>
+</Tabs>
+
+クエリパラメーターは Strapi v5 の形式で、角かっこ記法でシリアライズされるので、REST API で使えるフィルター、ソート、`fields`、`populate`、`status`、`locale` はここでも使えます。完全な構文は [REST API](/ja/api/rest/) を参照してください。
+
+| 呼び出し | リクエスト |
+| --- | --- |
+| `collection(route).find(params?)` | `GET /api/:route` |
+| `collection(route).findOne(documentId, params?)` | `GET /api/:route/:documentId` |
+| `collection(route).create(data, params?)` | `POST /api/:route`（`status: 'draft'` でない限り公開します） |
+| `collection(route).update(documentId, data, params?)` | `PUT /api/:route/:documentId` |
+| `collection(route).delete(documentId)` | `DELETE /api/:route/:documentId` |
+| `collection(route).publish(documentId)`、`unpublish`、`discardDraft` | `POST /api/:route/:documentId/actions/publish`（`unpublish`、`discard-draft`） |
+| `single(route).find(params?)`、`update(data, params?)`、`delete()` | `GET`、`PUT`、`DELETE /api/:route` |
+| `upload(files, info?)` | `POST /api/upload`（マルチパート） |
+| `files(params?)` | `GET /api/upload/files` |
+| `graphql(query, variables?)` | `POST /graphql` |
+
+クエリ文字列を自分で組み立てる（たとえば `<link rel="preload">` 用）ために、`stringify(params)` もエクスポートされています。
+
+## コンテンツを書き込む
+
+```ts
+const { data: article } = await verdin.collection('articles').create(
+  {
+    title: 'Hello from TypeScript',
+    category: 'hx2n8r3w0c1kq5v7m4j6b9a0',       // a category's documentId
+    tags: { connect: ['t1…', 't2…'] },
+    seo: { metaTitle: 'Hello', metaDescription: 'A first post' },
+  },
+  { status: 'draft' },
+);
+
+await verdin.collection('articles').publish(article.documentId);
+```
+
+Strapi v5 と同様に、下書きと公開を使う型では、`status: 'draft'` を渡さない限り `create` はドキュメントをすぐに公開します。書き込みには、その型に `create`、`update`、`publish` を持つトークンが必要です。[権限](/ja/reference/permissions/)を参照してください。
+
+ファイルは `upload` でアップロードし、ID で参照します。
+
+```ts
+const [cover] = await verdin.upload(file, { alternativeText: 'The team at the office' });
+```
+
+`file` は `Blob` または `File`（またはそのリスト）です。アップロードには、メディアライブラリに対する `create` の許可が必要です。
+
+## GraphQL
+
+`graphql()` は `/graphql` に送信するので、**設定 → 機能**で **GraphQL** の機能がオンになっている必要があります。レスポンスの `data` を返し、最初のエラーで例外を投げます。
+
+```ts
+const data = await verdin.graphql<{ articles: Array<{ title: string }> }>(
+  `query ($q: String) { articles(filters: { title: { containsi: $q } }) { title } }`,
+  { q: 'rust' },
+);
+```
+
+生成される型は REST API を記述したものです。GraphQL では、上のように結果の型を自分で渡すか、エンドポイントに対して GraphQL のコードジェネレーターを使ってください。[GraphQL](/ja/api/graphql/) を参照してください。
+
+## エラー
+
+失敗したリクエストはすべて `VerdinError` で reject され、API が Strapi の形式で送ったエラーを持ちます。
+
+| プロパティ | 例 |
+| --- | --- |
+| `status` | `400`、`401`、`403`、`404`、`429` |
+| `name` | `ValidationError`、`UnauthorizedError`、`ForbiddenError`、`NotFoundError`、`RateLimitError`、`GraphQLError` |
+| `message` | 読みやすい説明。 |
+| `details` | `ValidationError` の無効なフィールドのリストなど、エラーの詳細。 |
+
+```ts
+import { VerdinError } from '@verdin/client';
+
+try {
+  const { data } = await verdin.collection('articles').findOne(id);
+  return data;
+} catch (error) {
+  if (error instanceof VerdinError && error.status === 404) return null;
+  throw error;
+}
+```
+
+## オプション
+
+| オプション | 説明 |
+| --- | --- |
+| `url` | `https://cms.example.com` のような、サーバーのオリジン。必須。 |
+| `token` | `Authorization: Bearer …` として送る、API トークンかエンドユーザーの JWT。公開ロールを使う場合は省略します。 |
+| `prefix` | コンテンツ API のプレフィックス。デフォルトは `/api` です。変更した場合は [`[api].prefix`](/ja/reference/configuration/) に合わせてください。 |
+| `fetch` | グローバルの `fetch` の代わりに使う `fetch` の実装。 |
+| `headers` | すべてのリクエストに付ける追加のヘッダー。 |
+
+## サーバーレンダリングとエッジランタイム
+
+クライアントは `fetch` を呼ぶだけなので、サーバーコンポーネント、API ルート、ビルドスクリプト、エッジ関数でもそのまま動きます。独自の `fetch` を渡すと、すべてのリクエストにフレームワークのキャッシュオプションを付けられます。たとえば Next.js では次のようにします。
+
+```ts title="src/verdin.ts"
+export const verdin = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  token: process.env.VERDIN_TOKEN,
+  fetch: (input, init) => fetch(input, { ...init, next: { revalidate: 60, tags: ['verdin'] } }),
+});
+```
+
+プレビューページで下書きを読むには、管理画面がプレビューの URL に入れたプレビュートークンをヘッダーとして送ります。
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  headers: { 'x-verdin-preview': searchParams.get('preview') ?? '' },
+});
+const { data } = await preview.collection('articles').findOne(id, { status: 'draft' });
+```
+
+プレビューのリンクの仕組みは[プレビュー](/ja/guides/content/preview/)を、同じページにクリックで編集する機能を加えるには[ビジュアル編集](/ja/guides/frontend/visual-editing/)を参照してください。
+
+別のオリジンのブラウザーから API を呼び出すには、そのオリジンが [`[api].cors_origins`](/ja/reference/configuration/) に必要です。

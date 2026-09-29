@@ -53,7 +53,7 @@ Verdin 是一款用 Rust 编写的开源无头（headless）CMS。你定义内�
 ## 不适用的情况
 
 - **你依赖 Strapi 插件或 JavaScript 编写的自定义服务端代码。** Verdin 无法运行它们，你需要把它们重写为 WebAssembly 插件，或者把相关逻辑移到别处。
-- **你需要稳定的 1.0 版本。** Verdin 目前处于 0.9：次版本仍可能改变配置和行为。每次升级前请阅读[升级](/zh-cn/migrate/upgrading/)。
+- **你需要稳定的 1.0 版本。** Verdin 目前处于 0.10：次版本仍可能改变配置和行为。每次升级前请阅读[升级](/zh-cn/migrate/upgrading/)。
 - **你希望由 CMS 渲染页面。** Verdin 是无头 CMS，需要搭配前端框架或静态站点生成器使用。
 - **你需要托管服务。** Verdin 需要自行部署：在你自己的基础设施上运行二进制文件或 Docker 镜像。
 

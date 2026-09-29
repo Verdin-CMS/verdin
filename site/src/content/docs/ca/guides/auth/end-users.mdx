@@ -1,0 +1,256 @@
+---
+title: Usuaris finals
+description: Permet que les persones que fan servir els teus llocs es registrin i iniciïn la sessió a través de l'API de contingut, amb confirmació per correu, proveïdors OAuth i rols, fent servir les rutes users-permissions de Strapi.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Els usuaris finals són les persones que inicien la sessió al teu lloc o aplicació, no al tauler
+d'administració. Verdin els ofereix registre, inici de sessió, confirmació per correu,
+restabliment de contrasenya, proveïdors OAuth i rols que decideixen què poden fer a l'API de
+contingut. Les rutes i les càrregues són les del connector users-permissions de Strapi v5, de
+manera que els frontends existents continuen funcionant.
+
+## Abans de començar
+
+<Steps>
+
+1. Activa **Configuració → Funcionalitats → Usuaris i permisos** (està desactivat per defecte),
+   o activa **Usuaris finals** a **Configuració → Usuaris finals → Configuració**.
+2. Configura `[email]` si fas servir la confirmació per correu o el restabliment de contrasenya:
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend i Postmark llegeixen la seva clau de `VERDIN_EMAIL_API_KEY`. **Configuració →
+   Funcionalitats → Correu electrònic** té **Envia un correu de prova**. Per treballar en local,
+   `docker/compose.dev.yml` inclou Mailpit (SMTP al port 1025, safata d'entrada a
+   `http://localhost:8025`).
+
+3. Defineix `[server].public_url`: els enllaços dels correus i els callbacks d'OAuth el fan
+   servir.
+
+</Steps>
+
+Gestionar comptes i rols necessita **Gestiona els usuaris finals** (`endusers.manage`). Canviar la
+pestanya de configuració (registre, proveïdors, plantilles) necessita **Gestiona les
+funcionalitats** (`features.manage`).
+
+## Configura el registre i les sessions
+
+A **Configuració → Usuaris finals → Configuració**, a **Registre i sessions**:
+
+| Opció | Per defecte | Efecte |
+| --- | --- | --- |
+| **Permet el registre** | activat | Qualsevol pot crear un compte a través de l'API de contingut. Desactivat: `register` respon `400`. |
+| **Confirma les adreces electròniques** | desactivat | Els usuaris nous han d'obrir un enllaç enviat per correu abans de poder iniciar la sessió. |
+| **Rol per defecte** | Authenticated | El rol dels comptes nous. |
+| **Sessions** | Un token de llarga durada | **Un token de llarga durada** (el mode antic de Strapi) o **Tokens curts amb renovació**. |
+| **Durada de la sessió (dies)** | 30 | Durada del token de llarga durada. |
+| **Durada del token d’accés (minuts)**, **Durada del token de renovació (dies)** | 30, 30 | Amb tokens de renovació. |
+
+A **Les pàgines de la teva aplicació**, defineix **Després de confirmar un correu** (on arriben
+els usuaris un cop confirmada la seva adreça) i **Pàgina de restabliment de contrasenya** (la teva
+pàgina que rep `?code=` i demana una contrasenya nova). El restabliment de contrasenya necessita la
+pàgina de restabliment.
+
+## Configura els rols
+
+Cada petició es fa com a un d'aquests:
+
+- **Public**: peticions sense token. Els seus permisos són els de **Configuració → Accés
+  públic**.
+- **Authenticated**: el rol integrat que s'assigna als comptes nous. No es pot eliminar.
+- **Rols personalitzats**: crea'ls a **Configuració → Usuaris finals → Rols** amb **Crea un
+  rol**.
+
+Els **Permisos** d'un rol fan servir la mateixa matriu que l'accés públic i els tokens d'API:
+**Cerca**, **Cerca’n un**, **Crea**, **Actualitza**, **Suprimeix**, **Publica** i **Llegeix
+esborranys** per tipus de contingut, la **Mediateca** i **Usuaris** (les rutes `/api/users`). Un
+usuari amb la sessió iniciada només rep els permisos del seu rol, no també l'accés públic: concedeix
+també al rol les lectures públiques quan els usuaris amb sessió iniciada les necessitin. Eliminar
+un rol mou els seus usuaris a Authenticated.
+
+Per actuar com un usuari, el frontend envia el seu JWT com a `Authorization: Bearer <jwt>`. Els
+tokens d'API comencen per `vd_`, i així és com Verdin distingeix els uns dels altres.
+
+## Registre i inici de sessió
+
+<Tabs>
+<TabItem label="Registre">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   o { "user": … } quan la confirmació per correu està activada
+```
+
+</TabItem>
+<TabItem label="Inici de sessió">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` és el correu electrònic o el nom d'usuari.
+
+</TabItem>
+<TabItem label="Lectura com a usuari">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+L'inici de sessió es rebutja per als usuaris bloquejats ("Your account has been blocked by an
+administrator") i, amb la confirmació activada, per als que no s'han confirmat ("Your account
+email is not confirmed").
+
+## Tokens i sessions
+
+- **Un token de llarga durada** (`jwtManagement: "legacy-support"`): el JWT dura
+  **Durada de la sessió (dies)**.
+- **Tokens curts amb renovació** (`jwtManagement: "refresh"`, com a Strapi 5): el JWT dura
+  **Durada del token d’accés (minuts)**, i les respostes d'inici de sessió també porten un
+  `refreshToken`. Crida `POST /api/auth/refresh` amb `{ refreshToken }` per obtenir un parell nou.
+  Cada token de renovació funciona un sol cop; presentar-ne un de ja utilitzat tanca tota la
+  sessió. `POST /api/auth/logout` amb `{ refreshToken }` la tanca expressament.
+- Canviar o restablir una contrasenya revoca els tokens anteriors de l'usuari, i bloquejar
+  l'usuari també.
+- Les peticions d'inici de sessió, registre i restabliment estan limitades a 20 per minut per IP
+  del client.
+- Les contrasenyes es desen amb Argon2id. Els comptes importats de Strapi conserven el seu hash
+  bcrypt fins al següent inici de sessió, quan es torna a calcular.
+
+## Confirma adreces electròniques i restableix contrasenyes
+
+Amb **Confirma les adreces electròniques** activat, el registre envia per correu un enllaç a
+`/api/auth/email-confirmation?confirmation=…`. Obrir-lo confirma el compte i redirigeix a
+**Després de confirmar un correu**. `POST /api/auth/send-email-confirmation` amb `{ email }` envia
+un enllaç nou.
+
+Per a una contrasenya oblidada:
+
+<Steps>
+
+1. La teva aplicació crida `POST /api/auth/forgot-password` amb `{ email }`. La resposta és la
+   mateixa tant si el compte existeix com si no.
+2. L'usuari rep un correu amb un enllaç a la teva **Pàgina de restabliment de contrasenya**, amb
+   `?code=…`. El codi funciona durant una hora.
+3. La teva pàgina crida `POST /api/auth/reset-password` amb
+   `{ code, password, passwordConfirmation }` i rep `{ jwt, user }`.
+
+</Steps>
+
+Els usuaris amb la sessió iniciada canvien la seva contrasenya amb
+`POST /api/auth/change-password` (`{ currentPassword, password, passwordConfirmation }`).
+
+Els correus s'editen a **Configuració → Usuaris finals → Configuració → Plantilles de correu**: un
+**Assumpte**, un **Missatge** i un **Cos HTML (opcional)** per a **Confirmació de correu** i
+**Restabliment de contrasenya**. Accepten els marcadors `{{username}}`, `{{email}}` i `{{url}}`;
+els valors s'escapen per a HTML al cos HTML.
+
+## Inici de sessió amb proveïdors OAuth
+
+Hi ha configuracions predefinides per a GitHub, Google, Microsoft, Discord, Facebook, GitLab i
+LinkedIn. Qualsevol altre nom és un proveïdor OAuth 2 genèric que necessita la seva **URL
+d’autorització**, la **URL del token** i la **URL d’informació de l’usuari**: Keycloak, Auth0 i
+Okta funcionen així amb les URL del teu realm o tenant. L'inici de sessió amb Apple no és
+compatible.
+
+<Steps>
+
+1. A **Configuració → Usuaris finals → Configuració → Proveïdors d’inici de sessió**, selecciona
+   **Afegeix GitHub** (o una altra configuració predefinida, o **Afegeix un proveïdor OAuth 2**).
+2. Al proveïdor, registra la **URL de retorn per registrar al proveïdor** que mostra el diàleg:
+   `https://cms.example.com/api/connect/github/callback`.
+3. Introdueix l'**ID de client**, els **Àmbits** opcionals i **Redirecció a la teva aplicació**:
+   la pàgina del teu frontend que rep `?access_token=` després de l'inici de sessió. Activa
+   **Activat**.
+4. Posa el secret del client a l'entorn del servidor i reinicia:
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   La variable és `VERDIN_OAUTH_<PROVIDER>_SECRET`. Els secrets mai no es desen a la base de
+   dades.
+
+</Steps>
+
+L'inici de sessió segueix el flux de Strapi:
+
+<Diagram
+  caption="Inici de sessió OAuth per als usuaris finals"
+  code={`sequenceDiagram
+  participant B as Navegador
+  participant V as Verdin
+  participant P as Proveïdor
+  B->>V: GET /api/connect/github
+  V-->>B: redirecció al proveïdor
+  B->>P: consentiment
+  P-->>B: redirecció a /api/connect/github/callback
+  B->>V: callback
+  V-->>B: redirecció a la teva pàgina ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+L'`state` d'OAuth està signat i lligat al navegador amb una galeta. Els comptes es fan coincidir
+per correu electrònic; un correu que ja fa servir un altre proveïdor, o un compte amb correu i
+contrasenya, es rebutja ("Email is already taken.").
+
+## Gestiona els comptes al tauler d'administració
+
+**Configuració → Usuaris finals → Usuaris** llista els comptes, amb cerca per nom d'usuari o
+correu electrònic. Pots fer **Afegeix un usuari**, editar-ne un (nom d'usuari, correu,
+contrasenya, rol, **Confirmat**, **Bloquejat**), fer **Bloqueja** o **Desbloqueja**, i eliminar-lo.
+
+## Rutes
+
+Les rutes són sota el prefix de l'API de contingut, `/api` per defecte. La forma de les peticions
+i les respostes segueix Strapi v5.
+
+| Ruta | Fa |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }`, o `{ user }` amb la confirmació per correu activada. |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`. |
+| `GET /auth/email-confirmation?confirmation=` | Confirma el correu i després redirigeix o retorna l'usuari. |
+| `POST /auth/send-email-confirmation` | `{ email }`: un enllaç de confirmació nou. |
+| `POST /auth/forgot-password` | `{ email }`: envia per correu l'enllaç de restabliment. |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/change-password` | Amb sessió iniciada. `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/refresh`, `POST /auth/logout` | Només en mode de renovació: `{ refreshToken }`. |
+| `GET /users/me` | L'usuari amb la sessió iniciada. |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | Necessita Cerca / Cerca'n un sobre Usuaris. JSON simple, sense l'embolcall `data`, com Strapi. `populate=role` hi afegeix el rol, `_q=` cerca en noms d'usuari i correus, `pagination[page]` i `pagination[pageSize]` (com a màxim 100) paginen. |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | Necessita Crea / Actualitza / Suprimeix sobre Usuaris. `{ username, email, password, confirmed, blocked, role }`, amb `role` com a id de rol. |
+| `GET /connect/{provider}` | Inicia un inici de sessió OAuth. |
+| `GET /auth/{provider}/callback?access_token=` | Canvia el token del proveïdor per `{ jwt, user }`. |
+
+`verdin import strapi` porta els usuaris finals amb les seves contrasenyes, els rols
+personalitzats i els permisos dels rols public, authenticated i personalitzats. Consulta
+[Migrar des de Strapi](/ca/migrate/from-strapi/).
+
+<Aside type="caution">
+Un rol amb Crea, Actualitza o Suprimeix sobre **Usuaris** permet als seus membres gestionar tots
+els comptes d'usuari final. Dona'l només a rols o tokens d'API de confiança.
+</Aside>

@@ -1,0 +1,122 @@
+---
+title: 实时更新
+description: 订阅 Verdin 的 Server-Sent Events，在内容变化的那一刻刷新你的前端。
+sidebar:
+  order: 8
+  label: 实时
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+开启 **实时协作** 功能后，每当条目或媒体文件发生变化，Verdin 都会推送一个小事件。前端订阅该事件流并重新获取发生变化的内容：直播博客、记分板、永远无需刷新的仪表盘。每个订阅者只会收到它有权读取的内容的事件。
+
+本页介绍如何在前端使用该事件流。事件名、负载和规则请参见[实时 API 参考](/zh-cn/api/realtime/)。Strapi v5 没有内置的对应功能。
+
+## 开启
+
+<Steps>
+
+1. 在 **设置 → 功能** 中开启 **实时协作**。
+2. 决定谁来订阅。事件流使用内容 API 的权限：
+   - 面向所有人时，在 **设置 → 公开访问** 中允许对这些类型执行 **查询** 或 **查询单个**；
+   - 面向服务器或应用时，创建一个拥有这些权限的 [API 令牌](/zh-cn/guides/auth/api-tokens/)（如需接收仅涉及草稿的事件，还需要 **读取草稿**）；
+   - 面向已登录的终端用户时，他们的 JWT 同样可用（参见[终端用户](/zh-cn/guides/auth/end-users/)）。
+
+</Steps>
+
+事件流为 `GET /api/_events`。加上 `?types=` 并附带以逗号分隔的内容类型 uid 列表，即可只接收这些类型的事件（`plugin::upload` 表示媒体库）：
+
+```sh title="Terminal"
+curl -N "https://cms.example.com/api/_events?types=api::article,api::category"
+```
+
+```
+event: ready
+data: {}
+
+event: entry.publish
+data: {"event":"entry.publish","uid":"api::article","documentId":"01j9…","locale":"en"}
+```
+
+## 在浏览器中订阅
+
+事件只携带 id，不携带内容。每收到一个事件，就通过与其他读取相同的 API 和权限，重新获取你所展示的内容。
+
+<Tabs syncKey="auth">
+<TabItem label="公开">
+
+使用公开角色时，浏览器的 `EventSource` 就足够了，而且它会自动重连：
+
+```js
+const CMS = 'https://cms.example.com';
+const events = new EventSource(`${CMS}/api/_events?types=api::article`);
+
+for (const name of ['entry.publish', 'entry.unpublish', 'entry.delete']) {
+  events.addEventListener(name, (event) => {
+    const { documentId } = JSON.parse(event.data);
+    refreshArticle(documentId);
+  });
+}
+
+events.addEventListener('lagged', () => refreshEverything());
+```
+
+</TabItem>
+<TabItem label="使用令牌">
+
+`EventSource` 无法发送 `Authorization` 请求头。请改用 `fetch` 读取事件流，并在其结束时重新连接：
+
+```js
+async function subscribe(token, onEvent) {
+  for (;;) {
+    try {
+      const response = await fetch(`${CMS}/api/_events?types=api::article`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) return; // token refused
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const name = block.match(/^event: (.*)$/m)?.[1];
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (name && data) onEvent(name, JSON.parse(data));
+        }
+      }
+    } catch {
+      // network error: retry below
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+```
+
+任何支持自定义请求头的 SSE 客户端库也都可以使用。
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution">
+浏览器代码中的令牌可以被任何打开页面的人读取。请只发布一个仅限于页面所展示类型的只读令牌，或者从你的服务器订阅，再把更新转发给浏览器。
+</Aside>
+
+从其他源上的网站调用事件流时，需要把该源加入 [`[api].cors_origins`](/zh-cn/reference/configuration/)。
+
+## 保持事件流健康
+
+- 第一个事件是 `ready`：订阅已生效。
+- 事件流在一小时后结束。届时请重新连接：`EventSource` 会自动完成，重连时也会再次校验令牌，因此已吊销的令牌会停止接收事件。
+- 名为 `lagged` 的事件表示客户端读取太慢，错过了一些事件。请重新获取页面所展示的全部内容。
+- 仅涉及草稿的事件（启用草稿与发布的类型上的 `entry.create`、`entry.update` 和 `entry.discard-draft`）只会发给拥有 **读取草稿** 的调用方。公开网站通常监听 `entry.publish`、`entry.unpublish` 和 `entry.delete`。
+
+## 在负载均衡器之后
+
+事件只属于客户端所连接的那个实例。有多个实例时，请对 `/api/_events` 使用会话保持，或者让实时客户端都连接同一个实例。参见[扩缩容](/zh-cn/deploy/scaling/)。
+
+管理后台使用自己的事件流（`/admin/api/events`），用于编辑时的实时更新、在线状态和软锁；参见[实时 API 参考](/zh-cn/api/realtime/)。

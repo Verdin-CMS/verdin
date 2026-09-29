@@ -1,0 +1,147 @@
+---
+title: خادم MCP
+description: اسمح لـ Claude ووكلاء الذكاء الاصطناعي الآخرين بقراءة محتوى Verdin وتعديله عبر Model Context Protocol، بصلاحيات رمز API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+يستطيع Verdin تقديم محتواه لوكلاء الذكاء الاصطناعي عبر
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP). صِل Claude Code أو
+Claude Desktop أو Cursor أو أي عميل MCP آخر، فيستطيع الوكيل سرد أنواع محتواك،
+والاستعلام عن الإدخالات بعوامل تصفية REST API، وإنشاء الإدخالات أو تحديثها أو نشرها، ضمن
+صلاحيات الرمز الذي تمنحه إياه.
+
+ليس لدى Strapi v5 خادم MCP مدمج.
+
+## فعّله
+
+<Steps>
+
+1. في **الإعدادات ← الميزات**، فعّل **خادم MCP**. تعرض بطاقته **نقطة النهاية**،
+   `https://cms.example.com/mcp`، على المضيف نفسه الذي يستخدمه API المحتوى.
+2. في **الإعدادات ← رموز API**، اختر **إنشاء رمز**. اختر **للقراءة فقط** ما لم يكن
+   على الوكيل أن يكتب، أو **مخصص** للسماح ببعض الأنواع والإجراءات فقط. انسخ الرمز:
+   فهو يُعرض مرة واحدة. راجع [رموز API](/ar/guides/auth/api-tokens/).
+3. صِل عميلك بنقطة النهاية والرمز (أدناه).
+
+</Steps>
+
+## صِل عميلًا
+
+يتحدث الخادم بنقل Streamable HTTP الخاص بـ MCP. يحتاج كل عميل إلى عنوان URL وترويسة
+`Authorization: Bearer <token>`.
+
+<Tabs syncKey="mcp-client">
+<TabItem label="Claude Code">
+
+تحتوي بطاقة **خادم MCP** على هذا الأمر تحت **إضافته إلى Claude Code** (**نسخ
+الأمر**)؛ استبدل `<token>` برمز API الخاص بك:
+
+```sh title="Terminal"
+claude mcp add --transport http verdin https://cms.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+</TabItem>
+<TabItem label="Cursor">
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="VS Code">
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "verdin": {
+      "type": "http",
+      "url": "https://cms.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Claude Desktop">
+
+يبدأ ملف تهيئة Claude Desktop خوادم محلية، لذا اجسر إلى نقطة نهاية HTTP
+باستخدام [`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "verdin": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://cms.example.com/mcp", "--header", "Authorization: Bearer ${VERDIN_TOKEN}"],
+      "env": { "VERDIN_TOKEN": "<token>" }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+تتغير صيغ تهيئة العملاء؛ راجع توثيق عميلك إذا لم يُتعرَّف على
+مفتاح ما. ثم اسأل الوكيل شيئًا مثل *"اسرد المقالات المنشورة هذا الأسبوع في
+تصنيف News"*.
+
+## الأدوات
+
+| الأداة | تحتاج إلى | ما تفعله |
+| --- | --- | --- |
+| `list_content_types` | `find` أو `findOne` | أنواع المحتوى التي يستطيع المستدعي قراءتها، مع نوعها وسماتها. |
+| `get_content_type` | `find` أو `findOne` | سمات نوع محتوى: الأنواع والخيارات والعلاقات. |
+| `find_entries` | `find` | إدخالات نوع ما. يأخذ `query` معاملات REST API بصيغة JSON (`filters`، `sort`، `fields`، `populate`، `pagination`)؛ ويحتاج `status: "draft"` أيضًا إلى `readDrafts`. |
+| `get_entry` | `findOne` | إدخال واحد حسب `documentId` (الأنواع المفردة: بدونه). |
+| `create_entry` | `create` | ينشئ إدخالًا من `data`، كما في REST API. يحفظ `status: "draft"` مسودة. |
+| `update_entry` | `update` | يحدّث إدخالًا (الأنواع المفردة: دون `documentId`). |
+| `delete_entry` | `delete` | يحذف إدخالًا. |
+| `publish_entry`، `unpublish_entry` | `publish` | ينشر إدخالًا أو يلغي نشره. |
+
+تأخذ الأدوات `uid` (مثل `api::article`) و، للأنواع المترجمة، `locale`. تتحقق كل أداة
+من الصلاحية نفسها التي يتحقق منها مسار REST المقابل، وتمر عمليات الكتابة عبر المسار
+نفسه الذي يمر به REST API: التحقق، وخطافات الإضافات، ومراحل المراجعة، والـ webhooks، وسجل المحتوى
+وسجلات التدقيق. لا يستطيع الوكيل فعل أي شيء لا يستطيع رمزه فعله عبر REST.
+
+راجع [الصلاحيات](/ar/reference/permissions/) لإجراءات API المحتوى.
+
+## المصادقة
+
+تأخذ نقطة النهاية بيانات الاعتماد نفسها التي يأخذها API المحتوى:
+
+- رمز API، وهو الخيار المعتاد للوكلاء؛
+- JWT لمستخدم نهائي، لوكيل يتصرف بصفة مستخدم مسجّل الدخول في تطبيقك؛
+- بلا ترويسة `Authorization`، لصلاحيات الدور العام.
+
+الرمز غير الصالح يجيب بـ `401`. لا يحتفظ الخادم بجلسات ولا يفتح تدفقات:
+كل طلب هو `POST` من نوع JSON-RPC يُجاب بـ JSON (يجيب `GET` بـ `405`).
+
+### مصادر المتصفح
+
+تُرفض الطلبات التي تحمل ترويسة `Origin`، التي ترسلها المتصفحات، ما لم يكن المصدر
+مُدرجًا تحت **مصادر المتصفح المسموح بها** في بطاقة **خادم MCP**. يحمي هذا
+من DNS rebinding، حيث تخدع صفحة ويب المتصفح لاستدعاء خادم على
+شبكتك. لا يرسل عملاء سطر الأوامر وسطح المكتب أي `Origin`، لذا تكون القائمة فارغة عادةً.
+
+<Aside type="caution">
+الوكيل الذي لديه رمز بوصول كامل يستطيع حذف المحتوى ونشره. امنح الوكلاء رموزًا للقراءة فقط
+أو مخصصة محصورة فيما يحتاجون إليه. للمسودات التي يكتبها وكيل، يُبقي
+[مسار المراجعة](/ar/guides/content/review-workflows/) شخصًا بين الوكيل و
+النشر.
+</Aside>
+
+لمنح المحررين مساعدة الذكاء الاصطناعي داخل لوحة الإدارة بدلًا من ذلك (الترجمة، والنص البديل، واقتراحات
+SEO)، راجع [إجراءات الذكاء الاصطناعي](/ar/guides/integrations/ai-actions/).

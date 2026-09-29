@@ -1,0 +1,153 @@
+---
+title: SEO 与站点地图
+description: 把内容类型映射到网站的路径，提供包含所有已发布条目的 sitemap.xml，并添加一个标准的 SEO 组件。
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**SEO 与站点地图** 功能告诉 Verdin 每个条目在你的网站上位于何处。据此，它会提供一个包含所有已发布条目的 `sitemap.xml`，为[菜单](/zh-cn/guides/frontend/menus/)提供其所链接条目的路径，并提供一个现成的 `shared.seo` 组件用于 meta 标签。
+
+它是四项站点功能之一，另外三项是[重定向](/zh-cn/guides/frontend/redirects/)、[菜单](/zh-cn/guides/frontend/menus/)和[表单](/zh-cn/guides/frontend/forms/)。Strapi 通过社区插件（SEO、sitemap）实现同样的功能；而在 Verdin 中，它是内置的。
+
+## 开启
+
+<Steps>
+
+1. 在 **设置 → 功能** 中开启 **SEO 与站点地图**。
+2. 在其卡片上选择 **配置 SEO**。
+3. 输入 **网站 URL**：你的网站的源，例如 `https://www.example.com`。站点地图中的 URL 都以它开头。
+4. 在 **内容类型** 下，为每个有页面的类型设置 **路径规则**。没有规则的类型不会出现在站点地图中。还可以为站点地图设置 **更新频率** 和 **优先级**（0 到 1）。
+5. 保存，然后选择 **打开 sitemap.xml** 检查结果。
+
+</Steps>
+
+修改这些设置需要 **管理功能** 权限（`features.manage`）。参见[权限](/zh-cn/reference/permissions/)。
+
+## 路径规则
+
+规则是一个以 `/` 开头、带有花括号占位符的路径：
+
+| 规则 | 条目 | 路径 |
+| --- | --- | --- |
+| `/blog/{slug}` | slug 为 `hello-world` 的 Article | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | 它的法语版本 | `/fr/blog/bonjour` |
+| `/about` | Homepage 单一类型 | `/about` |
+
+占位符是该类型的属性（通常是 `slug` 之类的 `uid`）以及 `{locale}`。值会经过 URL 编码。某个占位符为空的条目（例如缺少 slug）没有路径，不会出现在站点地图和菜单中。对话框会列出可以插入的属性，并拒绝未知的属性。
+
+这些设置作为该功能的设置存储，形式如下：
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` 为 `always`、`hourly`、`daily`、`weekly`、`monthly`、`yearly` 或 `never` 之一。
+
+## 站点地图
+
+设置了 **网站 URL** 后，Verdin 会在自己主机的根路径下提供 `/sitemap.xml`（`https://cms.example.com/sitemap.xml`，位于 API 前缀之外），其中包含：
+
+- 已配置类型中规则可以填满的每个**已发布**条目；
+- 每个条目的最后修改时间（`lastmod`），以及该类型的 `changefreq` 和 `priority`；
+- 对于本地化类型，每个语言区域一个 URL，彼此之间以 `<xhtml:link rel="alternate" hreflang="…">` 相互链接；
+- 最多 50,000 个 URL，即单个站点地图文件的上限。
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+站点地图最多每十分钟构建一次，并带有 `Cache-Control: public, max-age=600`，因此发布的内容会在十分钟内出现。
+
+搜索引擎期望在你的网站主机上找到站点地图。请通过重写规则，或者一个获取 Verdin 站点地图的小路由，在那里提供它：
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+然后在 `robots.txt` 中列出它：`Sitemap: https://www.example.com/sitemap.xml`。
+
+## SEO 组件
+
+Verdin 推荐一个带有 Strapi SEO 插件字段的 `shared.seo` 组件：
+
+| 属性 | 类型 |
+| --- | --- |
+| `metaTitle` | string，必填，最多 60 个字符 |
+| `metaDescription` | text，必填，最多 160 个字符 |
+| `metaImage` | media（图片） |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+在 **配置 SEO** 对话框中选择 **添加 SEO 组件**，然后选择 **创建组件**。创建组件会修改 schema，因此该按钮只在开发模式（`verdin dev`）下对拥有 **管理内容类型** 的管理员显示；否则对话框会列出需要在 schema 文件中添加的属性。之后在内容类型构建器中，为每个有页面的内容类型添加一个使用 `shared.seo` 的组件字段。
+
+<Aside type="tip">
+开启 [AI 操作](/zh-cn/guides/integrations/ai-actions/)后，带有 `metaTitle` 和 `metaDescription` 文本属性的组件会获得一个 **建议** 按钮，可以根据条目内容填写它们。
+</Aside>
+
+## 渲染 meta 标签
+
+populate 该组件，并在页面的 head 中写入标签：
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+示例博客的 `shared.seo` 只有 `metaTitle` 和 `metaDescription`；推荐的组件补充了其余字段。如果预览页面使用了[可视化编辑](/zh-cn/guides/frontend/visual-editing/)，请在测量或比较 meta 文本之前去除其中的不可见标记。

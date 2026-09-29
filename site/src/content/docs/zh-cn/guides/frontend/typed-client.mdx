@@ -1,0 +1,231 @@
+---
+title: 类型化客户端
+description: 使用 @verdin/client 以及由 `verdin types` 根据 schema 生成的类型，在 TypeScript 中读写 Verdin 内容。
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`@verdin/client` 是一个面向内容 API 的小型 TypeScript 客户端：支持 REST 文档、媒体库和 GraphQL。把它与 `verdin types` 搭配使用（后者会写出内容类型的 TypeScript 定义），编辑器就会在你输入时检查路由名、字段和写入负载。
+
+该客户端没有任何依赖，可以在任何提供 `fetch` 的环境中运行：浏览器、Node 20 及更高版本、Deno、Bun 和边缘 worker。它是可选的；每个调用都对应一个普通的 [REST API](/zh-cn/api/rest/) HTTP 请求。
+
+## 安装并生成类型
+
+<Steps>
+
+1. 在你的前端项目中安装该包：
+
+   ```sh title="Terminal"
+   npm install @verdin/client
+   ```
+
+2. 在 Verdin 项目中（包含 `verdin.toml` 的目录）生成类型：
+
+   ```sh title="Terminal"
+   verdin types -o ../site/src/verdin-types.ts
+   ```
+
+   不带 `-o`（`--out`）时，定义会输出到标准输出。该命令只读取 schema 文件，不需要数据库。
+
+3. 使用生成的 `VerdinSchema` 创建客户端：
+
+   ```ts title="src/verdin.ts"
+   import { createClient } from '@verdin/client';
+   import type { VerdinSchema } from './verdin-types';
+
+   export const verdin = createClient<VerdinSchema>({
+     url: 'https://cms.example.com',
+     token: process.env.VERDIN_TOKEN, // omit to use the public role
+   });
+   ```
+
+</Steps>
+
+每次修改 schema 后都要重新运行 `verdin types`；文件的第一行也提示了这一点。把它提交到前端代码旁边，或者在 CI 中重新生成，就能让两边保持同步。
+
+<Aside type="caution">
+令牌会把其权限赋予持有者。请把完全访问和自定义令牌保留在服务器上（SSR、构建脚本、API 路由）。浏览器打包产物应当不使用令牌（使用公开角色），或者使用只读令牌。参见 [API 令牌](/zh-cn/guides/auth/api-tokens/)。
+</Aside>
+
+## `verdin types` 生成的内容
+
+对于[示例博客](https://github.com/Verdin-CMS/verdin/blob/main/examples/blog/)（文章、分类、标签、一个首页单一类型，以及 `shared.seo`、`blocks.hero` 和 `blocks.quote` 组件），该文件包含：
+
+| 类型 | 说明 |
+| --- | --- |
+| `Article`、`Category`、`Tag`、`Homepage` | 每个内容类型一个接口，以其 `singularName` 命名，继承 `DocumentBase`（`id`、`documentId`、`createdAt`、`updatedAt`、`publishedAt`）。private 属性会被省略。 |
+| `ArticleInput`…… | 写入类型：所有属性都是可选的，关联为 `documentId` 字符串（或 `connect` / `disconnect` / `set`），媒体为文件 id，关联的反向一侧会被省略。 |
+| `ComponentSharedSeo`、`ComponentBlocksHero`…… | 每个组件一个接口，外加其 `…Input` 类型。动态区域的项带有类型化的 `__component`。 |
+| `Media`、`MediaFormat`、`Blocks` | 媒体库文件、其响应式格式，以及富文本 blocks 格式。 |
+| `Collections`、`Singles`、`VerdinSchema` | 路由（`articles`、`homepage`）到其文档类型和输入类型的映射，供客户端使用。 |
+
+关联、媒体、组件和动态区域都是可选属性（`category?:`），因为 API 只在你 `populate` 时才返回它们。大整数是 `string`，因为它们超出了 JavaScript 数字的范围。
+
+没有生成的类型时，客户端依然可以工作：任何路由都会被接受，文档的类型为 `Record<string, unknown>`。
+
+## 读取内容
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[title][$containsi]=rust&populate[category]=true&populate[seo]=true&sort[0]=publishedAt:desc&pagination[page]=1&pagination[pageSize]=10' \
+  -H "Authorization: Bearer $VERDIN_TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(
+    filters: { title: { containsi: "rust" } }
+    sort: ["publishedAt:desc"]
+    pagination: { page: 1, pageSize: 10 }
+  ) {
+    documentId
+    title
+    slug
+    category { name }
+    seo { metaTitle metaDescription }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+import { verdin } from './verdin';
+
+const { data, meta } = await verdin.collection('articles').find({
+  filters: { title: { $containsi: 'rust' } },
+  populate: { category: true, seo: true },
+  sort: ['publishedAt:desc'],
+  pagination: { page: 1, pageSize: 10 },
+});
+
+data[0].title; // string
+data[0].category?.name; // string | null | undefined
+meta.pagination.total;
+```
+
+</TabItem>
+</Tabs>
+
+查询参数使用 Strapi v5 的格式，并以方括号写法序列化，因此在 REST API 上可用的任何过滤、排序、`fields`、`populate`、`status` 或 `locale` 在这里都同样可用。完整语法请参见 [REST API](/zh-cn/api/rest/)。
+
+| 调用 | 请求 |
+| --- | --- |
+| `collection(route).find(params?)` | `GET /api/:route` |
+| `collection(route).findOne(documentId, params?)` | `GET /api/:route/:documentId` |
+| `collection(route).create(data, params?)` | `POST /api/:route`（除非 `status: 'draft'`，否则会发布） |
+| `collection(route).update(documentId, data, params?)` | `PUT /api/:route/:documentId` |
+| `collection(route).delete(documentId)` | `DELETE /api/:route/:documentId` |
+| `collection(route).publish(documentId)`、`unpublish`、`discardDraft` | `POST /api/:route/:documentId/actions/publish`（`unpublish`、`discard-draft`） |
+| `single(route).find(params?)`、`update(data, params?)`、`delete()` | `GET`、`PUT`、`DELETE /api/:route` |
+| `upload(files, info?)` | `POST /api/upload`（multipart） |
+| `files(params?)` | `GET /api/upload/files` |
+| `graphql(query, variables?)` | `POST /graphql` |
+
+还导出了 `stringify(params)`，便于你自行构建查询字符串（例如用于 `<link rel="preload">`）。
+
+## 写入内容
+
+```ts
+const { data: article } = await verdin.collection('articles').create(
+  {
+    title: 'Hello from TypeScript',
+    category: 'hx2n8r3w0c1kq5v7m4j6b9a0',       // a category's documentId
+    tags: { connect: ['t1…', 't2…'] },
+    seo: { metaTitle: 'Hello', metaDescription: 'A first post' },
+  },
+  { status: 'draft' },
+);
+
+await verdin.collection('articles').publish(article.documentId);
+```
+
+与 Strapi v5 一样，在启用草稿与发布的类型上，除非传入 `status: 'draft'`，否则 `create` 会立即发布文档。写入需要一个在该类型上拥有 `create`、`update` 或 `publish` 权限的令牌；参见[权限](/zh-cn/reference/permissions/)。
+
+用 `upload` 上传文件，然后按 id 引用它们：
+
+```ts
+const [cover] = await verdin.upload(file, { alternativeText: 'The team at the office' });
+```
+
+`file` 是一个 `Blob` 或 `File`（或者它们的列表）。上传需要媒体库上的 `create` 授权。
+
+## GraphQL
+
+`graphql()` 会向 `/graphql` 发送请求，因此必须在 **设置 → 功能** 中开启 **GraphQL** 功能。它返回响应中的 `data`，遇到第一个错误时抛出异常。
+
+```ts
+const data = await verdin.graphql<{ articles: Array<{ title: string }> }>(
+  `query ($q: String) { articles(filters: { title: { containsi: $q } }) { title } }`,
+  { q: 'rust' },
+);
+```
+
+生成的类型描述的是 REST API。对于 GraphQL，请像上面那样自行传入结果类型，或者针对该端点使用 GraphQL 代码生成器。参见 [GraphQL](/zh-cn/api/graphql/)。
+
+## 错误
+
+每个失败的请求都会以一个 `VerdinError` 拒绝，其中携带 API 以 Strapi 格式发送的错误：
+
+| 属性 | 示例 |
+| --- | --- |
+| `status` | `400`、`401`、`403`、`404`、`429` |
+| `name` | `ValidationError`、`UnauthorizedError`、`ForbiddenError`、`NotFoundError`、`RateLimitError`、`GraphQLError` |
+| `message` | 可读的描述。 |
+| `details` | 错误的详细信息，例如 `ValidationError` 中无效字段的列表。 |
+
+```ts
+import { VerdinError } from '@verdin/client';
+
+try {
+  const { data } = await verdin.collection('articles').findOne(id);
+  return data;
+} catch (error) {
+  if (error instanceof VerdinError && error.status === 404) return null;
+  throw error;
+}
+```
+
+## 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `url` | 服务器的源，例如 `https://cms.example.com`。必填。 |
+| `token` | API 令牌或终端用户的 JWT，以 `Authorization: Bearer …` 的形式发送。使用公开角色时省略。 |
+| `prefix` | 内容 API 前缀。默认为 `/api`；如果你修改过 [`[api].prefix`](/zh-cn/reference/configuration/)，请与之保持一致。 |
+| `fetch` | 用于替代全局 `fetch` 的实现。 |
+| `headers` | 随每个请求发送的额外请求头。 |
+
+## 服务端渲染和边缘运行时
+
+客户端只调用 `fetch`，因此无需修改即可在服务器组件、API 路由、构建脚本和边缘函数中运行。传入自定义的 `fetch`，即可为每个请求添加框架的缓存选项。例如在 Next.js 中：
+
+```ts title="src/verdin.ts"
+export const verdin = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  token: process.env.VERDIN_TOKEN,
+  fetch: (input, init) => fetch(input, { ...init, next: { revalidate: 60, tags: ['verdin'] } }),
+});
+```
+
+要在预览页面上读取草稿，请把管理后台放入预览 URL 中的预览令牌作为请求头发送：
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: process.env.VERDIN_URL!,
+  headers: { 'x-verdin-preview': searchParams.get('preview') ?? '' },
+});
+const { data } = await preview.collection('articles').findOne(id, { status: 'draft' });
+```
+
+预览链接的工作方式请参见[预览](/zh-cn/guides/content/preview/)；如需在同一页面上添加点击即编辑，请参见[可视化编辑](/zh-cn/guides/frontend/visual-editing/)。
+
+从其他源上的浏览器调用 API 时，需要把该源加入 [`[api].cors_origins`](/zh-cn/reference/configuration/)。

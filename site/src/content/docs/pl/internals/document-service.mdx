@@ -1,0 +1,92 @@
+---
+title: Document Service
+description: Jedyne wewnętrzne API, które czyta i zapisuje treść w Verdin, co gwarantuje przy każdym zapisie i jaką drogę przechodzi żądanie API treści, zanim do niego dotrze.
+sidebar:
+  order: 5
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Document Service (`DocumentService` w `crates/verdin-content/src/service.rs`) to jedyny kod, który czyta i zapisuje wiersze treści. API treści, API administracyjne, GraphQL, MCP, wtyczki, importy i mapa witryny przechodzą przez niego, więc walidacja, szkice i publikacja, reguły relacji i zdarzenia działają tak samo niezależnie od API, które wykonało wywołanie. Jak Document Service w Strapi v5 pracuje na dokumentach (identyfikowanych przez `documentId`), a nie na wierszach.
+
+## API
+
+Główne metody (w uproszczeniu; dokładne typy są w źródłach):
+
+| Metoda | Działanie |
+|---|---|
+| `find_many(uid, &Query) -> Page` | Strona dokumentów, z `meta` w formie stron lub przesunięcia |
+| `find_one(uid, document_id, &Query) -> Option<Json>` | Jeden dokument w statusie i języku zapytania |
+| `single_document_id(uid)` | Dokument pojedynczego typu, jeśli istnieje |
+| `create(uid, &data, WriteOptions) -> String` | Tworzy dokument i zwraca jego `documentId` |
+| `update(uid, document_id, &data, WriteOptions)` | Częściowa aktualizacja szkicu (lub jedynej wersji); w razie potrzeby tworzy nową wersję językową |
+| `delete(uid, document_id)` | Usuwa wszystkie wersje dokumentu w bieżącym języku |
+| `publish(uid, document_id, actor)` | Kopiuje szkic do opublikowanej wersji |
+| `unpublish(uid, document_id)` | Usuwa opublikowaną wersję |
+| `discard_draft(uid, document_id)` | Zastępuje szkic opublikowaną wersją |
+| `uid_availability(…)` | Czy wartość `uid` jest wolna, z propozycją wolnej |
+| `document_locales`, `timeline`, `usage`… | Pomocnicze dla panelu administracyjnego |
+
+`WriteOptions` ma dwa pola: `publish` (publikuj po zapisie, w typach ze szkicami i publikacją) i `actor` (administrator zapisywany w `created_by_id` / `updated_by_id`).
+
+Serwis to tania do sklonowania wartość konfigurowana metodami buildera: `in_locale(locale)` dla typów lokalizowanych, `with_listener`, `with_hook`, `dry_run()` (pełna walidacja zapisu i jego wycofanie, używane w próbnych przebiegach importu) i `without_plugin_hooks()` (dla zapisów wykonywanych przez same wtyczki).
+
+Nie wie, kto wywołuje. Uprawnienia stosuje warstwa API przed wywołaniem: odrzuca akcje, których wywołujący nie ma, ogranicza, przez które typy zapytanie może wypełniać lub filtrować, i dodaje do zapytania filtry warunków (np. warunek „własne wpisy” roli **Author** staje się `created_by_id = <admin id>`). Filtry są częścią SQL, więc paginacja i liczniki pozostają dokładne.
+
+## Co robi każdy zapis
+
+1. **Hooki.** Najpierw, po kolei, działają `DocumentHook`-i: etapy przepływu recenzji, potem wtyczki. Hook może zastąpić dane lub odrzucić zapis, co staje się `400`. Używają nazw cyklu życia ze Strapi (`beforeCreate`, `beforeUpdate`, `beforeDelete`, `beforePublish`, `beforeUnpublish`, `beforeDiscardDraft`).
+2. **Walidacja danych wejściowych** (`input.rs`): nieznane klucze, pola systemowe (`id`, `documentId`, znaczniki czasu) i strony odwrotne relacji (`mappedBy`) to błędy; każda wartość jest sprawdzana względem typu atrybutu i ograniczeń (`min`, `max`, `minLength`, `maxLength`, `regex`, wartości wyliczenia, liczność relacji, `allowedTypes` multimediów); komponenty i strefy dynamiczne są walidowane rekurencyjnie; wartości `password` są hashowane argon2.
+3. **Odwołania.** Powiązane dokumenty i pliki multimediów muszą istnieć, co jest sprawdzane wewnątrz transakcji.
+4. **Wiersze i powiązania**, w jednej transakcji: wiersz jest wstawiany lub aktualizowany, a potem przepisywane są jego tabele powiązań relacji, relacji polimorficznych i multimediów (pozycje numerowane od nowa 1..n). Powiązanie celu `oneToOne` lub `oneToMany` odbiera go innym dokumentom w tym samym stanie.
+5. **Pola wymagane i reguły.** Gdy wersja zostaje opublikowana albo przy każdym zapisie do typów bez szkiców i publikacji sprawdzane są atrybuty `required` (także wewnątrz komponentów i stref dynamicznych) i reguły walidacji między polami. Błąd wycofuje cały zapis.
+6. **Unikalność** egzekwują zawężone unikalne indeksy. Naruszenie jest mapowane z powrotem na atrybut i zgłaszane jako `ValidationError`, bez wyścigów.
+7. **Commit, potem zdarzenia.** Po zatwierdzeniu transakcji serwis wywołuje każdy `DocumentListener` z `DocumentEvent` (`entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete`), niosącym uid, `documentId`, język i wykonawcę.
+
+Błędy walidacji używają formatu Strapi: listy `{ path, message, name: "ValidationError" }`, gdzie `path` wskazuje miejsce w danych (`["seo", "metaTitle"]`, `["blocks", 2, "text"]`). Panel administracyjny mapuje je z powrotem na swoje pola.
+
+Listenery utrzymują stan pochodny w zgodzie z treścią bez kodu w poszczególnych handlerach: webhooki, historia treści, cache odpowiedzi, hooki wtyczek po zapisie, dziennik audytu, zdarzenia czasu rzeczywistego, komentarze i zadania, znaczniki „przejrzane”, czyszczenie CDN i indeks wyszukiwania. Listener, który zawiedzie, loguje własny błąd; zapis już się powiódł. Ponieważ listenery działają po commicie, próbny przebieg nigdy do nich nie dociera.
+
+## Odczyty
+
+Odczyt wybiera wiersze w żądanym statusie i języku, stosuje filtry i sortowanie w SQL, a potem wypełnia to, o co poproszono:
+
+- **Relacje** są ładowane zbiorczymi zapytaniami, jednym na relację i poziom (`WHERE … IN (…)`, w porcjach po 500 identyfikatorów), nigdy kaskadowymi złączeniami. Unika to zarówno eksplozji iloczynu kartezjańskiego, jak i zapytań N+1. Wypełnianych jest najwyżej 1000 powiązanych wpisów na wpis i relację; liczniki pozostają dokładne.
+- Cele są odczytywane w tej samej wersji co źródło: opublikowane dokumenty widzą opublikowane cele, szkice widzą szkice.
+- **Komponenty i strefy dynamiczne** pochodzą z kolumny JSON; relacje i multimedia wewnątrz nich są rozwiązywane tymi samymi zbiorczymi zapytaniami.
+- **Wyszukiwanie `_q`** używa indeksu Tantivy, gdy `[search]` jest włączone, a w przeciwnym razie `$containsi` bez rozróżniania wielkości liter po polach tekstowych.
+
+Jak wygląda wynik (płaskie dokumenty, formaty wartości, składnia `populate`, limity), opisuje [API REST](/pl/api/rest/).
+
+## Cykl życia żądania API treści
+
+<Diagram
+  caption="Żądanie GET /api/articles, od gniazda do bazy danych"
+  code={`sequenceDiagram
+  participant C as Klient
+  participant L as Wspólne warstwy
+  participant H as handlers.rs
+  participant Q as verdin-query
+  participant D as Document Service
+  participant DB as Baza danych
+  C->>L: GET /api/articles?filters…
+  L->>H: IP klienta, identyfikator żądania, CORS, limity, cache
+  H->>H: routing po pluralName, autoryzacja tokenu lub roli publicznej
+  H->>Q: parsowanie i walidacja względem schematu
+  Q-->>H: typowane Query
+  H->>D: find_many(uid, query)
+  D->>DB: SELECT … WHERE … ORDER BY … LIMIT
+  D->>DB: jedno zbiorcze zapytanie na wypełnianą relację
+  D-->>H: dokumenty i meta strony
+  H-->>C: { data, meta }`}
+/>
+
+1. **Wspólne warstwy** (od najbardziej zewnętrznej): rozwiązywany jest adres klienta (z `X-Forwarded-For` tylko od `[server].trusted_proxies`), metryki liczą żądanie, gdy są włączone, ustawiany jest identyfikator żądania propagowany jako `x-request-id`, tracing otwiera span, a CORS dotyczy API treści i GraphQL, gdy ustawiono `[api].cors_origins`.
+2. **Warstwy API treści**: limity żądań per klient, `ETag` i opcjonalny cache anonimowych odczytów, limit rozmiaru treści (`[server].body_limit`) i limit czasu żądania, tagi cache CDN w odpowiedziach.
+3. **Routing.** Segment ścieżki jest wyszukiwany wśród `pluralName` typów zawartości (typy kolekcji) i `singularName` (pojedyncze typy). Nieznane nazwy dają `404`.
+4. **Autoryzacja** (`verdin-auth`). Brak nagłówka `Authorization` oznacza rolę publiczną; `Bearer vd_…` to token API. Niepoprawny lub wygasły token to `401`, nigdy rola publiczna. Akcja trasy (`find`, `findOne`, `create`, `update`, `delete`, `publish`) musi być przyznana dla typu, w przeciwnym razie odpowiedzią jest `403`.
+5. **Parsowanie zapytania** (`verdin-query`). Surowy query string jest parsowany do drzewa nawiasów (najwyżej 16 KB, 12 poziomów, 1000 par), a potem do typowanego `Query` walidowanego względem pól typu: nieznane i `private` pola to `400`, a populate, filtry i sortowanie przez relacje są ograniczone do typów, które wywołujący może czytać. Odczyt `?status=draft` wymaga też `readDrafts`.
+6. **Document Service.** Handler wywołuje `find_many`, `find_one`, `create`, `update`, `delete` lub akcję. Zapisy bez `?status=draft` publikują w typach ze szkicami i publikacją (zachowanie Strapi v5) i odczytują zapisaną wersję na potrzeby odpowiedzi.
+7. **Odpowiedź.** `{ "data": …, "meta": … }`. Błędy używają tej samej koperty z `data: null` i obiektem `error`.
+
+Trasy API administracyjnego przechodzą tę samą drogę z sesją administratora zamiast tokenu API, RBAC administratorów zamiast uprawnień API treści i domyślnym pierwszeństwem szkiców: czytają szkice i zapisują tylko szkice, a publikacja jest jawną akcją. GraphQL tłumaczy swoje argumenty na to samo drzewo parametrów przed krokiem 5, więc dzieli parser, limity i reguły uprawnień.

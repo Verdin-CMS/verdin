@@ -1,0 +1,192 @@
+---
+title: Webhooks
+description: Llama a tus propios endpoints cuando cambian el contenido o los medios, comprueba que los envíos vienen de Verdin y gestiona los reintentos.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Los webhooks envían un `POST` HTTP a una URL tuya cuando cambian el contenido o los medios: para
+reconstruir un sitio estático, purgar una caché, sincronizar un índice de búsqueda o publicar en
+un chat. Los envíos se encolan, se firman, se reintentan y se registran.
+
+Esta página explica paso a paso cómo configurar uno y cómo recibirlo. Los eventos, los payloads y
+las cabeceras están en la [referencia de webhooks](/es/api/webhooks/).
+
+## Actívalos
+
+La funcionalidad **Webhooks** está activada por defecto; puedes desactivarla en
+**Configuración → Funcionalidades**. Gestionar webhooks necesita el permiso
+**Gestionar webhooks** (`webhooks.manage`). Consulta [Permisos](/es/reference/permissions/).
+
+## Crea un webhook
+
+<Steps>
+
+1. Ve a **Configuración → Webhooks** y elige **Nuevo webhook**.
+2. En **General**, dale un **Nombre** y la **URL** a la que debe llamar Verdin.
+3. En **Eventos**, elige los eventos que disparan un envío: **Entradas** (crear, actualizar,
+   publicar, despublicar, descartar el borrador, eliminar), **Multimedia**, **Lanzamientos**
+   (**Lanzamiento publicado**) y **Flujos de revisión** (**Etapa de la entrada cambiada**).
+4. En **Tipos de contenido**, deja **Todos los tipos de contenido** o elige algunos. Esto solo
+   filtra los eventos de entradas; los eventos de medios se envían igualmente.
+5. En **Cabeceras**, añade las cabeceras que necesite tu endpoint, como un token
+   `authorization` (**Añadir cabecera**). `content-type`, `host` y las cabeceras `x-verdin-*` las
+   define Verdin.
+6. En **Firma**, deja activado **Firmar envíos** (por defecto).
+7. Elige **Crear**. Verdin muestra una sola vez el secreto de firma (`whsec_…`): cópialo en la
+   configuración de tu endpoint.
+
+</Steps>
+
+**Activado** desactiva un webhook sin eliminarlo. Los webhooks desactivados no reciben eventos,
+pero se pueden seguir probando.
+
+## Pruébalo
+
+Elige **Enviar evento de prueba** en el webhook. Verdin envía en el acto:
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+El envío aparece en el **Registro de envíos** del webhook con su estado, el estado HTTP, la
+duración y el principio del cuerpo de la respuesta. Abre un envío para ver el payload completo y
+el error, si lo hay.
+
+Para recibir webhooks en tu máquina mientras desarrollas, ejecuta el servidor con `verdin dev`:
+permite las URLs `localhost`, que `verdin start` rechaza (consulta [Seguridad](#seguridad)).
+
+## Recibe un envío
+
+Un envío es un `POST` con un cuerpo JSON y estas cabeceras:
+
+| Cabecera | Valor |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | El nombre del evento, como `entry.publish`. |
+| `x-verdin-delivery` | El id del envío. Se mantiene igual en los reintentos: úsalo para descartar duplicados. |
+| `x-verdin-signature` | `t=<unix seconds>,v1=<hex>`, en los webhooks firmados. |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+Responde rápido con cualquier estado `2xx`. Haz el trabajo lento (una reconstrucción completa)
+después de responder, o ponlo en cola: un envío que tarda más que el tiempo de espera (10 segundos
+por defecto) cuenta como fallido.
+
+### Verifica la firma
+
+`v1` es el HMAC-SHA256 de `"<t>.<raw body>"`, con el secreto del webhook como clave. Para
+comprobar un envío:
+
+1. Vuelve a calcular el HMAC sobre el cuerpo **sin procesar** de la petición, no sobre el JSON
+   vuelto a serializar.
+2. Compáralo con `v1` en tiempo constante.
+3. Rechaza las marcas de tiempo de hace más de unos minutos, para que no se pueda reenviar un
+   envío capturado.
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+Con Express, conserva el cuerpo sin procesar:
+`app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)` y pasa
+`req.body.toString()`.
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+`crypto.subtle.verify` compara en tiempo constante.
+
+</TabItem>
+</Tabs>
+
+**Rotar secreto** genera un secreto nuevo (que se muestra una vez); el anterior deja de funcionar
+al momento. **Dejar de firmar** elimina el secreto y envía los envíos sin firmar.
+
+## Reintentos
+
+Los envíos se guardan en la base de datos cuando se confirma el cambio y los manda un proceso en
+segundo plano, así que un endpoint lento nunca ralentiza a los editores.
+
+- **Éxito:** cualquier respuesta `2xx`.
+- **Fallo:** cualquier otra cosa, incluidas las redirecciones (que no se siguen), los errores de
+  conexión y los tiempos de espera agotados.
+- **Reintentos:** un envío fallido se reintenta a los 30 segundos, 2 minutos, 10 minutos, 1 hora
+  y 6 horas. Después se marca como **Fallido**.
+
+Elige **Reintentar** en un envío del registro para volver a mandarlo ahora. El registro se
+conserva 30 días. Como los reintentos reutilizan el mismo `x-verdin-delivery`, haz que tu
+manejador sea idempotente: guarda los ids que has procesado, o haz que el trabajo se pueda
+repetir sin problemas.
+
+## Seguridad
+
+Con `verdin start`, las URLs de los webhooks no pueden apuntar a direcciones de loopback,
+privadas, de enlace local u otras reservadas, incluidos los nombres de host que resuelven a una
+de ellas. Así un administrador no puede usar los webhooks para llegar a servicios internos
+(SSRF). Las credenciales en la URL (`https://user:pass@…`) se rechazan; envíalas en una cabecera.
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+Consulta [`[webhooks]`](/es/reference/configuration/).
+
+## Si vienes de Strapi
+
+Los webhooks de Verdin siguen los eventos y los payloads de Strapi, con estas diferencias:
+
+- los envíos se firman, se reintentan y se registran;
+- un webhook se puede limitar a algunos tipos de contenido;
+- el `entry.draft-discard` de Strapi se llama `entry.discard-draft`.
+
+Para reconstruir un sitio estático desde el panel con un botón en lugar de con cada cambio,
+consulta [Despliegues y CDN](/es/guides/integrations/deploys-and-cdn/).

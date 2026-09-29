@@ -1,0 +1,401 @@
+---
+title: 'درس: مدونة باستخدام Next.js'
+description: ابنِ مدونة صغيرة بـ Next.js App Router على مخطط Verdin المثالي، مع استعلامات مُنمَّطة، وصفحات مقالات حسب الـ slug، وتصنيفات، ومعاينة اختيارية للمسودات.
+sidebar:
+  order: 4
+  label: مدونة باستخدام Next.js
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+في هذا الدرس تبني مدونة باستخدام [Next.js](https://nextjs.org) وApp Router
+تقرأ محتواها من Verdin: صفحة رئيسية تسرد المقالات، وصفحة لكل مقالة
+على `/articles/<slug>` مع تصنيفها، واختياريًا، صفحة تعرض المسودات من
+رابط المعاينة في لوحة الإدارة. تستخدم العميل المُنمَّط `@verdin/client` مع أنواع مولّدة من
+المخطط، في Server Components.
+
+كُتب لـ Next.js 16.3 (`create-next-app` 16.3) وReact 19.2 وNode.js 20.9 أو أحدث،
+مع Verdin و`@verdin/client` 0.10. يستخدم التخزين المؤقت الافتراضي في Next.js، دون
+`cacheComponents`. يبني [درس Astro](/ar/start/tutorial-astro/) المدونة نفسها باستخدام
+Astro.
+
+## قبل أن تبدأ
+
+تحتاج إلى الملف التنفيذي `verdin` في `PATH` الخاص بك (راجع [البدء السريع](/ar/start/quickstart/))،
+وNode.js وGit. ستحصل في النهاية على مجلدين متجاورين: `cms`، مشروع Verdin، و
+`blog`، تطبيق Next.js.
+
+## 1. أعِدّ Verdin بمخطط المدونة
+
+ينمذج المشروع [`examples/blog`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog)
+في المستودع مدونة: مقالات بعنوان، و`slug`، ومقتطف، و`body` بصيغة Markdown، و
+تصنيف ووسوم، بالإضافة إلى نوع مفرد للصفحة الرئيسية وبعض المكوّنات.
+
+<Steps>
+
+1. أنشئ مشروع Verdin وانسخ المخطط المثالي إليه:
+
+   ```sh title="Terminal"
+   git clone --depth 1 https://github.com/Verdin-CMS/verdin.git
+   verdin new cms
+   cp verdin/examples/blog/schema/content-types/{article,category,tag,homepage}.json cms/schema/content-types/
+   cp -r verdin/examples/blog/schema/components/* cms/schema/components/
+   ```
+
+2. شغّله:
+
+   ```sh title="Terminal"
+   cd cms
+   verdin dev
+   ```
+
+   ينشئ التشغيل الأول جداول أنواع المحتوى الأربعة.
+
+3. افتح [http://localhost:1337/admin/](http://localhost:1337/admin/) وأنشئ المسؤول الأول.
+
+4. تحت **المجموعات**، افتح **Category**، واختر **إدخال جديد**، وسمّه `News` واحفظ.
+
+5. افتح **Article**، واختر **إدخال جديد**، واملأ عنوانًا ومقتطفًا وجسمًا بـ
+   Markdown. يُولَّد الـ `slug` من العنوان. اختر `News` تصنيفًا واختر
+   **نشر**. أضف مقالة ثانية بالطريقة نفسها.
+
+6. افتح **الإعدادات ← الوصول العام**، واسمح بـ **بحث** و**بحث عن واحد** لـ **Article** و
+   **Category**، واختر **حفظ**.
+
+</Steps>
+
+تحقق من أن الـ API يجيب:
+
+```sh title="Terminal"
+curl 'localhost:1337/api/articles?populate=category'
+```
+
+<Aside>
+تعبئة علاقة تحتاج إلى صلاحية القراءة على هدفها. بدون **بحث** على **Category**،
+يجيب `populate=category` بـ `400` مع ``invalid key `category` in populate``.
+</Aside>
+
+## 2. أنشئ تطبيق Next.js
+
+في طرفية جديدة، بجوار `cms`:
+
+```sh title="Terminal"
+npx create-next-app@latest blog --ts --app --src-dir --no-tailwind --no-eslint --no-react-compiler --import-alias '@/*' --yes
+cd blog
+npm install @verdin/client marked
+```
+
+يحوّل [`marked`](https://marked.js.org) الـ Markdown في الحقل `body` إلى HTML.
+
+## 3. ولّد الأنواع
+
+يقرأ `verdin types` المخطط ويكتب واجهة TypeScript لكل نوع محتوى و
+مكوّن، وخريطة `VerdinSchema` للمسارات من أجل العميل. شغّله من `blog`، مشيرًا
+إلى تهيئة مشروع Verdin:
+
+```sh title="Terminal"
+verdin types -c ../cms/verdin.toml -o src/verdin-types.ts
+```
+
+يحتوي الملف، من بين أشياء أخرى، على:
+
+```ts title="src/verdin-types.ts"
+export interface Article extends DocumentBase {
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  body: string | null;
+  // …
+  category?: Category | null;
+  tags?: Tag[];
+}
+```
+
+العلاقات والوسائط والمكوّنات اختيارية لأن الـ API لا يعيدها إلا عندما
+تعبّئها. شغّل الأمر من جديد كلما تغيّر المخطط.
+
+## 4. اتصل بـ Verdin
+
+ضع عنوان URL للخادم في `.env.local`:
+
+```sh title=".env.local"
+VERDIN_URL=http://localhost:1337
+# VERDIN_TOKEN=…
+```
+
+بدون رمز يقرأ العميل بصفة الدور العام، وهو ما فتحته في الخطوة 1.
+للقراءة برمز بدلًا من ذلك، أنشئ رمزًا **للقراءة فقط** في **الإعدادات ← رموز API** و
+عيّن `VERDIN_TOKEN`. يبقى المتغيران على الخادم: فليس لهما البادئة `NEXT_PUBLIC_`،
+ولا يعمل العميل إلا في Server Components.
+
+أنشئ العميل مرة واحدة وشاركه:
+
+```ts title="src/lib/verdin.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from '@/verdin-types';
+
+const url = process.env.VERDIN_URL ?? 'http://localhost:1337';
+
+export const verdin = createClient<VerdinSchema>({
+  url,
+  token: process.env.VERDIN_TOKEN,
+});
+```
+
+لم يعد `verdin.collection('articles')` يقبل إلا مسارات مخططك، ونتائجه
+مُنمَّطة كـ `Article`.
+
+## 5. استبدل التخطيط
+
+استبدل التخطيط الابتدائي، واحذف `src/app/page.module.css`، الذي لا تستخدمه الصفحات الجديدة:
+
+```tsx title="src/app/layout.tsx"
+import type { Metadata } from 'next';
+import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'My blog',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <header>
+          <Link href="/">My blog</Link>
+        </header>
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+```
+
+## 6. اسرد المقالات
+
+```tsx title="src/app/page.tsx"
+import Link from 'next/link';
+import { verdin } from '@/lib/verdin';
+
+export const revalidate = 60;
+
+export default async function Home() {
+  const { data: articles } = await verdin.collection('articles').find({
+    fields: ['title', 'slug', 'excerpt', 'publishedAt'],
+    populate: { category: { fields: ['name'] } },
+    sort: ['publishedAt:desc'],
+  });
+
+  return (
+    <>
+      <h1>Articles</h1>
+      <ul>
+        {articles.map((article) => (
+          <li key={article.documentId}>
+            <Link href={`/articles/${article.slug}`}>{article.title}</Link>
+            {article.category && <small> in {article.category.name}</small>}
+            {article.excerpt && <p>{article.excerpt}</p>}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+```
+
+الاستعلام هو استدعاء REST
+`GET /api/articles?fields[0]=title&…&populate[category][fields][0]=name&sort[0]=publishedAt:desc`،
+بصيغة Strapi v5. يُبقي `fields` الاستجابة صغيرة، ويضيف `populate` التصنيف
+باسمه فقط. لا يقرأ الدور العام إلا المقالات المنشورة.
+
+يعرض `revalidate = 60` الصفحة مسبقًا وقت البناء ويحدّثها مرة في الدقيقة على الأكثر
+بعد ذلك، فتظهر التغييرات المنشورة دون إعادة بناء.
+
+## 7. أضف صفحة لكل مقالة
+
+تعثر صفحة المقالة على مقالتها حسب الـ slug بعامل تصفية. يعرض `generateStaticParams`
+المقالات الموجودة مسبقًا؛ وتُعرض المقالات المنشورة لاحقًا عند أول زيارة لها.
+
+```tsx title="src/app/articles/[slug]/page.tsx"
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { marked } from 'marked';
+import { verdin } from '@/lib/verdin';
+
+export const revalidate = 60;
+
+type Props = { params: Promise<{ slug: string }> };
+
+async function getArticle(slug: string) {
+  const { data } = await verdin.collection('articles').find({
+    filters: { slug: { $eq: slug } },
+    populate: { category: true },
+    pagination: { pageSize: 1 },
+  });
+  return data[0];
+}
+
+export async function generateStaticParams() {
+  const { data: articles } = await verdin.collection('articles').find({
+    fields: ['slug'],
+    pagination: { pageSize: 100 },
+  });
+  return articles.map((article) => ({ slug: article.slug }));
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const article = await getArticle((await params).slug);
+  return { title: article?.title };
+}
+
+export default async function ArticlePage({ params }: Props) {
+  const article = await getArticle((await params).slug);
+  if (!article) notFound();
+  const html = await marked.parse(article.body ?? '');
+
+  return (
+    <article>
+      <h1>{article.title}</h1>
+      {article.category && <p>Category: {article.category.name}</p>}
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </article>
+  );
+}
+```
+
+في Next.js 16، `params` وعد (promise): انتظره قبل قراءة الـ slug. الـ slug غير المعروف
+لا يعثر على مقالة ويجيب بـ 404 عبر `notFound()`. `pageSize` محدود بـ
+`[api].max_page_size` (100 افتراضيًا).
+
+<Aside type="caution">
+لا يعقّم `marked` الـ HTML. هذا مقبول لـ Markdown يكتبه محرروك؛ أما إذا
+كان المحتوى قد يأتي من أشخاص غير موثوقين، فعقّم الـ HTML قبل عرضه.
+</Aside>
+
+## 8. شغّله
+
+```sh title="Terminal"
+npm run dev
+```
+
+افتح [http://localhost:3000](http://localhost:3000): تعرض القائمة مقالاتك المنشورة، وكل منها يرتبط بـ
+صفحته. يحتاج `npm run build` إلى أن يكون Verdin قيد التشغيل، لأنه يجلب المقالات لـ
+عرضها مسبقًا.
+
+لتحديث الصفحات فور تغيّر المحتوى بدلًا من خلال دقيقة، استدعِ
+`revalidatePath` من معالج مسار يطلقه webhook من Verdin؛ راجع
+[Webhooks](/ar/guides/integrations/webhooks/).
+
+يبدو مشروعك الآن هكذا:
+
+<FileTree>
+- blog/
+  - .env.local
+  - src/
+    - verdin-types.ts يولّده `verdin types`
+    - lib/
+      - verdin.ts
+    - app/
+      - layout.tsx
+      - page.tsx
+      - articles/
+        - [slug]/
+          - page.tsx
+</FileTree>
+
+## 9. اختياري: معاينة المسودات
+
+يستطيع المسؤول فتح مسودة على موقعك برمز معاينة قصير الأمد. يقرأ الرمز
+ذلك المستند وحده، بما في ذلك المسودات، ولا شيء غيره.
+
+أضف عميلًا يرسل رمز المعاينة في الترويسة `x-verdin-preview`:
+
+```ts title="src/lib/verdin.ts" ins={11-17}
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from '@/verdin-types';
+
+const url = process.env.VERDIN_URL ?? 'http://localhost:1337';
+
+export const verdin = createClient<VerdinSchema>({
+  url,
+  token: process.env.VERDIN_TOKEN,
+});
+
+/** A client that reads one draft with the preview token from the admin's link. */
+export function previewClient(previewToken: string) {
+  return createClient<VerdinSchema>({
+    url,
+    headers: { 'x-verdin-preview': previewToken },
+  });
+}
+```
+
+ثم الصفحة. تقرأ `searchParams`، فيعرضها Next.js مع كل طلب؛ ويصل الرمز
+كمعامل الاستعلام `preview`:
+
+```tsx title="src/app/preview/[documentId]/page.tsx"
+import { VerdinError } from '@verdin/client';
+import { notFound } from 'next/navigation';
+import { marked } from 'marked';
+import { previewClient } from '@/lib/verdin';
+
+type Props = {
+  params: Promise<{ documentId: string }>;
+  searchParams: Promise<{ preview?: string }>;
+};
+
+export default async function PreviewPage({ params, searchParams }: Props) {
+  const { documentId } = await params;
+  const { preview } = await searchParams;
+  if (!preview) notFound();
+
+  let article;
+  try {
+    ({ data: article } = await previewClient(preview)
+      .collection('articles')
+      .findOne(documentId, { status: 'draft', populate: { category: true } }));
+  } catch (error) {
+    if (error instanceof VerdinError) {
+      return <p>This preview link is invalid or has expired.</p>;
+    }
+    throw error;
+  }
+  const html = await marked.parse(article.body ?? '');
+
+  return (
+    <article>
+      <p>
+        <strong>Draft preview</strong>
+      </p>
+      <h1>{article.title}</h1>
+      {article.category && <p>Category: {article.category.name}</p>}
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </article>
+  );
+}
+```
+
+لا يستطيع رمز المعاينة سرد الإدخالات، لذا تبحث الصفحة عن المسودة بـ `documentId`
+لا بالـ slug. أخبر الآن Verdin بمكان الصفحة:
+
+<Steps>
+
+1. في لوحة الإدارة، افتح **الإعدادات ← الميزات**، وفعّل **المعاينة** واختر
+   **إعداد عناوين URL للمعاينة**.
+2. عيّن قالب عنوان URL لـ **Article** إلى `http://localhost:3000/preview/{documentId}` و
+   احفظ. يُلحق Verdin الرمز على شكل `?preview=…`.
+3. افتح مقالة، وغيّرها واختر **حفظ المسودة**، ثم اختر **فتح المعاينة**.
+
+</Steps>
+
+تعرض الصفحة المسودة. تدوم الروابط 60 دقيقة افتراضيًا. راجع
+[المعاينة](/ar/guides/content/preview/) للعناصر النائبة والإعدادات، و
+[التحرير المرئي](/ar/guides/frontend/visual-editing/) للتحرير من المعاينة.
+
+## الخطوات التالية
+
+- [العميل المُنمَّط](/ar/guides/frontend/typed-client/): كل طرق `@verdin/client`.
+- [REST API](/ar/api/rest/): عوامل التصفية، والترتيب، والتقسيم إلى صفحات، و`populate`.
+- [الصور](/ar/guides/frontend/images/): الصيغ المتجاوبة لمكتبة الوسائط.
+- [SEO وخريطة الموقع](/ar/guides/frontend/seo-and-sitemap/): المكوّن `shared.seo` و
+  خريطة الموقع في Verdin.

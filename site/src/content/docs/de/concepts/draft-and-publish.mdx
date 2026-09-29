@@ -1,0 +1,137 @@
+---
+title: "Entwurf und Veröffentlichung"
+description: "Dokumente, ihre Entwurfs- und veröffentlichten Versionen, die Zustände eines Eintrags und wie jede API sie liest und schreibt."
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+
+
+Mit Entwurf und Veröffentlichung arbeiten Redakteure an einem Dokument, ohne zu ändern, was
+deine Website zeigt, und veröffentlichen es, wenn es fertig ist. Diese Seite erklärt das
+Modell: Dokumente, Versionen, die Aktionen, die Inhalte zwischen ihnen bewegen, und wie jede
+API damit umgeht. Es funktioniert wie in Strapi v5.
+
+Du schaltest es pro Inhaltstyp in seinem Schema ein:
+
+```json title="schema/content-types/article.json (excerpt)"
+"options": { "draftAndPublish": true }
+```
+
+Fehlt `options.draftAndPublish`, ist es aus.
+
+## Dokumente und Versionen
+
+Ein **Dokument** ist ein Eintrag, identifiziert durch seine `documentId`. Mit Entwurf und
+Veröffentlichung hat ein Dokument bis zu zwei **Versionen**:
+
+- einen **Entwurf**, den jede Bearbeitung ändert, und
+- eine **veröffentlichte** Version, die die Content-API standardmäßig ausliefert.
+
+Bei einem [lokalisierten](/de/concepts/internationalization/) Typ hat jede Sprache ihren
+eigenen Entwurf und ihre eigene veröffentlichte Version, alle mit derselben `documentId`.
+
+Typen ohne Entwurf und Veröffentlichung haben eine einzige Version pro Sprache, die immer
+veröffentlicht ist: Jeder Schreibvorgang ändert, was Leser sehen.
+
+## Zustände
+
+Das Admin-Panel zeigt den Zustand jedes Eintrags in der Liste und im Editor:
+
+| Zustand | Entwurf | Veröffentlichte Version | Was Leser veröffentlichter Inhalte sehen |
+| --- | --- | --- | --- |
+| **Entwurf** | ja | keine | Nichts: Das Dokument ist nicht sichtbar. |
+| **Veröffentlicht** | gleich der veröffentlichten | ja | Die veröffentlichte Version. |
+| **Geändert** | seit der letzten Veröffentlichung geändert | ja | Die veröffentlichte Version, ohne die neuen Änderungen. |
+
+<Diagram
+  caption="Zustände eines Dokuments mit Entwurf und Veröffentlichung und die Aktionen dazwischen"
+  code={`stateDiagram-v2
+    [*] --> Draft: anlegen
+    Draft --> Published: veröffentlichen
+    Published --> Modified: speichern
+    Modified --> Published: veröffentlichen oder Änderungen verwerfen
+    Published --> Draft: zurückziehen
+    Modified --> Draft: zurückziehen`}
+/>
+
+Die Aktionen bewegen ein Dokument zwischen diesen Zuständen:
+
+| Aktion | Wirkung | Von → nach |
+| --- | --- | --- |
+| Speichern | Schreibt den Entwurf. | Entwurf → Entwurf, Veröffentlicht → Geändert |
+| **Veröffentlichen** | Kopiert den Entwurf auf die veröffentlichte Version und legt sie bei Bedarf an. | Entwurf oder Geändert → Veröffentlicht |
+| **Veröffentlichung zurücknehmen** | Löscht die veröffentlichte Version; der Entwurf bleibt. | Veröffentlicht oder Geändert → Entwurf |
+| **Änderungen verwerfen** | Ersetzt den Entwurf durch eine Kopie der veröffentlichten Version. | Geändert → Veröffentlicht |
+| Löschen | Entfernt alle Versionen (bei lokalisierten Typen die der angefragten Sprache). | beliebig → weg |
+
+Veröffentlichen läuft in einer Transaktion. Es prüft `required`-Felder und die
+[feldübergreifenden Regeln](/de/concepts/content-model/#feldübergreifende-validierungen) des
+Typs am Entwurf; scheitert die Prüfung, wird nichts veröffentlicht. Bis dahin dürfen Entwürfe
+unvollständig sein und diese Regeln verletzen.
+
+`publishedAt` ist bei Entwürfen `null`. Die veröffentlichte Version trägt den Zeitpunkt ihrer
+letzten Veröffentlichung.
+
+## Relationen und Medien folgen der Version
+
+Jede Version hat ihre eigenen Relations- und Medienverknüpfungen, und Veröffentlichen kopiert
+die Verknüpfungen des Entwurfs auf die veröffentlichte Version. Verknüpfungen zeigen auf
+Dokumente und werden in der gelesenen Version aufgelöst: Ein veröffentlichter Artikel zeigt die
+veröffentlichte Version seiner Kategorie, ein Entwurf den Entwurf der Kategorie. Wird die
+Kategorie zurückgezogen, verschwindet sie aus dem veröffentlichten Artikel, bis sie wieder
+veröffentlicht ist, ohne dass eine Verknüpfung umgeschrieben wird. Siehe
+[Relationen](/de/concepts/relations/#verknüpft-über-das-dokument-nicht-über-die-zeile).
+
+Komponenten und Dynamic Zones gehören zur Zeile, Veröffentlichen kopiert sie also, wie sie
+sind.
+
+## Entwürfe und veröffentlichte Inhalte lesen
+
+| API | Liest standardmäßig | Um Entwürfe zu lesen |
+| --- | --- | --- |
+| [REST](/de/api/rest/#status) | Veröffentlichte Versionen | `?status=draft`, was die Berechtigung **Entwürfe lesen** braucht |
+| [GraphQL](/de/api/graphql/) | Veröffentlichte Versionen | `status: DRAFT`, mit derselben Berechtigung |
+| [Admin-API](/de/api/admin/) | Entwürfe | `?status=published` |
+
+Entwürfe lesen ist eine eigene Berechtigung (`readDrafts`), damit ein Token, das die Inhalte
+deiner Website liest, keine unveröffentlichte Arbeit lesen kann. Read-only-API-Tokens lesen
+nie Entwürfe.
+
+Um Dokumente danach zu unterscheiden, ob sie je veröffentlicht wurden, filtere mit
+`hasPublishedVersion`: `?status=draft&hasPublishedVersion=false` listet Dokumente, die nie
+veröffentlicht wurden.
+
+## Schreiben über die APIs
+
+Beim Schreiben folgen die APIs Strapi v5:
+
+- **REST und GraphQL**: `create` und `update` schreiben den Entwurf **und veröffentlichen
+  ihn**, sofern die Anfrage nicht `status=draft` verlangt (`status: DRAFT` in GraphQL). Eine
+  gescheiterte Veröffentlichung macht die ganze Anfrage rückgängig.
+- **Das Admin-Panel und die Admin-API** speichern nur Entwürfe. Veröffentlichen ist immer
+  eine ausdrückliche Aktion.
+
+Die REST-API hat außerdem ausdrückliche Aktionen, die Strapi über REST nicht anbietet:
+
+```http
+POST /api/articles/{documentId}/actions/publish
+POST /api/articles/{documentId}/actions/unpublish
+POST /api/articles/{documentId}/actions/discard-draft
+```
+
+Sie brauchen die Berechtigung **Veröffentlichen** auf dem Typ. Siehe
+[REST-API](/de/api/rest/#aktionen).
+
+## Weitere Funktionen, die veröffentlichen
+
+- [Releases](/de/guides/content/releases/) bündeln Dokumente und veröffentlichen sie
+  gemeinsam oder ziehen sie gemeinsam zurück, sofort oder zu einem Termin.
+- [Review-Workflows](/de/guides/content/review-workflows/) können eine Phase verlangen, bevor
+  ein Dokument veröffentlicht werden darf.
+- Veröffentlichen und Zurückziehen senden die [Webhook-Events](/de/api/webhooks/)
+  `entry.publish` und `entry.unpublish` sowie [Echtzeit-Events](/de/api/realtime/). Das
+  Speichern eines Entwurfs sendet `entry.update`, das über Echtzeit nur Aufrufer bekommen, die
+  Entwürfe lesen dürfen.

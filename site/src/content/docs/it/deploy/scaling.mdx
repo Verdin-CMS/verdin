@@ -1,0 +1,118 @@
+---
+title: Eseguire più istanze
+description: Esegui più istanze Verdin dello stesso progetto dietro un load balancer — cosa condividono tramite il database, cosa resta per istanza, e le impostazioni da cambiare.
+sidebar:
+  order: 8
+  label: Più istanze
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Verdin tiene il suo stato nel database, quindi puoi eseguire più istanze dello stesso
+progetto dietro un load balancer per disponibilità o carico. Questa pagina elenca cosa
+condividono le istanze, cosa tiene ciascuna per sé, e le impostazioni che contano.
+
+<Diagram
+  caption="Le istanze condividono il database e lo storage dei media; cache, limiti di frequenza e stream di eventi restano in ogni istanza."
+  code={`flowchart LR
+  LB[Load balancer] --> A[Istanza 1]
+  LB --> B[Istanza 2]
+  LB --> C[Istanza 3]
+  A --> DB[(Database)]
+  B --> DB
+  C --> DB
+  A --> S3[(Media S3)]
+  B --> S3
+  C --> S3`}
+/>
+
+## Checklist
+
+- **Un database condiviso.** PostgreSQL, MySQL o MariaDB. SQLite è un file su una macchina
+  e non funziona con più istanze.
+- **La stessa configurazione ovunque.** Ogni istanza usa lo stesso `verdin.toml`, gli stessi
+  file dello schema e gli stessi segreti (`VERDIN_ADMIN_JWT_SECRET`, `VERDIN_TOKEN_PEPPER`,
+  `VERDIN_SSO_<ID>_SECRET`…). Con segreti diversi, sessioni e token API creati su
+  un'istanza vengono rifiutati dalle altre.
+- **Modalità produzione.** Esegui `verdin start`, non `verdin dev`. Modifica lo schema in
+  sviluppo, fai commit, e migra una volta per deploy.
+- **Storage dei media condiviso.** Usa il provider S3
+  (`[upload] provider = { name = "s3", … }`), o monta lo stesso volume su ogni istanza per il
+  provider locale.
+- **Health check.** Punta il load balancer su `GET /_ready`, che risponde `503` quando il
+  database non è raggiungibile. `GET /_health` dice solo che il processo è attivo; usalo per
+  la liveness.
+- **Job dei plugin su una sola istanza.** Imposta `[plugins].run_jobs = false` su tutte le
+  istanze tranne una; altrimenti ogni istanza esegue i job pianificati.
+- **Metriche per istanza.** Con `[metrics].enabled = true`, ogni istanza serve il proprio
+  `/_metrics`; fai lo scrape di ciascuna.
+
+## Migrazioni con più istanze
+
+`verdin start --migrate` può essere eseguito in sicurezza su tutte le istanze
+contemporaneamente. Ogni esecuzione di migrazione tiene un lock nel database (un advisory
+lock su PostgreSQL, `GET_LOCK` su MySQL e MariaDB, con un'attesa fino a 60 secondi), quindi
+la prima istanza applica i passaggi e le altre trovano il database già aggiornato.
+
+Durante un rolling deploy, le istanze della vecchia versione continuano a girare per un po'
+sul database migrato. I passaggi sicuri creano tabelle, aggiungono colonne nullable o con
+default e indici, allargano colonne di testo o aggiungono valori enum, cose di cui la
+vecchia versione non si accorge. Applica i passaggi rischiosi o distruttivi
+(`verdin migrate apply --allow risky|destructive`) in un deploy separato, quando nessuna
+istanza del vecchio schema ha più bisogno dei dati. Vedi
+[Migrazioni dello schema](/it/concepts/schema-migrations/).
+
+## Cosa è condiviso
+
+| Cosa | Come |
+| --- | --- |
+| Sessioni admin, token API, permessi | Nel database; non servono sessioni sticky. |
+| Interruttori delle funzionalità e dei plugin, lingue, flussi di revisione | Nel database. Ogni istanza li rilegge ogni `[server].sync_interval_secs` (10 s), quindi una modifica fatta su un'istanza raggiunge le altre entro quel ritardo. |
+| Invii dei webhook | Una coda nel database. Un'istanza prende in carico un invio prima di spedirlo, così ognuno parte una sola volta. |
+| Rilasci pianificati | Presi in carico nel database prima di essere eseguiti, così ognuno gira una sola volta. |
+| Digest giornaliero | L'esecuzione di ogni giorno viene presa in carico nel database, così gli admin ricevono una sola email. |
+| Challenge delle passkey | Le challenge usate vengono registrate nel database, così a ciascuna si risponde una sola volta tra le istanze. |
+| Pulizia del log di audit | Gira su ogni istanza; eliminare due volte le vecchie righe è innocuo. |
+| Key-value store dei plugin | Nel database. |
+
+## Cosa resta su ogni istanza
+
+- **I limiti di frequenza** vengono contati da ogni istanza. Con `n` istanze, un client può
+  fare fino a `n` volte `[api].public_rate_limit` richieste al minuto. Imponi un limite
+  globale sul load balancer se ti serve.
+- **La cache delle risposte anonime** (`[api].cache_ttl_secs`). Una scrittura svuota la
+  cache dell'istanza che l'ha fatta; le altre possono servire la risposta precedente finché
+  la loro voce non scade. Tieni il TTL a pochi secondi, o `0`.
+- **Eventi realtime e presenza** sono quelli dell'istanza a cui un client è connesso. Usa
+  sessioni sticky per gli stream di eventi (vedi [Tempo reale](/it/guides/frontend/realtime/)).
+- **L'indice di ricerca** (`[search]`) vive sul disco dell'istanza e segue solo le scritture
+  fatte da quell'istanza. Attivalo su un'istanza e instrada lì le richieste `_q`, oppure
+  accetta che le altre restino indietro finché non ripartono con una directory dell'indice
+  vuota.
+- **Le trasformazioni delle immagini** (`[upload.transforms]`) sono in cache per istanza sotto
+  `cache_dir`. Metti una CDN davanti a `/uploads` per condividerle.
+- **Job pianificati dei plugin**: vedi `run_jobs` sopra.
+
+## Impostazioni
+
+```toml title="verdin.toml"
+[server]
+# How often to read settings that other instances changed; 0 turns it off.
+sync_interval_secs = 10
+
+[plugins]
+# Run the plugins' scheduled jobs here (true on one instance only).
+run_jobs = true
+
+[api]
+# Short-lived when each instance keeps its own cache.
+cache_ttl_secs = 5
+```
+
+Imposta `run_jobs` per istanza con `VERDIN_PLUGINS__RUN_JOBS=false`.
+
+## Connessioni al database
+
+Ogni istanza apre fino a `[database].pool_max` connessioni (10 di default). Mantieni
+`instances × pool_max` sotto il limite del server, con margine per migrazioni, backup e
+manutenzione. Il limite di default di PostgreSQL è 100 connessioni.

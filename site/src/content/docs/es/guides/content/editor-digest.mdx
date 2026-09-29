@@ -1,0 +1,79 @@
+---
+title: Resumen para editores
+description: Recibe un correo diario con las entradas que han cambiado desde la última vez que las miraste, y elige qué instancia lo envía.
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+El resumen para editores es un correo diario que indica a cada administrador cuántas entradas
+han cambiado desde la última vez que las miró, por tipo de contenido. Está desactivado para
+todos hasta que cada administrador lo activa. Esta guía cubre la parte del panel, los ajustes
+del servidor y cómo funciona con varias instancias.
+
+## Cómo funciona «sin ver»
+
+Una entrada pasa a estar sin ver para ti cuando otra persona la cambia, desde cualquier API.
+Vuelve a estar vista en cuanto la abres. Las mismas marcas controlan las insignias **nuevos**
+de la barra lateral (desactívalas con **Mostrar insignias de novedades**) y el widget
+**Sin ver todavía** de la página de inicio.
+
+## Activa el resumen
+
+<Steps>
+
+1. Abre tu **Perfil** (o el menú de preferencias de la barra superior).
+2. En **Preferencias**, activa **Correo diario de novedades**.
+
+</Steps>
+
+El interruptor define la preferencia `"digest": "daily"` en tu cuenta
+(`PUT /admin/api/users/me/preferences`). Desactívalo de la misma forma.
+
+Lo que recibes:
+
+- Un mensaje con el número de entradas sin ver por cada tipo de contenido que puedes leer, y un
+  enlace al panel de administración.
+- Nada los días en que no hay novedades.
+- Solo mientras tu cuenta esté activa.
+
+## Ajustes del servidor
+
+El resumen se envía a la hora `[digest].hour_utc`, a través de `[email]`:
+
+```toml title="verdin.toml"
+[email]
+provider = "smtp"
+from = "Verdin <no-reply@example.com>"
+
+[email.smtp]
+host = "smtp.example.com"
+
+[digest]
+hour_utc = 7    # 0–23, UTC; 8 by default
+```
+
+| Clave | Por defecto | Descripción |
+| --- | --- | --- |
+| `[digest].enabled` | `true` | Envía el resumen desde esta instancia. |
+| `[digest].hour_utc` | `8` | Hora (UTC) a la que sale el resumen. |
+
+El enlace del correo usa `[server].public_url`; defínela cuando Verdin se ejecute detrás de un
+proxy. Con el proveedor de correo `log` por defecto, los mensajes solo se escriben en el log del
+servidor. Consulta la [referencia de configuración](/es/reference/configuration/).
+
+## Varias instancias
+
+Todas las instancias con `[digest].enabled = true` intentan enviar el resumen a la hora
+definida. La primera que reclama el día en la base de datos lo envía, y las demás se saltan ese
+día, así que los administradores reciben un solo correo. Para que la tarea se ejecute en una
+instancia concreta, define `enabled = false` en las demás:
+
+```sh title="Terminal"
+VERDIN_DIGEST__ENABLED=false verdin start
+```
+
+<Aside type="note">
+El resumen es un añadido de Verdin; Strapi no tiene equivalente.
+</Aside>

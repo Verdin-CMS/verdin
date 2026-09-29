@@ -1,0 +1,97 @@
+---
+title: Migratie-engine
+description: Hoe Verdin schemawijzigingen omzet in DDL, elke stap op risico indeelt, en plannen veilig toepast op engines met en zonder transactionele DDL.
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Deze pagina legt uit hoe `verdin-migrate` de database in lijn brengt met het schema: hoe het het verschil berekent, hoe het elke stap beoordeelt, en hoe het een plan toepast zodat je na een fout nooit hoeft te raden. Lees voor de dagelijkse werkwijze (`verdin migrate plan`, `--allow`, hernoemingen) eerst [schemamigraties](/nl/concepts/schema-migrations/); de vlaggen van de commando's staan in de [CLI-referentie](/nl/reference/cli/).
+
+## Flow
+
+<Diagram
+  caption="Van schemabestanden naar toegepaste DDL"
+  code={`flowchart LR
+  Files["schema/*.json"] -->|parsen, valideren| Schema
+  Schema -->|afleiden| Desired["DbModel<br/>gewenst"]
+  Snapshot[("vd_schema_snapshots")] --> Current["DbModel<br/>huidig"]
+  Current --> Diff{"diff"}
+  Desired --> Diff
+  Diff -->|wijzigingen| Plan["plan voor de Flavor<br/>stappen, risico, SQL, voorcontroles"]
+  Plan -->|toepassen| Db[("database")]`}
+/>
+
+1. `verdin-schema` parset en valideert de bestanden tot een `Schema`.
+2. `derive_model` (`derive.rs`) zet dat om in een `DbModel`: elke tabel, kolom, index en foreign key die het schema nodig heeft, inclusief koppeltabellen en de [platformtabellen](/nl/internals/storage/#platformtabellen).
+3. Het laatst toegepaste model wordt gelezen uit `vd_schema_snapshots`.
+4. `diff` (`diff.rs`) vergelijkt de twee modellen en geeft een lijst `Change`s terug, plus hints voor hernoemingen.
+5. `build_plan` (`plan.rs`) zet elke wijziging om in SQL voor de verbonden flavor, beoordeelt haar, en voegt waar nodig een voorcontrole toe.
+6. `apply` (`apply.rs`) voert het plan uit en slaat daarna het gewenste model op als nieuwe snapshot.
+
+**De snapshot slaat het fysieke model op, niet het schema.** Als een latere versie van Verdin meer tabellen uit hetzelfde schema afleidt (koppeltabellen voor een nieuwe functie, een nieuwe platformtabel), maakt de diff ze aan zonder schemawijziging.
+
+**De diff draait tegen de snapshot, niet tegen de live database.** Dat houdt hem deterministisch en vermijdt de verschillen in hoe elke engine zijn eigen structuur rapporteert. Verdin inspecteert de database niet, dus handmatige wijzigingen aan de tabellen (drift) worden niet gedetecteerd.
+
+Wijzigingen die op een dialect dezelfde DDL opleveren, leveren geen stap op. `string` → `text` is bijvoorbeeld een typewijziging op PostgreSQL en MySQL, maar beide zijn `text` op SQLite, dus SQLite krijgt geen stap.
+
+## Categorieën van wijzigingen
+
+Elke stap heeft een risiconiveau (`Risk` in `diff.rs`). `apply` voert alleen stappen uit tot het niveau dat je toestaat, en weigert het hele plan voordat er iets draait als een stap erboven ligt.
+
+| Risico | Wijzigingen |
+|---|---|
+| **Safe** | Een tabel aanmaken; een nullable kolom of een kolom met standaardwaarde toevoegen; een kolom versoepelen (nullable maken, zelfde type en standaard); een niet-unieke index aanmaken, of een unieke index op een nieuwe tabel; een index verwijderen; een tabel of kolom hernoemen |
+| **Risky** | Een `NOT NULL`-kolom zonder standaard toevoegen; het type, de nullability of de standaard van een kolom anders wijzigen; een unieke index aan een bestaande tabel toevoegen; een SQLite-tabel herbouwen zonder kolommen te verwijderen |
+| **Destructive** | Een kolom verwijderen; een tabel verwijderen; een SQLite-tabel herbouwen waarbij kolommen verdwijnen |
+
+Omdat elke attribuutkolom nullable is (zie [opslag](/nl/internals/storage/#systeemkolommen)), is attributen toevoegen, verplichte inbegrepen, altijd veilig. Waarden van `enumeration` worden door de applicatie gecontroleerd, niet door de kolom, dus een waarde toevoegen of verwijderen wijzigt helemaal geen DDL.
+
+**Voorcontroles** draaien vóór de eerste instructie van een plan, zodat een riskante stap die niet kan slagen de run stopt terwijl de database nog onaangeroerd is:
+
+| Stap | Voorcontrole |
+|---|---|
+| Unieke index op een bestaande tabel | Geen dubbele niet-NULL-waarden in de geïndexeerde kolommen |
+| `NOT NULL`-kolom zonder standaard | De tabel heeft geen rijen |
+| Kolom wordt `NOT NULL` | De kolom heeft geen NULLs |
+
+**Hernoemingen.** Een verwijderde kolom plus een toegevoegde kolom van hetzelfde kolomtype in dezelfde tabel wordt als hernoeming *voorgesteld*: `verdin migrate plan` drukt een hint af zoals `--rename-column articles.title=headline`, en de contenttype-bouwer biedt aan hem te accepteren. Hij wordt nooit stilzwijgend afgeleid; zonder de vlag verwijdert het plan de oude kolom en voegt het een nieuwe toe. Een verwijderde tabel plus een aangemaakte tabel met dezelfde kolommen krijgt op dezelfde manier een hint `--rename-table old=new`. Hernoemingen zijn veilige stappen, en een hernoemde tabel neemt zijn koppeltabellen mee.
+
+**Herbouw van SQLite-tabellen.** SQLite kan een kolom niet wijzigen, dus als een tabel een kolomwijziging heeft, vervangt de planner alle kolom- en indexwijzigingen van die tabel door één herbouw: de nieuwe vorm onder een tijdelijke naam aanmaken, de overgebleven kolommen kopiëren, de oude tabel verwijderen, de nieuwe hernoemen, de indexen opnieuw aanmaken.
+
+## Modi
+
+| Commando | Wat er gebeurt |
+|---|---|
+| `verdin start` | Openstaande stappen stoppen het opstarten met een melding die naar `verdin migrate plan` verwijst. De schemabestanden zijn alleen-lezen. |
+| `verdin start --migrate` | Openstaande **veilige** stappen worden toegepast voordat de server start; alles wat riskanter is, stopt het opstarten. |
+| `verdin dev` | Veilige stappen worden bij het opstarten toegepast. Een file watcher op `schema/` herlaadt bij elke wijziging: veilige migraties worden toegepast en de app wordt ter plekke omgewisseld; riskantere wijzigingen worden gelogd en de draaiende app blijft zoals hij was. |
+| Contenttype-bouwer (alleen `verdin dev`) | `POST /schema/plan` toont de stappen, hun risico, hun SQL en hints voor hernoemingen. `POST /schema/apply` voert ze uit op het risiconiveau dat de gebruiker heeft bevestigd. |
+| `verdin migrate plan` | Drukt elke stap af met zijn risico en zijn exacte SQL voor het verbonden dialect, het niveau van `--allow` dat het plan nodig heeft, en hints voor hernoemingen. |
+| `verdin migrate apply` | Voert het plan uit. `--allow risky` of `--allow destructive` is verplicht als het plan zulke stappen bevat. |
+
+Als de bouwer een wijziging toepast, migreert hij eerst, schrijft hij daarna `schema/*.json` en wisselt hij daarna de app om. Als de migratie mislukt, blijven de bestanden en de draaiende app zoals ze waren. Omdat de uitvoer van de bouwer uit bestanden bestaat, eindigt de flow in een git-commit.
+
+## Uitvoering die niet-transactionele DDL overleeft
+
+PostgreSQL en SQLite draaien DDL binnen transacties. MySQL en MariaDB committen impliciet bij elke DDL-instructie, dus een fout halverwege een plan zou de database tussen twee toestanden achterlaten. `apply` gaat met beide om.
+
+**Op elke engine:**
+
+1. Neem de migratielock op één speciale verbinding: `pg_advisory_lock` op PostgreSQL; `GET_LOCK('verdin_migrate:<database>')` op MySQL en MariaDB, met tot 60 seconden wachten; op SQLite serialiseert `BEGIN IMMEDIATE` de schrijvers. Op SQLite zet de engine voor de run ook `foreign_keys` uit, zodat de herbouw van tabellen niet doorwerkt in koppeltabellen.
+2. Bereken het plan opnieuw uit de snapshot en controleer het toegestane risico.
+3. Voer elke voorcontrole uit vóór de eerste DDL-instructie.
+
+**Op PostgreSQL en SQLite** draaien het hele plan, de nieuwe snapshot en een journaalregel `completed` in één transactie. Een fout draait alles terug.
+
+**Op MySQL en MariaDB** is elke stap één instructie, en wordt de voortgang stap voor stap vastgelegd:
+
+1. Leg het plan vast in `vd_migrations_journal` (de hash van het plan en zijn stappen) met de status `running`.
+2. Voer elke stap uit en leg na elke stap het aantal voltooide stappen vast.
+3. Als een stap mislukt, bewaart het journaal de fout en blijft het op `running` staan. `verdin migrate plan` meldt dan de onderbroken run, hoeveel stappen zijn toegepast en de laatste fout.
+4. De volgende `apply` berekent het plan opnieuw. Als de hash ervan overeenkomt met het journaal, **gaat het verder** vanaf de mislukte stap: losse DDL-instructies zijn op deze engines atomair, dus de mislukte stap draait opnieuw. Voorcontroles worden bij het hervatten overgeslagen, omdat eerdere stappen de database al hebben veranderd.
+5. Als het schema intussen is veranderd, verschillen de hashes en weigert `apply`, met het verzoek het schema te herstellen waaruit het plan is gemaakt.
+6. Als de laatste stap slaagt, worden de nieuwe snapshot en de status `completed` van het journaal samen in één transactie geschreven.
+
+De hash van het plan dekt de flavor en elke instructie, dus een hervatte run voert precies de SQL uit die was gepland.

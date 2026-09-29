@@ -1,0 +1,194 @@
+---
+title: Webhooks
+description: Ruf deine eigenen Endpunkte auf, wenn sich Inhalte oder Medien ändern, prüfe, dass Zustellungen von Verdin kommen, und geh mit Wiederholungen um.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Webhooks schicken einen HTTP-`POST` an eine deiner URLs, wenn sich Inhalte oder Medien ändern:
+eine statische Website neu bauen, einen Cache leeren, einen Suchindex synchronisieren, in einen
+Chat posten. Zustellungen werden eingereiht, signiert, wiederholt und protokolliert.
+
+Diese Seite zeigt, wie du einen Webhook einrichtest und empfängst. Events, Payloads und Header
+stehen in der [Referenz der Webhooks](/de/api/webhooks/).
+
+## Einschalten
+
+Die Funktion **Webhooks** ist standardmäßig an; du kannst sie unter
+**Einstellungen → Funktionen** ausschalten. Webhooks zu verwalten braucht die Berechtigung
+**Webhooks verwalten** (`webhooks.manage`). Siehe [Berechtigungen](/de/reference/permissions/).
+
+## Einen Webhook anlegen
+
+<Steps>
+
+1. Geh zu **Einstellungen → Webhooks** und wähle **Neuer Webhook**.
+2. Gib ihm unter **Allgemein** einen **Name** und die **URL**, die Verdin aufrufen soll.
+3. Wähle unter **Ereignisse** die Events, die eine Zustellung auslösen: **Einträge** (anlegen,
+   aktualisieren, veröffentlichen, zurückziehen, Entwurf verwerfen, löschen), **Medien**,
+   **Releases** (**Release veröffentlicht**) und **Review-Workflows**
+   (**Eintragsphase geändert**).
+4. Behalte unter **Inhaltstypen** **Alle Inhaltstypen** bei oder wähle einige aus. Das filtert
+   nur Eintrags-Events; Medien-Events werden in jedem Fall gesendet.
+5. Füge unter **Header** alle Header hinzu, die dein Endpunkt braucht, etwa ein
+   `authorization`-Token (**Header hinzufügen**). `content-type`, `host` und die
+   `x-verdin-*`-Header setzt Verdin.
+6. Lass unter **Signierung** **Zustellungen signieren** eingeschaltet (der Standard).
+7. Wähle **Erstellen**. Verdin zeigt das Signatur-Secret (`whsec_…`) einmal an: Kopiere es in
+   die Konfiguration deines Endpunkts.
+
+</Steps>
+
+**Aktiviert** schaltet einen Webhook ab, ohne ihn zu löschen. Deaktivierte Webhooks bekommen
+keine Events, lassen sich aber weiterhin testen.
+
+## Testen
+
+Wähle beim Webhook **Testereignis senden**. Verdin schickt sofort:
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+Die Zustellung erscheint im **Zustellungsprotokoll** des Webhooks mit Status, HTTP-Status, Dauer
+und dem Anfang des Response-Bodys. Öffne eine Zustellung für die vollständige Payload und den
+Fehler, falls es einen gibt.
+
+Um Webhooks während der Entwicklung auf deinem Rechner zu empfangen, starte den Server mit
+`verdin dev`: Er erlaubt `localhost`-URLs, die `verdin start` ablehnt (siehe
+[Sicherheit](#sicherheit)).
+
+## Eine Zustellung empfangen
+
+Eine Zustellung ist ein `POST` mit JSON-Body und diesen Headern:
+
+| Header | Wert |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | Der Event-Name, etwa `entry.publish`. |
+| `x-verdin-delivery` | Die ID der Zustellung. Sie bleibt über Wiederholungen hinweg gleich: Nutze sie, um Duplikate zu ignorieren. |
+| `x-verdin-signature` | `t=<unix seconds>,v1=<hex>`, bei signierten Webhooks. |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+Antworte schnell mit einem beliebigen `2xx`-Status. Erledige langsame Arbeit (einen kompletten
+Rebuild) nach der Antwort oder reih sie ein: Eine Zustellung, die länger als das Timeout dauert
+(standardmäßig 10 Sekunden), gilt als fehlgeschlagen.
+
+### Die Signatur prüfen
+
+`v1` ist der HMAC-SHA256 von `"<t>.<raw body>"`, mit dem Secret des Webhooks als Schlüssel. So
+prüfst du eine Zustellung:
+
+1. Berechne den HMAC über den **rohen** Request-Body neu, nicht über neu serialisiertes JSON.
+2. Vergleiche ihn in konstanter Zeit mit `v1`.
+3. Lehne Zeitstempel ab, die älter als ein paar Minuten sind, damit eine abgefangene Zustellung
+   nicht erneut abgespielt werden kann.
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+Mit Express behältst du den rohen Body:
+`app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)` und übergibst
+`req.body.toString()`.
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+`crypto.subtle.verify` vergleicht in konstanter Zeit.
+
+</TabItem>
+</Tabs>
+
+**Secret erneuern** stellt ein neues Secret aus (einmal angezeigt); das alte funktioniert sofort
+nicht mehr. **Signierung beenden** löscht das Secret und schickt Zustellungen unsigniert.
+
+## Wiederholungen
+
+Zustellungen werden beim Commit der Änderung in der Datenbank gespeichert und von einem
+Hintergrund-Worker verschickt, ein langsamer Endpunkt bremst also nie die Redaktion aus.
+
+- **Erfolg:** jede `2xx`-Antwort.
+- **Fehlschlag:** alles andere, auch Weiterleitungen (denen nicht gefolgt wird),
+  Verbindungsfehler und Timeouts.
+- **Wiederholungen:** Eine fehlgeschlagene Zustellung wird nach 30 Sekunden, 2 Minuten,
+  10 Minuten, 1 Stunde und 6 Stunden erneut versucht. Danach wird sie als **Fehlgeschlagen**
+  markiert.
+
+Wähle im Protokoll bei einer Zustellung **Erneut versuchen**, um sie sofort noch einmal zu
+senden. Das Protokoll wird 30 Tage aufbewahrt. Da Wiederholungen dieselbe `x-verdin-delivery`
+nutzen, mach deinen Handler idempotent: Speichere die verarbeiteten IDs, oder mach die Arbeit
+wiederholbar.
+
+## Sicherheit
+
+Unter `verdin start` dürfen Webhook-URLs nicht auf Loopback-, private, Link-Local- oder andere
+reservierte Adressen zeigen, auch nicht über Hostnamen, die auf eine solche auflösen. So kann
+ein Admin Webhooks nicht nutzen, um interne Dienste zu erreichen (SSRF). Zugangsdaten in der URL
+(`https://user:pass@…`) werden abgelehnt; schick sie stattdessen in einem Header.
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+Siehe [`[webhooks]`](/de/reference/configuration/).
+
+## Wenn du von Strapi kommst
+
+Die Webhooks von Verdin folgen den Events und Payloads von Strapi, mit diesen Unterschieden:
+
+- Zustellungen werden signiert, wiederholt und protokolliert;
+- ein Webhook lässt sich auf bestimmte Inhaltstypen beschränken;
+- `entry.draft-discard` von Strapi heißt `entry.discard-draft`.
+
+Um eine statische Website aus dem Admin-Panel per Button statt bei jeder Änderung neu zu bauen,
+siehe [Deploys und CDN](/de/guides/integrations/deploys-and-cdn/).

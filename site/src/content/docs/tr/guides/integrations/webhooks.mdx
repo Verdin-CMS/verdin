@@ -1,0 +1,189 @@
+---
+title: Webhook’lar
+description: İçerik veya medya değiştiğinde kendi uç noktalarınızı çağırın, teslimlerin Verdin’den geldiğini denetleyin ve yeniden denemeleri ele alın.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Webhook’lar içerik veya medya değiştiğinde sizin bir URL’nize HTTP `POST` gönderir: statik bir
+siteyi yeniden derlemek, bir önbelleği temizlemek, bir arama dizinini senkronize etmek, bir sohbete
+mesaj göndermek. Teslimler kuyruğa alınır, imzalanır, yeniden denenir ve günlüğe yazılır.
+
+Bu sayfa birini kurmayı ve almayı adım adım anlatır. Olaylar, payload’lar ve başlıklar
+[webhook başvurusunda](/tr/api/webhooks/) listelenmiştir.
+
+## Açma
+
+**Webhook’lar** özelliği varsayılan olarak açıktır; onu **Ayarlar → Özellikler** bölümünde
+kapatabilirsiniz. Webhook’ları yönetmek **Webhook’ları yönet** (`webhooks.manage`) iznini
+gerektirir. Bkz. [İzinler](/tr/reference/permissions/).
+
+## Bir webhook oluşturma
+
+<Steps>
+
+1. **Ayarlar → Webhook’lar**’a gidin ve **Yeni webhook**’u seçin.
+2. **Genel** altında ona bir **Ad** ve Verdin’in çağıracağı **URL**’yi verin.
+3. **Olaylar** altında bir teslimi tetikleyen olayları seçin: **Kayıtlar** (oluşturma,
+   güncelleme, yayınlama, yayından kaldırma, taslağı atma, silme), **Medya**, **Sürümler**
+   (**Sürüm yayınlandı**) ve **İnceleme iş akışları** (**Kayıt aşaması değişti**).
+4. **İçerik türleri** altında **Tüm içerik türleri**’ni koruyun veya bazılarını seçin. Bu yalnızca
+   kayıt olaylarını filtreler; medya olayları her durumda gönderilir.
+5. **Başlıklar** altında uç noktanızın ihtiyaç duyduğu başlıkları ekleyin; örneğin bir
+   `authorization` token’ı (**Başlık ekle**). `content-type`, `host` ve `x-verdin-*` başlıklarını
+   Verdin ayarlar.
+6. **İmzalama** altında **Teslimleri imzala**’yı açık tutun (varsayılan).
+7. **Oluştur**’u seçin. Verdin imzalama secret’ını (`whsec_…`) bir kez gösterir: onu uç noktanızın
+   yapılandırmasına kopyalayın.
+
+</Steps>
+
+**Etkin**, bir webhook’u silmeden kapatır. Devre dışı webhook’lar olay almaz ama yine de test
+edilebilir.
+
+## Test etme
+
+Webhook’ta **Test olayı gönder**’i seçin. Verdin hemen şunu gönderir:
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+Teslim, webhook’un **Teslim günlüğü**’nde durumu, HTTP durumu, süresi ve yanıt gövdesinin
+başlangıcıyla görünür. Tam payload’ı ve varsa hatayı görmek için bir teslimi açın.
+
+Geliştirme sırasında webhook’ları kendi makinenizde almak için sunucuyu `verdin dev` ile
+çalıştırın: `verdin start`’ın reddettiği `localhost` URL’lerine izin verir (bkz.
+[Güvenlik](#güvenlik)).
+
+## Bir teslimi alma
+
+Bir teslim, JSON gövdeli ve şu başlıkları içeren bir `POST`’tur:
+
+| Başlık | Değer |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | `entry.publish` gibi olay adı. |
+| `x-verdin-delivery` | Teslim kimliği. Yeniden denemelerde aynı kalır: yinelenenleri yok saymak için kullanın. |
+| `x-verdin-signature` | İmzalı webhook’larda `t=<unix seconds>,v1=<hex>`. |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+Hızlıca herhangi bir `2xx` durumuyla yanıt verin. Yavaş işi (tam bir yeniden derleme) yanıt
+verdikten sonra yapın veya kuyruğa alın: zaman aşımından (varsayılan 10 saniye) uzun süren bir
+teslim başarısız sayılır.
+
+### İmzayı doğrulama
+
+`v1`, webhook’un secret’ıyla anahtarlanmış `"<t>.<raw body>"` değerinin HMAC-SHA256’sıdır. Bir
+teslimi denetlemek için:
+
+1. HMAC’i yeniden serileştirilmiş JSON üzerinden değil, **ham** istek gövdesi üzerinden yeniden
+   hesaplayın.
+2. Onu sabit zamanlı olarak `v1` ile karşılaştırın.
+3. Yakalanmış bir teslimin yeniden oynatılamaması için birkaç dakikadan eski zaman damgalarını
+   reddedin.
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+Express ile ham gövdeyi koruyun: `app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)`
+ve `req.body.toString()` geçin.
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+`crypto.subtle.verify` sabit zamanlı karşılaştırır.
+
+</TabItem>
+</Tabs>
+
+**Secret’ı yenile** yeni bir secret üretir (bir kez gösterilir); eskisi hemen çalışmayı durdurur.
+**İmzalamayı durdur** secret’ı siler ve teslimleri imzasız gönderir.
+
+## Yeniden denemeler
+
+Teslimler değişiklik commit edildiğinde veritabanında saklanır ve bir arka plan worker’ı tarafından
+gönderilir; böylece yavaş bir uç nokta editörleri asla yavaşlatmaz.
+
+- **Başarı:** herhangi bir `2xx` yanıtı.
+- **Hata:** yönlendirmeler (izlenmez), bağlantı hataları ve zaman aşımları dâhil diğer her şey.
+- **Yeniden denemeler:** başarısız bir teslim 30 saniye, 2 dakika, 10 dakika, 1 saat ve 6 saat sonra
+  yeniden denenir. Sonrasında **Başarısız** olarak işaretlenir.
+
+Hemen yeniden göndermek için günlükteki bir teslimde **Tekrar dene**’yi seçin. Günlük 30 gün
+tutulur. Yeniden denemeler aynı `x-verdin-delivery` değerini kullandığı için işleyicinizi idempotent
+yapın: işlediğiniz kimlikleri saklayın ya da işi tekrarlanması güvenli hâle getirin.
+
+## Güvenlik
+
+`verdin start` ile webhook URL’leri, bunlardan birine çözümlenen host adları dâhil, loopback, özel,
+link-local veya diğer ayrılmış adreslere işaret edemez. Bu, bir admin’in iç servislere ulaşmak için
+webhook’ları kullanmasını (SSRF) engeller. URL’deki kimlik bilgileri (`https://user:pass@…`)
+reddedilir; bunun yerine onları bir başlıkta gönderin.
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+Bkz. [`[webhooks]`](/tr/reference/configuration/).
+
+## Strapi’den gelenler için
+
+Verdin’in webhook’ları Strapi’nin olaylarını ve payload’larını şu farklarla izler:
+
+- teslimler imzalanır, yeniden denenir ve günlüğe yazılır;
+- bir webhook bazı içerik tipleriyle sınırlanabilir;
+- Strapi’nin `entry.draft-discard` olayının adı `entry.discard-draft`’tır.
+
+Statik bir siteyi her değişiklikte değil de admin’den bir düğmeyle yeniden derlemek için bkz.
+[Dağıtımlar ve CDN](/tr/guides/integrations/deploys-and-cdn/).

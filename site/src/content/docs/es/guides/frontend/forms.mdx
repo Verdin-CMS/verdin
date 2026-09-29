@@ -1,0 +1,156 @@
+---
+title: Formularios
+description: Define formularios de contacto y de registro en el panel de administración, envíalos desde tu sitio y lee o exporta los envíos.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+La funcionalidad **Formularios** gestiona los formularios de tu sitio (contacto, suscripción a
+una newsletter, inscripción a un evento) sin un servicio de formularios. Los editores definen
+los campos en el panel de administración, tu sitio los muestra y los envía a Verdin, y los
+envíos se validan, se guardan, se notifican por correo y se exportan como CSV.
+
+## Actívala
+
+En **Configuración → Funcionalidades**, activa **Formularios** y elige **Gestionar formularios**
+(o ve a **Configuración → Formularios**). Gestionar formularios y leer los envíos necesita el
+permiso **Gestionar el SEO, las redirecciones, los menús y los formularios** (`site.manage`),
+que tiene el rol predefinido Editor. Consulta [Permisos](/es/reference/permissions/).
+
+Para los correos de aviso, configura un proveedor en [`[email]`](/es/reference/configuration/);
+con el proveedor `log` por defecto, los correos solo se escriben en el log del servidor.
+
+## Crea un formulario
+
+<Steps>
+
+1. En **Configuración → Formularios**, elige **Formulario nuevo**.
+2. Dale un nombre (como **Contacto**) y un **Slug** (`contact`). El slug forma parte de la URL
+   del formulario.
+3. En la pestaña **Campos**, elige **Añadir un campo** para cada campo, con su **Etiqueta**,
+   **Nombre**, **Tipo**, **Obligatorio**, **Texto de ejemplo** y **Longitud máxima**.
+4. En la pestaña **Configuración**, define:
+   - **Notificar**: las direcciones de correo que reciben cada envío.
+   - **Mensaje de éxito**: se devuelve a tu sitio tras un envío.
+   - **Trampa antispam**: activada por defecto (consulta [Spam](#spam)).
+5. Guarda. La pestaña **Integración** muestra el endpoint público y un ejemplo para copiar.
+
+</Steps>
+
+| Tipo | Etiqueta en el panel | Acepta |
+| --- | --- | --- |
+| `text` | **Texto** | Cualquier texto. |
+| `email` | **Correo electrónico** | Una dirección de correo. |
+| `textarea` | **Texto largo** | Cualquier texto. |
+| `number` | **Número** | Un número, guardado como número. |
+| `select` | **Selección** | Una de sus **Opciones** (una por línea). |
+| `checkbox` | **Casilla** | `true`, `on`, `1` o `yes` es marcada; cualquier otra cosa, no. Una casilla obligatoria debe estar marcada. |
+| `date` | **Fecha** | Cualquier texto (usa `<input type="date">`). |
+| `url` | **URL** | Una URL. |
+| `tel` | **Teléfono** | Cualquier texto. |
+
+Los nombres de campo empiezan por una letra, seguida de letras, dígitos o `_`, y son únicos en
+el formulario. Un formulario tiene de 1 a 50 campos. Los valores tienen como máximo
+**Longitud máxima** caracteres (5.000 por defecto, 20.000 como máximo).
+
+## Muestra el formulario
+
+`GET /api/_forms/{slug}` devuelve la definición, para que tu sitio pueda mostrar los campos que
+han elegido los editores:
+
+```json
+{
+  "data": {
+    "slug": "contact",
+    "name": "Contact",
+    "fields": [
+      { "name": "email", "label": "Email", "type": "email", "required": true },
+      { "name": "message", "label": "Message", "type": "textarea", "required": true, "maxLength": 2000 },
+      { "name": "topic", "label": "Topic", "type": "select", "options": ["Sales", "Support"] }
+    ],
+    "honeypot": "_gotcha"
+  }
+}
+```
+
+`honeypot` es `null` cuando la trampa antispam está desactivada. La definición se cachea durante
+un minuto (`Cache-Control: public, max-age=60`).
+
+## Envía
+
+`POST /api/_forms/{slug}` recibe los valores como JSON (los campos, o `{ "data": { … } }`) o
+como un envío de formulario normal (`application/x-www-form-urlencoded`). No hace falta token.
+
+<Tabs syncKey="form">
+<TabItem label="Formulario HTML">
+
+```html
+<form method="post" action="https://cms.example.com/api/_forms/contact">
+  <input name="email" type="email" required />
+  <textarea name="message" required maxlength="2000"></textarea>
+  <input name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+  <button>Send</button>
+</form>
+```
+
+</TabItem>
+<TabItem label="fetch">
+
+```js
+const response = await fetch('https://cms.example.com/api/_forms/contact', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ data: { email, message, _gotcha: '' } }),
+});
+const body = await response.json();
+if (response.ok) showThanks(body.data.message);
+else showErrors(body.error.details.errors); // [{ path: ['email'], message: 'must be an email address' }]
+```
+
+</TabItem>
+</Tabs>
+
+| Respuesta | Cuándo |
+| --- | --- |
+| `201` con `{ "data": { "message": … } }` | Aceptado. `message` es el **Mensaje de éxito**, o `Thank you!`. |
+| `400` `ValidationError` | Falta un valor o no es válido. `details.errors` enumera `{ path, message }` por campo. |
+| `404` | No hay ningún formulario con ese slug, o la funcionalidad está desactivada. |
+| `413` | El envío supera los 64 KB. |
+| `429` | El mismo visitante ha hecho más de 10 envíos a este formulario en un minuto. |
+
+Los valores se recortan y se comprueban contra los campos. Los campos desconocidos se
+descartan, así que un visitante no puede añadir datos que no has pedido.
+
+Un envío de formulario HTML normal recibe la respuesta JSON como página. Para una mejor
+experiencia, envía con `fetch` y muestra tú el mensaje. Enviar desde el navegador a otro origen
+necesita el origen de tu sitio en [`[api].cors_origins`](/es/reference/configuration/).
+
+### Spam
+
+Con la **Trampa antispam** activada, añade al formulario un campo `_gotcha` oculto y vacío. Los
+bots rellenan todos los campos; un envío con `_gotcha` relleno se responde como aceptado
+(`201`) y se descarta, así que el bot no se entera de nada. Junto con el límite de peticiones,
+esto frena la mayor parte del spam en formularios sin CAPTCHA.
+
+## Lee los envíos
+
+La pestaña **Envíos** del formulario enumera lo que han enviado los visitantes, con la hora en
+que se ha **Recibido**. Puedes eliminar un envío, y **Exportar CSV** los descarga todos.
+
+Cada envío aceptado se manda también por correo a las direcciones de **Notificar**, con un
+enlace a los envíos en el panel (construido a partir de
+[`[server].public_url`](/es/reference/configuration/)).
+
+<Aside type="note">
+Verdin guarda los valores de cada envío, el user agent del visitante y un hash con clave de su
+dirección IP (no la dirección en sí), lo suficiente para detectar una avalancha sin rastrear a
+las personas. Eliminar un formulario elimina sus envíos.
+</Aside>
+
+## API de administración
+
+El panel de administración usa `/admin/api/site/forms` y `/admin/api/site/forms/{id}`, además de
+`/admin/api/site/forms/{id}/submissions` y `…/submissions/export` (CSV), con el token de acceso
+de un administrador y `site.manage`. Consulta [API de administración](/es/api/admin/).

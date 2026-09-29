@@ -1,0 +1,266 @@
+---
+title: Utilisateurs finaux
+description: Permettez aux personnes qui utilisent vos sites de s’inscrire et de se connecter via l’API de contenu, avec confirmation de l’e-mail, fournisseurs OAuth et rôles, grâce aux routes users-permissions de Strapi.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Les utilisateurs finaux sont les personnes qui se connectent à votre site ou à votre application,
+pas au panneau d’administration. Verdin leur offre l’inscription, la connexion, la confirmation
+de l’e-mail, la réinitialisation du mot de passe, des fournisseurs OAuth et des rôles qui
+déterminent ce qu’ils peuvent faire dans l’API de contenu. Les routes et les payloads sont ceux
+du plugin users-permissions de Strapi v5 : les frontends existants continuent donc de
+fonctionner.
+
+## Avant de commencer
+
+<Steps>
+
+1. Activez **Paramètres → Fonctionnalités → Utilisateurs et permissions** (désactivé par
+   défaut), ou activez **Utilisateurs finaux** dans
+   **Paramètres → Utilisateurs finaux → Paramètres**.
+2. Configurez `[email]` si vous utilisez la confirmation de l’e-mail ou la réinitialisation du
+   mot de passe :
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend et Postmark lisent leur clé dans `VERDIN_EMAIL_API_KEY`.
+   **Paramètres → Fonctionnalités → E-mail** propose **Envoyer un e-mail de test**. Pour le
+   travail en local, `docker/compose.dev.yml` inclut Mailpit (SMTP sur le port 1025, boîte de
+   réception sur `http://localhost:8025`).
+
+3. Définissez `[server].public_url` : les liens des e-mails et les callbacks OAuth l’utilisent.
+
+</Steps>
+
+Gérer les comptes et les rôles nécessite **Gérer les utilisateurs finaux** (`endusers.manage`).
+Modifier l’onglet des paramètres (inscription, fournisseurs, modèles) nécessite **Gérer les
+fonctionnalités** (`features.manage`).
+
+## Configurer l’inscription et les sessions
+
+Dans **Paramètres → Utilisateurs finaux → Paramètres**, sous **Inscription et sessions** :
+
+| Paramètre | Valeur par défaut | Effet |
+| --- | --- | --- |
+| **Autoriser l’inscription** | activé | Tout le monde peut créer un compte via l’API de contenu. Désactivé : `register` répond `400`. |
+| **Confirmer les adresses e-mail** | désactivé | Les nouveaux utilisateurs doivent ouvrir un lien reçu par e-mail avant de pouvoir se connecter. |
+| **Rôle par défaut** | Authenticated | Le rôle des nouveaux comptes. |
+| **Sessions** | Un jeton longue durée unique | **Un jeton longue durée unique** (le mode historique de Strapi) ou **Jetons courts avec rafraîchissement**. |
+| **Durée de session (jours)** | 30 | Durée de vie du jeton longue durée. |
+| **Durée de vie du jeton d’accès (minutes)**, **Durée de vie du jeton de rafraîchissement (jours)** | 30, 30 | Avec les jetons de rafraîchissement. |
+
+Sous **Les pages de votre application**, définissez **Après la confirmation d’un e-mail** (où
+arrivent les utilisateurs une fois leur adresse confirmée) et **Page de réinitialisation du mot
+de passe** (votre page qui reçoit `?code=` et demande un nouveau mot de passe). La
+réinitialisation du mot de passe nécessite cette page.
+
+## Configurer les rôles
+
+Chaque requête est effectuée sous l’un de ces rôles :
+
+- **Public** : les requêtes sans jeton. Ses autorisations sont celles de
+  **Paramètres → Accès public**.
+- **Authenticated** : le rôle intégré attribué aux nouveaux comptes. Il ne peut pas être
+  supprimé.
+- **Rôles personnalisés** : créez-les dans **Paramètres → Utilisateurs finaux → Rôles** avec
+  **Créer un rôle**.
+
+Les **Autorisations** d’un rôle utilisent la même matrice que l’accès public et les jetons
+d’API : **Rechercher**, **Rechercher un**, **Créer**, **Modifier**, **Supprimer**, **Publier**
+et **Lire les brouillons** par type de contenu, la **Médiathèque**, et **Utilisateurs** (les
+routes `/api/users`). Un utilisateur connecté n’obtient que les autorisations de son rôle, et
+non en plus celles de l’accès public : accordez aussi au rôle les lectures publiques quand les
+utilisateurs connectés en ont besoin. Supprimer un rôle fait passer ses utilisateurs à
+Authenticated.
+
+Pour agir en tant qu’utilisateur, le frontend envoie son JWT sous la forme
+`Authorization: Bearer <jwt>`. Les jetons d’API commencent par `vd_`, et c’est ainsi que Verdin
+distingue les deux.
+
+## Inscription et connexion
+
+<Tabs>
+<TabItem label="Inscription">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   ou { "user": … } quand la confirmation de l’e-mail est activée
+```
+
+</TabItem>
+<TabItem label="Connexion">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` est l’e-mail ou le nom d’utilisateur.
+
+</TabItem>
+<TabItem label="Lire en tant qu’utilisateur">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+La connexion est refusée aux utilisateurs bloqués (« Your account has been blocked by an
+administrator ») et, quand la confirmation est activée, aux utilisateurs non confirmés (« Your
+account email is not confirmed »).
+
+## Jetons et sessions
+
+- **Un jeton longue durée unique** (`jwtManagement: "legacy-support"`) : le JWT dure
+  **Durée de session (jours)**.
+- **Jetons courts avec rafraîchissement** (`jwtManagement: "refresh"`, comme dans Strapi 5) : le
+  JWT dure **Durée de vie du jeton d’accès (minutes)**, et les réponses de connexion
+  contiennent aussi un `refreshToken`. Appelez `POST /api/auth/refresh` avec `{ refreshToken }`
+  pour obtenir une nouvelle paire. Chaque jeton de rafraîchissement ne fonctionne qu’une fois ;
+  en présenter un déjà utilisé met fin à toute la session. `POST /api/auth/logout` avec
+  `{ refreshToken }` y met fin volontairement.
+- Changer ou réinitialiser un mot de passe révoque les jetons antérieurs de l’utilisateur, tout
+  comme le fait de bloquer l’utilisateur.
+- Les requêtes de connexion, d’inscription et de réinitialisation sont limitées à 20 par minute
+  et par IP client.
+- Les mots de passe sont stockés avec Argon2id. Les comptes importés de Strapi conservent leur
+  hachage bcrypt jusqu’à leur prochaine connexion, où il est recalculé.
+
+## Confirmer les adresses e-mail et réinitialiser les mots de passe
+
+Avec **Confirmer les adresses e-mail** activé, l’inscription envoie par e-mail un lien vers
+`/api/auth/email-confirmation?confirmation=…`. L’ouvrir confirme le compte et redirige vers
+**Après la confirmation d’un e-mail**. `POST /api/auth/send-email-confirmation` avec
+`{ email }` envoie un nouveau lien.
+
+Pour un mot de passe oublié :
+
+<Steps>
+
+1. Votre application appelle `POST /api/auth/forgot-password` avec `{ email }`. La réponse est
+   la même que le compte existe ou non.
+2. L’utilisateur reçoit un e-mail avec un lien vers votre **Page de réinitialisation du mot de
+   passe**, avec `?code=…`. Le code est valable une heure.
+3. Votre page appelle `POST /api/auth/reset-password` avec
+   `{ code, password, passwordConfirmation }` et reçoit `{ jwt, user }`.
+
+</Steps>
+
+Les utilisateurs connectés changent leur mot de passe avec `POST /api/auth/change-password`
+(`{ currentPassword, password, passwordConfirmation }`).
+
+Les e-mails se modifient dans
+**Paramètres → Utilisateurs finaux → Paramètres → Modèles d’e-mail** : un **Objet**, un
+**Message** et un **Corps HTML (facultatif)** pour **Confirmation d’e-mail** et
+**Réinitialisation du mot de passe**. Ils acceptent les variables `{{username}}`, `{{email}}` et
+`{{url}}` ; les valeurs sont échappées en HTML dans le corps HTML.
+
+## Connexion avec des fournisseurs OAuth
+
+Des préréglages intégrés existent pour GitHub, Google, Microsoft, Discord, Facebook, GitLab et
+LinkedIn. Tout autre nom est un fournisseur OAuth 2 générique qui a besoin de son
+**URL d’autorisation**, de son **URL du jeton** et de son **URL des informations utilisateur** :
+Keycloak, Auth0 et Okta fonctionnent ainsi, avec les URL de votre realm ou de votre tenant. La
+connexion avec Apple n’est pas prise en charge.
+
+<Steps>
+
+1. Dans **Paramètres → Utilisateurs finaux → Paramètres → Fournisseurs de connexion**,
+   sélectionnez **Ajouter GitHub** (ou un autre préréglage, ou
+   **Ajouter un fournisseur OAuth 2**).
+2. Chez le fournisseur, enregistrez l’**URL de rappel à enregistrer chez le fournisseur**
+   affichée dans la boîte de dialogue : `https://cms.example.com/api/connect/github/callback`.
+3. Saisissez l’**ID client**, des **Scopes** facultatifs, et la **Redirection vers votre
+   application** : la page de votre frontend qui reçoit `?access_token=` après la connexion.
+   Activez **Activé**.
+4. Placez le secret client dans l’environnement du serveur et redémarrez :
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   La variable est `VERDIN_OAUTH_<PROVIDER>_SECRET`. Les secrets ne sont jamais stockés dans la
+   base de données.
+
+</Steps>
+
+La connexion suit le flux de Strapi :
+
+<Diagram
+  caption="Connexion OAuth des utilisateurs finaux"
+  code={`sequenceDiagram
+  participant B as Navigateur
+  participant V as Verdin
+  participant P as Fournisseur
+  B->>V: GET /api/connect/github
+  V-->>B: redirection vers le fournisseur
+  B->>P: consentement
+  P-->>B: redirection vers /api/connect/github/callback
+  B->>V: callback
+  V-->>B: redirection vers votre page ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+Le `state` OAuth est signé et lié au navigateur par un cookie. Les comptes sont rapprochés par
+e-mail ; un e-mail déjà utilisé par un autre fournisseur, ou par un compte e-mail et mot de
+passe, est refusé (« Email is already taken. »).
+
+## Gérer les comptes dans le panneau d’administration
+
+**Paramètres → Utilisateurs finaux → Utilisateurs** liste les comptes, avec une recherche par
+nom d’utilisateur ou par e-mail. Vous pouvez **Ajouter un utilisateur**, en modifier un (nom
+d’utilisateur, e-mail, mot de passe, rôle, **Confirmé**, **Bloqué**), le **Bloquer** ou le
+**Débloquer**, et le supprimer.
+
+## Routes
+
+Les routes se trouvent sous le préfixe de l’API de contenu, `/api` par défaut. La forme des
+requêtes et des réponses suit Strapi v5.
+
+| Route | Effet |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }`, ou `{ user }` quand la confirmation de l’e-mail est activée. |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`. |
+| `GET /auth/email-confirmation?confirmation=` | Confirme l’e-mail, puis redirige ou renvoie l’utilisateur. |
+| `POST /auth/send-email-confirmation` | `{ email }` : un nouveau lien de confirmation. |
+| `POST /auth/forgot-password` | `{ email }` : envoie par e-mail le lien de réinitialisation. |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/change-password` | Connecté. `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/refresh`, `POST /auth/logout` | Mode avec rafraîchissement uniquement : `{ refreshToken }`. |
+| `GET /users/me` | L’utilisateur connecté. |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | Nécessite Rechercher / Rechercher un sur Utilisateurs. JSON brut, sans enveloppe `data`, comme Strapi. `populate=role` ajoute le rôle, `_q=` recherche dans les noms d’utilisateur et les e-mails, `pagination[page]` et `pagination[pageSize]` (100 au maximum) paginent. |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | Nécessite Créer / Modifier / Supprimer sur Utilisateurs. `{ username, email, password, confirmed, blocked, role }`, avec `role` comme identifiant de rôle. |
+| `GET /connect/{provider}` | Démarre une connexion OAuth. |
+| `GET /auth/{provider}/callback?access_token=` | Échange le jeton du fournisseur contre `{ jwt, user }`. |
+
+`verdin import strapi` reprend les utilisateurs finaux avec leurs mots de passe, les rôles
+personnalisés, et les autorisations des rôles public, authenticated et personnalisés. Voir
+[Migrer depuis Strapi](/fr/migrate/from-strapi/).
+
+<Aside type="caution">
+Un rôle disposant de Créer, Modifier ou Supprimer sur **Utilisateurs** permet à ses membres de
+gérer tous les comptes d’utilisateurs finaux. Ne l’accordez qu’à des rôles ou des jetons d’API
+de confiance.
+</Aside>

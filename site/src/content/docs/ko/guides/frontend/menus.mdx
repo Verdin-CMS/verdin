@@ -1,0 +1,116 @@
+---
+title: 메뉴
+description: 관리자 패널에서 링크와 항목으로 내비게이션 메뉴를 만들고 사이트에서 렌더링합니다.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+**메뉴** 기능은 편집자에게 페이지, 항목, 다른 사이트로 연결되는 이름 있는 내비게이션 트리(헤더, 푸터, 사이드바)를
+제공합니다. 사이트는 슬러그로 메뉴를 가져와 렌더링하며, 항목 링크는 항목의 게시 상태와 경로를 따릅니다.
+
+Strapi에서는 보통 내비게이션 플러그인이나 직접 만든 메뉴 콘텐츠 타입이 필요하지만, Verdin에는 기본으로 들어 있습니다.
+
+## 켜기
+
+**설정 → 기능**에서 **메뉴**를 켠 뒤 **메뉴 관리**를 선택합니다(또는 **설정 → 메뉴**로 이동). 메뉴를 관리하려면 기본
+제공 Editor 역할이 가진 **SEO, 리디렉션, 메뉴, 폼 관리** 권한(`site.manage`)이 필요합니다.
+[권한](/ko/reference/permissions/)을 참고하세요.
+
+경로로 항목을 연결하려면 [SEO와 사이트맵](/ko/guides/frontend/seo-and-sitemap/)에서 경로 패턴도 설정하세요.
+
+## 메뉴 만들기
+
+<Steps>
+
+1. **설정 → 메뉴**에서 **새 메뉴**를 선택합니다.
+2. 이름(예: **메인 내비게이션**)과 **슬러그**(`main`)를 줍니다. 슬러그는 소문자, 숫자, 대시로 이루어집니다. 사이트는
+   슬러그로 메뉴를 가져옵니다.
+3. **항목 추가**를 선택하고 항목을 채웁니다.
+   - **레이블**: 링크 텍스트, 최대 255자.
+   - **연결 대상**: **URL**, **항목**, **없음(제목)**.
+   - **URL**: 경로(`/about`), 앵커(`#team`), 또는 `http(s)`, `mailto:`, `tel:` 링크.
+   - 항목이라면 **항목 선택**을 선택합니다. 여러 타입을 연결할 수 있으면 **콘텐츠 타입**을 고르고, 항목을 검색해
+     하나를 선택합니다.
+   - **열리는 위치**: **같은 탭** 또는 **새 탭**.
+4. 항목을 끌어서 순서를 정하고 중첩하거나, 항목의 버튼을 쓰세요. 키보드로는 드래그 핸들에서 Alt+↑와 Alt+↓로 항목을
+   옮기고, Alt+→로 위 항목 아래에 중첩하고, Alt+←로 밖으로 빼냅니다.
+5. 저장합니다.
+
+</Steps>
+
+메뉴는 최대 5단계, 항목 500개까지입니다.
+
+## 메뉴 가져오기
+
+사이트는 토큰 없이 `GET /api/_menus/{slug}`에서 메뉴를 읽습니다. 로컬라이즈된 콘텐츠에는 `?locale=`을 추가하세요.
+
+```sh title="Terminal"
+curl 'https://cms.example.com/api/_menus/main?locale=fr'
+```
+
+```json
+{
+  "data": {
+    "slug": "main",
+    "name": "Main navigation",
+    "items": [
+      { "id": "a1", "label": "Blog", "url": "/blog" },
+      {
+        "id": "a2",
+        "label": "Topics",
+        "children": [
+          {
+            "id": "a3",
+            "label": "Rust",
+            "entry": { "uid": "api::category", "documentId": "hx2n8r3w…", "path": "/fr/topics/rust" },
+            "url": "/fr/topics/rust"
+          }
+        ]
+      },
+      { "id": "a4", "label": "Contact", "url": "mailto:hello@example.com", "target": "_blank" }
+    ]
+  }
+}
+```
+
+항목 링크가 해석되는 방식:
+
+- 요청한 로케일에서 게시되지 않은 항목은 자식과 함께 메뉴에서 빠집니다. 메뉴는 절대 초안을 노출하지 않습니다.
+- `entry.path`는 [SEO와 사이트맵](/ko/guides/frontend/seo-and-sitemap/)의 타입 패턴에 항목의 필드와 로케일을 채워서
+  만듭니다. 타입에 패턴이 없거나 항목이 패턴을 채우지 못하면 `null`입니다.
+- 항목 자체에 `url`이 없으면 경로를 `url`로 받으므로, 대부분의 사이트는 `url`만 읽으면 됩니다.
+
+`locale`이 없으면 항목은 기본 로케일로 읽습니다. 응답은 `Cache-Control: public, max-age=60`과 함께 보냅니다.
+
+## 렌더링
+
+```tsx title="Nav.tsx"
+type Item = { label: string; url?: string; target?: '_self' | '_blank'; children?: Item[] };
+
+export async function Nav({ locale }: { locale: string }) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_menus/main?locale=${locale}`);
+  const { data } = await response.json();
+  return <ul>{data.items.map((item: Item) => <NavItem key={item.label} item={item} />)}</ul>;
+}
+
+function NavItem({ item }: { item: Item }) {
+  return (
+    <li>
+      {item.url ? <a href={item.url} target={item.target}>{item.label}</a> : <span>{item.label}</span>}
+      {item.children?.length ? <ul>{item.children.map((child) => <NavItem key={child.label} item={child} />)}</ul> : null}
+    </li>
+  );
+}
+```
+
+<Aside type="note">
+메뉴를 삭제하면 `/api/_menus/{slug}`가 `404`로 응답하며, 기능을 꺼도 마찬가지입니다. 사이트에서 이를 처리하세요. 예를
+들어 내비게이션을 렌더링하지 않을 수 있습니다.
+</Aside>
+
+## Admin API
+
+관리자 패널은 관리자의 액세스 토큰과 `site.manage`로 `/admin/api/site/menus`(`GET`, `POST`)와
+`/admin/api/site/menus/{id}`(`GET`, `PUT`, `DELETE`)를 씁니다. [Admin API](/ko/api/admin/)를 참고하세요.

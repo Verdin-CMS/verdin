@@ -1,0 +1,330 @@
+---
+title: "Eğitim: ilk eklentiniz"
+description: Rust ile bir makalenin okuma süresini dolduran, yayınlamaları günlüğe yazan ve küçük bir API rotası sunan bir Verdin eklentisi geliştirin.
+sidebar:
+  order: 2
+  label: Eklenti eğitimi
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+Bu eğitimde blog örneği için bir eklenti olan **reading-time**’ı geliştireceksiniz. Eklenti:
+
+- gövde her yazıldığında bir makalenin `readingTime` değerini `body` alanından doldurur (bir
+  before hook’u);
+- bir makale yayınlandığında günlüğüne bir satır yazar (bir after hook’u);
+- ortalama okuma süresiyle `GET /api/plugins/reading-time/stats` rotasını sunar (içerik okuyan
+  bir rota);
+- bir **Words per minute** ayarına sahiptir.
+
+Yaklaşık 20 dakika sürer. Eklentilerin ne olduğu ve sandbox’ın nasıl çalıştığı için önce
+[Eklentiler](/tr/extending/plugins/) sayfasını okuyun.
+
+## Başlamadan önce
+
+İhtiyacınız olanlar:
+
+- Blog örneğinin şemasına sahip bir Verdin projesi:
+  [`examples/blog/schema`](https://github.com/Verdin-CMS/verdin/tree/main/examples/blog/schema)
+  dizinini `verdin new` ile oluşturulmuş bir projeye kopyalayın ya da örneğin kendisini
+  çalıştırın. Eklenti `article` tipinin `body` (`richtext`) ve `readingTime` (`integer`)
+  niteliklerini kullanır.
+- WebAssembly hedefiyle Rust:
+
+  ```sh title="Terminal"
+  rustup target add wasm32-unknown-unknown
+  ```
+
+Eklentiler, [Extism PDK](https://extism.org/docs/concepts/pdk) bulunan herhangi bir dilde
+(JavaScript, Go, Zig, C ve diğerleri) yazılabilir. Bu eğitim Rust ve `extism-pdk` kullanır.
+
+## Crate’i oluşturun
+
+<Steps>
+
+1. Verdin projenizin dışında bir kütüphane crate’i oluşturun:
+
+   ```sh title="Terminal"
+   cargo new --lib reading-time
+   cd reading-time
+   ```
+
+2. `Cargo.toml` dosyasını değiştirin. Bir eklenti bir `cdylib`’dir; release profili modülü
+   küçük tutar.
+
+   ```toml title="Cargo.toml"
+   [package]
+   name = "reading-time"
+   version = "0.1.0"
+   edition = "2024"
+   publish = false
+
+   [lib]
+   crate-type = ["cdylib"]
+
+   [dependencies]
+   extism-pdk = "1.4.1"
+   serde_json = "1"
+
+   [profile.release]
+   opt-level = "s"
+   lto = true
+   strip = true
+   ```
+
+</Steps>
+
+## Fonksiyonları yazın
+
+Eklentinin dışa aktardığı her fonksiyon JSON alır ve JSON döndürür. Verdin bunları manifest’in
+adını verdiği hook’lar, rotalar ve görevler için çağırır; fonksiyonlar da host fonksiyonları
+(`verdin_log`, `verdin_content`, `verdin_config`…) aracılığıyla Verdin’i geri çağırır.
+
+`src/lib.rs` dosyasını değiştirin:
+
+```rust title="src/lib.rs"
+use extism_pdk::*;
+use serde_json::{Value, json};
+
+// Host functions Verdin provides (namespace `extism:host/user`).
+#[host_fn]
+extern "ExtismHost" {
+    fn verdin_log(input: Json<Value>);
+    fn verdin_content(input: Json<Value>) -> Json<Value>;
+    fn verdin_config() -> Json<Value>;
+}
+
+/// Minutes needed to read `text` at `per_minute` words a minute (at least 1).
+fn minutes(text: &str, per_minute: u64) -> u64 {
+    let words = text.split_whitespace().count() as u64;
+    words.div_ceil(per_minute.max(1)).max(1)
+}
+
+/// `beforeCreate` and `beforeUpdate` on articles: fills `readingTime` from `body`.
+#[plugin_fn]
+pub fn set_reading_time(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    // An update may leave the body out: then there is nothing to recompute.
+    let Some(body) = data["body"].as_str() else {
+        return Ok(Json(json!({})));
+    };
+    let config = unsafe { verdin_config()? }.0;
+    let per_minute = config["wordsPerMinute"].as_u64().unwrap_or(200);
+    data["readingTime"] = json!(minutes(body, per_minute));
+    Ok(Json(json!({ "data": data })))
+}
+
+/// `afterPublish` on articles: writes a line to the plugin's log.
+#[plugin_fn]
+pub fn log_publish(Json(input): Json<Value>) -> FnResult<()> {
+    let message = format!("published {}", input["documentId"].as_str().unwrap_or("?"));
+    unsafe { verdin_log(Json(json!({ "level": "info", "message": message })))? };
+    Ok(())
+}
+
+/// `GET /api/plugins/reading-time/stats`: the average reading time of published articles.
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    if request["method"] != "GET" || request["path"] != "/stats" {
+        return Ok(Json(json!({ "status": 404, "body": { "error": "not found" } })));
+    }
+    let found = unsafe {
+        verdin_content(Json(json!({
+            "op": "findMany",
+            "uid": "api::article",
+            "query": { "fields": ["readingTime"], "pagination": { "pageSize": 100 } }
+        })))?
+    }
+    .0;
+    if let Some(error) = found.get("error") {
+        return Ok(Json(json!({ "status": 500, "body": { "error": error } })));
+    }
+    let times: Vec<u64> = found["documents"]
+        .as_array()
+        .map(|documents| documents.iter().filter_map(|d| d["readingTime"].as_u64()).collect())
+        .unwrap_or_default();
+    let average = if times.is_empty() { 0.0 } else { times.iter().sum::<u64>() as f64 / times.len() as f64 };
+    Ok(Json(json!({
+        "status": 200,
+        "headers": { "cache-control": "max-age=60" },
+        "body": { "articles": times.len(), "averageMinutes": average }
+    })))
+}
+```
+
+Her fonksiyonun döndürdüğü:
+
+- **`set_reading_time`** bir before hook’udur. `{ "data": … }` yazılan verinin yerini alır;
+  `{}` onu olduğu gibi bırakır. Yazmayı 400 ile reddetmek için `{ "error": "…" }` da
+  döndürebilir.
+- **`log_publish`** bir after hook’udur: çıktısı yok sayılır.
+- **`handle`**, `/api/plugins/reading-time/` altındaki her isteği sunar. Bu önekten sonraki yolu
+  alır ve `{ status, headers, body }` ile yanıt verir.
+
+## Modülü derleyin
+
+```sh title="Terminal"
+cargo build --release --target wasm32-unknown-unknown
+```
+
+Modül `target/wasm32-unknown-unknown/release/reading_time.wasm` dosyasıdır (Cargo tireyi alt
+çizgiye çevirir) ve yaklaşık 120 KB’tır.
+
+## Manifest’i yazın
+
+<Steps>
+
+1. Verdin projenizde `plugins/reading-time/` dizinini oluşturun ve modülü içine `plugin.wasm`
+   olarak kopyalayın:
+
+   ```sh title="Terminal"
+   mkdir -p plugins/reading-time
+   cp ../reading-time/target/wasm32-unknown-unknown/release/reading_time.wasm plugins/reading-time/plugin.wasm
+   ```
+
+2. Yanına manifest’i oluşturun. Manifest eklentiyi adlandırır, fonksiyonların ihtiyaç
+   duyduklarını ister ve onları hook’lara ve rotalara bağlar:
+
+   ```toml title="plugins/reading-time/plugin.toml"
+   name = "reading-time"
+   version = "0.1.0"
+   description = "Fills an article's reading time from its body"
+
+   [capabilities]
+   read = ["api::article"]           # for the stats route
+
+   [[hooks]]
+   on = "beforeCreate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "beforeUpdate"
+   uid = "api::article"
+   function = "set_reading_time"
+
+   [[hooks]]
+   on = "afterPublish"
+   uid = "api::article"
+   function = "log_publish"
+
+   [routes]
+   function = "handle"               # serves /api/plugins/reading-time/…
+
+   [[settings]]
+   key = "wordsPerMinute"
+   label = "Words per minute"
+   type = "integer"
+   min = 50
+   max = 1000
+   default = 200
+   ```
+
+   Hook’lar hiçbir yetenek gerektirmez: kendilerine verilen veriyi değiştirirler. Yalnızca
+   rotanın `verdin_content` çağrısı içerik okur; bu yüzden eklenti yalnızca makaleler üzerinde
+   `read` ister.
+
+</Steps>
+
+Proje şimdi şöyle görünür:
+
+<FileTree>
+- verdin.toml
+- .env
+- plugins/
+  - reading-time/
+    - plugin.toml
+    - plugin.wasm
+- schema/
+  - content-types/
+    - article.json
+    - …
+</FileTree>
+
+## Açın
+
+<Steps>
+
+1. Sunucuyu başlatın (veya yeniden başlatın):
+
+   ```sh title="Terminal"
+   verdin dev
+   ```
+
+   Günlük `plugin found plugin=reading-time version=0.1.0` satırını gösterir.
+
+2. Yönetim panelini açın, ardından **Ayarlar → Eklentiler**. **reading-time** kartı erişimini
+   (makaleleri okur), hook’larını ve rotasını listeler. Onu açın.
+
+3. Karttaki **Ayarlar**’ı açın: form **Words per minute** alanını varsayılan değeri 200 ile
+   gösterir. 50 ile 1.000 dışındaki değerler reddedilir. Olduğu gibi bırakın.
+
+</Steps>
+
+## Deneyin
+
+<Steps>
+
+1. Yönetim panelinde ya da bir API token’ıyla API üzerinden, gövdesi birkaç yüz kelimelik bir
+   makale oluşturun:
+
+   ```sh title="Terminal"
+   curl -X POST http://localhost:1337/api/articles \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "data": { "title": "Hello plugins", "slug": "hello-plugins", "body": "…450 words…" } }'
+   ```
+
+   Yanıtta `"readingTime": 3` bulunur: dakikada 200 kelimeyle 450 kelime, yukarı yuvarlanmış.
+   Bunu siz göndermediniz; hook doldurdu.
+
+2. Yalnızca başlığı güncelleyin. `readingTime` kalır: güncellemenin verisinde `body` yoktur, bu
+   yüzden hook `{}` döndürür. Gövdeyi güncellerseniz yeniden hesaplanır.
+
+3. Makaleyi yayınlayın, ardından eklentinin kartında **Günlükler**’i açın:
+   `published <documentId>` gösterir. (API üzerinden `?status=draft` olmadan yapılan bir
+   oluşturma hemen yayınlar, bu yüzden satır zaten oradadır.)
+
+4. Rotayı çağırın:
+
+   ```sh title="Terminal"
+   curl -i http://localhost:1337/api/plugins/reading-time/stats
+   ```
+
+   ```text
+   HTTP/1.1 200 OK
+   content-type: application/json
+   cache-control: max-age=60
+
+   {"articles":1,"averageMinutes":3.0}
+   ```
+
+   Yayınlanmış makaleleri sayar: `verdin_content`, sorgu `status: "draft"` istemedikçe
+   yayınlanmış sürümleri okur.
+
+</Steps>
+
+<Aside type="caution">
+Rota herkese yanıt verir: eklenti rotaları **Herkese açık erişim** kapsamında değildir. Burada
+yalnızca bir ortalama döndürür, ancak içerik döndüren veya değiştiren bir rota
+`request.actor` değerini (`{ "kind": "public" }`, `{ "kind": "token", "id": … }` veya
+`{ "kind": "user", "id": … }`) kendisi denetlemelidir.
+</Aside>
+
+## Değiştirin
+
+- Kodu düzenleyin, `cargo build --release --target wasm32-unknown-unknown`’ı yeniden çalıştırın,
+  modülü kopyalayın ve Verdin’i yeniden başlatın. Anahtar ve ayarlar korunur.
+- `plugin.toml` değişiklikleri de yeniden başlatma gerektirir. Ayar değişiklikleri hemen
+  uygulanır.
+- Bir çağrı başarısız olursa hata sunucu günlüğünde ve **Günlükler**’dedir. Bir panic veya zaman
+  aşımı yalnızca o çağrıyı başarısız kılar; bir before hook’u için yazma, eklentinin değişikliği
+  olmadan devam eder.
+
+## Sonraki adımlar
+
+- Bir [zamanlanmış görev, GraphQL alanı veya admin widget’ı](/tr/extending/plugin-reference/)
+  ekleyin.
+- `kv` yeteneği ve `verdin_kv_get` / `verdin_kv_set` ile çağrılar arasında durum saklayın.
+- Deponun test eklentisi
+  [`crates/verdin-plugins/tests/fixtures/sample`](https://github.com/Verdin-CMS/verdin/tree/main/crates/verdin-plugins/tests/fixtures/sample),
+  her host fonksiyonunu kullanır.

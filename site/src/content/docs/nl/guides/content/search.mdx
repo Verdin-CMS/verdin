@@ -1,0 +1,89 @@
+---
+title: Zoeken
+description: Zoek items met _q, en zet de full-text-index van Tantivy aan voor gerangschikte resultaten die geen onderscheid maken tussen letters met en zonder accent.
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+De content-API en het beheerpaneel zoeken items met de parameter `_q`, zoals in Strapi. Standaard
+komt `_q` overeen met tekstvelden die de woorden bevatten. Zet de index `[search]` aan om
+resultaten te rangschikken met een full-text-engine (Tantivy) die in de server is ingebouwd. Deze
+gids laat beide zien en wanneer je de index gebruikt.
+
+## Zoeken met `_q`
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/api/articles' --data-urlencode '_q=rust cms'
+```
+
+`_q` combineert met de andere parameters: `filters`, `status`, `locale`, `pagination`, `fields` en
+`populate`. Het zoekvak van de beheerlijst stuurt dezelfde parameter.
+
+Welke velden worden doorzocht:
+
+- Tekstvelden: `string`, `text`, `richtext`, `email`, `uid` en `enumeration`.
+- Met de index ook de tekst in `blocks`, componenten en dynamische zones.
+- Nooit privévelden of wachtwoorden.
+
+`_q` is een REST-parameter. GraphQL en de queryopties van de TypeScript-client hebben geen
+zoekargument; gebruik daar een filter `$containsi`.
+
+## Zonder de index
+
+Zonder `[search]` komt `_q` overeen met items waarvan een tekstveld de hele zoektekst bevat, zonder
+op hoofdletters te letten, zoals `$containsi` van Strapi. Resultaten volgen de gebruikelijke
+sortering. Dit vereist geen instelling en werkt op elke database, maar het scant de tabel en
+rangschikt niet.
+
+## De full-text-index aanzetten
+
+<Steps>
+
+1. Schakel de index in `verdin.toml` in:
+
+   ```toml title="verdin.toml"
+   [search]
+   enabled = true
+   ```
+
+2. Herstart Verdin. Het bouwt de index op de achtergrond op uit elk item; totdat hij klaar is, valt
+   `_q` terug op `$containsi`.
+
+</Steps>
+
+| Sleutel | Standaard | Beschrijving |
+| --- | --- | --- |
+| `enabled` | `false` | `_q` rangschikken met de full-text-index. |
+| `dir` | `"data/search"` | Map van de index, relatief ten opzichte van het project. |
+| `memory_mb` | `50` | Geheugenbudget voor het indexeren, in megabytes. |
+
+Zie de [configuratiereferentie](/nl/reference/configuration/).
+
+Hoe de index vergelijkt:
+
+- Woorden worden gesplitst op alles wat geen letter of cijfer is, naar kleine letters omgezet en
+  van accenten ontdaan, dus `cafe` vindt `Café`.
+- Elk woord moet overeenkomen. Het laatste woord komt ook als prefix overeen, zodat resultaten al
+  verschijnen terwijl iemand typt.
+- De titel (het eerste tekstveld van het type) telt dubbel.
+- Zonder `sort` komen resultaten met de beste overeenkomst eerst. Met een `sort` worden de treffers
+  op jouw manier gesorteerd. Per zoekopdracht worden hoogstens 1.000 treffers bekeken.
+- Concepten en gepubliceerde versies, en elke locale, worden apart doorzocht, volgens `status` en
+  `locale`.
+
+De index volgt elke schrijfactie vanuit elke API. Hij wordt opnieuw opgebouwd als het schema de
+doorzoekbare velden wijzigt, en als zijn map ontbreekt.
+
+## Meerdere instanties
+
+De index staat op de schijf van de instantie en volgt de schrijfacties van die instantie. Als je
+meerdere instanties draait, bereiken schrijfacties op de ene de index van de andere niet. Houd
+zoeken op één instantie, of bouw hem na een deploy opnieuw op door de indexmap vóór het starten te
+verwijderen. Zie [Schalen](/nl/deploy/scaling/).
+
+<Aside type="tip">
+De indexmap kan veilig worden verwijderd. Houd hem buiten back-ups en versiebeheer; Verdin bouwt
+hem opnieuw op uit de database.
+</Aside>

@@ -1,0 +1,177 @@
+---
+title: SEO و نقشهٔ سایت
+description: نوع‌های محتوا را به مسیرهای سایت خود نگاشت کنید، یک sitemap.xml از همهٔ مدخل‌های منتشرشده ارائه دهید و یک کامپوننت استاندارد SEO اضافه کنید.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+قابلیت **SEO و نقشهٔ سایت** به Verdin می‌گوید هر مدخل در کجای سایت شما قرار دارد. بر این
+اساس، یک `sitemap.xml` از همهٔ مدخل‌های منتشرشده ارائه می‌کند، مسیر مدخل‌هایی را که
+[منوها](/fa/guides/frontend/menus/) به آن‌ها پیوند می‌دهند فراهم می‌کند، و یک کامپوننت آمادهٔ
+`shared.seo` برای متاتگ‌ها پیشنهاد می‌دهد.
+
+این یکی از چهار قابلیت سایت است، در کنار [تغییرمسیرها](/fa/guides/frontend/redirects/)،
+[منوها](/fa/guides/frontend/menus/) و [فرم‌ها](/fa/guides/frontend/forms/). Strapi همین موارد را
+با افزونه‌های جامعه (SEO، sitemap) پوشش می‌دهد؛ در Verdin به‌صورت داخلی وجود دارد.
+
+## روشن کردن
+
+<Steps>
+
+1. در **تنظیمات ← قابلیت‌ها**، **SEO و نقشهٔ سایت** را روشن کنید.
+2. روی کارت آن، **پیکربندی SEO** را انتخاب کنید.
+3. **نشانی سایت** را وارد کنید: origin سایت شما، مانند `https://www.example.com`. URLهای
+   نقشهٔ سایت با آن شروع می‌شوند.
+4. زیر **نوع‌های محتوا**، به هر نوعی که صفحه دارد یک **الگوی مسیر** بدهید. نوع‌های بدون الگو
+   بیرون از نقشهٔ سایت می‌مانند. در صورت تمایل، برای نقشهٔ سایت یک **بسامد تغییر** و یک
+   **اولویت** (0 تا 1) تنظیم کنید.
+5. ذخیره کنید، سپس **باز کردن sitemap.xml** را برای بررسی نتیجه انتخاب کنید.
+
+</Steps>
+
+تغییر تنظیمات به مجوز **مدیریت قابلیت‌ها** (`features.manage`) نیاز دارد.
+[مجوزها](/fa/reference/permissions/) را ببینید.
+
+## الگوهای مسیر
+
+الگو مسیری است که با `/` شروع می‌شود و جانگهدارهایی داخل آکولاد دارد:
+
+| الگو | مدخل | مسیر |
+| --- | --- | --- |
+| `/blog/{slug}` | Article با slug برابر `hello-world` | `/blog/hello-world` |
+| `/{locale}/blog/{slug}` | نسخهٔ فرانسوی همان | `/fr/blog/bonjour` |
+| `/about` | نوع تکی Homepage | `/about` |
+
+جانگهدارها ویژگی‌های نوع هستند (معمولاً یک `uid` مانند `slug`) و `{locale}`. مقادیر
+URL-encode می‌شوند. مدخلی که جانگهدارش خالی باشد (مثلاً slug نداشته باشد) مسیری ندارد و از
+نقشهٔ سایت و منوها کنار گذاشته می‌شود. پنجرهٔ تنظیمات ویژگی‌هایی را که می‌توانید درج کنید فهرست
+می‌کند و ویژگی‌های ناشناخته را رد می‌کند.
+
+تنظیمات به‌عنوان تنظیمات قابلیت و با این شکل ذخیره می‌شوند:
+
+```json
+{
+  "baseUrl": "https://www.example.com",
+  "types": {
+    "api::article": { "pattern": "/{locale}/blog/{slug}", "changefreq": "weekly", "priority": 0.7 },
+    "api::category": { "pattern": "/{locale}/topics/{slug}" }
+  }
+}
+```
+
+`changefreq` یکی از `always`، `hourly`، `daily`، `weekly`، `monthly`، `yearly` یا `never` است.
+
+## نقشهٔ سایت
+
+وقتی **نشانی سایت** تنظیم شده باشد، Verdin فایل `/sitemap.xml` را در ریشهٔ میزبان خودش
+(`https://cms.example.com/sitemap.xml`، بیرون از پیشوند API) ارائه می‌کند، شامل:
+
+- همهٔ مدخل‌های **منتشرشده** از نوع‌های پیکربندی‌شده که الگویشان پر می‌شود؛
+- آخرین تغییر هر مدخل (`lastmod`) و `changefreq` و `priority` نوع آن؛
+- برای نوع‌های بومی‌سازی‌شده، یک URL برای هر زبان که با
+  `<xhtml:link rel="alternate" hreflang="…">` به یکدیگر پیوند داده شده‌اند؛
+- حداکثر 50,000 URL، یعنی سقف یک فایل نقشهٔ سایت.
+
+```xml
+<url>
+  <loc>https://www.example.com/en/blog/hello-world</loc>
+  <lastmod>2026-09-25T09:00:00.000Z</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="https://www.example.com/en/blog/hello-world"/>
+  <xhtml:link rel="alternate" hreflang="fr" href="https://www.example.com/fr/blog/bonjour"/>
+</url>
+```
+
+نقشهٔ سایت حداکثر هر ده دقیقه یک بار ساخته می‌شود و با `Cache-Control: public, max-age=600`
+ارسال می‌شود؛ بنابراین هر انتشار ظرف ده دقیقه در آن ظاهر می‌شود.
+
+موتورهای جستجو انتظار دارند نقشهٔ سایت روی میزبان سایت شما باشد. آن را از همان‌جا با یک
+rewrite یا یک مسیر کوچک که نقشهٔ Verdin را دریافت می‌کند ارائه دهید:
+
+```js title="Next.js: app/sitemap.xml/route.js"
+export async function GET() {
+  const response = await fetch('https://cms.example.com/sitemap.xml', { next: { revalidate: 600 } });
+  return new Response(await response.text(), { headers: { 'content-type': 'application/xml' } });
+}
+```
+
+سپس آن را در `robots.txt` خود فهرست کنید: `Sitemap: https://www.example.com/sitemap.xml`.
+
+## کامپوننت SEO
+
+Verdin یک کامپوننت `shared.seo` با فیلدهای افزونهٔ SEO در Strapi پیشنهاد می‌کند:
+
+| ویژگی | نوع |
+| --- | --- |
+| `metaTitle` | string، الزامی، حداکثر 60 نویسه |
+| `metaDescription` | text، الزامی، حداکثر 160 نویسه |
+| `metaImage` | media (تصاویر) |
+| `keywords` | text |
+| `metaRobots` | string |
+| `canonicalURL` | string |
+| `structuredData` | JSON |
+
+در پنجرهٔ **پیکربندی SEO**، **افزودن کامپوننت SEO** و سپس **ساخت کامپوننت** را انتخاب کنید.
+ساختن آن طرح‌واره را تغییر می‌دهد، بنابراین این دکمه در حالت توسعه (`verdin dev`) برای مدیرانی
+که **مدیریت نوع‌های محتوا** را دارند وجود دارد؛ در غیر این صورت پنجره ویژگی‌هایی را که باید در
+فایل‌های طرح‌وارهٔ خود اضافه کنید فهرست می‌کند. سپس در سازندهٔ نوع محتوا، به هر نوع محتوایی که
+صفحه دارد یک فیلد کامپوننت با `shared.seo` اضافه کنید.
+
+<Aside type="tip">
+وقتی [اقدامات هوش مصنوعی](/fa/guides/integrations/ai-actions/) روشن باشد، کامپوننتی که ویژگی‌های
+متنی `metaTitle` و `metaDescription` دارد یک دکمهٔ **پیشنهاد** می‌گیرد که آن‌ها را از روی
+مدخل پر می‌کند.
+</Aside>
+
+## نوشتن متاتگ‌ها
+
+کامپوننت را populate کنید و تگ‌ها را در head صفحهٔ خود بنویسید:
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+curl -g 'https://cms.example.com/api/articles?filters[slug][$eq]=hello-world&populate[seo][populate]=*'
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(filters: { slug: { eq: "hello-world" } }) {
+    title
+    seo { metaTitle metaDescription metaRobots canonicalURL structuredData metaImage { url } }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({
+  filters: { slug: { $eq: 'hello-world' } },
+  populate: { seo: { populate: '*' } },
+});
+const seo = data[0]?.seo;
+```
+
+</TabItem>
+</Tabs>
+
+```html
+<title>{seo.metaTitle}</title>
+<meta name="description" content="{seo.metaDescription}" />
+<meta name="robots" content="{seo.metaRobots ?? 'index, follow'}" />
+<link rel="canonical" href="{seo.canonicalURL ?? pageUrl}" />
+<meta property="og:image" content="{cms + seo.metaImage.url}" />
+<script type="application/ld+json">{JSON.stringify(seo.structuredData)}</script>
+```
+
+کامپوننت `shared.seo` در بلاگ نمونه فقط `metaTitle` و `metaDescription` را دارد؛ کامپوننت
+پیشنهادی بقیه را اضافه می‌کند. اگر صفحهٔ پیش‌نمایش از [ویرایش دیداری](/fa/guides/frontend/visual-editing/)
+استفاده می‌کند، پیش از اندازه‌گیری یا مقایسهٔ متن‌های متا، نشانه‌های نامرئی را حذف کنید.

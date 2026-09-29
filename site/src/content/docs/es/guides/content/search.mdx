@@ -1,0 +1,90 @@
+---
+title: Búsqueda
+description: Busca entradas con _q y activa el índice de texto completo Tantivy para obtener resultados ordenados por relevancia y sin distinguir acentos.
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+La API de contenido y el panel de administración buscan entradas con el parámetro `_q`, como en
+Strapi. Por defecto, `_q` coincide con los campos de texto que contienen las palabras. Activa el
+índice `[search]` para ordenar los resultados con un motor de texto completo (Tantivy) incluido
+en el servidor. Esta guía muestra ambas opciones y cuándo usar el índice.
+
+## Buscar con `_q`
+
+```sh title="Terminal"
+curl -G 'http://localhost:1337/api/articles' --data-urlencode '_q=rust cms'
+```
+
+`_q` se combina con los demás parámetros: `filters`, `status`, `locale`, `pagination`, `fields`
+y `populate`. El cuadro de búsqueda de la lista del panel envía el mismo parámetro.
+
+En qué campos se busca:
+
+- Los campos de texto: `string`, `text`, `richtext`, `email`, `uid` y `enumeration`.
+- Con el índice, también el texto dentro de `blocks`, de los componentes y de las zonas
+  dinámicas.
+- Nunca en los campos privados ni en las contraseñas.
+
+`_q` es un parámetro de REST. GraphQL y las opciones de consulta del cliente TypeScript no
+tienen argumento de búsqueda; usa ahí un filtro `$containsi`.
+
+## Sin el índice
+
+Sin `[search]`, `_q` coincide con las entradas en las que algún campo de texto contiene el
+texto de búsqueda completo, sin distinguir mayúsculas, como el `$containsi` de Strapi. Los
+resultados siguen el orden habitual. No necesita configuración y funciona en todas las bases de
+datos, pero recorre la tabla entera y no ordena por relevancia.
+
+## Activa el índice de texto completo
+
+<Steps>
+
+1. Activa el índice en `verdin.toml`:
+
+   ```toml title="verdin.toml"
+   [search]
+   enabled = true
+   ```
+
+2. Reinicia Verdin. Construye el índice en segundo plano a partir de todas las entradas; hasta
+   que está listo, `_q` recurre a `$containsi`.
+
+</Steps>
+
+| Clave | Por defecto | Descripción |
+| --- | --- | --- |
+| `enabled` | `false` | Ordena `_q` con el índice de texto completo. |
+| `dir` | `"data/search"` | Directorio del índice, relativo al proyecto. |
+| `memory_mb` | `50` | Memoria para la indexación, en megabytes. |
+
+Consulta la [referencia de configuración](/es/reference/configuration/).
+
+Cómo compara el índice:
+
+- Las palabras se separan por todo lo que no sea una letra o un dígito, se pasan a minúsculas y
+  se les quitan los acentos, así que `cafe` encuentra `Café`.
+- Todas las palabras deben coincidir. La última también coincide como prefijo, así que los
+  resultados aparecen mientras se escribe.
+- El título (el primer campo de texto del tipo) pesa el doble.
+- Sin `sort`, los resultados llegan de mejor a peor coincidencia. Con `sort`, las coincidencias
+  se ordenan como indiques. Se consideran como máximo 1.000 coincidencias por búsqueda.
+- Los borradores y las versiones publicadas, y cada idioma, se buscan por separado, según
+  `status` y `locale`.
+
+El índice sigue todas las escrituras desde cualquier API. Se reconstruye cuando el esquema cambia
+los campos buscables y cuando falta su directorio.
+
+## Varias instancias
+
+El índice vive en el disco de la instancia y sigue las escrituras de esa instancia. Cuando
+ejecutas varias instancias, las escrituras en una no llegan al índice de las demás. Mantén la
+búsqueda en una sola instancia, o reconstrúyelo tras un despliegue borrando el directorio del
+índice antes de arrancar. Consulta [Varias instancias](/es/deploy/scaling/).
+
+<Aside type="tip">
+El directorio del índice se puede borrar sin problema. Déjalo fuera de las copias de seguridad
+y del control de versiones; Verdin lo reconstruye a partir de la base de datos.
+</Aside>

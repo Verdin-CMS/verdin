@@ -1,0 +1,113 @@
+---
+title: Rilasci
+description: Raggruppa voci e pubblicale o annullane la pubblicazione insieme, subito o a una data pianificata.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../../components/Diagram.astro';
+
+Un rilascio raggruppa voci che vanno online, o offline, insieme: il lancio di un prodotto,
+una campagna, un gruppo di traduzioni. Lo pubblichi a mano o gli assegni una data. Questa
+guida crea un rilascio, aggiunge voci, lo esegue e mostra l'API admin.
+
+I rilasci funzionano come le Releases di Strapi, che fanno parte dei piani a pagamento di
+Strapi.
+
+## Prima di iniziare
+
+- **Impostazioni → Funzionalità → Rilasci** è attivo di default. Finché è disattivato, la
+  pagina **Rilasci** e le route non sono disponibili e i rilasci pianificati restano in
+  attesa.
+- Gestire i rilasci richiede **Gestisci rilasci** (`releases.manage`).
+- Aggiungere una voce richiede anche **Pubblica** sul suo tipo di contenuto, e il tipo deve
+  usare [bozza e pubblicazione](/it/concepts/draft-and-publish/).
+
+## Crea un rilascio
+
+<Steps>
+
+1. Apri **Rilasci** nella barra laterale e seleziona **Nuovo rilascio**.
+2. Inserisci un **Nome**.
+3. Opzionalmente, imposta **Pubblica il (facoltativo)**: la data e l'ora, nel tuo fuso
+   orario, in cui il rilascio viene eseguito. Senza data, il rilascio aspetta finché non lo
+   pubblichi tu.
+4. Seleziona **Crea**.
+
+</Steps>
+
+## Aggiungi voci
+
+<Steps>
+
+1. Apri una voce nell'editor. Il pannello **Rilasci** elenca i rilasci in cui si trova.
+2. Seleziona **Aggiungi al rilascio**.
+3. Scegli il **Rilascio**, e sotto **Quando il rilascio viene eseguito** scegli **Pubblica** o
+   **Annulla pubblicazione**.
+4. Seleziona **Aggiungi**.
+
+</Steps>
+
+Per i tipi localizzati, viene aggiunta solo la versione nella lingua attuale dell'editor.
+Aggiungi ogni lingua che vuoi rilasciare. Aggiungere una voce che è già nel rilascio ne
+sostituisce l'azione.
+
+La pagina del rilascio elenca le sue voci con il loro tipo di contenuto e l'azione. Rimuovine
+una con il pulsante sulla sua riga.
+
+## Pubblica il rilascio
+
+- **Subito:** apri il rilascio e seleziona **Pubblica ora**.
+- **Alla sua data:** un'attività in background controlla ogni 30 secondi ed esegue i rilasci
+  in scadenza, per conto dell'admin che li ha creati.
+
+<Diagram
+  caption="Stati di un rilascio"
+  code={`flowchart LR
+  P[In attesa] -->|Pubblica ora o data raggiunta| R[In esecuzione]
+  R -->|tutte le azioni riuscite| D[Completato]
+  R -->|alcune azioni fallite| F[Non riuscito]`}
+/>
+
+Ogni azione registra se è riuscita. Quando una fallisce, per esempio perché la voce è stata
+eliminata o non supera la validazione, le altre azioni vengono comunque eseguite e il rilascio
+termina come **Non riuscito**, con l'errore di ogni azione fallita sulla sua riga.
+
+<Aside type="caution">
+Un rilascio eseguito non si può più modificare. Per ritentare le azioni fallite, aggiungi
+quelle voci a un nuovo rilascio.
+</Aside>
+
+Un rilascio viene pubblicato nel suo insieme: non aspetta le
+[fasi di revisione](/it/guides/content/review-workflows/). Se un flusso richiede una fase per
+pubblicare, le voci fuori da quella fase falliscono come qualsiasi altra pubblicazione.
+
+I webhook possono iscriversi a **Rilascio pubblicato** (`releases.publish`), inviato quando
+un rilascio viene eseguito. Vedi [Webhook](/it/guides/integrations/webhooks/).
+
+## API admin
+
+Tutte le route sono sotto `/admin/api` e richiedono `releases.manage`.
+
+```http
+GET    /admin/api/releases?status=pending
+POST   /admin/api/releases                    { "name": "Launch", "scheduledAt": "2026-10-01T08:00:00Z" }
+GET    /admin/api/releases/{id}
+PUT    /admin/api/releases/{id}               { "name": "Launch", "scheduledAt": null }
+DELETE /admin/api/releases/{id}
+POST   /admin/api/releases/{id}/actions       { "uid": "api::article", "documentId": "…", "locale": "fr", "action": "publish" }
+DELETE /admin/api/releases/{id}/actions/{actionId}
+POST   /admin/api/releases/{id}/publish
+GET    /admin/api/content/{uid}/{documentId}/releases
+```
+
+- `status` è `pending`, `running`, `done` o `failed`; ogni azione ha il proprio `status` ed
+  `error`.
+- Modificare, aggiungere a o pubblicare un rilascio che non è più in attesa risponde `409`.
+- `action` è `publish` o `unpublish`. Aggiungere un'azione richiede anche `content.publish`
+  sul tipo. La lingua viene risolta quando l'azione viene aggiunta, quindi un cambio
+  successivo della lingua di default non la sposta.
+- Eliminare un rilascio elimina la sua lista di voci. Le voci stesse non cambiano.
+- `GET /content/{uid}/{documentId}/releases` richiede l'accesso in lettura alla voce e
+  restituisce una lista vuota agli admin senza `releases.manage`.

@@ -1,0 +1,180 @@
+---
+title: Inhalte lokalisieren
+description: Sprachen hinzufügen, einen Inhaltstyp lokalisieren, Einträge im Admin-Panel übersetzen und jede Sprache über die API lesen oder schreiben.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Ein lokalisierter Inhaltstyp führt pro Sprache eine Version jedes Eintrags. Diese Anleitung fügt
+die Sprachen hinzu, in denen du veröffentlichst, schaltet die Lokalisierung für einen Typ ein,
+übersetzt Einträge im Admin-Panel und liest oder schreibt jede Sprache über die API. Das Modell
+dahinter (geteilte Felder, Relationen zwischen lokalisierten Typen) erklärt
+[Internationalisierung](/de/concepts/internationalization/).
+
+Lokalisierung gehört zum Kern: Es gibt keine Funktion, die du einschalten musst. Sie
+funktioniert wie das i18n-Plugin von Strapi v5 und nimmt denselben Parameter `locale`.
+
+## Bevor du anfängst
+
+- Um Sprachen hinzuzufügen, umzubenennen oder zu löschen, brauchst du **Sprachen verwalten**
+  (`locales.manage`).
+- Um einen Typ zu lokalisieren, bearbeitest du sein Schema, im **Content-Type Builder**
+  (`verdin dev`) oder in `schema/content-types/<name>.json`.
+- Welche Content-Berechtigungen Redakteure brauchen, steht unter
+  [Berechtigungen](/de/reference/permissions/).
+
+## Die Sprachen hinzufügen
+
+Beim ersten Start wird Englisch (`en`) als Standardsprache angelegt. Anfragen ohne
+Sprachangabe verwenden die Standardsprache, und neue Einträge beginnen in ihr.
+
+<Steps>
+
+1. Öffne **Einstellungen → Internationalisierung** und wähle **Sprache hinzufügen**.
+2. Gib einen **Code** ein: einen Sprachcode in Kleinbuchstaben, optional mit Region oder
+   Schrift, etwa `fr`, `pt-BR` oder `zh-Hans`. Der Name wird für dich ausgefüllt und lässt sich
+   ändern.
+3. Hake **Als Standardsprache festlegen** an, wenn Anfragen ohne Sprache sie verwenden sollen,
+   und speichere.
+
+</Steps>
+
+Um den Standard später zu ändern, wähle bei einer anderen Sprache **Als Standard festlegen**.
+Die Standardsprache lässt sich nicht löschen.
+
+<Aside type="caution" title="Eine Sprache zu löschen löscht ihre Einträge">
+Wer eine Sprache löscht, löscht dauerhaft jeden Eintrag, der in ihr geschrieben wurde, in jedem
+Inhaltstyp, veröffentlichte Versionen eingeschlossen. Der Dialog verlangt zur Bestätigung, dass
+du den Sprachcode eintippst.
+</Aside>
+
+## Einen Inhaltstyp lokalisieren
+
+Öffne im **Content-Type Builder** den Typ und schalte in seinen Einstellungen **Lokalisiert**
+ein. Entscheide dann Feld für Feld, welche Werte sich je Sprache unterscheiden: Ein Feld mit
+ausgeschaltetem **Lokalisiert** hat einen einzigen Wert, den alle Sprachen teilen.
+
+Dasselbe in der Schemadatei, für den Typ `article` des Beispielprojekts:
+
+```json title="schema/content-types/article.json" {6,9}
+{
+  "kind": "collectionType",
+  "singularName": "article",
+  "pluralName": "articles",
+  "displayName": "Article",
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "title": { "type": "string", "required": true },
+    "readingTime": { "type": "integer", "pluginOptions": { "i18n": { "localized": false } } }
+  }
+}
+```
+
+Wie sich geteilte Felder verhalten:
+
+- Wird ein geteiltes Feld in einer Sprache gespeichert, landet es in den Entwürfen aller
+  Sprachen.
+- Beim Veröffentlichen einer Sprache werden ihre geteilten Felder in die veröffentlichten
+  Versionen der anderen Sprachen kopiert.
+- Auch Relationen und Medienfelder können geteilt sein.
+
+Typen ohne `pluginOptions.i18n.localized` sind nicht lokalisiert und ignorieren
+`locale`-Parameter. Die Lokalisierung eines Typs zu ändern ist eine Schemaänderung: Prüfe die
+Migration mit `verdin migrate plan`, bevor du sie deployst.
+
+## Einen Eintrag im Admin-Panel übersetzen
+
+<Steps>
+
+1. Öffne den Eintrag und wähle im Umschalter **Sprache** oben im Editor die Zielsprache.
+   Sprachen ohne Version zeigen **Noch nicht erstellt**.
+2. Der Editor weist darauf hin, dass der Eintrag in dieser Sprache noch keine Version hat und
+   dass Speichern sie anlegt. Geteilte Felder zeigen bereits ihre Werte.
+3. Um von einer bestehenden Übersetzung auszugehen, wähle in diesem Hinweis
+   **Aus einer anderen Sprache füllen**. Wähle die Quelle unter **Kopieren von** und dann
+   **Felder kopieren**. Das kopiert die lokalisierten Felder, Relationen und Medien
+   eingeschlossen, ins Formular. Gespeichert ist noch nichts.
+4. Bearbeite die Felder und wähle dann **Entwurf speichern** oder **Veröffentlichen**. Jede
+   Sprache hat ihren eigenen Entwurf und ihre eigene veröffentlichte Version.
+
+</Steps>
+
+Die Listenansicht hat denselben Umschalter **Sprache**: Sie listet die Versionen jeweils einer
+Sprache. Löschen im Editor entfernt nur die Version in der aktuellen Sprache; die anderen
+Sprachen bleiben erhalten.
+
+Mit eingeschalteter Funktion **KI-Aktionen** kann der Editor die Textfelder auch aus dem
+Entwurf einer anderen Sprache übersetzen. Siehe [KI-Aktionen](/de/guides/integrations/ai-actions/).
+
+## Redakteure auf bestimmte Sprachen beschränken
+
+Die Content-Berechtigungen einer Rolle können nur bestimmte Sprachen abdecken. Öffne unter
+**Einstellungen → Rollen** die Rolle, such den Inhaltstyp und wähle **Sprachen**. Wähle
+**Nur diese Sprachen** und dann die Sprachen. Admins mit dieser Rolle können Versionen in den
+anderen Sprachen weder lesen noch ändern; der Umschalter **Sprache** zeigt diese Sprachen mit
+„(kein Zugriff)“.
+
+## Sprachen über die API lesen und schreiben
+
+Hänge `locale` an jede REST-Anfrage an, oder übergib es in GraphQL als Argument. Ohne Angabe
+wird die Standardsprache verwendet. Eine unbekannte Sprache ist ein `400`-Fehler.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+# Die französischen Versionen lesen
+curl 'http://localhost:1337/api/articles?locale=fr'
+
+# Die französische Version eines Dokuments anlegen oder aktualisieren
+curl -X PUT 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"data":{"title":"Bonjour"}}'
+
+# Nur die französische Version löschen
+curl -X DELETE 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(locale: "fr") {
+    documentId
+    title
+    locale
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ locale: 'fr' });
+```
+
+</TabItem>
+</Tabs>
+
+Was dich erwartet:
+
+- `PUT` mit `locale` legt die Version dieser Sprache an, wenn das Dokument noch keine hat.
+- Antworten lokalisierter Typen enthalten `locale`. Alle Versionen teilen dieselbe
+  `documentId`.
+- `DELETE` entfernt nur die Version in der angefragten Sprache (ohne Angabe in der
+  Standardsprache). Verknüpfungen, die auf das Dokument zeigen, werden entfernt, sobald keine
+  Sprache mehr übrig ist.
+- Verknüpft ein lokalisierter Typ einen anderen lokalisierten Typ, lösen Lesezugriffe das Ziel
+  in derselben Sprache auf, und Filter über Relationen tun dasselbe. Nicht lokalisierte Ziele
+  teilen sich alle Sprachen.
+- Webhook-Payloads und Versionen im Verlauf halten die Sprache fest.
+
+Anders als bei Strapi hat die Content-API keine Route `/api/i18n/locales`. Die Sprachen listet
+die Admin-API unter `GET /admin/api/i18n/locales`, verwaltet werden sie mit `POST`,
+`PUT /admin/api/i18n/locales/{code}` und `DELETE /admin/api/i18n/locales/{code}`
+(`locales.manage`).

@@ -1,0 +1,97 @@
+---
+title: Moteur de migration
+description: Comment Verdin transforme les modifications du schéma en DDL, classe chaque étape par risque, et applique les plans en toute sécurité sur les moteurs avec et sans DDL transactionnel.
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../../components/Diagram.astro';
+
+Cette page explique comment `verdin-migrate` met la base de données en accord avec le schéma : comment il calcule la différence, comment il évalue chaque étape, et comment il applique un plan pour qu’un échec ne vous laisse jamais dans l’incertitude. Pour le travail quotidien (`verdin migrate plan`, `--allow`, renommages), lisez d’abord [Migrations de schéma](/fr/concepts/schema-migrations/) ; les options des commandes figurent dans la [référence de la CLI](/fr/reference/cli/).
+
+## Déroulement
+
+<Diagram
+  caption="Des fichiers de schéma au DDL appliqué"
+  code={`flowchart LR
+  Files["schema/*.json"] -->|analyse, validation| Schema
+  Schema -->|dérivation| Desired["DbModel<br/>souhaité"]
+  Snapshot[("vd_schema_snapshots")] --> Current["DbModel<br/>actuel"]
+  Current --> Diff{"diff"}
+  Desired --> Diff
+  Diff -->|changements| Plan["plan pour le Flavor<br/>étapes, risque, SQL, pré-vérifications"]
+  Plan -->|application| Db[("base de données")]`}
+/>
+
+1. `verdin-schema` analyse et valide les fichiers pour produire un `Schema`.
+2. `derive_model` (`derive.rs`) le transforme en `DbModel` : toutes les tables, colonnes, index et clés étrangères dont le schéma a besoin, y compris les tables de liaison et les [tables de la plateforme](/fr/internals/storage/#tables-de-la-plateforme).
+3. Le dernier modèle appliqué est lu dans `vd_schema_snapshots`.
+4. `diff` (`diff.rs`) compare les deux modèles et renvoie une liste de `Change`, plus des indices de renommage.
+5. `build_plan` (`plan.rs`) traduit chaque changement en SQL pour la variante connectée, l’évalue et y attache une pré-vérification quand il en faut une.
+6. `apply` (`apply.rs`) exécute le plan, puis stocke le modèle souhaité comme nouvel instantané.
+
+**L’instantané stocke le modèle physique, pas le schéma.** Quand une version ultérieure de Verdin dérive plus de tables du même schéma (tables de liaison pour une nouvelle fonctionnalité, nouvelle table de la plateforme), le diff les crée sans aucune modification du schéma.
+
+**Le diff s’exécute par rapport à l’instantané, pas à la base de données réelle.** Cela le rend déterministe et évite les différences dans la façon dont chaque moteur décrit sa propre structure. Verdin n’inspecte pas la base de données : les modifications manuelles des tables (dérive) ne sont donc pas détectées.
+
+Les changements qui produisent le même DDL sur un dialecte ne donnent aucune étape. Par exemple, `string` → `text` est un changement de type sur PostgreSQL et MySQL, mais les deux sont `text` sur SQLite : SQLite n’obtient donc aucune étape.
+
+## Catégories de changements
+
+Chaque étape a un niveau de risque (`Risk` dans `diff.rs`). `apply` n’exécute que les étapes jusqu’au niveau que vous autorisez, et refuse tout le plan avant d’exécuter quoi que ce soit si une étape le dépasse.
+
+| Risque | Changements |
+|---|---|
+| **Safe** | Créer une table ; ajouter une colonne nullable ou dotée d’une valeur par défaut ; assouplir une colonne (la rendre nullable, même type et même valeur par défaut) ; créer un index non unique, ou un index unique sur une nouvelle table ; supprimer un index ; renommer une table ou une colonne |
+| **Risky** | Ajouter une colonne `NOT NULL` sans valeur par défaut ; modifier autrement le type, la nullabilité ou la valeur par défaut d’une colonne ; ajouter un index unique à une table existante ; reconstruire une table SQLite sans supprimer de colonnes |
+| **Destructive** | Supprimer une colonne ; supprimer une table ; reconstruire une table SQLite en supprimant des colonnes |
+
+Comme chaque colonne d’attribut est nullable (voir [Stockage](/fr/internals/storage/#colonnes-système)), ajouter des attributs, y compris obligatoires, est toujours sans risque. Les valeurs d’`enumeration` sont vérifiées par l’application, pas par la colonne : ajouter ou supprimer une valeur ne modifie donc aucun DDL.
+
+Les **pré-vérifications** s’exécutent avant la première instruction d’un plan : une étape risquée qui ne peut pas réussir arrête donc l’exécution alors que la base de données est intacte.
+
+| Étape | Pré-vérification |
+|---|---|
+| Index unique sur une table existante | Aucune valeur non NULL en double dans les colonnes indexées |
+| Colonne `NOT NULL` sans valeur par défaut | La table n’a aucune ligne |
+| Une colonne devient `NOT NULL` | La colonne ne contient aucun NULL |
+
+**Renommages.** Une colonne supprimée plus une colonne ajoutée du même type de colonne dans la même table est *proposée* comme renommage : `verdin migrate plan` affiche un indice comme `--rename-column articles.title=headline`, et le constructeur de types de contenu propose de l’accepter. Ce n’est jamais déduit silencieusement ; sans l’option, le plan supprime l’ancienne colonne et en ajoute une nouvelle. Une table supprimée plus une table créée avec les mêmes colonnes reçoit de la même façon un indice `--rename-table old=new`. Les renommages sont des étapes sans risque, et une table renommée emporte ses tables de liaison avec elle.
+
+**Reconstructions SQLite.** SQLite ne peut pas modifier une colonne : quand une table comporte une modification de colonne, le planificateur remplace tous les changements de colonnes et d’index de cette table par une seule reconstruction : créer la nouvelle structure sous un nom temporaire, copier les colonnes conservées, supprimer l’ancienne table, renommer la nouvelle, recréer les index.
+
+## Modes
+
+| Commande | Ce qui se passe |
+|---|---|
+| `verdin start` | Des étapes en attente arrêtent le démarrage avec un message qui renvoie à `verdin migrate plan`. Les fichiers de schéma sont en lecture seule. |
+| `verdin start --migrate` | Les étapes **sans risque** en attente s’appliquent avant le démarrage du serveur ; tout ce qui est plus risqué arrête le démarrage. |
+| `verdin dev` | Les étapes sans risque s’appliquent au démarrage. Un observateur de fichiers sur `schema/` recharge à chaque modification : les migrations sans risque s’appliquent et l’application est remplacée sur place ; les changements plus risqués sont journalisés et l’application en cours reste inchangée. |
+| Constructeur de types de contenu (`verdin dev` uniquement) | `POST /schema/plan` affiche les étapes, leur risque, leur SQL et les indices de renommage. `POST /schema/apply` les exécute au niveau de risque confirmé par l’utilisateur. |
+| `verdin migrate plan` | Affiche chaque étape avec son risque et son SQL exact pour le dialecte connecté, le niveau `--allow` nécessaire au plan, et les indices de renommage. |
+| `verdin migrate apply` | Exécute le plan. `--allow risky` ou `--allow destructive` est requis quand le plan contient de telles étapes. |
+
+Quand le constructeur applique une modification, il migre d’abord, écrit ensuite `schema/*.json`, puis remplace l’application. Si la migration échoue, les fichiers et l’application en cours restent inchangés. Comme le résultat du constructeur est un ensemble de fichiers, le processus se termine par un commit git.
+
+## Une exécution qui résiste au DDL non transactionnel
+
+PostgreSQL et SQLite exécutent le DDL dans des transactions. MySQL et MariaDB font un commit implicite à chaque instruction DDL : un échec au milieu d’un plan laisserait donc la base de données entre deux états. `apply` gère les deux cas.
+
+**Sur tous les moteurs :**
+
+1. Prendre le verrou de migration sur une connexion dédiée : `pg_advisory_lock` sur PostgreSQL ; `GET_LOCK('verdin_migrate:<database>')` sur MySQL et MariaDB, avec une attente de 60 secondes au maximum ; sur SQLite, `BEGIN IMMEDIATE` sérialise les écrivains. Sur SQLite, le moteur désactive aussi `foreign_keys` pendant l’exécution, pour que les reconstructions de tables ne se propagent pas en cascade aux tables de liaison.
+2. Recalculer le plan à partir de l’instantané, et vérifier le risque autorisé.
+3. Exécuter toutes les pré-vérifications avant la première instruction DDL.
+
+**Sur PostgreSQL et SQLite**, tout le plan, le nouvel instantané et une ligne de journal `completed` s’exécutent dans une seule transaction. Un échec annule tout.
+
+**Sur MySQL et MariaDB**, chaque étape est une instruction unique, et la progression est enregistrée étape par étape :
+
+1. Enregistrer le plan dans `vd_migrations_journal` (le hash du plan et ses étapes) avec le statut `running`.
+2. Exécuter chaque étape et enregistrer le nombre d’étapes terminées après chacune.
+3. Si une étape échoue, le journal conserve l’erreur et reste `running`. `verdin migrate plan` signale alors l’exécution interrompue, le nombre d’étapes appliquées et la dernière erreur.
+4. Le `apply` suivant recalcule le plan. Si son hash correspond au journal, il **reprend** à l’étape en échec : les instructions DDL isolées sont atomiques sur ces moteurs, l’étape en échec est donc exécutée à nouveau. Les pré-vérifications sont sautées lors d’une reprise, car les étapes précédentes ont déjà modifié la base de données.
+5. Si le schéma a changé entre-temps, les hashs diffèrent et `apply` refuse, en vous demandant de restaurer le schéma à partir duquel le plan a été établi.
+6. Quand la dernière étape réussit, le nouvel instantané et le statut `completed` du journal sont écrits ensemble dans une seule transaction.
+
+Le hash du plan couvre la variante et chaque instruction : une exécution reprise exécute donc exactement le SQL qui a été planifié.
