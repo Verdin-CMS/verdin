@@ -4,13 +4,14 @@
   "type": "module",
   "description": "The Verdin documentation site (Astro Starlight).",
   "scripts": {
-    "sync": "node scripts/sync-docs.mjs",
+    "sync": "node scripts/sync-docs.mjs && node scripts/gen-permissions.mjs",
     "predev": "npm run sync",
     "dev": "astro dev",
     "prebuild": "npm run sync",
     "build": "astro build",
     "preview": "astro preview",
-    "openapi": "node scripts/openapi.mjs"
+    "openapi": "node scripts/openapi.mjs",
+    "check-cli": "node scripts/check-cli.mjs"
   },
   "dependencies": {
     "@astrojs/starlight": "0.42.4",
