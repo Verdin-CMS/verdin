@@ -1,0 +1,92 @@
+---
+title: Document Service
+description: The single internal API that reads and writes content in Verdin, what it guarantees on every write, and the path a content API request takes to reach it.
+sidebar:
+  order: 5
+---
+
+import Diagram from '../../../components/Diagram.astro';
+
+The Document Service (`DocumentService` in `crates/verdin-content/src/service.rs`) is the only code that reads and writes content rows. The content API, the admin API, GraphQL, MCP, plugins, imports and the sitemap all go through it, so validation, draft and publish, relation rules and events behave the same whichever API made the call. Like Strapi v5's Document Service, it works on documents (identified by `documentId`), not on rows.
+
+## API
+
+The main methods (simplified; see the source for the exact types):
+
+| Method | Does |
+|---|---|
+| `find_many(uid, &Query) -> Page` | A page of documents, with `meta` in page or offset form |
+| `find_one(uid, document_id, &Query) -> Option<Json>` | One document in the query's status and locale |
+| `single_document_id(uid)` | The document of a single type, if it exists |
+| `create(uid, &data, WriteOptions) -> String` | Creates a document and returns its `documentId` |
+| `update(uid, document_id, &data, WriteOptions)` | Partial update of the draft (or the only version); creates a new locale version when needed |
+| `delete(uid, document_id)` | Deletes every version of the document in the current locale |
+| `publish(uid, document_id, actor)` | Copies the draft onto the published version |
+| `unpublish(uid, document_id)` | Deletes the published version |
+| `discard_draft(uid, document_id)` | Replaces the draft with the published version |
+| `uid_availability(…)` | Whether a `uid` value is free, with a free suggestion |
+| `document_locales`, `timeline`, `usage`… | Helpers for the admin panel |
+
+`WriteOptions` has two fields: `publish` (publish after writing, on draft and publish types) and `actor` (the admin recorded in `created_by_id` / `updated_by_id`).
+
+The service is a cheap-to-clone value configured with builder methods: `in_locale(locale)` for localized types, `with_listener`, `with_hook`, `dry_run()` (validate a write in full and roll it back, used by import dry runs) and `without_plugin_hooks()` (for writes plugins make themselves).
+
+It does not know who is calling. Permissions are applied by the API layer before the call: it refuses actions the caller lacks, restricts which types a query may populate or filter through, and adds condition filters to the query (for example the admin **Author** role's "own entries" condition becomes `created_by_id = <admin id>`). Filters are part of the SQL, so pagination and counts stay exact.
+
+## What every write does
+
+1. **Hooks.** `DocumentHook`s run first, in order: review workflow stages, then plugins. A hook may replace the data or refuse the write, which becomes a `400`. They use Strapi's lifecycle names (`beforeCreate`, `beforeUpdate`, `beforeDelete`, `beforePublish`, `beforeUnpublish`, `beforeDiscardDraft`).
+2. **Validation of the input** (`input.rs`): unknown keys, system fields (`id`, `documentId`, timestamps) and inverse (`mappedBy`) relation sides are errors; every value is checked against its attribute type and constraints (`min`, `max`, `minLength`, `maxLength`, `regex`, enumeration values, relation cardinality, media `allowedTypes`); components and dynamic zones are validated recursively; `password` values are hashed with argon2.
+3. **References.** Related documents and media files must exist, checked inside the transaction.
+4. **Rows and links**, in one transaction: the row is inserted or updated, then its relation, polymorphic and media link tables are rewritten (positions renumbered 1..n). Linking a `oneToOne` or `oneToMany` target moves it away from other documents in the same state.
+5. **Required fields and rules.** When a version becomes published, or on every write to types without draft and publish, `required` attributes (including those inside components and dynamic zones) and cross-field validation rules are checked. A failure rolls the whole write back.
+6. **Uniqueness** is enforced by the scoped unique indexes. A violation is mapped back to its attribute and reported as a `ValidationError`, race-free.
+7. **Commit, then events.** After the transaction commits, the service calls every `DocumentListener` with a `DocumentEvent` (`entry.create`, `entry.update`, `entry.publish`, `entry.unpublish`, `entry.discard-draft`, `entry.delete`), carrying the uid, `documentId`, locale and actor.
+
+Validation errors use Strapi's format: a list of `{ path, message, name: "ValidationError" }`, where `path` points into the data (`["seo", "metaTitle"]`, `["blocks", 2, "text"]`). The admin panel maps them back onto its fields.
+
+Listeners keep derived state in step with content without per-handler code: webhooks, content history, the response cache, plugins' after-write hooks, the audit log, realtime events, comments and tasks, "seen" marks, CDN purges and the search index. A listener that fails logs its own error; the write has already succeeded. Because listeners run after the commit, a dry run never reaches them.
+
+## Reads
+
+A read selects the rows of the requested status and locale, applies filters and sort in SQL, and then populates what was asked for:
+
+- **Relations** are loaded with batched queries, one per relation and level (`WHERE … IN (…)`, in chunks of 500 ids), never with cascading joins. That avoids both cartesian explosions and N+1 queries. At most 1,000 related entries are populated per entry and relation; counts stay exact.
+- Targets are read in the same version as the source: published documents see published targets, drafts see drafts.
+- **Components and dynamic zones** come from their JSON column; relations and media inside them are resolved with the same batched queries.
+- **`_q` search** uses the Tantivy index when `[search]` is on, and a case-insensitive `$containsi` over the text fields otherwise.
+
+How the output looks (flat documents, value formats, `populate` syntax, limits) is documented in the [REST API](/api/rest/).
+
+## Content API request lifecycle
+
+<Diagram
+  caption="A GET /api/articles request, from the socket to the database"
+  code={`sequenceDiagram
+  participant C as Client
+  participant L as Shared layers
+  participant H as handlers.rs
+  participant Q as verdin-query
+  participant D as Document Service
+  participant DB as Database
+  C->>L: GET /api/articles?filters…
+  L->>H: client IP, request id, CORS, limits, cache
+  H->>H: route by pluralName, authorize token or public role
+  H->>Q: parse and validate against the schema
+  Q-->>H: typed Query
+  H->>D: find_many(uid, query)
+  D->>DB: SELECT … WHERE … ORDER BY … LIMIT
+  D->>DB: one batched query per populated relation
+  D-->>H: documents and page meta
+  H-->>C: { data, meta }`}
+/>
+
+1. **Shared layers** (outermost first): the client address is resolved (using `X-Forwarded-For` only from `[server].trusted_proxies`), metrics count the request when enabled, a request id is set and propagated as `x-request-id`, tracing opens a span, and CORS applies to the content API and GraphQL when `[api].cors_origins` is set.
+2. **Content API layers**: rate limits per client, `ETag`s and the optional cache of anonymous reads, the body size limit (`[server].body_limit`) and request timeout, CDN cache tags on responses.
+3. **Routing.** The path segment is looked up among the content types' `pluralName`s (collection types) and `singularName`s (single types). Unknown names are `404`.
+4. **Authorization** (`verdin-auth`). No `Authorization` header means the public role; `Bearer vd_…` is an API token. An invalid or expired token is `401`, never the public role. The route's action (`find`, `findOne`, `create`, `update`, `delete`, `publish`) must be granted for the type, or the answer is `403`.
+5. **Query parsing** (`verdin-query`). The raw query string is parsed into a bracket tree (at most 16 KB, 12 levels, 1,000 pairs), then into a typed `Query` validated against the type's fields: unknown and `private` fields are `400`, and populate, relation filters and relation sorts are limited to types the caller may read. Reading `?status=draft` also needs `readDrafts`.
+6. **Document Service.** The handler calls `find_many`, `find_one`, `create`, `update`, `delete` or an action. Writes without `?status=draft` publish on draft and publish types (Strapi v5 behaviour), and read back the written version for the response.
+7. **Response.** `{ "data": …, "meta": … }`. Errors use the same envelope with `data: null` and an `error` object.
+
+Admin API routes follow the same path with an admin session instead of an API token, admin RBAC instead of content API grants, and draft-first defaults: they read drafts and write drafts only, and publishing is an explicit action. GraphQL translates its arguments into the same parameter tree before step 5, so it shares the parser, the limits and the permission rules.
