@@ -101,6 +101,7 @@ pub fn parse(
             Some(Some("draft")) => Status::Draft,
             Some(_) => return Err(QueryError::new("`status` must be `published` or `draft`")),
         },
+        denied: catalog.denied_types(),
         search: match root.get("_q").map(|node| node.as_leaf()) {
             None => None,
             Some(Some(text)) if text.chars().count() > MAX_SEARCH => {
@@ -343,6 +344,9 @@ impl Parser<'_> {
     fn relation_filter(&mut self, field: &Field, node: &Node) -> Result<Filter, QueryError> {
         let name = &field.api;
         let relation = field.relation.as_ref().expect("relation fields carry relation info");
+        if self.catalog.denies(&relation.target) {
+            return Err(QueryError::new(format!("cannot filter by `{name}`")));
+        }
         let target = self.catalog.get(&relation.target).expect("validated schema");
         let map = node.as_map().ok_or_else(|| {
             QueryError::new(format!(
@@ -417,8 +421,12 @@ impl Parser<'_> {
                 self.limits.max_populate_depth
             )));
         }
-        let populatable =
-            |field: &&Field| field.category != FieldCategory::Scalar && !field.is_private();
+        let catalog = self.catalog;
+        let populatable = |field: &&Field| {
+            field.category != FieldCategory::Scalar
+                && !field.is_private()
+                && field.relation.as_ref().is_none_or(|relation| !catalog.denies(&relation.target))
+        };
 
         let entries: Vec<(String, Option<&Node>)> = match node {
             Node::Leaf(text) if text == "*" => {
@@ -457,11 +465,24 @@ impl Parser<'_> {
                 .get(&name)
                 .filter(populatable)
                 .ok_or_else(|| QueryError::new(format!("invalid key `{name}` in populate")))?;
+            let limited = field
+                .relation
+                .as_ref()
+                .filter(|relation| self.catalog.limits(&relation.target))
+                .map(|relation| self.catalog.get(&relation.target).expect("validated schema"));
             let query = match (field.category, options) {
+                // The caller sees only some fields of the target: select those.
+                (FieldCategory::Relation, None) if limited.is_some() => Some(SubQuery {
+                    fields: limited.map(TypeFields::visible_scalars),
+                    ..Default::default()
+                }),
                 (FieldCategory::Relation, Some(options)) => {
                     let relation = field.relation.as_ref().expect("relation info");
                     let target = self.catalog.get(&relation.target).expect("validated schema");
-                    let query = self.sub_query(options, target, depth)?;
+                    let mut query = self.sub_query(options, target, depth)?;
+                    if query.fields.is_none() && self.catalog.limits(&relation.target) {
+                        query.fields = Some(target.visible_scalars());
+                    }
                     if query.count && !relation.to_many {
                         return Err(QueryError::new(format!(
                             "`count` needs a to-many relation (`{name}` is to-one)"
@@ -699,6 +720,9 @@ fn relation_sort(
 ) -> Option<Sort> {
     let field = fields.get(relation_name).filter(|field| !field.is_private())?;
     let relation = field.relation.as_ref().filter(|relation| !relation.to_many)?;
+    if catalog.denies(&relation.target) {
+        return None;
+    }
     let target = catalog.get(&relation.target)?;
     let column = target.get(target_name).filter(|field| field.is_sortable())?;
     Some(Sort {

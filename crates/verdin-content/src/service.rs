@@ -280,7 +280,8 @@ impl DocumentService {
                 page,
             )
             .await?;
-        self.populate_relations(model, &mut docs, &query.populate, query.status).await?;
+        self.populate_relations(model, &mut docs, &query.populate, query.status, &query.denied)
+            .await?;
 
         let total = if query.pagination.with_count {
             let mut count = SqlBuilder::new(self.db.flavor());
@@ -332,7 +333,8 @@ impl DocumentService {
                 None,
             )
             .await?;
-        self.populate_relations(model, &mut docs, &query.populate, query.status).await?;
+        self.populate_relations(model, &mut docs, &query.populate, query.status, &query.denied)
+            .await?;
         Ok(docs.into_iter().next().map(|doc| Json::Object(doc.json)))
     }
 
@@ -409,6 +411,8 @@ impl DocumentService {
         docs: &'a mut [Doc],
         populate: &'a [Populate],
         status: Status,
+        // Types the caller may not read: their documents are left out.
+        denied: &'a [String],
     ) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             if docs.is_empty() {
@@ -419,13 +423,14 @@ impl DocumentService {
                 if field.morph.is_some() {
                     let default = SubQuery::default();
                     let sub = item.query.as_ref().unwrap_or(&default);
-                    self.populate_morph(model, field, docs, sub, status).await?;
+                    self.populate_morph(model, field, docs, sub, status, denied).await?;
                     continue;
                 }
                 if field.category == FieldCategory::Nested
                     && let Some(attribute) = &field.attribute
                 {
-                    self.resolve_references(&attribute.kind, &item.field, docs, status).await?;
+                    self.resolve_references(&attribute.kind, &item.field, docs, status, denied)
+                        .await?;
                     continue;
                 }
                 if let Some(info) = &field.media {
@@ -480,7 +485,8 @@ impl DocumentService {
                             None,
                         )
                         .await?;
-                    self.populate_relations(target, &mut targets, &sub.populate, status).await?;
+                    self.populate_relations(target, &mut targets, &sub.populate, status, denied)
+                        .await?;
                     let order: HashMap<String, usize> = targets
                         .iter()
                         .enumerate()
@@ -521,7 +527,8 @@ impl DocumentService {
                         .await?;
                     let (keys, mut owner_docs): (Vec<String>, Vec<Doc>) =
                         owners.into_iter().unzip();
-                    self.populate_relations(target, &mut owner_docs, &sub.populate, status).await?;
+                    self.populate_relations(target, &mut owner_docs, &sub.populate, status, denied)
+                        .await?;
                     let mut by_target: HashMap<String, Vec<Json>> = HashMap::new();
                     for (key, doc) in keys.into_iter().zip(owner_docs) {
                         by_target.entry(key).or_default().push(Json::Object(doc.json));
@@ -1192,6 +1199,7 @@ impl DocumentService {
         field: &str,
         docs: &mut [Doc],
         status: Status,
+        denied: &[String],
     ) -> Result<()> {
         let schema = &self.registry.schema;
         let mut wanted: HashMap<String, Vec<String>> = HashMap::new();
@@ -1217,6 +1225,9 @@ impl DocumentService {
         }
         let mut documents: HashMap<(String, String), Json> = HashMap::new();
         for (uid, mut ids) in wanted {
+            if denied.contains(&uid) {
+                continue;
+            }
             ids.sort();
             ids.dedup();
             let target = self.registry.get(&uid)?;

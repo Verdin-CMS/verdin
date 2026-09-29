@@ -12,6 +12,7 @@ mod comments;
 mod components;
 mod conditions;
 mod conformance;
+mod cross_type;
 mod deploy;
 mod digest;
 mod end_users;

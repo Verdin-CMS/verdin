@@ -1322,7 +1322,13 @@ pub(crate) fn query_for(
     let allowed = principal.permissions.content_fields(actions::CONTENT_READ, uid);
     let restricted = allowed.as_ref().map(|allowed| model.fields.restricted(allowed));
     let fields = restricted.as_ref().unwrap_or(&model.fields);
-    let mut query = verdin_query::parse_request(raw, fields, registry.catalog(), limits)?;
+    // Related types: those the admin may read, with the fields they may see.
+    let related = registry.catalog().restricted(
+        |uid| principal.permissions.content(actions::CONTENT_READ, uid) != Grant::None,
+        |uid| principal.permissions.content_fields(actions::CONTENT_READ, uid),
+    );
+    let catalog = related.as_ref().unwrap_or(registry.catalog());
+    let mut query = verdin_query::parse_request(raw, fields, catalog, limits)?;
     if let Some(view) = &restricted
         && query.fields.is_none()
     {

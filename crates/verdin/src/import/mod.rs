@@ -155,6 +155,7 @@ mod tests {
             },
             status,
             search: None,
+            denied: Vec::new(),
         }
     }
 

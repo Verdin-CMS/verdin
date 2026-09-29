@@ -788,6 +788,17 @@ fn query_of(
     if let Some(populate) = populate {
         root.insert("populate".into(), populate);
     }
+    // Related types: only those the caller may read (their drafts too, for drafts).
+    let actor = ctx.data::<ContentActor>()?;
+    let drafts = root.get("status").and_then(|node| node.as_leaf()) == Some("draft");
+    let restricted = catalog.restricted(
+        |uid| {
+            (actor.allows(uid, ContentAction::Find) || actor.allows(uid, ContentAction::FindOne))
+                && (!drafts || actor.allows(uid, ContentAction::ReadDrafts))
+        },
+        |_| None,
+    );
+    let catalog = restricted.as_ref().unwrap_or(catalog);
     verdin_query::parse(&root, fields, catalog, &state.limits)
         .map_err(|failure| error("BAD_USER_INPUT", failure.message))
 }

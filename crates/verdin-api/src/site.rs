@@ -193,6 +193,7 @@ pub async fn sitemap(
                     },
                     status: Status::Published,
                     search: None,
+                    denied: Vec::new(),
                 };
                 let found = scoped.find_many(uid, &query).await?;
                 let size = found.documents.len();
@@ -812,6 +813,7 @@ impl Site {
                 },
                 status: Status::Published,
                 search: None,
+                denied: Vec::new(),
             };
             let _ = model;
             for document in scoped.find_many(&uid, &query).await?.documents {

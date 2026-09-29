@@ -1,6 +1,6 @@
 //! API-facing fields of a content type and how they map to columns.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexMap;
 use verdin_db::ColumnKind;
@@ -283,6 +283,10 @@ fn morph_info(
 pub struct Catalog {
     types: HashMap<String, TypeFields>,
     components: HashMap<String, IndexMap<String, Attribute>>,
+    /// Types the caller may not read (see [`Catalog::restricted`]).
+    denied: HashSet<String>,
+    /// Types whose fields are limited for the caller.
+    limited: HashSet<String>,
 }
 
 impl Catalog {
@@ -297,7 +301,46 @@ impl Catalog {
             .values()
             .map(|component| (component.uid.clone(), component.attributes.clone()))
             .collect();
-        Self { types, components }
+        Self { types, components, denied: HashSet::new(), limited: HashSet::new() }
+    }
+
+    /// The catalog as one caller sees it: types `readable` refuses are denied (queries may
+    /// not populate, filter or sort through them), and `fields` limits what the caller sees
+    /// of a type (`None`: every field). `None` when nothing is restricted.
+    pub fn restricted(
+        &self,
+        readable: impl Fn(&str) -> bool,
+        fields: impl Fn(&str) -> Option<Vec<String>>,
+    ) -> Option<Catalog> {
+        let mut restricted: Option<Catalog> = None;
+        for uid in self.types.keys() {
+            if !readable(uid) {
+                restricted.get_or_insert_with(|| self.clone()).denied.insert(uid.clone());
+            } else if let Some(allowed) = fields(uid) {
+                let catalog = restricted.get_or_insert_with(|| self.clone());
+                let view = catalog.types[uid].restricted(&allowed);
+                catalog.types.insert(uid.clone(), view);
+                catalog.limited.insert(uid.clone());
+            }
+        }
+        restricted
+    }
+
+    /// Whether the caller may not read `uid`.
+    pub fn denies(&self, uid: &str) -> bool {
+        self.denied.contains(uid)
+    }
+
+    /// Whether the caller sees only some fields of `uid`.
+    pub fn limits(&self, uid: &str) -> bool {
+        self.limited.contains(uid)
+    }
+
+    /// The types the caller may not read, sorted.
+    pub fn denied_types(&self) -> Vec<String> {
+        let mut denied: Vec<String> = self.denied.iter().cloned().collect();
+        denied.sort();
+        denied
     }
 
     pub fn get(&self, uid: &str) -> Option<&TypeFields> {

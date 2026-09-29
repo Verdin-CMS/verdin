@@ -122,7 +122,8 @@ impl DocumentService {
             .await?
         };
         docs.sort_by_key(|doc| page_ids.iter().position(|id| *id == doc.document_id));
-        self.populate_relations(model, &mut docs, &query.populate, query.status).await?;
+        self.populate_relations(model, &mut docs, &query.populate, query.status, &query.denied)
+            .await?;
         let total = query.pagination.with_count.then_some(total);
         let meta = match query.pagination.mode {
             PageMode::Page { page, page_size } => PageMeta::Page {

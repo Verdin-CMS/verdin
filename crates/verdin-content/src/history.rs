@@ -69,6 +69,7 @@ impl DocumentService {
             },
             status,
             search: None,
+            denied: Vec::new(),
         };
         self.find_one(uid, document_id, &query).await
     }

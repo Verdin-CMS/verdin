@@ -288,7 +288,7 @@ async fn authorized_query(
     raw: Option<&str>,
 ) -> Result<Query, ApiError> {
     let actor = authorize(state, headers, route, action).await?;
-    let query = parse_query(state, route, raw)?;
+    let query = parse_query_as(state, route, raw, Some(&actor))?;
     let read = matches!(action, ContentAction::Find | ContentAction::FindOne);
     if read && query.status == Status::Draft && !actor.allows(&route.uid, ContentAction::ReadDrafts)
     {
@@ -307,9 +307,33 @@ fn collection<'a>(state: &'a ApiState, name: &str) -> Result<&'a Route, ApiError
 }
 
 fn parse_query(state: &ApiState, route: &Route, raw: Option<&str>) -> Result<Query, ApiError> {
+    parse_query_as(state, route, raw, None)
+}
+
+/// The query, with populate, relation filters and relation sort limited to the types
+/// `actor` may read (their drafts too, for `status=draft`).
+pub(crate) fn parse_query_as(
+    state: &ApiState,
+    route: &Route,
+    raw: Option<&str>,
+    actor: Option<&verdin_auth::ContentActor>,
+) -> Result<Query, ApiError> {
     let model = state.service.registry().get(&route.uid)?;
     let catalog = state.service.registry().catalog();
-    Ok(verdin_query::parse_request(raw, &model.fields, catalog, &state.config.limits)?)
+    let root = verdin_query::parse_query_string(raw.unwrap_or_default())?;
+    let restricted = actor.and_then(|actor| {
+        let drafts = root.get("status").and_then(|node| node.as_leaf()) == Some("draft");
+        catalog.restricted(
+            |uid| {
+                (actor.allows(uid, ContentAction::Find)
+                    || actor.allows(uid, ContentAction::FindOne))
+                    && (!drafts || actor.allows(uid, ContentAction::ReadDrafts))
+            },
+            |_| None,
+        )
+    });
+    let catalog = restricted.as_ref().unwrap_or(catalog);
+    Ok(verdin_query::parse(&root, &model.fields, catalog, &state.config.limits)?)
 }
 
 pub(crate) fn parse_data(body: &Bytes) -> Result<Value, ApiError> {

@@ -333,7 +333,17 @@ async fn call(
     if let Some(status) = args["status"].as_str() {
         root.insert("status".into(), Node::Leaf(status.to_owned()));
     }
-    let query = verdin_query::parse(&root, &model.fields, registry.catalog(), &state.limits)
+    // Related types: only those the token may read (their drafts too, for drafts).
+    let drafts = root.get("status").and_then(|node| node.as_leaf()) == Some("draft");
+    let restricted = registry.catalog().restricted(
+        |uid| {
+            (actor.allows(uid, ContentAction::Find) || actor.allows(uid, ContentAction::FindOne))
+                && (!drafts || actor.allows(uid, ContentAction::ReadDrafts))
+        },
+        |_| None,
+    );
+    let catalog = restricted.as_ref().unwrap_or(registry.catalog());
+    let query = verdin_query::parse(&root, &model.fields, catalog, &state.limits)
         .map_err(ApiError::from)?;
     let single = model.content_type.kind == ContentTypeKind::SingleType;
     let document_id = || -> Result<String, ToolError> {

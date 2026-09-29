@@ -651,6 +651,7 @@ impl DocumentListener for Webhooks {
                         },
                         status,
                         search: None,
+                        denied: Vec::new(),
                     };
                     match service.find_one(&event.uid, &event.document_id, &query).await {
                         Ok(Some(entry)) => entry,

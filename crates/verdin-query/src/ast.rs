@@ -14,6 +14,9 @@ pub struct Query {
     pub status: Status,
     /// `_q`: full-text search (the search index, or `$containsi` on the text fields).
     pub search: Option<String>,
+    /// Content types the caller may not read: populated polymorphic relations and
+    /// relations inside components leave their documents out.
+    pub denied: Vec<String>,
 }
 
 /// One populated field. `query` shapes populated relations; components and dynamic

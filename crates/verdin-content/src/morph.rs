@@ -131,6 +131,7 @@ impl DocumentService {
         docs: &mut [Doc],
         sub: &SubQuery,
         status: Status,
+        denied: &[String],
     ) -> Result<()> {
         let info = field.morph.as_ref().expect("morph field");
         let mut related: HashMap<i64, Vec<Json>> = HashMap::new();
@@ -153,7 +154,10 @@ impl DocumentService {
             }
             let mut found: HashMap<(String, String), Json> = HashMap::new();
             for (uid, ids) in wanted {
-                // Types removed from the schema since: their links are skipped.
+                // Types removed from the schema since, or the caller may not read.
+                if denied.contains(&uid) {
+                    continue;
+                }
                 let Ok(target) = self.registry().get(&uid) else { continue };
                 let fields = public_fields(target, sub.fields.as_deref(), &[]);
                 let targets = self
@@ -181,6 +185,13 @@ impl DocumentService {
             }
         } else {
             let owner_uid = info.owner_uid.as_deref().expect("inverse sides know their owner");
+            if denied.iter().any(|uid| uid == owner_uid) {
+                for doc in docs.iter_mut() {
+                    let empty = if info.to_many { Json::Array(Vec::new()) } else { Json::Null };
+                    doc.json.insert(field.api.clone(), empty);
+                }
+                return Ok(());
+            }
             let owner = self.registry().get(owner_uid)?;
             let wanted: Vec<SqlValue> =
                 docs.iter().map(|doc| SqlValue::Text(doc.document_id.clone())).collect();
