@@ -519,6 +519,17 @@ pub async fn serve(
     let jobs =
         if context.config.plugins.run_jobs { context.plugins.spawn_jobs() } else { Vec::new() };
     let pruning = context.audit.spawn_pruning();
+    let session_pruning = {
+        let auth = context.auth.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Err(error) = auth.prune_expired().await {
+                    tracing::warn!(%error, "session pruning failed");
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)).await;
+            }
+        })
+    };
     let sync = (context.config.server.sync_interval_secs > 0).then(|| {
         host.spawn_sync(std::time::Duration::from_secs(context.config.server.sync_interval_secs))
     });
@@ -551,6 +562,7 @@ pub async fn serve(
     deliveries.abort();
     jobs.iter().for_each(tokio::task::JoinHandle::abort);
     pruning.abort();
+    session_pruning.abort();
     if let Some(sync) = sync {
         sync.abort();
     }

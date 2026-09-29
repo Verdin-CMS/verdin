@@ -9,8 +9,9 @@ use time::{Duration, OffsetDateTime};
 use verdin_db::value::{format_datetime, truncate_millis};
 use verdin_db::{ColumnKind as K, Database, DbError, Flavor, SqlValue as V, Tx};
 use verdin_migrate::system::{
-    ADMIN_PASSKEYS, ADMIN_PERMISSIONS, ADMIN_ROLES, ADMIN_TWO_FACTOR, ADMIN_USER_ROLES,
-    ADMIN_USERS, API_TOKEN_PERMISSIONS, API_TOKENS, PUBLIC_PERMISSIONS, SESSIONS, SETTINGS,
+    ADMIN_PASSKEYS, ADMIN_PERMISSIONS, ADMIN_ROLES, ADMIN_TOKENS, ADMIN_TWO_FACTOR,
+    ADMIN_USER_ROLES, ADMIN_USERS, API_TOKEN_PERMISSIONS, API_TOKENS, END_USER_SESSIONS,
+    PUBLIC_PERMISSIONS, SESSIONS, SETTINGS, SPENT_CHALLENGES,
 };
 
 pub use two_factor::{Login, PasskeySummary, TotpSetup, TwoFactorStatus, totp_code};
@@ -296,6 +297,29 @@ fn conflict_on_unique(error: DbError, message: &str) -> AuthError {
 }
 
 impl AuthService {
+    /// Deletes sessions, one-time links and passkey challenges that expired over a day
+    /// ago (refresh-token reuse is detected while they are valid).
+    pub async fn prune_expired(&self) -> Result<u64> {
+        let before = now() - time::Duration::days(1);
+        let mut deleted = 0;
+        let mut queries = self.db.queries();
+        for table in [SESSIONS, END_USER_SESSIONS, ADMIN_TOKENS] {
+            deleted += queries
+                .execute(
+                    &format!("DELETE FROM {table} WHERE expires_at < ?"),
+                    &[V::DateTime(before)],
+                )
+                .await?;
+        }
+        deleted += queries
+            .execute(
+                &format!("DELETE FROM {SPENT_CHALLENGES} WHERE expires_at < ?"),
+                &[V::BigInt(now().unix_timestamp())],
+            )
+            .await?;
+        Ok(deleted)
+    }
+
     /// A key for `purpose` derived from the token pepper (keyed hashes elsewhere).
     pub fn derived_key(&self, purpose: &str) -> Vec<u8> {
         hmac_hex(&self.config.token_pepper, &format!("derive:{purpose}")).into_bytes()

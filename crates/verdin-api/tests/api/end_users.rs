@@ -612,3 +612,13 @@ async fn wrong_passwords_lock_the_account() {
     assert_eq!(status, StatusCode::BAD_REQUEST, "locked: {body}");
     assert_eq!(body["error"]["message"], "Invalid identifier or password");
 }
+
+#[tokio::test]
+async fn expired_sessions_are_pruned() {
+    let app = App::new(schema()).await;
+    let account =
+        json!({ "username": "kim", "email": "kim@example.com", "password": "correct horse 1" });
+    assert_eq!(post_json(&app, "/api/auth/local/register", account).await.0, StatusCode::OK);
+    // Nothing has expired yet.
+    assert_eq!(app.auth.prune_expired().await.unwrap(), 0);
+}
