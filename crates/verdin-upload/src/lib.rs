@@ -1,4 +1,4 @@
-//! The media library (docs/architecture.md §8.7): files and folders in `vd_files` /
+//! The media library (https://verdin-cms.github.io/verdin/internals/storage/): files and folders in `vd_files` /
 //! `vd_folders`, bytes in a storage provider (local directory or S3-compatible), and
 //! responsive image formats generated on upload.
 

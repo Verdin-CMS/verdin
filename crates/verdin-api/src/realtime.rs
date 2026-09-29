@@ -1,6 +1,6 @@
 //! Realtime events over Server-Sent Events: content and media changes as they commit, and
 //! (for the admin) who is viewing or editing an entry. Each subscriber only receives what
-//! it may read. Events are those of this instance (see docs/scaling.md).
+//! it may read. Events are those of this instance (see https://verdin-cms.github.io/verdin/deploy/scaling/).
 
 use std::collections::HashMap;
 use std::convert::Infallible;

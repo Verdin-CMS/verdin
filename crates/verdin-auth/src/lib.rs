@@ -1,5 +1,5 @@
 //! Admin authentication, RBAC, API tokens and public permissions
-//! (docs/architecture.md §14).
+//! (https://verdin-cms.github.io/verdin/concepts/permissions/).
 
 pub mod crypto;
 mod permissions;

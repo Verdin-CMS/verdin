@@ -1,4 +1,4 @@
-//! Reads and writes documents (docs/architecture.md §8.3, §8.4 and §11).
+//! Reads and writes documents (https://verdin-cms.github.io/verdin/internals/storage/, §8.4 and §11).
 //!
 //! A document with draft & publish has a draft row (`publication_state = 0`) and, once
 //! published, a published row (`publication_state = 1`) sharing its `document_id`. Types

@@ -67,7 +67,7 @@ Legend: **S** small (days), **M** medium (1–2 weeks), **L** large (weeks).
 | Review workflows ✅ | L | Configurable stages per content type, assignees, stage permissions |
 | Documentation site ✅ | M | Astro Starlight at verdin.dev: guides, API reference generated from OpenAPI, migration guide from Strapi |
 | Admin RTL languages ✅ | S | Arabic, Hebrew, Persian (the layout already uses logical properties) |
-| Horizontal scaling ✅ | S | Several instances behind a load balancer: settings synced between instances, releases, webhooks and the digest claimed in the database, plugin jobs on one instance ([scaling.md](scaling.md)) |
+| Horizontal scaling ✅ | S | Several instances behind a load balancer: settings synced between instances, releases, webhooks and the digest claimed in the database, plugin jobs on one instance ([scaling.md](https://verdin-cms.github.io/verdin/deploy/scaling/)) |
 | Plugin runtime upgrade | M | Moved to 0.8 |
 
 ## 0.8 — Strapi parity

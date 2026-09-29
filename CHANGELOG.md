@@ -72,7 +72,7 @@ installation; its migration (one table, two columns) runs on start.
 - **Realtime events** over Server-Sent Events: `GET /api/_events` (the `realtime` feature)
   and `GET /admin/api/events`, each filtered by what the subscriber may read, and
   **presence** on entries (`/admin/api/presence`) with a soft lock for the first editor.
-  See [docs/realtime.md](docs/realtime.md).
+  See [Realtime events](https://verdin-cms.github.io/verdin/guides/frontend/realtime/).
 - **Prometheus metrics** at `/_metrics` (`[metrics]`): requests and latency by area,
   webhook queue, realtime streams, uptime.
 - **Cross-field validations**: `validations: [{ rule, message, field }]` in a content
@@ -102,11 +102,11 @@ installation; its migration (one table, two columns) runs on start.
   cache tag on Cloudflare, Fastly or a webhook when content changes publicly.
 - **Visual editing**: source maps hidden in the text of authenticated reads that send
   `X-Verdin-Stega: true`, and an overlay script (`/admin/api/visual-editing.js`) that
-  jumps from the site to the field. See [docs/visual-editing.md](docs/visual-editing.md).
+  jumps from the site to the field. See [Visual editing](https://verdin-cms.github.io/verdin/guides/frontend/visual-editing/).
 - **AI actions** (the `ai` feature, off by default, and `[ai]`): translate an entry to
   another locale, alt text for images, summaries and SEO suggestions, with Anthropic,
   OpenAI or any OpenAI-compatible server.
-- **Site features** (see [docs/site-features.md](docs/site-features.md)): SEO settings
+- **Site features** (see [Site features](https://verdin-cms.github.io/verdin/guides/frontend/seo-and-sitemap/)): SEO settings
   with `/sitemap.xml` and a suggested `shared.seo` component, redirects for frontends
   (`/api/_redirects`), navigation menus with resolved entry links (`/api/_menus/{slug}`)
   and forms with validated, rate-limited submissions and email notifications
@@ -165,10 +165,10 @@ installation; its migration (one table, two columns) runs on start.
   only unless private networks are allowed), and `[upload].max_original_size` to scale
   down large originals.
 - **MCP server** (the `mcp` feature): content tools for AI agents at `/mcp` (Streamable
-  HTTP), authorized like the content API. See [docs/mcp.md](docs/mcp.md).
+  HTTP), authorized like the content API. See [MCP server](https://verdin-cms.github.io/verdin/guides/integrations/mcp/).
 - **Backups**: `verdin export <file.tar.gz>` and `verdin import verdin <file.tar.gz>`
   move a project's schema, locales, media and every version of its entries. See
-  [docs/backups.md](docs/backups.md).
+  [Backups](https://verdin-cms.github.io/verdin/deploy/backups/).
 - Duplicate entries: `POST /admin/api/content/{uid}/{documentId}/clone` creates a draft
   with the entry's content. Unique and uid fields and one-to-one / one-to-many relations
   are left out and listed in `meta.leftOut`.
@@ -217,14 +217,14 @@ installation; its migration (one table, two columns) runs on start.
   be assigned to an admin. A workflow can also require a stage to publish, which is
   enforced on every API. The admin shows stages in the editor and the list, and the
   entries assigned to you on the home page. See
-  [docs/review-workflows.md](docs/review-workflows.md).
+  [Review workflows](https://verdin-cms.github.io/verdin/guides/content/review-workflows/).
 - **Right-to-left admin languages**: Arabic, Hebrew and Persian (18 languages in all).
 - **Documentation site** in `site/` (Astro Starlight), built from `docs/`, with a
   configuration reference and an API reference generated from OpenAPI.
 - **Several instances.** Each instance reads the settings changed by the others every
   `[server].sync_interval_secs`. Set `[plugins].run_jobs = false` on all instances but
   one. Each day's digest is claimed in the database, so it is sent once. See
-  [docs/scaling.md](docs/scaling.md).
+  [Running several instances](https://verdin-cms.github.io/verdin/deploy/scaling/).
 
 ### Fixed
 
@@ -240,7 +240,7 @@ installation; its migration (one table, two columns) runs on start.
 - **SSO for admins** (the `sso` feature): sign-in through OpenID Connect providers with
   PKCE, a signed state and a nonce. Accounts can be created on first sign-in, with roles
   mapped from a groups claim. Client secrets come from `VERDIN_SSO_<ID>_SECRET`. See
-  [docs/sso.md](docs/sso.md).
+  [Single sign-on](https://verdin-cms.github.io/verdin/guides/auth/sso/).
 - **Audit logs** (the `audit` feature, on by default, permission `audit.read`). They
   record content and media changes from every API, admin actions and sign-ins, and keep
   them for `[audit].retention_days`. Read them in `GET /admin/api/audit-logs` with
@@ -254,7 +254,7 @@ installation; its migration (one table, two columns) runs on start.
 - **Unseen digest**: an opt-in daily email of unseen changes (preference
   `digest: "daily"`), sent at `[digest].hour_utc`.
 
-See [docs/governance.md](docs/governance.md) for audit logs, releases, preview and the
+See [Audit logs](https://verdin-cms.github.io/verdin/guides/content/audit-logs/) for audit logs, releases, preview and the
 digest.
 
 ### Fixed
@@ -268,7 +268,7 @@ digest.
 - **WASM plugins** (Extism): before/after write hooks (change or refuse data), routes under
   `/api/plugins/{name}`, cron jobs, key-value storage, settings and logs; capabilities per
   plugin (content types read/written, HTTP hosts, storage) and time and memory limits;
-  Settings → Plugins (`plugins.manage`). See [docs/plugins.md](docs/plugins.md).
+  Settings → Plugins (`plugins.manage`). See [Plugins](https://verdin-cms.github.io/verdin/extending/plugins/).
 - **Plugin widgets and custom fields**: Web Components shipped by plugins, loaded by the
   admin; attributes with `customField: "plugin::{plugin}.{field}"` (Strapi-compatible;
   kept by `verdin import strapi`).
@@ -286,7 +286,7 @@ digest.
   password and `/api/users/me`; roles with content API grants; JWTs revoked on password
   change and block; OAuth sign-in (GitHub, Google, any OAuth 2 provider) with signed,
   cookie-bound state; accounts, roles and settings in the admin (`endusers.manage`). See
-  [docs/end-users.md](docs/end-users.md).
+  [End users](https://verdin-cms.github.io/verdin/guides/auth/end-users/).
 - **Email** (`[email]`): SMTP, Resend, Postmark and a log provider; secrets from the
   environment; test emails from Settings → Features. Mailpit in the development compose
   file.
@@ -309,7 +309,7 @@ digest.
   custom headers, HMAC-SHA256 signatures, a durable delivery queue with retries and
   backoff, a delivery log with manual retry, test deliveries, SSRF protection in
   production (`[webhooks]` settings); `webhooks.manage` permission. See
-  [docs/webhooks.md](docs/webhooks.md).
+  [Webhooks](https://verdin-cms.github.io/verdin/guides/integrations/webhooks/).
 - **Content history**: a version of the document after every create, save, publish,
   unpublish and discarded draft, from any API. Browse the versions from the editor and
   restore one as the draft: fields that no longer exist are skipped, and references to
@@ -320,11 +320,11 @@ digest.
   (`pluginOptions.i18n.localized`), one version per locale with its own draft and
   published version, `?locale=` on the REST and admin APIs and a `locale` argument in
   GraphQL, locale-aware relations and filters, a locale switcher and "fill from another
-  locale" in the editor. See [docs/i18n.md](docs/i18n.md).
+  locale" in the editor. See [docs/i18n.md](https://verdin-cms.github.io/verdin/guides/content/localizing-content/).
 - **`verdin import strapi`**: imports a Strapi v4/v5 export (`strapi export --no-encrypt`,
   `.tar.gz`, `.tar` or directory): schema files, locales, media library, entries (drafts,
   published versions, locales), relations and media, including inside components; writes a
-  Strapi → Verdin id map. See [docs/importing-from-strapi.md](docs/importing-from-strapi.md).
+  Strapi → Verdin id map. See [Migrating from Strapi](https://verdin-cms.github.io/verdin/migrate/from-strapi/).
 - Admin: bulk publish, unpublish and delete from the content list, with progress and a
   summary of failures.
 - Admin: list view settings per content type and user (visible columns and their order,
@@ -394,7 +394,7 @@ digest.
 
 ## [0.1.0] - 2026-09-24
 
-First public release: the MVP described in [docs/architecture.md](docs/architecture.md).
+First public release: the MVP described in [Architecture](https://verdin-cms.github.io/verdin/internals/overview/).
 
 ### Added
 

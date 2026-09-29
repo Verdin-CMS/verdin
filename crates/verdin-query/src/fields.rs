@@ -51,7 +51,7 @@ pub struct MorphInfo {
     pub owner_uid: Option<String>,
 }
 
-/// How a media field is stored (docs/architecture.md §8.7).
+/// How a media field is stored (https://verdin-cms.github.io/verdin/internals/storage/).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaInfo {
     pub link_table: String,
@@ -60,7 +60,7 @@ pub struct MediaInfo {
     pub allowed_types: Vec<MediaType>,
 }
 
-/// How a relation field is stored and resolved (docs/architecture.md §8.4).
+/// How a relation field is stored and resolved (https://verdin-cms.github.io/verdin/internals/storage/).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelationInfo {
     pub kind: RelationKind,

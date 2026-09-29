@@ -203,5 +203,8 @@ jobs:
           cache-dependency-path: site/package-lock.json
       - run: npm ci
       - run: npm audit --audit-level=high
-      # Syncs docs/*.md, renders the committed OpenAPI document and validates every link.
+      # Syncs docs/*.md, regenerates the permissions page, renders the committed OpenAPI
+      # document and validates every link.
       - run: npm run build
+      # The CLI page documents every subcommand and flag in crates/verdin/src/cli.rs.
+      - run: npm run check-cli

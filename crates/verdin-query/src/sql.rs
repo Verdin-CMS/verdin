@@ -1,4 +1,4 @@
-//! AST → SQL fragments per dialect (docs/architecture.md §9.3).
+//! AST → SQL fragments per dialect (https://verdin-cms.github.io/verdin/internals/database/).
 //!
 //! Text semantics are aligned across engines: `$eq`/`$ne`/`$in` and the case-sensitive
 //! pattern operators compare exactly (binary collation on MySQL/MariaDB, whose default

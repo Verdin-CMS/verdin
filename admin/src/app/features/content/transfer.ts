@@ -1,6 +1,6 @@
 /**
  * CSV / JSON import and export of one content type (`/content/{uid}/export|import`, see
- * docs/architecture.md §13): reading the picked file for its columns, the default mapping
+ * https://verdin-cms.github.io/verdin/api/admin/): reading the picked file for its columns, the default mapping
  * of columns to attributes, and the import report.
  */
 import { Issue } from '../../core/api';

@@ -1,4 +1,4 @@
-//! Schema → physical model (docs/architecture.md §8).
+//! Schema → physical model (https://verdin-cms.github.io/verdin/internals/overview/ §8).
 
 use std::collections::BTreeMap;
 

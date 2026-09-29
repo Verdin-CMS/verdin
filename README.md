@@ -4,7 +4,7 @@ Open source headless CMS written in Rust. Inspired by Strapi, shipped as a singl
 running on PostgreSQL, MySQL, MariaDB and SQLite. 100% free — there is no enterprise edition.
 
 > **Status:** 0.9 — beyond Strapi: realtime and presence, comments and tasks, full-text search, 2FA with passkeys, visual editing, AI actions, sitemap, redirects, menus and forms. See the [changelog](CHANGELOG.md), the
-> [architecture](docs/architecture.md) and the [roadmap](docs/roadmap.md).
+> [architecture](https://verdin-cms.github.io/verdin/internals/overview/) and the [roadmap](docs/roadmap.md).
 
 **Documentation:** <https://verdin-cms.github.io/verdin/>
 
@@ -84,7 +84,7 @@ npx playwright test     # end-to-end, needs `npx ng build` and `cargo build` fir
 ### Schema and migrations
 
 Content types live in `schema/content-types/<singularName>.json` and components in
-`schema/components/<category>/<name>.json` (format: [docs/architecture.md §7](docs/architecture.md)).
+`schema/components/<category>/<name>.json` (format: [Content model](https://verdin-cms.github.io/verdin/concepts/content-model/)).
 
 ```sh
 verdin schema check                      # validate every schema file
@@ -179,7 +179,7 @@ const { data } = await verdin.collection('articles').find({ populate: { category
 
 **Settings → Webhooks** sends signed `POST` requests on entry and media events (create,
 update, publish, unpublish, delete…), retries failed deliveries with backoff and keeps a
-delivery log. Payloads, signature checks and settings: [docs/webhooks.md](docs/webhooks.md).
+delivery log. Payloads, signature checks and settings: [Webhooks](https://verdin-cms.github.io/verdin/guides/integrations/webhooks/).
 
 ### Coming from Strapi
 
@@ -189,38 +189,38 @@ verdin import strapi ../my-export.tar.gz         # in the Verdin project
 ```
 
 Schema, entries, locales, media and relations come over; see
-[docs/importing-from-strapi.md](docs/importing-from-strapi.md).
+[Migrating from Strapi](https://verdin-cms.github.io/verdin/migrate/from-strapi/).
 
 ### Internationalization
 
 Mark a content type as localized (`"pluginOptions": { "i18n": { "localized": true } }`) to
 keep one version per locale, then read and write with `?locale=fr`. Locales are managed in
-**Settings → Internationalization**; details in [docs/i18n.md](docs/i18n.md).
+**Settings → Internationalization**; details in [docs/i18n.md](https://verdin-cms.github.io/verdin/guides/content/localizing-content/).
 
 ### Plugins
 
 WebAssembly plugins (Extism) hook into writes, add routes and jobs, and bring dashboard
 widgets and custom fields to the admin, sandboxed and limited to the capabilities they
-declare. See [docs/plugins.md](docs/plugins.md).
+declare. See [Plugins](https://verdin-cms.github.io/verdin/extending/plugins/).
 
 ### End users
 
 Turn on **Settings → Features → End users** for Strapi-compatible sign-up and sign-in
 (`/api/auth/local/register`, `/api/auth/local`, OAuth, password reset) with roles for the
 content API. Emails go through `[email]` (SMTP, Resend, Postmark). See
-[docs/end-users.md](docs/end-users.md).
+[End users](https://verdin-cms.github.io/verdin/guides/auth/end-users/).
 
 ### Governance
 
 - **SSO.** Admins sign in through OpenID Connect providers, with group-to-role mapping
-  ([docs/sso.md](docs/sso.md)).
+  ([Single sign-on](https://verdin-cms.github.io/verdin/guides/auth/sso/)).
 - **Audit logs.** Content, media and admin actions are recorded, and you filter them in
   **Settings → Audit logs**.
 - **Releases.** Publish or unpublish groups of entries together, now or at a date.
 - **Preview.** A link to your site with a short-lived token that reads the draft.
 - **Unseen digest.** An opt-in daily email of what changed.
 
-Details are in [docs/governance.md](docs/governance.md).
+Details are in [Audit logs](https://verdin-cms.github.io/verdin/guides/content/audit-logs/).
 
 ### Content history
 

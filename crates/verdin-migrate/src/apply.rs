@@ -1,4 +1,4 @@
-//! Plan execution (docs/architecture.md §10.4).
+//! Plan execution (https://verdin-cms.github.io/verdin/internals/migrations/).
 //!
 //! - PostgreSQL / SQLite: the whole plan and the new snapshot commit in one transaction.
 //! - MySQL / MariaDB: DDL commits implicitly, so progress is journaled step by step and an

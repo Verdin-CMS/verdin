@@ -1,4 +1,4 @@
-//! API JSON → validated column values (docs/architecture.md §11).
+//! API JSON → validated column values (https://verdin-cms.github.io/verdin/internals/document-service/).
 //!
 //! Writes validate types and constraints. `required` is checked separately, on the
 //! complete document, when it becomes published ([`check_required`]).

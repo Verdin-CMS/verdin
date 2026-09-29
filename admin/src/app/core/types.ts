@@ -1,4 +1,4 @@
-/** Shapes of the Verdin admin API (see docs/architecture.md §13). */
+/** Shapes of the Verdin admin API (see https://verdin-cms.github.io/verdin/api/admin/). */
 
 export type AttributeType =
   | 'string'

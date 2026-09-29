@@ -1,5 +1,5 @@
 //! Document Service: the single internal API for reading and writing content
-//! (docs/architecture.md §11).
+//! (https://verdin-cms.github.io/verdin/internals/document-service/).
 
 mod blocks;
 pub mod events;

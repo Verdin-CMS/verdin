@@ -1,4 +1,4 @@
-//! Query-string tree → validated [`Query`] (docs/architecture.md §12.2).
+//! Query-string tree → validated [`Query`] (https://verdin-cms.github.io/verdin/api/rest/).
 
 use indexmap::IndexMap;
 use rust_decimal::Decimal;

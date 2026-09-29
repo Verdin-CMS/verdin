@@ -1,4 +1,4 @@
-//! Admin API (docs/architecture.md §13), nested under `{admin.path}/api`.
+//! Admin API (https://verdin-cms.github.io/verdin/api/admin/), nested under `{admin.path}/api`.
 //!
 //! Admins authenticate with a short-lived access token (`Authorization: Bearer`) and a
 //! rotating refresh token in an `HttpOnly; SameSite=Strict` cookie scoped to the auth

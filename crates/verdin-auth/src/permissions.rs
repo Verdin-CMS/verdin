@@ -1,4 +1,4 @@
-//! Admin RBAC and content API grants (docs/architecture.md §14).
+//! Admin RBAC and content API grants (https://verdin-cms.github.io/verdin/concepts/permissions/).
 
 use std::collections::HashSet;
 

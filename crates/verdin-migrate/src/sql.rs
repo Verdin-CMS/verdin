@@ -1,4 +1,4 @@
-//! DDL rendering per dialect (docs/architecture.md §7.2 and §9.3).
+//! DDL rendering per dialect (https://verdin-cms.github.io/verdin/reference/attribute-types/ and §9.3).
 //!
 //! Identifiers come only from the validated schema (`^[a-z][a-z0-9_]*$`) and are always
 //! quoted, so reserved words are harmless.

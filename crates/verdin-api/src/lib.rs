@@ -1,5 +1,5 @@
 //! Content API (REST, Strapi v5 compatible), its OpenAPI description, and the admin API
-//! (docs/architecture.md §12–§14).
+//! (https://verdin-cms.github.io/verdin/api/rest/–§14).
 
 mod admin;
 pub mod ai;

@@ -171,7 +171,7 @@ impl Database {
                 let connect = MySqlConnectOptions::from_str(&url)
                     .map_err(invalid_url)?
                     .charset("utf8mb4")
-                    // Every timestamp is stored in UTC (docs/architecture.md §9.3).
+                    // Every timestamp is stored in UTC (https://verdin-cms.github.io/verdin/internals/database/).
                     .timezone(Some(String::from("+00:00")));
                 let pool = MySqlPoolOptions::new()
                     .max_connections(options.max_connections)
