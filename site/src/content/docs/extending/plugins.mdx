@@ -1,0 +1,132 @@
+---
+title: Plugins
+description: What Verdin plugins can do, how the WebAssembly sandbox and capabilities keep them contained, and how to install and switch them on.
+sidebar:
+  order: 1
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../components/Diagram.astro';
+
+Plugins add behavior to Verdin without changing or rebuilding the server. A plugin is a
+WebAssembly module with a manifest, dropped in the project's `plugins/` directory. This
+page explains what plugins can do and how to install one; to write one, follow the
+[plugin tutorial](/extending/plugin-tutorial/), and look up the details in the
+[plugin reference](/extending/plugin-reference/).
+
+## What a plugin can do
+
+| Extension point | What it is for |
+| --- | --- |
+| **Hooks on writes** | Before an entry is created, updated, published, unpublished, deleted or its draft discarded, change the data or refuse the write with a message. After the write, react to it (log, notify, sync). |
+| **Routes** | Serve HTTP endpoints under `/api/plugins/<name>/…`: a webhook receiver, a computed feed, a proxy to another service. |
+| **Scheduled jobs** | Run a function on a cron schedule (UTC). |
+| **GraphQL fields** | Add `name(args: JSON): JSON` fields to `Query` or `Mutation`. |
+| **Dashboard widgets** | Add widget types to the admin dashboard, as Web Components. |
+| **Custom fields** | Give attributes a custom editor in the admin (a color picker, a map), as Web Components; the value is stored as a regular attribute type. |
+| **Settings** | Declare a settings form that admins fill in **Settings → Plugins**. |
+
+A plugin reads and writes content through the same Document Service as the admin and the
+API, so webhooks, history, review stages and validation apply to its writes.
+
+<Aside type="note">
+Verdin plugins are not Strapi plugins. Strapi plugins are Node.js packages with full access
+to the server; Verdin runs no JavaScript on the server. Custom fields declared by Strapi
+schemas (`customField` attributes) load as they are, and a Verdin plugin can provide their
+editor.
+</Aside>
+
+## The sandbox
+
+Plugins run in a WebAssembly sandbox ([Extism](https://extism.org), on Wasmtime). A module
+has no files, no sockets and no database connection of its own. Everything it does outside
+its own memory goes through a few host functions, and the server checks each call against
+the **capabilities** the manifest declares:
+
+| Capability | Grants |
+| --- | --- |
+| `read` | Reading entries of the listed content types (or `*`). |
+| `write` | Creating, updating, publishing, unpublishing and deleting entries of the listed types (reading them too). |
+| `http` | HTTP requests to the listed hosts (`api.example.com`, `*.example.com`). |
+| `kv` | A key-value store of its own, in Verdin's database. |
+
+<Diagram
+  caption="Calls into a plugin, and what its host calls can reach"
+  code={`flowchart LR
+    W[Writes] -->|hooks| M
+    R["/api/plugins/name/…"] --> M
+    J[Scheduled jobs] --> M
+    M[WebAssembly module] --> C{Capabilities}
+    C -->|read, write| D[(Content)]
+    C -->|kv| K[(Plugin storage)]
+    C -->|http| H[Listed hosts]`}
+/>
+
+Each call also has limits: a time limit (5 seconds by default) and a memory limit (64 MB
+by default), set in the manifest. A module that traps or runs out of time fails that call
+only; Verdin rebuilds it on the next call.
+
+What the sandbox does not decide for you:
+
+- **Routes are public.** Requests to `/api/plugins/<name>/…` are not checked against
+  **Public access** or API token permissions. The plugin receives who is calling (anyone,
+  an API token or an end user) and must check it.
+- **Hooks see all writes to their types**, whatever the plugin's `read` capability.
+- **A failing before hook does not block the write.** If the module crashes or times out,
+  the error is logged and the write goes on. Only an explicit refusal stops it.
+
+## Install a plugin
+
+<Steps>
+
+1. Put the plugin in its own directory under `plugins/`, next to `verdin.toml`. It holds
+   the manifest, the module and, optionally, the admin panel files:
+
+   <FileTree>
+   - verdin.toml
+   - plugins/
+     - reading-time/
+       - plugin.toml
+       - plugin.wasm
+       - admin/ optional: Web Components for the admin panel
+         - index.js
+   - schema/
+   </FileTree>
+
+2. Restart Verdin. It loads every `plugins/*/plugin.toml` at startup and logs
+   `plugin found` for each. A plugin that fails to load (invalid manifest, missing module,
+   duplicate name) is listed in **Settings → Plugins** with the reason.
+
+3. In the admin panel, open **Settings → Plugins**. Review what the plugin asks for under
+   **Access**, **Hooks**, **Routes** and **Jobs**, then switch it on.
+
+4. If the plugin has settings, open **Settings** on its card, fill them in and save.
+
+</Steps>
+
+Installed plugins start switched off. Switching a plugin and editing its settings take
+effect at once, on every instance (other instances pick the change up within
+`[server].sync_interval_secs`). Changes to `plugin.toml` or the module need a restart.
+
+Managing plugins needs the `plugins.manage` permission (**Manage plugins**). See the
+[permissions reference](/reference/permissions/).
+
+## Configure `[plugins]`
+
+```toml title="verdin.toml"
+[plugins]
+path = "plugins"   # directory of plugins, relative to verdin.toml
+run_jobs = true    # run scheduled jobs on this instance
+```
+
+With several instances, set `run_jobs = false` on all but one, so each job runs once. See
+the [configuration reference](/reference/configuration/).
+
+## Operations
+
+- **One call at a time.** Each plugin has one instance and handles one call at a time, so
+  a slow route delays that plugin's hooks. Keep functions short.
+- **Logs.** What a plugin logs goes to the server log and to **Settings → Plugins →
+  Logs** (the last 200 lines, kept in memory).
+- **Deploys.** Ship plugins with the project (in the image or the volume), like the
+  schema. The switches and settings live in the database.

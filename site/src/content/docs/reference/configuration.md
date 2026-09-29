@@ -1,17 +1,24 @@
 ---
 title: Configuration reference
 description: Every section and key of verdin.toml, with defaults, and the environment variables Verdin reads.
+sidebar:
+  order: 1
+  label: Configuration
 ---
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
-crates/verdin-email/src/lib.rs. Keep it in step when keys change. -->
+crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+Keep it in step when keys change. -->
 
 Configuration is layered: **built-in defaults ← `verdin.toml` ← environment**. The
 file is optional; every key has a default. Unknown keys are rejected, so a typo fails
 at start instead of being ignored.
 
 - Override any key with `VERDIN_<SECTION>__<KEY>` (two underscores), for example
-  `VERDIN_SERVER__PORT=8080` or `VERDIN_ADMIN__SECURE_COOKIES=false`.
+  `VERDIN_SERVER__PORT=8080` or `VERDIN_ADMIN__SECURE_COOKIES=false`. Nested tables take
+  one more `__`: `VERDIN_ADMIN__BRANDING__TITLE=ACME`. Unknown keys are rejected here too,
+  so any variable that starts with `VERDIN_` and contains `__` must name a real key.
 - `VERDIN_DATABASE_URL` is a shorthand for `database.url`.
 - The file is `verdin.toml` in the working directory, or the path given with
   `-c, --config` or `VERDIN_CONFIG`. Relative paths in it (schema, plugins, uploads,
@@ -58,7 +65,7 @@ Secrets are never read from `verdin.toml`; see [Environment variables](#environm
 | `token_rate_limit` | `0` | Requests per minute and API token or end user (`0`: unlimited). |
 | `cache_ttl_secs` | `0` | Keep anonymous reads in memory this long (`0`: no cache); changes empty the cache. |
 | `cache_entries` | `1000` | Maximum number of cached responses. |
-| `cors_origins` | `[]` | Browser origins allowed to call the content API and GraphQL from another site (`["https://www.example.com"]`: scheme, host and port, no path), or `["*"]` for any. Empty: only same-origin pages can call them from a browser. The admin API never takes cross-origin calls. |
+| `cors_origins` | `[]` | Browser origins allowed to call the content API and GraphQL from another site (`["https://www.example.com"]`: scheme, host and port, no path), or `["*"]` for any (alone: `*` cannot be combined with origins). Empty: only same-origin pages can call them from a browser. The admin API never takes cross-origin calls. |
 
 ## `[admin]`
 
@@ -168,7 +175,7 @@ provider = { name = "s3", bucket = "media", region = "auto",
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `allow_private_networks` | unset | Allow webhook URLs on loopback, private and link-local addresses. Unset means no in `verdin start` (an admin could otherwise reach internal services) and yes in `verdin dev`. |
+| `allow_private_networks` | unset | Allow webhook URLs on loopback, private and link-local addresses; also applies to deploy targets and the `[cdn]` webhook. Unset means no in `verdin start` (an admin could otherwise reach internal services) and yes in `verdin dev`. |
 | `timeout_secs` | `10` | Time limit of each delivery. |
 | `retention_days` | `30` | Days the delivery log is kept. |
 
@@ -291,11 +298,11 @@ Besides the `VERDIN_<SECTION>__<KEY>` overrides, Verdin reads these variables:
 | `VERDIN_DATABASE_URL` | Shorthand for `database.url`. |
 | `VERDIN_ADMIN_JWT_SECRET` | Signs admin session tokens. Required, at least 32 bytes; generate it with `verdin secrets`. |
 | `VERDIN_TOKEN_PEPPER` | Keyed hash for stored tokens. Required, at least 32 bytes; generate it with `verdin secrets`. |
-| `VERDIN_ADMIN_PASSWORD` | Password for `verdin admin create` and `verdin admin reset-password` (otherwise read from stdin). |
+| `VERDIN_ADMIN_PASSWORD` | Password for `verdin admin create` and `verdin admin reset-password` (otherwise read from stdin); see the [command line reference](/reference/cli/). |
 | `VERDIN_EMAIL_SMTP_PASSWORD` | SMTP password. |
 | `VERDIN_EMAIL_API_KEY` | API key of the Resend and Postmark providers. |
-| `VERDIN_SSO_<ID>_SECRET` | Client secret of an SSO provider (see [Single sign-on](/guides/auth/sso/)). |
-| `VERDIN_OAUTH_<PROVIDER>_SECRET` | Client secret of an end-user OAuth provider (see [End users](/guides/auth/end-users/)). |
+| `VERDIN_SSO_<ID>_SECRET` | Client secret of an SSO provider; `<ID>` is the provider's id in uppercase with `-` as `_` (see [Single sign-on](/guides/auth/sso/)). |
+| `VERDIN_OAUTH_<PROVIDER>_SECRET` | Client secret of an end-user OAuth provider, named like the SSO ones (see [End users](/guides/auth/end-users/)). |
 | `VERDIN_AI_KEY` | API key of the `[ai]` provider. |
 | `VERDIN_CDN_TOKEN` | API token of the `[cdn]` provider. |
 | `VERDIN_IMAGE_SECRET` | Signs image transformation URLs (see [`[upload.transforms]`](#uploadtransforms)). |
