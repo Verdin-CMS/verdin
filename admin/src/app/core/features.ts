@@ -20,10 +20,22 @@ export class Features {
   /** `null` until loaded. */
   readonly catalog = signal<Feature[] | null>(null);
 
+  private loading: Promise<Feature[] | null> | null = null;
+
   async load(): Promise<Feature[]> {
     const features = await this.api.get<Feature[]>('/features');
     this.catalog.set(features);
     return features;
+  }
+
+  /** The catalog, loaded once if needed (`null` when it cannot be read). */
+  async ensure(): Promise<Feature[] | null> {
+    const catalog = this.catalog();
+    if (catalog) return catalog;
+    this.loading ??= this.load()
+      .catch(() => null)
+      .finally(() => (this.loading = null));
+    return this.loading;
   }
 
   async update(

@@ -12,6 +12,7 @@ import {
   output,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FieldTree, FormRoot, form, submit } from '@angular/forms/signals';
@@ -55,6 +56,7 @@ import { isMorphOwner } from '../../core/morph';
 import { Schema } from '../../core/schema';
 import { ContentType, Document, MediaFile } from '../../core/types';
 import { UsageProbe, Usages } from '../../core/usage';
+import { Confirm, HasUnsavedChanges } from '../../shared/components/confirm';
 import { PageHeader } from '../../shared/components/page-header';
 import { UsageWarning } from '../../shared/components/usage';
 import { VoteControl } from '../../shared/components/vote-control';
@@ -149,6 +151,7 @@ function withLocale(query: string, locale: string | null): string {
   // presence follow the open entry.
   providers: [RelatedEditor, EntryCollab, EntryPresence],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '(window:beforeunload)': 'beforeUnload($event)' },
   template: `
     <div class="flex flex-col gap-6">
       <vd-page-header [title]="heading()">
@@ -450,7 +453,7 @@ function withLocale(query: string, locale: string | null): string {
             </p>
             <div class="col-start-2 mt-2 flex flex-wrap gap-2">
               @if (change !== 'entry.delete') {
-                <button hlmBtn variant="outline" size="sm" type="button" (click)="reload.emit()">
+                <button hlmBtn variant="outline" size="sm" type="button" (click)="reloadRemote()">
                   <ng-icon name="lucideRefreshCw" /> {{ t('presence.remote.reload') }}
                 </button>
               }
@@ -588,7 +591,7 @@ function withLocale(query: string, locale: string | null): string {
                     size="sm"
                     type="button"
                     [disabled]="busy()"
-                    (click)="action('unpublish')"
+                    (click)="confirmAction('unpublish')"
                   >
                     <ng-icon name="lucideEyeOff" /> {{ t('content.edit.unpublish') }}
                   </button>
@@ -599,7 +602,7 @@ function withLocale(query: string, locale: string | null): string {
                       size="sm"
                       type="button"
                       [disabled]="busy()"
-                      (click)="action('discard-draft')"
+                      (click)="confirmAction('discard-draft')"
                     >
                       <ng-icon name="lucideUndo2" /> {{ t('content.edit.discard') }}
                     </button>
@@ -824,8 +827,9 @@ function withLocale(query: string, locale: string | null): string {
     </hlm-dialog>
   `,
 })
-export class DocumentForm implements OnInit {
+export class DocumentForm implements OnInit, HasUnsavedChanges {
   private readonly api = inject(Api);
+  private readonly confirm = inject(Confirm);
   private readonly unseen = inject(Unseen);
   private readonly router = inject(Router);
   protected readonly auth = inject(Auth);
@@ -1019,6 +1023,36 @@ export class DocumentForm implements OnInit {
     return title ? String(title) : this.t('content.edit.untitled');
   });
 
+  /** Set while navigating away on purpose (after asking, or once the entry is gone). */
+  private leaving = false;
+
+  /** Edits not saved yet: changed fields, or an AI translation to keep or undo. */
+  hasUnsavedChanges(): boolean {
+    if (this.leaving || !this.documentForm) return false;
+    return this.documentForm().dirty() || !!this.aiChanges();
+  }
+
+  /** Closing or reloading the tab with unsaved edits: the browser asks first. */
+  protected beforeUnload(event: BeforeUnloadEvent): void {
+    if (this.hasUnsavedChanges()) event.preventDefault();
+  }
+
+  /** Navigates without the unsaved changes guard (the admin already agreed). */
+  private leave(navigation: () => Promise<boolean>): void {
+    this.leaving = true;
+    void navigation().finally(() => (this.leaving = false));
+  }
+
+  /** Asks before discarding unsaved edits; `true` when there are none. */
+  private async mayDiscard(): Promise<boolean> {
+    return !this.hasUnsavedChanges() || (await this.confirm.discardChanges());
+  }
+
+  /** Another admin changed the entry: load it again, once unsaved edits may go. */
+  protected async reloadRemote(): Promise<void> {
+    if (await this.mayDiscard()) this.reload.emit();
+  }
+
   protected canSave(): boolean {
     const uid = this.type().uid;
     // A missing locale version is created with an update of the document.
@@ -1185,14 +1219,16 @@ export class DocumentForm implements OnInit {
     return localeState(this.localeVersions(), code);
   }
 
-  protected switchLocale(code: string): void {
+  protected async switchLocale(code: string): Promise<void> {
     if (code === this.locale()) return;
+    // Another locale opens a fresh form: unsaved edits of this one would be lost.
+    if (!(await this.mayDiscard())) return;
     const type = this.type();
     const path =
       type.kind === 'singleType'
         ? ['/single', type.uid]
         : ['/content', type.uid, this.documentId() ?? 'new'];
-    void this.router.navigate(path, { queryParams: { locale: code } });
+    this.leave(() => this.router.navigate(path, { queryParams: { locale: code } }));
   }
 
   /** Reloads the document's locale versions (after a save or a publication change). */
@@ -1361,18 +1397,20 @@ export class DocumentForm implements OnInit {
       return;
     }
     const open = () =>
-      void this.router.navigate(
-        other.kind === 'singleType'
-          ? ['/single', other.uid]
-          : ['/content', other.uid, target.documentId],
-        {
-          queryParams: {
-            ...(target.locale ? { locale: target.locale } : {}),
-            ...(target.field ? { field: target.field } : {}),
+      this.leave(() =>
+        this.router.navigate(
+          other.kind === 'singleType'
+            ? ['/single', other.uid]
+            : ['/content', other.uid, target.documentId],
+          {
+            queryParams: {
+              ...(target.locale ? { locale: target.locale } : {}),
+              ...(target.field ? { field: target.field } : {}),
+            },
           },
-        },
+        ),
       );
-    if (this.documentForm().dirty() || this.aiChanges()) {
+    if (this.hasUnsavedChanges()) {
       toast.warning(this.t('visualEditing.unsaved'), {
         action: { label: this.t('visualEditing.openAnyway'), onClick: open },
       });
@@ -1460,6 +1498,18 @@ export class DocumentForm implements OnInit {
     this.busy.set(false);
   }
 
+  /** Unpublishing and discarding the draft ask first: neither can be undone here. */
+  protected async confirmAction(action: 'unpublish' | 'discard-draft'): Promise<void> {
+    const unpublish = action === 'unpublish';
+    const confirmed = await this.confirm.ask({
+      title: this.t(unpublish ? 'content.edit.unpublishTitle' : 'content.edit.discardTitle'),
+      description: this.t(unpublish ? 'content.edit.unpublishHint' : 'content.edit.discardHint'),
+      confirm: this.t(unpublish ? 'content.edit.unpublish' : 'content.edit.discard'),
+      destructive: true,
+    });
+    if (confirmed) await this.action(action);
+  }
+
   protected async action(action: 'unpublish' | 'discard-draft'): Promise<void> {
     const type = this.type();
     const locale = this.locale();
@@ -1482,6 +1532,9 @@ export class DocumentForm implements OnInit {
         this.model.set(toModel(type.attributes, draft, (uid) => this.schema.component(uid)));
         this.showMorphs(draft);
         this.aiChanges.set(null);
+        // The form shows the published version again: nothing is left unsaved.
+        this.documentForm().reset();
+        this.remoteChange.set(null);
         this.draftUpdatedAt.set(this.publishedUpdatedAt());
         toast.success(this.t('content.edit.toast.discarded'));
       }
@@ -1518,7 +1571,10 @@ export class DocumentForm implements OnInit {
         withLocale('', this.locale()) || undefined,
       );
       toast.success(this.t('content.edit.toast.deleted'));
-      await this.router.navigate(type.kind === 'singleType' ? ['/'] : ['/content', type.uid]);
+      // The entry is gone: its unsaved edits with it.
+      this.leave(() =>
+        this.router.navigate(type.kind === 'singleType' ? ['/'] : ['/content', type.uid]),
+      );
     } catch (error) {
       this.fail(error, this.t('content.edit.error.delete'));
     }
@@ -1686,7 +1742,7 @@ export class DocumentForm implements OnInit {
     }
   `,
 })
-export class ContentEdit {
+export class ContentEdit implements HasUnsavedChanges {
   private readonly api = inject(Api);
   private readonly engagement = inject(Engagement);
   private readonly unseen = inject(Unseen);
@@ -1715,6 +1771,12 @@ export class ContentEdit {
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly loadKey = signal('');
+  private readonly form = viewChild(DocumentForm);
+
+  /** For the route's unsaved changes guard. */
+  hasUnsavedChanges(): boolean {
+    return this.form()?.hasUnsavedChanges() ?? false;
+  }
 
   constructor() {
     // Reload whenever the route's type or document changes.

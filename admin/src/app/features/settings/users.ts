@@ -11,6 +11,7 @@ import { HlmDialogImports } from '@spartan-ng/helm/dialog';
 import { HlmEmptyImports } from '@spartan-ng/helm/empty';
 import { HlmFieldImports } from '@spartan-ng/helm/field';
 import { HlmInputImports } from '@spartan-ng/helm/input';
+import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 import { HlmSwitchImports } from '@spartan-ng/helm/switch';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
@@ -20,6 +21,7 @@ import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
 import { TwoFactor } from '../../core/two-factor';
 import { AdminUser, Role } from '../../core/types';
+import { LoadError } from '../../shared/components/load-error';
 import { PageHeader } from '../../shared/components/page-header';
 
 interface Draft {
@@ -50,6 +52,8 @@ interface Draft {
     HlmAlertDialogImports,
     HlmAvatarImports,
     HlmEmptyImports,
+    HlmSkeletonImports,
+    LoadError,
     PageHeader,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -68,7 +72,15 @@ interface Draft {
           </button>
         </div>
       </vd-page-header>
-      @if (users().length === 0) {
+      @if (loadError(); as message) {
+        <vd-load-error [message]="message" (retry)="load()" />
+      } @else if (loading()) {
+        <hlm-skeleton
+          class="h-48 rounded-xl"
+          role="status"
+          [attr.aria-label]="t('common.loading')"
+        />
+      } @else if (users().length === 0) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">
           <div hlmEmptyHeader>
             <div hlmEmptyMedia variant="icon"><ng-icon name="lucideUsers" /></div>
@@ -465,13 +477,28 @@ export class UsersPage implements OnInit {
   /** The user whose second factors are about to be reset (confirm dialog). */
   protected readonly resetting = signal<AdminUser | null>(null);
 
-  async ngOnInit(): Promise<void> {
-    const [users, roles] = await Promise.all([
-      this.api.get<AdminUser[]>('/users'),
-      this.api.get<Role[]>('/roles'),
-    ]);
-    this.users.set(users);
-    this.roles.set(roles);
+  protected readonly loading = signal(true);
+  protected readonly loadError = signal<string | null>(null);
+
+  ngOnInit(): void {
+    void this.load();
+  }
+
+  protected async load(): Promise<void> {
+    this.loading.set(true);
+    this.loadError.set(null);
+    try {
+      const [users, roles] = await Promise.all([
+        this.api.get<AdminUser[]>('/users'),
+        this.api.get<Role[]>('/roles'),
+      ]);
+      this.users.set(users);
+      this.roles.set(roles);
+    } catch (error) {
+      this.loadError.set(ApiFailure.from(error).message);
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   protected edit(user: AdminUser | null): void {

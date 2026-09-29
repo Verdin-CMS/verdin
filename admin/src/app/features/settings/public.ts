@@ -7,12 +7,13 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { Api, ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { Grant } from '../../core/types';
+import { LoadError } from '../../shared/components/load-error';
 import { PageHeader } from '../../shared/components/page-header';
 import { GrantsMatrix } from './grants';
 
 @Component({
   selector: 'vd-public',
-  imports: [GrantsMatrix, NgIcon, HlmButtonImports, HlmSpinnerImports, PageHeader],
+  imports: [GrantsMatrix, NgIcon, HlmButtonImports, HlmSpinnerImports, LoadError, PageHeader],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-6">
@@ -24,7 +25,7 @@ import { GrantsMatrix } from './grants';
           <ng-icon name="lucideGlobe" size="14" /> {{ t('shell.settings') }}
         </span>
         <div actions>
-          <button hlmBtn [disabled]="busy()" (click)="save()">
+          <button hlmBtn [disabled]="busy() || !loaded()" (click)="save()">
             @if (busy()) {
               <hlm-spinner />
             } @else {
@@ -34,7 +35,9 @@ import { GrantsMatrix } from './grants';
           </button>
         </div>
       </vd-page-header>
-      @if (loaded()) {
+      @if (loadError(); as message) {
+        <vd-load-error [message]="message" (retry)="load()" />
+      } @else if (loaded()) {
         <vd-grants-matrix [(grants)]="grants" />
       } @else {
         <div class="bg-card flex justify-center rounded-xl border py-16">
@@ -52,9 +55,20 @@ export class PublicPage implements OnInit {
   protected readonly loaded = signal(false);
   protected readonly busy = signal(false);
 
-  async ngOnInit(): Promise<void> {
-    this.grants.set(await this.api.get<Grant[]>('/public-permissions'));
-    this.loaded.set(true);
+  protected readonly loadError = signal<string | null>(null);
+
+  ngOnInit(): void {
+    void this.load();
+  }
+
+  protected async load(): Promise<void> {
+    this.loadError.set(null);
+    try {
+      this.grants.set(await this.api.get<Grant[]>('/public-permissions'));
+      this.loaded.set(true);
+    } catch (error) {
+      this.loadError.set(ApiFailure.from(error).message);
+    }
   }
 
   protected async save(): Promise<void> {

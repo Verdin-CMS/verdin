@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -361,6 +362,7 @@ export class MediaPicker {
   private requestId = 0;
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.searchTimer));
     // Each opening starts afresh at the root.
     effect(() => {
       if (!this.open()) return;

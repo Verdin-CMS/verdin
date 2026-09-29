@@ -10,6 +10,7 @@ import { HlmEmptyImports } from '@spartan-ng/helm/empty';
 import { HlmFieldImports } from '@spartan-ng/helm/field';
 import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
+import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 import { HlmToggleGroupImports } from '@spartan-ng/helm/toggle-group';
 
@@ -18,6 +19,7 @@ import { Api, ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { ApiToken, Grant, TokenKind } from '../../core/types';
+import { LoadError } from '../../shared/components/load-error';
 import { PageHeader } from '../../shared/components/page-header';
 import { GrantsMatrix } from './grants';
 
@@ -50,6 +52,8 @@ const KINDS: Record<
     HlmAlertImports,
     HlmAlertDialogImports,
     HlmEmptyImports,
+    HlmSkeletonImports,
+    LoadError,
     PageHeader,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -69,7 +73,15 @@ const KINDS: Record<
         </div>
       </vd-page-header>
 
-      @if (tokens().length === 0) {
+      @if (loadError(); as message) {
+        <vd-load-error [message]="message" (retry)="load()" />
+      } @else if (loading()) {
+        <hlm-skeleton
+          class="h-48 rounded-xl"
+          role="status"
+          [attr.aria-label]="t('common.loading')"
+        />
+      } @else if (tokens().length === 0) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">
           <div hlmEmptyHeader>
             <div hlmEmptyMedia variant="icon"><ng-icon name="lucideKeyRound" /></div>
@@ -349,8 +361,23 @@ export class TokensPage implements OnInit {
   /** The token whose regeneration awaits confirmation. */
   protected readonly regenerating = signal<ApiToken | null>(null);
 
-  async ngOnInit(): Promise<void> {
-    await this.reload();
+  protected readonly loading = signal(true);
+  protected readonly loadError = signal<string | null>(null);
+
+  ngOnInit(): void {
+    void this.load();
+  }
+
+  protected async load(): Promise<void> {
+    this.loading.set(true);
+    this.loadError.set(null);
+    try {
+      await this.reload();
+    } catch (error) {
+      this.loadError.set(ApiFailure.from(error).message);
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   private async reload(): Promise<void> {

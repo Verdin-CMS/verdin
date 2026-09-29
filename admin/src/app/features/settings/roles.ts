@@ -16,6 +16,7 @@ import { HlmDialogImports } from '@spartan-ng/helm/dialog';
 import { HlmFieldImports } from '@spartan-ng/helm/field';
 import { HlmInputImports } from '@spartan-ng/helm/input';
 import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
+import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 import { HlmSwitchImports } from '@spartan-ng/helm/switch';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
@@ -31,6 +32,7 @@ import {
   Permission,
   Role,
 } from '../../core/types';
+import { LoadError } from '../../shared/components/load-error';
 import { PageHeader } from '../../shared/components/page-header';
 import {
   LocaleRestriction,
@@ -116,6 +118,8 @@ const ACTION_LABELS: Record<
     HlmNativeSelectImports,
     HlmSwitchImports,
     HlmAlertImports,
+    HlmSkeletonImports,
+    LoadError,
     PageHeader,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -130,327 +134,343 @@ const ACTION_LABELS: Record<
         </span>
       </vd-page-header>
 
-      <div class="grid items-start gap-6 lg:grid-cols-[16rem_1fr]">
-        <aside class="flex flex-col gap-4">
-          <nav class="bg-card flex flex-col gap-1 rounded-xl border p-2">
-            @for (role of roles(); track role.id) {
+      @if (loadError(); as message) {
+        <vd-load-error [message]="message" (retry)="load()" />
+      } @else if (loading()) {
+        <hlm-skeleton
+          class="h-96 rounded-xl"
+          role="status"
+          [attr.aria-label]="t('common.loading')"
+        />
+      } @else {
+        <div class="grid items-start gap-6 lg:grid-cols-[16rem_1fr]">
+          <aside class="flex flex-col gap-4">
+            <nav class="bg-card flex flex-col gap-1 rounded-xl border p-2">
+              @for (role of roles(); track role.id) {
+                <button
+                  hlmBtn
+                  [variant]="selected()?.id === role.id ? 'secondary' : 'ghost'"
+                  class="h-auto justify-start py-2"
+                  [attr.aria-current]="selected()?.id === role.id ? 'true' : null"
+                  (click)="select(role)"
+                >
+                  <span class="flex min-w-0 flex-col items-start">
+                    <span class="truncate">{{ role.name }}</span>
+                    @if (role.code !== 'super-admin') {
+                      <span class="text-muted-foreground text-xs font-normal">{{
+                        t('settings.roles.permissions', { count: role.permissions.length })
+                      }}</span>
+                    }
+                  </span>
+                  <span class="ms-auto flex shrink-0 items-center gap-1">
+                    @if (role.requireTwoFactor) {
+                      <ng-icon
+                        name="lucideShieldCheck"
+                        class="text-primary"
+                        [attr.aria-label]="t('twoFactor.role.badge')"
+                        [attr.title]="t('twoFactor.role.badge')"
+                      />
+                    }
+                    @if (role.builtin) {
+                      <span hlmBadge variant="outline">{{ t('settings.roles.builtin') }}</span>
+                    }
+                  </span>
+                </button>
+              }
+            </nav>
+            <div class="bg-card flex flex-col gap-2 rounded-xl border p-3">
+              <span class="text-sm font-medium">{{ t('settings.roles.newRole') }}</span>
+              <input
+                hlmInput
+                [placeholder]="t('common.name')"
+                [value]="newName()"
+                (input)="newName.set($any($event.target).value)"
+                (keydown.enter)="newName().trim() && create()"
+                [attr.aria-label]="t('settings.roles.newRoleName')"
+              />
               <button
                 hlmBtn
-                [variant]="selected()?.id === role.id ? 'secondary' : 'ghost'"
-                class="h-auto justify-start py-2"
-                [attr.aria-current]="selected()?.id === role.id ? 'true' : null"
-                (click)="select(role)"
+                variant="outline"
+                size="sm"
+                [disabled]="!newName().trim()"
+                (click)="create()"
               >
-                <span class="flex min-w-0 flex-col items-start">
-                  <span class="truncate">{{ role.name }}</span>
-                  @if (role.code !== 'super-admin') {
-                    <span class="text-muted-foreground text-xs font-normal">{{
-                      t('settings.roles.permissions', { count: role.permissions.length })
-                    }}</span>
-                  }
-                </span>
-                <span class="ms-auto flex shrink-0 items-center gap-1">
-                  @if (role.requireTwoFactor) {
-                    <ng-icon
-                      name="lucideShieldCheck"
-                      class="text-primary"
-                      [attr.aria-label]="t('twoFactor.role.badge')"
-                      [attr.title]="t('twoFactor.role.badge')"
-                    />
-                  }
-                  @if (role.builtin) {
-                    <span hlmBadge variant="outline">{{ t('settings.roles.builtin') }}</span>
-                  }
-                </span>
+                <ng-icon name="lucidePlus" /> {{ t('common.create') }}
               </button>
-            }
-          </nav>
-          <div class="bg-card flex flex-col gap-2 rounded-xl border p-3">
-            <span class="text-sm font-medium">{{ t('settings.roles.newRole') }}</span>
-            <input
-              hlmInput
-              [placeholder]="t('common.name')"
-              [value]="newName()"
-              (input)="newName.set($any($event.target).value)"
-              (keydown.enter)="newName().trim() && create()"
-              [attr.aria-label]="t('settings.roles.newRoleName')"
-            />
-            <button
-              hlmBtn
-              variant="outline"
-              size="sm"
-              [disabled]="!newName().trim()"
-              (click)="create()"
-            >
-              <ng-icon name="lucidePlus" /> {{ t('common.create') }}
-            </button>
-          </div>
-        </aside>
+            </div>
+          </aside>
 
-        @if (selected(); as role) {
-          <section class="flex min-w-0 flex-col gap-6">
-            <div class="flex flex-wrap items-center gap-3">
-              <div class="flex min-w-0 flex-col gap-1">
-                <h2 class="flex items-center gap-2 text-xl font-semibold tracking-tight">
-                  {{ role.name }}
-                  @if (role.builtin) {
-                    <span hlmBadge variant="outline">{{ t('settings.roles.builtin') }}</span>
+          @if (selected(); as role) {
+            <section class="flex min-w-0 flex-col gap-6">
+              <div class="flex flex-wrap items-center gap-3">
+                <div class="flex min-w-0 flex-col gap-1">
+                  <h2 class="flex items-center gap-2 text-xl font-semibold tracking-tight">
+                    {{ role.name }}
+                    @if (role.builtin) {
+                      <span hlmBadge variant="outline">{{ t('settings.roles.builtin') }}</span>
+                    }
+                  </h2>
+                  @if (role.description) {
+                    <p class="text-muted-foreground text-sm">{{ role.description }}</p>
                   }
-                </h2>
-                @if (role.description) {
-                  <p class="text-muted-foreground text-sm">{{ role.description }}</p>
-                }
-              </div>
-              <div class="ms-auto flex gap-2">
-                @if (!role.builtin) {
-                  <button
-                    hlmBtn
-                    variant="ghost"
-                    class="text-destructive hover:text-destructive"
-                    (click)="remove(role)"
-                  >
-                    <ng-icon name="lucideTrash2" /> {{ t('common.delete') }}
-                  </button>
-                }
-                @if (!superAdmin() || requireTwoFactor() !== !!role.requireTwoFactor) {
-                  <button hlmBtn (click)="save()">
-                    <ng-icon name="lucideSave" /> {{ t('common.save') }}
-                  </button>
-                }
-              </div>
-            </div>
-            <div hlmField orientation="horizontal" class="bg-card rounded-xl border p-4">
-              <hlm-switch
-                inputId="role-require-two-factor"
-                data-testid="role-require-two-factor"
-                [checked]="requireTwoFactor()"
-                (checkedChange)="requireTwoFactor.set($event)"
-              />
-              <div class="flex flex-col gap-0.5">
-                <label hlmFieldLabel for="role-require-two-factor">{{
-                  t('twoFactor.role.require')
-                }}</label>
-                <p hlmFieldDescription>{{ t('twoFactor.role.requireHint') }}</p>
-              </div>
-            </div>
-            @if (superAdmin()) {
-              <div hlmAlert>
-                <ng-icon name="lucideShieldCheck" />
-                <p hlmAlertDescription>{{ t('settings.roles.superAdmin') }}</p>
-              </div>
-            } @else {
-              <div class="flex flex-col gap-3">
-                <div class="flex flex-col gap-0.5">
-                  <h3 class="text-sm font-medium">{{ t('settings.roles.content') }}</h3>
-                  <p class="text-muted-foreground text-xs">{{ t('settings.roles.contentHint') }}</p>
                 </div>
-                <div class="bg-card overflow-hidden rounded-xl border">
-                  <div hlmTableContainer class="max-h-[60vh] overflow-y-auto">
-                    <table hlmTable>
-                      <thead hlmTHead>
-                        <tr hlmTr class="hover:bg-transparent">
-                          <th hlmTh class="bg-muted sticky top-0 z-10 ps-4">
-                            {{ t('settings.grants.contentType') }}
-                          </th>
-                          @for (action of contentActions; track action) {
-                            <th hlmTh class="bg-muted sticky top-0 z-10">
-                              {{ t(actionLabels[action]) }}
+                <div class="ms-auto flex gap-2">
+                  @if (!role.builtin) {
+                    <button
+                      hlmBtn
+                      variant="ghost"
+                      class="text-destructive hover:text-destructive"
+                      (click)="remove(role)"
+                    >
+                      <ng-icon name="lucideTrash2" /> {{ t('common.delete') }}
+                    </button>
+                  }
+                  @if (!superAdmin() || requireTwoFactor() !== !!role.requireTwoFactor) {
+                    <button hlmBtn (click)="save()">
+                      <ng-icon name="lucideSave" /> {{ t('common.save') }}
+                    </button>
+                  }
+                </div>
+              </div>
+              <div hlmField orientation="horizontal" class="bg-card rounded-xl border p-4">
+                <hlm-switch
+                  inputId="role-require-two-factor"
+                  data-testid="role-require-two-factor"
+                  [checked]="requireTwoFactor()"
+                  (checkedChange)="requireTwoFactor.set($event)"
+                />
+                <div class="flex flex-col gap-0.5">
+                  <label hlmFieldLabel for="role-require-two-factor">{{
+                    t('twoFactor.role.require')
+                  }}</label>
+                  <p hlmFieldDescription>{{ t('twoFactor.role.requireHint') }}</p>
+                </div>
+              </div>
+              @if (superAdmin()) {
+                <div hlmAlert>
+                  <ng-icon name="lucideShieldCheck" />
+                  <p hlmAlertDescription>{{ t('settings.roles.superAdmin') }}</p>
+                </div>
+              } @else {
+                <div class="flex flex-col gap-3">
+                  <div class="flex flex-col gap-0.5">
+                    <h3 class="text-sm font-medium">{{ t('settings.roles.content') }}</h3>
+                    <p class="text-muted-foreground text-xs">
+                      {{ t('settings.roles.contentHint') }}
+                    </p>
+                  </div>
+                  <div class="bg-card overflow-hidden rounded-xl border">
+                    <div hlmTableContainer class="max-h-[60vh] overflow-y-auto">
+                      <table hlmTable>
+                        <thead hlmTHead>
+                          <tr hlmTr class="hover:bg-transparent">
+                            <th hlmTh class="bg-muted sticky top-0 z-10 ps-4">
+                              {{ t('settings.grants.contentType') }}
                             </th>
-                          }
-                          <th
-                            hlmTh
-                            class="bg-muted sticky top-0 z-10"
-                            [class.pe-4]="!localesShown()"
-                          >
-                            {{ t('settings.roles.fields') }}
-                          </th>
-                          @if (localesShown()) {
-                            <th hlmTh class="bg-muted sticky top-0 z-10 pe-4">
-                              {{ t('settings.roles.locales') }}
-                            </th>
-                          }
-                        </tr>
-                      </thead>
-                      <tbody hlmTBody>
-                        @for (subject of subjects(); track subject.uid) {
-                          <tr hlmTr [class.bg-muted/30]="subject.uid === '*'">
-                            <td hlmTd class="ps-4">
-                              <div class="flex flex-col">
-                                <span class="font-medium">{{ subject.name }}</span>
-                                @if (subject.uid !== '*') {
-                                  <span class="text-muted-foreground font-mono text-xs">{{
-                                    subject.uid
-                                  }}</span>
-                                }
-                              </div>
-                            </td>
                             @for (action of contentActions; track action) {
-                              @let restriction = fieldRestriction(action, subject.uid);
-                              <td hlmTd>
-                                <hlm-native-select
-                                  size="sm"
-                                  [value]="level(action, subject.uid)"
-                                  (valueChange)="setLevel(action, subject.uid, $any($event))"
-                                  [attr.aria-label]="subject.name + ' ' + t(actionLabels[action])"
-                                >
-                                  <option hlmNativeSelectOption value="none">
-                                    {{ t('settings.roles.level.none') }}
-                                  </option>
-                                  <option hlmNativeSelectOption value="own">
-                                    {{ t('settings.roles.level.own') }}
-                                  </option>
-                                  <option hlmNativeSelectOption value="all">
-                                    {{ t('settings.roles.level.all') }}
-                                  </option>
-                                </hlm-native-select>
-                                @if (restriction) {
-                                  <span hlmBadge variant="secondary" class="mt-1.5">{{
-                                    t('settings.roles.fieldsCount', { count: restriction.length })
-                                  }}</span>
-                                }
-                              </td>
+                              <th hlmTh class="bg-muted sticky top-0 z-10">
+                                {{ t(actionLabels[action]) }}
+                              </th>
                             }
-                            <td hlmTd [class.pe-4]="!localesShown()">
-                              @if (subject.uid === '*') {
-                                <span class="text-muted-foreground/60 text-sm">—</span>
-                              } @else {
-                                <button
-                                  hlmBtn
-                                  variant="outline"
-                                  size="sm"
-                                  [disabled]="!canRestrict(subject.uid)"
-                                  [attr.aria-label]="
-                                    t('settings.roles.fieldsFor', { type: subject.name })
-                                  "
-                                  (click)="openFields(subject.uid, subject.name)"
-                                >
-                                  <ng-icon name="lucideListChecks" />
-                                  {{ t('settings.roles.fields') }}
-                                </button>
-                              }
-                            </td>
+                            <th
+                              hlmTh
+                              class="bg-muted sticky top-0 z-10"
+                              [class.pe-4]="!localesShown()"
+                            >
+                              {{ t('settings.roles.fields') }}
+                            </th>
                             @if (localesShown()) {
-                              <td hlmTd class="pe-4">
-                                @if (subject.localized) {
-                                  @let restriction = localeRestriction(subject.uid);
+                              <th hlmTh class="bg-muted sticky top-0 z-10 pe-4">
+                                {{ t('settings.roles.locales') }}
+                              </th>
+                            }
+                          </tr>
+                        </thead>
+                        <tbody hlmTBody>
+                          @for (subject of subjects(); track subject.uid) {
+                            <tr hlmTr [class.bg-muted/30]="subject.uid === '*'">
+                              <td hlmTd class="ps-4">
+                                <div class="flex flex-col">
+                                  <span class="font-medium">{{ subject.name }}</span>
+                                  @if (subject.uid !== '*') {
+                                    <span class="text-muted-foreground font-mono text-xs">{{
+                                      subject.uid
+                                    }}</span>
+                                  }
+                                </div>
+                              </td>
+                              @for (action of contentActions; track action) {
+                                @let restriction = fieldRestriction(action, subject.uid);
+                                <td hlmTd>
+                                  <hlm-native-select
+                                    size="sm"
+                                    [value]="level(action, subject.uid)"
+                                    (valueChange)="setLevel(action, subject.uid, $any($event))"
+                                    [attr.aria-label]="subject.name + ' ' + t(actionLabels[action])"
+                                  >
+                                    <option hlmNativeSelectOption value="none">
+                                      {{ t('settings.roles.level.none') }}
+                                    </option>
+                                    <option hlmNativeSelectOption value="own">
+                                      {{ t('settings.roles.level.own') }}
+                                    </option>
+                                    <option hlmNativeSelectOption value="all">
+                                      {{ t('settings.roles.level.all') }}
+                                    </option>
+                                  </hlm-native-select>
+                                  @if (restriction) {
+                                    <span hlmBadge variant="secondary" class="mt-1.5">{{
+                                      t('settings.roles.fieldsCount', { count: restriction.length })
+                                    }}</span>
+                                  }
+                                </td>
+                              }
+                              <td hlmTd [class.pe-4]="!localesShown()">
+                                @if (subject.uid === '*') {
+                                  <span class="text-muted-foreground/60 text-sm">—</span>
+                                } @else {
                                   <button
                                     hlmBtn
                                     variant="outline"
                                     size="sm"
-                                    class="max-w-48"
-                                    [disabled]="!hasContent(subject.uid)"
+                                    [disabled]="!canRestrict(subject.uid)"
                                     [attr.aria-label]="
-                                      t('settings.roles.localesFor', {
-                                        type: subject.name,
-                                        locales: localeSummary(restriction),
-                                      })
+                                      t('settings.roles.fieldsFor', { type: subject.name })
                                     "
-                                    (click)="openLocales(subject.uid, subject.name)"
+                                    (click)="openFields(subject.uid, subject.name)"
                                   >
-                                    <ng-icon name="lucideLanguages" />
-                                    <span class="truncate">{{ localeSummary(restriction) }}</span>
+                                    <ng-icon name="lucideListChecks" />
+                                    {{ t('settings.roles.fields') }}
                                   </button>
-                                } @else {
-                                  <span class="text-muted-foreground/60 text-sm">—</span>
                                 }
                               </td>
-                            }
-                          </tr>
-                        }
-                      </tbody>
-                    </table>
+                              @if (localesShown()) {
+                                <td hlmTd class="pe-4">
+                                  @if (subject.localized) {
+                                    @let restriction = localeRestriction(subject.uid);
+                                    <button
+                                      hlmBtn
+                                      variant="outline"
+                                      size="sm"
+                                      class="max-w-48"
+                                      [disabled]="!hasContent(subject.uid)"
+                                      [attr.aria-label]="
+                                        t('settings.roles.localesFor', {
+                                          type: subject.name,
+                                          locales: localeSummary(restriction),
+                                        })
+                                      "
+                                      (click)="openLocales(subject.uid, subject.name)"
+                                    >
+                                      <ng-icon name="lucideLanguages" />
+                                      <span class="truncate">{{ localeSummary(restriction) }}</span>
+                                    </button>
+                                  } @else {
+                                    <span class="text-muted-foreground/60 text-sm">—</span>
+                                  }
+                                </td>
+                              }
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <fieldset hlmFieldSet class="bg-card rounded-xl border p-4">
-                <legend hlmFieldLegend class="sr-only">{{ t('settings.roles.media') }}</legend>
-                <div class="flex flex-col gap-0.5">
-                  <h3 class="flex items-center gap-1.5 text-sm font-medium">
-                    <ng-icon name="lucideImage" size="14" class="text-muted-foreground" />
-                    {{ t('settings.roles.media') }}
-                  </h3>
-                  <p class="text-muted-foreground text-xs">{{ t('settings.roles.mediaHint') }}</p>
-                </div>
-                <div class="grid gap-3 sm:grid-cols-2">
-                  @for (action of mediaActions; track action) {
-                    @let granted = hasMedia(action);
-                    <div
-                      hlmField
-                      orientation="horizontal"
-                      class="hover:bg-muted/50 items-center rounded-lg border p-3 transition-colors"
-                    >
-                      <hlm-checkbox
-                        [inputId]="action"
-                        [checked]="granted"
-                        (checkedChange)="toggleMedia(action, $event === true)"
-                      />
-                      <label
-                        hlmFieldLabel
-                        [for]="action"
-                        class="flex min-w-0 flex-1 flex-col items-start gap-0.5"
+                <fieldset hlmFieldSet class="bg-card rounded-xl border p-4">
+                  <legend hlmFieldLegend class="sr-only">{{ t('settings.roles.media') }}</legend>
+                  <div class="flex flex-col gap-0.5">
+                    <h3 class="flex items-center gap-1.5 text-sm font-medium">
+                      <ng-icon name="lucideImage" size="14" class="text-muted-foreground" />
+                      {{ t('settings.roles.media') }}
+                    </h3>
+                    <p class="text-muted-foreground text-xs">{{ t('settings.roles.mediaHint') }}</p>
+                  </div>
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    @for (action of mediaActions; track action) {
+                      @let granted = hasMedia(action);
+                      <div
+                        hlmField
+                        orientation="horizontal"
+                        class="hover:bg-muted/50 items-center rounded-lg border p-3 transition-colors"
                       >
-                        <span>{{ t(actionLabels[action]) }}</span>
-                        <span class="text-muted-foreground font-mono text-xs font-normal">{{
-                          action
-                        }}</span>
-                      </label>
-                      @if (mediaScoped.has(action)) {
-                        <hlm-native-select
-                          size="sm"
-                          class="w-auto shrink-0"
-                          [value]="mediaOwn(action) ? 'own' : 'all'"
-                          [disabled]="!granted"
-                          (valueChange)="setMediaScope(action, $event === 'own')"
-                          [attr.aria-label]="
-                            t('settings.roles.mediaScope', { action: t(actionLabels[action]) })
-                          "
+                        <hlm-checkbox
+                          [inputId]="action"
+                          [checked]="granted"
+                          (checkedChange)="toggleMedia(action, $event === true)"
+                        />
+                        <label
+                          hlmFieldLabel
+                          [for]="action"
+                          class="flex min-w-0 flex-1 flex-col items-start gap-0.5"
                         >
-                          <option hlmNativeSelectOption value="all">
-                            {{ t('settings.roles.mediaScope.all') }}
-                          </option>
-                          <option hlmNativeSelectOption value="own">
-                            {{ t('settings.roles.mediaScope.own') }}
-                          </option>
-                        </hlm-native-select>
-                      }
-                    </div>
-                  }
-                </div>
-              </fieldset>
-              <fieldset hlmFieldSet class="bg-card rounded-xl border p-4">
-                <legend hlmFieldLegend class="sr-only">{{ t('settings.roles.settings') }}</legend>
-                <div class="flex flex-col gap-0.5">
-                  <h3 class="text-sm font-medium">{{ t('settings.roles.settings') }}</h3>
-                  <p class="text-muted-foreground text-xs">
-                    {{ t('settings.roles.settingsHint') }}
-                  </p>
-                </div>
-                <div class="grid gap-3 sm:grid-cols-2">
-                  @for (action of settingsActions; track action) {
-                    <div
-                      hlmField
-                      orientation="horizontal"
-                      class="hover:bg-muted/50 rounded-lg border p-3 transition-colors"
-                    >
-                      <hlm-checkbox
-                        [inputId]="action"
-                        [checked]="hasSetting(action)"
-                        (checkedChange)="toggleSetting(action, $event === true)"
-                      />
-                      <label hlmFieldLabel [for]="action" class="flex flex-col items-start gap-0.5">
-                        <span>{{ t(actionLabels[action]) }}</span>
-                        <span class="text-muted-foreground font-mono text-xs font-normal">{{
-                          action
-                        }}</span>
-                      </label>
-                    </div>
-                  }
-                </div>
-              </fieldset>
-            }
-          </section>
-        }
-      </div>
+                          <span>{{ t(actionLabels[action]) }}</span>
+                          <span class="text-muted-foreground font-mono text-xs font-normal">{{
+                            action
+                          }}</span>
+                        </label>
+                        @if (mediaScoped.has(action)) {
+                          <hlm-native-select
+                            size="sm"
+                            class="w-auto shrink-0"
+                            [value]="mediaOwn(action) ? 'own' : 'all'"
+                            [disabled]="!granted"
+                            (valueChange)="setMediaScope(action, $event === 'own')"
+                            [attr.aria-label]="
+                              t('settings.roles.mediaScope', { action: t(actionLabels[action]) })
+                            "
+                          >
+                            <option hlmNativeSelectOption value="all">
+                              {{ t('settings.roles.mediaScope.all') }}
+                            </option>
+                            <option hlmNativeSelectOption value="own">
+                              {{ t('settings.roles.mediaScope.own') }}
+                            </option>
+                          </hlm-native-select>
+                        }
+                      </div>
+                    }
+                  </div>
+                </fieldset>
+                <fieldset hlmFieldSet class="bg-card rounded-xl border p-4">
+                  <legend hlmFieldLegend class="sr-only">{{ t('settings.roles.settings') }}</legend>
+                  <div class="flex flex-col gap-0.5">
+                    <h3 class="text-sm font-medium">{{ t('settings.roles.settings') }}</h3>
+                    <p class="text-muted-foreground text-xs">
+                      {{ t('settings.roles.settingsHint') }}
+                    </p>
+                  </div>
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    @for (action of settingsActions; track action) {
+                      <div
+                        hlmField
+                        orientation="horizontal"
+                        class="hover:bg-muted/50 rounded-lg border p-3 transition-colors"
+                      >
+                        <hlm-checkbox
+                          [inputId]="action"
+                          [checked]="hasSetting(action)"
+                          (checkedChange)="toggleSetting(action, $event === true)"
+                        />
+                        <label
+                          hlmFieldLabel
+                          [for]="action"
+                          class="flex flex-col items-start gap-0.5"
+                        >
+                          <span>{{ t(actionLabels[action]) }}</span>
+                          <span class="text-muted-foreground font-mono text-xs font-normal">{{
+                            action
+                          }}</span>
+                        </label>
+                      </div>
+                    }
+                  </div>
+                </fieldset>
+              }
+            </section>
+          }
+        </div>
+      }
     </div>
 
     <hlm-dialog [state]="localesEditor() ? 'open' : 'closed'" (closed)="localesEditor.set(null)">
@@ -682,9 +702,24 @@ export class RolesPage implements OnInit {
     () => (this.locales.list()?.length ?? 0) > 0 && this.subjects().some((item) => item.localized),
   );
 
-  async ngOnInit(): Promise<void> {
+  protected readonly loading = signal(true);
+  protected readonly loadError = signal<string | null>(null);
+
+  ngOnInit(): void {
     this.locales.load().catch(() => undefined);
-    await this.reload();
+    void this.load();
+  }
+
+  protected async load(): Promise<void> {
+    this.loading.set(true);
+    this.loadError.set(null);
+    try {
+      await this.reload();
+    } catch (error) {
+      this.loadError.set(ApiFailure.from(error).message);
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   private async reload(select?: number): Promise<void> {

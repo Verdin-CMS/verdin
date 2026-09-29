@@ -971,6 +971,8 @@ export class ContentList {
       this.uid();
       clearTimeout(this.searchTimer);
     });
+    // A pending search must not navigate once the list is gone.
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.searchTimer));
     this.followChanges();
   }
 

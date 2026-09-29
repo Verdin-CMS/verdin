@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -928,6 +929,7 @@ export class MediaLibraryPage {
   private requestId = 0;
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.searchTimer));
     effect(() => {
       const request = {
         folder: this.folderId(),

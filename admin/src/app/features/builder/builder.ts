@@ -41,6 +41,7 @@ import {
   RelationKind,
   SchemaPlan,
 } from '../../core/types';
+import { Confirm, HasUnsavedChanges } from '../../shared/components/confirm';
 import { PageHeader } from '../../shared/components/page-header';
 import {
   attributeLocalized,
@@ -331,6 +332,7 @@ interface AttributeDraft {
     HlmEmptyImports,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '(window:beforeunload)': 'beforeUnload($event)' },
   template: `
     @if (!schema.devMode()) {
       <div hlmAlert>
@@ -1526,9 +1528,10 @@ interface AttributeDraft {
     </hlm-dialog>
   `,
 })
-export class Builder {
+export class Builder implements HasUnsavedChanges {
   private readonly api = inject(Api);
   private readonly router = inject(Router);
+  private readonly confirm = inject(Confirm);
   protected readonly schema = inject(Schema);
   protected readonly extensions = inject(PluginExtensions);
   protected readonly customFieldId = customFieldId;
@@ -1675,8 +1678,42 @@ export class Builder {
     effect(() => {
       const name = this.name();
       const sources = this.sources();
-      untracked(() => this.open(name, sources));
+      untracked(() => void this.reopen(name, sources));
     });
+  }
+
+  /** The draft as opened or last saved, to tell unsaved edits. */
+  private baseline = '';
+  /** The type or component the draft belongs to (`null`: none opened yet). */
+  private openedName: string | null = null;
+
+  private snapshot(): string {
+    return JSON.stringify([this.draft(), this.componentUid(), this.inverseAdditions()]);
+  }
+
+  /** Edits to the type or component that are not applied yet. */
+  hasUnsavedChanges(): boolean {
+    return !!this.draft() && this.snapshot() !== this.baseline;
+  }
+
+  /** Closing or reloading the tab with unsaved edits: the browser asks first. */
+  protected beforeUnload(event: BeforeUnloadEvent): void {
+    if (this.hasUnsavedChanges()) event.preventDefault();
+  }
+
+  /**
+   * Opens the draft for the route. Another type or component was already confirmed by the
+   * route's guard; fresh sources for the same one would drop its edits, so they ask first.
+   */
+  private async reopen(name: string | undefined, sources: Sources | null): Promise<void> {
+    if (
+      sources &&
+      (name ?? null) === this.openedName &&
+      this.hasUnsavedChanges() &&
+      !(await this.confirm.discardChanges())
+    )
+      return;
+    this.open(name, sources);
   }
 
   private async reloadSources(): Promise<void> {
@@ -1716,6 +1753,8 @@ export class Builder {
     } else {
       this.draft.set(structuredClone(sources.contentTypes[name] ?? null));
     }
+    this.openedName = name;
+    this.baseline = this.snapshot();
   }
 
   protected setFileValue(key: string, value: unknown): void {
@@ -2093,6 +2132,8 @@ export class Builder {
         allow: result.requires ?? 'safe',
       });
       toast.success(this.t('builder.toast.updated'));
+      // Applied: the draft is what the schema now holds.
+      this.baseline = this.snapshot();
       const removed = this.pendingRemoval;
       this.pendingRemoval = false;
       this.planResult.set(null);
