@@ -79,7 +79,8 @@ async fn send_link(state: &AdminState, user: &AdminUser, kind: LinkKind, url: &s
         )),
     };
     match mailer.send(&message).await {
-        Ok(()) => true,
+        // With the `log` provider the link is only in the server log: say it was not emailed.
+        Ok(()) => mailer.delivers(),
         Err(error) => {
             tracing::warn!(%error, user = user.id, "could not send the email");
             false

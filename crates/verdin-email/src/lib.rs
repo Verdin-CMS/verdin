@@ -192,6 +192,11 @@ impl Mailer {
         self.name
     }
 
+    /// Whether messages reach their recipient (the `log` provider only prints them).
+    pub fn delivers(&self) -> bool {
+        !matches!(self.provider, Provider::Log)
+    }
+
     pub fn from(&self) -> String {
         self.from.to_string()
     }
@@ -319,6 +324,14 @@ pub fn html_escape(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_real_providers_deliver() {
+        let log = Mailer::new(&EmailConfig::default(), &EmailSecrets::default()).unwrap();
+        assert_eq!(log.provider(), "log");
+        assert!(!log.delivers());
+        assert!(Mailer::memory().0.delivers());
+    }
 
     #[test]
     fn templates() {
