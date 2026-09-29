@@ -132,13 +132,18 @@ you can cache for a long time.
 
 ### How tagging works
 
-Every successful `GET` of the content API carries two cache tags: `vd` (everything) and
-`vd-<singularName>` (the content type), in both header formats:
+Every successful `GET` of the content API carries `vd` (everything), `vd-<singularName>`
+(the content type) and the tag of every type its documents can populate: relation targets,
+also inside components and dynamic zones, followed to their own relations. For the blog
+example's articles, in both header formats:
 
 ```http
-Cache-Tag: vd,vd-article
-Surrogate-Key: vd vd-article
+Cache-Tag: vd,vd-article,vd-category,vd-tag
+Surrogate-Key: vd vd-article vd-category vd-tag
 ```
+
+A type with a polymorphic relation can reach any type, so its responses carry every
+type's tag.
 
 Cloudflare reads `Cache-Tag`, Fastly reads `Surrogate-Key`. When content changes publicly,
 Verdin purges the type's tag:
@@ -206,12 +211,9 @@ The **CDN** section of **Settings → Deployments** shows the provider and **Rec
 (**Purged** or **Failed**, with the tags). **Purge everything** drops every response
 tagged `vd`.
 
-<Aside type="note">
-A type's tag is purged when that type changes. A response that populates another type
-(articles with their category) is tagged with the requested type only, so renaming a
-category does not purge cached article lists. Keep TTLs moderate for such pages, or use
-**Purge everything** after large changes.
-</Aside>
+Because responses carry the tags of the types they can populate, renaming a category also
+purges the cached article lists that could include it, whether or not the request asked
+for `populate`.
 
 Verdin's own in-memory cache ([`[api].cache_ttl_secs`](/reference/configuration/)) is
 separate: it is emptied on every change.

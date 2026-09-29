@@ -221,13 +221,13 @@ pub fn router(
             (name.clone(), content_type.uid.clone())
         })
         .collect();
-    let tag_names: HashMap<String, String> = registry
+    let tag_names: HashMap<String, Vec<String>> = registry
         .types()
         .map(|model| {
             let content_type = &model.content_type;
             let single = content_type.kind == ContentTypeKind::SingleType;
             let name = if single { &content_type.singular_name } else { &content_type.plural_name };
-            (name.clone(), content_type.singular_name.clone())
+            (name.clone(), cdn::response_tags(&registry.schema, &content_type.uid))
         })
         .collect();
     let openapi = openapi::document(&registry, prefix);

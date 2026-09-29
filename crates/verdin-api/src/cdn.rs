@@ -1,7 +1,8 @@
 //! CDN cache tags and purges (`[cdn]`). Content API reads carry `Cache-Tag` (Cloudflare)
-//! and `Surrogate-Key` (Fastly) headers — `vd` and `vd-<singularName>` — and content that
-//! changes publicly purges its type's tag: publishing, unpublishing, deleting, and every
-//! write to types without draft & publish. Purges are batched for a moment and retried.
+//! and `Surrogate-Key` (Fastly) headers — `vd`, `vd-<singularName>` and the tags of every
+//! type the response can populate — and content that changes publicly purges its type's
+//! tag: publishing, unpublishing, deleting, and every write to types without draft &
+//! publish. Purges are batched for a moment and retried.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
@@ -16,6 +17,7 @@ use serde_json::json;
 use tokio::sync::Notify;
 use verdin_content::DocumentService;
 use verdin_content::events::{BoxFuture, DocumentEvent, DocumentListener, EventKind};
+use verdin_schema::{Attribute, AttributeKind, Schema};
 
 /// The tag of every response.
 pub const ALL: &str = "vd";
@@ -54,14 +56,69 @@ pub fn type_tag(singular_name: &str) -> String {
     format!("{ALL}-{singular_name}")
 }
 
-/// Adds the cache tags of `/{name}…` responses (`names`: route name → singular name).
+/// Tags of a content type's responses: its own and those of every type its documents can
+/// populate (relations, also inside components and dynamic zones, followed transitively),
+/// so purging a related type also refreshes the responses that embed it. Polymorphic
+/// relations can reach any type, so they bring in every type's tag.
+pub fn response_tags(schema: &Schema, uid: &str) -> Vec<String> {
+    let mut types = BTreeSet::from([uid.to_owned()]);
+    let mut queue = vec![uid.to_owned()];
+    let mut components = BTreeSet::new();
+    let mut any = false;
+    while let Some(current) = queue.pop() {
+        let Some(content_type) = schema.content_type(&current) else { continue };
+        let mut attributes: Vec<&Attribute> = content_type.attributes.values().collect();
+        while let Some(attribute) = attributes.pop() {
+            match &attribute.kind {
+                AttributeKind::Relation { target, .. } => {
+                    if types.insert(target.clone()) {
+                        queue.push(target.clone());
+                    }
+                }
+                AttributeKind::Morph { .. } => any = true,
+                AttributeKind::Component { component, .. } => {
+                    if components.insert(component.clone())
+                        && let Some(component) = schema.component(component)
+                    {
+                        attributes.extend(component.attributes.values());
+                    }
+                }
+                AttributeKind::DynamicZone { components: uids, .. } => {
+                    for uid in uids {
+                        if components.insert(uid.clone())
+                            && let Some(component) = schema.component(uid)
+                        {
+                            attributes.extend(component.attributes.values());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if any {
+        types.extend(schema.content_types.keys().cloned());
+    }
+    let own = schema.content_type(uid).map(|content_type| type_tag(&content_type.singular_name));
+    let mut tags: Vec<String> = own.iter().cloned().collect();
+    tags.extend(
+        types
+            .iter()
+            .filter_map(|uid| schema.content_type(uid))
+            .map(|content_type| type_tag(&content_type.singular_name))
+            .filter(|tag| Some(tag) != own.as_ref()),
+    );
+    tags
+}
+
+/// Adds the cache tags of `/{name}…` responses (`tags`: route name → its response tags).
 pub(crate) async fn tag_responses(
-    State(names): State<Arc<HashMap<String, String>>>,
+    State(names): State<Arc<HashMap<String, Vec<String>>>>,
     request: Request,
     next: Next,
 ) -> Response {
     let reading = matches!(*request.method(), Method::GET | Method::HEAD);
-    let singular = request
+    let tags = request
         .uri()
         .path()
         .trim_start_matches('/')
@@ -72,14 +129,13 @@ pub(crate) async fn tag_responses(
     let mut response = next.run(request).await;
     if reading
         && response.status().is_success()
-        && let Some(singular) = singular
+        && let Some(tags) = tags
     {
-        let tag = type_tag(&singular);
         let headers = response.headers_mut();
-        if let Ok(value) = HeaderValue::from_str(&format!("{ALL},{tag}")) {
+        if let Ok(value) = HeaderValue::from_str(&format!("{ALL},{}", tags.join(","))) {
             headers.insert("cache-tag", value);
         }
-        if let Ok(value) = HeaderValue::from_str(&format!("{ALL} {tag}")) {
+        if let Ok(value) = HeaderValue::from_str(&format!("{ALL} {}", tags.join(" "))) {
             headers.insert("surrogate-key", value);
         }
     }
@@ -285,6 +341,47 @@ mod tests {
     use axum::routing::post;
 
     use super::*;
+
+    #[test]
+    fn responses_carry_the_tags_of_the_types_they_can_populate() {
+        use verdin_schema::Source;
+        let content_type = |name: &str, attributes: serde_json::Value| {
+            Source::content_type(
+                name,
+                json!({ "kind": "collectionType", "singularName": name, "pluralName": format!("{name}s"),
+                        "displayName": name, "attributes": attributes })
+                .to_string(),
+            )
+        };
+        let schema = Schema::parse(&[
+            content_type(
+                "article",
+                json!({ "title": { "type": "string" },
+                        "category": { "type": "relation", "relation": "manyToOne", "target": "category" },
+                        "seo": { "type": "component", "component": "shared.seo" } }),
+            ),
+            content_type(
+                "category",
+                json!({ "parent": { "type": "relation", "relation": "manyToOne", "target": "section" } }),
+            ),
+            content_type("section", json!({ "name": { "type": "string" } })),
+            content_type("author", json!({ "name": { "type": "string" } })),
+            content_type("tag", json!({ "label": { "type": "string" } })),
+            Source::component(
+                "shared",
+                "seo",
+                json!({ "displayName": "Seo",
+                        "attributes": { "by": { "type": "relation", "relation": "oneWay", "target": "author" } } })
+                .to_string(),
+            ),
+        ])
+        .unwrap();
+        assert_eq!(
+            response_tags(&schema, "api::article"),
+            ["vd-article", "vd-author", "vd-category", "vd-section"]
+        );
+        assert_eq!(response_tags(&schema, "api::tag"), ["vd-tag"]);
+    }
 
     #[tokio::test]
     async fn purges_queued_tags_in_batches() {
