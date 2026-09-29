@@ -154,69 +154,101 @@ pagination on the admin endpoints that still return every row (users, API tokens
 webhooks, releases, redirects, forms, menus, deploy targets) and paging deployments past
 the latest 50.
 
-## Toward 1.0
+## Road to 1.0
 
-What a production 1.0 needs beyond features:
+Each release has one theme; together they cover what a production 1.0 needs. Sizes add up
+to roughly one to two months per release. The order follows the risk for people running
+Verdin today: operating it first, then keeping data safe, then extending it, then the
+editorial features, then freezing the surfaces.
+
+## 0.11 — Operations at scale
+
+Running several instances and operating them day to day.
 
 | Item | Size | Notes |
 |---|---|---|
-| Stability contract | S | Which surfaces are semver-stable (REST, GraphQL, admin API, schema files, `verdin.toml`, CLI, plugin ABI, export format), deprecation policy with `Deprecation`/`Sunset` headers, LTS and supported-versions policy |
-| Upgrade path | M | Upgrade guides per release, `verdin upgrade check`, rollback story |
-| Plugin SDK | M | Versioned host ABI (`abi = 1`), a PDK crate/package, Extism on a released version |
-| Benchmarks | M | Published numbers against Strapi (reads, populate, GraphQL, writes, cold start, memory), gated in CI |
-| Security program | M | `SECURITY.md` and disclosure process, fuzzing of the query parser, an external review, signed releases (cosign), SBOM and provenance |
-| Complete backups | M | Encryption, scheduled S3 backups, `verdin transfer`, admins/roles/tokens/webhooks/workflows in exports, a documented restore drill |
-| Shared event bus | M | Realtime, presence, caches and search across instances (Postgres `LISTEN/NOTIFY`, a polling table, or Redis/NATS) |
-| Observability | S | OpenTelemetry traces with DB spans, plugin call times, Sentry, Grafana dashboards |
-| Packaging | M | Helm chart, production Compose recipe, Homebrew / apt / winget / `cargo binstall` / install script, one-click deploys (Railway, Render, Fly, DigitalOcean, Coolify) |
-| Strapi import completeness | M | End users and roles, admins/RBAC/tokens, webhooks, workflows and releases, history, `unique`, and a porting guide for lifecycles and cron tasks |
-| Accessibility audit | M | WCAG 2.2 AA for the admin |
+| **Shared event bus** | M | Realtime events, presence, cache invalidation and search updates across instances: Postgres `LISTEN/NOTIFY`, a polling table for MySQL/MariaDB/SQLite, Redis or NATS optional |
+| Observability | S | OpenTelemetry traces with database spans, plugin call times in the metrics, optional Sentry error reporting, Grafana dashboards |
+| Packaging | M | Helm chart, a production Compose recipe, Homebrew / apt / winget / `cargo binstall` / an install script, one-click deploys (Railway, Render, Fly, DigitalOcean, Coolify) |
+| Pagination everywhere | S | Admin endpoints that still return every row (users, API tokens, roles, webhooks, releases, redirects, forms, menus, deploy targets) and deployments past the latest 50 |
+| Docs hosting | S | A real domain, preview deployments for pull requests, and a hosted playground (an ephemeral SQLite instance reset hourly) |
 
-## Ideas
+## 0.12 — Data safety
 
-Beyond the roadmap, ranked by value for Verdin's single binary:
+Nothing is lost, and every project can move in and out.
 
-| Idea | Size | Notes |
+| Item | Size | Notes |
 |---|---|---|
-| SQLite edge mode | M | Litestream-style WAL replication to S3 and read-only replicas: cheap HA and point-in-time restore |
-| Webhooks to queues | S | SQS, NATS, Kafka, Redis Streams, Pub/Sub as delivery targets |
-| Content observability | S | Stale content, broken links, missing alt text, unused media dashboards, built on "where used" |
-| Typed SDKs 2.0 | M | Populate-aware result types; clients for Rust, Go, Python, Dart, Swift from OpenAPI |
-| AI content modeling | M | Content types from a description, URL or design; MCP schema tools; bulk AI edits with a dry-run diff |
-| Localization workflows | M | Per-locale review, "outdated translation" flags, XLIFF, translation queues |
-| A/B variants and personalization | L | Field-level variants by audience with an SDK helper |
-| Hosted playground | S | An ephemeral SQLite instance reset hourly; `llms.txt` and agent skills |
+| **Complete backups** | M | Encrypted exports; admins, roles, API tokens, webhooks, workflows and settings in exports; scheduled backups to S3; a documented restore drill |
+| `verdin transfer` | M | Copy schema, content and media between running instances with transfer tokens |
+| SQLite edge mode | M | Litestream-style WAL replication to S3 and read-only replicas: cheap high availability and point-in-time restore |
+| Upgrade path | M | `verdin upgrade check` (pending migrations, deprecated settings, plugin ABI), a rollback story, upgrade guides per release |
+| **Strapi import completeness** | M | Admins, RBAC and API tokens, webhooks, review workflows and releases, history, `unique`; a porting guide for lifecycles and cron tasks |
+| Signed URLs for private buckets | S | Every file URL in responses signed for a short time |
+
+## 0.13 — Extensibility and developer experience
+
+A plugin ecosystem that can last past 1.0.
+
+| Item | Size | Notes |
+|---|---|---|
+| **Plugin SDK** | M | Versioned host ABI (`abi = 1`), a plugin development kit crate and package, Extism on a released version |
+| Plugin registry | M | `verdin plugin install`, a signed index, admin pages, editor panels and list actions from plugins |
+| Access rules from plugins | S | RBAC conditions declared by plugins; "is owner" for end users |
+| Scoped admin API tokens | S | Owner-bound tokens with a subset of the owner's permissions (Strapi 5.47) |
+| Webhooks to queues | S | SQS, NATS, Kafka, Redis Streams and Pub/Sub as delivery targets |
+| Remote fields | M | Data from external REST or GraphQL APIs through plugins (Hygraph-style federation) |
+| Search engines | S | Meilisearch / Typesense sync as a plugin, for sites that already run one |
+| **Typed SDKs 2.0** | M | Populate-aware result types in `@verdin/client`; clients for Rust, Go, Python, Dart and Swift from OpenAPI |
 | Developer tools | S | JSON Schema for schema files, a VS Code extension, `verdin tui` |
 
-## Later
+## 0.14 — Editorial and localization
 
-Large items worth doing after the 0.9 releases:
+The admin panel for teams that publish every day, in many languages.
 
-- Collaborative editing (Yjs) in the blocks editor.
-- Environments: clone schema and content into a staging environment, migrate, then swap
-  (Contentful aliases); schema migrations as code.
-- Flows: visual automations from triggers (events, cron, webhook, button) to operations
-  (condition, transform, request, email, plugin call), à la Directus Flows.
-- Multi-tenancy / multi-site with row-level policies (Directus policies, Payload tenants).
-- Semantic search (pgvector, sqlite-vec).
-- Remote fields: data from external REST/GraphQL APIs through plugins (Hygraph federation).
-- Plugin registry and `verdin plugin install`; admin pages, editor panels and list actions
-  from plugins.
-- TMS connectors (XLIFF export/import, Crowdin, Lokalise, Phrase).
-- Guided tour for first-time admins.
-- Signed URLs for private buckets (every file URL in responses signed for a short time).
-- Scoped, owner-bound admin API tokens (Strapi 5.47).
-- Plugin call times in the metrics, and optional Sentry error reporting.
-- GraphQL subscriptions over the realtime events.
-- Open tasks and mentions in the daily digest.
-- Meilisearch / Typesense sync, as a plugin, for sites that already run one.
-- RBAC conditions declared by plugins, and "is owner" for end users.
-- Encrypted exports, scheduled backups to S3, and `verdin transfer` between running
-  instances with transfer tokens.
+| Item | Size | Notes |
+|---|---|---|
+| **Localization workflows** | M | Per-locale review, "outdated translation" flags, translation queues |
+| TMS connectors | M | XLIFF export and import, Crowdin, Lokalise, Phrase |
+| **Collaborative editing** | L | Yjs in the blocks editor, cursors of the other admins |
+| Content observability | S | Stale content, broken links, missing alt text and unused media dashboards, built on "where used" |
+| Digest and realtime | S | Open tasks and mentions in the daily digest; GraphQL subscriptions over the realtime events |
+| Guided tour | S | A first-run tour for new admins |
+
+## 0.15 — Release candidate
+
+Freeze the surfaces and prove them. Only fixes and the items below.
+
+| Item | Size | Notes |
+|---|---|---|
+| **Stability contract** | S | Which surfaces are semver-stable (REST, GraphQL, admin API, schema files, `verdin.toml`, CLI, plugin ABI, export format); deprecation policy with `Deprecation` / `Sunset` headers; supported-versions and LTS policy |
+| **Security program** | M | Fuzzing of the query parser and the importers, an external review, signed releases (cosign), SBOM and provenance |
+| Benchmarks | M | Published numbers against Strapi (reads, populate, GraphQL, writes, cold start, memory), gated in CI |
+| Performance | M | Query batching, a prepared statement cache, fixes from the benchmarks |
+| Accessibility audit | M | WCAG 2.2 AA for the admin panel, keyboard and screen reader passes |
+
+## 1.0 — Stable
+
+Released when 0.15 has had no breaking change for a month and every surface in the
+stability contract has its reference page and tests. From then on, breaking changes wait
+for 2.0 and deprecated behaviour keeps working for at least one minor release.
+
+## After 1.0
+
+Larger features, in 1.x minor releases, ranked by value:
+
+| Feature | Size | Notes |
+|---|---|---|
+| Environments | L | Clone schema and content into a staging environment, migrate, then swap (Contentful aliases); schema migrations as code |
+| Flows | L | Visual automations from triggers (events, cron, webhook, button) to operations (condition, transform, request, email, plugin call), à la Directus Flows |
+| Multi-tenancy | L | Several sites in one instance with row-level policies (Directus policies, Payload tenants) |
+| Semantic search | M | Embeddings in pgvector or sqlite-vec, hybrid with full-text search |
+| AI content modeling | M | Content types from a description, URL or design; MCP schema tools; bulk AI edits with a dry-run diff |
+| A/B variants and personalization | L | Field-level variants by audience, with an SDK helper |
 
 ## Continuous
 
-- More admin languages (Traditional Chinese, Vietnamese, Indonesian, Czech, Swedish…) —
-  contributions welcome, see [translating.md](translating.md).
-- Performance: query batching, prepared statement cache, benchmarks against Strapi.
+- More admin and documentation languages (Traditional Chinese, Vietnamese, Indonesian,
+  Czech, Swedish…) — contributions welcome, see [translating.md](translating.md).
+- Performance and benchmarks against Strapi, release after release.
 - Accessibility audits of the admin (keyboard navigation, screen readers).
