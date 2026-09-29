@@ -6,6 +6,60 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-29
+
+A hardening release from a full audit of 0.9.0. Upgrading is recommended for every
+installation; its migration (one table, two columns) runs on start.
+
+### Security
+
+- **Super Admins**: only a Super Admin can create, edit, delete, re-invite or reset the
+  second factor of a Super Admin, or grant that role. Re-inviting an account that has
+  signed in is refused, and accepting an invitation goes through the second factor.
+- **SSO**: its settings need a Super Admin; `defaultRoles` and `roleMap` cannot grant
+  Super Admin; the provider's `email_verified` must be true (unless
+  `trustUnverifiedEmail`); the second factor applies unless the provider is trusted
+  for it (`providerMfa`); the issuer and token endpoint must be public `https` URLs.
+- **Rights on related types**: `populate`, relation filters and relation sorts reach
+  only the types (and fields) the caller may read, on REST, GraphQL, MCP and the admin
+  API; polymorphic relations and references skip the others.
+- **History** applies per-locale permissions.
+- **Sign-in**: failed attempts count across the password and second-factor steps and are
+  counted atomically, so a correct password no longer resets the counter; password
+  confirmations are limited too. End users' accounts now lock after repeated wrong
+  passwords as well (`failed_logins`, `locked_until` on `vd_users`).
+- **Rate limits behind proxies**: `[server] trusted_proxies` names the reverse proxies
+  whose `X-Forwarded-For` is trusted; unknown bearer tokens are limited per address.
+- **Passkeys**: spent challenges are kept in the database (`vd_spent_challenges`), so a
+  challenge is answered once across instances; RSA keys must have 2048 to 8192 bits and
+  a sane exponent.
+- TOTP secrets are sealed with a MAC (older secrets still open); form submitters' IPs are
+  hashed with a key derived from `VERDIN_TOKEN_PEPPER`; request logs hide secret-looking
+  query parameters and deploy callback secrets; webhooks and fetches refuse IPv6
+  addresses that embed private IPv4 ones (`::a.b.c.d`, 6to4, Teredo, `fec0::/10`).
+- Private fields of components are no longer indexed by search (indexes are rebuilt on
+  start).
+
+### Added
+
+- `[api] cors_origins`: browser origins allowed to call the content API and GraphQL
+  (`["*"]` for any). There was no CORS support before.
+- `beforeDiscardDraft` plugin hook; discarding a draft runs the before hooks.
+- Expired sessions, one-time links and passkey challenges are pruned daily.
+
+### Fixed
+
+- JSON answers over 4 MB are served without an ETag instead of failing.
+- Populated relations return at most 1000 entries per entry and relation; `count`
+  populates read no fields.
+- The admin export reads only the documents it exports; the sitemap is built at most
+  every ten minutes.
+- "Where used" no longer holds a write lock on SQLite.
+- Huge `pagination[page]`/`pagination[start]` values give an empty page instead of an
+  error.
+- Mentions only notify admins who may read the entry (own-entries grants included);
+  imports report database errors instead of a refusal.
+
 ## [0.9.0] - 2026-09-29
 
 ### Added
