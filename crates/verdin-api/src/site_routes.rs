@@ -2,7 +2,7 @@
 //! `/_menus/{slug}`, `/_forms/{slug}` (definition and submissions), and the sitemap.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::body::Bytes;
@@ -52,34 +52,43 @@ pub(crate) fn routes(services: SiteServices, service: DocumentService) -> Router
         .with_state(state)
 }
 
-/// `GET /sitemap.xml` (the `seo` feature with a base URL).
+/// `GET /sitemap.xml` (the `seo` feature with a base URL). Built at most every ten
+/// minutes; concurrent requests wait for the one building it.
 pub fn sitemap_router(service: DocumentService, seo: SeoSettings) -> Router {
+    let built: Arc<tokio::sync::Mutex<Option<(Instant, String)>>> = Arc::default();
     Router::new().route(
         "/sitemap.xml",
         get(move || {
-            let (service, seo) = (service.clone(), seo.clone());
+            let (service, seo, built) = (service.clone(), seo.clone(), built.clone());
             async move {
-                match crate::site::sitemap(&service, &seo).await {
-                    Ok(xml) => (
-                        [
-                            (
-                                header::CONTENT_TYPE,
-                                HeaderValue::from_static("application/xml; charset=utf-8"),
-                            ),
-                            (
-                                header::CACHE_CONTROL,
-                                HeaderValue::from_static("public, max-age=600"),
-                            ),
-                        ],
-                        xml,
-                    )
-                        .into_response(),
-                    Err(error) => error.into_response(),
-                }
+                let mut built = built.lock().await;
+                let xml = match &*built {
+                    Some((at, xml)) if at.elapsed() < SITEMAP_TTL => xml.clone(),
+                    _ => match crate::site::sitemap(&service, &seo).await {
+                        Ok(xml) => {
+                            *built = Some((Instant::now(), xml.clone()));
+                            xml
+                        }
+                        Err(error) => return error.into_response(),
+                    },
+                };
+                (
+                    [
+                        (
+                            header::CONTENT_TYPE,
+                            HeaderValue::from_static("application/xml; charset=utf-8"),
+                        ),
+                        (header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=600")),
+                    ],
+                    xml,
+                )
+                    .into_response()
             }
         }),
     )
 }
+
+const SITEMAP_TTL: Duration = Duration::from_secs(600);
 
 fn cached(value: Json, seconds: u32) -> Response {
     let mut response = axum::Json(json!({ "data": value })).into_response();
