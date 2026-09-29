@@ -8,7 +8,7 @@ use serde_json::Value as Json;
 use verdin_db::{ColumnKind, SqlValue};
 use verdin_query::sql::{FilterContext, SqlBuilder};
 use verdin_query::{Condition, Filter, Op, Operand, PageMode, Query};
-use verdin_schema::{Attribute, AttributeKind};
+use verdin_schema::{Attribute, AttributeKind, Schema};
 
 use super::{
     BASE, DRAFT, DocumentService, PUBLISHED, Scope, public_fields, state_for, write_scope,
@@ -201,7 +201,8 @@ impl DocumentService {
             let (mut title, mut body) = (None::<String>, String::new());
             for ((_, attribute), value) in attributes.iter().zip(values) {
                 let text = match value {
-                    SqlValue::Json(json) => {
+                    SqlValue::Json(mut json) => {
+                        strip_private(&self.registry.schema, &attribute.kind, &mut json);
                         let mut out = String::new();
                         json_text(&json, &mut out);
                         out
@@ -283,6 +284,43 @@ fn json_text(value: &Json, out: &mut String) {
     }
 }
 
+/// Removes the private fields of the components in `value` (at any depth).
+fn strip_private(schema: &Schema, kind: &AttributeKind, value: &mut Json) {
+    let clean = |object: &mut serde_json::Map<String, Json>, uid: &str| {
+        let Some(component) = schema.component(uid) else { return };
+        for (name, attribute) in &component.attributes {
+            if attribute.private {
+                object.remove(name);
+            } else if let Some(child) = object.get_mut(name) {
+                strip_private(schema, &attribute.kind, child);
+            }
+        }
+    };
+    match (kind, value) {
+        (AttributeKind::Component { component, .. }, Json::Object(object)) => {
+            clean(object, component)
+        }
+        (AttributeKind::Component { component, .. }, Json::Array(items)) => {
+            for item in items {
+                if let Json::Object(object) = item {
+                    clean(object, component);
+                }
+            }
+        }
+        (AttributeKind::DynamicZone { .. }, Json::Array(items)) => {
+            for item in items {
+                if let Json::Object(object) = item
+                    && let Some(uid) = object.get("__component").and_then(Json::as_str)
+                {
+                    let uid = uid.to_owned();
+                    clean(object, &uid);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// ULIDs (`documentId`s of relations inside components).
 fn looks_like_id(text: &str) -> bool {
     text.len() == 26 && text.bytes().all(|b| b.is_ascii_digit() || b.is_ascii_uppercase())
@@ -306,5 +344,37 @@ mod tests {
             &mut out,
         );
         assert_eq!(out.split_whitespace().collect::<Vec<_>>(), ["Hello", "world", "Ada"]);
+    }
+
+    #[test]
+    fn leaves_private_component_fields_out() {
+        use verdin_schema::Source;
+        let schema = Schema::parse(&[
+            Source::component(
+                "shared",
+                "note",
+            r#"{ "displayName": "Note", "attributes": {
+                    "text": { "type": "string" }, "secret": { "type": "string", "private": true },
+                    "inner": { "type": "component", "component": "shared.leaf" } } }"#,
+            ),
+            Source::component(
+                "shared",
+                "leaf",
+                r#"{ "displayName": "Leaf", "attributes": {
+                    "text": { "type": "string" }, "secret": { "type": "string", "private": true } } }"#,
+            ),
+        ])
+        .unwrap();
+        let kind = AttributeKind::DynamicZone {
+            components: vec!["shared.note".into()],
+            min: None,
+            max: None,
+        };
+        let mut value = json!([{ "__component": "shared.note", "text": "open", "secret": "hidden",
+            "inner": { "text": "deep", "secret": "buried" } }]);
+        strip_private(&schema, &kind, &mut value);
+        let mut out = String::new();
+        json_text(&value, &mut out);
+        assert_eq!(out.split_whitespace().collect::<Vec<_>>(), ["open", "deep"]);
     }
 }
