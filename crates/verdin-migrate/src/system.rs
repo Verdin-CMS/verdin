@@ -98,6 +98,8 @@ pub fn system_tables() -> Vec<Table> {
                     Column::new("is_active", ColumnType::Boolean).not_null(),
                     Column::new("failed_logins", ColumnType::Integer).not_null(),
                     Column::new("locked_until", ColumnType::DateTime),
+                    // First sign-in (invitations are only renewed before it).
+                    Column::new("signed_in_at", ColumnType::DateTime),
                     // Admin panel preferences (dashboard layout…), owned by the user.
                     Column::new("preferences", ColumnType::Json),
                 ],

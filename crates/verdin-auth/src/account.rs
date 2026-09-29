@@ -184,14 +184,16 @@ impl AuthService {
         Ok(Some((user, token)))
     }
 
-    /// Whether the admin ever signed in (a session was opened for them).
+    /// Whether the admin ever signed in (sessions predating `signed_in_at` count too).
     pub async fn has_signed_in(&self, user_id: i64) -> Result<bool> {
         Ok(self
             .db
             .queries()
             .has_rows(
-                &format!("SELECT 1 FROM {SESSIONS} WHERE user_id = ? LIMIT 1"),
-                &[V::BigInt(user_id)],
+                &format!(
+                    "SELECT 1 FROM {ADMIN_USERS} WHERE id = ? AND (signed_in_at IS NOT NULL OR EXISTS (SELECT 1 FROM {SESSIONS} WHERE user_id = ?))"
+                ),
+                &[V::BigInt(user_id), V::BigInt(user_id)],
             )
             .await?)
     }

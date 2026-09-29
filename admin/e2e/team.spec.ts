@@ -127,12 +127,10 @@ test('an invited admin accepts the invitation and signs in', async ({ page, brow
   await expect(again.getByText('This link does not work')).toBeVisible();
   await expect(again.getByRole('link', { name: 'Back to log in' })).toBeVisible();
 
-  // A new invitation link from the users list replaces the old ones.
+  // Once signed in, the account is hers: no new invitation link, only a password reset.
   await page.getByRole('button', { name: 'New invitation link for grace@example.com' }).click();
-  await expect(page.getByRole('heading', { name: 'Invitation link' })).toBeVisible();
-  const second = await page.getByTestId('invite-url').inputValue();
-  expect(second).not.toBe(link);
-  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByText('this admin has signed in already')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Invitation link' })).toHaveCount(0);
 });
 
 test('the forgot password page answers the same for any email', async ({ browser }) => {

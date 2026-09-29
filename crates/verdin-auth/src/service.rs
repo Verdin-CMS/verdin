@@ -1597,5 +1597,10 @@ async fn insert_session(
         ],
     )
     .await?;
+    tx.execute(
+        &format!("UPDATE {ADMIN_USERS} SET signed_in_at = ? WHERE id = ? AND signed_in_at IS NULL"),
+        &[V::DateTime(now), V::BigInt(user_id)],
+    )
+    .await?;
     Ok((token, expires_at))
 }
