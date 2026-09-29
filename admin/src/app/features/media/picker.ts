@@ -1,7 +1,6 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   computed,
   effect,
   inject,
@@ -12,21 +11,19 @@ import {
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
-import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmDialogImports } from '@spartan-ng/helm/dialog';
 import { HlmEmptyImports } from '@spartan-ng/helm/empty';
-import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
-import { HlmNativeSelectImports } from '@spartan-ng/helm/native-select';
-import { HlmSkeletonImports } from '@spartan-ng/helm/skeleton';
 
-import { ApiFailure } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
 import { Media, mediaKind } from '../../core/media';
-import { MediaFile, MediaFolder, MediaKind, PageMeta } from '../../core/types';
-import { KIND_LABELS, MEDIA_KINDS, dimensions, folderChain, formatSize } from './media-format';
-import { MediaThumb } from './media-thumb';
+import { MediaFile, MediaFolder, MediaKind } from '../../core/types';
+import { Pagination } from '../../shared/components/pagination';
+import { MediaFiles } from './media-files';
+import { MediaFilters } from './media-filters';
+import { KIND_LABELS, MEDIA_KINDS, folderChain } from './media-format';
+import { MediaListing } from './media-listing';
 import { UploadPanel, UploadQueue } from './upload-panel';
 
 const PAGE_SIZE = 24;
@@ -38,12 +35,10 @@ const PAGE_SIZE = 24;
     NgIcon,
     HlmDialogImports,
     HlmButtonImports,
-    HlmBadgeImports,
     HlmEmptyImports,
-    HlmInputGroupImports,
-    HlmNativeSelectImports,
-    HlmSkeletonImports,
-    MediaThumb,
+    MediaFiles,
+    MediaFilters,
+    Pagination,
     UploadPanel,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -70,32 +65,7 @@ const PAGE_SIZE = 24;
           </p>
         </hlm-dialog-header>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <div hlmInputGroup class="w-full sm:max-w-60">
-            <div hlmInputGroupAddon><ng-icon name="lucideSearch" /></div>
-            <input
-              hlmInputGroupInput
-              type="search"
-              [attr.aria-label]="t('media.search')"
-              [placeholder]="t('media.search')"
-              [value]="searchText()"
-              (input)="setSearch($any($event.target).value)"
-            />
-          </div>
-          @if (kinds().length > 1) {
-            <hlm-native-select
-              class="w-40"
-              size="sm"
-              [attr.aria-label]="t('media.filter.type')"
-              [value]="kind()"
-              (valueChange)="kind.set($any($event) ?? ''); page.set(1)"
-            >
-              <option hlmNativeSelectOption value="">{{ t('media.filter.all') }}</option>
-              @for (option of kinds(); track option) {
-                <option hlmNativeSelectOption [value]="option">{{ t(kindLabels[option]) }}</option>
-              }
-            </hlm-native-select>
-          }
+        <vd-media-filters class="gap-2" [listing]="listing" [kinds]="kinds()" [compact]="true">
           @if (canUpload()) {
             <button
               hlmBtn
@@ -116,7 +86,7 @@ const PAGE_SIZE = 24;
               (change)="onPick($event)"
             />
           }
-        </div>
+        </vd-media-filters>
 
         <nav
           [attr.aria-label]="t('media.breadcrumb')"
@@ -149,9 +119,9 @@ const PAGE_SIZE = 24;
         </nav>
 
         <div class="relative -mx-1 min-h-48 flex-1 overflow-y-auto px-1">
-          @if (!search() && folders().length) {
+          @if (!listing.search() && listing.folders().length) {
             <ul class="mb-4 flex flex-wrap gap-2" [attr.aria-label]="t('media.folders')">
-              @for (item of folders(); track item.id) {
+              @for (item of listing.folders(); track item.id) {
                 <li>
                   <button
                     hlmBtn
@@ -168,69 +138,28 @@ const PAGE_SIZE = 24;
             </ul>
           }
 
-          @if (loading()) {
-            <div class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
-              @for (tile of skeletons; track tile) {
-                <hlm-skeleton class="aspect-square rounded-xl" />
-              }
-            </div>
-          } @else if (files().length) {
-            <ul
-              class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6"
-              [attr.aria-label]="t('media.files')"
-            >
-              @for (file of files(); track file.id) {
-                @let already = selected().includes(file.id);
-                @let checked = already || chosen().has(file.id);
-                <li class="flex min-w-0 flex-col gap-1">
-                  <button
-                    type="button"
-                    class="bg-card hover:border-primary/40 focus-visible:ring-ring/50 relative aspect-square overflow-hidden rounded-xl border transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed"
-                    [class.border-primary]="checked"
-                    [class.ring-2]="checked"
-                    [class.ring-primary/30]="checked"
-                    [disabled]="already"
-                    [attr.aria-pressed]="multiple() ? checked : null"
-                    [attr.aria-label]="
-                      (already ? t('media.picker.alreadyAdded', { name: file.name }) : file.name) +
-                      ' · ' +
-                      describe(file)
-                    "
-                    (click)="toggle(file)"
-                  >
-                    <vd-media-thumb [file]="file" iconSize="28" />
-                    @if (multiple() || already) {
-                      <span
-                        class="absolute start-1.5 top-1.5 flex size-5 items-center justify-center rounded-md border shadow-xs"
-                        [class]="
-                          checked
-                            ? 'bg-primary border-primary text-primary-foreground'
-                            : 'bg-background/90'
-                        "
-                        aria-hidden="true"
-                      >
-                        @if (checked) {
-                          <ng-icon name="lucideCheck" size="14" />
-                        }
-                      </span>
-                    }
-                  </button>
-                  <span class="truncate px-0.5 text-xs" [title]="file.name">{{ file.name }}</span>
-                </li>
-              }
-            </ul>
+          @if (listing.loading() || listing.files().length) {
+            <vd-media-files
+              mode="pick"
+              [files]="listing.files()"
+              [loading]="listing.loading()"
+              [selection]="chosenIds()"
+              [locked]="selected()"
+              [multiple]="multiple()"
+              (picked)="toggle($event)"
+            />
           } @else {
             <div hlmEmpty class="py-10">
               <div hlmEmptyHeader>
                 <div hlmEmptyMedia variant="icon">
-                  <ng-icon [name]="search() || kind() ? 'lucideSearch' : 'lucideFolderOpen'" />
+                  <ng-icon [name]="listing.filtered() ? 'lucideSearch' : 'lucideFolderOpen'" />
                 </div>
                 <h3 hlmEmptyTitle>
-                  {{ search() || kind() ? t('media.empty.noMatches') : t('media.empty.folder') }}
+                  {{ listing.filtered() ? t('media.empty.noMatches') : t('media.empty.folder') }}
                 </h3>
                 <p hlmEmptyDescription>
                   {{
-                    search() || kind()
+                    listing.filtered()
                       ? t('media.empty.noMatchesHint')
                       : canUpload()
                         ? t('media.picker.emptyHint')
@@ -254,34 +183,13 @@ const PAGE_SIZE = 24;
         <vd-upload-panel [queue]="queue" />
 
         <hlm-dialog-footer class="items-center">
-          @if (pageCount() > 1) {
-            <div class="me-auto flex items-center gap-2">
-              <button
-                hlmBtn
-                variant="outline"
-                size="icon-sm"
-                type="button"
-                [attr.aria-label]="t('common.previous')"
-                [disabled]="page() <= 1"
-                (click)="page.set(page() - 1)"
-              >
-                <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" />
-              </button>
-              <span class="text-muted-foreground text-sm tabular-nums">
-                {{ t('common.page', { page: page(), count: pageCount() }) }}
-              </span>
-              <button
-                hlmBtn
-                variant="outline"
-                size="icon-sm"
-                type="button"
-                [attr.aria-label]="t('common.next')"
-                [disabled]="page() >= pageCount()"
-                (click)="page.set(page() + 1)"
-              >
-                <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
-              </button>
-            </div>
+          @if (listing.pageCount() > 1) {
+            <vd-pagination
+              class="me-auto"
+              [compact]="true"
+              [(page)]="listing.page"
+              [pageCount]="listing.pageCount()"
+            />
           }
           <button hlmBtn variant="outline" type="button" (click)="ctx.close()">
             {{ t('common.cancel') }}
@@ -301,8 +209,6 @@ export class MediaPicker {
   private readonly auth = inject(Auth);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
-  protected readonly kindLabels = KIND_LABELS;
-  protected readonly skeletons = Array.from({ length: 12 }, (_, index) => index);
 
   readonly open = input(false);
   readonly multiple = input(false);
@@ -316,18 +222,17 @@ export class MediaPicker {
   protected readonly queue = new UploadQueue(this.media);
 
   protected readonly folder = signal<number | null>(null);
-  protected readonly searchText = signal('');
-  protected readonly search = signal('');
-  protected readonly kind = signal<MediaKind | ''>('');
-  protected readonly page = signal(1);
-  protected readonly files = signal<MediaFile[]>([]);
-  protected readonly folders = signal<MediaFolder[]>([]);
+  protected readonly listing = new MediaListing({
+    folder: this.folder,
+    pageSize: PAGE_SIZE,
+    kinds: () => this.allowedTypes(),
+    failed: (message) => toast.error(message),
+  });
   protected readonly allFolders = signal<MediaFolder[]>([]);
-  protected readonly meta = signal<PageMeta>({});
-  protected readonly loading = signal(false);
   protected readonly dragging = signal(false);
   /** Files checked in this session, in pick order. */
   protected readonly chosen = signal<Map<number, MediaFile>>(new Map());
+  protected readonly chosenIds = computed(() => new Set(this.chosen().keys()));
 
   protected readonly canUpload = computed(() => this.auth.can('media.create'));
   protected readonly kinds = computed(() =>
@@ -349,7 +254,6 @@ export class MediaPicker {
     if (!allowed.length || allowed.includes('files')) return null;
     return allowed.map((kind) => patterns[kind]).join(',');
   });
-  protected readonly pageCount = computed(() => this.meta().pageCount ?? 1);
   protected readonly trail = computed(() => {
     const id = this.folder();
     const all = this.allFolders();
@@ -357,21 +261,15 @@ export class MediaPicker {
     return current ? folderChain(current, all) : [];
   });
 
-  private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private dragDepth = 0;
-  private requestId = 0;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => clearTimeout(this.searchTimer));
     // Each opening starts afresh at the root.
     effect(() => {
       if (!this.open()) return;
       untracked(() => {
         this.folder.set(null);
-        this.searchText.set('');
-        this.search.set('');
-        this.kind.set('');
-        this.page.set(1);
+        this.listing.reset();
         this.chosen.set(new Map());
         this.queue.clearFinished();
         this.media
@@ -380,70 +278,13 @@ export class MediaPicker {
           .catch(() => undefined);
       });
     });
-    effect(() => {
-      if (!this.open()) return;
-      const request = {
-        folder: this.folder(),
-        search: this.search(),
-        kind: this.kind(),
-        page: this.page(),
-      };
-      untracked(() => void this.load(request));
-    });
-  }
-
-  private async load(request: {
-    folder: number | null;
-    search: string;
-    kind: MediaKind | '';
-    page: number;
-  }): Promise<void> {
-    const id = ++this.requestId;
-    this.loading.set(true);
-    try {
-      const [files, folders] = await Promise.all([
-        this.media.list({
-          folder: request.folder ?? 'root',
-          search: request.search || undefined,
-          types: request.kind ? [request.kind] : this.allowedTypes(),
-          sort: 'createdAtDesc',
-          page: request.page,
-          pageSize: PAGE_SIZE,
-        }),
-        this.media.folders(request.folder ?? 'root'),
-      ]);
-      if (id !== this.requestId) return;
-      this.files.set(files.data);
-      this.meta.set(files.meta.pagination ?? {});
-      this.folders.set(folders);
-    } catch (error) {
-      if (id !== this.requestId) return;
-      toast.error(ApiFailure.from(error).message);
-      this.files.set([]);
-      this.folders.set([]);
-    } finally {
-      if (id === this.requestId) this.loading.set(false);
-    }
-  }
-
-  protected describe(file: MediaFile): string {
-    return [formatSize(this.i18n, file.size), dimensions(file)].filter(Boolean).join(' · ');
+    this.listing.watch(() => this.open());
   }
 
   protected goTo(folder: number | null): void {
     this.folder.set(folder);
-    this.page.set(1);
-    this.searchText.set('');
-    this.search.set('');
-  }
-
-  protected setSearch(value: string): void {
-    this.searchText.set(value);
-    clearTimeout(this.searchTimer);
-    this.searchTimer = setTimeout(() => {
-      this.search.set(value.trim());
-      this.page.set(1);
-    }, 250);
+    this.listing.page.set(1);
+    this.listing.clearSearch();
   }
 
   protected toggle(file: MediaFile): void {
@@ -528,11 +369,6 @@ export class MediaPicker {
       for (const file of result.uploaded) next.set(file.id, file);
       return next;
     });
-    void this.load({
-      folder: this.folder(),
-      search: this.search(),
-      kind: this.kind(),
-      page: this.page(),
-    });
+    void this.listing.reload();
   }
 }
