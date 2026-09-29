@@ -1,0 +1,96 @@
+---
+// The API playground: Scalar over the example project's OpenAPI document, sending
+// requests to a local Verdin (`verdin dev` on port 1337) or any server the reader enters.
+import spec from '../openapi/blog.json';
+---
+
+<div class="vd-playground not-content" data-spec={JSON.stringify(spec)}>
+  <p class="loading">Loading the playground…</p>
+</div>
+
+<script>
+  import { createApiReference } from '@scalar/api-reference';
+  import '@scalar/api-reference/style.css';
+
+  const host = document.querySelector<HTMLElement>('.vd-playground');
+  if (host) {
+    const dark = () => document.documentElement.dataset.theme !== 'light';
+    const reference = createApiReference(host, {
+      content: JSON.parse(host.dataset.spec ?? '{}'),
+      servers: [
+        { url: 'http://localhost:1337', description: 'Your local Verdin (verdin dev)' },
+        {
+          url: '{origin}',
+          description: 'Another Verdin server',
+          variables: { origin: { default: 'https://cms.example.com' } },
+        },
+      ],
+      layout: 'classic',
+      withDefaultFonts: false,
+      hideDarkModeToggle: true,
+      forceDarkModeState: dark() ? 'dark' : 'light',
+      showDeveloperTools: 'never',
+      telemetry: false,
+      agent: { disabled: true },
+      mcp: { disabled: true },
+      defaultOpenAllTags: false,
+      theme: 'none',
+    });
+    new MutationObserver(() =>
+      reference.updateConfiguration({ forceDarkModeState: dark() ? 'dark' : 'light' }),
+    ).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+</script>
+
+<style is:global>
+  /* The playground needs the full content width. */
+  :root {
+    --sl-content-width: 100%;
+  }
+  .vd-playground {
+    margin-top: 1.5rem;
+    border: 1px solid var(--vd-rule);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    min-height: 40rem;
+  }
+  .vd-playground .loading {
+    padding: 2rem;
+    color: var(--sl-color-gray-3);
+  }
+  .vd-playground .scalar-app {
+    --scalar-font: var(--sl-font);
+    --scalar-font-code: var(--sl-font-mono);
+    --scalar-radius: 0.35rem;
+    --scalar-radius-lg: 0.5rem;
+  }
+  /* Scalar puts its mode class on <body> and resets colors on every .scalar-app. */
+  body.light-mode .vd-playground .scalar-app {
+    --scalar-background-1: #eef2ef;
+    --scalar-background-2: #e6ece9;
+    --scalar-background-3: #dde5e1;
+    --scalar-border-color: #cdd8d3;
+    --scalar-color-1: #13211e;
+    --scalar-color-2: #4b5d57;
+    --scalar-color-3: #7a8b85;
+    --scalar-color-accent: #2a7d70;
+    --scalar-background-accent: #cfe7de;
+    --scalar-button-1: #2a7d70;
+    --scalar-button-1-color: #eef2ef;
+    --scalar-button-1-hover: #1d5c52;
+  }
+  body.dark-mode .vd-playground .scalar-app {
+    --scalar-background-1: #0d1715;
+    --scalar-background-2: #121e1c;
+    --scalar-background-3: #16231f;
+    --scalar-border-color: #22322e;
+    --scalar-color-1: #e3ece8;
+    --scalar-color-2: #aebdb7;
+    --scalar-color-3: #83958e;
+    --scalar-color-accent: #6cc8b6;
+    --scalar-background-accent: #133a34;
+    --scalar-button-1: #54b3a1;
+    --scalar-button-1-color: #0d1715;
+    --scalar-button-1-hover: #a6ddd0;
+  }
+</style>

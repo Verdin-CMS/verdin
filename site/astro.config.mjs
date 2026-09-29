@@ -1,46 +1,47 @@
 // @ts-check
-import { satteri } from "@astrojs/markdown-satteri";
-import starlight from "@astrojs/starlight";
-import { defineConfig } from "astro/config";
-import starlightLinksValidator from "starlight-links-validator";
-import starlightLlmsTxt from "starlight-llms-txt";
-import starlightOpenAPI, { createOpenAPISidebarGroup } from "starlight-openapi";
+import { satteri } from '@astrojs/markdown-satteri';
+import starlight from '@astrojs/starlight';
+import { defineConfig } from 'astro/config';
+import starlightLinksValidator from 'starlight-links-validator';
+import starlightLlmsTxt from 'starlight-llms-txt';
+import starlightOpenAPI, { createOpenAPISidebarGroup } from 'starlight-openapi';
 
-import { baseLinks } from "./scripts/base-links.mjs";
-import { basePath, branch, repositoryUrl, siteUrl } from "./scripts/repo.mjs";
+import { baseLinks } from './scripts/base-links.mjs';
+import { basePath, branch, repositoryUrl, siteUrl } from './scripts/repo.mjs';
 
 const github = repositoryUrl();
 const apiReference = createOpenAPISidebarGroup();
 
 export default defineConfig({
   site: siteUrl,
-  base: basePath || "/",
+  base: basePath || '/',
   markdown: { processor: satteri({ hastPlugins: [baseLinks(basePath)] }) },
   integrations: [
     starlight({
-      title: "Verdin",
-      logo: { src: "./src/assets/verdin-mark.svg" },
-      favicon: "/favicon.svg",
+      title: 'Verdin',
+      logo: { src: './src/assets/verdin-mark.svg' },
+      favicon: '/favicon.svg',
       customCss: [
-        "@fontsource-variable/anybody/wdth.css",
-        "@fontsource-variable/atkinson-hyperlegible-next",
-        "@fontsource-variable/martian-mono/wdth.css",
-        "./src/styles/theme.css",
+        '@fontsource-variable/anybody/wdth.css',
+        '@fontsource-variable/atkinson-hyperlegible-next',
+        '@fontsource-variable/martian-mono/wdth.css',
+        './src/styles/theme.css',
       ],
-      components: { Hero: "./src/components/Hero.astro" },
+      components: { Hero: './src/components/Hero.astro' },
+      routeMiddleware: './src/route-data.ts',
       lastUpdated: true,
       description:
-        "Open source headless CMS written in Rust, compatible with Strapi v5 content APIs.",
-      social: [{ icon: "github", label: "GitHub", href: github }],
+        'Open source headless CMS written in Rust, compatible with Strapi v5 content APIs.',
+      social: [{ icon: 'github', label: 'GitHub', href: github }],
       // Hand-written pages; synced pages set their own `editUrl` to the file in docs/.
       editLink: { baseUrl: `${github}/edit/${branch}/site/` },
       plugins: [
         starlightLlmsTxt(),
         starlightOpenAPI([
           {
-            base: "api/example",
-            schema: "./src/openapi/blog.json",
-            sidebar: { group: apiReference, label: "Example content API" },
+            base: 'api/example',
+            schema: './src/openapi/blog.json',
+            sidebar: { group: apiReference, label: 'Example content API' },
           },
         ]),
         starlightLinksValidator({
@@ -52,72 +53,70 @@ export default defineConfig({
           // actions do not, so they are skipped here.
           exclude: ({ link }) =>
             link.startsWith(`${basePath}/api/example/`) ||
-            (basePath !== "" &&
-              link.startsWith("/") &&
-              !link.startsWith(`${basePath}/`)),
+            (basePath !== '' && link.startsWith('/') && !link.startsWith(`${basePath}/`)),
         }),
       ],
       // One group per folder of src/content/docs; pages order themselves with
       // `sidebar.order` in their frontmatter.
       sidebar: [
         {
-          label: "Get started",
-          items: [{ autogenerate: { directory: "start" } }],
+          label: 'Get started',
+          items: [{ autogenerate: { directory: 'start' } }],
         },
         {
-          label: "Concepts",
-          items: [{ autogenerate: { directory: "concepts" } }],
+          label: 'Concepts',
+          items: [{ autogenerate: { directory: 'concepts' } }],
         },
         {
-          label: "Guides",
+          label: 'Guides',
           items: [
             {
-              label: "Content",
-              items: [{ autogenerate: { directory: "guides/content" } }],
+              label: 'Content',
+              items: [{ autogenerate: { directory: 'guides/content' } }],
             },
             {
-              label: "Frontend",
-              items: [{ autogenerate: { directory: "guides/frontend" } }],
+              label: 'Frontend',
+              items: [{ autogenerate: { directory: 'guides/frontend' } }],
             },
             {
-              label: "Authentication",
-              items: [{ autogenerate: { directory: "guides/auth" } }],
+              label: 'Authentication',
+              items: [{ autogenerate: { directory: 'guides/auth' } }],
             },
             {
-              label: "Integrations",
-              items: [{ autogenerate: { directory: "guides/integrations" } }],
+              label: 'Integrations',
+              items: [{ autogenerate: { directory: 'guides/integrations' } }],
             },
           ],
         },
         {
-          label: "Extending",
-          items: [{ autogenerate: { directory: "extending" } }],
+          label: 'Extending',
+          items: [{ autogenerate: { directory: 'extending' } }],
         },
         {
-          label: "API reference",
-          items: [{ autogenerate: { directory: "api" } }, apiReference],
+          label: 'API reference',
+          items: [{ autogenerate: { directory: 'api' } }, apiReference],
         },
         {
-          label: "Reference",
-          items: [{ autogenerate: { directory: "reference" } }],
+          label: 'Reference',
+          items: [{ autogenerate: { directory: 'reference' } }],
         },
         {
-          label: "Deploy & operate",
-          items: [{ autogenerate: { directory: "deploy" } }],
+          label: 'Deploy & operate',
+          items: [{ autogenerate: { directory: 'deploy' } }],
         },
         {
-          label: "Migrate & upgrade",
-          items: [{ autogenerate: { directory: "migrate" } }],
+          label: 'Migrate & upgrade',
+          items: [{ autogenerate: { directory: 'migrate' } }],
         },
         {
-          label: "Internals",
+          label: 'Internals',
           collapsed: true,
-          items: [{ autogenerate: { directory: "internals" } }],
+          items: [{ autogenerate: { directory: 'internals' } }],
         },
         {
-          label: "Project",
+          label: 'Project',
           collapsed: true,
-          items: [{ autogenerate: { directory: "project" } }],
+          items: [{ autogenerate: { directory: 'project' } }],
         },
       ],
     }),
