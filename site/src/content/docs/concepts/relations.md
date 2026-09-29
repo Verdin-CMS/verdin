@@ -92,6 +92,11 @@ a change:
 Connecting a new target to a to-one relation replaces the previous one. `set` cannot be
 combined with `connect` or `disconnect`.
 
+In the admin panel, a relation field lists the linked entries. **Link an entry** (or
+**Link entries** for to-many relations) opens a dialog that searches the target type's
+entries, across their text fields, and in the entry's locale when the target is localized.
+Choose one entry, or tick several and add them; entries already linked are marked.
+
 ## Ordering
 
 To-many relations keep the order of their links. A list or `set` stores the order you send.
