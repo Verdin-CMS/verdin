@@ -1,0 +1,264 @@
+---
+title: Quickstart
+description: Run Verdin with Docker or the binary, create the first admin, model a content type and read it from the API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This page takes you from nothing to a first API response in about ten minutes: start
+Verdin, create the first admin, model a content type, open it to the public and read it
+over REST, GraphQL or the TypeScript client.
+
+You need either [Docker](https://docs.docker.com/get-docker/) or a machine that can run the
+`verdin` binary (Linux, macOS or Windows on x86-64, Linux or macOS on ARM64).
+
+## 1. Start Verdin
+
+<Tabs syncKey="install">
+  <TabItem label="Docker">
+
+Generate the secrets once, then start the image in development mode:
+
+```sh title="Terminal"
+docker run --rm ghcr.io/verdin-cms/verdin secrets > verdin.env
+docker run -p 1337:1337 --env-file verdin.env -v verdin-data:/data ghcr.io/verdin-cms/verdin dev
+```
+
+The `verdin-data` volume holds the SQLite database (`/data/verdin.db`), the uploaded
+media (`/data/uploads`) and, in `dev`, the schema files the content-type builder writes
+(`/data/schema`).
+
+  </TabItem>
+  <TabItem label="Binary">
+
+Download the archive for your platform from the
+[releases page](https://github.com/Verdin-CMS/verdin/releases), extract it and put
+`verdin` on your `PATH`. The admin panel is built into the binary.
+
+Scaffold a project and start it in development mode:
+
+```sh title="Terminal"
+verdin new my-site            # verdin.toml, schema/, .env with fresh secrets, SQLite
+cd my-site
+verdin dev
+```
+
+`verdin new` takes `--database sqlite|postgres|mysql|mariadb` (SQLite by default) to
+choose the database the generated `.env` points at. For PostgreSQL, MySQL and MariaDB,
+edit `VERDIN_DATABASE_URL` in `.env` to match your server before you run `verdin dev`.
+[Project structure](/start/project-structure/) describes every file it creates.
+
+  </TabItem>
+</Tabs>
+
+When the log shows `verdin listening`, the server answers on port 1337. The first start
+creates the database tables.
+
+## 2. Secrets
+
+Verdin needs two secrets, each at least 32 bytes long:
+
+| Variable | What it protects |
+| --- | --- |
+| `VERDIN_ADMIN_JWT_SECRET` | Signs admin sessions. |
+| `VERDIN_TOKEN_PEPPER` | Hashes API tokens and protects two-factor secrets and recovery codes. |
+
+`verdin secrets` prints fresh values, and `verdin new` writes them into `.env`. Secrets
+come from the environment only, never from `verdin.toml`, and the server does not start
+without them. The `.env` file next to `verdin.toml` is loaded on start; variables already
+set in the environment win.
+
+<Aside type="caution">
+Generate the secrets once per installation and keep them. A new `VERDIN_ADMIN_JWT_SECRET`
+signs every admin out; a new `VERDIN_TOKEN_PEPPER` invalidates every API token and every
+two-factor setup. Keep `.env` and `verdin.env` out of version control.
+</Aside>
+
+## 3. Create the first admin
+
+Open [http://localhost:1337/admin/](http://localhost:1337/admin/). While no administrator exists, the admin panel shows
+**Welcome to Verdin**: enter your name, email and a password of at least 8 characters,
+then select **Create account**. This first account is a Super Admin with every permission.
+
+You can also create admins from the command line; see
+[Admin users from the command line](#admin-users-from-the-command-line).
+
+## 4. Model a content type
+
+<Steps>
+
+1. In the sidebar, open **Content-type builder** and select **New content type**.
+2. Set **Display name** to `Article`. Verdin fills **Singular name (API id)** with
+   `article` and **Plural name (route)** with `articles`; the route is the URL of the
+   type in the API. Keep **Kind** on **Collection**.
+3. Select **Add field**, choose **Short text**, name it `title`, and select **Done**.
+4. Select **Save**. **Review the migration** lists the database steps with their SQL;
+   select **Apply**.
+
+</Steps>
+
+Verdin writes the type to `schema/content-types/article.json` and creates its table.
+The builder is available in `verdin dev` only: in production the schema comes from your
+files. See [Content model](/concepts/content-model/) for field types and options.
+
+Now add an entry: open **Article** under **Collections**, select **New entry**, fill in
+the title and select **Publish**. New types have **Draft & publish** on, so their entries
+stay drafts, invisible to the public API, until they are published.
+
+## 5. Open it to the public
+
+The content API is closed until you grant public permissions or create API tokens.
+Open **Settings → Public access**, allow **Find** and **Find one** for **Article**, and
+select **Save**.
+
+To read without public access, create a token in **Settings → API tokens** and send it
+as `Authorization: Bearer <token>`. See [API tokens](/guides/auth/api-tokens/) and
+[Permissions](/concepts/permissions/).
+
+## 6. Make a first request
+
+<Tabs syncKey="api">
+  <TabItem label="REST">
+
+```sh title="Terminal"
+curl localhost:1337/api/articles
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "documentId": "01m3p88agn712n02wb8kkpe94p",
+      "title": "Hello Verdin",
+      "createdAt": "2026-09-29T09:34:39.637Z",
+      "updatedAt": "2026-09-29T09:34:39.637Z",
+      "publishedAt": "2026-09-29T09:34:39.637Z"
+    }
+  ],
+  "meta": { "pagination": { "page": 1, "pageSize": 25, "pageCount": 1, "total": 1 } }
+}
+```
+
+The response has the flat shape of Strapi v5. Filters, sorting, pagination and
+`populate` use the same query parameters; see the [REST API](/api/rest/).
+
+  </TabItem>
+  <TabItem label="GraphQL">
+
+Turn on **Settings → Features → GraphQL**. `POST /graphql` then serves a schema generated
+from your content types, with the same permissions as the REST API:
+
+```sh title="Terminal"
+curl localhost:1337/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ articles { documentId title } }"}'
+```
+
+```json
+{ "data": { "articles": [{ "documentId": "01m3p88agn712n02wb8kkpe94p", "title": "Hello Verdin" }] } }
+```
+
+See the [GraphQL API](/api/graphql/).
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+Generate types from the schema and install the client in your frontend project:
+
+```sh title="Terminal"
+verdin types -o src/verdin-types.ts   # in the Verdin project
+npm install @verdin/client            # in the frontend project
+```
+
+With Docker, the image can print the types from the schema in the volume:
+`docker run --rm -v verdin-data:/data ghcr.io/verdin-cms/verdin types > src/verdin-types.ts`.
+
+```ts title="src/articles.ts"
+import { createClient } from '@verdin/client';
+import type { VerdinSchema } from './verdin-types';
+
+const verdin = createClient<VerdinSchema>({ url: 'http://localhost:1337' });
+
+const { data } = await verdin.collection('articles').find({ sort: ['publishedAt:desc'] });
+console.log(data.map((article) => article.title));
+```
+
+See [Typed client](/guides/frontend/typed-client/).
+
+  </TabItem>
+</Tabs>
+
+From here, the [Astro](/start/tutorial-astro/) and [Next.js](/start/tutorial-nextjs/)
+tutorials build a blog frontend on the same API.
+
+## Development and production mode
+
+| Command | Use it for |
+| --- | --- |
+| `verdin dev` | Development: safe migrations apply automatically, the content-type builder can edit the schema files, and the server reloads when they change. |
+| `verdin start` | Production. It refuses to run while the database is behind the schema. |
+| `verdin start --migrate` | Production, applying pending safe migrations before starting. This is the Docker image's default command. |
+
+Refresh cookies are `Secure` in `verdin start` and not in `verdin dev`, so sign-in to a
+`start` server needs HTTPS. To try `start` over plain HTTP, set
+`VERDIN_ADMIN__SECURE_COOKIES=false`.
+
+In production, keep the schema in version control and mount it read-only. With Docker:
+
+```sh title="Terminal"
+docker run -p 1337:1337 --env-file verdin.env \
+  -e VERDIN_DATABASE_URL=postgres://user:pass@db:5432/verdin \
+  -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
+```
+
+The [production checklist](/deploy/production-checklist/) covers the rest.
+
+## Schema and migrations
+
+Content types live in `schema/content-types/<singularName>.json` and components in
+`schema/components/<category>/<name>.json`, in the Strapi format. When the files change,
+Verdin plans a migration:
+
+```sh title="Terminal"
+verdin schema check                      # validate every schema file
+verdin migrate plan                      # steps, risk level and exact SQL
+verdin migrate apply                     # safe steps only
+verdin migrate apply --allow risky       # also type changes and new unique constraints
+verdin migrate apply --allow destructive # also dropped columns and tables
+verdin migrate apply --rename-column articles.title=headline --rename-table posts=articles
+```
+
+On MySQL and MariaDB, which have no transactional DDL, an interrupted migration resumes
+from the failed step on the next `migrate apply`. See
+[Schema migrations](/concepts/schema-migrations/).
+
+## Admin users from the command line
+
+```sh title="Terminal"
+verdin admin create --email other@example.com      # password from VERDIN_ADMIN_PASSWORD or stdin
+verdin admin reset-password --email you@example.com
+```
+
+`admin create` creates a Super Admin. `reset-password` also unlocks the account and ends
+its sessions. Both need the database to be up to date with the schema.
+
+## Other commands
+
+| Command | What it does |
+| --- | --- |
+| `verdin types -o src/verdin-types.ts` | Writes TypeScript definitions of the content API (standard output without `-o`). |
+| `verdin import strapi <export>` | Imports a Strapi project; see [Importing from Strapi](/migrate/from-strapi/). |
+| `verdin export <file.tar.gz>` | Writes the schema, content and media to an archive; `verdin import verdin` reads it back. |
+| `verdin version` | Prints the version. |
+
+Every command takes `-c, --config <path>` (default `verdin.toml`, or `VERDIN_CONFIG`).
+The [CLI reference](/reference/cli/) lists every command and flag, and the
+[configuration reference](/reference/configuration/) every setting.
+
+## Health checks
+
+`GET /_health` answers while the process is up. `GET /_ready` also checks the database
+and answers 503 when it cannot reach it: point load balancers at it (see
+[Scaling](/deploy/scaling/)).

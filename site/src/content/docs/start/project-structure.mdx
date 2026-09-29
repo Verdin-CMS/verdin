@@ -1,0 +1,180 @@
+---
+title: Project structure
+description: The files verdin new creates, the ones Verdin adds while it runs, and which of them belong in git.
+sidebar:
+  order: 5
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+A Verdin project is a directory with a configuration file and the schema. This page lists
+what `verdin new` creates, what the server adds while it runs, and what to commit.
+
+## What `verdin new` creates
+
+```sh title="Terminal"
+verdin new my-site
+```
+
+<FileTree>
+- my-site/
+  - verdin.toml project configuration
+  - .env secrets and the database URL, readable by you only
+  - .gitignore
+  - schema/
+    - content-types/ one JSON file per content type
+    - components/ one folder per component category
+  - data/ the SQLite database (only with `--database sqlite`)
+</FileTree>
+
+The directory must not exist or must be empty. The project name in the database URL comes
+from the directory name, lowercased, with other characters replaced by `_`
+(`My Site` becomes `my_site`).
+
+### `verdin.toml`
+
+The configuration. The generated file sets the port, the content API prefix and page
+sizes, and the admin path:
+
+```toml title="verdin.toml"
+[server]
+port = 1337
+# public_url = "https://cms.example.com"
+
+[api]
+prefix = "/api"
+default_page_size = 25
+max_page_size = 100
+
+[admin]
+path = "/admin"
+# secure_cookies = true
+```
+
+Every key has a default, so the file may be empty or missing. Unknown keys stop the server
+with an error. Any key can be overridden from the environment as
+`VERDIN_<SECTION>__<KEY>`, for example `VERDIN_SERVER__PORT=8080`. Commands read
+`verdin.toml` from the current directory; pass `-c <path>` or set `VERDIN_CONFIG` to use
+another file. Paths in the file, such as the schema or upload directories, are relative to
+the directory that contains it. All settings are in the
+[configuration reference](/reference/configuration/).
+
+### `.env`
+
+```sh title=".env"
+# Local secrets: keep this file out of version control.
+VERDIN_DATABASE_URL=sqlite://data/verdin.db
+VERDIN_ADMIN_JWT_SECRET=…
+VERDIN_TOKEN_PEPPER=…
+```
+
+`verdin new` fills in two random secrets and a database URL for the engine you chose with
+`--database`:
+
+| `--database` | Generated `VERDIN_DATABASE_URL` |
+| --- | --- |
+| `sqlite` (default) | `sqlite://data/verdin.db` |
+| `postgres` | `postgres://verdin:change-me@localhost:5432/<name>` |
+| `mysql`, `mariadb` | `mysql://verdin:change-me@localhost:3306/<name>` |
+
+Replace the user and password for PostgreSQL, MySQL and MariaDB. Relative SQLite paths are
+resolved against the project directory, not the directory you run the command from.
+
+Every command loads the `.env` next to `verdin.toml`; variables already set in the
+environment win. On Linux and macOS the file is created readable by its owner only. In
+production, set these variables in your platform's secret store instead of shipping a
+`.env` file. The [Quickstart](/start/quickstart/#2-secrets) explains the two secrets.
+
+### `schema/`
+
+The content model, in Strapi's schema format:
+
+- `schema/content-types/<singularName>.json`, one file per collection or single type.
+- `schema/components/<category>/<name>.json`, one file per component; the component's uid
+  is `<category>.<name>`.
+
+The content-type builder writes these files in `verdin dev`, and you can edit them by hand:
+`verdin dev` reloads when they change. The schema of the example blog looks like this:
+
+<FileTree>
+- schema/
+  - content-types/
+    - article.json
+    - category.json
+    - homepage.json single type
+    - tag.json
+  - components/
+    - blocks/
+      - hero.json `blocks.hero`
+      - quote.json `blocks.quote`
+    - shared/
+      - seo.json `shared.seo`
+</FileTree>
+
+The files are the source of truth: Verdin derives the database tables, validation, the
+REST and GraphQL APIs, the OpenAPI document, the TypeScript types and the admin forms from
+them. See [Content model](/concepts/content-model/) and
+[Schema migrations](/concepts/schema-migrations/). The schema directory is `[schema].path`
+in `verdin.toml`, `schema` by default.
+
+## What appears when Verdin runs
+
+<FileTree>
+- my-site/
+  - verdin.toml
+  - .env
+  - schema/
+  - data/
+    - verdin.db SQLite database, with its `-wal` and `-shm` files
+    - search/ full-text index, when `[search].enabled` is on
+  - public/
+    - uploads/ media library files, served at `/uploads`
+  - .cache/
+    - transforms/ resized images, rebuilt on demand
+  - plugins/ WebAssembly plugins, one folder each (you create it)
+  - strapi-id-map.json written by `verdin import strapi`
+</FileTree>
+
+| Path | Written by | Setting |
+| --- | --- | --- |
+| `data/verdin.db` | The server, with SQLite | `VERDIN_DATABASE_URL` |
+| `public/uploads/` | Uploads with the local provider (the default) | `[upload].provider` |
+| `.cache/transforms/` | Image transformations requested at `/uploads` | `[upload.transforms].cache_dir` |
+| `data/search/` | The full-text index | `[search].dir` |
+| `plugins/` | You: each plugin in its own folder | `[plugins].path` |
+| `strapi-id-map.json` | `verdin import strapi`: Strapi ids mapped to Verdin ids | — |
+
+With PostgreSQL, MySQL or MariaDB there is no `data/verdin.db`: the content lives in the
+database server. With the S3 provider, media files live in the bucket and `public/uploads`
+stays empty.
+
+## What goes in git
+
+| Commit | Keep out of git |
+| --- | --- |
+| `verdin.toml` | `.env` (secrets) |
+| `schema/` (content types and components) | `data/` (SQLite database, search index) |
+| `plugins/`, if you use plugins | `public/uploads/` (media) |
+| `.gitignore` | `.cache/` |
+
+The generated `.gitignore` covers `.env`, `data/`, `*.db` files and `.cache/`. It does not
+cover `public/uploads/`: add it yourself.
+
+```sh title=".gitignore"
+.env
+data/
+*.db
+*.db-*
+.cache/
+public/uploads/
+```
+
+<Aside>
+Content and media are data, not code. Back them up with `verdin export` or your database's
+own tools rather than committing them; see [Backups](/deploy/backups/).
+</Aside>
+
+Commit the schema together with the code that depends on it, such as your frontend's
+generated types. In production, deploy the committed schema and run
+`verdin start --migrate`: the content-type builder is off outside `verdin dev`, so the
+schema only changes through your repository.
