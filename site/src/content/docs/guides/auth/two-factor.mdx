@@ -1,0 +1,136 @@
+---
+title: Two-factor authentication
+description: Protect admin accounts with an authenticator app or passkeys, require a second factor per role, and recover or reset lost factors.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Two-factor authentication adds a second step after the password: a 6-digit code from an
+authenticator app, or a passkey (fingerprint, face, screen lock or security key). This guide
+sets both up, makes them mandatory for a role, and covers what to do when an admin loses
+theirs. Strapi has no built-in equivalent.
+
+Two-factor authentication is for admins. [End users](/guides/auth/end-users/) sign in with a
+password or an OAuth provider.
+
+## Before you start
+
+- There is no feature to turn on: every admin can set up a second factor in their profile.
+- Passkeys are bound to the address of the admin panel. Set `[server].public_url` to the
+  address admins open, such as `https://cms.example.com`. Browsers only offer passkeys over
+  `https://` (and on `localhost`).
+- Keep `VERDIN_TOKEN_PEPPER` stable: authenticator secrets and recovery codes are protected
+  with it, and changing it makes them unusable.
+
+## Set up an authenticator app
+
+<Steps>
+
+1. Open your **Profile** and find **Two-factor authentication**.
+2. Under **Authenticator app**, select **Set up** and confirm your password.
+3. Scan the QR code with an app such as 1Password, Google Authenticator or Authy. If you
+   cannot scan it, enter the setup key shown below it.
+4. Enter the **6-digit code** the app shows and select **Turn on**.
+5. Save the **recovery codes** Verdin shows: **Download** them or copy them, then select
+   **I saved them**.
+
+</Steps>
+
+Codes follow the standard TOTP scheme (30-second steps, SHA-1, 6 digits). A code from the
+step before or after is accepted too, to allow for clock drift. If codes are refused, check
+the time on your device.
+
+## Add a passkey
+
+<Steps>
+
+1. Under **Passkeys**, select **Add a passkey**.
+2. Give it a **Name**, such as "MacBook Touch ID", and confirm your password.
+3. Follow your browser's prompt.
+
+</Steps>
+
+You can register up to 20 passkeys and remove them with **Remove**. Passkeys are a second
+factor after the password, not a replacement for it.
+
+## Recovery codes
+
+You get 10 recovery codes when you set up your first factor. Each signs you in once if you
+lose your app or passkeys. The profile shows how many are left; **Generate new codes**
+replaces them all (the old ones stop working).
+
+<Aside type="caution">
+The codes are shown once. Store them in a password manager or somewhere offline, not next to
+the device that holds your authenticator.
+</Aside>
+
+## Sign in with a second factor
+
+<Diagram
+  caption="Signing in with two-factor authentication"
+  code={`flowchart LR
+  A[Email and password] --> B{Second factor?}
+  B -->|no| S[Signed in]
+  B -->|yes| C[Code, passkey or recovery code]
+  C -->|within 5 minutes| S`}
+/>
+
+After the password, the sign-in page asks for the **Authentication code**. Choose **Use a
+passkey** or **Use a recovery code** to switch method. You have 5 minutes to finish; after
+that, enter your password again.
+
+## Require two-factor authentication for a role
+
+<Steps>
+
+1. Open **Settings → Roles** and the role.
+2. Turn on **Require two-factor authentication** and save.
+
+</Steps>
+
+Members without a second factor are asked to set one up when they sign in. Until they do,
+they can only open their profile. In **Settings → Users**, their row shows **2FA missing**;
+admins who have a second factor show **2FA**.
+
+While your role requires a second factor, Verdin refuses to remove your last one: add a
+passkey before turning off the app, or another factor before removing your only passkey.
+
+## Reset another admin's second factor
+
+When an admin loses their device and their recovery codes:
+
+<Steps>
+
+1. Open **Settings → Users** and find the admin.
+2. Select **Reset two-factor** and confirm.
+
+</Steps>
+
+This removes their authenticator app, passkeys and recovery codes, so they sign in with their
+password alone. If their role requires two-factor authentication, they must set it up again.
+It needs **Manage users**; only a Super Admin can reset another Super Admin.
+
+`verdin admin reset-password` resets the password only, not the second factor.
+
+## Single sign-on
+
+Admins who sign in through [single sign-on](/guides/auth/sso/) are asked for their Verdin
+second factor too, unless the provider is marked **The provider enforces MFA**.
+
+## Admin API
+
+All routes are under `/admin/api`. The ones that change factors take your `password`.
+
+| Route | Does |
+| --- | --- |
+| `POST /auth/login` | With a second factor, answers `{ twoFactorRequired: true, twoFactorToken, methods }` instead of a session. |
+| `POST /auth/login/two-factor` | `{ twoFactorToken, code }` (TOTP or recovery code), or `{ twoFactorToken, challengeToken, credential }` for a passkey. Answers the session. |
+| `POST /auth/login/passkey/options` | `{ twoFactorToken }`: the passkey challenge. |
+| `GET /auth/two-factor` | Your factors: `totp`, `passkeys`, `recoveryCodesLeft`, `required`. |
+| `POST /auth/two-factor/totp/setup`, `/totp/enable`, `/totp/disable` | Set up (password), turn on (code) and turn off (password) the authenticator app. |
+| `POST /auth/two-factor/recovery-codes` | New recovery codes. |
+| `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/{id}` | Register and remove passkeys. |
+| `DELETE /users/{id}/two-factor` | Reset another admin's factors (`users.manage`). |

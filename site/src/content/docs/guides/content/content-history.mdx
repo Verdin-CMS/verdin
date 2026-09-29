@@ -1,0 +1,88 @@
+---
+title: Content history
+description: Browse the saved, published and unpublished versions of an entry and restore one as the current draft.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Verdin keeps a version of an entry each time it is created, saved, published, unpublished
+or has its draft discarded, from any API. This guide shows how to find an old version and
+restore it, how many versions are kept, and the matching admin API.
+
+Content history works like Strapi's, which is a paid feature there.
+
+## Before you start
+
+- **Settings → Features → Content history** is on by default. While it is off, no versions
+  are recorded and the history is unavailable.
+- Reading an entry's history needs read access to the entry; restoring needs update access.
+  Field restrictions apply: you only see, and only restore, the fields your role can read or
+  update. See [Permissions](/reference/permissions/).
+
+## Restore a version
+
+<Steps>
+
+1. Open the entry and select **History**.
+2. The **Versions** list shows each version with its event (**Created**, **Saved**,
+   **Published**, **Unpublished**, **Draft discarded**), its date and who made it. Changes
+   made through the content API show **API** as the author.
+3. Select a version to view its fields.
+4. Select **Restore** and confirm.
+
+</Steps>
+
+The version replaces the current draft; publish it afterwards when you are ready. On types
+without draft and publish, restoring updates the entry directly.
+
+What is left out when you restore:
+
+- Fields that no longer exist in the schema are listed and not restored.
+- References to deleted entries or files are dropped, and the editor tells you which fields
+  lost them.
+
+**Back to the editor** returns to the entry without changing anything.
+
+## How many versions are kept
+
+Verdin keeps the newest `[history].max_versions` versions of each entry and locale (50 by
+default) and removes older ones as new versions arrive:
+
+```toml title="verdin.toml"
+[history]
+max_versions = 100
+```
+
+Each locale of a localized entry has its own history. Deleting an entry, or one of its
+locales, deletes its versions too. See the [configuration reference](/reference/configuration/).
+
+<Aside type="note">
+Unlike Strapi, where history is kept for a number of days, Verdin keeps a number of
+versions per entry, however old they are.
+</Aside>
+
+## Admin API
+
+All routes are under `/admin/api`.
+
+| Route | Permission | Does |
+| --- | --- | --- |
+| `GET /history/{uid}/{documentId}?locale=&page=&pageSize=` | read the entry | Versions, newest first, without their data (20 per page, at most 100). |
+| `GET /history/versions/{id}` | read the entry | One version with its data. |
+| `POST /history/versions/{id}/restore` | update the entry | Restores the version as the current draft. |
+
+The restore answer lists what was dropped:
+
+```json
+{
+  "data": {
+    "documentId": "k3v9…",
+    "restored": 42,
+    "dropped": [{ "field": "tags", "count": 1 }]
+  }
+}
+```
+
+The routes answer `404` while the feature is off.

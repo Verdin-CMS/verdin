@@ -1,0 +1,170 @@
+---
+title: Localizing content
+description: Add locales, make a content type localized, translate entries in the admin panel and read or write each locale through the API.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+A localized content type keeps one version of each entry per locale. This guide adds the
+locales you publish in, turns localization on for a type, translates entries in the admin
+panel and reads or writes each locale through the API. For the model behind it (shared
+fields, relations between localized types), see
+[Internationalization](/concepts/internationalization/).
+
+Localization is part of the core: there is no feature to turn on. It works like Strapi v5's
+i18n plugin and takes the same `locale` parameter.
+
+## Before you start
+
+- To add, rename or delete locales you need **Manage locales** (`locales.manage`).
+- To make a type localized you edit its schema, in the **Content-type builder** (`verdin dev`)
+  or in `schema/content-types/<name>.json`.
+- See [Permissions](/reference/permissions/) for the content permissions editors need.
+
+## Add the locales
+
+The first start creates English (`en`) as the default locale. Requests that name no locale
+use the default one, and new entries start in it.
+
+<Steps>
+
+1. Open **Settings → Internationalization** and select **Add locale**.
+2. Enter a **Code**: a lowercase language code, optionally with a region or script, such as
+   `fr`, `pt-BR` or `zh-Hans`. The name is filled in for you and can be changed.
+3. Check **Make it the default locale** if requests without a locale should use it, then save.
+
+</Steps>
+
+To change the default later, select **Set as default** on another locale. The default locale
+cannot be deleted.
+
+<Aside type="caution" title="Deleting a locale deletes its entries">
+Deleting a locale permanently deletes every entry written in it, in every content type,
+published versions included. The dialog asks you to type the locale code to confirm.
+</Aside>
+
+## Make a content type localized
+
+In the **Content-type builder**, open the type and turn on **Localized** in its settings.
+Then decide, field by field, which values differ per locale: a field with **Localized**
+turned off holds one value shared by every locale.
+
+The same thing in the schema file, for the example project's `article` type:
+
+```json title="schema/content-types/article.json" {6,9}
+{
+  "kind": "collectionType",
+  "singularName": "article",
+  "pluralName": "articles",
+  "displayName": "Article",
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "title": { "type": "string", "required": true },
+    "readingTime": { "type": "integer", "pluginOptions": { "i18n": { "localized": false } } }
+  }
+}
+```
+
+How shared fields behave:
+
+- Saving a shared field in one locale writes it to the drafts of every locale.
+- Publishing a locale copies its shared fields to the published versions of the other
+  locales.
+- Relations and media fields can be shared too.
+
+Types without `pluginOptions.i18n.localized` are not localized and ignore `locale`
+parameters. Changing a type's localization is a schema change: review the migration with
+`verdin migrate plan` before you deploy it.
+
+## Translate an entry in the admin panel
+
+<Steps>
+
+1. Open the entry and pick the target language in the **Locale** switcher at the top of the
+   editor. Locales without a version show **Not created yet**.
+2. The editor says the entry has no version in that locale yet and that saving creates it.
+   Shared fields already show their values.
+3. To start from an existing translation, select **Fill from another locale** in that
+   notice. Pick the source in **Copy from** and select **Copy fields**. It copies the
+   localized fields, relations and media included, into the form. Nothing is saved yet.
+4. Edit the fields, then **Save draft** or **Publish**. Each locale has its own draft and
+   published version.
+
+</Steps>
+
+The list view has the same **Locale** switcher: it lists the versions in one locale at a
+time. Deleting from the editor removes only the version in the current locale; the other
+locales are kept.
+
+With the **AI actions** feature on, the editor can also translate the text fields from
+another locale's draft. See [AI actions](/guides/integrations/ai-actions/).
+
+## Limit editors to some locales
+
+A role's content permissions can cover only some locales. In **Settings → Roles**, open the
+role, find the content type and select **Locales**. Choose **Only these locales** and pick
+them. Admins with that role cannot read or change versions in the other locales; the
+**Locale** switcher shows those locales as "(no access)".
+
+## Read and write locales through the API
+
+Add `locale` to any REST request, or pass it as an argument in GraphQL. Without it, the
+default locale is used. An unknown locale is a `400` error.
+
+<Tabs syncKey="api">
+<TabItem label="REST">
+
+```sh title="Terminal"
+# Read the French versions
+curl 'http://localhost:1337/api/articles?locale=fr'
+
+# Create or update the French version of a document
+curl -X PUT 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"data":{"title":"Bonjour"}}'
+
+# Delete only the French version
+curl -X DELETE 'http://localhost:1337/api/articles/<documentId>?locale=fr' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+</TabItem>
+<TabItem label="GraphQL">
+
+```graphql
+query {
+  articles(locale: "fr") {
+    documentId
+    title
+    locale
+  }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```ts
+const { data } = await verdin.collection('articles').find({ locale: 'fr' });
+```
+
+</TabItem>
+</Tabs>
+
+What to expect:
+
+- `PUT` with a `locale` creates that locale's version when the document has none yet.
+- Responses of localized types include `locale`. All versions share the same `documentId`.
+- `DELETE` removes only the version in the requested locale (the default locale when none is
+  given). Links pointing at the document are removed once no locale is left.
+- When a localized type links to another localized type, reads resolve the target in the
+  same locale, and filters through relations do the same. Targets that are not localized
+  are shared by every locale.
+- Webhook payloads and history versions record the locale.
+
+Unlike Strapi, the content API has no `/api/i18n/locales` route. The locales are listed in
+the admin API at `GET /admin/api/i18n/locales`, and managed with `POST`,
+`PUT /admin/api/i18n/locales/{code}` and `DELETE /admin/api/i18n/locales/{code}`
+(`locales.manage`).

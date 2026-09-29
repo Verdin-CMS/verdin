@@ -1,0 +1,110 @@
+---
+title: Releases
+description: Group entries and publish or unpublish them together, right away or at a scheduled date.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+A release groups entries that go live, or go offline, together: a product launch, a
+campaign, a set of translations. You publish it by hand or give it a date. This guide
+creates a release, adds entries, runs it and shows the admin API.
+
+Releases work like Strapi's Releases, which are part of Strapi's paid plans.
+
+## Before you start
+
+- **Settings → Features → Releases** is on by default. While it is off, the **Releases** page
+  and routes are unavailable and scheduled releases wait.
+- Managing releases needs **Manage releases** (`releases.manage`).
+- Adding an entry also needs **Publish** on its content type, and the type must use
+  [draft and publish](/concepts/draft-and-publish/).
+
+## Create a release
+
+<Steps>
+
+1. Open **Releases** in the sidebar and select **New release**.
+2. Enter a **Name**.
+3. Optionally, set **Publish on (optional)**: the date and time, in your time zone, when the
+   release runs. Without a date, the release waits until you publish it.
+4. Select **Create**.
+
+</Steps>
+
+## Add entries
+
+<Steps>
+
+1. Open an entry in the editor. The **Releases** panel lists the releases it is in.
+2. Select **Add to release**.
+3. Pick the **Release**, and under **When the release runs** choose **Publish** or
+   **Unpublish**.
+4. Select **Add**.
+
+</Steps>
+
+For localized types, only the version in the editor's current locale is added. Add each
+locale you want to release. Adding an entry that is already in the release replaces its
+action.
+
+The release page lists its entries with their content type and action. Remove one with the
+button on its row.
+
+## Publish the release
+
+- **Now:** open the release and select **Publish now**.
+- **At its date:** a background task checks every 30 seconds and runs the releases that are
+  due, on behalf of the admin who created them.
+
+<Diagram
+  caption="Release statuses"
+  code={`flowchart LR
+  P[Pending] -->|Publish now or date reached| R[Running]
+  R -->|every action succeeded| D[Done]
+  R -->|some actions failed| F[Failed]`}
+/>
+
+Each action records whether it succeeded. When one fails, for example because the entry
+was deleted or does not pass validation, the other actions still run and the release ends
+as **Failed**, with the error of each failed action on its row.
+
+<Aside type="caution">
+A release that ran can no longer be changed. To retry failed actions, add those entries to
+a new release.
+</Aside>
+
+A release is published as a whole: it does not wait for [review
+stages](/guides/content/review-workflows/). If a workflow requires a stage to publish, the
+entries outside that stage fail like any other publication.
+
+Webhooks can subscribe to **Release published** (`releases.publish`), sent when a release
+runs. See [Webhooks](/guides/integrations/webhooks/).
+
+## Admin API
+
+All routes are under `/admin/api` and need `releases.manage`.
+
+```http
+GET    /admin/api/releases?status=pending
+POST   /admin/api/releases                    { "name": "Launch", "scheduledAt": "2026-10-01T08:00:00Z" }
+GET    /admin/api/releases/{id}
+PUT    /admin/api/releases/{id}               { "name": "Launch", "scheduledAt": null }
+DELETE /admin/api/releases/{id}
+POST   /admin/api/releases/{id}/actions       { "uid": "api::article", "documentId": "…", "locale": "fr", "action": "publish" }
+DELETE /admin/api/releases/{id}/actions/{actionId}
+POST   /admin/api/releases/{id}/publish
+GET    /admin/api/content/{uid}/{documentId}/releases
+```
+
+- `status` is `pending`, `running`, `done` or `failed`; each action has its own `status` and
+  `error`.
+- Changing, adding to or publishing a release that is no longer pending answers `409`.
+- `action` is `publish` or `unpublish`. Adding an action also needs `content.publish` on the
+  type. The locale is resolved when the action is added, so a later change of the default
+  locale does not move it.
+- Deleting a release deletes its list of entries. The entries themselves do not change.
+- `GET /content/{uid}/{documentId}/releases` needs read access to the entry and returns an
+  empty list to admins without `releases.manage`.

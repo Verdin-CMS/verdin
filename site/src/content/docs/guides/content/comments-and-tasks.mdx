@@ -1,0 +1,100 @@
+---
+title: Comments and tasks
+description: Discuss entries in threads, comment on single fields, mention other admins and assign tasks with due dates.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Admins can discuss an entry in comment threads, comment on one field, mention each other
+and assign tasks with due dates, without leaving the editor. This guide covers both, who can
+do what, and the admin API. Strapi has no equivalent.
+
+## Before you start
+
+- **Settings → Features → Comments and tasks** is on by default.
+- Reading an entry's content type is enough to read and write its comments and tasks.
+- Mentioned admins and task assignees are emailed through `[email]`. With the default `log`
+  provider, the emails only go to the server log. See the
+  [configuration reference](/reference/configuration/).
+
+## Comment on an entry
+
+<Steps>
+
+1. Open the entry and select **Comments**. The button shows the number of open threads.
+2. On the **Comments** tab, write in **New comment**. Type `@` to mention an admin.
+3. Select **Comment**, or press Control or Command and Enter.
+
+</Steps>
+
+To comment on one field, use the comment button next to the field (**Comment on**, then the
+field's name). Field threads are shown under **About** that field; **Show all** lists every
+thread again.
+
+In a thread you can:
+
+- **Reply**.
+- **Resolve** it when the discussion is over, and **Reopen** it later. Resolved threads move
+  to **Resolved threads**. Only the first comment of a thread resolves it.
+- **Edit comment** on your own comments.
+- **Delete comment** or **Delete thread** on your own comments. A Super Admin can delete any
+  comment.
+
+Comments are kept per locale on localized types, and hold up to 10,000 characters.
+
+## Mention an admin
+
+Mentioned admins get an email with the comment and a link to the entry, as long as they can
+read it. You are never emailed for mentioning yourself.
+
+## Assign a task
+
+<Steps>
+
+1. Open the **Tasks** tab of the same panel and select **New task**.
+2. Enter a **Title**, and optionally a **Description**, an **Assignee** and a **Due date**.
+   The assignee must be able to read the entry.
+3. Select **Create task**.
+
+</Steps>
+
+The assignee is emailed, unless they assigned the task to themselves. Tasks past their due
+date show as overdue. Mark a task as done from its row.
+
+The creator and the assignee of a task can change or complete it. Only its creator deletes
+it. A Super Admin can do both on any task.
+
+To see your open tasks across entries, add the **My tasks** widget to the home page: select
+**Customize**, then **Add widget**.
+
+## Working together live
+
+When another admin adds, resolves or deletes a comment or a task on the entry you have
+open, the panel says **Comments were updated.** or **Tasks were updated.** and shows the
+change.
+
+## Admin API
+
+All routes are under `/admin/api`. `uid`, `documentId` and `locale` name the entry.
+
+| Route | Does |
+| --- | --- |
+| `GET /comments?uid=&documentId=&locale=` | The entry's threads with their replies. |
+| `POST /comments` | `{ uid, documentId, locale?, field?, parentId?, body }`. `parentId` makes a reply. |
+| `PUT /comments/{id}` | `{ body }`. Your own comments only. |
+| `DELETE /comments/{id}` | Your own comments, or any as a Super Admin. |
+| `POST /comments/{id}/resolve`, `POST /comments/{id}/reopen` | On the first comment of a thread. |
+| `GET /tasks?uid=&documentId=&locale=` | The entry's tasks. |
+| `GET /tasks?mine=true&status=open` | Your tasks, across the entries you can still read. |
+| `POST /tasks` | `{ uid, documentId, locale?, title, description?, assigneeId?, dueDate? }`, with `dueDate` as `YYYY-MM-DD`. |
+| `PUT /tasks/{id}` | Creator or assignee. Any of `title`, `description`, `assigneeId`, `dueDate` (`null` clears them), and `status` (`open` or `done`). |
+| `DELETE /tasks/{id}` | Creator only (or a Super Admin). |
+
+In a comment body, a mention is written `@[Name](user:12)`, where `12` is the admin's id.
+
+<Aside type="note">
+The routes answer `404` while the feature is off. Turning it off hides the comments and
+tasks; they are kept for when you turn it back on.
+</Aside>

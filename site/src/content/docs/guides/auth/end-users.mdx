@@ -1,0 +1,246 @@
+---
+title: End users
+description: Let the people who use your sites sign up and sign in through the content API, with email confirmation, OAuth providers and roles, using Strapi's users-permissions routes.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+End users are the people who sign in to your site or app, not to the admin panel. Verdin
+gives them sign-up, sign-in, email confirmation, password reset, OAuth providers and roles
+that decide what they can do in the content API. The routes and payloads are those of
+Strapi v5's users-permissions plugin, so existing frontends keep working.
+
+## Before you start
+
+<Steps>
+
+1. Turn on **Settings → Features → Users & permissions** (it is off by default), or turn on
+   **End users** in **Settings → End users → Settings**.
+2. Set up `[email]` if you use email confirmation or password reset:
+
+   ```toml title="verdin.toml"
+   [email]
+   provider = "smtp"          # log (default), smtp, resend or postmark
+   from = "My site <no-reply@example.com>"
+
+   [email.smtp]
+   host = "smtp.example.com"
+   port = 587
+   username = "apikey"        # password in VERDIN_EMAIL_SMTP_PASSWORD
+   ```
+
+   Resend and Postmark read their key from `VERDIN_EMAIL_API_KEY`. **Settings → Features →
+   Email** has **Send a test email**. For local work, `docker/compose.dev.yml` includes
+   Mailpit (SMTP on port 1025, inbox at `http://localhost:8025`).
+
+3. Set `[server].public_url`: links in emails and OAuth callbacks use it.
+
+</Steps>
+
+Managing accounts and roles needs **Manage end users** (`endusers.manage`). Changing the
+settings tab (sign-up, providers, templates) needs **Manage features** (`features.manage`).
+
+## Configure sign-up and sessions
+
+In **Settings → End users → Settings**, under **Sign-up and sessions**:
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| **Allow sign-up** | on | Anyone can create an account through the content API. Off: `register` answers `400`. |
+| **Confirm email addresses** | off | New users must open an emailed link before they can sign in. |
+| **Default role** | Authenticated | The role of new accounts. |
+| **Sessions** | One long-lived token | **One long-lived token** (Strapi's legacy mode) or **Short tokens with refresh**. |
+| **Session length (days)** | 30 | Lifetime of the long-lived token. |
+| **Access token lifetime (minutes)**, **Refresh token lifetime (days)** | 30, 30 | With refresh tokens. |
+
+Under **Your app's pages**, set **After confirming an email** (where users land once their
+address is confirmed) and **Reset password page** (your page that receives `?code=` and asks
+for a new password). Password reset needs the reset page.
+
+## Set up roles
+
+Every request is made as one of:
+
+- **Public**: requests without a token. Its permissions are those of **Settings → Public
+  access**.
+- **Authenticated**: the built-in role given to new accounts. It cannot be deleted.
+- **Custom roles**: create them in **Settings → End users → Roles** with **Create role**.
+
+A role's **Permissions** use the same matrix as public access and API tokens: **Find**,
+**Find one**, **Create**, **Update**, **Delete**, **Publish** and **Read drafts** per
+content type, the **Media library**, and **Users** (the `/api/users` routes). A signed-in
+user gets their role's permissions only, not public access as well: grant public reads to
+the role too when signed-in users need them. Deleting a role moves its users to
+Authenticated.
+
+To act as a user, the frontend sends their JWT as `Authorization: Bearer <jwt>`. API tokens
+start with `vd_`, which is how Verdin tells the two apart.
+
+## Sign up and sign in
+
+<Tabs>
+<TabItem label="Register">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ana","email":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": { "id": 1, "username": "ana", … } }
+#   or { "user": … } when email confirmation is on
+```
+
+</TabItem>
+<TabItem label="Sign in">
+
+```sh title="Terminal"
+curl -X POST http://localhost:1337/api/auth/local \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ana@example.com","password":"a long password"}'
+# → { "jwt": "…", "user": {…} }
+```
+
+`identifier` is the email or the username.
+
+</TabItem>
+<TabItem label="Read as the user">
+
+```sh title="Terminal"
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/users/me
+curl -H "Authorization: Bearer $JWT" http://localhost:1337/api/articles
+```
+
+</TabItem>
+</Tabs>
+
+Sign-in is refused for blocked users ("Your account has been blocked by an administrator")
+and, with confirmation on, for unconfirmed ones ("Your account email is not confirmed").
+
+## Tokens and sessions
+
+- **One long-lived token** (`jwtManagement: "legacy-support"`): the JWT lasts
+  **Session length (days)**.
+- **Short tokens with refresh** (`jwtManagement: "refresh"`, as in Strapi 5): the JWT lasts
+  **Access token lifetime (minutes)**, and sign-in answers also carry a `refreshToken`. Call
+  `POST /api/auth/refresh` with `{ refreshToken }` to get a new pair. Each refresh token works
+  once; presenting a used one ends the whole session. `POST /api/auth/logout` with
+  `{ refreshToken }` ends it on purpose.
+- Changing or resetting a password revokes the user's earlier tokens, and so does blocking
+  the user.
+- Sign-in, registration and reset requests are limited to 20 a minute per client IP.
+- Passwords are stored with Argon2id. Accounts imported from Strapi keep their bcrypt hash
+  until their next sign-in, when it is re-hashed.
+
+## Confirm email addresses and reset passwords
+
+With **Confirm email addresses** on, sign-up emails a link to
+`/api/auth/email-confirmation?confirmation=…`. Opening it confirms the account and redirects
+to **After confirming an email**. `POST /api/auth/send-email-confirmation` with `{ email }`
+sends a new link.
+
+For a forgotten password:
+
+<Steps>
+
+1. Your app calls `POST /api/auth/forgot-password` with `{ email }`. The answer is the same
+   whether or not the account exists.
+2. The user gets an email with a link to your **Reset password page**, with `?code=…`. The
+   code works for one hour.
+3. Your page calls `POST /api/auth/reset-password` with
+   `{ code, password, passwordConfirmation }` and gets `{ jwt, user }`.
+
+</Steps>
+
+Signed-in users change their password with `POST /api/auth/change-password`
+(`{ currentPassword, password, passwordConfirmation }`).
+
+The emails are edited in **Settings → End users → Settings → Email templates**: a
+**Subject**, a **Message** and an optional **HTML body (optional)** for **Email confirmation**
+and **Password reset**. They take the placeholders `{{username}}`, `{{email}}` and `{{url}}`;
+values are HTML-escaped in the HTML body.
+
+## Sign in with OAuth providers
+
+Built-in presets exist for GitHub, Google, Microsoft, Discord, Facebook, GitLab and LinkedIn.
+Any other name is a generic OAuth 2 provider that needs its **Authorization URL**, **Token
+URL** and **User info URL**: Keycloak, Auth0 and Okta work this way with your realm's or
+tenant's URLs. Sign in with Apple is not supported.
+
+<Steps>
+
+1. In **Settings → End users → Settings → Sign-in providers**, select **Add GitHub** (or
+   another preset, or **Add OAuth 2 provider**).
+2. At the provider, register the **Callback URL to register at the provider** shown in the
+   dialog: `https://cms.example.com/api/connect/github/callback`.
+3. Enter the **Client ID**, optional **Scopes**, and **Redirect to your app**: your frontend
+   page that receives `?access_token=` after sign-in. Turn on **Enabled**.
+4. Put the client secret in the server's environment and restart:
+
+   ```sh title=".env"
+   VERDIN_OAUTH_GITHUB_SECRET=…
+   ```
+
+   The variable is `VERDIN_OAUTH_<PROVIDER>_SECRET`. Secrets are never stored in the
+   database.
+
+</Steps>
+
+The sign-in follows Strapi's flow:
+
+<Diagram
+  caption="OAuth sign-in for end users"
+  code={`sequenceDiagram
+  participant B as Browser
+  participant V as Verdin
+  participant P as Provider
+  B->>V: GET /api/connect/github
+  V-->>B: redirect to the provider
+  B->>P: consent
+  P-->>B: redirect to /api/connect/github/callback
+  B->>V: callback
+  V-->>B: redirect to your page ?access_token=…
+  B->>V: GET /api/auth/github/callback?access_token=…
+  V-->>B: { jwt, user }`}
+/>
+
+The OAuth `state` is signed and bound to the browser with a cookie. Accounts are matched by
+email; an email already used by another provider, or by an email-and-password account, is
+refused ("Email is already taken.").
+
+## Manage accounts in the admin panel
+
+**Settings → End users → Users** lists the accounts, with search by username or email. You
+can **Add user**, edit one (username, email, password, role, **Confirmed**, **Blocked**),
+**Block** or **Unblock** it, and delete it.
+
+## Routes
+
+The routes live under the content API prefix, `/api` by default. Request and response shapes
+follow Strapi v5.
+
+| Route | Does |
+| --- | --- |
+| `POST /auth/local/register` | `{ username, email, password }` → `{ jwt, user }`, or `{ user }` with email confirmation on. |
+| `POST /auth/local` | `{ identifier, password }` → `{ jwt, user }`. |
+| `GET /auth/email-confirmation?confirmation=` | Confirms the email, then redirects or returns the user. |
+| `POST /auth/send-email-confirmation` | `{ email }`: a new confirmation link. |
+| `POST /auth/forgot-password` | `{ email }`: emails the reset link. |
+| `POST /auth/reset-password` | `{ code, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/change-password` | Signed in. `{ currentPassword, password, passwordConfirmation }` → `{ jwt, user }`. |
+| `POST /auth/refresh`, `POST /auth/logout` | Refresh mode only: `{ refreshToken }`. |
+| `GET /users/me` | The signed-in user. |
+| `GET /users`, `GET /users/count`, `GET /users/{id}` | Needs Find / Find one on Users. Plain JSON, no `data` envelope, like Strapi. `populate=role` adds the role, `_q=` searches usernames and emails, `pagination[page]` and `pagination[pageSize]` (at most 100) page through. |
+| `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` | Needs Create / Update / Delete on Users. `{ username, email, password, confirmed, blocked, role }`, with `role` as a role id. |
+| `GET /connect/{provider}` | Starts an OAuth sign-in. |
+| `GET /auth/{provider}/callback?access_token=` | Exchanges the provider's token for `{ jwt, user }`. |
+
+`verdin import strapi` brings over end users with their passwords, custom roles, and the
+permissions of the public, authenticated and custom roles. See
+[Migrate from Strapi](/migrate/from-strapi/).
+
+<Aside type="caution">
+A role with Create, Update or Delete on **Users** lets its members manage every end user
+account. Give it only to trusted roles or API tokens.
+</Aside>

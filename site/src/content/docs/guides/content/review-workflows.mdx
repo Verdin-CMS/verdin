@@ -1,0 +1,133 @@
+---
+title: Review workflows
+description: Move entries through review stages, assign them to reviewers, limit who can move them and require a stage before publishing.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+A review workflow is an ordered list of stages, such as *To do*, *In review* and *Ready*,
+that the entries of some content types move through before they are published. This guide
+sets one up, moves and assigns entries, and shows the matching admin API.
+
+In Strapi, review workflows are an Enterprise feature. In Verdin they are part of the open
+source core.
+
+## Before you start
+
+- Turn on **Settings → Features → Review workflows**. It is off by default.
+- Setting up workflows needs **Manage review workflows** (`workflows.manage`).
+- Moving and assigning an entry needs update access to it. See
+  [Permissions](/reference/permissions/).
+
+## Create a workflow
+
+<Steps>
+
+1. Open **Settings → Review workflows** and select **New workflow**.
+2. Give it a **Name**.
+3. Under **Content types**, pick the types whose entries follow it. A type follows one
+   workflow at most.
+4. Under **Stages**, list the stages in order. Each has a **Stage name** and a **Color**. Use
+   **Add stage** for more, and the arrow buttons to reorder them. New entries start at the
+   first stage.
+5. Optionally, choose **Roles that can move entries to this stage** on a stage. With no roles
+   selected, anyone who can update the entry can.
+6. Optionally, set **Required stage to publish**. Entries can then be published only while
+   they are in that stage. **Any stage** leaves publishing alone.
+7. Save.
+
+</Steps>
+
+<Diagram
+  caption="An editorial workflow with a required stage to publish"
+  code={`flowchart LR
+  A[To do] --> B[In review] --> C[Ready]
+  C -->|publish allowed| P((Published))
+  A -.->|publish refused| X[400]`}
+/>
+
+Entries that existed before their type joined the workflow are at the first stage.
+
+When you change a workflow later:
+
+- Removing a stage sends its entries back to the first stage.
+- Removing a content type from the workflow clears the stages of its entries.
+- Deleting the workflow clears the stages and assignees of its entries.
+
+## Move and assign entries
+
+The entry editor shows a **Review** panel with the **Stage** and the **Assignee**.
+
+- Pick another **Stage** to move the entry. Stages reserved for other roles cannot be
+  chosen, and the panel says so. Admins with **Manage review workflows** can always move
+  entries.
+- Pick an **Assignee** from the active admins who can read the content type, or select
+  **Remove assignee**. Anyone who can update the entry can assign it.
+- When the workflow has a required stage, the panel says which stage the entry must reach
+  before **Publish** works.
+
+The list view shows a **Stage** column, and the home page lists the entries assigned to you
+under **Assigned to me**. Localized types keep a stage per locale.
+
+## What the publish stage blocks
+
+The required stage applies to every way of publishing: the admin panel, REST, GraphQL,
+releases and plugins. A publication of an entry outside that stage fails with `400`:
+
+```text
+the entry must be in the review stage `Ready` to be published
+```
+
+In Strapi the stage requirement applies only to the admin panel. Stage roles also differ:
+in Verdin they limit who moves entries *into* a stage.
+
+## Audit logs and webhooks
+
+- Stage changes and assignments are recorded in the [audit logs](/guides/content/audit-logs/)
+  as `entry.stage` and `entry.assign`.
+- Webhooks can subscribe to **Entry stage changed** (`review-workflows.updateEntryStage`).
+  See [Webhooks](/guides/integrations/webhooks/).
+
+## Admin API
+
+All routes are under `/admin/api` and take an admin access token.
+
+| Route | Permission | Does |
+| --- | --- | --- |
+| `GET /review-workflows`, `GET /review-workflows/{id}` | `workflows.manage` | Workflows with their stages. |
+| `POST /review-workflows`, `PUT /review-workflows/{id}` | `workflows.manage` | Create or replace a workflow (body below). |
+| `DELETE /review-workflows/{id}` | `workflows.manage` | Entries of its types lose their stages. |
+| `GET /content/{uid}/{documentId}/review?locale=` | read the entry | Stage, assignee, and the stages you can move the entry to (`canMoveTo`). |
+| `PUT /content/{uid}/{documentId}/review?locale=` | update the entry | `{ "stageId": 3, "assigneeId": 7 }`. Both fields are optional; `"assigneeId": null` removes the assignee. |
+| `GET /content/{uid}/review?documentIds=a,b` | read the type | Stages of up to 200 entries, with the workflow in `meta.workflow`. |
+| `GET /review/assigned` | signed in | Entries assigned to you. |
+| `GET /review/assignees?uid=` | update the type | Active admins who can read the type. |
+| `GET /review/roles` | `workflows.manage` | Role codes and names, for stage roles. |
+
+A workflow as sent to `POST` and `PUT`:
+
+```json
+{
+  "name": "Editorial",
+  "contentTypes": ["api::article"],
+  "stages": [
+    { "id": 1, "name": "To do", "color": "#4945ff" },
+    { "id": 2, "name": "In review", "color": "#ff8800" },
+    { "name": "Ready", "color": "#2f9e44", "roles": ["editor"] }
+  ],
+  "publishStage": "Ready"
+}
+```
+
+- A workflow has 1 to 50 stages with unique names and `#rrggbb` colors.
+- `publishStage` names one of the stages; leave it out for none.
+- Send existing stages with their `id` so their entries stay where they are. Stages without
+  an `id` are new.
+
+<Aside type="note">
+Turning the feature off hides the stages and stops enforcing the publish stage. The
+workflows and entry stages are kept for when you turn it back on.
+</Aside>
