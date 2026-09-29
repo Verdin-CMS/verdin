@@ -5,15 +5,12 @@
 //! Challenges are stateless — signed with the JWT secret, bound to the user and purpose,
 //! valid five minutes — and single use on the instance that checks them.
 
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
-
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde_json::{Value as Json, json};
 use sha2::{Digest, Sha256};
 use verdin_db::{ColumnKind as K, SqlValue as V};
-use verdin_migrate::system::ADMIN_PASSKEYS;
+use verdin_migrate::system::{ADMIN_PASSKEYS, SPENT_CHALLENGES};
 
 use super::two_factor::PasskeySummary;
 use super::{AuthError, AuthService, Result, Session, int, now, text};
@@ -25,9 +22,6 @@ const MAX_PASSKEYS: usize = 20;
 const ES256: i64 = -7;
 const EDDSA: i64 = -8;
 const RS256: i64 = -257;
-
-/// Spent challenges, until they expire.
-static SPENT: LazyLock<Mutex<HashMap<String, i64>>> = LazyLock::new(Mutex::default);
 
 /// Who passkeys are for: the admin panel's origin.
 #[derive(Debug, Clone)]
@@ -129,7 +123,7 @@ impl AuthService {
         name: &str,
         credential: &Json,
     ) -> Result<(PasskeySummary, Option<Vec<String>>)> {
-        let challenge = self.redeem(challenge_token, user_id, Purpose::Create)?;
+        let challenge = self.redeem(challenge_token, user_id, Purpose::Create).await?;
         let response = &credential["response"];
         let client_data = field_bytes(response, "clientDataJSON")?;
         check_client_data(&client_data, "webauthn.create", &challenge, rp)?;
@@ -243,7 +237,7 @@ impl AuthService {
         challenge_token: &str,
         credential: &Json,
     ) -> Result<()> {
-        let challenge = self.redeem(challenge_token, user_id, Purpose::Get)?;
+        let challenge = self.redeem(challenge_token, user_id, Purpose::Get).await?;
         let id = credential["id"].as_str().ok_or_else(|| invalid("the credential has no id"))?;
         let stored = self
             .credentials(user_id)
@@ -319,7 +313,7 @@ impl AuthService {
     }
 
     /// The challenge of a valid, unspent token for `user_id` and `purpose`.
-    fn redeem(&self, token: &str, user_id: i64, purpose: Purpose) -> Result<Vec<u8>> {
+    async fn redeem(&self, token: &str, user_id: i64, purpose: Purpose) -> Result<Vec<u8>> {
         let (payload, mac) = token.rsplit_once('.').ok_or(AuthError::Unauthorized)?;
         let expected = hmac_hex(&self.config.jwt_secret, &format!("passkey:{payload}"));
         if !constant_eq(expected.as_bytes(), mac.as_bytes()) {
@@ -334,11 +328,24 @@ impl AuthService {
         if *kind != purpose.as_str() || user.parse::<i64>().ok() != Some(user_id) || expires < now {
             return Err(AuthError::Unauthorized);
         }
-        let mut spent = SPENT.lock().expect("spent challenges");
-        spent.retain(|_, until| *until >= now);
-        if spent.insert((*challenge).to_owned(), expires).is_some() {
-            return Err(AuthError::Unauthorized);
-        }
+        let mut queries = self.db.queries();
+        queries
+            .execute(
+                &format!("DELETE FROM {SPENT_CHALLENGES} WHERE expires_at < ?"),
+                &[V::BigInt(now)],
+            )
+            .await?;
+        // The unique index lets one answer through, on any instance.
+        let hash = crypto::sha256_hex(challenge);
+        queries
+            .execute(
+                &format!(
+                    "INSERT INTO {SPENT_CHALLENGES} (challenge_hash, expires_at) VALUES (?, ?)"
+                ),
+                &[V::Text(hash), V::BigInt(expires)],
+            )
+            .await
+            .map_err(|_| AuthError::Unauthorized)?;
         URL_SAFE_NO_PAD.decode(challenge).map_err(|_| AuthError::Unauthorized)
     }
 }

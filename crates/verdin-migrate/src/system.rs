@@ -47,6 +47,7 @@ pub const REDIRECTS: &str = "vd_redirects";
 pub const MENUS: &str = "vd_menus";
 pub const FORMS: &str = "vd_forms";
 pub const FORM_SUBMISSIONS: &str = "vd_form_submissions";
+pub const SPENT_CHALLENGES: &str = "vd_spent_challenges";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -795,6 +796,21 @@ pub fn system_tables() -> Vec<Table> {
             ],
             indexes: vec![index(FORM_SUBMISSIONS, "form", &["form_id", "id"])],
             foreign_keys: vec![references("form_id", FORMS)],
+        },
+        // Passkey challenges already answered (SHA-256), until they expire: shared by
+        // every instance so a challenge is answered once.
+        Table {
+            name: SPENT_CHALLENGES.into(),
+            columns: vec![
+                id(),
+                Column::new("challenge_hash", ColumnType::Char { length: 64 }).not_null(),
+                Column::new("expires_at", ColumnType::BigInt).not_null(),
+            ],
+            indexes: vec![
+                unique(SPENT_CHALLENGES, "challenge", &["challenge_hash"]),
+                index(SPENT_CHALLENGES, "expires", &["expires_at"]),
+            ],
+            foreign_keys: vec![],
         },
         // One-time links for admins (`kind`: invite or reset), stored as SHA-256.
         Table {
