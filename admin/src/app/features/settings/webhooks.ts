@@ -1,9 +1,9 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  OnInit,
   computed,
   inject,
+  resource,
   signal,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
@@ -63,15 +63,15 @@ import { DeliveryStatusBadge, announceAttempt } from './webhook-deliveries';
         }
       </vd-page-header>
 
-      @if (error()) {
+      @if (error(); as message) {
         <div hlmAlert variant="destructive">
           <ng-icon hlmAlertIcon name="lucideCircleAlert" />
           <p hlmAlertTitle>{{ t('settings.webhooks.loadError') }}</p>
-          <p hlmAlertDescription>{{ error() }}</p>
+          <p hlmAlertDescription>{{ message }}</p>
         </div>
-      } @else if (webhooks() === null) {
+      } @else if (!webhooks.hasValue()) {
         <hlm-skeleton class="h-48 rounded-xl" />
-      } @else if (webhooks()!.length === 0) {
+      } @else if (webhooks.value().length === 0) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">
           <div hlmEmptyHeader>
             <div hlmEmptyMedia variant="icon"><ng-icon name="lucideWebhook" /></div>
@@ -100,7 +100,7 @@ import { DeliveryStatusBadge, announceAttempt } from './webhook-deliveries';
                 </tr>
               </thead>
               <tbody hlmTBody>
-                @for (webhook of webhooks(); track webhook.id) {
+                @for (webhook of webhooks.value(); track webhook.id) {
                   <tr hlmTr>
                     <td hlmTd class="ps-4">
                       <a
@@ -264,41 +264,35 @@ import { DeliveryStatusBadge, announceAttempt } from './webhook-deliveries';
     </div>
   `,
 })
-export class WebhooksPage implements OnInit {
+export class WebhooksPage {
   private readonly service = inject(Webhooks);
   private readonly auth = inject(Auth);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
-  protected readonly webhooks = signal<Webhook[] | null>(null);
-  protected readonly error = signal<string | null>(null);
+  protected readonly webhooks = resource({
+    loader: async () => (await this.service.list()).webhooks,
+  });
+  /** The load failure's message; a 404 means the feature is off. */
+  protected readonly error = computed(() => {
+    const error = this.webhooks.error();
+    if (!error) return null;
+    const failure = ApiFailure.from(error);
+    return failure.status === 404 ? this.t('settings.webhooks.featureOff') : failure.message;
+  });
   protected readonly busy = signal<number | null>(null);
   protected readonly testing = signal<number | null>(null);
   protected readonly canManage = computed(() => this.auth.can('webhooks.manage'));
-
-  async ngOnInit(): Promise<void> {
-    await this.reload();
-  }
-
-  private async reload(): Promise<void> {
-    try {
-      this.webhooks.set((await this.service.list()).webhooks);
-      this.error.set(null);
-    } catch (error) {
-      const failure = ApiFailure.from(error);
-      this.error.set(
-        failure.status === 404 ? this.t('settings.webhooks.featureOff') : failure.message,
-      );
-    }
-  }
 
   protected async setEnabled(webhook: Webhook, enabled: boolean): Promise<void> {
     this.busy.set(webhook.id);
     try {
       const updated = await this.service.setEnabled(webhook, enabled);
-      this.webhooks.update((list) =>
-        (list ?? []).map((item) => (item.id === webhook.id ? { ...item, ...updated } : item)),
-      );
+      if (this.webhooks.hasValue()) {
+        this.webhooks.update((list) =>
+          (list ?? []).map((item) => (item.id === webhook.id ? { ...item, ...updated } : item)),
+        );
+      }
       toast.success(
         this.t(enabled ? 'settings.webhooks.turnedOn' : 'settings.webhooks.turnedOff', {
           name: webhook.name,
@@ -307,7 +301,7 @@ export class WebhooksPage implements OnInit {
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
       // Put the switch back.
-      this.webhooks.update((list) => (list ? [...list] : list));
+      if (this.webhooks.hasValue()) this.webhooks.update((list) => (list ? [...list] : list));
     } finally {
       this.busy.set(null);
     }
@@ -317,7 +311,7 @@ export class WebhooksPage implements OnInit {
     this.testing.set(webhook.id);
     try {
       announceAttempt(this.t, await this.service.trigger(webhook.id));
-      await this.reload();
+      this.webhooks.reload();
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
     } finally {
@@ -328,7 +322,9 @@ export class WebhooksPage implements OnInit {
   protected async remove(webhook: Webhook): Promise<void> {
     try {
       await this.service.remove(webhook.id);
-      this.webhooks.update((list) => (list ?? []).filter((item) => item.id !== webhook.id));
+      if (this.webhooks.hasValue()) {
+        this.webhooks.update((list) => (list ?? []).filter((item) => item.id !== webhook.id));
+      }
       toast.success(this.t('settings.webhooks.deleted', { name: webhook.name }));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);

@@ -3,10 +3,10 @@ import {
   Component,
   OnDestroy,
   computed,
-  effect,
   inject,
+  linkedSignal,
+  resource,
   signal,
-  untracked,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -26,7 +26,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmSwitchImports } from '@spartan-ng/helm/switch';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
-import { ApiFailure } from '../../core/api';
+import { ApiFailure, ListResponse } from '../../core/api';
 import {
   AUTHENTICATED_ROLE,
   EndUser,
@@ -35,6 +35,7 @@ import {
   EndUsers,
 } from '../../core/end-users';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
 import { PageMeta } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 import { EndUsersNav } from './end-users-nav';
@@ -456,15 +457,46 @@ export class EndUsersPage implements OnDestroy {
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
-  protected readonly users = signal<EndUser[] | null>(null);
-  protected readonly roles = signal<EndUserRole[]>([]);
-  protected readonly meta = signal<PageMeta>({});
   protected readonly page = signal(1);
-  protected readonly pageCount = computed(() => this.meta().pageCount ?? 1);
   protected readonly searchText = signal('');
   protected readonly search = signal('');
-  protected readonly loading = signal(false);
-  protected readonly error = signal<string | null>(null);
+  /** Refetches whenever the page or the (debounced) search changes. */
+  protected readonly list = resource({
+    params: () => ({ page: this.page(), search: this.search() }),
+    loader: ({ params }) => this.service.list(params.page, PAGE_SIZE, params.search),
+  });
+  /** The response of the last load that succeeded (kept while the next one loads or fails). */
+  private readonly loaded = computed(() =>
+    this.list.hasValue() && !this.list.isLoading() ? this.list.value() : undefined,
+  );
+  /** The rows shown: the last loaded page, patched in place when a user is (un)blocked. */
+  protected readonly users = linkedSignal<ListResponse<EndUser> | undefined, EndUser[] | null>({
+    source: this.loaded,
+    computation: (response, previous) => response?.data ?? previous?.value ?? null,
+  });
+  protected readonly meta = linkedSignal<ListResponse<EndUser> | undefined, PageMeta>({
+    source: this.loaded,
+    computation: (response, previous) =>
+      response ? (response.meta.pagination ?? {}) : (previous?.value ?? {}),
+  });
+  protected readonly pageCount = computed(() => this.meta().pageCount ?? 1);
+  protected readonly loading = this.list.isLoading;
+  private readonly loadError = loadErrorOf(this.list);
+  /** The last load's failure, kept until a load succeeds. */
+  protected readonly error = linkedSignal<{ error: string | null; ok: boolean }, string | null>({
+    source: () => ({ error: this.loadError(), ok: !!this.loaded() }),
+    computation: ({ error, ok }, previous) => error ?? (ok ? null : (previous?.value ?? null)),
+  });
+  private readonly rolesList = resource({
+    loader: () =>
+      this.service.roles().catch((error: unknown) => {
+        toast.error(ApiFailure.from(error).message);
+        return [];
+      }),
+  });
+  protected readonly roles = computed<EndUserRole[]>(() =>
+    this.rolesList.hasValue() ? this.rolesList.value() : [],
+  );
   protected readonly busy = signal<number | null>(null);
   protected readonly draft = signal<Draft | null>(null);
   protected readonly draftError = signal<string | null>(null);
@@ -478,39 +510,8 @@ export class EndUsersPage implements OnDestroy {
 
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor() {
-    effect(() => {
-      this.page();
-      this.search();
-      untracked(() => void this.load());
-    });
-    void this.loadRoles();
-  }
-
   ngOnDestroy(): void {
     clearTimeout(this.searchTimer);
-  }
-
-  private async loadRoles(): Promise<void> {
-    try {
-      this.roles.set(await this.service.roles());
-    } catch (error) {
-      toast.error(ApiFailure.from(error).message);
-    }
-  }
-
-  private async load(): Promise<void> {
-    this.loading.set(true);
-    try {
-      const response = await this.service.list(this.page(), PAGE_SIZE, this.search());
-      this.users.set(response.data);
-      this.meta.set(response.meta.pagination ?? {});
-      this.error.set(null);
-    } catch (error) {
-      this.error.set(ApiFailure.from(error).message);
-    } finally {
-      this.loading.set(false);
-    }
   }
 
   protected setSearch(value: string): void {
@@ -582,7 +583,7 @@ export class EndUsersPage implements OnDestroy {
         }),
       );
       this.draft.set(null);
-      await this.load();
+      this.list.reload();
     } catch (error) {
       this.draftError.set(ApiFailure.from(error).message);
     } finally {
@@ -617,7 +618,7 @@ export class EndUsersPage implements OnDestroy {
       toast.success(this.t('endUsers.users.deleted', { name: user.username }));
       // Step back when the last row of a page goes.
       if (this.users()?.length === 1 && this.page() > 1) this.page.set(this.page() - 1);
-      else await this.load();
+      else this.list.reload();
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
     }

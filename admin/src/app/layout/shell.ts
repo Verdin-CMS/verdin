@@ -26,6 +26,7 @@ import { Auth } from '../core/auth';
 import { Features } from '../core/features';
 import { I18n } from '../core/i18n/i18n';
 import { PluginExtensions } from '../core/plugin-extensions';
+import { MAIN_CONTENT_ID, RouteFocus } from '../core/route-focus';
 import { Schema } from '../core/schema';
 import { Unseen, formatBadge } from '../core/unseen';
 import { Logo } from '../shared/components/logo';
@@ -52,6 +53,13 @@ import { DeployButton } from './deploy-button';
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <a
+      [href]="'#' + mainId"
+      class="bg-background text-foreground focus-visible:ring-ring/50 sr-only z-50 rounded-md border px-3 py-2 text-sm font-medium shadow-md focus:not-sr-only focus:fixed focus:start-3 focus:top-3 focus-visible:ring-[3px] focus-visible:outline-none"
+      data-testid="skip-link"
+      (click)="skipToContent($event)"
+      >{{ t('shell.skipToContent') }}</a
+    >
     <div hlmSidebarWrapper>
       <hlm-sidebar [side]="sidebarSide()">
         <div hlmSidebarHeader>
@@ -484,7 +492,7 @@ import { DeployButton } from './deploy-button';
             <vd-preferences-menu />
           </div>
         </header>
-        <div class="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
+        <div [id]="mainId" class="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
           @if (auth.twoFactorPending()) {
             <!-- Only the profile works until the second factor is set up. -->
             <router-outlet />
@@ -530,6 +538,15 @@ export class Shell implements OnInit {
     const letters = parts.length ? parts.map((part) => part[0]) : [user?.email?.[0] ?? '?'];
     return letters.join('').slice(0, 2).toUpperCase();
   });
+
+  protected readonly mainId = MAIN_CONTENT_ID;
+  private readonly routeFocus = inject(RouteFocus);
+
+  /** The skip link: past the navigation, to the page's heading. */
+  protected skipToContent(event: Event): void {
+    event.preventDefault();
+    this.routeFocus.focusMain();
+  }
 
   protected openProfile(): void {
     void this.router.navigateByUrl('/profile');

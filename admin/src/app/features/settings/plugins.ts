@@ -1,9 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  OnInit,
   computed,
   inject,
+  linkedSignal,
+  resource,
   signal,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
@@ -22,6 +23,7 @@ import { HlmTextareaImports } from '@spartan-ng/helm/textarea';
 
 import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
 import { PluginExtensions } from '../../core/plugin-extensions';
 import {
   CapabilityGroup,
@@ -79,17 +81,17 @@ const GROUP_ICONS: Record<CapabilityGroup['kind'], string> = {
           <ng-icon name="lucidePlug" size="14" /> {{ t('shell.settings') }}
         </span>
         <div actions>
-          <button hlmBtn variant="outline" [disabled]="loading()" (click)="reload()">
+          <button hlmBtn variant="outline" [disabled]="list.isLoading()" (click)="list.reload()">
             <ng-icon name="lucideRefreshCw" /> {{ t('settings.plugins.refresh') }}
           </button>
         </div>
       </vd-page-header>
 
-      @if (error()) {
+      @if (error(); as message) {
         <div hlmAlert variant="destructive">
           <ng-icon hlmAlertIcon name="lucideCircleAlert" />
           <p hlmAlertTitle>{{ t('settings.plugins.loadError') }}</p>
-          <p hlmAlertDescription>{{ error() }}</p>
+          <p hlmAlertDescription>{{ message }}</p>
         </div>
       }
 
@@ -450,7 +452,7 @@ const GROUP_ICONS: Record<CapabilityGroup['kind'], string> = {
     </hlm-dialog>
   `,
 })
-export class PluginsPage implements OnInit {
+export class PluginsPage {
   private readonly service = inject(Plugins);
   private readonly extensions = inject(PluginExtensions);
   private readonly schema = inject(Schema);
@@ -460,10 +462,26 @@ export class PluginsPage implements OnInit {
   protected readonly segments = segments;
   protected readonly groupIcons = GROUP_ICONS;
 
-  protected readonly plugins = signal<Plugin[] | null>(null);
-  protected readonly loadErrors = signal<PluginLoadError[]>([]);
-  protected readonly error = signal<string | null>(null);
-  protected readonly loading = signal(false);
+  /** The installed plugins (by name) and the ones that failed to load; Refresh reloads it. */
+  protected readonly list = resource({
+    loader: async () => {
+      const { plugins, errors } = await this.service.list();
+      return {
+        plugins: [...(plugins ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+        errors: errors ?? [],
+      };
+    },
+  });
+  protected readonly error = loadErrorOf(this.list);
+  /** The plugins shown, patched locally after each change; a failed refresh keeps the last ones. */
+  protected readonly plugins = linkedSignal<Plugin[] | undefined, Plugin[] | null>({
+    source: () => (this.list.hasValue() ? this.list.value().plugins : undefined),
+    computation: (plugins, previous) => plugins ?? previous?.value ?? null,
+  });
+  protected readonly loadErrors = linkedSignal<PluginLoadError[] | undefined, PluginLoadError[]>({
+    source: () => (this.list.hasValue() ? this.list.value().errors : undefined),
+    computation: (errors, previous) => errors ?? previous?.value ?? [],
+  });
   protected readonly busy = signal<string | null>(null);
 
   protected readonly editing = signal<Plugin | null>(null);
@@ -483,24 +501,6 @@ export class PluginsPage implements OnInit {
   protected readonly logsOf = signal<Plugin | null>(null);
   protected readonly logs = signal<PluginLog[] | null>(null);
   protected readonly logsError = signal<string | null>(null);
-
-  async ngOnInit(): Promise<void> {
-    await this.reload();
-  }
-
-  protected async reload(): Promise<void> {
-    this.loading.set(true);
-    try {
-      const { plugins, errors } = await this.service.list();
-      this.plugins.set([...(plugins ?? [])].sort((a, b) => a.name.localeCompare(b.name)));
-      this.loadErrors.set(errors ?? []);
-      this.error.set(null);
-    } catch (error) {
-      this.error.set(ApiFailure.from(error).message);
-    } finally {
-      this.loading.set(false);
-    }
-  }
 
   protected levelClass(level: string): string {
     if (level === 'error') return 'bg-destructive/10 text-destructive';

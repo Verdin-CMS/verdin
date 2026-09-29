@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, resource } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -12,6 +12,7 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 import { ApiFailure } from '../../core/api';
 import { AUTHENTICATED_ROLE, EndUserRole, EndUsers } from '../../core/end-users';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
 import { PageHeader } from '../../shared/components/page-header';
 import { EndUsersNav } from './end-users-nav';
 
@@ -45,13 +46,13 @@ import { EndUsersNav } from './end-users-nav';
       </vd-page-header>
       <vd-end-users-nav />
 
-      @if (error()) {
+      @if (error(); as message) {
         <div hlmAlert variant="destructive">
           <ng-icon hlmAlertIcon name="lucideCircleAlert" />
           <p hlmAlertTitle>{{ t('endUsers.roles.loadError') }}</p>
-          <p hlmAlertDescription>{{ error() }}</p>
+          <p hlmAlertDescription>{{ message }}</p>
         </div>
-      } @else if (roles() === null) {
+      } @else if (!roles.hasValue()) {
         <hlm-skeleton class="h-48 rounded-xl" />
       } @else {
         <div class="bg-card overflow-hidden rounded-xl border">
@@ -68,7 +69,7 @@ import { EndUsersNav } from './end-users-nav';
                 </tr>
               </thead>
               <tbody hlmTBody>
-                @for (role of roles(); track role.id) {
+                @for (role of roles.value(); track role.id) {
                   <tr hlmTr>
                     <td hlmTd class="ps-4">
                       <a
@@ -166,39 +167,26 @@ import { EndUsersNav } from './end-users-nav';
             </table>
           </div>
           <div class="text-muted-foreground bg-muted/30 border-t px-4 py-2 text-xs">
-            {{ t('endUsers.roles.count', { count: roles()!.length }) }}
+            {{ t('endUsers.roles.count', { count: roles.value().length }) }}
           </div>
         </div>
       }
     </div>
   `,
 })
-export class EndUserRolesPage implements OnInit {
+export class EndUserRolesPage {
   private readonly service = inject(EndUsers);
   protected readonly t = inject(I18n).t;
   protected readonly authenticated = AUTHENTICATED_ROLE;
-  protected readonly roles = signal<EndUserRole[] | null>(null);
-  protected readonly error = signal<string | null>(null);
-
-  async ngOnInit(): Promise<void> {
-    await this.reload();
-  }
-
-  private async reload(): Promise<void> {
-    try {
-      this.roles.set(await this.service.roles());
-      this.error.set(null);
-    } catch (error) {
-      this.error.set(ApiFailure.from(error).message);
-    }
-  }
+  protected readonly roles = resource({ loader: () => this.service.roles() });
+  protected readonly error = loadErrorOf(this.roles);
 
   protected async remove(role: EndUserRole): Promise<void> {
     try {
       await this.service.removeRole(role.id);
       toast.success(this.t('endUsers.roles.deleted', { name: role.name }));
       // Its users moved to Authenticated: the counts changed.
-      await this.reload();
+      this.roles.reload();
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
     }

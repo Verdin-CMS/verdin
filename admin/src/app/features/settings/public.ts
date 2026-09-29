@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  linkedSignal,
+  resource,
+  signal,
+} from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
@@ -6,6 +13,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
 import { Api, ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
 import { Grant } from '../../core/types';
 import { LoadError } from '../../shared/components/load-error';
 import { PageHeader } from '../../shared/components/page-header';
@@ -25,7 +33,7 @@ import { GrantsMatrix } from './grants';
           <ng-icon name="lucideGlobe" size="14" /> {{ t('shell.settings') }}
         </span>
         <div actions>
-          <button hlmBtn [disabled]="busy() || !loaded()" (click)="save()">
+          <button hlmBtn [disabled]="busy() || !permissions.hasValue()" (click)="save()">
             @if (busy()) {
               <hlm-spinner />
             } @else {
@@ -36,8 +44,8 @@ import { GrantsMatrix } from './grants';
         </div>
       </vd-page-header>
       @if (loadError(); as message) {
-        <vd-load-error [message]="message" (retry)="load()" />
-      } @else if (loaded()) {
+        <vd-load-error [message]="message" (retry)="permissions.reload()" />
+      } @else if (permissions.hasValue()) {
         <vd-grants-matrix [(grants)]="grants" />
       } @else {
         <div class="bg-card flex justify-center rounded-xl border py-16">
@@ -47,29 +55,19 @@ import { GrantsMatrix } from './grants';
     </div>
   `,
 })
-export class PublicPage implements OnInit {
+export class PublicPage {
   private readonly api = inject(Api);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
-  protected readonly grants = signal<Grant[]>([]);
-  protected readonly loaded = signal(false);
+  protected readonly permissions = resource({
+    loader: () => this.api.get<Grant[]>('/public-permissions'),
+  });
+  protected readonly loadError = loadErrorOf(this.permissions);
+  /** The matrix being edited: the loaded permissions until a save answers with new ones. */
+  protected readonly grants = linkedSignal<Grant[]>(() =>
+    this.permissions.hasValue() ? this.permissions.value() : [],
+  );
   protected readonly busy = signal(false);
-
-  protected readonly loadError = signal<string | null>(null);
-
-  ngOnInit(): void {
-    void this.load();
-  }
-
-  protected async load(): Promise<void> {
-    this.loadError.set(null);
-    try {
-      this.grants.set(await this.api.get<Grant[]>('/public-permissions'));
-      this.loaded.set(true);
-    } catch (error) {
-      this.loadError.set(ApiFailure.from(error).message);
-    }
-  }
 
   protected async save(): Promise<void> {
     this.busy.set(true);

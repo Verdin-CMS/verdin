@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  linkedSignal,
+  resource,
+  signal,
+} from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
@@ -19,6 +27,7 @@ import { Account, Invitation } from '../../core/account';
 import { Api, ApiFailure } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
 import { TwoFactor } from '../../core/two-factor';
 import { AdminUser, Role } from '../../core/types';
 import { LoadError } from '../../shared/components/load-error';
@@ -73,8 +82,8 @@ interface Draft {
         </div>
       </vd-page-header>
       @if (loadError(); as message) {
-        <vd-load-error [message]="message" (retry)="load()" />
-      } @else if (loading()) {
+        <vd-load-error [message]="message" (retry)="data.reload()" />
+      } @else if (!data.hasValue()) {
         <hlm-skeleton
           class="h-48 rounded-xl"
           role="status"
@@ -458,15 +467,31 @@ interface Draft {
     </hlm-dialog>
   `,
 })
-export class UsersPage implements OnInit {
+export class UsersPage {
   private readonly api = inject(Api);
   private readonly account = inject(Account);
   private readonly twoFactor = inject(TwoFactor);
   protected readonly auth = inject(Auth);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
-  protected readonly users = signal<AdminUser[]>([]);
-  protected readonly roles = signal<Role[]>([]);
+  /** The users and the roles they can be given, loaded together. */
+  protected readonly data = resource({
+    loader: async () => {
+      const [users, roles] = await Promise.all([
+        this.api.get<AdminUser[]>('/users'),
+        this.api.get<Role[]>('/roles'),
+      ]);
+      return { users, roles };
+    },
+  });
+  protected readonly loadError = loadErrorOf(this.data);
+  /** The loaded users, replaced by a fresh list after each change. */
+  protected readonly users = linkedSignal<AdminUser[]>(() =>
+    this.data.hasValue() ? this.data.value().users : [],
+  );
+  protected readonly roles = computed<Role[]>(() =>
+    this.data.hasValue() ? this.data.value().roles : [],
+  );
   protected readonly draft = signal<Draft | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
@@ -476,30 +501,6 @@ export class UsersPage implements OnInit {
   protected readonly inviting = signal<number | null>(null);
   /** The user whose second factors are about to be reset (confirm dialog). */
   protected readonly resetting = signal<AdminUser | null>(null);
-
-  protected readonly loading = signal(true);
-  protected readonly loadError = signal<string | null>(null);
-
-  ngOnInit(): void {
-    void this.load();
-  }
-
-  protected async load(): Promise<void> {
-    this.loading.set(true);
-    this.loadError.set(null);
-    try {
-      const [users, roles] = await Promise.all([
-        this.api.get<AdminUser[]>('/users'),
-        this.api.get<Role[]>('/roles'),
-      ]);
-      this.users.set(users);
-      this.roles.set(roles);
-    } catch (error) {
-      this.loadError.set(ApiFailure.from(error).message);
-    } finally {
-      this.loading.set(false);
-    }
-  }
 
   protected edit(user: AdminUser | null): void {
     this.error.set(null);

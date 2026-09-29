@@ -6,6 +6,7 @@ import {
   effect,
   inject,
   input,
+  resource,
   signal,
   untracked,
 } from '@angular/core';
@@ -49,6 +50,7 @@ import {
 } from '../../core/form-builder';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { loadErrorOf } from '../../core/loading';
 import {
   FORM_FIELD_TYPES,
   FormField,
@@ -58,6 +60,7 @@ import {
   saveBlob,
   slugify,
 } from '../../core/site';
+import { PageTitle } from '../../core/title';
 import { PageMeta } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
 import { SiteAccessNotice, siteAccess } from './site-access';
@@ -782,6 +785,7 @@ export class FormEditPage {
   private readonly config = inject(RUNTIME_CONFIG);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
+  private readonly pageTitle = inject(PageTitle);
   protected readonly access = siteAccess('forms');
 
   /** The route's `:id` (`new` for a new form). */
@@ -805,8 +809,22 @@ export class FormEditPage {
   protected readonly notifyEmails = signal('');
   protected readonly successMessage = signal('');
   protected readonly honeypot = signal(true);
+  /** The form, fetched once the site feature is on and when `id` changes (`null` if new). */
+  private readonly form = resource({
+    params: () => (this.access() === 'ok' ? this.id() : undefined),
+    loader: async ({ params: id }) => {
+      if (id === 'new') return null;
+      try {
+        return await this.site.form(Number(id));
+      } catch (error) {
+        const failure = ApiFailure.from(error);
+        throw failure.status === 404 ? new Error(this.t('forms.notFound')) : failure;
+      }
+    },
+  });
+  /** The editor's signals hold the loaded form. */
   protected readonly loaded = signal(false);
-  protected readonly loadError = signal<string | null>(null);
+  protected readonly loadError = loadErrorOf(this.form);
   protected readonly saveError = signal<string | null>(null);
   protected readonly showErrors = signal(false);
   protected readonly saving = signal(false);
@@ -832,65 +850,57 @@ export class FormEditPage {
     submissionSnippet(this.endpoint(), this.savedFields()),
   );
 
-  private loading = false;
   private submissionsLoaded = false;
 
   constructor() {
+    // The editor is filled from each load (plain signals: they are edited in place and a
+    // save keeps them without a refetch). Submissions stay imperative: they load lazily,
+    // when their tab opens, and page on demand.
     effect(() => {
-      const id = this.id();
-      if (this.access() !== 'ok') return;
-      untracked(() => void this.load(id));
-    });
-  }
-
-  private async load(id: string): Promise<void> {
-    if (this.loading) return;
-    this.loading = true;
-    this.loaded.set(false);
-    this.loadError.set(null);
-    this.saveError.set(null);
-    this.showErrors.set(false);
-    this.submissionsLoaded = false;
-    this.submissions.set([]);
-    this.meta.set({});
-    this.page.set(1);
-    try {
-      if (id === 'new') {
-        this.name.set('');
-        this.slug.set('');
-        this.slugTouched = false;
-        const first = {
-          ...newField([], 'email'),
-          name: 'email',
-          label: this.t('forms.defaultEmail'),
-        };
-        this.fields.set([first]);
-        this.savedFields.set([]);
-        this.savedSlug.set('');
-        this.notifyEmails.set('');
-        this.successMessage.set('');
-        this.honeypot.set(true);
-        this.tab.set('fields');
-      } else {
-        const form = await this.site.form(Number(id));
-        this.name.set(form.name);
-        this.slug.set(form.slug);
-        this.slugTouched = true;
-        this.fields.set(form.fields.map(toDraft));
-        this.savedFields.set(form.fields);
-        this.savedSlug.set(form.slug);
-        this.notifyEmails.set(form.settings.notifyEmails.join(', '));
-        this.successMessage.set(form.settings.successMessage ?? '');
-        this.honeypot.set(form.settings.honeypot);
-        if (this.tab() === 'submissions') void this.loadSubmissions();
+      if (!this.form.hasValue()) {
+        this.loaded.set(false);
+        return;
       }
-      this.loaded.set(true);
-    } catch (error) {
-      const failure = ApiFailure.from(error);
-      this.loadError.set(failure.status === 404 ? this.t('forms.notFound') : failure.message);
-    } finally {
-      this.loading = false;
-    }
+      const form = this.form.value();
+      untracked(() => {
+        this.saveError.set(null);
+        this.showErrors.set(false);
+        this.submissionsLoaded = false;
+        this.submissions.set([]);
+        this.meta.set({});
+        this.page.set(1);
+        if (!form) {
+          this.name.set('');
+          this.slug.set('');
+          this.slugTouched = false;
+          const first = {
+            ...newField([], 'email'),
+            name: 'email',
+            label: this.t('forms.defaultEmail'),
+          };
+          this.fields.set([first]);
+          this.savedFields.set([]);
+          this.savedSlug.set('');
+          this.notifyEmails.set('');
+          this.successMessage.set('');
+          this.honeypot.set(true);
+          this.tab.set('fields');
+        } else {
+          this.name.set(form.name);
+          this.slug.set(form.slug);
+          this.slugTouched = true;
+          this.fields.set(form.fields.map(toDraft));
+          this.savedFields.set(form.fields);
+          this.savedSlug.set(form.slug);
+          this.notifyEmails.set(form.settings.notifyEmails.join(', '));
+          this.successMessage.set(form.settings.successMessage ?? '');
+          this.honeypot.set(form.settings.honeypot);
+          this.pageTitle.setDetail(form.name);
+          if (this.tab() === 'submissions') void this.loadSubmissions();
+        }
+        this.loaded.set(true);
+      });
+    });
   }
 
   protected setTab(tab: Tab): void {
@@ -1015,6 +1025,7 @@ export class FormEditPage {
         const form = await this.site.updateForm(Number(this.id()), input);
         this.savedFields.set(form.fields);
         this.savedSlug.set(form.slug);
+        this.pageTitle.setDetail(form.name);
         toast.success(this.t('forms.saved', { name: form.name }));
       }
       this.showErrors.set(false);

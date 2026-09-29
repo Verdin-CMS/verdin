@@ -5,6 +5,7 @@ import {
   effect,
   inject,
   input,
+  resource,
   signal,
   untracked,
   viewChild,
@@ -28,7 +29,9 @@ import { HlmSwitchImports } from '@spartan-ng/helm/switch';
 import { ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { loadErrorOf } from '../../core/loading';
 import { Schema } from '../../core/schema';
+import { PageTitle } from '../../core/title';
 import {
   ENTRY_EVENTS,
   MEDIA_EVENTS,
@@ -489,7 +492,26 @@ export class WebhookEditPage {
   protected readonly creating = computed(() => this.id() === 'new');
   protected readonly webhook = signal<Webhook | null>(null);
   protected readonly form = signal<WebhookForm>(webhookForm());
-  protected readonly loadError = signal<string | null>(null);
+  /**
+   * The webhook being edited, fetched when the `id` changes (idle for `new`, and for the
+   * webhook the page just created, which it already holds).
+   */
+  private readonly loaded = resource({
+    params: () => {
+      const id = this.id();
+      if (id === 'new') return undefined;
+      return untracked(this.webhook)?.id === Number(id) ? undefined : id;
+    },
+    loader: async ({ params: id }) => {
+      try {
+        return await this.service.get(id);
+      } catch (error) {
+        const failure = ApiFailure.from(error);
+        throw failure.status === 404 ? new Error(this.t('settings.webhooks.notFound')) : failure;
+      }
+    },
+  });
+  protected readonly loadError = loadErrorOf(this.loaded);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly testing = signal(false);
@@ -527,32 +549,31 @@ export class WebhookEditPage {
   });
 
   constructor() {
+    const pageTitle = inject(PageTitle);
     effect(() => {
       const id = this.id();
-      untracked(() => void this.load(id));
+      untracked(() => {
+        this.error.set(null);
+        if (id === 'new') {
+          this.webhook.set(null);
+          this.reset(null);
+        }
+      });
     });
-  }
-
-  private async load(id: string): Promise<void> {
-    this.error.set(null);
-    this.loadError.set(null);
-    if (id === 'new') {
-      this.webhook.set(null);
-      this.reset(null);
-      return;
-    }
-    // Just created: the page already holds it.
-    if (this.webhook()?.id === Number(id)) return;
-    try {
-      const webhook = await this.service.get(id);
-      this.webhook.set(webhook);
-      this.reset(webhook);
-    } catch (error) {
-      const failure = ApiFailure.from(error);
-      this.loadError.set(
-        failure.status === 404 ? this.t('settings.webhooks.notFound') : failure.message,
-      );
-    }
+    // The form is filled from each loaded webhook (`webhook` stays a plain signal: saves,
+    // secret rotations… update it locally without a refetch).
+    effect(() => {
+      if (!this.loaded.hasValue()) return;
+      const webhook = this.loaded.value();
+      untracked(() => {
+        this.webhook.set(webhook);
+        this.reset(webhook);
+      });
+    });
+    effect(() => {
+      const webhook = this.webhook();
+      if (!this.creating() && webhook) pageTitle.setDetail(webhook.name);
+    });
   }
 
   private reset(webhook: Webhook | null): void {
@@ -635,7 +656,7 @@ export class WebhookEditPage {
     this.testing.set(true);
     try {
       announceAttempt(this.t, await this.service.trigger(webhook.id));
-      await this.log()?.load();
+      this.log()?.load();
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
     } finally {

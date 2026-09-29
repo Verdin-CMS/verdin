@@ -1,9 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  OnInit,
   computed,
   inject,
+  linkedSignal,
+  resource,
   signal,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
@@ -47,6 +48,7 @@ import {
 } from '../../core/end-users';
 import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
+import { loadErrorOf } from '../../core/loading';
 import { MessageKey } from '../../core/i18n/keys';
 import { PageHeader } from '../../shared/components/page-header';
 import { EndUsersNav } from './end-users-nav';
@@ -571,7 +573,7 @@ const URL_FIELDS: { key: UrlField; label: MessageKey }[] = [
     </div>
   `,
 })
-export class EndUsersSettingsPage implements OnInit {
+export class EndUsersSettingsPage {
   private readonly features = inject(Features);
   private readonly service = inject(EndUsers);
   private readonly auth = inject(Auth);
@@ -585,10 +587,29 @@ export class EndUsersSettingsPage implements OnInit {
   protected readonly urlFields = URL_FIELDS;
   protected readonly htmlPlaceholder = '<p>Hello {{username}},</p>\n<p><a href="{{url}}">…</a></p>';
 
-  protected readonly form = signal<UsersSettingsForm | null>(null);
-  protected readonly enabled = signal(false);
-  protected readonly roles = signal<EndUserRole[]>([]);
-  protected readonly loadError = signal<string | null>(null);
+  /** The feature as stored, and the roles to pick the default from (none if they fail). */
+  private readonly settings = resource({
+    loader: async () => {
+      const [catalog, roles] = await Promise.all([
+        this.features.catalog() ? Promise.resolve(this.features.catalog()!) : this.features.load(),
+        this.service.roles().catch(() => [] as EndUserRole[]),
+      ]);
+      return { feature: catalog.find((item) => item.id === FEATURE), roles };
+    },
+  });
+  protected readonly loadError = loadErrorOf(this.settings);
+  /** The form being edited: the loaded settings until a save answers with new ones. */
+  protected readonly form = linkedSignal<UsersSettingsForm | null>(() =>
+    this.settings.hasValue()
+      ? settingsForm(usersSettings(this.settings.value().feature?.settings))
+      : null,
+  );
+  protected readonly enabled = linkedSignal(
+    () => this.settings.hasValue() && !!this.settings.value().feature?.enabled,
+  );
+  protected readonly roles = computed<EndUserRole[]>(() =>
+    this.settings.hasValue() ? this.settings.value().roles : [],
+  );
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly canManage = computed(() => this.auth.can('features.manage'));
@@ -623,21 +644,6 @@ export class EndUsersSettingsPage implements OnInit {
   protected readonly canSave = computed(
     () => !!this.form() && this.canManage() && !this.saving() && !this.providerError(),
   );
-
-  async ngOnInit(): Promise<void> {
-    try {
-      const [catalog, roles] = await Promise.all([
-        this.features.catalog() ? Promise.resolve(this.features.catalog()!) : this.features.load(),
-        this.service.roles().catch(() => [] as EndUserRole[]),
-      ]);
-      this.roles.set(roles);
-      const feature = catalog.find((item) => item.id === FEATURE);
-      this.enabled.set(!!feature?.enabled);
-      this.form.set(settingsForm(usersSettings(feature?.settings)));
-    } catch (error) {
-      this.loadError.set(ApiFailure.from(error).message);
-    }
-  }
 
   protected patch(changes: Partial<UsersSettingsForm>): void {
     this.form.update((form) => (form ? { ...form, ...changes } : form));

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, resource } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -43,7 +43,7 @@ import { StageBadge } from '../../shared/components/stage-badge';
         <span eyebrow class="text-primary flex items-center gap-1.5 text-xs font-medium">
           <ng-icon name="lucideListChecks" size="14" /> {{ t('shell.settings') }}
         </span>
-        @if (workflows()?.length) {
+        @if (workflows.hasValue() && workflows.value().length) {
           <div actions>
             <a hlmBtn routerLink="/settings/review-workflows/new">
               <ng-icon name="lucidePlus" /> {{ t('settings.review.create') }}
@@ -52,15 +52,15 @@ import { StageBadge } from '../../shared/components/stage-badge';
         }
       </vd-page-header>
 
-      @if (error()) {
+      @if (error(); as message) {
         <div hlmAlert variant="destructive">
           <ng-icon hlmAlertIcon name="lucideCircleAlert" />
           <p hlmAlertTitle>{{ t('settings.review.loadError') }}</p>
-          <p hlmAlertDescription>{{ error() }}</p>
+          <p hlmAlertDescription>{{ message }}</p>
         </div>
-      } @else if (workflows() === null) {
+      } @else if (!workflows.hasValue()) {
         <hlm-skeleton class="h-48 rounded-xl" />
-      } @else if (workflows()!.length === 0) {
+      } @else if (workflows.value().length === 0) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">
           <div hlmEmptyHeader>
             <div hlmEmptyMedia variant="icon"><ng-icon name="lucideListChecks" /></div>
@@ -89,7 +89,7 @@ import { StageBadge } from '../../shared/components/stage-badge';
                 </tr>
               </thead>
               <tbody hlmTBody>
-                @for (workflow of workflows(); track workflow.id) {
+                @for (workflow of workflows.value(); track workflow.id) {
                   <tr hlmTr>
                     <td hlmTd class="ps-4">
                       <a
@@ -194,25 +194,20 @@ import { StageBadge } from '../../shared/components/stage-badge';
     </div>
   `,
 })
-export class ReviewWorkflowsPage implements OnInit {
+export class ReviewWorkflowsPage {
   private readonly service = inject(ReviewWorkflows);
   private readonly schema = inject(Schema);
   protected readonly t = inject(I18n).t;
   protected readonly stageOf = stageOf;
 
-  protected readonly workflows = signal<Workflow[] | null>(null);
-  protected readonly error = signal<string | null>(null);
-
-  async ngOnInit(): Promise<void> {
-    try {
-      this.workflows.set(await this.service.list());
-    } catch (error) {
-      const failure = ApiFailure.from(error);
-      this.error.set(
-        failure.status === 404 ? this.t('settings.review.featureOff') : failure.message,
-      );
-    }
-  }
+  protected readonly workflows = resource({ loader: () => this.service.list() });
+  /** The load failure's message; a 404 means the feature is off. */
+  protected readonly error = computed(() => {
+    const error = this.workflows.error();
+    if (!error) return null;
+    const failure = ApiFailure.from(error);
+    return failure.status === 404 ? this.t('settings.review.featureOff') : failure.message;
+  });
 
   protected typeName(uid: string): string {
     return this.schema.type(uid)?.displayName ?? uid;
@@ -221,7 +216,9 @@ export class ReviewWorkflowsPage implements OnInit {
   protected async remove(workflow: Workflow): Promise<void> {
     try {
       await this.service.remove(workflow.id);
-      this.workflows.update((list) => (list ?? []).filter((item) => item.id !== workflow.id));
+      if (this.workflows.hasValue()) {
+        this.workflows.update((list) => (list ?? []).filter((item) => item.id !== workflow.id));
+      }
       toast.success(this.t('settings.review.deleted', { name: workflow.name }));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);

@@ -2,9 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
   inject,
   input,
+  linkedSignal,
+  resource,
   signal,
   untracked,
 } from '@angular/core';
@@ -17,7 +18,7 @@ import { HlmEmptyImports } from '@spartan-ng/helm/empty';
 import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 import { HlmTableImports } from '@spartan-ng/helm/table';
 
-import { ApiFailure } from '../../core/api';
+import { ApiFailure, ListResponse } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { PageMeta } from '../../core/types';
@@ -99,10 +100,10 @@ const PAGE_SIZE = 20;
           variant="outline"
           size="sm"
           class="ms-auto"
-          [disabled]="loading()"
+          [disabled]="list.isLoading()"
           (click)="load()"
         >
-          @if (loading()) {
+          @if (list.isLoading()) {
             <hlm-spinner class="size-4" />
           } @else {
             <ng-icon name="lucideRefreshCw" />
@@ -321,39 +322,46 @@ export class WebhookDeliveries {
 
   readonly webhookId = input.required<number>();
 
-  protected readonly deliveries = signal<Delivery[]>([]);
-  protected readonly meta = signal<PageMeta>({});
   protected readonly page = signal(1);
-  protected readonly pageCount = computed(() => this.meta().pageCount ?? 1);
-  protected readonly loading = signal(false);
   protected readonly retrying = signal<number | null>(null);
   protected readonly selected = signal<Delivery | null>(null);
   protected readonly json = prettyJson;
 
-  constructor() {
-    effect(() => {
-      this.webhookId();
-      this.page();
-      untracked(() => void this.load());
-    });
-  }
+  /** The current page of deliveries, fetched again when the webhook or the page changes. */
+  protected readonly list = resource({
+    params: () => ({ id: this.webhookId(), page: this.page() }),
+    loader: async ({ params }) => {
+      try {
+        const response = await this.service.deliveries(params.id, params.page, PAGE_SIZE);
+        const selected = untracked(this.selected);
+        if (selected) {
+          this.selected.set(response.data.find((item) => item.id === selected.id) ?? selected);
+        }
+        return response;
+      } catch (error) {
+        toast.error(ApiFailure.from(error).message);
+        throw error;
+      }
+    },
+  });
+  /** The last page that loaded: kept while the next one loads, or when it fails. */
+  private readonly shown = linkedSignal<
+    ListResponse<Delivery> | undefined,
+    { deliveries: Delivery[]; meta: PageMeta }
+  >({
+    source: () => (this.list.hasValue() ? this.list.value() : undefined),
+    computation: (response, previous) =>
+      response
+        ? { deliveries: response.data, meta: response.meta.pagination ?? {} }
+        : (previous?.value ?? { deliveries: [], meta: {} }),
+  });
+  protected readonly deliveries = computed(() => this.shown().deliveries);
+  protected readonly meta = computed(() => this.shown().meta);
+  protected readonly pageCount = computed(() => this.meta().pageCount ?? 1);
 
   /** Reloads the current page. */
-  async load(): Promise<void> {
-    this.loading.set(true);
-    try {
-      const response = await this.service.deliveries(this.webhookId(), this.page(), PAGE_SIZE);
-      this.deliveries.set(response.data);
-      this.meta.set(response.meta.pagination ?? {});
-      const selected = this.selected();
-      if (selected) {
-        this.selected.set(response.data.find((item) => item.id === selected.id) ?? selected);
-      }
-    } catch (error) {
-      toast.error(ApiFailure.from(error).message);
-    } finally {
-      this.loading.set(false);
-    }
+  load(): void {
+    this.list.reload();
   }
 
   protected open(delivery: Delivery): void {
@@ -364,7 +372,7 @@ export class WebhookDeliveries {
     this.retrying.set(delivery.id);
     try {
       announceAttempt(this.t, await this.service.retry(delivery.id));
-      await this.load();
+      this.load();
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
     } finally {

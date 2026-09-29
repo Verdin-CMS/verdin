@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, resource, signal } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
@@ -18,6 +18,7 @@ import { Account } from '../../core/account';
 import { Api, ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
+import { loadErrorOf } from '../../core/loading';
 import { ApiToken, Grant, TokenKind } from '../../core/types';
 import { LoadError } from '../../shared/components/load-error';
 import { PageHeader } from '../../shared/components/page-header';
@@ -74,14 +75,14 @@ const KINDS: Record<
       </vd-page-header>
 
       @if (loadError(); as message) {
-        <vd-load-error [message]="message" (retry)="load()" />
-      } @else if (loading()) {
+        <vd-load-error [message]="message" (retry)="tokens.reload()" />
+      } @else if (!tokens.hasValue()) {
         <hlm-skeleton
           class="h-48 rounded-xl"
           role="status"
           [attr.aria-label]="t('common.loading')"
         />
-      } @else if (tokens().length === 0) {
+      } @else if (tokens.value().length === 0) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">
           <div hlmEmptyHeader>
             <div hlmEmptyMedia variant="icon"><ng-icon name="lucideKeyRound" /></div>
@@ -111,7 +112,7 @@ const KINDS: Record<
                 </tr>
               </thead>
               <tbody hlmTBody>
-                @for (token of tokens(); track token.id) {
+                @for (token of tokens.value(); track token.id) {
                   <tr hlmTr>
                     <td hlmTd class="ps-4">
                       <div class="flex items-center gap-3">
@@ -342,14 +343,15 @@ const KINDS: Record<
     </hlm-dialog>
   `,
 })
-export class TokensPage implements OnInit {
+export class TokensPage {
   private readonly api = inject(Api);
   private readonly account = inject(Account);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
   protected readonly kinds = Object.keys(KINDS) as TokenKind[];
   protected readonly expiryOptions = [7, 30, 90];
-  protected readonly tokens = signal<ApiToken[]>([]);
+  protected readonly tokens = resource({ loader: () => this.fetch() });
+  protected readonly loadError = loadErrorOf(this.tokens);
   protected readonly dialogOpen = signal(false);
   protected readonly created = signal<string | null>(null);
   protected readonly name = signal('');
@@ -361,27 +363,16 @@ export class TokensPage implements OnInit {
   /** The token whose regeneration awaits confirmation. */
   protected readonly regenerating = signal<ApiToken | null>(null);
 
-  protected readonly loading = signal(true);
-  protected readonly loadError = signal<string | null>(null);
-
-  ngOnInit(): void {
-    void this.load();
+  private fetch(): Promise<ApiToken[]> {
+    return this.api.get<ApiToken[]>('/api-tokens');
   }
 
-  protected async load(): Promise<void> {
-    this.loading.set(true);
-    this.loadError.set(null);
-    try {
-      await this.reload();
-    } catch (error) {
-      this.loadError.set(ApiFailure.from(error).message);
-    } finally {
-      this.loading.set(false);
-    }
-  }
-
+  /**
+   * The list again after a change, awaited (not `tokens.reload()`): a failure lands in the
+   * caller's catch (dialog error / toast) rather than replacing the list, as before.
+   */
   private async reload(): Promise<void> {
-    this.tokens.set(await this.api.get<ApiToken[]>('/api-tokens'));
+    this.tokens.set(await this.fetch());
   }
 
   protected kindLabel(kind: TokenKind): MessageKey {
