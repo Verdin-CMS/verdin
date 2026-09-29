@@ -244,6 +244,7 @@ pub fn build_app(
                     context.origin().trim_end_matches('/'),
                     admin.path
                 )),
+                ip_key: context.auth.derived_key("form-ip"),
             }),
             admin_url: Some(format!("{}{}", context.origin().trim_end_matches('/'), admin.path)),
             upload: Some(context.upload.clone()),

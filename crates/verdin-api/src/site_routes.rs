@@ -30,6 +30,8 @@ pub struct SiteServices {
     pub mailer: Option<verdin_email::Mailer>,
     /// Where submissions are seen (`https://cms.example.com/admin`).
     pub admin_url: Option<String>,
+    /// Key of the hashes of submitters' IPs.
+    pub ip_key: Vec<u8>,
 }
 
 #[derive(Clone)]
@@ -214,7 +216,7 @@ async fn submit(
         headers.get(header::USER_AGENT).and_then(|value| value.to_str().ok()).unwrap_or_default();
     // IPs are kept as a keyed hash: enough to spot floods, not to track people.
     let meta = json!({
-        "ip": verdin_auth::crypto::sha256_hex(&format!("verdin-form:{ip}"))[..16].to_owned(),
+        "ip": verdin_auth::crypto::hmac_hex(&state.services.ip_key, &format!("form:{ip}"))[..16].to_owned(),
         "userAgent": agent.chars().take(255).collect::<String>(),
     });
     let id = state.services.site.add_submission(form.id, data.clone(), meta).await?;

@@ -296,6 +296,11 @@ fn conflict_on_unique(error: DbError, message: &str) -> AuthError {
 }
 
 impl AuthService {
+    /// A key for `purpose` derived from the token pepper (keyed hashes elsewhere).
+    pub fn derived_key(&self, purpose: &str) -> Vec<u8> {
+        hmac_hex(&self.config.token_pepper, &format!("derive:{purpose}")).into_bytes()
+    }
+
     pub fn new(db: Database, config: AuthConfig) -> Self {
         Self { db, config: Arc::new(config) }
     }

@@ -310,6 +310,7 @@ impl App {
                             menus: true,
                             forms: true,
                             mailer: Some(mailer.clone()),
+                            ip_key: b"test".to_vec(),
                             admin_url: Some("https://cms.test/admin".into()),
                         }),
                         admin_url: Some("https://cms.test/admin".into()),
