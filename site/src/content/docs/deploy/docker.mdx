@@ -41,11 +41,15 @@ path = "/data/schema"
 [log]
 format = "json"
 
-[upload]
-provider = { name = "local", dir = "/data/uploads" }
+[upload.transforms]
+cache_dir = "/data/.cache/transforms"
+
+[search]
+dir = "/data/search"
 ```
 
-and `VERDIN_DATABASE_URL=sqlite:///data/verdin.db`. Any key can be overridden with a
+and `VERDIN_DATABASE_URL=sqlite:///data/verdin.db`. `/app/public/uploads`, where the local
+upload provider writes by default, is a link to `/data/uploads`. Any key can be overridden with a
 `VERDIN_<SECTION>__<KEY>` variable (see the [configuration reference](/reference/configuration/)).
 
 ## Try it
@@ -266,31 +270,37 @@ covers Docker's default networks, but check yours with `docker network inspect`.
 | `/data` | SQLite database, local uploads (`/data/uploads`) | A named volume keeps the image's ownership (`65532`). A bind mount must be writable by uid `65532`. |
 | `/data/schema` | Schema files | Mount your committed schema read-only (`:ro`) with `start`. `dev` needs it writable. |
 
-The image does not write anywhere else in the default configuration. Two optional
-features keep files relative to `/app`, which the `nonroot` user cannot write, so point
-them into the volume when you turn them on:
-
-```sh
-VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR=/data/cache/transforms   # image transformations
-VERDIN_SEARCH__DIR=/data/search                               # [search] enabled = true
-```
+The image writes nowhere else: the image-transformation cache and the search index are
+in the volume too (`/data/.cache/transforms`, `/data/search`). Images before 0.10 kept those
+two under `/app`, which the `nonroot` user cannot write; there, set
+`VERDIN_UPLOAD__TRANSFORMS__CACHE_DIR` and `VERDIN_SEARCH__DIR` to paths under `/data`.
 
 Uploads are streamed to the system temporary directory (`/tmp`) before they are stored.
 
 ## Health checks
 
-The image has no shell or HTTP client, so it declares no `HEALTHCHECK`, and a Compose
-`healthcheck` cannot run `curl` inside it. Check the server from outside instead: your
-proxy, load balancer or orchestrator should call `GET /_ready` (200 when the database
-answers, 503 otherwise) and `GET /_health` for liveness. See
+The image declares a `HEALTHCHECK` that runs [`verdin healthcheck`](/reference/cli/): it
+asks `/_health` on the loopback interface, so `docker ps` shows the container as
+`healthy` and Compose's `depends_on: condition: service_healthy` works. The image has no
+shell or `curl`; to write your own Compose check, call the binary the same way:
+
+```yaml
+healthcheck:
+  test: ["CMD", "/usr/local/bin/verdin", "healthcheck"]
+  interval: 30s
+```
+
+Proxies, load balancers and orchestrators should call `GET /_ready` (200 when the
+database answers, 503 otherwise) and `GET /_health` for liveness. See
 [Monitoring](/deploy/monitoring/).
 
 ## Your own configuration file
 
-Environment variables cover most settings. Use a configuration file when you need
-tables that differ from the built-in ones, such as the S3 upload provider: the built-in
-`provider = { name = "local", dir = … }` cannot be switched to S3 with environment
-variables, because its `dir` key is not valid for S3 and the start fails.
+Environment variables cover most settings, the S3 upload provider included
+(`VERDIN_UPLOAD__PROVIDER__NAME=s3`, `VERDIN_UPLOAD__PROVIDER__BUCKET`,
+`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`, …; before 0.10 the image's built-in `dir` key made
+that fail). Use a configuration file when you prefer to keep settings in one versioned
+file.
 
 Write a `verdin.toml` for containers:
 
@@ -358,9 +368,9 @@ so `/app/schema`). The files are owned by root and read-only for the server, whi
 what `verdin start` needs.
 
 Your file replaces the built-in one entirely. Repeat the keys you still want from it
-(`host`, `[log] format = "json"`), and if you keep the local upload provider, set
-`dir = "/data/uploads"`: the default, `public/uploads`, is relative to `/app`, which the
-server cannot write.
+(`host`, `[log] format = "json"`, the `/data` paths for the transformation cache and the
+search index). The local upload provider's default directory, `public/uploads`, already
+points into the volume.
 
 <Aside type="caution">
 Copy files by name, as above. Never `COPY . /app`: it would put your `.env` with its

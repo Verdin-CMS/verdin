@@ -23,11 +23,15 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM gcr.io/distroless/cc-debian12:nonroot
 COPY --from=server /usr/local/bin/verdin /usr/local/bin/verdin
 COPY docker/image/verdin.toml /app/verdin.toml
+# /app/public/uploads → /data/uploads (a symlink in the repository).
+COPY docker/image/public /app/public
 # The volume holds the SQLite database and, in `dev`, the schema the builder edits.
 COPY --from=server --chown=65532:65532 /out/data /data
 ENV VERDIN_CONFIG=/app/verdin.toml \
     VERDIN_DATABASE_URL=sqlite:///data/verdin.db
 VOLUME /data
 EXPOSE 1337
+# `verdin healthcheck` asks /_health on the loopback interface (no shell or curl needed).
+HEALTHCHECK --interval=30s --timeout=6s --start-period=30s CMD ["/usr/local/bin/verdin", "healthcheck"]
 ENTRYPOINT ["/usr/local/bin/verdin"]
 CMD ["start", "--migrate"]

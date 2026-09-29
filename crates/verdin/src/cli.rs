@@ -70,6 +70,13 @@ pub enum Command {
         #[arg(long)]
         no_media: bool,
     },
+    /// Check that a server on this machine answers `/_health` (exit status 0 when it does),
+    /// for container health checks.
+    Healthcheck {
+        /// Port to check instead of `[server].port`.
+        #[arg(long)]
+        port: Option<u16>,
+    },
     /// Print freshly generated secrets for VERDIN_ADMIN_JWT_SECRET and VERDIN_TOKEN_PEPPER.
     Secrets,
     /// Print version information.
@@ -269,6 +276,9 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Admin(command) => admin(project, command).await,
         Command::Start { migrate } => start(project, Mode::Production, migrate).await,
         Command::Dev => start(project, Mode::Development, true).await,
+        Command::Healthcheck { port } => {
+            healthcheck(port.unwrap_or(project.config.server.port)).await
+        }
         Command::Types { out } => {
             let types = crate::typescript::generate(&project.schema()?);
             match out {
@@ -659,6 +669,30 @@ fn resolve_sqlite_path(url: &str, root: &Path) -> String {
 }
 
 /// Loads `.env` next to the configuration file; variables already set win.
+/// `GET /_health` on the loopback interface over plain HTTP/1.0, so the check needs no HTTP
+/// client (and works in images without a shell or curl).
+async fn healthcheck(port: u16) -> Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let check = async {
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await?;
+        stream.write_all(b"GET /_health HTTP/1.0\r\nHost: localhost\r\n\r\n").await?;
+        let mut answer = Vec::new();
+        stream.read_to_end(&mut answer).await?;
+        Ok::<_, std::io::Error>(answer)
+    };
+    let answer = tokio::time::timeout(std::time::Duration::from_secs(5), check)
+        .await
+        .map_err(|_| anyhow::anyhow!("no answer from port {port} within 5 seconds"))?
+        .with_context(|| format!("connecting to port {port}"))?;
+    let status = String::from_utf8_lossy(&answer).lines().next().unwrap_or_default().to_owned();
+    if status.split_whitespace().nth(1) == Some("200") {
+        println!("ok");
+        Ok(())
+    } else {
+        anyhow::bail!("/_health answered `{status}`")
+    }
+}
+
 fn load_dotenv(config_path: &Path) -> Result<()> {
     let dir = config_path.parent().filter(|dir| !dir.as_os_str().is_empty());
     let path = dir.unwrap_or(Path::new(".")).join(".env");

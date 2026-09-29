@@ -30,6 +30,7 @@ verdin [OPTIONS] <COMMAND>
 | [`verdin import strapi`](#verdin-import-strapi) | Import a Strapi export. |
 | [`verdin import verdin`](#verdin-import-verdin) | Import a Verdin export. |
 | [`verdin export`](#verdin-export) | Write the project to a `.tar.gz` archive. |
+| [`verdin healthcheck`](#verdin-healthcheck) | Check that the local server answers. |
 | [`verdin secrets`](#verdin-secrets) | Print new secrets. |
 | [`verdin version`](#verdin-version) | Print the version. |
 
@@ -314,6 +315,28 @@ exported to backup.tar.gz: 42 documents (57 versions), 18 files, 3 folders, 2 lo
 ```
 
 See [Backups](/deploy/backups/).
+
+## `verdin healthcheck`
+
+```text title="Terminal"
+verdin healthcheck [--port <PORT>]
+```
+
+Asks `GET /_health` of the server on this machine (`127.0.0.1`, the `[server].port` of the
+configuration) and exits with status 0 when it answers `200`, 1 otherwise, printing why.
+It needs no shell, `curl` or HTTP client, so the Docker image uses it as its
+`HEALTHCHECK`; use it the same way in Compose or any supervisor that runs a command.
+
+| Option | Description |
+| --- | --- |
+| `--port <PORT>` | Check this port instead of `[server].port`. |
+
+```text title="Terminal"
+$ verdin healthcheck
+ok
+```
+
+See [Monitoring](/deploy/monitoring/).
 
 ## `verdin secrets`
 
