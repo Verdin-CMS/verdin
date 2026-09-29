@@ -188,7 +188,7 @@ async fn export(
     let wanted: HashSet<&str> = order.iter().map(String::as_str).collect();
     let mut versions: HashMap<String, verdin_content::ExportedVersion> = state
         .service
-        .export_versions(&uid)
+        .export_versions_of(&uid, &order)
         .await?
         .into_iter()
         .filter(|version| {

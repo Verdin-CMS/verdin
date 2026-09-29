@@ -7,7 +7,8 @@ use time::OffsetDateTime;
 use verdin_db::{ColumnKind, SqlValue};
 
 use super::{
-    DRAFT, PUBLISHED, SqlBuilder, actor_value, db_error, now, replace_links, write_insert,
+    DRAFT, IN_CHUNK, PUBLISHED, SqlBuilder, actor_value, db_error, now, replace_links,
+    write_insert, write_list,
 };
 use crate::input::prepare_imported;
 use crate::{ContentError, DocumentService, Result};
@@ -134,6 +135,27 @@ impl DocumentService {
     /// Every version of every document of `uid` (drafts, published versions, all
     /// locales), for backups.
     pub async fn export_versions(&self, uid: &str) -> Result<Vec<ExportedVersion>> {
+        self.export_rows(uid, None).await
+    }
+
+    /// The versions of the given documents of `uid` only.
+    pub async fn export_versions_of(
+        &self,
+        uid: &str,
+        document_ids: &[String],
+    ) -> Result<Vec<ExportedVersion>> {
+        let mut versions = Vec::new();
+        for chunk in document_ids.chunks(IN_CHUNK) {
+            versions.extend(self.export_rows(uid, Some(chunk)).await?);
+        }
+        Ok(versions)
+    }
+
+    async fn export_rows(
+        &self,
+        uid: &str,
+        document_ids: Option<&[String]>,
+    ) -> Result<Vec<ExportedVersion>> {
         use verdin_query::FieldCategory;
         let model = self.registry().get(uid)?;
         let columns: Vec<&verdin_query::Field> = model
@@ -161,7 +183,12 @@ impl DocumentService {
         for field in &columns {
             select.push(", ").ident(&field.column);
         }
-        select.push(" FROM ").ident(model.table()).push(" ORDER BY ").ident("id");
+        select.push(" FROM ").ident(model.table());
+        if let Some(document_ids) = document_ids {
+            select.push(" WHERE ").ident("document_id").push(" IN ");
+            write_list(&mut select, document_ids.iter().map(|id| SqlValue::Text(id.clone())));
+        }
+        select.push(" ORDER BY ").ident("id");
         let mut kinds = vec![
             ColumnKind::BigInt,
             ColumnKind::Text,
