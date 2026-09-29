@@ -1,0 +1,97 @@
+---
+title: Migration engine
+description: How Verdin turns schema changes into DDL, classifies each step by risk, and applies plans safely on engines with and without transactional DDL.
+sidebar:
+  order: 4
+---
+
+import Diagram from '../../../components/Diagram.astro';
+
+This page explains how `verdin-migrate` brings the database in line with the schema: how it computes the difference, how it rates each step, and how it applies a plan so that a failure never leaves you guessing. For the day-to-day workflow (`verdin migrate plan`, `--allow`, renames), read [schema migrations](/concepts/schema-migrations/) first; command flags are in the [CLI reference](/reference/cli/).
+
+## Flow
+
+<Diagram
+  caption="From schema files to applied DDL"
+  code={`flowchart LR
+  Files["schema/*.json"] -->|parse, validate| Schema
+  Schema -->|derive| Desired["DbModel<br/>desired"]
+  Snapshot[("vd_schema_snapshots")] --> Current["DbModel<br/>current"]
+  Current --> Diff{"diff"}
+  Desired --> Diff
+  Diff -->|changes| Plan["plan for the Flavor<br/>steps, risk, SQL, pre-checks"]
+  Plan -->|apply| Db[("database")]`}
+/>
+
+1. `verdin-schema` parses and validates the files into a `Schema`.
+2. `derive_model` (`derive.rs`) turns it into a `DbModel`: every table, column, index and foreign key the schema needs, including link tables and the [platform tables](/internals/storage/#platform-tables).
+3. The last applied model is read from `vd_schema_snapshots`.
+4. `diff` (`diff.rs`) compares the two models and returns a list of `Change`s, plus rename hints.
+5. `build_plan` (`plan.rs`) renders each change into SQL for the connected flavor, rates it, and attaches a pre-check where one is needed.
+6. `apply` (`apply.rs`) runs the plan, then stores the desired model as the new snapshot.
+
+**The snapshot stores the physical model, not the schema.** When a later Verdin version derives more tables from the same schema (link tables for a new feature, a new platform table), the diff creates them without any schema change.
+
+**The diff runs against the snapshot, not against the live database.** That keeps it deterministic and avoids the differences in how each engine reports its own structure. Verdin does not introspect the database, so manual changes to the tables (drift) are not detected.
+
+Changes that render to the same DDL on a dialect produce no step. For example, `string` → `text` is a type change on PostgreSQL and MySQL, but both are `text` on SQLite, so SQLite gets no step.
+
+## Change categories
+
+Every step has a risk level (`Risk` in `diff.rs`). `apply` only runs steps up to the level you allow, and refuses the whole plan before running anything if a step is above it.
+
+| Risk | Changes |
+|---|---|
+| **Safe** | Create a table; add a nullable or defaulted column; relax a column (make it nullable, same type and default); create a non-unique index, or a unique index on a new table; drop an index; rename a table or column |
+| **Risky** | Add a `NOT NULL` column without a default; change a column's type, nullability or default otherwise; add a unique index to an existing table; rebuild a SQLite table without dropping columns |
+| **Destructive** | Drop a column; drop a table; rebuild a SQLite table that drops columns |
+
+Because every attribute column is nullable (see [storage](/internals/storage/#system-columns)), adding attributes, including required ones, is always safe. `enumeration` values are checked by the application, not by the column, so adding or removing a value changes no DDL at all.
+
+**Pre-checks** run before the first statement of a plan, so a risky step that cannot succeed stops the run while the database is untouched:
+
+| Step | Pre-check |
+|---|---|
+| Unique index on an existing table | No duplicate non-NULL values in the indexed columns |
+| `NOT NULL` column without a default | The table has no rows |
+| Column becomes `NOT NULL` | The column has no NULLs |
+
+**Renames.** A dropped column plus an added column of the same column type in the same table is *proposed* as a rename: `verdin migrate plan` prints a hint such as `--rename-column articles.title=headline`, and the content-type builder offers to accept it. It is never inferred silently; without the flag, the plan drops the old column and adds a new one. A dropped table plus a created table with the same columns gets a `--rename-table old=new` hint the same way. Renames are safe steps, and a renamed table takes its link tables with it.
+
+**SQLite rebuilds.** SQLite cannot alter a column, so when a table has any column alteration the planner replaces all of that table's column and index changes with one rebuild: create the new shape under a temporary name, copy the surviving columns, drop the old table, rename the new one, recreate the indexes.
+
+## Modes
+
+| Command | What happens |
+|---|---|
+| `verdin start` | Pending steps stop the boot with a message that points to `verdin migrate plan`. The schema files are read-only. |
+| `verdin start --migrate` | Pending **safe** steps apply before the server starts; anything riskier stops the boot. |
+| `verdin dev` | Safe steps apply at boot. A file watcher on `schema/` reloads on every change: safe migrations apply and the app is swapped in place; riskier changes are logged and the running app stays as it was. |
+| Content-type builder (`verdin dev` only) | `POST /schema/plan` shows the steps, their risk, their SQL and rename hints. `POST /schema/apply` runs them at the risk level the user confirmed. |
+| `verdin migrate plan` | Prints each step with its risk and its exact SQL for the connected dialect, the `--allow` level the plan needs, and rename hints. |
+| `verdin migrate apply` | Runs the plan. `--allow risky` or `--allow destructive` is required when the plan contains such steps. |
+
+When the builder applies a change, it migrates first, then writes `schema/*.json`, then swaps the app. If the migration fails, the files and the running app stay as they were. Because the builder's output is files, the flow ends in a git commit.
+
+## Execution that survives non-transactional DDL
+
+PostgreSQL and SQLite run DDL inside transactions. MySQL and MariaDB commit implicitly on every DDL statement, so a failure halfway through a plan would leave the database between two states. `apply` handles both.
+
+**On every engine:**
+
+1. Take the migration lock on one dedicated connection: `pg_advisory_lock` on PostgreSQL; `GET_LOCK('verdin_migrate:<database>')` on MySQL and MariaDB, waiting up to 60 seconds; on SQLite, `BEGIN IMMEDIATE` serializes writers. On SQLite the engine also turns `foreign_keys` off for the run, so table rebuilds do not cascade into link tables.
+2. Recompute the plan from the snapshot, and check the allowed risk.
+3. Run every pre-check before the first DDL statement.
+
+**On PostgreSQL and SQLite**, the whole plan, the new snapshot and a `completed` journal row run in a single transaction. A failure rolls everything back.
+
+**On MySQL and MariaDB**, every step is a single statement, and progress is recorded step by step:
+
+1. Record the plan in `vd_migrations_journal` (the plan's hash and its steps) with status `running`.
+2. Execute each step and record the number of completed steps after each one.
+3. If a step fails, the journal keeps the error and stays `running`. `verdin migrate plan` then reports the interrupted run, how many steps were applied and the last error.
+4. The next `apply` recomputes the plan. If its hash matches the journal, it **resumes** from the failed step: single DDL statements are atomic on these engines, so the failed step runs again. Pre-checks are skipped on resume, because earlier steps already changed the database.
+5. If the schema changed in the meantime, the hashes differ and `apply` refuses, asking you to restore the schema the plan was made from.
+6. When the last step succeeds, the new snapshot and the journal's `completed` status are written together in one transaction.
+
+The plan hash covers the flavor and every statement, so a resumed run executes exactly the SQL that was planned.
