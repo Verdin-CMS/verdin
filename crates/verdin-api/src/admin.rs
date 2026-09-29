@@ -5,12 +5,11 @@
 //! routes. Refresh and logout also require the `X-Verdin-CSRF` header, which cross-site
 //! requests cannot set without a CORS preflight.
 
-use std::net::SocketAddr;
+use crate::client::ClientIp;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::{ConnectInfo, FromRequestParts, Path, RawQuery, State};
-use axum::http::request::Parts;
+use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -316,21 +315,6 @@ pub fn router(db: Database, registry: Registry, auth: AuthService, config: Admin
         None => router,
     };
     router.fallback(|| async { ApiError::NotFound }).with_state(state)
-}
-
-/// The client address when the server records it (`into_make_service_with_connect_info`).
-struct ClientIp(String);
-
-impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
-    type Rejection = std::convert::Infallible;
-
-    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        let ip = parts
-            .extensions
-            .get::<ConnectInfo<SocketAddr>>()
-            .map_or_else(|| "unknown".to_owned(), |info| info.0.ip().to_string());
-        Ok(ClientIp(ip))
-    }
 }
 
 fn body<T: DeserializeOwned>(bytes: &Bytes) -> Result<T, ApiError> {

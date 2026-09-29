@@ -6,6 +6,7 @@ pub mod ai;
 pub mod audit;
 pub mod cache;
 pub mod cdn;
+pub mod client;
 pub mod comments;
 pub mod deploy;
 pub mod digest;

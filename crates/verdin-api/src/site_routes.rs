@@ -13,7 +13,7 @@ use axum::routing::get;
 use serde_json::{Map, Value as Json, json};
 use verdin_content::DocumentService;
 
-use crate::end_users::ClientIp;
+use crate::client::ClientIp;
 use crate::error::ApiError;
 use crate::limiter::RateLimiter;
 use crate::site::{MAX_SUBMISSION, SeoSettings, Site, check_submission};

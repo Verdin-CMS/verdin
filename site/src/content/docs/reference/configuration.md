@@ -31,6 +31,7 @@ Secrets are never read from `verdin.toml`; see [Environment variables](#environm
 | `body_limit` | `"1mb"` | Largest request body of regular API requests (uploads have their own limit). A number of bytes or a string with `b`, `kb`, `mb` or `gb`. |
 | `request_timeout_secs` | `30` | Time limit of regular API requests. |
 | `sync_interval_secs` | `10` | How often to pick up settings changed by other instances (features, plugin switches, locales, review workflows); `0` turns it off (a single instance). |
+| `trusted_proxies` | `[]` | Reverse proxies (IPs or CIDR ranges, e.g. `["10.0.0.0/8"]`) whose `X-Forwarded-For` names the client. Rate limits and audit logs use that address; without it, every client behind the proxy shares one. |
 
 ## `[database]`
 

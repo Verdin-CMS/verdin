@@ -147,11 +147,7 @@ fn client(request: &Request) -> (Option<String>, String) {
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
         .map(|token| hex(&Sha256::digest(token.trim().as_bytes())));
-    let ip = request
-        .extensions()
-        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-        .map_or_else(|| "unknown".to_owned(), |info| info.0.ip().to_string());
-    (token, ip)
+    (token, crate::client::client_ip(request.extensions()))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -184,9 +180,12 @@ pub(crate) async fn middleware(
         Some(_) => traffic.tokens.as_ref(),
         None => traffic.public.as_ref(),
     };
-    if let Some(limiter) = limiter
-        && !limiter.allow(token.as_deref().unwrap_or(&ip))
-    {
+    // Token requests also count per address: made-up tokens do not escape the limits.
+    let over = limiter.is_some_and(|limiter| {
+        !limiter.allow(token.as_deref().unwrap_or(&ip))
+            || (token.is_some() && !limiter.allow(&format!("ip:{ip}")))
+    });
+    if over {
         let mut response = ApiError::TooManyRequests.into_response();
         response.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from_static("60"));
         return response;

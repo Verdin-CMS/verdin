@@ -21,6 +21,10 @@ impl RateLimiter {
         let mut hits = self.hits.lock().expect("rate limiter lock");
         if hits.len() > 10_000 {
             hits.retain(|_, (start, _)| now.duration_since(*start) < self.window);
+            // Still full (a flood of new keys): start over rather than grow without bound.
+            if hits.len() > 50_000 {
+                hits.clear();
+            }
         }
         let entry = hits.entry(key.to_owned()).or_insert((now, 0));
         if now.duration_since(entry.0) >= self.window {

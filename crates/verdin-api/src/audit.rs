@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use axum::body::{Body, to_bytes};
-use axum::extract::{ConnectInfo, MatchedPath, Request, State};
+use axum::extract::{MatchedPath, Request, State};
 use axum::http::{Method, header};
 use axum::middleware::Next;
 use axum::response::Response;
@@ -215,10 +215,7 @@ pub(crate) async fn middleware(
     if !relevant {
         return next.run(request).await;
     }
-    let ip = request
-        .extensions()
-        .get::<ConnectInfo<std::net::SocketAddr>>()
-        .map(|info| info.0.ip().to_string());
+    let ip = Some(crate::client::client_ip(request.extensions())).filter(|ip| ip != "unknown");
     let bearer = request
         .headers()
         .get(header::AUTHORIZATION)

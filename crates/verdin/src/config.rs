@@ -126,6 +126,9 @@ pub struct ServerConfig {
     /// How often to pick up settings changed by other instances (features, plugin
     /// switches, locales, review workflows); 0 turns it off (a single instance).
     pub sync_interval_secs: u64,
+    /// Reverse proxies (IPs or CIDR ranges) whose `X-Forwarded-For` names the client, for
+    /// rate limits and audit logs.
+    pub trusted_proxies: Vec<String>,
 }
 
 impl ServerConfig {
@@ -142,6 +145,7 @@ impl Default for ServerConfig {
             public_url: None,
             body_limit: 1024 * 1024,
             request_timeout_secs: 30,
+            trusted_proxies: Vec::new(),
             sync_interval_secs: 10,
         }
     }

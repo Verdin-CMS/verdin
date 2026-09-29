@@ -395,7 +395,13 @@ pub fn build_app(
                 crate::metrics::middleware,
             ));
     }
-    app
+    // Outermost: every layer and handler sees the client behind trusted proxies.
+    let proxies = verdin_api::client::TrustedProxies::parse(&context.config.server.trusted_proxies)
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "ignoring [server].trusted_proxies");
+            Default::default()
+        });
+    app.layer(axum::middleware::from_fn_with_state(proxies, verdin_api::client::middleware))
 }
 
 /// Origins of the preview URL templates (the side-by-side preview frames them).

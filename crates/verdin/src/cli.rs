@@ -540,6 +540,8 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         tracing::warn!("[email].provider is `log`: emails are written to the log, not sent");
     }
     let releases = verdin_api::releases::Releases::new(db.clone());
+    verdin_api::client::TrustedProxies::parse(&project.config.server.trusted_proxies)
+        .map_err(|message| anyhow::anyhow!("[server].trusted_proxies: {message}"))?;
     let comments = verdin_api::comments::Comments::new(db.clone());
     let site = verdin_api::site::Site::new(db.clone());
     let cdn = verdin_api::cdn::Cdn::new(

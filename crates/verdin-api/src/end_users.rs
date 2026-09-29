@@ -5,13 +5,12 @@
 #[path = "end_users_crud.rs"]
 mod crud;
 
+use crate::client::ClientIp;
 use std::collections::BTreeMap;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::{ConnectInfo, FromRequestParts, Path, Query, State};
-use axum::http::request::Parts;
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -191,21 +190,6 @@ pub(crate) fn routes(users: Users) -> Router {
         .route("/connect/{provider}", get(connect))
         .route("/connect/{provider}/callback", get(connect_callback))
         .with_state(users)
-}
-
-/// The client address when the server records it (`into_make_service_with_connect_info`).
-pub(crate) struct ClientIp(pub(crate) String);
-
-impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
-    type Rejection = std::convert::Infallible;
-
-    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        let ip = parts
-            .extensions
-            .get::<ConnectInfo<SocketAddr>>()
-            .map_or_else(|| "unknown".to_owned(), |info| info.0.ip().to_string());
-        Ok(ClientIp(ip))
-    }
 }
 
 fn limit(users: &Users, ip: &str) -> Result<(), ApiError> {
