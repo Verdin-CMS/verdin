@@ -1,8 +1,127 @@
 ---
 title: "Schema migrations"
-description: "Schema migrations in Verdin."
+description: "How Verdin turns schema changes into database migrations: the plan, risk levels, what verdin dev and verdin start do, renames, and --allow."
 sidebar:
   order: 7
 ---
 
-This page is being written for 0.10.
+When you change a schema file, the database has to follow: a new attribute needs a column, a
+new relation a link table. Verdin computes that migration for you, shows it before running
+it, and never drops data without being told to. This page explains how.
+
+## From schema to plan
+
+Verdin never asks you to write a migration. It compares two models of the database:
+
+1. **Desired**: derived from your `schema/*.json` files, with every table, column and index
+   they need (including link tables and Verdin's own tables).
+2. **Current**: the model the last migration left, stored in the database as a snapshot.
+
+The difference is a **plan**: a list of steps, each with its SQL for your database and a risk
+level. Because the plan comes from the stored snapshot rather than from inspecting the
+database, it is deterministic and the same on every dialect. Changes that produce the same
+SQL on your database, such as `integer` to `biginteger` on SQLite, produce no step.
+
+`verdin migrate plan` prints it. Here the blog's `excerpt` attribute was renamed to
+`summary` in `article.json`:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [safe] add column articles.summary
+       ALTER TABLE "articles" ADD COLUMN "summary" text
+  2. [destructive] drop column articles.excerpt
+       ALTER TABLE "articles" DROP COLUMN "excerpt"
+
+requires: verdin migrate apply --allow destructive
+
+possible renames (pass them to keep the data):
+  --rename-column articles.excerpt=summary
+```
+
+## Risk levels
+
+| Risk | Steps | Why |
+| --- | --- | --- |
+| **safe** | Create a table, add a column, add or drop a non-unique index, rename a table or column. | Cannot lose data or fail on existing rows. |
+| **risky** | Change a column's type, add a unique index to an existing table, rebuild a SQLite table (SQLite cannot alter columns in place). | May fail on existing data (duplicates, values that do not convert), or rewrite it. |
+| **destructive** | Drop a column or a table. | Deletes data. |
+
+Every attribute column is nullable (`required` is checked when publishing), so adding
+attributes, required or not, is always safe. Adding `"unique": true` to the blog's article
+title is risky, because existing titles may repeat:
+
+```text title="Terminal"
+$ verdin migrate plan
+  1. [risky] create unique index articles_title_uq
+       CREATE UNIQUE INDEX "articles_title_uq" ON "articles" ("title", "locale", "publication_state")
+
+requires: verdin migrate apply --allow risky
+```
+
+Before the first statement runs, Verdin runs a check for each risky step that can fail, such
+as looking for duplicates before a unique index, and stops with a message if one finds a
+problem. Nothing has changed at that point.
+
+## Applying a plan
+
+`verdin migrate apply` runs the pending steps. It takes the highest risk you accept:
+
+```sh title="Terminal"
+verdin migrate apply                        # safe steps only (the default)
+verdin migrate apply --allow risky          # also type changes and unique indexes
+verdin migrate apply --allow destructive    # also drops
+```
+
+If any step is above the allowed risk, nothing runs:
+
+```text title="Terminal"
+$ verdin migrate apply
+Error: these steps need explicit approval:
+  create unique index articles_title_uq (risky)
+```
+
+A migration takes a lock, so two instances never migrate at once. On PostgreSQL and SQLite
+the whole plan runs in one transaction: a failure rolls everything back. MySQL and MariaDB
+commit every DDL statement on their own, so Verdin records its progress step by step in a
+journal. After a failure, fix the cause and run `verdin migrate apply` again: it resumes from
+the failed step if the plan is unchanged, and refuses if the schema changed in between.
+
+## Renames
+
+A removed attribute and a new one look like a drop and an add, which would lose the column's
+data. Verdin never guesses a rename. It suggests one when a column disappears and a column of
+the same type appears in the same table (or a table disappears and one with the same columns
+appears), and you confirm it explicitly:
+
+```text title="Terminal"
+$ verdin migrate apply --rename-column articles.excerpt=summary
+applied 1 step
+```
+
+- `--rename-column TABLE.OLD=NEW` renames a column; `TABLE` is the content type's table
+  (its `collectionName`).
+- `--rename-table OLD=NEW` renames a table. The type's link tables are renamed with it.
+- Pass the same flags to `migrate plan` to preview the result.
+
+Renames are safe steps. The content-type builder offers the same suggestions in its dialog.
+
+## `verdin dev` and `verdin start`
+
+| | `verdin dev` | `verdin start` |
+| --- | --- | --- |
+| At startup | Applies pending safe steps. Stops if other steps are pending. | Refuses to start while any step is pending, unless you pass `--migrate`, which applies safe steps first. |
+| Schema changes while running | The **Content-type builder** shows the plan with its risks and rename suggestions, and applies it when you confirm, riskier steps included. Hand edits (or a `git pull`) are picked up by a file watcher: safe plans are applied and the app reloads; others are logged and the running app stays as it was. | The schema is read-only. Deploy the new files and migrate. |
+
+The builder migrates the database first, then writes the schema files, then reloads the
+content API, admin API, GraphQL and OpenAPI document without a restart. If the migration
+fails, the files and the running app stay as they were.
+
+In production, run `verdin migrate plan` against a copy of the database, then
+`verdin migrate apply` with the risk you accept, before starting the new version. See
+[Upgrading](/migrate/upgrading/) and [Backups](/deploy/backups/).
+
+## Compared with Strapi
+
+Strapi synchronizes the database with the schema when it starts, without showing what it
+will do. Verdin plans first, shows the SQL, applies only safe steps without being asked, and
+needs `--allow` for anything that may fail or delete data.
