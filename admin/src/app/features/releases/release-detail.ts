@@ -35,6 +35,9 @@ function entryKey(uid: string, documentId: string, locale: string): string {
   return `${uid}|${documentId}|${locale}`;
 }
 
+/** Entries whose titles one request asks for (the API's largest page). */
+const TITLE_BATCH = 100;
+
 /** A release: its entries, and publishing it now. Read-only once it ran. */
 @Component({
   selector: 'vd-release-detail',
@@ -376,24 +379,28 @@ export class ReleaseDetailPage {
       const type = this.schema.type(group.uid);
       const field = type ? this.schema.titleField(type) : null;
       if (!type || !field || !this.auth.canContent('content.read', group.uid)) continue;
-      const query: Record<string, unknown> = {
-        filters: { documentId: { $in: [...new Set(group.ids)] } },
-        fields: [field],
-        status: 'draft',
-        pagination: { pageSize: 100 },
-      };
-      if (group.locale) query['locale'] = group.locale;
-      try {
-        const list = await this.documents.list(group.uid, query);
-        const found: Record<string, string> = {};
-        for (const document of list.data ?? []) {
-          const title = document[field];
-          if (typeof title === 'string' && title.trim())
-            found[entryKey(group.uid, document.documentId, group.locale)] = title;
+      // The server lists at most 100 entries a page: ask for the ids 100 at a time.
+      const ids = [...new Set(group.ids)];
+      for (let start = 0; start < ids.length; start += TITLE_BATCH) {
+        const query: Record<string, unknown> = {
+          filters: { documentId: { $in: ids.slice(start, start + TITLE_BATCH) } },
+          fields: [field],
+          status: 'draft',
+          pagination: { pageSize: TITLE_BATCH },
+        };
+        if (group.locale) query['locale'] = group.locale;
+        try {
+          const list = await this.documents.list(group.uid, query);
+          const found: Record<string, string> = {};
+          for (const document of list.data ?? []) {
+            const title = document[field];
+            if (typeof title === 'string' && title.trim())
+              found[entryKey(group.uid, document.documentId, group.locale)] = title;
+          }
+          this.titles.update((titles) => ({ ...titles, ...found }));
+        } catch {
+          // Titles are a nicety: the ids stay.
         }
-        this.titles.update((titles) => ({ ...titles, ...found }));
-      } catch {
-        // Titles are a nicety: the ids stay.
       }
     }
   }

@@ -38,6 +38,7 @@ import { I18n } from '../../core/i18n/i18n';
 import { loadErrorOf } from '../../core/loading';
 import { PageMeta } from '../../core/types';
 import { PageHeader } from '../../shared/components/page-header';
+import { Pagination } from '../../shared/components/pagination';
 import { EndUsersNav } from './end-users-nav';
 
 const PAGE_SIZE = 20;
@@ -57,6 +58,7 @@ interface Draft {
 @Component({
   selector: 'vd-end-users',
   imports: [
+    Pagination,
     NgIcon,
     EndUsersNav,
     HlmAlertImports,
@@ -305,38 +307,19 @@ interface Draft {
               </tbody>
             </table>
           </div>
-          <div
-            class="text-muted-foreground bg-muted/30 flex flex-wrap items-center justify-end gap-2 border-t px-4 py-2 text-xs"
-          >
-            <span class="me-auto tabular-nums">
+          @if (pageCount() > 1) {
+            <vd-pagination
+              class="bg-muted/30 border-t px-4 py-2"
+              [(page)]="page"
+              [pageCount]="pageCount()"
+              [disabled]="loading()"
+              [summary]="t('endUsers.users.count', { count: meta().total ?? users()!.length })"
+            />
+          } @else {
+            <div class="text-muted-foreground bg-muted/30 border-t px-4 py-2 text-xs tabular-nums">
               {{ t('endUsers.users.count', { count: meta().total ?? users()!.length }) }}
-              @if (pageCount() > 1) {
-                · {{ t('common.page', { page: page(), count: pageCount() }) }}
-              }
-            </span>
-            @if (pageCount() > 1) {
-              <button
-                hlmBtn
-                variant="outline"
-                size="sm"
-                [disabled]="page() <= 1 || loading()"
-                (click)="page.set(page() - 1)"
-              >
-                <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" />
-                {{ t('common.previous') }}
-              </button>
-              <button
-                hlmBtn
-                variant="outline"
-                size="sm"
-                [disabled]="page() >= pageCount() || loading()"
-                (click)="page.set(page() + 1)"
-              >
-                {{ t('common.next') }}
-                <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
-              </button>
-            }
-          </div>
+            </div>
+          }
         </div>
       }
     </div>

@@ -10,7 +10,6 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertDialogImports } from '@spartan-ng/helm/alert-dialog';
@@ -32,11 +31,11 @@ import { MediaFile, MediaFolder } from '../../core/types';
 import { UsageProbe, Usages } from '../../core/usage';
 import { UsageSection, UsageWarning } from '../../shared/components/usage';
 import { MediaCropDialog } from './crop-dialog';
+import { MediaFileDetails } from './file-details';
+import { FocalPoint, MediaFilePreview } from './file-preview';
 import { croppable } from './crop';
 import {
-  KIND_ICONS,
   KIND_LABELS,
-  altText,
   canTouch,
   dimensions,
   extension,
@@ -44,8 +43,6 @@ import {
   folderOptions,
   formatSize,
 } from './media-format';
-
-type FocalPoint = { x: number; y: number };
 
 /** Details of one file: preview, focal point, metadata editing, download and delete. */
 @Component({
@@ -62,6 +59,8 @@ type FocalPoint = { x: number; y: number };
     HlmTextareaImports,
     HlmSpinnerImports,
     MediaCropDialog,
+    MediaFileDetails,
+    MediaFilePreview,
     UsageSection,
     UsageWarning,
   ],
@@ -89,80 +88,7 @@ type FocalPoint = { x: number; y: number };
           </hlm-sheet-header>
 
           <div class="flex flex-col gap-6 p-4">
-            <div class="bg-muted/50 overflow-hidden rounded-xl border">
-              @switch (kind(file)) {
-                @case ('images') {
-                  <div class="flex justify-center p-2">
-                    <div
-                      class="relative inline-block max-w-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                      [class.cursor-crosshair]="canEdit()"
-                      [attr.tabindex]="canEdit() ? 0 : null"
-                      [attr.role]="canEdit() ? 'button' : null"
-                      [attr.aria-label]="canEdit() ? t('media.file.focalPoint') : null"
-                      [attr.aria-describedby]="canEdit() ? 'media-file-focal' : null"
-                      (click)="setFocal($event)"
-                      (keydown)="nudgeFocal($event)"
-                    >
-                      <img
-                        class="block max-h-80 max-w-full rounded-md object-contain select-none"
-                        draggable="false"
-                        [src]="media.url(media.preview(file, 800))"
-                        [alt]="alt(file)"
-                      />
-                      @if (focal(); as point) {
-                        <span
-                          class="pointer-events-none absolute size-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]"
-                          [style.left.%]="point.x * 100"
-                          [style.top.%]="point.y * 100"
-                          aria-hidden="true"
-                        >
-                          <span
-                            class="absolute top-1/2 left-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
-                          ></span>
-                        </span>
-                      }
-                    </div>
-                  </div>
-                }
-                @case ('videos') {
-                  <video
-                    controls
-                    preload="metadata"
-                    class="max-h-80 w-full bg-black"
-                    [src]="media.url(file.url)"
-                    [attr.aria-label]="alt(file)"
-                  ></video>
-                }
-                @case ('audios') {
-                  <div class="flex flex-col items-center gap-4 p-6">
-                    <ng-icon name="lucideMusic" size="48" class="text-muted-foreground" />
-                    <audio
-                      controls
-                      preload="metadata"
-                      class="w-full"
-                      [src]="media.url(file.url)"
-                      [attr.aria-label]="alt(file)"
-                    ></audio>
-                  </div>
-                }
-                @default {
-                  @if (pdfUrl(); as url) {
-                    <iframe
-                      class="block h-[60vh] w-full bg-white"
-                      sandbox="allow-same-origin"
-                      referrerpolicy="no-referrer"
-                      [src]="url"
-                      [title]="t('media.file.pdfPreview', { name: file.name })"
-                    ></iframe>
-                  } @else {
-                    <div class="text-muted-foreground flex flex-col items-center gap-2 p-10">
-                      <ng-icon [name]="icon(file)" size="56" />
-                      <span class="font-mono text-xs">{{ ext(file) }}</span>
-                    </div>
-                  }
-                }
-              }
-            </div>
+            <vd-media-file-preview [file]="file" [editable]="canEdit()" [(focal)]="focal" />
 
             @if (canEdit()) {
               <div class="-mt-3 flex flex-wrap items-center gap-2">
@@ -300,64 +226,7 @@ type FocalPoint = { x: number; y: number };
                 </hlm-native-select>
               </div>
 
-              <dl
-                class="bg-muted/30 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-xl border p-4 text-sm"
-              >
-                <dt class="text-muted-foreground">{{ t('media.file.type') }}</dt>
-                <dd class="truncate font-mono text-xs leading-5">{{ file.mime }}</dd>
-                <dt class="text-muted-foreground">{{ t('media.file.size') }}</dt>
-                <dd>{{ size(file) }}</dd>
-                @if (dims(file); as dims) {
-                  <dt class="text-muted-foreground">{{ t('media.file.dimensions') }}</dt>
-                  <dd>{{ dims }}</dd>
-                }
-                <dt class="text-muted-foreground">{{ t('media.file.created') }}</dt>
-                <dd>{{ i18n.formatDate(file.createdAt, 'long') }}</dd>
-                <dt class="text-muted-foreground">{{ t('media.file.updated') }}</dt>
-                <dd>{{ i18n.formatDate(file.updatedAt, 'long') }}</dd>
-                <dt class="text-muted-foreground self-center">{{ t('media.file.url') }}</dt>
-                <dd class="flex min-w-0 items-center gap-1">
-                  <a
-                    class="text-primary truncate font-mono text-xs hover:underline"
-                    target="_blank"
-                    rel="noopener"
-                    [href]="media.url(file.url)"
-                    >{{ file.url }}</a
-                  >
-                  <button
-                    hlmBtn
-                    variant="ghost"
-                    size="icon-xs"
-                    type="button"
-                    [attr.aria-label]="t('media.file.copyUrl')"
-                    [title]="t('media.file.copyUrl')"
-                    (click)="copyUrl(file)"
-                  >
-                    <ng-icon name="lucideCopy" />
-                  </button>
-                </dd>
-                @if (formats(file).length) {
-                  <dt class="text-muted-foreground">{{ t('media.file.formats') }}</dt>
-                  <dd>
-                    <ul class="flex flex-col gap-1">
-                      @for (format of formats(file); track format.name) {
-                        <li class="flex items-center gap-2">
-                          <a
-                            class="text-primary hover:underline"
-                            target="_blank"
-                            rel="noopener"
-                            [href]="media.url(format.url)"
-                            >{{ format.name }}</a
-                          >
-                          <span class="text-muted-foreground text-xs tabular-nums"
-                            >{{ format.width }} × {{ format.height }}</span
-                          >
-                        </li>
-                      }
-                    </ul>
-                  </dd>
-                }
-              </dl>
+              <vd-media-file-details [file]="file" />
 
               <div class="rounded-xl border p-4">
                 <vd-usage-section [state]="usage.state()" [level]="3" (retry)="loadUsage()" />
@@ -463,16 +332,6 @@ export class MediaFileSheet {
   protected readonly describing = signal(false);
   /** The image in the crop dialog. */
   protected readonly cropping = signal<MediaFile | null>(null);
-  private readonly sanitizer = inject(DomSanitizer);
-  /** PDFs preview in a sandboxed frame (same-origin library files only). */
-  protected readonly pdfUrl = computed<SafeResourceUrl | null>(() => {
-    const file = this.current();
-    if (file?.mime !== 'application/pdf') return null;
-    const url = new URL(this.media.url(file.url), location.href);
-    if (url.origin !== location.origin) return null;
-    return this.sanitizer.bypassSecurityTrustResourceUrl(url.pathname);
-  });
-
   protected readonly options = computed(() => folderOptions(this.folders()));
   protected readonly canEdit = computed(() => {
     const file = this.current();
@@ -514,12 +373,7 @@ export class MediaFileSheet {
 
   protected kind = fileKind;
   protected ext = extension;
-  protected alt = altText;
   protected dims = dimensions;
-
-  protected icon(file: MediaFile): string {
-    return KIND_ICONS[fileKind(file)];
-  }
 
   protected kindLabel(file: MediaFile) {
     return KIND_LABELS[fileKind(file)];
@@ -527,43 +381,6 @@ export class MediaFileSheet {
 
   protected size(file: MediaFile): string {
     return formatSize(this.i18n, file.size);
-  }
-
-  protected formats(file: MediaFile) {
-    return Object.values(file.formats ?? {}).sort((a, b) => a.width - b.width);
-  }
-
-  protected setFocal(event: MouseEvent): void {
-    if (!this.canEdit()) return;
-    const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    if (!box.width || !box.height) return;
-    const clamp = (value: number) => Math.min(1, Math.max(0, Math.round(value * 1000) / 1000));
-    this.focal.set({
-      x: clamp((event.clientX - box.left) / box.width),
-      y: clamp((event.clientY - box.top) / box.height),
-    });
-  }
-
-  /** Arrow keys move the focal point by 5%; Delete clears it. */
-  protected nudgeFocal(event: KeyboardEvent): void {
-    if (!this.canEdit()) return;
-    const steps: Record<string, [number, number]> = {
-      ArrowLeft: [-0.05, 0],
-      ArrowRight: [0.05, 0],
-      ArrowUp: [0, -0.05],
-      ArrowDown: [0, 0.05],
-    };
-    if (event.key === 'Delete' || event.key === 'Backspace') {
-      event.preventDefault();
-      this.focal.set(null);
-      return;
-    }
-    const step = steps[event.key];
-    if (!step) return;
-    event.preventDefault();
-    const point = this.focal() ?? { x: 0.5, y: 0.5 };
-    const clamp = (value: number) => Math.min(1, Math.max(0, Math.round(value * 100) / 100));
-    this.focal.set({ x: clamp(point.x + step[0]), y: clamp(point.y + step[1]) });
   }
 
   /** Alt text by AI: images the provider reads, for admins who may edit the file. */
@@ -632,16 +449,6 @@ export class MediaFileSheet {
       });
     } finally {
       this.replacing.set(false);
-    }
-  }
-
-  protected async copyUrl(file: MediaFile): Promise<void> {
-    const url = new URL(this.media.url(file.url), location.href).href;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success(this.t('common.copied'));
-    } catch {
-      toast.error(this.t('media.file.copyFailed'));
     }
   }
 

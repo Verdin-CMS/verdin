@@ -23,6 +23,7 @@ import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { PageMeta } from '../../core/types';
 import { Attempt, Delivery, DeliveryStatus, Webhooks, prettyJson } from '../../core/webhooks';
+import { Pagination } from '../../shared/components/pagination';
 
 const STATUSES: Record<
   DeliveryStatus,
@@ -78,6 +79,7 @@ const PAGE_SIZE = 20;
 @Component({
   selector: 'vd-webhook-deliveries',
   imports: [
+    Pagination,
     NgIcon,
     DeliveryStatusBadge,
     HlmBadgeImports,
@@ -200,29 +202,7 @@ const PAGE_SIZE = 20;
         </div>
 
         @if (pageCount() > 1) {
-          <div class="flex flex-wrap items-center justify-end gap-2 border-t px-4 py-3">
-            <span class="text-muted-foreground me-auto text-sm tabular-nums">
-              {{ t('common.page', { page: page(), count: pageCount() }) }}
-            </span>
-            <button
-              hlmBtn
-              variant="outline"
-              size="sm"
-              [disabled]="page() <= 1"
-              (click)="page.set(page() - 1)"
-            >
-              <ng-icon name="lucideArrowLeft" class="rtl:-scale-x-100" /> {{ t('common.previous') }}
-            </button>
-            <button
-              hlmBtn
-              variant="outline"
-              size="sm"
-              [disabled]="page() >= pageCount()"
-              (click)="page.set(page() + 1)"
-            >
-              {{ t('common.next') }} <ng-icon name="lucideChevronRight" class="rtl:-scale-x-100" />
-            </button>
-          </div>
+          <vd-pagination class="border-t px-4 py-3" [(page)]="page" [pageCount]="pageCount()" />
         }
       }
     </section>
