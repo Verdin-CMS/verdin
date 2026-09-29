@@ -14,7 +14,7 @@ routes of *your* project in an OpenAPI 3.1 document at `/api/_openapi.json`.
 
 ## Blog example
 
-The [Content API (blog example)](/reference/api/) pages render the document of the
+The [Content API (blog example)](../../reference/api/) pages render the document of the
 example project in [`examples/blog`](https://github.com/verdin-cms/verdin/tree/main/examples/blog):
 articles, categories, tags and a single-type homepage, with their components. They
 show what the routes, parameters (filters, sort, pagination, `populate`, `status`,

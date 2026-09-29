@@ -172,7 +172,7 @@ provider = { name = "s3", bucket = "media", region = "auto",
 | `timeout_secs` | `10` | Time limit of each delivery. |
 | `retention_days` | `30` | Days the delivery log is kept. |
 
-See [Webhooks](/guides/webhooks/).
+See [Webhooks](../../guides/webhooks/).
 
 ## `[history]`
 
@@ -204,7 +204,7 @@ See [Webhooks](/guides/webhooks/).
 | `path` | `"plugins"` | Directory of plugins (one sub-directory each), relative to the configuration file. |
 | `run_jobs` | `true` | Run the plugins' scheduled jobs on this instance (one instance when there are several). |
 
-See [Plugins](/guides/plugins/).
+See [Plugins](../../guides/plugins/).
 
 ## `[audit]`
 
@@ -294,8 +294,8 @@ Besides the `VERDIN_<SECTION>__<KEY>` overrides, Verdin reads these variables:
 | `VERDIN_ADMIN_PASSWORD` | Password for `verdin admin create` and `verdin admin reset-password` (otherwise read from stdin). |
 | `VERDIN_EMAIL_SMTP_PASSWORD` | SMTP password. |
 | `VERDIN_EMAIL_API_KEY` | API key of the Resend and Postmark providers. |
-| `VERDIN_SSO_<ID>_SECRET` | Client secret of an SSO provider (see [Single sign-on](/guides/sso/)). |
-| `VERDIN_OAUTH_<PROVIDER>_SECRET` | Client secret of an end-user OAuth provider (see [End users](/guides/end-users/)). |
+| `VERDIN_SSO_<ID>_SECRET` | Client secret of an SSO provider (see [Single sign-on](../../guides/sso/)). |
+| `VERDIN_OAUTH_<PROVIDER>_SECRET` | Client secret of an end-user OAuth provider (see [End users](../../guides/end-users/)). |
 | `VERDIN_AI_KEY` | API key of the `[ai]` provider. |
 | `VERDIN_CDN_TOKEN` | API token of the `[cdn]` provider. |
 | `VERDIN_IMAGE_SECRET` | Signs image transformation URLs (see [`[upload.transforms]`](#uploadtransforms)). |

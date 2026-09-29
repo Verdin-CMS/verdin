@@ -14,7 +14,7 @@ import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync }
 import { dirname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { branch, repoRoot as repo, repositoryUrl } from './repo.mjs';
+import { basePath, branch, repoRoot as repo, repositoryUrl } from './repo.mjs';
 
 const site = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(site, 'src', 'content', 'docs', 'synced');
@@ -51,7 +51,7 @@ function rewriteLink(target, source) {
   const file = posix.normalize(posix.join(posix.dirname(source), decodeURI(pathPart)));
   if (file.startsWith('..')) return target; // outside the repository: leave as is
   const route = ROUTES[file] ?? ALIASES[file];
-  if (route !== undefined) return `/${route}${route ? '/' : ''}${anchor ?? ''}`;
+  if (route !== undefined) return `${basePath}/${route}${route ? '/' : ''}${anchor ?? ''}`;
   if (file.startsWith('docs/') && file.endsWith('.md')) {
     throw new Error(`${source}: link to ${file}, which has no route in sync-docs.mjs`);
   }

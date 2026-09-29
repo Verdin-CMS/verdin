@@ -6,6 +6,8 @@ running on PostgreSQL, MySQL, MariaDB and SQLite. 100% free — there is no ente
 > **Status:** 0.9 — beyond Strapi: realtime and presence, comments and tasks, full-text search, 2FA with passkeys, visual editing, AI actions, sitemap, redirects, menus and forms. See the [changelog](CHANGELOG.md), the
 > [architecture](docs/architecture.md) and the [roadmap](docs/roadmap.md).
 
+**Documentation:** <https://verdin-cms.github.io/verdin/>
+
 ## Quick start
 
 With Docker (SQLite in a volume, content-type builder enabled):

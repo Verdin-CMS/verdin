@@ -67,7 +67,7 @@ docker run -p 1337:1337 --env-file verdin.env \
 
 Content types live in `schema/content-types/<singularName>.json` and components in
 `schema/components/<category>/<name>.json`, in the Strapi format (see the
-[architecture](/reference/architecture/)).
+[architecture](../../reference/architecture/)).
 
 ```sh
 verdin schema check                      # validate every schema file
@@ -95,14 +95,14 @@ verdin admin reset-password --email you@example.com
 | Command | What it does |
 | --- | --- |
 | `verdin types -o src/verdin-types.ts` | Writes TypeScript definitions of the content API (standard output without `-o`). |
-| `verdin import strapi <export>` | Imports a Strapi project; see [Importing from Strapi](/start/importing-from-strapi/). |
+| `verdin import strapi <export>` | Imports a Strapi project; see [Importing from Strapi](../../start/importing-from-strapi/). |
 | `verdin version` | Prints version information. |
 
 Every command takes `-c, --config <path>` (default `verdin.toml`, or `VERDIN_CONFIG`).
-Settings are described in the [configuration reference](/reference/configuration/).
+Settings are described in the [configuration reference](../../reference/configuration/).
 
 ## Health checks
 
 `GET /_health` answers while the process is up. `GET /_ready` also checks the database
 and answers 503 when it cannot be reached — point load balancers at it (see
-[Running several instances](/guides/scaling/)).
+[Running several instances](../../guides/scaling/)).
