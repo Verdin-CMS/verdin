@@ -227,3 +227,89 @@ async fn profile_sessions_and_token_regeneration() {
     );
     app.done().await;
 }
+
+#[tokio::test]
+async fn only_super_admins_manage_super_admins() {
+    let app = App::new(Schema::default()).await;
+    let admin = register(&app).await;
+    let call = |method: Method, uri: String, body: Option<Value>, who: String| {
+        let app = &app;
+        async move { app.call_as(method, &uri, body, As::Bearer(&who)).await }
+    };
+    let (_, roles) = call(Method::GET, "/admin/api/roles".into(), None, admin.clone()).await;
+    let super_admin = roles["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["code"] == "super-admin")
+        .unwrap()["id"]
+        .clone();
+    let (_, role) = call(
+        Method::POST,
+        "/admin/api/roles".into(),
+        Some(json!({ "code": "people", "name": "People",
+                     "permissions": [{ "action": "users.manage" }] })),
+        admin.clone(),
+    )
+    .await;
+    let (_, bob) = call(
+        Method::POST,
+        "/admin/api/users".into(),
+        Some(json!({ "email": "bob@example.com", "password": PASSWORD, "roles": [role["data"]["id"]] })),
+        admin.clone(),
+    )
+    .await;
+    let bob_id = bob["data"]["id"].as_i64().unwrap();
+    let body = json!({ "email": "bob@example.com", "password": PASSWORD });
+    let (_, session) =
+        app.call_as(Method::POST, "/admin/api/auth/login", Some(body), As::Anonymous).await;
+    let bob = session["data"]["accessToken"].as_str().unwrap().to_owned();
+    let (_, me) = call(Method::GET, "/admin/api/auth/me".into(), None, admin.clone()).await;
+    let ada_id = me["data"]["user"]["id"].as_i64().unwrap();
+
+    // Bob manages users, but not the Super Admin, and cannot make anyone one.
+    for (method, uri, body) in [
+        (Method::POST, format!("/admin/api/users/{ada_id}/invite"), None),
+        (
+            Method::PUT,
+            format!("/admin/api/users/{ada_id}"),
+            Some(json!({ "password": "taken over 1" })),
+        ),
+        (Method::DELETE, format!("/admin/api/users/{ada_id}"), None),
+        (Method::DELETE, format!("/admin/api/users/{ada_id}/two-factor"), None),
+        (
+            Method::PUT,
+            format!("/admin/api/users/{bob_id}"),
+            Some(json!({ "roles": [super_admin] })),
+        ),
+        (
+            Method::POST,
+            "/admin/api/users".into(),
+            Some(
+                json!({ "email": "mal@example.com", "password": PASSWORD, "roles": [super_admin] }),
+            ),
+        ),
+    ] {
+        let (status, body) = call(method.clone(), uri.clone(), body, bob.clone()).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}: {body}");
+    }
+    assert_eq!(login(&app, "ada@example.com", PASSWORD).await, StatusCode::OK);
+
+    // Accounts in use are not invited again (they reset their password instead).
+    let (status, _) =
+        call(Method::POST, format!("/admin/api/users/{bob_id}/invite"), None, admin.clone()).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    // Admins who never signed in are.
+    let (_, carl) = call(
+        Method::POST,
+        "/admin/api/users".into(),
+        Some(json!({ "email": "carl@example.com", "roles": [role["data"]["id"]] })),
+        bob.clone(),
+    )
+    .await;
+    let carl_id = carl["data"]["id"].as_i64().unwrap();
+    let (status, _) =
+        call(Method::POST, format!("/admin/api/users/{carl_id}/invite"), None, bob.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    app.done().await;
+}

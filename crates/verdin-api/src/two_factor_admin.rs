@@ -240,11 +240,7 @@ async fn reset(
 ) -> ApiResult {
     let principal = require(&state, &headers, actions::USERS_MANAGE).await?;
     // A Super Admin's factors only yield to another Super Admin.
-    let target = state.auth.user(id).await?;
-    let target_is_super = target.roles.iter().any(|role| role.code == verdin_auth::SUPER_ADMIN);
-    if target_is_super && !principal.permissions.super_admin {
-        return Err(ApiError::Forbidden);
-    }
+    super::guard_privileged(&state, &principal, Some(id), None).await?;
     state.auth.reset_two_factor(id).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }

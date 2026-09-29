@@ -401,6 +401,22 @@ fn require_csrf(headers: &HeaderMap) -> Result<(), ApiError> {
     if headers.contains_key(CSRF_HEADER) { Ok(()) } else { Err(ApiError::Forbidden) }
 }
 
+/// A session, or the second sign-in step when the account has a second factor.
+fn login_response(state: &AdminState, login: verdin_auth::Login) -> Response {
+    match login {
+        verdin_auth::Login::Session(session) => session_response(state, session, StatusCode::OK),
+        verdin_auth::Login::SecondFactor { token, methods } => {
+            let mut response = data(
+                json!({ "twoFactorRequired": true, "twoFactorToken": token, "methods": methods }),
+            );
+            response
+                .headers_mut()
+                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            response
+        }
+    }
+}
+
 fn session_response(state: &AdminState, session: Session, status: StatusCode) -> Response {
     let max_age =
         (session.refresh_expires_at - time::OffsetDateTime::now_utc()).whole_seconds().max(0);
@@ -479,20 +495,8 @@ async fn login(
 ) -> ApiResult {
     rate_limit(&state, &ip)?;
     let input: LoginBody = body(&bytes)?;
-    match state.auth.login(&input.email, &input.password, user_agent(&headers)).await? {
-        verdin_auth::Login::Session(session) => {
-            Ok(session_response(&state, session, StatusCode::OK))
-        }
-        verdin_auth::Login::SecondFactor { token, methods } => {
-            let mut response = data(
-                json!({ "twoFactorRequired": true, "twoFactorToken": token, "methods": methods }),
-            );
-            response
-                .headers_mut()
-                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-            Ok(response)
-        }
-    }
+    let login = state.auth.login(&input.email, &input.password, user_agent(&headers)).await?;
+    Ok(login_response(&state, login))
 }
 
 async fn refresh(
@@ -581,6 +585,31 @@ struct UserPatch {
     is_active: Option<bool>,
 }
 
+/// Only a Super Admin manages Super Admins (`target`) or makes someone one (`roles`).
+async fn guard_privileged(
+    state: &AdminState,
+    principal: &AdminPrincipal,
+    target: Option<i64>,
+    roles: Option<&[i64]>,
+) -> Result<(), ApiError> {
+    if principal.permissions.super_admin {
+        return Ok(());
+    }
+    if let Some(id) = target {
+        let user = state.auth.user(id).await?;
+        if user.roles.iter().any(|role| role.code == verdin_auth::SUPER_ADMIN) {
+            return Err(ApiError::Forbidden);
+        }
+    }
+    if let Some(roles) = roles {
+        let super_admin = state.auth.role_by_code(verdin_auth::SUPER_ADMIN).await?;
+        if roles.contains(&super_admin.id) {
+            return Err(ApiError::Forbidden);
+        }
+    }
+    Ok(())
+}
+
 async fn list_users(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
     require(&state, &headers, actions::USERS_MANAGE).await?;
     Ok(data(state.auth.users().await?))
@@ -600,8 +629,9 @@ async fn create_user(
     headers: HeaderMap,
     bytes: Bytes,
 ) -> ApiResult {
-    require(&state, &headers, actions::USERS_MANAGE).await?;
+    let principal = require(&state, &headers, actions::USERS_MANAGE).await?;
     let input: UserBody = body(&bytes)?;
+    guard_privileged(&state, &principal, None, Some(&input.roles)).await?;
     let invited = input.password.is_none();
     // Invited admins get a password nobody knows until they choose theirs.
     let password =
@@ -631,8 +661,9 @@ async fn update_user(
     headers: HeaderMap,
     bytes: Bytes,
 ) -> ApiResult {
-    require(&state, &headers, actions::USERS_MANAGE).await?;
+    let principal = require(&state, &headers, actions::USERS_MANAGE).await?;
     let input: UserPatch = body(&bytes)?;
+    guard_privileged(&state, &principal, Some(id), input.roles.as_deref()).await?;
     let update = UserUpdate {
         email: input.email,
         password: input.password,
@@ -649,7 +680,8 @@ async fn delete_user(
     Path(id): Path<i64>,
     headers: HeaderMap,
 ) -> ApiResult {
-    require(&state, &headers, actions::USERS_MANAGE).await?;
+    let principal = require(&state, &headers, actions::USERS_MANAGE).await?;
+    guard_privileged(&state, &principal, Some(id), None).await?;
     state.auth.delete_user(id).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }

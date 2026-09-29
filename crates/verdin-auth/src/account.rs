@@ -141,16 +141,17 @@ impl AuthService {
         Ok(user)
     }
 
-    /// Accepts an invitation and signs the admin in.
+    /// Accepts an invitation and signs the admin in (through their second factor, when
+    /// they have one).
     pub async fn accept_invitation(
         &self,
         token: &str,
         password: &str,
         update: UserUpdate,
         user_agent: Option<&str>,
-    ) -> Result<Session> {
+    ) -> Result<super::Login> {
         let user = self.use_link(token, LinkKind::Invite, password, update).await?;
-        self.open_session(user, user_agent).await
+        self.after_password(user.id, user_agent).await
     }
 
     /// A reset link for the active admin with this email, unless one was sent moments
@@ -181,6 +182,18 @@ impl AuthService {
         }
         let token = self.issue_link(user.id, LinkKind::Reset).await?;
         Ok(Some((user, token)))
+    }
+
+    /// Whether the admin ever signed in (a session was opened for them).
+    pub async fn has_signed_in(&self, user_id: i64) -> Result<bool> {
+        Ok(self
+            .db
+            .queries()
+            .has_rows(
+                &format!("SELECT 1 FROM {SESSIONS} WHERE user_id = ? LIMIT 1"),
+                &[V::BigInt(user_id)],
+            )
+            .await?)
     }
 
     /// Whether the admin has never set a password of their own (an invitation is pending).

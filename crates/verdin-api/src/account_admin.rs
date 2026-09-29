@@ -107,7 +107,14 @@ async fn reinvite(
     Path(id): Path<i64>,
     headers: HeaderMap,
 ) -> ApiResult {
-    require(&state, &headers, actions::USERS_MANAGE).await?;
+    let principal = require(&state, &headers, actions::USERS_MANAGE).await?;
+    super::guard_privileged(&state, &principal, Some(id), None).await?;
+    // Accounts in use recover access with a password reset, which only their owner gets.
+    if state.auth.has_signed_in(id).await? {
+        return Err(ApiError::Conflict(
+            "this admin has signed in already: they can reset their password".into(),
+        ));
+    }
     let user = state.auth.user(id).await?;
     Ok(data(invite(&state, &user).await?))
 }
@@ -157,12 +164,12 @@ async fn accept_invitation(
     let input: AcceptBody = body(&bytes)?;
     let update =
         UserUpdate { firstname: input.firstname, lastname: input.lastname, ..Default::default() };
-    let session = state
+    let login = state
         .auth
         .accept_invitation(&input.token, &input.password, update, user_agent(&headers))
         .await
         .map_err(expired)?;
-    Ok(session_response(&state, session, StatusCode::OK))
+    Ok(super::login_response(&state, login))
 }
 
 #[derive(Deserialize)]
