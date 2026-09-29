@@ -485,7 +485,9 @@ impl UploadService {
         select.push(" ORDER BY ").ident(column).push(&format!(" {direction}, "));
         select.ident("id").push(&format!(" {direction}"));
         select.push(" LIMIT ").param(SqlValue::BigInt(page_size as i64));
-        select.push(" OFFSET ").param(SqlValue::BigInt(((page - 1) * page_size) as i64));
+        select.push(" OFFSET ").param(SqlValue::BigInt(
+            page.saturating_sub(1).saturating_mul(page_size).min(i64::MAX as u64) as i64,
+        ));
         let rows =
             self.db.queries().fetch_all(&select.sql, &select.params, &FileRecord::kinds()).await?;
         Ok(FileList {

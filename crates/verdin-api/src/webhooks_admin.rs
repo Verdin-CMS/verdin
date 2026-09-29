@@ -357,7 +357,7 @@ async fn page(
                 "SELECT id, event, payload, status, attempts, next_attempt_at, response_status, \
                  response_body, error, duration_ms, created_at, updated_at FROM {WEBHOOK_DELIVERIES} \
                  WHERE webhook_id = ? ORDER BY id DESC LIMIT {size} OFFSET {}",
-                (page - 1) * size
+                page.saturating_sub(1).saturating_mul(size).min(i64::MAX as u64)
             ),
             &[V::BigInt(webhook_id)],
             &[

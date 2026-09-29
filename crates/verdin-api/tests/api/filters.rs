@@ -86,3 +86,17 @@ async fn filters_on_repeatable_components_and_zones() {
     assert_eq!(status, StatusCode::BAD_REQUEST, "zone items are filtered by __component only");
     app.done().await;
 }
+
+#[tokio::test]
+async fn huge_pages_are_empty() {
+    let app = App::new(schema()).await;
+    app.post("/api/pages", json!({ "title": "One" })).await;
+    for query in [
+        "pagination[page]=9223372036854775807&pagination[pageSize]=100",
+        "pagination[start]=9223372036854775807",
+    ] {
+        let (status, body) = app.get(&format!("/api/pages?{query}")).await;
+        assert_eq!(status, StatusCode::OK, "{query}: {body}");
+        assert_eq!(body["data"], json!([]), "{query}");
+    }
+}

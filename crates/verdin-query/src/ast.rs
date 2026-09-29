@@ -93,11 +93,13 @@ pub struct Pagination {
 }
 
 impl Pagination {
+    /// Rows skipped, at most `i64::MAX` (what databases take).
     pub fn offset(&self) -> u64 {
-        match self.mode {
-            PageMode::Page { page, page_size } => (page - 1) * page_size,
+        let offset = match self.mode {
+            PageMode::Page { page, page_size } => page.saturating_sub(1).saturating_mul(page_size),
             PageMode::Offset { start, .. } => start,
-        }
+        };
+        offset.min(i64::MAX as u64)
     }
 
     pub fn limit(&self) -> u64 {

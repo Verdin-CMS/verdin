@@ -93,7 +93,7 @@ async fn list(
                 "SELECT a.id, a.at, a.actor_kind, a.actor_id, a.action, a.subject, a.subject_id, a.details, a.ip, \
                  u.email, u.firstname, u.lastname FROM {AUDIT_LOGS} a LEFT JOIN {ADMIN_USERS} u ON u.id = a.actor_id\
                  {filter} ORDER BY a.id DESC LIMIT {size} OFFSET {}",
-                (page - 1) * size
+                page.saturating_sub(1).saturating_mul(size).min(i64::MAX as u64)
             ),
             &params,
             &[K::BigInt, K::DateTime, K::Text, K::BigInt, K::Text, K::Text, K::Text, K::Json, K::Text, K::Text, K::Text, K::Text],
