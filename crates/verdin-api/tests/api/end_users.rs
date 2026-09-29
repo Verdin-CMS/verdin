@@ -596,3 +596,19 @@ async fn refresh_tokens_rotate() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     app.done().await;
 }
+
+#[tokio::test]
+async fn wrong_passwords_lock_the_account() {
+    let app = App::new(schema()).await;
+    let account =
+        json!({ "username": "eve", "email": "eve@example.com", "password": "correct horse 1" });
+    assert_eq!(post_json(&app, "/api/auth/local/register", account).await.0, StatusCode::OK);
+    let login = |password: &str| json!({ "identifier": "eve", "password": password });
+    for _ in 0..5 {
+        let (status, _) = post_json(&app, "/api/auth/local", login("wrong password")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (status, body) = post_json(&app, "/api/auth/local", login("correct horse 1")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "locked: {body}");
+    assert_eq!(body["error"]["message"], "Invalid identifier or password");
+}

@@ -4,7 +4,7 @@
 
 use verdin_schema::naming::index_name;
 
-use crate::model::{Column, ColumnType, ForeignKey, Index, Table};
+use crate::model::{Column, ColumnDefault, ColumnType, ForeignKey, Index, Table};
 
 pub const ADMIN_USERS: &str = "vd_admin_users";
 pub const ADMIN_ROLES: &str = "vd_admin_roles";
@@ -500,6 +500,11 @@ pub fn system_tables() -> Vec<Table> {
                     varchar("confirmation_token", 64),
                     varchar("reset_token", 64),
                     Column::new("reset_expires_at", ColumnType::DateTime),
+                    // Wrong passwords in a row; the account locks for a while at the limit.
+                    Column::new("failed_logins", ColumnType::Integer)
+                        .not_null()
+                        .default_value(ColumnDefault::Int(0)),
+                    Column::new("locked_until", ColumnType::DateTime),
                 ],
                 timestamps().to_vec(),
             ]

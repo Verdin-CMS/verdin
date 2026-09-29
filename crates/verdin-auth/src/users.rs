@@ -506,9 +506,21 @@ impl AuthService {
             crypto::dummy_verify(password);
             return Err(AuthError::InvalidCredentials);
         };
-        if !verify(password, &hash) {
+        if self.end_user_locked(user.id).await? {
+            crypto::dummy_verify(password);
             return Err(AuthError::InvalidCredentials);
         }
+        if !verify(password, &hash) {
+            self.record_end_user_failure(user.id).await?;
+            return Err(AuthError::InvalidCredentials);
+        }
+        self.db
+            .queries()
+            .execute(
+                &format!("UPDATE {USERS} SET failed_logins = 0 WHERE id = ? AND failed_logins > 0"),
+                &[V::BigInt(user.id)],
+            )
+            .await?;
         if hash.starts_with("$2") || crypto::needs_rehash(&hash) {
             self.db
                 .queries()
@@ -519,6 +531,49 @@ impl AuthService {
                 .await?;
         }
         Ok(user)
+    }
+
+    async fn end_user_locked(&self, id: i64) -> Result<bool> {
+        let rows = self
+            .db
+            .queries()
+            .fetch_all(
+                &format!("SELECT locked_until FROM {USERS} WHERE id = ?"),
+                &[V::BigInt(id)],
+                &[K::DateTime],
+            )
+            .await?;
+        Ok(
+            matches!(rows.first().map(|row| &row[0]), Some(V::DateTime(until)) if *until > OffsetDateTime::now_utc()),
+        )
+    }
+
+    /// Counts a wrong password; locks the account at the limit, as for admins.
+    async fn record_end_user_failure(&self, id: i64) -> Result<()> {
+        let mut tx = self.db.begin().await?;
+        tx.execute(
+            &format!("UPDATE {USERS} SET failed_logins = failed_logins + 1 WHERE id = ?"),
+            &[V::BigInt(id)],
+        )
+        .await?;
+        let rows = tx
+            .fetch_all(
+                &format!("SELECT failed_logins FROM {USERS} WHERE id = ?"),
+                &[V::BigInt(id)],
+                &[K::Int],
+            )
+            .await?;
+        let failed = rows.first().and_then(|row| row[0].as_i64()).unwrap_or_default();
+        if failed >= i64::from(self.config.max_failed_logins) {
+            tracing::warn!(user = id, "end user account locked after repeated failed sign-ins");
+            tx.execute(
+                &format!("UPDATE {USERS} SET failed_logins = 0, locked_until = ? WHERE id = ?"),
+                &[V::DateTime(OffsetDateTime::now_utc() + self.config.lockout), V::BigInt(id)],
+            )
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
     }
 
     /// A JWT for the content API.
