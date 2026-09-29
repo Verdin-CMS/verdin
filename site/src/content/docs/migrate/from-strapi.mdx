@@ -1,0 +1,216 @@
+---
+title: Migrating from Strapi
+description: Move a Strapi v4 or v5 project to Verdin with verdin import strapi — export, import, what comes across, the id map, checks afterwards and the changes your frontend needs.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../components/Diagram.astro';
+
+`verdin import strapi` brings a Strapi v4 or v5 project into Verdin: its content types
+and components become schema files, and its entries, locales, media library, relations,
+end users and public permissions are imported. This page walks through a migration and
+lists what your frontend has to change. For a feature-by-feature comparison, see
+[Strapi compatibility](/migrate/compatibility/).
+
+<Diagram
+  caption="The importer reads Strapi's export file; it never connects to the Strapi database."
+  code={`flowchart LR
+  S[Strapi project] -->|strapi export| E[export .tar.gz]
+  E -->|verdin import strapi| F[schema files]
+  F --> M[migrate database]
+  M --> D[entries, media, users]
+  D --> R[strapi-id-map.json]`}
+/>
+
+## Before you start
+
+- A Strapi v4 or v5 project where you can run `strapi export`.
+- A new Verdin project (`verdin new my-site`), or one without schema files of the same
+  names. See the [quickstart](/start/quickstart/).
+- The database and media storage the Verdin project will use in production, if you can:
+  files are copied into the configured upload provider during the import.
+
+## 1. Export from Strapi
+
+In the Strapi project:
+
+```sh frame="terminal"
+npx strapi export --no-encrypt -f my-export      # writes my-export.tar.gz
+```
+
+Verdin cannot read encrypted exports (`.tar.gz.enc`); export again with `--no-encrypt`.
+Uncompressed exports (`--no-compress`, a `.tar`) and an unpacked export directory work
+too.
+
+## 2. Import into Verdin
+
+<Steps>
+
+1. Create the project and import the export:
+
+   ```sh frame="terminal"
+   verdin new my-site && cd my-site
+   verdin import strapi ../my-export.tar.gz
+   ```
+
+2. Read the summary. The importer prints how many documents, versions, files, folders,
+   locales and links it imported, then one line per warning.
+
+3. Start the development server and open the admin panel:
+
+   ```sh frame="terminal"
+   verdin dev
+   ```
+
+</Steps>
+
+The command runs these steps in order:
+
+1. Writes one schema file per `api::` content type and per component to `schema/`. If
+   the converted schema does not validate, nothing is written.
+2. Migrates the database (safe steps).
+3. Imports locales, media folders and files, entries (every draft, published version and
+   locale), relations, and the media attached to entries and components.
+4. Imports end users, their roles and the public and authenticated permissions.
+5. Writes `strapi-id-map.json` in the project directory.
+
+| Option | Effect |
+| --- | --- |
+| `--schema-only` | Stop after writing the schema files. Useful to review or adjust the schema first. |
+| `--force` | Overwrite existing schema files, and import into content types that already have entries. |
+
+Without `--force`, the import stops if a schema file it would write already exists, or
+if a content type already has entries.
+
+## What comes across
+
+| Strapi | Verdin |
+| --- | --- |
+| `api::…` content types and components | Schema files, keeping `collectionName`, draft and publish, i18n options and field options (`required`, `private`, `unique`, lengths, `regex`, defaults…) |
+| Relations between `api::` types | The same relations |
+| Relations inside components | `oneWay` / `manyWay` references |
+| Polymorphic relations (`morphToOne`, `morphToMany`, `morphOne`, `morphMany`) | The same, with their links to imported content types |
+| Media fields (also in components) | Media fields |
+| v5 rows (draft and published) | Draft and published versions |
+| v4 rows | A draft, plus a published version when `publishedAt` is set; `localizations` become locales of one document |
+| `plugin::i18n.locale` | Locales (Strapi's default stays the default) |
+| `plugin::upload.file` and `folder` | Media library files (with their formats) and folders |
+| `password` fields | `password` fields, keeping Strapi's bcrypt hashes |
+| Custom fields (`customField`) | The attribute with its `customField` kept; see below |
+| Conditional fields (`conditions`, Strapi 5.17) | Kept in the schema and applied by the editor |
+| `plugin::users-permissions.user` | End users, with their bcrypt passwords (re-hashed with Argon2id at the next sign-in), `confirmed` and `blocked` |
+| Users & Permissions roles | The Public role's grants become Verdin's public permissions; Authenticated and custom roles become end-user roles |
+| Role permissions on content types and uploads | `find`, `findOne`, `create`, `update` and `delete` grants; upload `find`, `findOne`, `upload` and `destroy` |
+
+## What does not come across
+
+Reported as warnings:
+
+- Relations to admin users, end users or other plugins' types (only `api::` targets are
+  imported). The `createdBy` / `updatedBy` fields are left out.
+- `unique` on `text`, `richtext`, `blocks` and `json` attributes (Verdin supports it on
+  short text types).
+- Attribute types Verdin does not know, and relation types it cannot store inside a
+  component.
+- Relation halves whose `inversedBy` / `mappedBy` do not match the other side.
+- Locale codes that are not valid.
+
+Not imported at all: admin users and admin roles, API tokens, transfer tokens,
+webhooks, releases, review workflow stages, content history and audit logs, and the
+settings of Strapi plugins. Your Strapi code — controllers, services, routes, policies,
+middlewares, lifecycle hooks, cron tasks and admin customizations — has no Verdin
+equivalent to convert to; see [Rebuild custom code](#rebuild-custom-code).
+
+<Aside type="note">
+Custom fields keep their `customField` name, such as `plugin::color-picker.color`. The
+editor shows them with a [plugin](/extending/plugins/) that provides that field, and
+falls back to the input for the stored type when none does.
+</Aside>
+
+## The id map
+
+Verdin generates new document ids: Strapi's `documentId`s have 24 characters and
+Verdin's have 26, so every document gets a new one. Numeric `id`s change too.
+`strapi-id-map.json` records the mapping:
+
+```json title="strapi-id-map.json"
+{
+  "documents": {
+    "api::article": {
+      "hq7xw1c6m2vkn0f3t8ybz5sd": "01k6b3xg0r9m2m7c1d4e5f6g7h"
+    }
+  },
+  "files": {
+    "12": 3
+  }
+}
+```
+
+- `documents` is keyed by the Verdin content type uid (`api::article`, Strapi's
+  `api::article.article`), then by the Strapi `documentId` (v5) or by a row id (v4:
+  one id stands for all the locales of a document).
+- `files` maps Strapi file ids to Verdin file ids.
+
+Use it to rewrite ids stored outside the CMS: links in your frontend's code, ids in
+another database, analytics, bookmarks.
+
+## Check the result
+
+1. `verdin schema check` passes, and `verdin migrate plan` says the database is up to
+   date.
+2. In the admin panel, open each collection and compare the number of entries, drafts
+   and locales with Strapi.
+3. Open a few entries with relations, components, dynamic zones and media, and check
+   that the links point to the right documents and files.
+4. Open the **Media library** and check that folders and images (with their formats)
+   are there.
+5. In **Settings → Public access** and **Settings → End users**, review the imported
+   permissions and roles.
+6. Call your API as your frontend does and compare the responses with Strapi's.
+
+Then commit `schema/`, create your admins, API tokens and webhooks, and deploy (see the
+[production checklist](/deploy/production-checklist/)).
+
+## Frontend changes
+
+The content API follows Strapi v5's REST and GraphQL shapes, so most requests work as
+they are. Change these:
+
+- **Base URL.** Point the frontend at the Verdin server. The content API is under
+  `/api` (`[api].prefix`), GraphQL at `/graphql` once you turn it on in
+  **Settings → Features**.
+- **API tokens.** Tokens are not imported: create new ones in **Settings → API tokens**
+  and replace them in your frontend's environment.
+- **Document ids.** Every `documentId` and numeric `id` is new. Replace ids hard-coded
+  in the frontend with the ones in `strapi-id-map.json`, or better, look entries up by a
+  slug or another `uid` field.
+- **Media URLs.** File URLs point at the new provider: `/uploads/…` on the Verdin server
+  for the local provider, or `[upload.provider].public_url` for S3. Update image
+  domains allowed by your framework (for example `images.remotePatterns` in Next.js).
+- **Signed-in end users** must sign in again: their passwords work, but JWTs issued by
+  Strapi do not.
+- **CORS.** If a browser calls the API from another origin, list it in
+  `[api].cors_origins`.
+- **Webhooks.** Recreate them in **Settings → Webhooks**. Strapi's
+  `entry.draft-discard` event is called `entry.discard-draft`, and deliveries are signed
+  (see [Webhooks](/guides/integrations/webhooks/)).
+- **Strapi v4 frontends** need the v5 changes too: flat responses without
+  `attributes`, `documentId` instead of `id` in URLs, and `status=draft` instead of
+  `publicationState=preview`.
+
+For typed access, generate TypeScript types with `verdin types` and use the
+[typed client](/guides/frontend/typed-client/).
+
+## Rebuild custom code
+
+| Strapi | Verdin |
+| --- | --- |
+| Lifecycle hooks, document service middlewares | Plugin hooks (`beforeCreate`, `afterUpdate`…) in a [WebAssembly plugin](/extending/plugins/) |
+| Custom routes and controllers | Plugin routes under `/api/plugins/<name>/` |
+| Cron tasks | Plugin jobs (`[[jobs]]`) |
+| Custom fields | Plugin custom fields |
+| Admin widgets | Plugin widgets, or the built-in dashboard widgets |
+| Admin logo, colors and texts | `[admin.branding]` in `verdin.toml` |
+| `config/*.js` | `verdin.toml` and environment variables ([configuration reference](/reference/configuration/)) |

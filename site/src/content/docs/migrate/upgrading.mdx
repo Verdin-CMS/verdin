@@ -1,0 +1,203 @@
+---
+title: Upgrading Verdin
+description: Upgrade a Verdin installation — the binary or the Docker image, the migrations that run on start, and the notable or breaking changes of each minor version.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
+
+This page explains how to move a project to a newer Verdin version, and lists what
+changed between minor versions. Verdin follows [Semantic Versioning](https://semver.org/)
+with a 0.x twist: until 1.0, a **minor** release (0.8 → 0.9) may change behaviour, and a
+**patch** release (0.9.0 → 0.9.1) only fixes and hardens.
+
+## Before you upgrade
+
+1. **Read the changelog** from your version to the new one: the
+   [changelog](/project/changelog/) lists every change, and the
+   [notes below](#upgrade-notes) summarize the ones that need action.
+2. **Back up** the database and the media storage (see [Backups](/deploy/backups/)).
+   Going back to an older version means restoring that backup: older versions do not
+   undo the tables and columns a newer one added.
+3. **Try it on a copy** of production if the notes mention behaviour your frontend or
+   editors rely on.
+
+You can skip versions. Migrations are computed from the difference between the database
+and what the new version expects, not replayed one release at a time, so 0.6 → 0.9
+migrates in one run. Read the notes of every version in between.
+
+## Upgrade
+
+<Tabs syncKey="install">
+<TabItem label="Docker">
+
+<Steps>
+
+1. Change the image tag in your Compose file, manifest or `Dockerfile`, for example
+   `ghcr.io/verdin-cms/verdin:0.9` → `ghcr.io/verdin-cms/verdin:0.10`. A minor tag
+   (`0.9`) follows its patch releases; pin a full version (`0.9.1`) to decide when
+   those arrive too.
+
+2. Pull and restart:
+
+   ```sh frame="terminal"
+   docker compose pull verdin
+   docker compose up -d verdin
+   docker compose logs -f verdin
+   ```
+
+   The image's default command, `start --migrate`, applies the new version's migrations
+   before it serves. Look for `applied migrations` and `verdin listening` in the logs.
+
+</Steps>
+
+</TabItem>
+<TabItem label="Binary">
+
+<Steps>
+
+1. Download the archive for your platform from the
+   [releases page](https://github.com/Verdin-CMS/verdin/releases), for example
+   `verdin-v0.9.1-x86_64-unknown-linux-musl.tar.gz`, and check it against the release's
+   `SHA256SUMS`:
+
+   ```sh frame="terminal"
+   sha256sum --ignore-missing -c SHA256SUMS
+   tar xzf verdin-v0.9.1-x86_64-unknown-linux-musl.tar.gz
+   ```
+
+2. Stop the server, replace the `verdin` binary, and check the version:
+
+   ```sh frame="terminal"
+   verdin version
+   ```
+
+3. Review and apply the migrations from the project directory:
+
+   ```sh frame="terminal"
+   verdin migrate plan
+   verdin migrate apply
+   ```
+
+   Or start with `verdin start --migrate`, which applies the safe steps first.
+
+4. Start the server as usual (`verdin start`).
+
+</Steps>
+
+</TabItem>
+</Tabs>
+
+## Migrations on start
+
+A new version often adds tables or columns of its own (sessions, settings, new
+features). `verdin start` compares the database with what the schema and the new
+version need:
+
+- If they match, it starts.
+- If steps are pending, it refuses to start and tells you to run `verdin migrate plan`
+  and `verdin migrate apply`, or to start with `--migrate`.
+- `--migrate` applies **safe** steps only. If a step is risky or destructive, the start
+  fails and you apply it yourself with `verdin migrate apply --allow risky` (or
+  `destructive`) after reading the plan.
+- On MySQL and MariaDB, where schema changes cannot run in a transaction, an interrupted
+  migration resumes from the failed step on the next `verdin migrate apply`.
+
+With several instances, a rolling upgrade works: the first new instance takes the
+migration lock and migrates, the others wait for it and find nothing left to do. See
+[Running several instances](/deploy/scaling/).
+
+<Aside type="caution">
+Upgrade the whole project to one version. Do not keep instances of two minor versions
+running side by side for longer than a rolling deploy takes.
+</Aside>
+
+## Upgrade notes
+
+Notable and breaking changes per version, oldest last. The [changelog](/project/changelog/)
+has the complete list.
+
+### 0.9.0 → 0.9.1
+
+A hardening release; upgrading is recommended for every installation. Its migration
+(one new table, two new columns) runs on start.
+
+- **Behind a reverse proxy, set `[server].trusted_proxies`.** Only listed proxies'
+  `X-Forwarded-For` is used for the client address; otherwise every client behind the
+  proxy shares one address for rate limits and audit logs.
+- **Browser frontends on another origin need `[api].cors_origins`.** 0.9.1 adds CORS to
+  the content API and GraphQL; there was no CORS support before.
+- **Reads through relations follow permissions.** `populate`, relation filters and
+  relation sorts reach only the types and fields the caller may read, on every API.
+  Public and token requests that populated types they had no `find` grant on now get
+  less data: grant the missing permissions.
+- **SSO is stricter.** Its settings need a Super Admin; `defaultRoles` and `roleMap`
+  cannot grant Super Admin; the provider's `email_verified` claim must be true (unless
+  `trustUnverifiedEmail`); admins' second factor applies unless the provider is trusted
+  for it (`providerMfa`); the issuer and token endpoint must be public `https` URLs.
+  Check your SSO sign-ins after upgrading.
+- **Super Admins** can only be created, edited, deleted, re-invited or reset by another
+  Super Admin.
+- **End-user accounts lock** after repeated wrong passwords, like admin accounts.
+- Populated relations return at most 1,000 entries per entry and relation.
+- Search indexes are rebuilt on the first start (private component fields are no
+  longer indexed).
+
+### 0.8 → 0.9
+
+- The admin list's search box searches every text field (`_q`) instead of the title.
+- New admin permissions `deploy.manage`, `deploy.trigger` and `site.manage`; Editors
+  get `deploy.trigger` and `site.manage`.
+- New optional features (realtime, comments and tasks, AI actions, SEO and sitemap,
+  redirects, menus, forms) are off until you switch them on. Metrics need
+  `[metrics].enabled = true`.
+
+### 0.7 → 0.8
+
+- **Conditional fields are applied**: a field hidden by its `conditions` is no longer
+  required. Content that relied on such a field being required may now save without it.
+- New `password` attribute type; `verdin import strapi` now imports Strapi's password
+  fields.
+
+### 0.7.0 → 0.7.1
+
+- The plugin runtime moves to Wasmtime 48. Existing plugins keep working without a
+  rebuild.
+- Building from source needs Rust 1.95 or later.
+
+### 0.6 → 0.7
+
+- **Several instances**: each instance reads settings changed by the others every
+  `[server].sync_interval_secs` (10 s). If you run more than one, set
+  `[plugins].run_jobs = false` on all but one.
+- Content that plugins write through the host now goes through the platform's
+  before-write checks, such as review workflow stages. Plugins' own before-write hooks
+  are still skipped for these writes, so a plugin cannot trigger itself.
+
+### 0.5 → 0.6
+
+- **Audit logs** are on by default and keep entries for `[audit].retention_days` (90).
+  Turn the feature off in **Settings → Features** if you do not want them.
+
+### 0.4 → 0.5
+
+- Nothing to change. Plugins are loaded from `[plugins].path` (`plugins/`) and stay off
+  until switched on.
+
+### 0.3 → 0.4
+
+- **`auth`, `users` and `connect` are reserved route names**, along with `upload` and
+  `uploads`: rename content types whose API name is one of them before upgrading.
+
+### 0.2 → 0.3
+
+- Attribute names follow Strapi's rule (a letter, then letters, digits and underscores)
+  instead of camelCase only. Two names that map to the same column are refused.
+- `regex` options accept JavaScript-like patterns.
+
+### 0.1 → 0.2
+
+- Body size limits and timeouts apply per API router; uploads have their own limits
+  (`[upload].max_file_size`).
+- Built-in roles of existing installations receive the new permissions once.
