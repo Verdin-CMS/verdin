@@ -1,6 +1,6 @@
-# Verdin — Architecture (MVP)
+# Verdin — Architecture
 
-> Status: v1.3 · 2026-09-29 (MVP M0–M6 implemented; release 0.9.0: realtime, collaboration, search, 2FA, visual editing, AI actions, site features)
+> Status: release 0.9.1 · 2026-09-29. Describes the code as shipped; planned work is in [roadmap.md](roadmap.md).
 > Verdin is an open source headless CMS written in Rust, inspired by Strapi v5.
 > Everything is free software: there is no "Enterprise" edition and no paid features.
 
@@ -15,24 +15,13 @@ Verdin aims to deliver the Strapi experience (visual content modeling, generated
 - **Real multi-database support from day one**: PostgreSQL, MySQL, MariaDB and SQLite, all covered by the same test suite.
 - **Schema as code**: content types are JSON files you version in git.
 - **A REST API compatible with Strapi v5** wherever reasonable, so existing frontends migrate with minimal changes.
-- **Everything free**: SSO, audit logs, review workflows, releases — when they land, they land for everyone.
+- **Everything free**: SSO, audit logs, review workflows, releases and every other feature ship for everyone.
 
-### 1.1 MVP goals (v0.1)
+### 1.1 Scope and roadmap
 
-1. Define content types (collection types and single types) and components in schema files.
-2. Generate and apply database migrations automatically from schema changes.
-3. Content REST API: CRUD, filters, sorting, pagination, field selection and `populate`.
-4. Relations, components and dynamic zones.
-5. Draft & publish.
-6. Admin users, basic roles, API tokens and public permissions.
-7. Admin panel in Angular + spartan/ui: login, content manager, content-type builder (dev mode only) and settings.
-8. Automatically generated OpenAPI.
+What has shipped, release by release, and what comes next is in [roadmap.md](roadmap.md).
 
-### 1.2 Out of the MVP (planned)
-
-Media library and upload providers, content i18n, GraphQL, webhooks, WASM plugins, end users (the `users-permissions` equivalent), SSO/OIDC, audit logs, review workflows, releases, content history, blocks editor and a Strapi importer. See §17.
-
-### 1.3 Non-goals
+### 1.2 Non-goals
 
 - Compatibility with Strapi (JS) plugins. The plugin system will be WASM-based.
 - Binary compatibility with Strapi's database. Migration is done through an importer.
@@ -59,7 +48,7 @@ Media library and upload providers, content i18n, GraphQL, webhooks, WASM plugin
  Frontends ───▶ │  /api/*  Content API (REST)  ─┐                                               │
                 │                               │                                               │
  Admin SPA ───▶ │  /admin/api/*  Admin API ─────┼──▶  Document Service ──▶  Query Engine ──▶ DB  │──▶ PostgreSQL
- (embedded)     │  /admin/*  Angular assets     │        │     │               (sea-query)     │    MySQL
+ (embedded)     │  /admin/*  Angular assets     │        │     │               (own builders)  │    MySQL
                 │                               │        │     └─ Validation (schema)          │    MariaDB
                 │  Auth / RBAC middleware ──────┘        └─ Event bus (lifecycles)             │    SQLite
                 │                                                                               │
@@ -107,13 +96,13 @@ Media library and upload providers, content i18n, GraphQL, webhooks, WASM plugin
 | Forms | Signal Forms (`@angular/forms/signals`) |
 | Tables | spartan helm table (server-side paging and sorting; no table library needed so far) |
 | API client | Hand-written types (`core/types.ts`) + a thin promise-based `HttpClient` wrapper; generated types later |
-| UI i18n | English only in v0.1; Transloco planned (runtime language loading, single embedded build) |
-| Markdown | Plain textarea in v0.1; preview (`marked` + `DOMPurify`) planned |
+| UI i18n | Transloco with runtime language loading and a single embedded build (decision 29) |
+| Rich text | Markdown editor with preview (`marked` + `DOMPurify`); `blocks` fields with TipTap |
 | Tests | Vitest (form model) + Playwright (e2e against the binary on SQLite) |
 
 ### 4.3 Documentation & website
 
-Astro + Starlight in `website/` (post-MVP). This document will move there as an "Internals" section.
+Astro + Starlight in `site/`. `site/scripts/sync-docs.mjs` copies the Markdown files of `docs/` (this one included) into the site, so `docs/` stays the source.
 
 ---
 
@@ -125,23 +114,27 @@ verdin/
 ├── crates/
 │   ├── verdin-schema/         # schema model, parser, validation, registry
 │   ├── verdin-db/             # dialects, pool, type mapping, introspection
-│   ├── verdin-migrate/        # snapshot, diff, plan, journaled execution
+│   ├── verdin-migrate/        # physical model, snapshot, diff, plan, journaled execution
 │   ├── verdin-query/          # query params → AST → SQL (filters, sort, populate)
-│   ├── verdin-content/        # Document Service, data validation, draft/publish, event bus
-│   ├── verdin-auth/           # admin users, sessions, API tokens, RBAC, public permissions
-│   ├── verdin-api/            # axum routers: content API, admin API, OpenAPI
+│   ├── verdin-content/        # Document Service, data validation, draft/publish, blocks, events
+│   ├── verdin-auth/           # admin users, sessions, 2FA/passkeys, API tokens, RBAC, public permissions
+│   ├── verdin-upload/         # media library: files, folders, providers, image formats
+│   ├── verdin-email/          # email delivery (SMTP, Resend, Postmark)
+│   ├── verdin-search/         # Tantivy full-text index (`[search]`)
+│   ├── verdin-plugins/        # WASM plugins (Extism)
+│   ├── verdin-graphql/        # GraphQL API generated from the schema
+│   ├── verdin-api/            # axum routers: content API, admin API, OpenAPI, MCP, realtime…
 │   ├── verdin-testkit/        # test helpers (a fresh database per test); not published
-│   └── verdin/                # binary: config, bootstrap, CLI, embedded admin
-├── admin/                     # Angular + spartan
-├── website/                   # Astro Starlight (post-MVP)
-├── sdk/ts/                    # generated TS client (post-MVP)
+│   └── verdin/                # binary: config, bootstrap, CLI, metrics, embedded admin
+├── admin/                     # Angular + spartan admin panel
+├── site/                      # Astro Starlight documentation site
+├── packages/client/           # `@verdin/client`, the TypeScript client
 ├── examples/blog/             # example app
-├── tests/conformance/         # REST suite run against all 4 dialects
-├── docker/compose.dev.yml     # postgres 17, mysql 8.4, mariadb 10.11 and 11.4
-└── docs/                      # design documents (this file)
+├── docker/                    # compose.dev.yml (databases, RustFS), release image
+└── docs/                      # design documents and guides (this file)
 ```
 
-Dependency rule: `schema` ← `db` ← `migrate`/`query` ← `content` ← `auth` ← `api` ← `verdin`. No cycles.
+Dependency rule: `verdin-schema` and `verdin-db` are the base; `migrate` and `query` build on them, `content` on those, `verdin-api` and `verdin-graphql` near the top, and the `verdin` binary on everything. No cycles.
 
 ---
 
@@ -158,7 +151,7 @@ my-site/
 │   └── components/
 │       └── shared/
 │           └── seo.json
-└── data/                      # sqlite (if used); uploads later
+└── data/                      # sqlite (if used)
 ```
 
 ### 6.1 `verdin.toml`
@@ -168,6 +161,8 @@ my-site/
 host = "0.0.0.0"
 port = 1337
 public_url = "https://cms.example.com"
+body_limit = "1mb"
+trusted_proxies = ["10.0.0.0/8"]
 
 [database]
 # url is read from VERDIN_DATABASE_URL when not set here
@@ -178,19 +173,19 @@ pool_max = 10
 prefix = "/api"
 default_page_size = 25
 max_page_size = 100
-max_populate_depth = 5
 decimal_as_string = false
+cors_origins = ["https://www.example.com"]
 
 [admin]
-enabled = true
 path = "/admin"
 
-[security]
-cors_origins = ["https://www.example.com"]
-body_limit = "1mb"
+[upload]
+max_file_size = 209715200   # bytes (200 MB)
 ```
 
-Secrets come from the environment only: `VERDIN_DATABASE_URL`, `VERDIN_ADMIN_JWT_SECRET`, `VERDIN_TOKEN_PEPPER`. In `start` mode the server refuses to boot if they are missing.
+Unknown keys are errors at startup. Every section and key is listed in the configuration reference (`/reference/configuration/` on the documentation site, source [site/src/content/docs/reference/configuration.md](../site/src/content/docs/reference/configuration.md)); any key can also be set as `VERDIN_<SECTION>__<KEY>` in the environment.
+
+Secrets come from the environment only (never from `verdin.toml`): `VERDIN_ADMIN_JWT_SECRET` and `VERDIN_TOKEN_PEPPER` are required (`verdin secrets` prints fresh ones), and the database URL usually comes from `VERDIN_DATABASE_URL`. The server refuses to boot without them.
 
 ---
 
@@ -226,7 +221,7 @@ Close to Strapi's `schema.json` to ease migration:
 
 Content type UID: `api::article`. The Strapi form `api::article.article` is accepted as an alias by the importer.
 
-### 7.2 MVP attribute types
+### 7.2 Attribute types
 
 | Type | Options | Postgres | MySQL / MariaDB | SQLite |
 |---|---|---|---|---|
@@ -242,7 +237,9 @@ Content type UID: `api::article`. The Strapi form `api::article.article` is acce
 | `time` | — | `time(3)` | `time(3)` | `text` |
 | `datetime` | — | `timestamptz(3)` | `datetime(3)` (UTC) | `text` (ISO UTC) |
 | `enumeration` | `enum` | `varchar(255)` | `varchar(255)` | `text` |
-| `json` | — | `jsonb` | `json` | `text` |
+| `json`, `blocks` | — | `jsonb` | `json` | `text` |
+| `password` | `minLength`, `maxLength` (stored as an argon2 hash, never returned) | `varchar(255)` | `varchar(255)` | `text` |
+| `media` | `multiple`, `allowedTypes`, see §8.7 | link table | link table | link table |
 | `relation` | see §8.4 | link table | link table | link table |
 | `component`, `dynamiczone` | see §8.5 | `jsonb` | `json` | `text` |
 
@@ -253,7 +250,7 @@ Notes:
 - `enumeration` does not use MySQL's native `ENUM`: altering it is expensive and not portable. Values are validated in the application.
 - **Every attribute column is nullable.** As in Strapi v5, drafts may be incomplete, so `required` is enforced when publishing, not by the database. Adding a required attribute is therefore a safe migration.
 - `decimal` is stored exactly (`rust_decimal`) and serialized as a **JSON number** by default, matching Strapi, so existing frontends keep working. Projects that need values beyond double precision (> 15 significant digits) set `api.decimal_as_string = true`.
-- `richtext` in the MVP is Markdown. The `blocks` type (structured JSON, TipTap editor) comes later.
+- `richtext` is Markdown. `blocks` is Strapi's structured rich text JSON (paragraphs, headings, lists, quotes, code, images, links), validated on write and edited with TipTap in the admin.
 
 ### 7.3 Cross-field validations
 
@@ -365,10 +362,10 @@ Strapi stores each component in its own table with polymorphic link tables, whic
 
 - Strict validation against the component schema on every write.
 - Publish and discard copy the JSON as-is (free).
-- **Relations inside components** (planned) will be stored as `document_id`s inside the JSON and resolved by the populate engine with batched queries. Until then writing them is a validation error.
+- **Relations and media inside components** are stored in the JSON itself: `documentId`s for relations (only `oneWay` and `manyWay` are allowed there) and file ids for media. They are checked on write and resolved with batched queries when the component is populated. Polymorphic relations and `password` fields cannot be inside components.
 - **Trade-off**: filtering on component fields needs dialect-specific JSON functions (`->>` on PG, `JSON_EXTRACT`/`JSON_VALUE` on MySQL/MariaDB, `json_extract` on SQLite). Scalar fields of non-repeatable components are filtered through JSON paths. Since 0.8, repeatable components use `EXISTS` over the JSON array items (`jsonb_array_elements` on PG, `JSON_TABLE` on MySQL/MariaDB, `json_each` on SQLite), and dynamic zones are filtered by `__component` only.
 
-### 8.6 MVP system tables
+### 8.6 System tables
 
 `vd_schema_snapshots` and `vd_migrations_journal` belong to the migration engine. The platform tables — `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (refresh tokens), `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` — are part of every derived model, so the migration engine creates and evolves them like content tables (they show up as safe steps in `migrate plan`).
 
@@ -377,7 +374,7 @@ Later additions: `vd_settings` (instance settings and one-off upgrade markers, e
 ### 8.7 Media library (0.2)
 
 - **Files** are rows of `vd_files` in Strapi's shape (`name`, `alternativeText`, `caption`, `width`, `height`, `formats`, `hash`, `ext`, `mime`, `size` in KB, `url`, `provider`…) plus `focal_point`, `folder_id`/`folder_path` and the uploader. Folders (`vd_folders`) keep Strapi's `path` of `path_id`s (`/1/4`).
-- **Media attributes** (`{ "type": "media", "multiple": true, "allowedTypes": ["images"] }`) are link tables `{table}_{field}_mda` (`source_id` → content row, `file_id` → `vd_files`, `position`), with the same lifecycle as relation links: drafts own their links, publishing copies them, deleting a file or a row cascades. Writes take file ids (`5`, `{ "id": 5 }`, `[5, 6]`, `null`); reads need `populate` and return file objects. `required` is checked on publish; `allowedTypes` on write (by the stored, sniffed MIME type). Media inside components is not supported yet.
+- **Media attributes** (`{ "type": "media", "multiple": true, "allowedTypes": ["images"] }`) are link tables `{table}_{field}_mda` (`source_id` → content row, `file_id` → `vd_files`, `position`), with the same lifecycle as relation links: drafts own their links, publishing copies them, deleting a file or a row cascades. Writes take file ids (`5`, `{ "id": 5 }`, `[5, 6]`, `null`); reads need `populate` and return file objects. `required` is checked on publish; `allowedTypes` on write (by the stored, sniffed MIME type). Media inside components is stored in the component JSON (§8.5).
 - **Storage** goes through `object_store`: a local directory (default `public/uploads`, served at `/uploads`) or any S3-compatible service (AWS, R2, B2, RustFS…; credentials from `AWS_*`). Keys are `{slug}_{random}{ext}`, immutable.
 - **Uploads** stream to temporary files (no whole-file buffering), bounded by `[upload].max_file_size`; the MIME type comes from the bytes (`infer`, SVG sniffing), never from the client. Raster images get Strapi's `thumbnail` (245×156) and `large`/`medium`/`small` breakpoints (1000/750/500) in the source format, EXIF-oriented, with a decoding budget against decompression bombs.
 - **Serving** `/uploads` adds `Content-Security-Policy: sandbox`, `nosniff`, and `Content-Disposition: attachment` for anything but images, video, audio, PDF and plain text, so an uploaded HTML or SVG cannot run on the admin's origin. S3 objects of active types are stored as attachments.
@@ -401,20 +398,16 @@ Later additions: `vd_settings` (instance settings and one-off upgrade markers, e
 ```rust
 pub enum Pool { Postgres(PgPool), MySql(MySqlPool), Sqlite(SqlitePool) }
 
-pub enum Flavor { Postgres, MySql, MariaDb, Sqlite }   // MariaDB detected via SELECT VERSION()
+pub enum Flavor { Postgres, MySql, MariaDb, Sqlite }   // MariaDB detected from the server version
 
-pub trait Dialect {
-    fn column_type(&self, attr: &Attribute) -> ColumnType;
-    fn supports_returning(&self) -> bool;          // MySQL: false
-    fn transactional_ddl(&self) -> bool;           // MySQL/MariaDB: false
-    fn case_insensitive_like(&self, col: Expr, pat: Expr) -> SimpleExpr;
-    fn case_sensitive_like(&self, col: Expr, pat: Expr) -> SimpleExpr;
-    fn json_extract_text(&self, col: Expr, path: &[&str]) -> SimpleExpr;
-    // …
-}
+pub struct Database { pool: Pool, flavor: Flavor, version: Version }
+// connect(url) detects the flavor and rejects servers below the minimum version;
+// Flavor::transactional_ddl(), is_mysql_family(), quote(identifier)…
 ```
 
-- Queries are built with `sea-query` and executed on the matching backend through `sea-query-binder`.
+There is no dialect trait: the SQL builders in `verdin-migrate` (DDL), `verdin-query` and `verdin-content` (DML) branch on the `Flavor` where dialects differ.
+
+- SQL is built by Verdin's own per-dialect builders (decision 13) and executed on the matching `sqlx` backend with bound parameters.
 - **Schema-driven decoding**: every column is decoded according to its declared attribute type, not the type reported by the driver. This fixes at the root that MariaDB returns `JSON` as `LONGTEXT`, MySQL returns booleans as `TINYINT`, and SQLite returns dates as text.
 
 ### 9.3 Dialect differences handled explicitly
@@ -430,7 +423,7 @@ pub trait Dialect {
 | Collation | — | `utf8mb4_0900_ai_ci` | `utf8mb4_uca1400_ai_ci` (available since 10.10) | `BINARY` | Explicit per table |
 | `$contains` (case-sensitive) | `LIKE` | `LIKE … COLLATE utf8mb4_bin` | same | `GLOB`/`instr` | Dialect method |
 | `$containsi` | `ILIKE` | `LIKE` (ci collation) | same | `LIKE` (ASCII) + `lower()` | Dialect method; documented that SQLite is only case-insensitive for ASCII |
-| Upsert | `ON CONFLICT` | `ON DUPLICATE KEY UPDATE` | same | `ON CONFLICT` | `sea-query` |
+| Upsert | `ON CONFLICT` | `ON DUPLICATE KEY UPDATE` | same | `ON CONFLICT` | Dialect method |
 | `ALTER COLUMN` | full | full | full | **limited** | SQLite: table rebuild (create new → copy → drop → rename) |
 | Index length | — | 3072 bytes (DYNAMIC) | same | — | `varchar(255)` utf8mb4 = 1020 bytes OK; `text` cannot be unique-indexed |
 | `FOR UPDATE` | yes | yes | yes | no (DB lock) | Omitted on SQLite |
@@ -447,7 +440,7 @@ vd_schema_snapshots (last applied) ───────────────
                  diff(current, desired) ──▶ Vec<Change> ──plan(dialect)──▶ Vec<Step> ──apply──▶ DB
 ```
 
-The snapshot stores the **physical model** (tables, columns, indexes), not the schema. When a later Verdin version derives more tables from the same schema (link tables in M3), the diff creates them naturally.
+The snapshot stores the **physical model** (tables, columns, indexes), not the schema. When a later Verdin version derives more tables from the same schema (e.g. link tables for relations), the diff creates them naturally.
 
 The diff is computed **against the stored snapshot**, not against database introspection. It is deterministic and avoids introspection differences between dialects. Introspection will back a future `verdin migrate check` that detects drift (manual changes in the database).
 
@@ -459,11 +452,11 @@ Changes that render to identical DDL on a dialect (e.g. `integer` → `bigintege
 - **Risky**: change column type (with conversion), add `required` without default to a table with rows, shrink a length, add `unique` (may fail on duplicates). Executed after a pre-check (e.g. `SELECT COUNT(*) … WHERE col IS NULL`).
 - **Destructive**: drop column, drop table, remove an enum value that is in use.
 
-**Renames**: a removed attribute plus a new one of the same type is *proposed* as a rename (`verdin migrate plan` prints `--rename-column articles.title=headline`); the user passes it explicitly to `migrate apply` (and, later, confirms it in the content-type builder). It is never inferred silently. Table renames work the same way with `--rename-table old=new`.
+**Renames**: a removed attribute plus a new one of the same type is *proposed* as a rename (`verdin migrate plan` prints `--rename-column articles.title=headline`); the user passes it explicitly to `migrate apply` or accepts it in the content-type builder. It is never inferred silently. Table renames work the same way with `--rename-table old=new`.
 
 ### 10.3 Modes
 
-- `verdin dev` (M2+): watches `schema/`. Safe changes are applied automatically; risky and destructive ones ask for confirmation (interactive CLI or a dialog in the admin).
+- `verdin dev`: watches `schema/` and reloads when files change. Safe changes are applied automatically; risky and destructive ones ask for confirmation (interactive CLI or a dialog in the admin).
 - `verdin start` (production): the schema is read-only. If migrations are pending the server **does not start**, unless run with `--migrate` (safe changes only).
 - `verdin migrate plan` prints the steps, their risk and the exact SQL for the dialect. `verdin migrate apply [--allow safe|risky|destructive]` runs them; steps above the allowed risk abort the run before anything executes.
 
@@ -484,7 +477,7 @@ On PostgreSQL and SQLite the whole plan and the snapshot run in a single transac
 
 ## 11. Document Service
 
-The single internal API for reading and writing content. Used by the content API, the admin API and, later, plugins.
+The single internal API for reading and writing content. Used by the content API, the admin API, GraphQL, MCP and plugins.
 
 ```rust
 pub struct DocumentService { /* pool, registry, dialect, events */ }
@@ -540,7 +533,7 @@ Write semantics (Strapi v5):
 - `required` is enforced whenever a version becomes published (and on every write for types without draft & publish), including required attributes inside components and dynamic zones. A failed publish rolls the whole request back.
 - `POST` answers `201`, `DELETE` answers `204` with no body and removes every version of the document.
 - Single types answer `405` to `POST`; their first `PUT` creates the document.
-- Unknown keys, system fields (`id`, `documentId`, timestamps) and relation fields (until M3) in `data` are validation errors.
+- Unknown keys, system fields (`id`, `documentId`, timestamps) and inverse (`mappedBy`) relation sides in `data` are validation errors.
 
 ### 12.2 Parameters (Strapi v5 compatible)
 
@@ -552,16 +545,16 @@ Write semantics (Strapi v5):
 | `populate` | `populate=*`, `populate[category][fields][0]=name`, `populate[blocks][on][blocks.hero][fields][0]=title` |
 | `pagination` | `pagination[page]=2&pagination[pageSize]=25` or `pagination[start]=0&pagination[limit]=25`, `pagination[withCount]=false` |
 | `status` | `published` (default) \| `draft` |
-| `locale` | reserved (post-MVP i18n) |
+| `locale` | a locale code of a localized type (see [i18n.md](i18n.md)) |
 | `_q` | `_q=rust ownership` — full-text search (at most 200 characters), see below |
 
 **Full-text search** (`_q`). Without an index, as in Strapi: documents where any text field (`string`, `text`, `richtext`, `email`, `uid`, `enumeration`; not private) contains the text, ignoring case. With `[search] enabled = true`, a [Tantivy](https://github.com/quickwit-oss/tantivy) index inside the binary ranks the results: words are lowercased and stripped of accents (`cafe` finds `Café`), every word must match, the last one also as a prefix, and the type's first text attribute weighs double; blocks and components are indexed too. Results come in rank order unless `sort` is given; other filters and pagination apply. The index follows the Document Service's events and is rebuilt in the background when the schema changes (plain `$containsi` answers meanwhile). Admins with field-level restrictions always get the `$containsi` search over the fields they may read.
 
 Operators: `$eq $eqi $ne $nei $lt $lte $gt $gte $in $notIn $contains $notContains $containsi $notContainsi $startsWith $startsWithi $endsWith $endsWithi $null $notNull $between $and $or $not`.
 
-**Limits** (configurable): `pageSize ≤ 100`, `populate` depth ≤ 5, filter nesting ≤ 10, ≤ 100 conditions, query string ≤ 16 KB. Every field name in `filters`, `sort`, `fields` and `populate` is validated against the schema; unknown or `private` fields return `400`.
+**Limits**: `pageSize ≤ [api].max_page_size` (default 100), `populate` depth ≤ 5, bracket nesting ≤ 12 levels, ≤ 100 conditions, query string ≤ 16 KB. Only the page sizes are configurable. Every field name in `filters`, `sort`, `fields` and `populate` is validated against the schema; unknown or `private` fields return `400`.
 
-Pipeline: `query string → serde_qs → typed AST (verdin-query) → validation against schema and permissions → SQL (sea-query)`. `populate` is resolved with **batched queries** per level (one per relation, `WHERE … IN (…)`), not cascading joins. This avoids cartesian explosions and N+1 queries.
+Pipeline: `query string → serde_qs → typed AST (verdin-query) → validation against schema and permissions → SQL (per-dialect builders)`. `populate` is resolved with **batched queries** per level (one per relation, `WHERE … IN (…)`), not cascading joins. This avoids cartesian explosions and N+1 queries.
 
 ### 12.3 Responses
 
@@ -579,57 +572,49 @@ Pipeline: `query string → serde_qs → typed AST (verdin-query) → validation
 - Components and dynamic zones are returned only when populated (`populate=*`, `populate=seo`, `populate[seo]=true`). A populated component is returned whole, nested components included (Strapi requires populating each level). Every component item has an `id` unique within its attribute.
 - Values: `biginteger` as strings, `decimal` as numbers (rounded half away from zero to their scale, like the databases), `date` `YYYY-MM-DD`, `time` `HH:MM:SS.mmm`, `datetime` `YYYY-MM-DDTHH:MM:SS.mmmZ` (UTC).
 - Text filter semantics are the same on every engine: `$eq`, `$ne`, `$in`, `$contains`, `$startsWith`, `$endsWith` are exact (binary collation on MySQL/MariaDB, whose default collations ignore case and accents); the `…i` variants ignore case (and accents on MySQL/MariaDB; SQLite only folds ASCII). `ORDER BY` puts NULLs last in both directions and always ends with `id` for stable pagination.
-- Relations are returned only when populated: `populate=category`, `populate=*` (one level), or `populate[category][fields][0]=name&populate[category][populate][…]&populate[category][filters][…]&populate[category][sort]=…`, nested up to `max_populate_depth` (5). Each level is one batched query per relation (`IN (…)`, chunked). A to-one relation is an object or `null`; a to-many one is an array in link order (or in `sort` order).
+- Relations are returned only when populated: `populate=category`, `populate=*` (one level), or `populate[category][fields][0]=name&populate[category][populate][…]&populate[category][filters][…]&populate[category][sort]=…`, nested up to 5 levels. Each level is one batched query per relation (`IN (…)`, chunked). A to-one relation is an object or `null`; a to-many one is an array in link order (or in `sort` order).
 - Related documents are resolved in the version being read: published documents see published targets, drafts see drafts (types without draft & publish always show their only version). Unpublishing a target hides it without touching links.
 - Filtering through relations: `filters[category][name][$eq]=News`, `filters[category][$null]=true`, nested (`filters[articles][tags][label][$eq]=rust`), on either side, as `EXISTS` subqueries (no duplicate rows).
 - Relation input (owning side): `"documentId"`, `{ "documentId": … }`, `[…]` (set), `null` (clear), or `{ "connect": […], "disconnect": […] }` / `{ "set": […] }` where `connect` items may carry `position: { before | after: documentId } | { start: true } | { end: true }`. Connecting a to-one relation replaces its target.
-- Not yet: filtering on fields of components, relations inside components.
+- Scalar fields of components can be filtered (§8.5); relations inside components are returned when the component is populated.
 - `private` fields and internal system columns (`state`, `created_by_id`…) never appear in the content API.
 
 ### 12.4 OpenAPI
 
-`GET /api/_openapi.json` (OpenAPI 3.1) is generated at startup from the registry: one path and one schema per content type, plus the shared parameters. `verdin openapi > openapi.json` exports it. `verdin types --lang ts` generates TS types for the content (right after the MVP).
+`GET /api/_openapi.json` (OpenAPI 3.1) is generated at startup from the registry: one path and one schema per content type, plus the shared parameters. There is no CLI export: fetch it with an API token. `verdin types [--out file.d.ts]` generates TypeScript definitions of the content API.
 
 ---
 
 ## 13. Admin API
 
-Prefix `/admin/api`. Requires an admin session. Resources:
+Served under `{admin.path}/api` (default `/admin/api`); paths below are relative to it. Every route needs an admin session except the sign-in flow (`/auth/status`, `register-first-admin`, `login`, `login/two-factor`, `login/passkey/options`, `refresh`, `logout`, `invitation`, `accept-invitation`, `forgot-password`, `reset-password`, `/auth/sso…`), the deploy callback and `/visual-editing.js`. Routes of optional features answer `404` while the feature is off. The routers are in `crates/verdin-api/src/admin.rs` and the `*_admin.rs` modules merged into it.
 
-```
-GET  /auth/status                      { hasAdmin }
-POST /auth/register-first-admin        (only when no admin exists)
-POST /auth/login | /auth/refresh | /auth/logout
-GET  /auth/me                          user + effective permissions
-
-GET  /content-types                    schemas + UI metadata (field order, labels)
-GET  /components
-PUT  /content-types/:uid               (dev mode only) writes schema/*.json
-POST /schema/plan | /schema/apply      (dev mode only)
-
-GET|POST|PUT|DELETE /content/:uid[/:documentId]      Document Service with admin RBAC
-POST /content/:uid/:documentId/actions/publish|unpublish|discard-draft
-GET  /content/:uid/uid-available?field=slug&value=…  (M5)
-GET  /content/:uid/:documentId/usage   where used: versions referencing the entry
-GET  /upload/files/:id/usage           where used: versions showing the file
-GET  /content/:uid/export?format=csv|json   the list (filters, sort, status, locale) as a file
-POST /content/:uid/import               { format, data, mapping, dryRun, publish }
-GET|POST /comments  PUT|DELETE /comments/:id  POST /comments/:id/resolve|reopen   threads on entries
-GET|POST /tasks  PUT|DELETE /tasks/:id                                      tasks on entries (`?mine=true`)
-GET|POST /deploy/targets  PUT|DELETE /deploy/targets/:id  POST /deploy/targets/:id/trigger   deploys
-GET  /deploy/deployments  POST /deploy/callback/:id/:secret (public)  GET /deploy/cdn  POST /deploy/cdn/purge
-GET  /ai  POST /ai/translate|alt-text|summarize|seo                         AI suggestions (`ai` feature + `[ai]`)
-
-CRUD /users, /roles, /api-tokens, /public-permissions
-GET|PUT /users/me/preferences          the caller's admin preferences (dashboard layout), any admin
-GET  /content/:uid?unseen=true         (admin lists) documents the caller has not opened since they changed
-PUT  /engagement/:uid/:documentId/view mark the current version seen (the editor opens it)
-PUT  /engagement/:uid/:documentId/vote { value: 1 | -1 | 0 }
-GET  /engagement/:uid/votes?documentIds=…  |  /engagement/:uid/votes/top?limit=
-CRUD /polls, PUT /polls/:id/vote { choices }   dashboard polls (author or Super Admin manages)
-GET  /system/info                      version, dialect, mode
-GET  /features, PUT /features/:id      optional features (Settings → Features), `features.manage`
-```
+| Area | Routes | Purpose |
+|---|---|---|
+| Sign-in | `GET /auth/status`, `POST /auth/register-first-admin`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me` | First admin, sessions, the caller with effective permissions |
+| Account | `GET /auth/invitation`, `POST /auth/accept-invitation`, `POST /auth/forgot-password`, `POST /auth/reset-password`, `GET\|PUT /users/me`, `GET /auth/sessions`, `DELETE /auth/sessions/:id` | Invitations, password reset, own profile and sessions |
+| Two-factor | `POST /auth/login/two-factor`, `POST /auth/login/passkey/options`, `GET /auth/two-factor`, `POST /auth/two-factor/totp/setup\|enable\|disable`, `POST /auth/two-factor/recovery-codes`, `POST /auth/two-factor/passkeys/options`, `POST /auth/two-factor/passkeys`, `DELETE /auth/two-factor/passkeys/:id`, `DELETE /users/:id/two-factor` | TOTP, passkeys, recovery codes (§14.1) |
+| SSO | `GET /auth/sso`, `GET /auth/sso/:id`, `GET /auth/sso/:id/callback` | OIDC sign-in ([sso.md](sso.md)) |
+| Users, roles, tokens | `GET\|POST /users`, `GET\|PUT\|DELETE /users/:id`, `POST /users/:id/invite`, `GET\|PUT /users/me/preferences`, `GET\|POST /roles`, `GET\|PUT\|DELETE /roles/:id`, `GET\|POST /api-tokens`, `GET\|PUT\|DELETE /api-tokens/:id`, `POST /api-tokens/:id/regenerate`, `GET\|PUT /public-permissions` | Admin users, roles, API tokens, public grants, dashboard preferences |
+| Schema | `GET /content-types`, `GET /components`, `GET\|PUT\|DELETE /content-types/:uid/edit-view`, `GET /schema`, `POST /schema/plan`, `POST /schema/apply` | Schemas for the panel, edit-view layouts, the content-type builder (`/schema*` in `verdin dev` only) |
+| Content | `GET\|POST /content/:uid`, `GET\|PUT\|DELETE /content/:uid/:documentId`, `POST /content/:uid/:documentId/actions/:action`, `POST /content/:uid/:documentId/clone`, `GET /content/:uid/uid-available`, `GET /content/:uid/:documentId/locales`, `GET /content/:uid/:documentId/usage`, `GET /content/:uid/stats` | Document Service with admin RBAC; `action` is `publish`, `unpublish` or `discard-draft` |
+| Import & export | `GET /content/:uid/export`, `POST /content/:uid/import` | One content type as CSV or JSON |
+| History | `GET /history/:uid/:documentId`, `GET /history/versions/:id`, `POST /history/versions/:id/restore` | Content history |
+| Releases | `GET\|POST /releases`, `GET\|PUT\|DELETE /releases/:id`, `POST /releases/:id/actions`, `DELETE /releases/:id/actions/:actionId`, `POST /releases/:id/publish`, `GET /content/:uid/:documentId/releases` | Releases |
+| Review workflows | `GET\|POST /review-workflows`, `GET\|PUT\|DELETE /review-workflows/:id`, `GET /review/assigned`, `GET /review/assignees`, `GET /review/roles`, `GET /content/:uid/review`, `GET\|PUT /content/:uid/:documentId/review` | Stages and assignees ([review-workflows.md](review-workflows.md)) |
+| Preview | `GET /content/:uid/:documentId/preview`, `GET /visual-editing.js` | Preview URLs and the visual editing overlay |
+| Collaboration | `GET\|POST /comments`, `PUT\|DELETE /comments/:id`, `POST /comments/:id/resolve\|reopen`, `GET\|POST /tasks`, `PUT\|DELETE /tasks/:id` | Comment threads and tasks on entries |
+| Engagement | `PUT /engagement/:uid/:documentId/view`, `PUT /engagement/:uid/:documentId/vote`, `GET /engagement/:uid/votes`, `GET /engagement/:uid/votes/top`, `GET /engagement/unseen`, `GET\|POST /polls`, `GET\|PUT\|DELETE /polls/:id`, `PUT /polls/:id/vote` | Seen marks (`?unseen=true` on lists), votes, dashboard polls |
+| Realtime | `GET /events`, `GET\|POST /presence` | Admin event stream, who is on an entry ([realtime.md](realtime.md)) |
+| Media | `POST /upload`, `POST /upload/from-url`, `GET /upload/files`, `GET\|PUT\|DELETE /upload/files/:id`, `POST /upload/files/:id/replace`, `GET /upload/files/:id/usage`, `GET\|POST /upload/folders`, `GET /upload/folders/all`, `GET\|PUT\|DELETE /upload/folders/:id` | Media library (§8.7) |
+| Locales | `GET\|POST /i18n/locales`, `PUT\|DELETE /i18n/locales/:code` | Content locales ([i18n.md](i18n.md)) |
+| End users | `GET\|POST /end-users`, `GET\|PUT\|DELETE /end-users/:id`, `GET\|POST /end-user-roles`, `PUT\|DELETE /end-user-roles/:id` | [end-users.md](end-users.md) |
+| Webhooks | `GET\|POST /webhooks`, `GET\|PUT\|DELETE /webhooks/:id`, `POST\|DELETE /webhooks/:id/secret`, `POST /webhooks/:id/trigger`, `GET /webhooks/:id/deliveries`, `POST /webhooks/deliveries/:id/retry` | [webhooks.md](webhooks.md) |
+| Deploys & CDN | `GET\|POST /deploy/targets`, `PUT\|DELETE /deploy/targets/:id`, `POST /deploy/targets/:id/trigger`, `GET /deploy/deployments`, `POST /deploy/callback/:id/:secret` (public), `GET /deploy/cdn`, `POST /deploy/cdn/purge` | Build hooks and CDN purges |
+| Site | `GET /site/seo/component`, `GET\|POST /site/redirects`, `PUT\|DELETE /site/redirects/:id`, `GET\|POST /site/menus`, `GET\|PUT\|DELETE /site/menus/:id`, `GET\|POST /site/forms`, `GET\|PUT\|DELETE /site/forms/:id`, `GET /site/forms/:id/submissions`, `GET /site/forms/:id/submissions/export`, `DELETE /site/forms/:id/submissions/:submission` | [site-features.md](site-features.md) |
+| AI | `GET /ai`, `POST /ai/translate\|alt-text\|summarize\|seo` | AI suggestions (`ai` feature and `[ai]`) |
+| Plugins | `GET /plugins`, `GET /plugins/extensions`, `PUT /plugins/:name`, `GET /plugins/:name/logs` | [plugins.md](plugins.md) |
+| System | `GET /system/info`, `GET /features`, `PUT /features/:id`, `GET /audit-logs` | Version, dialect and mode; optional features (`features.manage`); audit log (`audit.read`) |
 
 Admin content routes read drafts by default and write drafts only (publishing is an explicit action). Writes record `created_by_id` / `updated_by_id`; `is-creator` conditions filter reads and guard writes. Bodies of the settings routes are plain JSON (no `data` wrapper); content routes use `{ "data": … }` like the content API.
 
@@ -680,14 +665,15 @@ UI metadata (list columns, visible fields, form layout) lives in `schema/content
 - An unknown, expired or malformed token is `401`, never the public role. Writes return the written document even without `find` (Strapi behaviour).
 - The OpenAPI document requires any valid API token.
 
-### 14.3 Admin RBAC (MVP)
+### 14.3 Admin RBAC
 
-- Permission = `action × subject (+ conditions)`. Content actions: `read`, `create`, `update`, `delete`, `publish`. Settings actions: `users.manage`, `roles.manage`, `tokens.manage`, `schema.manage`.
+- Permission = `action × subject (+ conditions)`. Content actions: `read`, `create`, `update`, `delete`, `publish`. Settings actions: `users.manage`, `roles.manage`, `tokens.manage`, `schema.manage`, `features.manage`, `webhooks.manage`, `locales.manage`, `endusers.manage`, `plugins.manage`, `audit.read`, `releases.manage`, `workflows.manage`, `views.manage`, `deploy.manage`, `deploy.trigger`, `site.manage`. Media actions: `media.read`, `media.create`, `media.update`, `media.delete` (no subject).
 - Built-in roles:
   - **Super Admin**: everything; not editable.
   - **Editor**: all content.
   - **Author**: creates content and reads, edits or deletes only their own entries (`is-creator` condition), cannot publish.
-- Custom roles: yes, in the MVP (per type and action). Field-level permissions arrive in v0.2.
+- Custom roles, per type and action.
+- **Field-level permissions**: `content.read`, `content.create` and `content.update` may list `fields` (the attributes they cover; unset means all). **Locale permissions**: content actions on localized types may list `locales`.
 - Conditions compile to SQL clauses (`created_by_id = :actor`) that the Document Service adds to the query.
 
 ---
@@ -720,11 +706,11 @@ The session lives in memory (access token) plus the HttpOnly refresh cookie; an 
 
 ### 15.3 Lists
 
-TanStack Table + helm table. Server-side pagination, sorting and filters, mirrored in the URL (shareable links). Columns configurable through `*.ui.json`.
+spartan helm table. Server-side pagination, sorting and filters, mirrored in the URL (shareable links). Columns configurable through `*.ui.json`.
 
 ### 15.4 Content-type builder
 
-Visible only when the server runs in `dev` mode (`verdin dev`). It edits content types and components in their file format (fields, relation kinds and targets — creating the inverse attribute on the target —, components, dynamic zones, lengths, ranges, required/unique/private) and calls `POST /schema/plan`, which validates the would-be schema and returns the steps with their risk and SQL, plus rename suggestions the user can accept. `POST /schema/apply` migrates first, then writes `schema/*.json` atomically, then hot-swaps the whole app (content API, admin API, OpenAPI) for the new schema without a restart. Since the output is files, the flow ends in a git commit. Editing files by hand still needs a restart (no file watcher yet).
+Visible only when the server runs in `dev` mode (`verdin dev`). It edits content types and components in their file format (fields, relation kinds and targets — creating the inverse attribute on the target —, components, dynamic zones, lengths, ranges, required/unique/private) and calls `POST /schema/plan`, which validates the would-be schema and returns the steps with their risk and SQL, plus rename suggestions the user can accept. `POST /schema/apply` migrates first, then writes `schema/*.json` atomically, then hot-swaps the whole app (content API, admin API, OpenAPI) for the new schema without a restart. Since the output is files, the flow ends in a git commit. Files edited by hand (or changed by `git pull`) are picked up by a watcher: safe migrations apply and the app is hot-swapped; riskier changes are logged and the running app stays as it was.
 
 ### 15.5 Build & distribution
 
@@ -739,28 +725,41 @@ Visible only when the server runs in `dev` mode (`verdin dev`). It edits content
 
 ### 16.1 CLI
 
+Global option: `-c, --config <file>` (default `verdin.toml`, or `VERDIN_CONFIG`).
+
 ```
-verdin new <dir> [--db postgres|mysql|mariadb|sqlite]   create a project
-verdin dev                                               server + safe auto-migrations + builder enabled
-verdin start [--migrate[=all]]                           production
-verdin migrate plan|apply|check
-verdin admin create|reset-password
-verdin openapi
-verdin version
+verdin new <dir> [--database sqlite|postgres|mysql|mariadb]   create a project (config, empty schema, fresh secrets)
+verdin dev                                   server in development mode: safe auto-migrations, schema watcher, builder
+verdin start [--migrate]                     production; --migrate applies pending safe migrations first
+verdin schema check                          validate the schema files
+verdin migrate plan [--rename-table OLD=NEW] [--rename-column TABLE.OLD=NEW]
+verdin migrate apply [renames] [--allow safe|risky|destructive]
+verdin admin create --email <email>          create a Super Admin (password from VERDIN_ADMIN_PASSWORD or stdin)
+verdin admin reset-password --email <email>  set a password, unlock the account, end its sessions
+verdin types [--out <file>]                  TypeScript definitions of the content API
+verdin import strapi <path> [--schema-only] [--force]   a Strapi v4/v5 export
+verdin import verdin <archive> [--force]     an archive written by `verdin export`
+verdin export <archive> [--no-media]         schema, content and media as a .tar.gz
+verdin secrets                               print fresh VERDIN_ADMIN_JWT_SECRET and VERDIN_TOKEN_PEPPER
+verdin version                               version information
 ```
 
 ### 16.2 Observability
 
 - `tracing` with a propagated `request_id` (`x-request-id` header). JSON logs in production, human-readable in dev.
-- `GET /_health` (liveness) and `GET /_ready` (database reachable, no pending migrations).
-- Prometheus metrics: post-MVP.
+- `GET /_health` (liveness): always `200 { "status": "ok" }` while the process serves HTTP.
+- `GET /_ready` (readiness): pings the database; `200 { "status": "ready", "database": "<dialect>" }`, or `503 { "status": "unavailable" }` when the ping fails. It does not check migrations: `verdin start` refuses to boot with pending migrations (unless `--migrate` applies them), so it starts with none.
+- **Prometheus metrics** (`[metrics] enabled = true`): `GET /_metrics` in text exposition format 0.0.4, with HTTP requests by area (content API, admin…), method and status class, latency histograms, the webhook queue, realtime subscribers and uptime. With `[metrics].token` or `VERDIN_METRICS_TOKEN` (which wins) a scrape needs `Authorization: Bearer <token>`; without one the endpoint is open to anyone who reaches the port.
 
-### 16.3 Security checklist (MVP)
+### 16.3 Security checklist
 
 - SQL identifiers only from the validated schema; values always bound.
-- Explicit CORS allow-list (`[api].cors_origins`) for the content API and GraphQL; none for the admin API. Default `body_limit` of 1 MB.
+- CORS: no cross-origin access unless `[api].cors_origins` lists origins (or `["*"]`); the allow-list covers the content API and GraphQL only. The admin API never answers cross-origin requests.
+- Request bodies bounded by `[server].body_limit` (default 1 MB; uploads by `[upload].max_file_size`) and requests by `[server].request_timeout_secs`.
+- Behind a reverse proxy, set `[server].trusted_proxies` (IPs or CIDR ranges): only then is `X-Forwarded-For` used as the client address for rate limits and audit logs; otherwise every client behind the proxy shares one address.
 - Security headers on the admin (strict CSP, `X-Frame-Options: DENY`, `Referrer-Policy`).
-- Rate limiting on `/admin/api/auth/*`.
+- Rate limiting on admin sign-in routes (`[admin].auth_rate_limit`), optionally on the content API (`[api].public_rate_limit`, `[api].token_rate_limit`).
+- `/_metrics` protected with a token (`VERDIN_METRICS_TOKEN`) when exposed beyond the internal network.
 - Query limits (§12.2) to prevent DoS through expensive queries.
 - Mandatory secrets in `start` mode; boot fails if they are missing or weak (< 32 bytes).
 - `cargo deny` (licenses and advisories) and `cargo audit` in CI; `npm audit` for the admin.
@@ -768,7 +767,7 @@ verdin version
 ### 16.4 Testing & CI
 
 - Unit tests per crate (schema parser, diff, query AST, per-dialect SQL generation with `insta` snapshots).
-- **Conformance suite** (`tests/conformance`): the same HTTP tests against PostgreSQL 14 and 17, MySQL 8.4, MariaDB 10.11 and 11.4, and SQLite. A feature is not done until it passes on all of them.
+- **Conformance suite** (`crates/verdin-api/tests`): the same HTTP tests against PostgreSQL 14 and 17, MySQL 8.4, MariaDB 10.11 and 11.4, and SQLite. A feature is not done until it passes on all of them.
 - GitHub Actions CI: dialect matrix with Docker services, `clippy -D warnings`, `rustfmt`, `cargo deny`, admin build, Playwright e2e against the binary on SQLite.
 
 ### 16.5 License
@@ -779,24 +778,7 @@ verdin version
 
 ## 17. Roadmap
 
-### MVP (v0.1)
-
-| Milestone | Scope | Exit criteria |
-|---|---|---|
-| **M0 Skeleton** ✅ | Workspace, CI, config, `verdin start` with `/_health`, connection to all 4 engines, `docker/compose.dev.yml` | Green CI across the matrix |
-| **M1 Schema + migrations** ✅ | Parser and validation, type mapping, snapshot, diff, plan, journaled apply (scalars, components and dynamic zones as JSON) | Create, alter and drop types on all 4 engines; resume after failure on MySQL |
-| **M2 Document Service + REST** ✅ | CRUD, filters, sort, pagination, fields, draft/publish, components/dynamic zones, OpenAPI | Conformance suite green on all engines |
-| **M3 Relations & components** ✅ | `_lnk` tables, 6 relation kinds, JSON components and dynamic zones, batched `populate`, relation filters | Populate and publish conformance on all engines. Component filters done in M6; relations inside components moved to 0.2 |
-| **M4 Auth** ✅ | Admins, first admin, JWT + rotating refresh, roles, API tokens, public permissions, admin API | Security tests (refresh reuse, lockout, enumeration, CSRF, RBAC) on all engines |
-| **M5 Admin** ✅ | Login, lists, dynamic editor, content-type builder (dev), settings | Playwright e2e of "create type → create content → publish → read over API" |
-| **M6 Release 0.1** ✅ | Filters on component fields, `verdin new`, binaries (macOS arm64/x64, Linux x64/arm64 musl, Windows), Docker image, `examples/blog`, README; admin: dark mode, 15 languages, locale-aware calendar, customizable dashboard widgets | `docker run` to first content in < 2 min |
-
-### After the MVP
-
-See [roadmap.md](roadmap.md): media library and upload providers, blocks editor, content
-i18n, webhooks, Strapi importer, GraphQL, end users, WASM plugins (including plugin
-dashboard widgets and custom fields), SSO, audit logs, review workflows, releases and the
-Astro Starlight documentation site.
+See [roadmap.md](roadmap.md).
 
 ---
 

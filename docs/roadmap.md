@@ -182,7 +182,7 @@ Beyond the roadmap, ranked by value for Verdin's single binary:
 
 ## Later
 
-Large items worth doing once 0.9 lands:
+Large items worth doing after the 0.9 releases:
 
 - Collaborative editing (Yjs) in the blocks editor.
 - Environments: clone schema and content into a staging environment, migrate, then swap

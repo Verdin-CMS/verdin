@@ -299,5 +299,6 @@ Besides the `VERDIN_<SECTION>__<KEY>` overrides, Verdin reads these variables:
 | `VERDIN_AI_KEY` | API key of the `[ai]` provider. |
 | `VERDIN_CDN_TOKEN` | API token of the `[cdn]` provider. |
 | `VERDIN_IMAGE_SECRET` | Signs image transformation URLs (see [`[upload.transforms]`](#uploadtransforms)). |
+| `VERDIN_METRICS_TOKEN` | Bearer token for `/_metrics` scrapes when `[metrics].enabled`; wins over `[metrics].token`. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Credentials of the S3 upload provider. |
 | `RUST_LOG` | Log filter; takes precedence over `[log].level`. |
