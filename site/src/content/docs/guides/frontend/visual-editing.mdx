@@ -1,0 +1,122 @@
+---
+title: Visual editing
+description: Let editors click text on your preview page and land on the field that holds it in the admin panel.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Diagram from '../../../../components/Diagram.astro';
+
+Visual editing turns your preview page into a map of the admin panel: an editor hovers a
+heading, clicks **Edit**, and the entry opens with that field focused. It builds on
+[Preview](/guides/content/preview/): set up preview URLs first, then add the two pieces
+below to the preview page.
+
+Verdin hides a small, invisible source map in each text it returns (a technique known as
+*stega*), and an overlay script finds those texts on the page. Nothing changes in your
+components: the marked text renders like any other.
+
+<Diagram code={`flowchart LR
+  A[Preview page] -- "x-verdin-stega: true" --> B[Content API]
+  B -- "text + invisible source map" --> A
+  A -- "visual-editing.js: click Edit" --> C[Admin panel field]`} caption="The page asks for source maps, and the overlay turns them into links to fields." />
+
+## Set it up
+
+<Steps>
+
+1. Turn on **Preview** in **Settings → Features**, choose **Configure preview URLs** and
+   give each content type the URL of the page that renders it. The **Visual editing**
+   section of the same dialog shows the script tag and header for your server. See
+   [Preview](/guides/content/preview/).
+
+2. On the preview page, fetch content with a token and the `x-verdin-stega: true` header.
+   The token is the preview token from the preview URL (`?preview=…`, sent back as
+   `x-verdin-preview`) or an API token:
+
+   ```js
+   const response = await fetch(`${CMS}/api/articles/${documentId}?status=draft&populate=*`, {
+     headers: {
+       'x-verdin-preview': previewToken, // or Authorization: Bearer <API token>
+       'x-verdin-stega': 'true',
+     },
+   });
+   ```
+
+3. Load the overlay on the same page:
+
+   ```html
+   <script src="https://cms.example.com/admin/api/visual-editing.js" defer></script>
+   ```
+
+   The path follows [`[admin].path`](/reference/configuration/): `{path}/api/visual-editing.js`.
+
+</Steps>
+
+With the [typed client](/guides/frontend/typed-client/), pass both headers in `headers`:
+
+```ts
+const preview = createClient<VerdinSchema>({
+  url: CMS,
+  headers: { 'x-verdin-preview': previewToken, 'x-verdin-stega': 'true' },
+});
+const { data } = await preview.collection('articles').findOne(documentId, {
+  status: 'draft',
+  populate: '*',
+});
+```
+
+Source maps are added to REST responses only, not to GraphQL: read preview content
+through the REST API.
+
+Hover marked text on the page: it gets a green outline and an **Edit** button. Inside the
+admin's side-by-side preview (**Open preview** → **Side by side**), the button asks the
+admin to open the field right there. When the page is open on its own, the button opens the
+entry in a new tab.
+
+<Aside type="note">
+Source maps are only added to `GET` requests that send `x-verdin-stega: true` **and** a
+token (`Authorization` or `x-verdin-preview`). Public traffic and anything your CDN caches
+never carry them, and marked responses are sent with `Cache-Control: private, no-store`.
+</Aside>
+
+## What gets marked
+
+| Marked | Not marked |
+| --- | --- |
+| `string`, `text` and `richtext` attributes | `uid`, `email`, `password`, `enumeration` |
+| The first text of each block of a `blocks` attribute | Numbers, booleans, dates, JSON |
+| The same inside components and dynamic zones (`seo.metaTitle`, `blocks.2.title`) | Empty strings |
+| Populated relations, pointing at the related entry | Media fields |
+
+The overlay also reads marks in `alt` and `title` attributes, so a marked text you put in
+one of them (a caption field used as `alt`, say) stays clickable.
+
+## Strip marks where text is data
+
+The marks are invisible characters appended to the text. Where you use a value as data
+rather than show it (a key, a URL, a comparison, a `<title>` length check), strip them
+first:
+
+```js
+const clean = (text) => text.replace(/⁤[​-‍⁠]*⁣/g, '');
+
+if (clean(article.category.name) === 'News') { /* … */ }
+```
+
+Fields that are data by nature, such as `uid` slugs and enumerations, are never marked,
+so routing on `slug` works as is.
+
+## How a mark is encoded
+
+For tools that read the marks themselves: a mark is U+2064, then each UTF-8 byte of
+
+```json
+{"origin":"verdin","href":"https://cms.example.com/admin/content/api::article/<documentId>?locale=en&field=seo.metaTitle"}
+```
+
+as four base-4 digits (most significant first) written with U+200B, U+200C, U+200D and
+U+2060, then U+2063. The admin URL comes from [`[server].public_url`](/reference/configuration/)
+and `[admin].path`. The overlay sends `{ type: 'verdin:edit', href }` to the parent window
+with `postMessage`; the admin only acts on it when it comes from the preview URL's origin.

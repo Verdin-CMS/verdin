@@ -1,0 +1,147 @@
+---
+title: AI actions
+description: Give editors AI help in the admin panel (translation, alt text, summaries and SEO metadata) with the model provider you choose.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+AI actions add four helpers to the admin panel: translate an entry from another locale,
+write alternative text for an image, summarize a long text into a short field, and suggest
+SEO metadata. They use a model provider you configure (Anthropic, OpenAI, or a local
+server such as Ollama), with your own key.
+
+Every action returns a suggestion that fills the form. Nothing is saved until the editor
+reviews it and saves, and each action can be undone.
+
+## Set it up
+
+AI actions need both a provider in `verdin.toml` and the feature switched on.
+
+<Steps>
+
+1. Add an `[ai]` section and give the key to the server in `VERDIN_AI_KEY`:
+
+   <Tabs syncKey="ai-provider">
+   <TabItem label="Anthropic">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "anthropic"
+   # model = "claude-sonnet-5"   # the default
+   ```
+
+   </TabItem>
+   <TabItem label="OpenAI">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai"
+   model = "gpt-4.1-mini"        # required: name the model you want
+   ```
+
+   </TabItem>
+   <TabItem label="Local (Ollama)">
+
+   ```toml title="verdin.toml"
+   [ai]
+   provider = "openai-compatible"
+   base_url = "http://localhost:11434/v1"
+   model = "llama3.2-vision"
+   ```
+
+   Local servers need no `VERDIN_AI_KEY`. LM Studio, vLLM and other servers with an
+   OpenAI-compatible API work the same way.
+
+   </TabItem>
+   </Tabs>
+
+   ```sh title="Terminal"
+   export VERDIN_AI_KEY=sk-...
+   ```
+
+2. Restart Verdin. It refuses to start when the section is incomplete: a missing key, or a
+   missing `model` or `base_url` where the provider needs one.
+3. In **Settings → Features**, turn on **AI actions**.
+
+</Steps>
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `provider` | `"none"` | `anthropic`, `openai` or `openai-compatible`. |
+| `model` | `claude-sonnet-5` for `anthropic` | The model. Required for the other providers. |
+| `base_url` | The provider's | Another endpoint: a proxy, or a local server (required for `openai-compatible`). |
+| `max_tokens` | `2048` | Longest answer, in tokens. |
+
+See [`[ai]`](/reference/configuration/). With the feature on but no `[ai]` section, the
+admin shows **AI actions are not available on this server.**
+
+The alt text action sends images, so pick a model that accepts images if you want it.
+
+## What the actions do
+
+### Translate an entry
+
+In the editor of a localized entry, **Translate from _locale_…** opens **Translate with
+AI**. Choose the locale to **Translate from** and choose **Translate**. The text fields of
+that locale's saved draft (strings, texts, rich text, blocks, and the text inside
+components and dynamic zones) are translated into the current locale and replace those
+fields in the form.
+
+- Fields shared between locales are left alone.
+- Unsaved changes in the source locale are not included: save it first.
+- Markdown, HTML, URLs, ids and block types are kept as they are.
+- The translated fields are marked; review them, then save, or choose **Undo translation**.
+
+This needs permission to update the entry in the target locale and to read it in the
+source locale.
+
+### Write alternative text
+
+In the media library, open an image and choose **Generate alt text**. The model describes
+the image (up to about 125 characters) in the default locale's language, and fills the
+caption when it is empty. It works on JPEG, PNG, WebP and GIF images, and sends the `small`
+or `medium` format when there is one, so large originals are not uploaded to the
+provider. Needs the media library's update permission (on the file, for **Own files**).
+
+### Summarize into a field
+
+Text fields named like a summary (`description`, `summary`, `excerpt`, `abstract`,
+`intro`, `introduction`, `lead`, `teaser`) get a **Summarize _field_** button when the
+entry has a rich text or blocks field, or a text field named `body`, `content`, `text`
+or `article`. In the example blog, **Excerpt** gets **Summarize Body**. The summary fits
+the field's maximum length.
+
+### Suggest SEO metadata
+
+A component with `metaTitle` and `metaDescription` text attributes, such as the
+[suggested `shared.seo`](/guides/frontend/seo-and-sitemap/), gets a **Suggest** button.
+It fills the meta title, description and, when the component has one, `keywords`, from the
+entry's saved draft.
+
+## Limits
+
+- Each admin may make 30 AI requests a minute; more answer
+  **Too many AI requests. Wait a minute and try again.**
+- Summaries and SEO suggestions send at most 40,000 characters of text.
+- A request to the provider times out after 120 seconds.
+
+## Privacy
+
+<Aside type="caution">
+AI actions send content to the provider you configure: the fields being translated,
+summarized or described, and the images for alt text. Choose a provider and a plan that
+your organization allows for that content, check its data retention terms, and consider a
+local model (`openai-compatible`) for content that must not leave your network.
+</Aside>
+
+- Requests go from the Verdin server to the provider; the key never reaches the browser.
+- Only the action's input is sent: the entry's text fields, the text to summarize, or one
+  image and its file name. Private attributes and other entries are not.
+- Actions only read what the admin can already read, and suggestions are not stored.
+
+The admin shows which model answered (**Suggestions by _model_ (_provider_).**).
+
+To let AI agents outside the admin read and write content, see
+[MCP server](/guides/integrations/mcp/).

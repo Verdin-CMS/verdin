@@ -1,0 +1,188 @@
+---
+title: Webhooks
+description: Call your own endpoints when content or media changes, check that deliveries come from Verdin, and handle retries.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Webhooks send an HTTP `POST` to a URL of yours when content or media changes: rebuild a
+static site, purge a cache, sync a search index, post to a chat. Deliveries are queued,
+signed, retried and logged.
+
+This page walks through setting one up and receiving it. The events, payloads and headers
+are listed in the [webhooks reference](/api/webhooks/).
+
+## Turn it on
+
+The **Webhooks** feature is on by default; you can switch it off in **Settings → Features**.
+Managing webhooks needs the **Manage webhooks** permission (`webhooks.manage`). See
+[Permissions](/reference/permissions/).
+
+## Create a webhook
+
+<Steps>
+
+1. Go to **Settings → Webhooks** and choose **New webhook**.
+2. Under **General**, give it a **Name** and the **URL** Verdin should call.
+3. Under **Events**, pick the events that trigger a delivery: **Entries** (create, update,
+   publish, unpublish, discard draft, delete), **Media**, **Releases** (**Release
+   published**) and **Review workflows** (**Entry stage changed**).
+4. Under **Content types**, keep **All content types** or pick some. This only filters
+   entry events; media events are sent regardless.
+5. Under **Headers**, add any headers your endpoint needs, such as an `authorization`
+   token (**Add header**). `content-type`, `host` and the `x-verdin-*` headers are set by
+   Verdin.
+6. Under **Signing**, keep **Sign deliveries** on (the default).
+7. Choose **Create**. Verdin shows the signing secret (`whsec_…`) once: copy it into your
+   endpoint's configuration.
+
+</Steps>
+
+**Enabled** switches a webhook off without deleting it. Disabled webhooks receive no
+events but can still be tested.
+
+## Test it
+
+Choose **Send test event** on the webhook. Verdin sends, right away:
+
+```json
+{ "event": "trigger-test", "createdAt": "2026-09-25T09:00:00.000Z" }
+```
+
+The delivery appears in the webhook's **Delivery log** with its status, HTTP status,
+duration and the start of the response body. Open a delivery for the full payload and the
+error, if any.
+
+To receive webhooks on your machine while you develop, run the server with `verdin dev`:
+it allows `localhost` URLs, which `verdin start` refuses (see [Security](#security)).
+
+## Receive a delivery
+
+A delivery is a `POST` with a JSON body and these headers:
+
+| Header | Value |
+| --- | --- |
+| `content-type` | `application/json` |
+| `x-verdin-event` | The event name, such as `entry.publish`. |
+| `x-verdin-delivery` | The delivery id. It stays the same across retries: use it to ignore duplicates. |
+| `x-verdin-signature` | `t=<unix seconds>,v1=<hex>`, on signed webhooks. |
+
+```json
+{
+  "event": "entry.publish",
+  "createdAt": "2026-09-25T09:00:00.000Z",
+  "model": "article",
+  "uid": "api::article",
+  "entry": { "id": 3, "documentId": "01J…", "title": "Hello", "publishedAt": "2026-09-25T09:00:00.000Z" }
+}
+```
+
+Answer with any `2xx` status, quickly. Do slow work (a full rebuild) after answering, or
+queue it: a delivery that takes longer than the timeout (10 seconds by default) counts as
+failed.
+
+### Verify the signature
+
+`v1` is the HMAC-SHA256 of `"<t>.<raw body>"`, keyed with the webhook's secret. To check a
+delivery:
+
+1. Recompute the HMAC over the **raw** request body, not over re-serialized JSON.
+2. Compare it with `v1` in constant time.
+3. Reject timestamps older than a few minutes, so a captured delivery cannot be replayed.
+
+<Tabs syncKey="lang">
+<TabItem label="Node.js">
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verify(secret, header, rawBody, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
+
+With Express, keep the raw body: `app.post('/hooks/verdin', express.raw({ type: 'application/json' }), …)`
+and pass `req.body.toString()`.
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, raw_body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False
+    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+</TabItem>
+<TabItem label="Edge (Web Crypto)">
+
+```ts
+export async function verify(secret: string, header: string, rawBody: string, tolerance = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const signature = new Uint8Array(v1.match(/../g)!.map((byte) => parseInt(byte, 16)));
+  return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(`${t}.${rawBody}`));
+}
+```
+
+`crypto.subtle.verify` compares in constant time.
+
+</TabItem>
+</Tabs>
+
+**Rotate secret** issues a new secret (shown once); the old one stops working at once.
+**Stop signing** deletes the secret and sends deliveries unsigned.
+
+## Retries
+
+Deliveries are stored in the database when the change commits and sent by a background
+worker, so a slow endpoint never slows down editors.
+
+- **Success:** any `2xx` answer.
+- **Failure:** anything else, including redirects (they are not followed), connection
+  errors and timeouts.
+- **Retries:** a failed delivery is retried after 30 seconds, 2 minutes, 10 minutes,
+  1 hour and 6 hours. After that it is marked **Failed**.
+
+Choose **Retry** on a delivery in the log to send it again now. The log is kept for 30
+days. Since retries reuse the same `x-verdin-delivery`, make your handler idempotent: store
+the ids you processed, or make the work safe to repeat.
+
+## Security
+
+With `verdin start`, webhook URLs may not point at loopback, private, link-local or other
+reserved addresses, including host names that resolve to one. This keeps an admin from
+using webhooks to reach internal services (SSRF). Credentials in the URL
+(`https://user:pass@…`) are refused; send them in a header instead.
+
+```toml title="verdin.toml"
+[webhooks]
+allow_private_networks = false   # unset: false with `verdin start`, true with `verdin dev`
+timeout_secs = 10
+retention_days = 30
+```
+
+See [`[webhooks]`](/reference/configuration/).
+
+## Coming from Strapi
+
+Verdin's webhooks follow Strapi's events and payloads, with these differences:
+
+- deliveries are signed, retried and logged;
+- a webhook can be limited to some content types;
+- Strapi's `entry.draft-discard` is called `entry.discard-draft`.
+
+To rebuild a static site from the admin with a button instead of on every change, see
+[Deploys and CDN](/guides/integrations/deploys-and-cdn/).

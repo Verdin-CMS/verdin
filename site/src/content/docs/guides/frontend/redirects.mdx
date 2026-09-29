@@ -1,0 +1,116 @@
+---
+title: Redirects
+description: Keep a list of redirects in the admin panel and apply them in your site's middleware.
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The **Redirects** feature lets editors send old paths to new ones without a deploy: they
+keep the list in the admin panel, and your site fetches it and answers with the redirect.
+Verdin does not redirect visitors itself, since they reach your site, not the CMS.
+
+## Turn it on
+
+In **Settings → Features**, turn on **Redirects**, then choose **Manage redirects** (or go
+to **Settings → Redirects**). Managing redirects needs the **Manage SEO, redirects, menus
+and forms** permission (`site.manage`), which the built-in Editor role has. See
+[Permissions](/reference/permissions/).
+
+## Add redirects
+
+<Steps>
+
+1. In **Settings → Redirects**, choose **Add a redirect**.
+2. **From**: the old path, starting with `/` (for example `/blog/2024/hello`).
+3. **To**: the new path, or a full `http(s)` URL on another site.
+4. **Type**: **301 · Permanent**, **302 · Temporary**, **307 · Temporary (keeps method)**
+   or **308 · Permanent (keeps method)**.
+5. Save.
+
+</Steps>
+
+Verdin refuses a redirect that would never work:
+
+- a second redirect from the same path;
+- a path that redirects to itself;
+- a chain that loops (`/a` → `/b` → `/a`).
+
+For many redirects at once, use **Import CSV** with `source`, `destination` and `status`
+columns. Rows whose source already exists update that redirect. **Export CSV** writes the
+same format, handy for a migration from another CMS or a spreadsheet review.
+
+```csv title="redirects.csv"
+source,destination,status
+/blog/2024/hello,/blog/hello,301
+/old-pricing,https://shop.example.com/pricing,302
+```
+
+## Apply them on your site
+
+Sites read the list from `GET /api/_redirects`, with no token:
+
+```json
+{
+  "data": [
+    { "source": "/blog/2024/hello", "destination": "/blog/hello", "status": 301 },
+    { "source": "/old-pricing", "destination": "https://shop.example.com/pricing", "status": 302 }
+  ]
+}
+```
+
+The response is sent with `Cache-Control: public, max-age=60`, so a change reaches sites
+within about a minute. Match the request path exactly against `source`:
+
+<Tabs syncKey="framework">
+<TabItem label="Next.js">
+
+```js title="middleware.js"
+import { NextResponse } from 'next/server';
+
+export async function middleware(request) {
+  const response = await fetch(`${process.env.VERDIN_URL}/api/_redirects`, { next: { revalidate: 60 } });
+  const { data } = await response.json();
+  const hit = data.find((redirect) => redirect.source === request.nextUrl.pathname);
+  if (hit) return NextResponse.redirect(new URL(hit.destination, request.url), hit.status);
+}
+```
+
+</TabItem>
+<TabItem label="Astro">
+
+```ts title="src/middleware.ts"
+import { defineMiddleware } from 'astro:middleware';
+
+let cache: { at: number; list: { source: string; destination: string; status: number }[] } | null = null;
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  if (!cache || Date.now() - cache.at > 60_000) {
+    const response = await fetch(`${import.meta.env.VERDIN_URL}/api/_redirects`);
+    cache = { at: Date.now(), list: (await response.json()).data };
+  }
+  const hit = cache.list.find((redirect) => redirect.source === context.url.pathname);
+  if (hit) return context.redirect(hit.destination, hit.status as 301 | 302 | 307 | 308);
+  return next();
+});
+```
+
+</TabItem>
+</Tabs>
+
+For a static site, fetch the list at build time and write your host's redirect file
+(Netlify's `_redirects`, Vercel's `vercel.json`, an nginx map). Combine that with a
+[deploy button](/guides/integrations/deploys-and-cdn/) or a [webhook](/guides/integrations/webhooks/)
+so editors can rebuild after changing redirects.
+
+<Aside type="note">
+The API prefix follows [`[api].prefix`](/reference/configuration/). With the feature off,
+`/api/_redirects` answers `404`.
+</Aside>
+
+## Admin API
+
+The admin panel uses `/admin/api/site/redirects` (`GET`, `POST`) and
+`/admin/api/site/redirects/{id}` (`PUT`, `DELETE`), with an admin's access token and
+`site.manage`. See [Admin API](/api/admin/).
