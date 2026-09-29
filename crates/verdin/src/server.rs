@@ -3,6 +3,7 @@ use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::{Value, json};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 use verdin_db::Database;
@@ -32,6 +33,42 @@ pub fn router(state: AppState, nested: &[(String, Router)]) -> Router {
             tracing::info_span!("request", method = %request.method(), uri = %loggable_uri(request.uri()), request_id)
         }))
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+}
+
+/// CORS for the content API and GraphQL (`[api].cors_origins`); `None` without origins.
+pub fn cors(origins: &[String]) -> Result<Option<CorsLayer>, String> {
+    use axum::http::{HeaderValue, Method, header};
+    if origins.is_empty() {
+        return Ok(None);
+    }
+    let allow = if origins.iter().any(|origin| origin == "*") {
+        if origins.len() > 1 {
+            return Err("`*` cannot be combined with other origins".into());
+        }
+        AllowOrigin::any()
+    } else {
+        let mut list = Vec::with_capacity(origins.len());
+        for origin in origins {
+            let valid = (origin.starts_with("https://") || origin.starts_with("http://"))
+                && !origin.ends_with('/')
+                && origin
+                    .split_once("://")
+                    .is_some_and(|(_, rest)| !rest.is_empty() && !rest.contains('/'));
+            let value = HeaderValue::from_str(origin).ok().filter(|_| valid).ok_or_else(|| {
+                format!("`{origin}` is not an origin (scheme://host[:port], no path)")
+            })?;
+            list.push(value);
+        }
+        AllowOrigin::list(list)
+    };
+    Ok(Some(
+        CorsLayer::new()
+            .allow_origin(allow)
+            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+            .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::IF_NONE_MATCH])
+            .expose_headers([header::ETAG])
+            .max_age(std::time::Duration::from_secs(3600)),
+    ))
 }
 
 /// The URI with the values of secret-looking query parameters (tokens, codes…) hidden.
@@ -100,6 +137,31 @@ mod tests {
             "/admin/api/deploy/callback/3/[hidden]"
         );
         assert_eq!(uri("/api/articles?sort=title"), "/api/articles?sort=title");
+    }
+
+    #[tokio::test]
+    async fn cors_allows_listed_origins() {
+        assert!(cors(&[]).unwrap().is_none());
+        for bad in ["www.example.com", "https://www.example.com/", "https://x.dev/path"] {
+            assert!(cors(&[bad.into()]).is_err(), "{bad}");
+        }
+        assert!(cors(&["*".into(), "https://a.dev".into()]).is_err());
+        let layer = cors(&["https://www.example.com".into()]).unwrap().unwrap();
+        let app = Router::new().route("/articles", get(|| async { "ok" })).layer(layer);
+        let preflight = |origin: &str| {
+            Request::builder()
+                .method("OPTIONS")
+                .uri("/articles")
+                .header("origin", origin)
+                .header("access-control-request-method", "GET")
+                .header("access-control-request-headers", "authorization")
+                .body(Body::empty())
+                .unwrap()
+        };
+        let allowed = app.clone().oneshot(preflight("https://www.example.com")).await.unwrap();
+        assert_eq!(allowed.headers()["access-control-allow-origin"], "https://www.example.com");
+        let refused = app.oneshot(preflight("https://evil.example")).await.unwrap();
+        assert!(refused.headers().get("access-control-allow-origin").is_none());
     }
 
     async fn app() -> (Router, Database) {

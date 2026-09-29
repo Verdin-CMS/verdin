@@ -58,6 +58,7 @@ Secrets are never read from `verdin.toml`; see [Environment variables](#environm
 | `token_rate_limit` | `0` | Requests per minute and API token or end user (`0`: unlimited). |
 | `cache_ttl_secs` | `0` | Keep anonymous reads in memory this long (`0`: no cache); changes empty the cache. |
 | `cache_entries` | `1000` | Maximum number of cached responses. |
+| `cors_origins` | `[]` | Browser origins allowed to call the content API and GraphQL from another site (`["https://www.example.com"]`: scheme, host and port, no path), or `["*"]` for any. Empty: only same-origin pages can call them from a browser. The admin API never takes cross-origin calls. |
 
 ## `[admin]`
 

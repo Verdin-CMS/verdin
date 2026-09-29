@@ -325,9 +325,15 @@ pub fn build_app(
             sso_secrets: sso_secrets(states),
         },
     );
-    let graphql = states.enabled(GRAPHQL).then(|| {
+    let mut graphql = states.enabled(GRAPHQL).then(|| {
         graphql_router(context, &registry_for_graphql, limits, output, states, &listeners)
     });
+    // Validated at startup.
+    let mut content_api = content_api;
+    if let Ok(Some(cors)) = server::cors(&api.cors_origins) {
+        content_api = content_api.layer(cors.clone());
+        graphql = graphql.map(|router| router.layer(cors));
+    }
     let mut app = server::router(
         AppState { db: context.db.clone() },
         &[(api.prefix.clone(), content_api), (format!("{}/api", admin.path), admin_api)],

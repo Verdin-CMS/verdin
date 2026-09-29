@@ -180,6 +180,9 @@ pub struct ApiConfig {
     /// Keep anonymous reads in memory this long (0: no cache); changes empty the cache.
     pub cache_ttl_secs: u64,
     pub cache_entries: usize,
+    /// Browser origins allowed to call the content API and GraphQL
+    /// (`["https://www.example.com"]`, or `["*"]` for any). Empty: same origin only.
+    pub cors_origins: Vec<String>,
 }
 
 impl Default for ApiConfig {
@@ -193,6 +196,7 @@ impl Default for ApiConfig {
             token_rate_limit: 0,
             cache_ttl_secs: 0,
             cache_entries: 1000,
+            cors_origins: Vec::new(),
         }
     }
 }

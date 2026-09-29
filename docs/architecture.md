@@ -758,7 +758,7 @@ verdin version
 ### 16.3 Security checklist (MVP)
 
 - SQL identifiers only from the validated schema; values always bound.
-- Explicit CORS allow-list. Default `body_limit` of 1 MB.
+- Explicit CORS allow-list (`[api].cors_origins`) for the content API and GraphQL; none for the admin API. Default `body_limit` of 1 MB.
 - Security headers on the admin (strict CSP, `X-Frame-Options: DENY`, `Referrer-Policy`).
 - Rate limiting on `/admin/api/auth/*`.
 - Query limits (§12.2) to prevent DoS through expensive queries.
