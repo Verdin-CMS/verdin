@@ -45,7 +45,7 @@ that `verdin schema check` reports with its path (`attributes.title.maxLength`).
 | `configurable` | `true` | Strapi's flag for the admin's builder; kept as written. |
 | `pluginOptions.i18n.localized` | `true` | In a localized content type, `false` shares the value across locales instead of one value per locale. |
 | `customField` | unset | `plugin::<plugin>.<field>` (or `global::<field>`): the admin edits the attribute with a plugin's custom field. The `type` is how the value is stored. See [Plugins](/extending/plugins/). |
-| `conditions` | unset | Strapi's conditional fields (`{ "visible": … }`). Kept so the schema loads and round-trips; the admin does not apply them yet. |
+| `conditions` | unset | Strapi's conditional fields (`{ "visible": <JSON Logic> }`). The editor hides the field while the rule is false, and the server does not require a hidden field. |
 | `default` | unset | Value of new entries when the write leaves the attribute out. Must be valid for the type. Not every type takes one (see each type). |
 
 Attribute names start with a letter, then letters, digits and `_`, at most 50 characters.
@@ -387,7 +387,7 @@ the type) or on the entry. This is a Verdin addition; Strapi has no equivalent.
   ignored.
 - **`string`, `email` and `uid` are capped at 255 characters**, the column size, instead
   of failing at the database.
-- **`conditions`** (conditional fields) load but are not applied yet.
+- **`conditions`** (conditional fields) work as in Strapi 5.17: hidden fields are not required.
 - **`validations`** are Verdin's own.
 - The rest matches Strapi v5: the type names, their options, `biginteger` values as
   strings, relation writes with `connect`, `disconnect`, `set` and `position`, and the
