@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use serde::Serialize;
 use serde_json::Value as Json;
-use verdin_db::{ColumnKind, SqlValue, Tx};
+use verdin_db::{ColumnKind, Database, SqlValue};
 use verdin_query::sql::SqlBuilder;
 use verdin_schema::{Attribute, AttributeKind, Schema};
 
@@ -60,7 +60,8 @@ impl DocumentService {
 
     async fn usage(&self, wanted: Wanted<'_>) -> Result<Vec<Usage>> {
         let schema = &self.registry.schema;
-        let mut tx = self.db.begin().await?;
+        // Plain reads, no transaction: a scan must not hold up writers (SQLite).
+        let db = &self.db;
         let mut found = BTreeSet::new();
         let mut models: Vec<_> = self.registry.types().collect();
         models.sort_by(|a, b| a.uid().cmp(b.uid()));
@@ -85,7 +86,7 @@ impl DocumentService {
                 if let Some((table, target_type, id)) = link {
                     let rows = scan
                         .linked(
-                            &mut tx,
+                            db,
                             table,
                             "target_document_id",
                             SqlValue::Text(id.into()),
@@ -97,7 +98,7 @@ impl DocumentService {
                 }
                 if let (Wanted::File { id, .. }, Some(media)) = (&wanted, &field.media) {
                     let rows = scan
-                        .linked(&mut tx, &media.link_table, "file_id", SqlValue::BigInt(*id), None)
+                        .linked(db, &media.link_table, "file_id", SqlValue::BigInt(*id), None)
                         .await?;
                     found.extend(rows.into_iter().map(|row| row.usage(model, &field.api)));
                     continue;
@@ -113,8 +114,7 @@ impl DocumentService {
                 };
                 let mut after = 0;
                 loop {
-                    let (rows, last) =
-                        scan.page(&mut tx, &field.column, like.as_deref(), after).await?;
+                    let (rows, last) = scan.page(db, &field.column, like.as_deref(), after).await?;
                     for (row, value) in rows {
                         for path in matches(schema, attribute, &value, &field.api, &wanted) {
                             found.insert(row.usage(model, &path));
@@ -127,7 +127,6 @@ impl DocumentService {
                 }
             }
         }
-        tx.commit().await?;
         Ok(found.into_iter().collect())
     }
 }
@@ -230,13 +229,13 @@ impl<'a> Scan<'a> {
     /// Rows whose link table has `column = value` (and `target_type`, for morphs).
     async fn linked(
         &self,
-        tx: &mut Tx,
+        db: &Database,
         table: &str,
         column: &str,
         value: SqlValue,
         target_type: Option<&str>,
     ) -> Result<Vec<Row>> {
-        let mut select = SqlBuilder::new(tx.flavor());
+        let mut select = SqlBuilder::new(db.flavor());
         self.select(&mut select, None);
         select.push(" JOIN ").ident(table).push(" l ON ").column(Some("l"), "source_id");
         select.push(" = ").column(Some("s"), "id").push(" WHERE ").column(Some("l"), column);
@@ -245,7 +244,7 @@ impl<'a> Scan<'a> {
             select.push(" AND ").column(Some("l"), "target_type").push(" = ");
             select.param(SqlValue::Text(target_type.into()));
         }
-        let rows = tx.fetch_all(&select.sql, &select.params, &Self::kinds(None)).await?;
+        let rows = db.queries().fetch_all(&select.sql, &select.params, &Self::kinds(None)).await?;
         Ok(rows.into_iter().map(|row| Self::row(&mut row.into_iter())).collect())
     }
 
@@ -253,13 +252,13 @@ impl<'a> Scan<'a> {
     /// id when more may follow.
     async fn page(
         &self,
-        tx: &mut Tx,
+        db: &Database,
         column: &str,
         like: Option<&str>,
         after: i64,
     ) -> Result<(Vec<(Row, Json)>, Option<i64>)> {
         let kind = if like.is_some() { ColumnKind::Text } else { ColumnKind::Json };
-        let mut select = SqlBuilder::new(tx.flavor());
+        let mut select = SqlBuilder::new(db.flavor());
         self.select(&mut select, Some(column));
         select.push(" WHERE ").column(Some("s"), column).push(" IS NOT NULL AND ");
         select.column(Some("s"), "id").push(" > ").param(SqlValue::BigInt(after));
@@ -269,7 +268,8 @@ impl<'a> Scan<'a> {
         }
         select.push(" ORDER BY ").column(Some("s"), "id").push(" LIMIT ");
         select.push(&PAGE.to_string());
-        let rows = tx.fetch_all(&select.sql, &select.params, &Self::kinds(Some(kind))).await?;
+        let rows =
+            db.queries().fetch_all(&select.sql, &select.params, &Self::kinds(Some(kind))).await?;
         let full = rows.len() as i64 == PAGE;
         let mut last = None;
         let mut out = Vec::with_capacity(rows.len());
