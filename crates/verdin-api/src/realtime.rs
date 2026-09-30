@@ -1,6 +1,7 @@
 //! Realtime events over Server-Sent Events: content and media changes as they commit, and
 //! (for the admin) who is viewing or editing an entry. Each subscriber only receives what
-//! it may read. Events are those of this instance (see https://verdin-cms.github.io/verdin/deploy/scaling/).
+//! it may read. With several instances, the shared event bus ([`crate::cluster`]) brings in
+//! the other instances' events and presence (see https://verdin-cms.github.io/verdin/deploy/scaling/).
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -16,6 +17,8 @@ use verdin_content::DocumentService;
 use verdin_content::events::{
     BoxFuture, DocumentEvent, DocumentListener, FileEventKind, FileListener,
 };
+
+use crate::cluster::{ClusterEvent, EventBus, now_ms};
 
 /// How long a presence lasts without a heartbeat.
 pub const PRESENCE_TTL: Duration = Duration::from_secs(45);
@@ -67,7 +70,9 @@ pub struct Viewer {
 struct Seen {
     name: String,
     editing: bool,
-    since: Instant,
+    /// When they started editing (Unix ms, the same on every instance): the lock goes to
+    /// the earliest.
+    since: i64,
     last: Instant,
 }
 
@@ -79,6 +84,8 @@ pub struct Realtime {
     presence: Arc<Mutex<HashMap<EntryKey, HashMap<i64, Seen>>>>,
     /// Content types whose writes only touch drafts (draft & publish).
     draft_types: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// Presence and announcements for the other instances.
+    bus: EventBus,
 }
 
 impl Default for Realtime {
@@ -93,7 +100,18 @@ impl Realtime {
             sender: broadcast::channel(CHANNEL).0,
             presence: Arc::default(),
             draft_types: Arc::default(),
+            bus: EventBus::local(),
         }
+    }
+
+    /// Shares presence and announcements with the other instances on `bus`.
+    pub fn with_bus(mut self, bus: EventBus) -> Self {
+        self.bus = bus;
+        self
+    }
+
+    pub fn bus(&self) -> &EventBus {
+        &self.bus
     }
 
     /// The types with draft & publish (from the current schema).
@@ -133,35 +151,81 @@ impl Realtime {
         editing: bool,
         leave: bool,
     ) -> Vec<Viewer> {
+        let (viewers, since) =
+            self.apply_heartbeat(key.clone(), user_id, name, editing, leave, None);
+        if self.bus.is_shared() {
+            let (uid, document_id, locale) = key;
+            self.bus.publish(ClusterEvent::Presence {
+                uid,
+                document_id,
+                locale,
+                user_id,
+                name: name.to_owned(),
+                editing,
+                leave,
+                since,
+            });
+        }
+        viewers
+    }
+
+    /// A heartbeat another instance received.
+    pub fn remote_heartbeat(
+        &self,
+        key: EntryKey,
+        user_id: i64,
+        name: &str,
+        editing: bool,
+        leave: bool,
+        since: i64,
+    ) {
+        self.apply_heartbeat(key, user_id, name, editing, leave, Some(since));
+    }
+
+    /// Returns who is on the entry and when the admin started editing.
+    fn apply_heartbeat(
+        &self,
+        key: EntryKey,
+        user_id: i64,
+        name: &str,
+        editing: bool,
+        leave: bool,
+        since: Option<i64>,
+    ) -> (Vec<Viewer>, i64) {
         let now = Instant::now();
-        let (viewers, changed) = {
+        // Another instance's heartbeat says when the admin started editing.
+        let remote = since.is_some();
+        let started = since.unwrap_or_else(now_ms);
+        let (viewers, changed, since) = {
             let mut presence = self.presence.lock().expect("presence");
             let entry = presence.entry(key.clone()).or_default();
             let before: Vec<(i64, bool)> = snapshot(entry, now);
             entry.retain(|_, seen| now.duration_since(seen.last) < PRESENCE_TTL);
+            let mut started_editing = started;
             if leave {
                 entry.remove(&user_id);
             } else {
                 let seen = entry.entry(user_id).or_insert_with(|| Seen {
                     name: name.to_owned(),
                     editing,
-                    since: now,
+                    since: started,
                     last: now,
                 });
-                if editing && !seen.editing {
+                if editing && (!seen.editing || remote) {
                     // Starting to edit: queue behind whoever already edits.
-                    seen.since = now;
+                    seen.since = started;
                 }
                 seen.editing = editing;
                 seen.last = now;
                 seen.name = name.to_owned();
+                started_editing = seen.since;
             }
             let viewers = viewers(entry);
             let after: Vec<(i64, bool)> = snapshot(entry, now);
             if entry.is_empty() {
                 presence.remove(&key);
             }
-            (viewers, before != after)
+            (viewers, before != after, started_editing)
         };
         if changed {
             let (uid, document_id, locale) = key;
@@ -177,11 +241,22 @@ impl Realtime {
                 admin_only: true,
             });
         }
-        viewers
+        (viewers, since)
     }
 
     /// Announces an admin-only event about an entry (comments, tasks).
     pub fn announce(&self, event: &str, uid: &str, document_id: &str, locale: &str) {
+        self.remote_announce(event, uid, document_id, locale);
+        self.bus.publish(ClusterEvent::Announce {
+            event: event.into(),
+            uid: uid.into(),
+            document_id: document_id.into(),
+            locale: locale.into(),
+        });
+    }
+
+    /// An announcement made on another instance.
+    pub fn remote_announce(&self, event: &str, uid: &str, document_id: &str, locale: &str) {
         self.send(Message {
             event: event.into(),
             uid: uid.into(),
@@ -260,7 +335,7 @@ fn viewers(entry: &HashMap<i64, Seen>) -> Vec<Viewer> {
     let holder = entry
         .iter()
         .filter(|(_, seen)| seen.editing)
-        .min_by_key(|(_, seen)| seen.since)
+        .min_by_key(|(id, seen)| (seen.since, **id))
         .map(|(id, _)| *id);
     let mut viewers: Vec<Viewer> = entry
         .iter()

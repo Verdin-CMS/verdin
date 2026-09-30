@@ -48,6 +48,7 @@ pub const MENUS: &str = "vd_menus";
 pub const FORMS: &str = "vd_forms";
 pub const FORM_SUBMISSIONS: &str = "vd_form_submissions";
 pub const SPENT_CHALLENGES: &str = "vd_spent_challenges";
+pub const CLUSTER_EVENTS: &str = "vd_cluster_events";
 
 fn id() -> Column {
     Column::new("id", ColumnType::Id).not_null()
@@ -817,6 +818,20 @@ pub fn system_tables() -> Vec<Table> {
                 unique(SPENT_CHALLENGES, "challenge", &["challenge_hash"]),
                 index(SPENT_CHALLENGES, "expires", &["expires_at"]),
             ],
+            foreign_keys: vec![],
+        },
+        // The shared event bus on the database (`[cluster].bus = "database"`): events
+        // appended by one instance and read by the others (`id` > the last one seen),
+        // kept for a few minutes. `created_at` is Unix milliseconds.
+        Table {
+            name: CLUSTER_EVENTS.into(),
+            columns: vec![
+                id(),
+                varchar("instance", 64).not_null(),
+                Column::new("payload", ColumnType::Text).not_null(),
+                Column::new("created_at", ColumnType::BigInt).not_null(),
+            ],
+            indexes: vec![index(CLUSTER_EVENTS, "created", &["created_at"])],
             foreign_keys: vec![],
         },
         // One-time links for admins (`kind`: invite or reset), stored as SHA-256.

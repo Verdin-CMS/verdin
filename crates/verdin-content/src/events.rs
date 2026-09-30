@@ -29,6 +29,20 @@ impl EventKind {
             Self::Deleted => "entry.delete",
         }
     }
+
+    /// The kind named `name` ([`EventKind::as_str`]).
+    pub fn parse(name: &str) -> Option<Self> {
+        [
+            Self::Created,
+            Self::Updated,
+            Self::Published,
+            Self::Unpublished,
+            Self::DraftDiscarded,
+            Self::Deleted,
+        ]
+        .into_iter()
+        .find(|kind| kind.as_str() == name)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +86,11 @@ impl FileEventKind {
             Self::Updated => "media.update",
             Self::Deleted => "media.delete",
         }
+    }
+
+    /// The kind named `name` ([`FileEventKind::as_str`]).
+    pub fn parse(name: &str) -> Option<Self> {
+        [Self::Created, Self::Updated, Self::Deleted].into_iter().find(|kind| kind.as_str() == name)
     }
 }
 

@@ -45,7 +45,7 @@ pub const FILE_COLUMNS: &[(&str, ColumnKind)] = &[
 ];
 
 /// One `vd_files` row.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileRecord {
     pub id: i64,
     pub document_id: String,
