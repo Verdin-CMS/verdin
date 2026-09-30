@@ -1,0 +1,164 @@
+# Default values for the Verdin chart. Every key is documented at
+# https://verdin-cms.github.io/verdin/deploy/helm/
+
+image:
+  repository: ghcr.io/verdin-cms/verdin
+  # Empty: the chart's appVersion. For production, build your own image with the schema
+  # baked in (FROM ghcr.io/verdin-cms/verdin:<version>, COPY schema /app/schema) and set
+  # schema.path to /app/schema.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# More than one replica needs an external database (database.url or
+# database.existingSecret with PostgreSQL, MySQL or MariaDB), cluster.bus "database",
+# and no ReadWriteOnce volume on /data (use S3 for media). The chart refuses other
+# combinations.
+replicaCount: 1
+
+# The server's command. `start --migrate` applies pending safe migrations, then serves.
+args: ["start", "--migrate"]
+
+# Address browsers use (VERDIN_SERVER__PUBLIC_URL), e.g. https://cms.example.com.
+publicUrl: ""
+# Proxies whose X-Forwarded-For Verdin trusts (VERDIN_SERVER__TRUSTED_PROXIES), e.g. the
+# pod CIDR of your ingress controller: ["10.0.0.0/8"].
+trustedProxies: []
+
+secrets:
+  # VERDIN_ADMIN_JWT_SECRET and VERDIN_TOKEN_PEPPER. Empty: generated on install and kept
+  # on upgrades (read back from the release's Secret). Never change the pepper of a
+  # running site: every API token stops working. `verdin secrets` prints new values.
+  adminJwtSecret: ""
+  tokenPepper: ""
+  # Use a Secret you manage instead (keys VERDIN_ADMIN_JWT_SECRET and VERDIN_TOKEN_PEPPER,
+  # and optionally VERDIN_DATABASE_URL, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+  # VERDIN_METRICS_TOKEN). The chart then creates no Secret.
+  existingSecret: ""
+
+database:
+  # Empty: SQLite at /data/verdin.db (one replica, needs persistence). Otherwise
+  # postgres://user:password@host:5432/db or mysql://… (MySQL, MariaDB); stored in the Secret.
+  url: ""
+  # Read the URL from another Secret instead.
+  existingSecret: ""
+  existingSecretKey: VERDIN_DATABASE_URL
+
+cluster:
+  # "none" or "database": realtime events, presence, cache invalidation and search
+  # updates reach every replica through the database. Required with replicaCount > 1.
+  bus: none
+  # How often MySQL, MariaDB and SQLite are polled for other instances' events.
+  pollIntervalMs: 1000
+
+# Media on S3-compatible storage (AWS, R2, MinIO, RustFS, Tigris…) instead of /data/uploads.
+s3:
+  enabled: false
+  bucket: ""
+  region: ""
+  # Custom endpoint for non-AWS services.
+  endpoint: ""
+  # Public base URL of the bucket or its CDN (required).
+  publicUrl: ""
+  prefix: ""
+  pathStyle: false
+  # Credentials, stored in the Secret; or set them in secrets.existingSecret /
+  # s3.existingSecret (keys AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY).
+  accessKeyId: ""
+  secretAccessKey: ""
+  existingSecret: ""
+
+# Schema files mounted from a ConfigMap when you do not bake them into your image:
+# relative path → JSON content. Mounted at /etc/verdin/schema and used as [schema].path.
+#   schema:
+#     files:
+#       content-types/article.json: |
+#         { "kind": "collectionType", … }
+schema:
+  # [schema].path (VERDIN_SCHEMA__PATH). Empty: /etc/verdin/schema when files is set,
+  # else the image's configuration (/data/schema).
+  path: ""
+  files: {}
+
+# A complete verdin.toml replacing the image's built-in one (mounted at
+# /app/verdin.toml). Environment variables set by the chart still override its keys.
+configToml: ""
+
+metrics:
+  # Prometheus metrics at /_metrics, protected by a bearer token (stored in the Secret).
+  enabled: false
+  token: ""
+
+plugins:
+  # Run scheduled plugin jobs in these pods ([plugins].run_jobs).
+  runJobs: true
+
+# Extra environment variables (list of EnvVar) and sources (list of EnvFromSource).
+extraEnv: []
+extraEnvFrom: []
+
+persistence:
+  # /data: the SQLite database, local uploads, the image-transformation cache and the
+  # search index. Disabled: an emptyDir (fine with an external database and S3).
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes: ["ReadWriteOnce"]
+  size: 5Gi
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: cms.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: cms-example-com-tls
+  #    hosts: [cms.example.com]
+
+probes:
+  startup:
+    # Up to 5 minutes for migrations on the first start.
+    failureThreshold: 60
+    periodSeconds: 5
+  readiness:
+    periodSeconds: 10
+  liveness:
+    periodSeconds: 20
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+terminationGracePeriodSeconds: 30
+serviceAccountName: ""
+nodeSelector: {}
+tolerations: []
+affinity: {}

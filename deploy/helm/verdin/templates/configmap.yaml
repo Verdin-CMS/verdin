@@ -1,0 +1,25 @@
+{{- if .Values.configToml }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "verdin.fullname" . }}-config
+  labels:
+    {{- include "verdin.labels" . | nindent 4 }}
+data:
+  verdin.toml: |
+    {{- .Values.configToml | nindent 4 }}
+{{- end }}
+{{- if .Values.schema.files }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "verdin.fullname" . }}-schema
+  labels:
+    {{- include "verdin.labels" . | nindent 4 }}
+data:
+  {{- range $path, $content := .Values.schema.files }}
+  {{ include "verdin.schemaKey" $path }}: |
+    {{- $content | nindent 4 }}
+  {{- end }}
+{{- end }}

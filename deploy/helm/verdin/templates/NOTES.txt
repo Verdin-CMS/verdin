@@ -1,0 +1,26 @@
+Verdin {{ .Chart.AppVersion }} is starting ({{ .Values.replicaCount }} replica{{ if gt (int .Values.replicaCount) 1 }}s{{ end }},
+{{- if include "verdin.sqlite" . }} SQLite on the /data volume{{ else }} external database{{ end }},
+{{- if .Values.s3.enabled }} media on S3{{ else }} media on /data{{ end }}).
+
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+
+Admin panel: http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}/admin/
+{{- end }}
+{{- else }}
+
+Reach it locally:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "verdin.fullname" . }} 1337:{{ .Values.service.port }}
+then open http://localhost:1337/admin/ and register the first admin, or:
+  kubectl --namespace {{ .Release.Namespace }} exec -it deploy/{{ include "verdin.fullname" . }} -- verdin admin create --email you@example.com
+{{- end }}
+{{- if not (include "verdin.schemaPath" .) }}
+
+No schema is configured: the pods read /data/schema. Bake your schema into your own
+image (schema.path=/app/schema) or pass it in schema.files.
+{{- end }}
+{{- if not .Values.secrets.existingSecret }}
+
+The secrets are in the Secret {{ include "verdin.fullname" . }} (kept on uninstall). Back
+them up with your database: a new VERDIN_TOKEN_PEPPER voids every API token.
+{{- end }}

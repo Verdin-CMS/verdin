@@ -1,0 +1,201 @@
+{{- include "verdin.validate" . }}
+{{- $schemaPath := include "verdin.schemaPath" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "verdin.fullname" . }}
+  labels:
+    {{- include "verdin.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  {{- if or (include "verdin.sqlite" .) (include "verdin.rwo" .) }}
+  strategy:
+    # Never two pods on the same SQLite file or ReadWriteOnce volume.
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "verdin.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "verdin.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # Roll the pods when the configuration changes.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.serviceAccountName }}
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      {{- end }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: verdin
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            {{- toYaml .Values.args | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 1337
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ include "verdin.secretName" . }}
+            {{- if and .Values.s3.enabled .Values.s3.existingSecret }}
+            - secretRef:
+                name: {{ .Values.s3.existingSecret }}
+            {{- end }}
+            {{- with .Values.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            - name: VERDIN_SERVER__PORT
+              value: "1337"
+            {{- if .Values.database.existingSecret }}
+            - name: VERDIN_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.existingSecretKey }}
+            {{- end }}
+            {{- if .Values.publicUrl }}
+            - name: VERDIN_SERVER__PUBLIC_URL
+              value: {{ .Values.publicUrl | quote }}
+            {{- end }}
+            {{- with .Values.trustedProxies }}
+            - name: VERDIN_SERVER__TRUSTED_PROXIES
+              value: {{ toJson . | quote }}
+            {{- end }}
+            - name: VERDIN_CLUSTER__BUS
+              value: {{ .Values.cluster.bus | quote }}
+            - name: VERDIN_CLUSTER__POLL_INTERVAL_MS
+              value: {{ .Values.cluster.pollIntervalMs | quote }}
+            # Each pod's name on the event bus and in the logs.
+            - name: VERDIN_CLUSTER__INSTANCE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: VERDIN_PLUGINS__RUN_JOBS
+              value: {{ .Values.plugins.runJobs | quote }}
+            {{- if .Values.metrics.enabled }}
+            - name: VERDIN_METRICS__ENABLED
+              value: "true"
+            {{- end }}
+            {{- if $schemaPath }}
+            - name: VERDIN_SCHEMA__PATH
+              value: {{ $schemaPath | quote }}
+            {{- end }}
+            {{- if .Values.s3.enabled }}
+            - name: VERDIN_UPLOAD__PROVIDER__NAME
+              value: s3
+            - name: VERDIN_UPLOAD__PROVIDER__BUCKET
+              value: {{ .Values.s3.bucket | quote }}
+            - name: VERDIN_UPLOAD__PROVIDER__PUBLIC_URL
+              value: {{ .Values.s3.publicUrl | quote }}
+            {{- with .Values.s3.region }}
+            - name: VERDIN_UPLOAD__PROVIDER__REGION
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.s3.endpoint }}
+            - name: VERDIN_UPLOAD__PROVIDER__ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.s3.prefix }}
+            - name: VERDIN_UPLOAD__PROVIDER__PREFIX
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.s3.pathStyle }}
+            - name: VERDIN_UPLOAD__PROVIDER__PATH_STYLE
+              value: "true"
+            {{- end }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /_ready
+              port: http
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /_ready
+              port: http
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            # Uploads are streamed through /tmp (the root filesystem is read-only).
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.configToml }}
+            - name: config
+              mountPath: /app/verdin.toml
+              subPath: verdin.toml
+              readOnly: true
+            {{- end }}
+            {{- if .Values.schema.files }}
+            - name: schema
+              mountPath: /etc/verdin/schema
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "verdin.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.configToml }}
+        - name: config
+          configMap:
+            name: {{ include "verdin.fullname" . }}-config
+        {{- end }}
+        {{- if .Values.schema.files }}
+        - name: schema
+          configMap:
+            name: {{ include "verdin.fullname" . }}-schema
+            items:
+              {{- range $path, $content := .Values.schema.files }}
+              - key: {{ include "verdin.schemaKey" $path }}
+                path: {{ $path }}
+              {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
