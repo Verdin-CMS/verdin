@@ -49,6 +49,12 @@ path = "/admin"
 # enabled = true
 # endpoint = "http://localhost:4318"   # OTEL_EXPORTER_OTLP_ENDPOINT wins
 # sentry_dsn = "https://…@….ingest.sentry.io/…"   # or SENTRY_DSN
+
+# Several instances behind a load balancer: realtime events, presence, cache
+# invalidation and search updates reach every instance through the database.
+# [cluster]
+# bus = "database"          # "none" (the default) keeps events in each instance
+# poll_interval_ms = 1000   # MySQL, MariaDB and SQLite; PostgreSQL uses LISTEN/NOTIFY
 "#;
 
 const GITIGNORE: &str = ".env\ndata/\n*.db\n*.db-*\n.cache/\n# Local media library ([upload.provider] dir).\npublic/uploads/\n";

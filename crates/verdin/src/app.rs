@@ -81,6 +81,10 @@ pub struct AppContext {
     pub metrics: Option<crate::metrics::Metrics>,
     /// `[search]`: the full-text index, kept across rebuilds.
     pub search: Option<verdin_search::Search>,
+    /// `[cluster]`: publishes this instance's events to the others (local: nothing).
+    pub bus: verdin_api::cluster::EventBus,
+    /// Applies the other instances' events; spawned by [`serve`].
+    pub bus_runner: Option<verdin_api::cluster::BusRunner>,
 }
 
 impl AppContext {
@@ -188,6 +192,14 @@ pub fn build_app(
     ];
     if let Some(cdn) = &context.cdn {
         listeners.push(cdn.listener());
+    }
+    if context.bus.is_shared() {
+        listeners.push(context.bus.listener());
+        // Other instances' writes are read with this schema (the search index re-reads them).
+        context.bus.set_service(
+            verdin_content::DocumentService::new(context.db.clone(), registry.clone(), output)
+                .with_locales(context.locales.clone()),
+        );
     }
     if let Some(search) = &context.search {
         listeners.push(search.listener());
@@ -513,6 +525,8 @@ pub async fn serve(
     schema: Schema,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<()> {
+    let mut context = context;
+    let bus_runner = context.bus_runner.take();
     let context = Arc::new(context);
     let states = load_features(&context.db).await.context("reading feature switches")?;
     context
@@ -551,6 +565,7 @@ pub async fn serve(
     });
     let scheduler = context.releases.spawn();
     let digest = context.config.digest.enabled.then(|| context.digest.spawn());
+    let bus = bus_runner.map(|runner| runner.spawn(cluster_consumers(&context)));
     // Keeps the watcher alive while serving.
     let _watcher = match &host.editor {
         Some(editor) => match watch_schema(editor.clone()) {
@@ -603,11 +618,35 @@ pub async fn serve(
     if let Some(digest) = digest {
         digest.abort();
     }
+    if let Some(bus) = bus {
+        bus.stop().await;
+    }
     if tokio::time::timeout(SHUTDOWN_GRACE, context.db.close()).await.is_err() {
         tracing::warn!("database connections still in use at shutdown");
     }
     tracing::info!("verdin stopped");
     Ok(())
+}
+
+/// What other instances' events update here: realtime streams and presence, the reads
+/// cache, the search index and the transform cache.
+fn cluster_consumers(context: &AppContext) -> verdin_api::cluster::Consumers {
+    let realtime = &context.realtime;
+    // Streams last: subscribers who hear of a change read fresh answers.
+    let mut documents = vec![context.cache.listener()];
+    if let Some(search) = &context.search {
+        documents.push(search.listener());
+    }
+    documents.push(realtime.listener());
+    verdin_api::cluster::Consumers {
+        realtime: Some(realtime.clone()),
+        documents,
+        files: vec![
+            Arc::new(context.cache.clone()),
+            uploads::cache_cleaner(context.root.join(&context.config.upload.transforms.cache_dir)),
+            realtime.file_listener(),
+        ],
+    }
 }
 
 /// `/graphql`, when the `graphql` feature is on. A schema that cannot be built (it should
@@ -1225,6 +1264,8 @@ mod tests {
             realtime: verdin_api::realtime::Realtime::new(),
             metrics: None,
             search: None,
+            bus: Default::default(),
+            bus_runner: None,
             digest: verdin_api::digest::Digest::new(
                 auth_for_digest,
                 verdin_email::Mailer::memory().0,

@@ -243,6 +243,22 @@ impl Metrics {
         let _ = writeln!(out, "# HELP verdin_realtime_subscribers Open realtime event streams.");
         let _ = writeln!(out, "# TYPE verdin_realtime_subscribers gauge");
         let _ = writeln!(out, "verdin_realtime_subscribers {}", self.inner.realtime.subscribers());
+        if let Some(stats) = self.inner.realtime.bus().stats() {
+            let _ = writeln!(
+                out,
+                "# HELP verdin_cluster_events_total Events on the shared event bus ([cluster]), by \
+                 direction: sent to other instances, received from them, dropped."
+            );
+            let _ = writeln!(out, "# TYPE verdin_cluster_events_total counter");
+            for (direction, count) in
+                [("sent", stats.sent), ("received", stats.received), ("dropped", stats.dropped)]
+            {
+                let _ = writeln!(
+                    out,
+                    "verdin_cluster_events_total{{direction=\"{direction}\"}} {count}"
+                );
+            }
+        }
         out
     }
 }
@@ -340,6 +356,19 @@ mod tests {
         assert!(text.contains(r#"verdin_http_request_duration_seconds_bucket{area="api",method="GET",status="2xx",le="+Inf"} 3"#));
         assert!(text.contains("verdin_realtime_subscribers 0"));
         assert!(!text.contains("verdin_plugin_call"), "no plugin calls yet");
+        assert!(!text.contains("verdin_cluster_events"), "one instance: no bus");
+    }
+
+    #[tokio::test]
+    async fn event_bus_counters() {
+        let db = Database::connect("sqlite::memory:", &Default::default()).await.unwrap();
+        let backend = verdin_api::cluster::DatabaseBus::new(db.clone(), Duration::from_secs(1));
+        let (bus, _runner) = verdin_api::cluster::EventBus::new("a", Arc::new(backend));
+        let realtime = verdin_api::realtime::Realtime::new().with_bus(bus);
+        let metrics = Metrics::new(db, realtime, "/api", "/admin", None);
+        let text = metrics.render().await;
+        assert!(text.contains(r#"verdin_cluster_events_total{direction="sent"} 0"#), "{text}");
+        assert!(text.contains(r#"verdin_cluster_events_total{direction="dropped"} 0"#));
     }
 
     #[tokio::test]

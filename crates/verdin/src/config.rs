@@ -31,6 +31,35 @@ pub struct Config {
     pub search: verdin_search::SearchConfig,
     pub cdn: verdin_api::cdn::CdnConfig,
     pub ai: verdin_api::ai::AiConfig,
+    pub cluster: ClusterConfig,
+}
+
+/// `[cluster]`: the shared event bus, for several instances of one project.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ClusterConfig {
+    /// `none`: events stay in this instance. `database`: realtime events, presence, cache
+    /// invalidation and search updates reach the other instances through the database.
+    pub bus: ClusterBus,
+    /// How often the database bus reads other instances' events on MySQL, MariaDB and
+    /// SQLite (PostgreSQL is woken by `NOTIFY`).
+    pub poll_interval_ms: u64,
+    /// This instance's name on the bus and in the logs; unset: a random one at each start.
+    pub instance_id: Option<String>,
+}
+
+impl Default for ClusterConfig {
+    fn default() -> Self {
+        Self { bus: ClusterBus::None, poll_interval_ms: 1000, instance_id: None }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ClusterBus {
+    #[default]
+    None,
+    Database,
 }
 
 /// `[metrics]`: Prometheus metrics at `/_metrics`.
@@ -379,6 +408,7 @@ mod tests {
             assert_eq!(config.log.format, LogFormat::Pretty);
             assert!(!config.telemetry.enabled);
             assert_eq!(config.telemetry.sentry_dsn, None);
+            assert_eq!(config.cluster.bus, ClusterBus::None);
             Ok(())
         });
     }
@@ -422,6 +452,19 @@ mod tests {
             assert_eq!(config.telemetry.endpoint.as_deref(), Some("http://collector:4318"));
             assert_eq!(config.telemetry.sample_ratio, 0.25);
             assert_eq!(config.telemetry.service_name, "verdin");
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn cluster_from_file_and_env() {
+        Jail::expect_with(|jail| {
+            jail.create_file("verdin.toml", "[cluster]\npoll_interval_ms = 250\n")?;
+            jail.set_env("VERDIN_CLUSTER__BUS", "database");
+            let config = Config::load(Path::new("verdin.toml")).unwrap();
+            assert_eq!(config.cluster.bus, ClusterBus::Database);
+            assert_eq!(config.cluster.poll_interval_ms, 250);
+            assert_eq!(config.cluster.instance_id, None);
             Ok(())
         });
     }

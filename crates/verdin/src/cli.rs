@@ -516,7 +516,8 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         std::time::Duration::from_secs(api.cache_ttl_secs),
         api.cache_entries,
     );
-    let realtime = verdin_api::realtime::Realtime::new();
+    let (bus, bus_runner) = event_bus(&project.config.cluster, &db);
+    let realtime = verdin_api::realtime::Realtime::new().with_bus(bus.clone());
     let search = match &project.config.search {
         config if config.enabled => Some(
             verdin_search::Search::open(&project.root.join(&config.dir), config.memory_mb)
@@ -535,7 +536,7 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
                 .or_else(|| project.config.metrics.token.clone()),
         )
     });
-    let upload =
+    let mut upload =
         verdin_upload::UploadService::new(db.clone(), storage, project.config.upload.clone())
             .with_listener(Arc::new(webhooks.clone()))
             .with_listener(Arc::new(cache.clone()))
@@ -544,6 +545,9 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
             .with_listener(crate::uploads::cache_cleaner(
                 project.root.join(&project.config.upload.transforms.cache_dir),
             ));
+    if bus.is_shared() {
+        upload = upload.with_listener(bus.file_listener());
+    }
     let history = verdin_api::History::new(db.clone(), project.config.history.max_versions);
     let plugins =
         verdin_plugins::Plugins::load(&project.root.join(&project.config.plugins.path), db.clone());
@@ -619,8 +623,34 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
         realtime,
         plugins,
         audit,
+        bus,
+        bus_runner,
     };
     app::serve(context, schema, shutdown_signal()).await
+}
+
+/// The `[cluster]` event bus: this instance's alone unless another backend is configured.
+fn event_bus(
+    config: &crate::config::ClusterConfig,
+    db: &Database,
+) -> (verdin_api::cluster::EventBus, Option<verdin_api::cluster::BusRunner>) {
+    use verdin_api::cluster::{DatabaseBus, EventBus};
+    match config.bus {
+        crate::config::ClusterBus::None => (EventBus::local(), None),
+        crate::config::ClusterBus::Database => {
+            let instance = config
+                .instance_id
+                .clone()
+                .filter(|id| !id.trim().is_empty())
+                .unwrap_or_else(verdin_auth::crypto::random_hex::<8>);
+            let backend = DatabaseBus::new(
+                db.clone(),
+                std::time::Duration::from_millis(config.poll_interval_ms),
+            );
+            let (bus, runner) = EventBus::new(instance, Arc::new(backend));
+            (bus, Some(runner))
+        }
+    }
 }
 
 fn print_status(status: &Status) {
