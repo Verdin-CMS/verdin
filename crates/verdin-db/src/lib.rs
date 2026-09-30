@@ -276,6 +276,34 @@ impl Database {
     }
 }
 
+/// PostgreSQL `LISTEN` on one channel, on a connection of its own (outside the pool).
+pub struct Listener(sqlx::postgres::PgListener);
+
+impl std::fmt::Debug for Listener {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Listener")
+    }
+}
+
+impl Listener {
+    /// The payload of the next notification. `Ok(None)` when the connection was lost: the
+    /// next call reconnects and listens again, and what was sent meanwhile is not received.
+    pub async fn recv(&mut self) -> Result<Option<String>> {
+        Ok(self.0.try_recv().await?.map(|notification| notification.payload().to_owned()))
+    }
+}
+
+impl Database {
+    /// Listens to `NOTIFY` on `channel` (send with `SELECT pg_notify(?, ?)`). `None` on
+    /// backends other than PostgreSQL.
+    pub async fn listen(&self, channel: &str) -> Result<Option<Listener>> {
+        let Pool::Postgres(pool) = &self.pool else { return Ok(None) };
+        let mut listener = sqlx::postgres::PgListener::connect_with(pool).await?;
+        listener.listen(channel).await?;
+        Ok(Some(Listener(listener)))
+    }
+}
+
 async fn detect(pool: &Pool) -> Result<(Flavor, Version)> {
     let (flavor, raw) = match pool {
         Pool::Postgres(pool) => {
