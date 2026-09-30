@@ -1,8 +1,15 @@
 # Builds the documentation site (site/, with docs/*.md and CHANGELOG.md synced in) and
 # publishes it to GitHub Pages on every push to main that touches it.
-# One-time setup: Settings → Pages → Source: GitHub Actions.
-# A custom domain: set the SITE_URL and BASE_PATH repository variables
-# (e.g. https://docs.example.com and /) and add the domain in the Pages settings.
+#
+# The site goes to the root of the gh-pages branch; pull request previews live next to it
+# under pr-preview/ (site-preview.yml, site-preview-deploy.yml), which this job keeps.
+# One-time setup: Settings → Pages → Build and deployment → Source: "Deploy from a
+# branch", branch gh-pages, folder / (the branch is created by the first run).
+#
+# Where the site is served is one repository variable, SITE_URL (default
+# https://verdin-cms.github.io/verdin). For a custom domain set SITE_URL to e.g.
+# https://docs.example.com and add the domain in the Pages settings; this job writes the
+# matching CNAME file.
 name: Site
 
 on:
@@ -18,20 +25,20 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
-# One deployment at a time; a newer push replaces a queued one.
+# One writer of the gh-pages branch at a time (shared with the preview workflows).
 concurrency:
-  group: pages
+  group: gh-pages
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: site
+    permissions:
+      contents: write
+    env:
+      SITE_URL: ${{ vars.SITE_URL }}
+      BASE_PATH: ${{ vars.BASE_PATH }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -41,23 +48,23 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: site/package-lock.json
-      - id: pages
-        uses: actions/configure-pages@v6
       - run: npm ci
+        working-directory: site
       - run: npm run build
-        env:
-          SITE_URL: ${{ vars.SITE_URL || steps.pages.outputs.origin }}
-          BASE_PATH: ${{ vars.BASE_PATH || steps.pages.outputs.base_path }}
-      - uses: actions/upload-pages-artifact@v5
+        working-directory: site
+      - name: Pages files
+        run: |
+          # Serve _astro/ and other underscore folders as they are (no Jekyll).
+          touch site/dist/.nojekyll
+          host="$(node -e 'console.log(new URL(process.env.SITE_URL || "https://x.github.io").host)')"
+          case "$host" in
+            *.github.io) ;;
+            *) echo "$host" > site/dist/CNAME ;;
+          esac
+      - uses: JamesIves/github-pages-deploy-action@v4
         with:
-          path: site/dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+          folder: site/dist
+          branch: gh-pages
+          # Keep the pull request previews.
+          clean-exclude: pr-preview/
+          commit-message: "site: ${{ github.sha }}"

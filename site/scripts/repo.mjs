@@ -8,11 +8,14 @@ import { fileURLToPath } from 'node:url';
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * Where the site is served: GitHub Pages by default (https://verdin-cms.github.io/verdin/).
- * A custom domain sets SITE_URL=https://docs.example.com and BASE_PATH=/.
+ * Where the site is served, as one URL: GitHub Pages by default. Moving the site is one
+ * variable, SITE_URL: `https://docs.example.com` serves it at the root of that domain,
+ * `https://example.com/docs` under /docs. BASE_PATH, when set, overrides the path.
  */
-export const siteUrl = process.env.SITE_URL ?? 'https://verdin-cms.github.io';
-export const basePath = (process.env.BASE_PATH ?? '/verdin').replace(/\/+$/, '');
+export const defaultSiteUrl = 'https://verdin-cms.github.io/verdin';
+const url = new URL(process.env.SITE_URL || defaultSiteUrl);
+export const siteUrl = url.origin;
+export const basePath = (process.env.BASE_PATH || url.pathname).replace(/\/+$/, '');
 
 /** Branch the edit and source links point at. */
 export const branch = 'main';

@@ -1,0 +1,103 @@
+# Publishes the site previews built by site-preview.yml and removes them when the pull
+# request closes. It runs in this repository's context (write token) but only copies the
+# static files of the uploaded artifact: no pull request code is checked out or run. The
+# pull request number in the artifact is checked against the run that built it.
+name: Site preview deploy
+
+on:
+  workflow_run:
+    workflows: ["Site preview"]
+    types: [completed]
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: site-preview
+          path: preview
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Check the pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          number="$(cat preview/pr-number)"
+          case "$number" in
+            ''|*[!0-9]*) echo "invalid pull request number"; exit 1 ;;
+          esac
+          # The artifact must come from the pull request's current head, and the pull
+          # request must still be open.
+          info="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$number" --jq '.state + " " + .head.sha')"
+          state="${info%% *}"
+          head="${info#* }"
+          if [ "$state" != open ] || [ "$head" != "$RUN_SHA" ] || [ "$(cat preview/head-sha)" != "$RUN_SHA" ]; then
+            echo "pull request #$number is $state at $head, the build was for $RUN_SHA: skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+      - if: steps.pr.outputs.skip != 'true'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: preview/site
+          branch: gh-pages
+          target-folder: pr-preview/pr-${{ steps.pr.outputs.number }}
+          commit-message: "preview: pull request #${{ steps.pr.outputs.number }}"
+      - if: steps.pr.outputs.skip != 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: site-preview
+          number: ${{ steps.pr.outputs.number }}
+          message: |
+            Documentation preview: ${{ vars.SITE_URL || 'https://verdin-cms.github.io/verdin' }}/pr-preview/pr-${{ steps.pr.outputs.number }}/
+
+            Built from ${{ github.event.workflow_run.head_sha }}; GitHub Pages may take a minute to publish it. It is removed when this pull request closes.
+
+  remove:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Remove the preview
+        env:
+          TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Only the gh-pages branch is checked out, never the pull request.
+          git clone --depth 1 --branch gh-pages \
+            "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pages || {
+            echo "no gh-pages branch"; exit 0; }
+          cd pages
+          [ -d "pr-preview/pr-$PR_NUMBER" ] || { echo "no preview for #$PR_NUMBER"; exit 0; }
+          git rm -r --quiet "pr-preview/pr-$PR_NUMBER"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "preview: remove pull request #$PR_NUMBER"
+          git push
+      - uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: site-preview
+          number: ${{ github.event.pull_request.number }}
+          message: The documentation preview of this pull request has been removed.

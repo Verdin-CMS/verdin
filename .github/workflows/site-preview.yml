@@ -1,0 +1,57 @@
+# Builds a preview of the documentation site for a pull request. This workflow runs the
+# pull request's code, so it has no secrets and a read-only token, also for pull requests
+# from forks. It uploads the built site; site-preview-deploy.yml (which runs in this
+# repository's context and never executes pull request code) publishes it to
+# <site>/pr-preview/pr-<number>/ on the gh-pages branch and comments the link.
+name: Site preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "site/**"
+      - "docs/**"
+      - "CHANGELOG.md"
+      - ".github/workflows/site-preview.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+        working-directory: site
+      - run: npm run build
+        working-directory: site
+        env:
+          # The preview's own address, so every link and asset resolves under it.
+          SITE_URL: ${{ vars.SITE_URL || 'https://verdin-cms.github.io/verdin' }}/pr-preview/pr-${{ github.event.pull_request.number }}
+      - name: Package
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir preview
+          mv site/dist preview/site
+          echo "$PR_NUMBER" > preview/pr-number
+          echo "$HEAD_SHA" > preview/head-sha
+      - uses: actions/upload-artifact@v7
+        with:
+          name: site-preview
+          path: preview
+          retention-days: 3
