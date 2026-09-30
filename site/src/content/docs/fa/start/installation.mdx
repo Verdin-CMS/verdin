@@ -1,0 +1,131 @@
+---
+title: نصب
+description: باینری verdin را با اسکریپت نصب، Homebrew، بستهٔ .deb، winget، cargo binstall یا از سورس نصب کنید، یا ایمیج Docker را اجرا کنید.
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin یک باینری واحد است که پنل مدیریت درون آن ساخته شده است. هر نسخه آن را برای
+Linux (x86-64 و ARM64، ساخت‌های static با musl)، macOS (اینتل و Apple silicon) و
+Windows (x86-64)، همراه با یک فایل `SHA256SUMS`، در
+[صفحهٔ نسخه‌ها](https://github.com/verdin-cms/verdin/releases) منتشر می‌کند. هر روشی را که به
+ماشین شما می‌خورد برای نصب انتخاب کنید؛ همه همان باینری را نصب می‌کنند.
+
+با این دستور بررسی کنید:
+
+```sh frame="terminal"
+verdin --version
+```
+
+سپس [شروع سریع](/fa/start/quickstart/) را از `verdin new` دنبال کنید.
+
+## اسکریپت نصب (Linux و macOS)
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh
+```
+
+اسکریپت سیستم و معماری را تشخیص می‌دهد، آرشیو مناسب را از آخرین نسخهٔ GitHub دانلود می‌کند، آن را با
+`SHA256SUMS` همان نسخه بررسی می‌کند و `verdin` را وقتی با root اجرا شود در `/usr/local/bin`،
+وگرنه در `~/.local/bin` نصب می‌کند. به `curl` یا `wget`، `tar`، و `sha256sum`، `shasum` یا `openssl` نیاز دارد.
+
+| گزینه | متغیر | پیش‌فرض |
+| --- | --- | --- |
+| `--version <X.Y.Z>` | `VERDIN_VERSION` | آخرین نسخه |
+| `--dir <directory>` | `VERDIN_INSTALL_DIR` | `/usr/local/bin` (root) یا `~/.local/bin` |
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh -s -- --version 0.11.0 --dir /opt/verdin/bin
+```
+
+برای خواندن اسکریپت پیش از اجرا، نخست آن را دانلود کنید:
+`curl -fsSLO https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh`.
+
+## مدیرهای بسته
+
+<Tabs syncKey="package-manager">
+  <TabItem label="Homebrew">
+
+روی macOS و Linux:
+
+```sh frame="terminal"
+brew install verdin-cms/tap/verdin
+```
+
+formula باینری نسخه را نصب می‌کند (ساخت musl در Linux). `brew upgrade verdin`
+به نسخهٔ بعدی می‌رود.
+
+  </TabItem>
+  <TabItem label="Debian / Ubuntu">
+
+فایل `.deb` مربوط به معماری خود (`amd64` یا `arm64`) را از نسخه دانلود کنید و
+نصب کنید:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/verdin_0.11.0-1_amd64.deb
+sudo apt install ./verdin_0.11.0-1_amd64.deb
+```
+
+بسته یک کاربر سیستمی `verdin`، یک سرویس systemd (فعال‌نشده) و پیکربندی را در `/etc/verdin/`
+اضافه می‌کند. [سرور Linux](/fa/deploy/linux-server/) اجرای آن را گام‌به‌گام توضیح می‌دهد.
+هنوز مخزن apt وجود ندارد: با نصب `.deb` نسخهٔ بعدی ارتقا دهید.
+
+  </TabItem>
+  <TabItem label="winget">
+
+روی Windows:
+
+```powershell frame="terminal"
+winget install VerdinCMS.Verdin
+```
+
+winget، `verdin` را به `PATH` ترمینال‌های جدید اضافه می‌کند. بدون winget، فایل
+`.zip` را از نسخه دانلود کنید و `verdin.exe` را جایی در `PATH` قرار دهید.
+
+  </TabItem>
+  <TabItem label="cargo binstall">
+
+با [cargo-binstall](https://github.com/cargo-bins/cargo-binstall)، Cargo به‌جای کامپایل،
+باینری نسخه را دانلود می‌کند:
+
+```sh frame="terminal"
+cargo binstall --git https://github.com/verdin-cms/verdin verdin
+```
+
+  </TabItem>
+</Tabs>
+
+## Docker
+
+ایمیج `ghcr.io/verdin-cms/verdin` همان باینری را روی `linux/amd64` و
+`linux/arm64` اجرا می‌کند:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 --version
+```
+
+برای volumeها، پیکربندی و فایل‌های Compose بخش [Docker](/fa/deploy/docker/) را ببینید.
+
+## از سورس
+
+با Rust 1.95 یا بالاتر و Node.js 24 (برای ساخت پنل مدیریت):
+
+```sh frame="terminal"
+git clone https://github.com/verdin-cms/verdin && cd verdin
+(cd admin && npm ci && npm run build)
+cargo install --locked --path crates/verdin --features embed-admin
+```
+
+بدون `--features embed-admin` باینری پنل مدیریت ندارد، مگر اینکه
+`[admin].assets_dir` را به یک نسخهٔ ساخته‌شده اشاره دهید.
+
+## تأیید دستی یک دانلود
+
+هر نسخه یک فایل `SHA256SUMS` دارد که همهٔ آرشیوها و بسته‌ها را فهرست می‌کند:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS     # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
+```

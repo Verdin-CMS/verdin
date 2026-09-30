@@ -127,7 +127,7 @@ INDEX  (target_document_id)
 | مدیران | `vd_admin_users`، `vd_admin_roles`، `vd_admin_user_roles`، `vd_admin_permissions`، `vd_sessions` (توکن‌های refresh)، `vd_admin_tokens` (پیوندهای دعوت و بازنشانی)، `vd_admin_two_factor`، `vd_admin_passkeys`، `vd_spent_challenges` |
 | دسترسی به API محتوا | `vd_api_tokens`، `vd_api_token_permissions`، `vd_public_permissions` |
 | کاربران نهایی | `vd_users`، `vd_user_roles`، `vd_user_role_permissions`، `vd_end_user_sessions` |
-| نمونه | `vd_settings` (کلیدهای قابلیت‌ها، چیدمان‌های edit-view، نشانگرهای ارتقای یک‌باره)، `vd_locales` |
+| نمونه | `vd_settings` (کلیدهای قابلیت‌ها، چیدمان‌های edit-view، نشانگرهای ارتقای یک‌باره)، `vd_locales`، `vd_cluster_events` (گذرگاه رویداد مشترک؛ [چند نمونه](/fa/deploy/scaling/) را ببینید) |
 | رسانه | `vd_files`، `vd_folders` |
 | گردش‌کار محتوا | `vd_history_versions`، `vd_releases`، `vd_release_actions`، `vd_workflows`، `vd_workflow_stages`، `vd_document_stages` |
 | همکاری | `vd_comments`، `vd_tasks`، `vd_document_views`، `vd_document_votes`، `vd_polls`، `vd_poll_votes` |

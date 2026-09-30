@@ -164,7 +164,65 @@ const { data } = await verdin.collection('articles').find({ locale: 'fr' });
   زبان‌ها مشترک‌اند.
 - محتوای وب‌هوک‌ها و نسخه‌های تاریخچه زبان را ثبت می‌کنند.
 
-برخلاف Strapi، content API مسیر `/api/i18n/locales` ندارد. زبان‌ها در admin API در
-`GET /admin/api/i18n/locales` فهرست می‌شوند و با `POST`،
-`PUT /admin/api/i18n/locales/{code}` و `DELETE /admin/api/i18n/locales/{code}` مدیریت می‌شوند
+### نسخه‌های دیگر زبان
+
+`localizations` را populate کنید تا نسخه‌های دیگر زبان یک سند همراه آن برگردند، مانند Strapi v5.
+این فیلد فقط وقتی برمی‌گردد که populate شده باشد، با `populate=localizations` یا `populate=*`:
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- نسخه‌ها در همان وضعیتِ سند هستند: به‌طور پیش‌فرض نسخه‌های منتشرشده، و با `status=draft`
+  پیش‌نویس‌ها. زبانی که فقط پیش‌نویس دارد از یک خواندن منتشرشده بیرون می‌ماند.
+- `localizations` گزینه‌های یک رابطهٔ populate‌شده را می‌گیرد: `fields`، `filters`، `sort`،
+  `populate` و `count`. برای مثال `populate[localizations][fields][0]=title`. هر نسخه همیشه
+  `locale` را دارد، و روابط خودش به زبان خودش خوانده می‌شوند.
+- GraphQL روی نوع‌های بومی‌سازی‌شده یک فیلد `localizations` دارد، با `filters` و `sort`.
+- نوع‌هایی که بومی‌سازی‌شده نیستند `localizations` ندارند، و populate کردن آن `400` است.
+- Admin API فیلد `localizations` را کنار می‌گذارد.
+
+### فهرست کردن زبان‌ها
+
+`GET /api/i18n/locales` زبان‌ها را به شکل Strapi، به‌صورت یک آرایهٔ ساده (بدون پوشش `data`)
+فهرست می‌کند:
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+مانند `listLocales` در Strapi، این مسیر تا وقتی اجازه ندهید برای عموم بسته است. کنش
+`find` را روی ردیف **Locales** (`plugin::i18n.locale`) در **تنظیمات ← دسترسی عمومی**، روی یک نقش
+کاربر نهایی، یا روی یک توکن API سفارشی بدهید. توکن‌های دسترسی کامل و فقط‌خواندنی هم‌اکنون
+می‌توانند آن را بخوانند. `documentId` از کد زبان مشتق می‌شود، بنابراین بین راه‌اندازی‌های مجدد و
+خروجی‌ها ثابت می‌ماند. ورود از Strapi مجوز `listLocales` را هم با خود می‌آورد. کلاینت تایپ‌دار فهرست را با
+`verdin.locales()` می‌خواند.
+
+زبان‌ها در admin API مدیریت می‌شوند: با `GET /admin/api/i18n/locales` فهرست می‌شوند، و با `POST`،
+`PUT /admin/api/i18n/locales/{code}` و `DELETE /admin/api/i18n/locales/{code}` تغییر می‌کنند
 (`locales.manage`).

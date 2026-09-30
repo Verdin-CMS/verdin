@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 پیکربندی لایه‌لایه است: **پیش‌فرض‌های داخلی → `verdin.toml` → محیط**. این
@@ -237,8 +238,22 @@ provider = { name = "s3", bucket = "media", region = "auto",
 
 | کلید | پیش‌فرض | توضیح |
 | --- | --- | --- |
-| `enabled` | `false` | متریک‌های Prometheus را در `/_metrics` ارائه می‌کند: درخواست‌های HTTP بر اساس بخش (`api`، `admin_api`، `graphql`، `mcp`، `uploads`…)، روش و ردهٔ وضعیت همراه با histogramهای تأخیر، ارسال‌های در انتظار وب‌هوک، جریان‌های بلادرنگ باز و uptime. |
+| `enabled` | `false` | متریک‌های Prometheus را در `/_metrics` ارائه می‌کند: درخواست‌های HTTP بر اساس بخش (`api`، `admin_api`، `graphql`، `mcp`، `uploads`…)، روش و ردهٔ وضعیت همراه با histogramهای تأخیر، ارسال‌های در انتظار وب‌هوک، جریان‌های بلادرنگ باز، ترافیک گذرگاه رویداد و uptime. |
 | `token` | تنظیم‌نشده | scrapeها به `Authorization: Bearer <token>` نیاز دارند. `VERDIN_METRICS_TOKEN` بر آن اولویت دارد. بدون توکن، هر کسی که به درگاه برسد می‌تواند متریک‌ها را بخواند. |
+
+## `[telemetry]`
+
+ردیابی‌ها و گزارش‌های خطا، هر دو به‌طور پیش‌فرض خاموش‌اند و فقط توسط `verdin start` و
+`verdin dev` استفاده می‌شوند (بخش [پایش](/fa/deploy/monitoring/#ردیابیها-opentelemetry) را ببینید).
+
+| کلید | پیش‌فرض | توضیح |
+| --- | --- | --- |
+| `enabled` | `false` | ردیابی‌های OpenTelemetry درخواست‌های HTTP و کوئری‌های پایگاه دادهٔ آن‌ها را از طریق OTLP/HTTP (protobuf) صادر می‌کند. `OTEL_SDK_DISABLED=true` آن را خاموش می‌کند. |
+| `endpoint` | تنظیم‌نشده (`http://localhost:4318`) | URL پایهٔ collector؛ `/v1/traces` به آن اضافه می‌شود. `OTEL_EXPORTER_OTLP_ENDPOINT` (URL پایه) و `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (URL کامل) اولویت دارند. |
+| `service_name` | `"verdin"` | `service.name` ردیابی‌ها. `OTEL_SERVICE_NAME` اولویت دارد. |
+| `sample_ratio` | `1.0` | سهم ردیابی‌هایی که نگه داشته می‌شوند، از `0.0` تا `1.0`. درخواستی که هدر `traceparent` دارد از تصمیم فراخواننده پیروی می‌کند. |
+| `sentry_dsn` | تنظیم‌نشده | panicها و پاسخ‌های 5xx را به Sentry گزارش می‌دهد. `SENTRY_DSN` اولویت دارد. |
+| `sentry_environment` | تنظیم‌نشده | environment در Sentry. `SENTRY_ENVIRONMENT` اولویت دارد؛ اگر تنظیم نشود، در `verdin start` برابر `production` و در `verdin dev` برابر `development` است. |
 
 ## `[ai]`
 
@@ -285,8 +300,26 @@ provider = "anthropic"
 | `dir` | `"data/search"` | پوشهٔ نمایه، نسبت به پروژه. حذف آن باعث می‌شود نمایه در شروع بعدی دوباره ساخته شود. |
 | `memory_mb` | `50` | بودجهٔ حافظه برای نمایه‌سازی. |
 
-نمایه روی دیسک نمونه قرار دارد و نوشتن‌های همان نمونه را دنبال می‌کند: با چند
-نمونه، جستجو را روی یکی نگه دارید (یا پس از هر استقرار نمایه را دوباره بسازید).
+نمایه روی دیسک نمونه قرار دارد. با چند نمونه، [گذرگاه رویداد](#cluster) را روشن کنید تا
+هر نمایه نوشتن‌های همهٔ نمونه‌ها را دنبال کند.
+
+## `[cluster]`
+
+گذرگاه رویداد مشترک، برای چند نمونه از یک پروژه (بخش
+[اجرای چند نمونه](/fa/deploy/scaling/#گذرگاه-رویداد-مشترک) را ببینید).
+
+| کلید | پیش‌فرض | توضیح |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`: رویدادهای بلادرنگ، حضور، ابطال کش و به‌روزرسانی‌های جستجو در هر نمونه می‌مانند. `database`: از طریق پایگاه دادهٔ پروژه به هر نمونه می‌رسند (`LISTEN/NOTIFY` در PostgreSQL، polling در MySQL، MariaDB و SQLite). |
+| `poll_interval_ms` | `1000` | هر چند وقت MySQL، MariaDB و SQLite رویدادهای نمونه‌های دیگر را می‌خوانند. PostgreSQL با `NOTIFY` بیدار می‌شود و تنها وقتی نتواند listen کند از این سرعت استفاده می‌کند. |
+| `instance_id` | تنظیم‌نشده (در هر شروع تصادفی) | نام این نمونه در گذرگاه و در لاگ‌ها. |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+آن را روی هر نمونه تنظیم کنید، یا با `VERDIN_CLUSTER__BUS=database`.
 
 ## متغیرهای محیطی
 
@@ -307,5 +340,9 @@ provider = "anthropic"
 | `VERDIN_CDN_TOKEN` | توکن API ارائه‌دهندهٔ `[cdn]`. |
 | `VERDIN_IMAGE_SECRET` | URLهای تبدیل تصویر را امضا می‌کند ([`[upload.transforms]`](#uploadtransforms) را ببینید). |
 | `VERDIN_METRICS_TOKEN` | bearer token برای scrapeهای `/_metrics` وقتی `[metrics].enabled` روشن است؛ بر `[metrics].token` اولویت دارد. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`، `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | collector برای ردیابی‌های [`[telemetry]`](#telemetry)؛ بر `[telemetry].endpoint` اولویت دارند. سایر متغیرهای استاندارد `OTEL_EXPORTER_OTLP_*` (هدرها، timeout، فشرده‌سازی) هم اعمال می‌شوند. |
+| `OTEL_SERVICE_NAME`، `OTEL_RESOURCE_ATTRIBUTES` | resource ردیابی‌های صادرشده؛ `OTEL_SERVICE_NAME` بر `[telemetry].service_name` اولویت دارد. |
+| `OTEL_SDK_DISABLED` | `true` صادر کردن ردیابی را حتی وقتی `[telemetry].enabled` روشن است خاموش می‌کند. |
+| `SENTRY_DSN`، `SENTRY_ENVIRONMENT` | گزارش خطای Sentry؛ بر `[telemetry].sentry_dsn` و `sentry_environment` اولویت دارند. |
 | `AWS_ACCESS_KEY_ID`، `AWS_SECRET_ACCESS_KEY` | اطلاعات ورود ارائه‌دهندهٔ بارگذاری S3. |
 | `RUST_LOG` | فیلتر لاگ؛ بر `[log].level` اولویت دارد. |

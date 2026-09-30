@@ -90,6 +90,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   فراخوانی کنید، نه از صفحه‌های سایتی دیگر.
 - تغییرات موفق در [گزارش حسابرسی](/fa/guides/content/audit-logs/) ثبت می‌شوند.
 
+## فهرست‌ها
+
+فهرست‌های تنظیمات با `page` (از 1) و `pageSize` صفحه‌بندی می‌شوند. ردیف‌های صفحه و شمارش‌ها را
+برمی‌گردانند:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| فهرست | اندازهٔ پیش‌فرض صفحه (حداکثر) | ترتیب | پارامترهای دیگر |
+| --- | --- | --- | --- |
+| `GET /users`، `GET /roles`، `GET /api-tokens` | 25 (100) | قدیمی‌ترین اول | |
+| `GET /webhooks` | 25 (100) | قدیمی‌ترین اول | `meta.events` رویدادهایی را که یک وب‌هوک می‌تواند مشترک شود فهرست می‌کند |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | جدیدترین اول | |
+| `GET /releases` | 25 (100) | جدیدترین اول | `status` (`pending`، `running`، `done`، `failed`) |
+| `GET /site/redirects` | 25 (100) | بر اساس مبدأ | `search` با مبدأ یا مقصد تطبیق می‌یابد |
+| `GET /site/menus`، `GET /site/forms` | 25 (100) | بر اساس نام | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | جدیدترین اول | |
+| `GET /deploy/targets` | 25 (100) | قدیمی‌ترین اول | |
+| `GET /deploy/deployments` | 25 (100) | جدیدترین اول | `targetId`؛ `limit` یک نام مستعار منسوخ برای `pageSize` است |
+| `GET /end-users` | 25 (100) | جدیدترین اول | `search` با نام کاربری یا ایمیل تطبیق می‌یابد |
+| `GET /audit-logs` | 50 (200) | جدیدترین اول | [گزارش‌های حسابرسی](/fa/guides/content/audit-logs/) را ببینید |
+
+`pageSize` بزرگ‌تر به حداکثر کاهش می‌یابد. برای خواندن کل یک فهرست، صفحه‌ها را درخواست کنید تا
+`page` به `pageCount` برسد:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+مسیرهای محتوا مانند REST API صفحه‌بندی می‌شوند، با `pagination[page]` و
+`pagination[pageSize]`.
+
 ## گروه‌های مسیرها
 
 مسیرها نسبت به `/admin/api` هستند. مسیریاب‌ها در

@@ -1,0 +1,106 @@
+---
+title: استقرارهای یک‌کلیکی
+description: استارتر Verdin (نمونهٔ وبلاگ) را با فایل‌های این مخزن روی Render، DigitalOcean App Platform، Railway، Fly.io یا Coolify مستقر کنید، سپس برای طرح‌وارهٔ خودتان آن را fork کنید.
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+مخزن برای چند پلتفرم فایل استقرار دارد. همه
+[`deploy/one-click/Dockerfile`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/Dockerfile)
+را build می‌کنند: ایمیج رسمی با طرح‌وارهٔ [نمونهٔ وبلاگ](https://github.com/verdin-cms/verdin/tree/main/examples/blog)
+و یک پیکربندی کوچک. این کار ظرف چند دقیقه یک Verdin در حال اجرا به شما می‌دهد.
+
+<Aside>
+سرور مستقرشده `start --migrate` را اجرا می‌کند، پس سازندهٔ نوع محتوا خاموش است: طرح‌واره از ایمیج
+می‌آید. برای پروژهٔ خودتان، **مخزن را fork کنید**، `examples/blog/schema` را با طرح‌وارهٔ خود جایگزین کنید
+(یا خط `COPY` در Dockerfile را تغییر دهید) و fork را مستقر کنید. صفحه‌های پلتفرم ([Render](/fa/deploy/render/)،
+[Railway](/fa/deploy/railway/)، [Fly.io](/fa/deploy/fly/)) همین راه‌اندازی را در یک مخزن
+خودتان نشان می‌دهند.
+</Aside>
+
+این فایل‌ها در تاریخ 2026-09-30 با مرجع هر پلتفرم بررسی شدند؛ هیچ‌کدام روی یک حساب زنده
+مستقر نشد.
+
+| پلتفرم | فایل | پایگاه داده | رسانه |
+| --- | --- | --- | --- |
+| Render | [`render.yaml`](https://github.com/verdin-cms/verdin/blob/main/render.yaml) | PostgreSQL در Render | دیسک 1 GB در `/data` |
+| DigitalOcean | [`.do/deploy.template.yaml`](https://github.com/verdin-cms/verdin/blob/main/.do/deploy.template.yaml) | PostgreSQL توسعه | Spaces (App Platform دیسک ندارد) |
+| Railway | [`deploy/one-click/railway.json`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/railway.json) | PostgreSQL در Railway | یک volume در `/data` |
+| Fly.io | [`deploy/one-click/fly.toml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/fly.toml) | SQLite روی volume | یک volume در `/data` |
+| Coolify | [`deploy/one-click/compose.coolify.yaml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/compose.coolify.yaml) | سرویس PostgreSQL | یک volume در `/data` |
+
+Dockerfile با `USER root` تمام می‌شود، چون این پلتفرم‌ها volumeهایی را mount می‌کنند که مالک آن‌ها root است
+و کاربر ایمیج (uid برابر `65532`) نمی‌تواند روی آن‌ها بنویسد. اگر volume شما برای uid برابر `65532`
+قابل‌نوشتن است، یا هیچ وضعیتی را روی نمونه نگه نمی‌دارید، آن خط را حذف کنید.
+
+## Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/verdin-cms/verdin)
+
+Blueprint سرویس وب (پلن Starter، که دیسک‌ها به آن نیاز دارند)، یک پایگاه دادهٔ PostgreSQL و دو
+کلید محرمانه (یک بار تولید می‌شوند، سپس حفظ می‌شوند) را می‌سازد. Render
+`VERDIN_SERVER__PUBLIC_URL` را می‌پرسد: نشانی سرویس، `https://<name>.onrender.com`،
+یا دامنهٔ خود را وارد کنید. از یک fork، از `https://render.com/deploy?repo=<your fork's URL>` استفاده کنید.
+
+## DigitalOcean App Platform
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/verdin-cms/verdin/tree/main)
+
+spec سرویس و یک پایگاه دادهٔ توسعه می‌سازد. وقتی پرسیده شد، دو مقدار `verdin secrets` را در
+`VERDIN_ADMIN_JWT_SECRET` و `VERDIN_TOKEN_PEPPER` بچسبانید:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets
+```
+
+App Platform دیسک پایدار ندارد، پس فایل‌های بارگذاری‌شده در هر استقرار از دست می‌روند تا وقتی
+یک باکت Spaces اضافه کنید: `VERDIN_UPLOAD__PROVIDER__NAME=s3`،
+`VERDIN_UPLOAD__PROVIDER__BUCKET`، `VERDIN_UPLOAD__PROVIDER__REGION`،
+`VERDIN_UPLOAD__PROVIDER__ENDPOINT` (`https://<region>.digitaloceanspaces.com`)،
+`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`، `AWS_ACCESS_KEY_ID` و `AWS_SECRET_ACCESS_KEY`
+را روی سرویس تنظیم کنید. برای یک fork، `repo_clone_url` را در spec تغییر دهید.
+
+## Railway
+
+1. مخزن را fork کنید، سپس در Railway یک پروژه از fork بسازید.
+2. در تنظیمات سرویس، مسیر فایل پیکربندی را روی
+   `deploy/one-click/railway.json` بگذارید (Dockerfile و health check را انتخاب می‌کند).
+3. یک پایگاه دادهٔ PostgreSQL و یک volume که در `/data` mount شود اضافه کنید، سپس متغیرهای
+   [Railway](/fa/deploy/railway/#2-ساخت-پروژه) را تنظیم کنید: `VERDIN_DATABASE_URL`، دو
+   کلید محرمانه و `VERDIN_SERVER__PUBLIC_URL`. یک دامنه با درگاه هدف `1337` تولید کنید.
+
+## Fly.io
+
+از یک clone مخزن (یا fork خودتان)، با `flyctl` واردشده:
+
+```sh frame="terminal"
+fly launch --no-deploy --copy-config --config deploy/one-click/fly.toml --ha=false
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets | fly secrets import --config deploy/one-click/fly.toml
+fly deploy --config deploy/one-click/fly.toml --dockerfile deploy/one-click/Dockerfile .
+```
+
+این یک Machine با SQLite و بارگذاری‌ها را روی یک volume با حجم 1 GB اجرا می‌کند. نخست `app` و
+`primary_region` را در `fly.toml` تغییر دهید. [Fly.io](/fa/deploy/fly/) به‌جای آن PostgreSQL و
+Tigris را پوشش می‌دهد.
+
+## Coolify
+
+در Coolify، یک منبع از fork خود (یا این مخزن) با build pack از نوع **Docker
+Compose**، دایرکتوری پایهٔ `/` و فایل compose
+`/deploy/one-click/compose.coolify.yaml` اضافه کنید. Coolify متغیرهای `SERVICE_*` آن را پر می‌کند:
+
+| متغیر | Coolify تولید می‌کند |
+| --- | --- |
+| `SERVICE_FQDN_VERDIN_1337` | یک دامنه که proxy آن را به درگاه 1337 مسیریابی می‌کند (به‌عنوان `VERDIN_SERVER__PUBLIC_URL` هم استفاده می‌شود). |
+| `SERVICE_BASE64_64_JWT`، `SERVICE_BASE64_64_PEPPER` | دو کلید محرمانه، هر کدام 64 نویسه، که در استقرارها حفظ می‌شوند. |
+| `SERVICE_USER_POSTGRES`، `SERVICE_PASSWORD_POSTGRES` | اعتبارنامه‌های پایگاه داده. |
+
+proxy در Coolify TLS را پایان می‌دهد، پس به Caddy نیازی نیست. برای سروری که خودتان
+بدون Coolify مدیریت می‌کنید، از [Docker Compose در محیط تولید](/fa/deploy/compose/) استفاده کنید.
+
+## پس از نخستین استقرار
+
+`https://<your address>/admin/` را باز کنید و نخستین مدیر را ثبت کنید. سپس
+[چک‌لیست تولید](/fa/deploy/production-checklist/) را بخوانید.

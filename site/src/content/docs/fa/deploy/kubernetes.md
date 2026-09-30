@@ -7,7 +7,8 @@ sidebar:
 
 این صفحه یک پروژهٔ Verdin را روی Kubernetes اجرا می‌کند. راه‌اندازی اصلی بدون وضعیت است: PostgreSQL
 (یا MySQL/MariaDB) بیرون از podها، رسانه روی ذخیره‌سازی سازگار با S3، و هر تعداد
-رپلیکا که لازم دارید. در ادامه یک راه‌اندازی تک‌رپلیکا با یک volume برای SQLite آمده است.
+رپلیکا که لازم دارید. در ادامه یک راه‌اندازی تک‌رپلیکا با یک volume برای SQLite آمده است. [چارت Helm](/fa/deploy/helm/)
+این manifestها را با مقدارهایی برای هر تنظیم بسته‌بندی می‌کند.
 
 manifestها از APIهای پایدار (`apps/v1`، `v1`) استفاده می‌کنند و در تاریخ 2026-09-29 با
 `kubeconform -strict` در برابر طرح‌واره‌های Kubernetes اعتبارسنجی شدند، اما روی یک کلاستر واقعی اجرا نشده‌اند. هر مقدار درون
@@ -39,7 +40,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -158,7 +162,9 @@ Service را مانند هر سرویس HTTP دیگری از طریق Ingress ی
   `VERDIN_PLUGINS__RUN_JOBS=true` اجرا کنید (با همان labelها، تا ترافیک هم سرویس دهد)، یا بپذیرید
   که کارها روی هر رپلیکا اجرا شوند. وب‌هوک‌ها، بسته‌های انتشار زمان‌بندی‌شده و خلاصهٔ روزانه
   در پایگاه داده رزرو می‌شوند و یک بار اجرا می‌شوند. [اجرای چند نمونه](/fa/deploy/scaling/) را ببینید.
-- **بلادرنگ.** جریان‌های رویداد (`/api/_events`) روی podی که به آن متصل می‌شوند می‌مانند. اگر از
+- **بلادرنگ، حضور، کش‌ها و جستجو.** `[cluster].bus = "database"` رویدادهای بقیه را به هر pod
+  می‌رساند (بخش [گذرگاه رویداد مشترک](/fa/deploy/scaling/#گذرگاه-رویداد-مشترک) را ببینید).
+  بدون آن، جریان‌های رویداد (`/api/_events`) روی podی که به آن متصل می‌شوند می‌مانند: اگر از
   [بلادرنگ](/fa/guides/frontend/realtime/) استفاده می‌کنید، session affinity را روی Ingress فعال کنید.
 
 ## تک‌رپلیکا با SQLite

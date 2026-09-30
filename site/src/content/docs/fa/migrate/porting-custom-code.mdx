@@ -1,0 +1,401 @@
+---
+title: انتقال کد سفارشی
+description: کد سفارشی یک پروژهٔ Strapi را به یک افزونهٔ Verdin منتقل کنید — کنترلرها و مسیرها، lifecycleها، سرویس‌ها، bootstrap، کارهای cron، ویجت‌های پنل مدیریت، فرم‌ها، policyها و middlewareها — با یک نمونهٔ کامل و محدودیت‌هایی که باید در نظر بگیرید.
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi` طرح‌واره و محتوای یک پروژهٔ Strapi را منتقل می‌کند، اما نه JavaScript درون `src/` را:
+Verdin روی سرور هیچ JavaScript‌ای اجرا نمی‌کند. آن کد به یک
+[افزونهٔ WebAssembly](/fa/extending/plugins/) تبدیل می‌شود: هوک‌ها برای lifecycleها، مسیرها برای کنترلرهای
+سفارشی، یک تابع راه‌اندازی برای `bootstrap`، و jobها برای کارهای cron. این صفحه هر نوع کد Strapi را به
+معادل Verdin آن نگاشت می‌کند، کد یک پروژهٔ واقعی را که به یک افزونه منتقل شده گام‌به‌گام مرور می‌کند،
+و محدودیت‌هایی را که باید در نظر بگیرید فهرست می‌کند.
+
+نمونهٔ کامل
+[`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port)
+است: افزونهٔ `tienda`، نوشته‌شده با Rust، با طرح‌وارهٔ مورد نیازش و یک README که آن را می‌سازد و
+نصب می‌کند. اگر هرگز افزونه ننوشته‌اید، نخست [آموزش افزونه](/fa/extending/plugin-tutorial/) را بخوانید؛
+[مرجع افزونه](/fa/extending/plugin-reference/) همهٔ payloadها و توابع میزبان را دارد.
+
+## هر بخش کجا می‌رود
+
+| Strapi | Verdin | نکته‌ها |
+| --- | --- | --- |
+| مسیرها و کنترلرهای سفارشی (`src/api/*/routes`، `controllers`) | مسیرهای افزونه: `[routes]`، یک تابع برای `/api/plugins/<name>/…` | URL تغییر می‌کند. تابع خودش بر اساس متد و مسیر تصمیم می‌گیرد. |
+| lifecycleها (`lifecycles.js`)، middlewareهای Document Service | `[[hooks]]` روی `beforeCreate`، `afterUpdate`… | همان نام رویدادها. هوک‌های پیش از نوشتن می‌توانند داده را جایگزین کنند یا نوشتن را رد کنند. |
+| سرویس‌ها (`src/api/*/services`) | تابع‌هایی در ماژول افزونه، و `verdin_content` برای `strapi.documents(…)` | سرویس مشترک بین افزونه‌ها وجود ندارد. |
+| `bootstrap()` در `src/index.js` | تابع `[startup]` | هنگام شروع، هنگام روشن شدن افزونه و هنگام تغییر تنظیماتش اجرا می‌شود. |
+| `register()` | چیزی برای انتقال نیست | مانیفست آنچه `register` راه‌اندازی می‌کرد را اعلام می‌کند. |
+| کارهای cron (`config/cron-tasks.js`) | `[[jobs]]` | نحو cron به وقت UTC، ثانیه اختیاری. |
+| پیکربندی افزونه (`config/plugins.js`) | `[[settings]]` و `verdin_config` | در **تنظیمات ← افزونه‌ها** ویرایش می‌شود. |
+| `strapi.log` | `verdin_log` | لاگ سرور و **تنظیمات ← افزونه‌ها ← لاگ‌ها**. |
+| ویجت‌های پنل مدیریت (`app.widgets.register`) | `[[admin.widgets]]`: Web Components | یا ویجت‌های داخلی داشبورد. |
+| فیلدهای سفارشی | `[[admin.fields]]` | نام `customField` در طرح‌واره حفظ می‌شود. |
+| injection zoneها، صفحه‌های مدیریت سفارشی، افزونه‌های React | پشتیبانی نمی‌شود | برندینگ در `[admin.branding]` است. |
+| یک endpoint سفارشی که ارسال‌های فرم را ذخیره می‌کند | [فرم‌های](/fa/guides/frontend/forms/) داخلی | اعتبارسنجی، تله‌ٔ اسپم، محدودیت نرخ، ایمیل‌ها و خروجی CSV را شامل می‌شود. |
+| policyها و middlewareها | مجوزها، محدودیت‌های نرخ و CORS داخلی؛ بررسی‌ها در مسیرهای افزونهٔ شما | هیچ hook‌ای به pipeline درخواست وجود ندارد. [Policyها و middlewareها](#policyها-و-middlewareها) را ببینید. |
+| ایمیل از کد (`strapi.plugin('email')`) | API HTTP یک ارائه‌دهندهٔ ایمیل، از طریق قابلیت `http` | تابع میزبان برای ایمیل وجود ندارد. |
+
+## پروژهٔ نمونه
+
+پروژهٔ Strapi پشت این نمونه یک فروشگاه کوچک با نظرسنجی‌ها است:
+
+- **`producto`**: محصولات، با پرچم‌های `a_la_venta` (برای فروش) و `reservable` (قابل رزرو).
+- **`reserva`**: رزروهایی که بازدیدکنندگان می‌فرستند. یک lifecycle از نوع `beforeCreate` مقدار `estado` را
+  به `pendiente` اجبار می‌کند، بررسی می‌کند که محصول مرتبط برای فروش و قابل رزرو باشد، و
+  `unidades` را به بازهٔ 1 تا 10 محدود می‌کند.
+- **`encuesta`** و **`voto`**: نظرسنجی‌ها با فهرستی از گزینه‌ها، و رأی‌های آن‌ها. دو مسیر
+  سفارشی، `POST /api/polls/:slug/vote` و `GET /api/polls/:slug/results`، برای هر بازدیدکننده و هر نظرسنجی
+  یک رأی می‌پذیرند، فقط در نظرسنجی‌های باز و فقط برای یک گزینهٔ معتبر. یک کار cron
+  نظرسنجی‌هایی را که تاریخ `cierra_el` آن‌ها گذشته می‌بندد.
+- **`bootstrap`** مجوزهای نقش عمومی را تنظیم می‌کند، تا یک نصب تازه باز رها نشود.
+- یک **ویجت پنل مدیریت** نظرسنجی‌های باز را نشان می‌دهد.
+
+در Verdin همهٔ این‌ها یک افزونه است، `tienda`:
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto، reserva، encuesta، voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml مانیفست
+    - src/lib.rs هوک‌ها، مسیرها، job و تابع راه‌اندازی
+    - admin/index.js ویجت داشبورد
+</FileTree>
+
+```toml title="plugin/plugin.toml (abridged)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+uidهای نوع محتوا کوتاه‌تر از Strapi هستند: `api::producto`، نه
+`api::producto.producto`.
+
+## از lifecycleها به هوک‌ها
+
+lifecycle در Strapi، ساده‌شده:
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+هوک Verdin `{ event, uid, documentId, locale, data }` را می‌گیرد و پاسخ می‌دهد
+`{ "data": … }` برای جایگزین کردن آنچه نوشته می‌شود، `{ "error": "…" }` برای رد کردن نوشتن (کلاینت
+یک 400 با همان پیام می‌گیرد، مانند `ApplicationError` در Strapi)، یا `{}` برای اجازهٔ عبور:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+نکاتی که هنگام انتقال lifecycleها باید بدانید:
+
+- **`data` همان داده‌ای است که درخواست فرستاده.** یک رابطه می‌تواند به‌صورت documentId، به‌صورت
+  `{ "documentId": … }`، به‌صورت فهرست، یا به‌صورت `{ connect }` / `{ set }` برسد (پنل مدیریت و
+  کلاینت‌ها فرق دارند). `relation_id` در نمونه همهٔ آن‌ها را می‌پذیرد. در `beforeUpdate`،
+  `data` فقط فیلدهای فرستاده‌شده را دارد.
+- **داده‌ای که برمی‌گردانید اعتبارسنجی می‌شود**، مانند مورد اصلی، پس از هوک: یک هوک نمی‌تواند
+  چیزی بنویسد که طرح‌واره رد می‌کند. کران‌های طرح‌واره (`min`، `max`) یک مقدار را رد می‌کنند؛ یک هوک
+  می‌تواند به‌جای آن مقدار را محدود کند، مانند اینجا.
+- **هوک‌ها نمی‌دانند چه کسی می‌نویسد.** هیچ کاربر یا توکنی در ورودی نیست. بررسی‌هایی که به فراخواننده
+  وابسته‌اند به مجوزها، یا یک مسیر افزونه تعلق دارند.
+- **هوک‌های پس از نوشتن داده‌ای نمی‌گیرند**: `{ event, uid, documentId, locale }`، که پس از commit شدن نوشتن
+  فرستاده می‌شود. اگر به آن نیاز دارید مدخل را با `verdin_content` بخوانید.
+- **یک هوک ناموفق نوشتن را مسدود نمی‌کند.** اگر ماژول trap کند یا time-out شود، خطا
+  لاگ می‌شود و نوشتن ادامه می‌یابد؛ فقط یک پاسخ `{ error }` آن را رد می‌کند.
+- **نوشتن‌هایی که افزونه‌ها انجام می‌دهند از هوک‌های پیش از نوشتن عبور نمی‌کنند.** قاعده‌ای که باید برای هر
+  نوشتن برقرار باشد باید در هر کد افزونه‌ای که آن نوع را می‌نویسد هم اعمال شود.
+
+## از کنترلرها و مسیرهای سفارشی به مسیرهای افزونه
+
+Strapi مسیرهای نظرسنجی را در `/api/polls/:slug/vote` ارائه می‌کرد. یک افزونهٔ Verdin همه‌چیز را
+زیر `/api/plugins/<name>/` ارائه می‌کند، پس فرانت‌اند
+`/api/plugins/tienda/polls/:slug/vote` را فراخوانی می‌کند (یا یک reverse proxy مسیر قدیمی را بازنویسی می‌کند). یک
+تابع صادرشده هر درخواست را می‌گیرد و بر اساس متد و مسیر تصمیم می‌گیرد:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+درخواست `{ method, path, query, headers, body, actor }` است، با `body` به‌صورت رشته‌ای که خودتان
+parse می‌کنید و `query` به‌صورت رشتهٔ خام کوئری. پاسخ `{ status, headers?, body }` است. هیچ چیزی آن را
+برای شما شکل نمی‌دهد: برای اینکه یک فرانت‌اند Strapi کار کند، `{ "data": … }` و در خطاها
+`{ "data": null, "error": { "status", "name", "message", "details" } }` پاسخ دهید، همان‌طور که
+helperهای `ok` و `fail` نمونه می‌کنند.
+
+مسیر رأی، به ترتیب این‌ها را بررسی می‌کند: یک بدنهٔ معتبر، یک نظرسنجی با آن slug، `estado` برابر
+`abierta` باشد، گزینه یکی از `opciones` باشد، و رأی قبلی‌ای با همان fingerprint نباشد.
+سپس `voto` را می‌سازد و با 201 و نتیجه‌ها پاسخ می‌دهد.
+
+<Aside type="caution" title="نشانی کلاینت در مسیرهای افزونه وجود ندارد">
+مسیرهای افزونه فقط هدرهای `content-type`، `accept`، `user-agent` و
+`accept-language` را دریافت می‌کنند: نه نشانی IP، نه کوکی‌ها و نه مقدار `Authorization`. یک کنترلر
+Strapi که برای «یک رأی برای هر بازدیدکننده» از `ctx.request.ip` استفاده می‌کرد به کلید دیگری نیاز دارد.
+نمونه یک `fingerprint` را از بدنهٔ درخواست می‌گیرد، که سایت می‌سازد (یک شناسهٔ تصادفی
+که در local storage نگه داشته می‌شود، یا هش ویژگی‌های مرورگر). جلوی دوبار کلیک و تکرارهای
+گاه‌به‌گاه را می‌گیرد، نه یک رأی‌دهندهٔ مصمم. برای محدودیت‌های قوی‌تر، یک کاربر نهایی واردشده (همان
+`actor`) را الزامی کنید یا بررسی را جلوی Verdin بگذارید.
+</Aside>
+
+تفاوت‌های دیگر با مسیرهای Strapi:
+
+- **مسیرها عمومی هستند.** دسترسی عمومی و مجوزهای توکن API اعمال نمی‌شوند. `actor`
+  می‌گوید چه کسی فراخوانی می‌کند: `{ "kind": "public" }`، `{ "kind": "token", "id": … }` یا
+  `{ "kind": "user", "id": … }` (یک کاربر نهایی؛ فقط شناسه). آنچه فراخواننده اجازه ندارد انجام دهد را
+  رد کنید، همان‌طور که یک policy در Strapi می‌کرد. یک توکن نامعتبر پیش از اجرای افزونه با 401 رد می‌شود.
+- **برای هر افزونه در هر لحظه یک فراخوانی.** فراخوانی‌های یک افزونه منتظر یکدیگر می‌مانند، پس بررسی
+  و ساخت در مسیر رأی روی یک نمونه درهم نمی‌شوند. با چند نمونه می‌توانند بشوند؛ نمونه همچنین یک `clave`
+  (`<poll>:<fingerprint>`) با `unique: true` ذخیره می‌کند، تا پایگاه داده تکراری‌ای را که از آن رد شده رد کند.
+- **محدودیت‌های نرخ اعمال می‌شوند**: `[api].public_rate_limit` و `[api].token_rate_limit` مسیرهای افزونه را
+  مانند بقیهٔ content API می‌شمارند.
+- **پاسخ‌های `GET` ناشناس می‌توانند کش شوند** وقتی `[api].cache_ttl_secs` تنظیم شده باشد. نوشتن‌های محتوا
+  کش را خالی می‌کنند، از جمله رأی‌ها.
+- **فقط برخی هدرهای پاسخ حفظ می‌شوند**: `content-type`، `cache-control`، `location`،
+  `etag`، `last-modified` و `content-disposition`.
+
+## از سرویس‌ها به تابع‌ها و فراخوانی‌های محتوا
+
+یک سرویس Strapi کد مشترک است؛ در یک افزونه یک تابع معمولی در ماژول است. فراخوانی‌های
+`strapi.documents(uid)` به فراخوانی‌های `verdin_content` تبدیل می‌شوند، که با قابلیت‌های `read` و `write` محدود می‌شوند:
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `findMany` با `"pagination": { "pageSize": 1 }`، سپس `meta.pagination.total` |
+
+- **خواندن‌ها نسخه‌های منتشرشده را برمی‌گردانند**، مگر اینکه کوئری `"status": "draft"` بخواهد. هوکی
+  که یک محصول فقط‌پیش‌نویس را جست‌وجو کند چیزی نمی‌یابد، همان‌طور که پیام خطای نمونه می‌گوید.
+- **نوشتن‌ها منتشر می‌شوند** مگر اینکه درخواست `"status": "draft"` داشته باشد، مانند یک نوشتن REST.
+- **کوئری از قاعده‌های REST API پیروی می‌کند.** ویژگی‌های `private` را نمی‌توان در
+  فیلترها یا `fields` به کار برد، پس `clave` در نمونه private نیست (نقش عمومی به
+  رأی‌ها دسترسی ندارد، پس کس دیگری آن را نمی‌خواند).
+- **بدون SQL خام، بدون `strapi.db.query`.** همه‌چیز از Document Service می‌گذرد، با
+  اعتبارسنجی، وب‌هوک‌ها، تاریخچه و گزارش حسابرسی آن.
+- **بدون WASI ساعتی نیست.** برای زمان و اعداد تصادفی `wasi = true` را در مانیفست بگذارید؛
+  job در نمونه به‌جای آن از `scheduledAt` که دریافت می‌کند استفاده می‌کند.
+
+## از `bootstrap` به تابع راه‌اندازی
+
+پروژه‌های Strapi اغلب مجوزهای نقش عمومی را در `bootstrap` تنظیم می‌کنند، تا یک
+پایگاه دادهٔ تازه قابل‌استفاده باشد و بیش از نیاز چیزی باز نباشد. تابع راه‌اندازی Verdin همین کار را
+با قابلیت `public_permissions` می‌کند:
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- با `{ "reason": "start" | "enabled" | "settings" }` اجرا می‌شود: وقتی سرور با روشن بودن افزونه
+  شروع می‌شود، وقتی افزونه روشن می‌شود، و وقتی تنظیماتش تغییر می‌کند. آن را طوری بنویسید که اجرای دوباره‌اش
+  امن باشد: پیش از ساختن چیزی که seed می‌کنید آن را جست‌وجو کنید.
+- `set` **همهٔ** مجوزهای عمومی را جایگزین می‌کند، پس تغییرهایی که در **تنظیمات ← دسترسی
+  عمومی** داده‌اید در شروع بعدی لغو می‌شوند. نمونه یک تنظیم برای خاموش کردن این رفتار دارد.
+- در پس‌زمینه روی یک نمونهٔ ماژول مخصوص به خودش و با محدودیت زمانی خودش اجرا می‌شود
+  (`[startup].timeout_ms`، به‌طور پیش‌فرض 30 ثانیه)، پس یک seed کند هوک‌ها و مسیرها را معطل نمی‌کند.
+  یک شکست، یا پاسخ `{ "error" }`، لاگ می‌شود؛ افزونه روشن می‌ماند.
+- با چند نمونه، فقط آن‌هایی که `[plugins].run_jobs = true` دارند آن را اجرا می‌کنند.
+
+## از کارهای cron به jobها
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+job `{ "scheduledAt": "…" }` را دریافت می‌کند و در نمونه، هر نظرسنجی بازی را که
+`cierra_el` آن زودتر است به‌روز می‌کند. jobها به وقت UTC اجرا می‌شوند، فقط وقتی افزونه روشن است، و فقط روی
+نمونه‌هایی که `[plugins].run_jobs = true` دارند. اجرایی که هنگام خاموش بودن سرور از دست رفته جبران
+نمی‌شود.
+
+## ویجت‌های پنل مدیریت
+
+یک ویجت پنل مدیریت در Strapi یک کامپوننت React است؛ یک ویجت Verdin یک custom element در
+اسکریپت `admin/` افزونه است که در مانیفست اعلام می‌شود:
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+element یک `context` با `fetch` می‌گیرد. ویجت نمونه مسیر `GET /api/plugins/tienda/polls` خود افزونه را
+فراخوانی می‌کند. درخواست‌ها به content API (از جمله مسیرهای افزونه) بدون نشست مدیر می‌روند، پس مسیری که یک ویجت
+استفاده می‌کند باید برای عموم مشکلی نداشته باشد، یا یک توکن API را بپذیرد. injection zoneها، صفحه‌های مدیریت سفارشی و
+افزونه‌های React معادلی ندارند. بخش [نقاط گسترش پنل مدیریت](/fa/extending/plugin-reference/#نقاط-گسترش-پنل-مدیریت) را ببینید.
+
+## از فرم‌های سفارشی به Forms
+
+یک فرم پیشنهاد یا تماس در Strapi معمولاً یک endpoint سفارشی است (یا یک نوع محتوا
+با مجوز عمومی `create`) به‌علاوهٔ کدی که به کسی ایمیل می‌زند. آن را منتقل نکنید: قابلیت داخلی
+[فرم‌ها](/fa/guides/frontend/forms/) همهٔ این‌ها را بدون کد انجام می‌دهد. ویراستاران فیلدها را
+در پنل مدیریت تعریف می‌کنند، سایت به `POST /api/_forms/{slug}` می‌فرستد، و ارسال‌ها
+اعتبارسنجی می‌شوند، به نشانی‌های **Notify** ایمیل می‌شوند و به CSV صادر می‌شوند. فرم‌ها همچنین یک تله
+اسپم و یک محدودیت نرخ برای هر بازدیدکننده (10 ارسال در دقیقه) دارند، که یک مسیر افزونه نمی‌تواند
+انجام دهد چون نشانی کلاینت را نمی‌بیند.
+
+## Policyها و middlewareها
+
+Verdin هیچ hook‌ای به pipeline درخواست HTTP ندارد. آنچه به‌جای آن ارائه می‌کند:
+
+| Strapi | Verdin |
+| --- | --- |
+| policyهایی از نوع `is-authenticated` روی مسیرهای REST | دسترسی عمومی، مجوزهای توکن API و نقش‌های کاربر نهایی. [مجوزها](/fa/reference/permissions/) را ببینید. قاعده‌های دقیق‌تر (یک کاربر نهایی که فقط مدخل‌های خودش را ویرایش می‌کند) به یک مسیر افزونه نیاز دارند. |
+| یک policy روی یک مسیر سفارشی | `actor` را در مسیر افزونه بررسی کنید. |
+| یک middleware محدودیت نرخ | `[api].public_rate_limit`، `[api].token_rate_limit` و `[admin].auth_rate_limit`. |
+| یک middleware برای CORS یا هدرهای امنیتی | `[api].cors_origins`؛ هدرهای پاسخ دیگر در reverse proxy. |
+| یک middleware که درخواست‌ها یا پاسخ‌های مسیرهای هسته را بازنویسی می‌کند | پشتیبانی نمی‌شود. برای رفتار جدید از یک مسیر افزونه یا یک reverse proxy استفاده کنید. |
+| یک policy که برخی نوشتن‌ها را رد می‌کند | یک هوک پیش از نوشتن که `{ error }` پاسخ می‌دهد، بدون دانستن فراخواننده. |
+
+## محدودیت‌هایی که باید در نظر بگیرید
+
+- **بدون نشانی کلاینت و با هدرهای اندک** در مسیرهای افزونه (بالا را ببینید).
+- **نوشتن‌هایی که افزونه‌ها انجام می‌دهند از هوک‌های پیش از نوشتن همهٔ افزونه‌ها عبور نمی‌کنند**، پس قاعده‌های
+  درون هوک‌های پیش از نوشتن روی آن‌ها اعمال نمی‌شوند.
+- **هوک‌های پس از نوشتنی که نوشتن‌های خود یک افزونه فعال می‌کند پس از بازگشت فراخوانی آن اجرا می‌شوند**،
+  نه درون نوشتن، و هوک‌هایی که می‌نویسند حداکثر 4 سطح تو در تو می‌شوند (بخش
+  [نوشتن توسط افزونه‌ها](/fa/extending/plugin-reference/#نوشتن-توسط-افزونهها) را ببینید). کار
+  بعدی‌ای را که باید پیش از پاسخ انجام شود در کدی که می‌نویسد انجام دهید، پس از بازگشت
+  `verdin_content`.
+- **برای هر افزونه در هر لحظه یک فراخوانی**: یک مسیر کند هوک‌های آن افزونه را به تأخیر می‌اندازد. فراخوانی‌ها را
+  کوتاه نگه دارید، و `verdin_plugin_call_duration_seconds` را در
+  [متریک‌ها](/fa/deploy/monitoring/) زیر نظر بگیرید.
+- **مسیرها عمومی هستند** و باید `actor` را بررسی کنند.
+- **Verdin 0.11 یا بعد از آن** برای تابع راه‌اندازی و `verdin_public_permissions`: ماژولی
+  که یک تابع میزبان را import کند که سرور ندارد اصلاً بارگذاری نمی‌شود.
+
+## چک‌لیست
+
+<Steps>
+
+1. پروژه را با `verdin import strapi` درون‌ریزی کنید، سپس کد درون `src/` را فهرست کنید: مسیرها،
+   کنترلرها، سرویس‌ها، lifecycleها، policyها، middlewareها، `bootstrap`، کارهای cron و
+   افزونه‌های پنل مدیریت.
+2. آنچه Verdin خودش دارد کنار بگذارید: فرم‌ها، مجوزهای عمومی که دستی تنظیم شده‌اند، محدودیت‌های نرخ،
+   CORS، وب‌هوک‌ها، انتشار زمان‌بندی‌شده ([بسته‌های انتشار](/fa/guides/content/releases/)).
+3. با بقیه یک افزونه بنویسید، با پیروی از نمونه: هوک‌ها، مسیرها، یک job، یک تابع راه‌اندازی. فقط
+   قابلیت‌هایی را که نیاز دارد به آن بدهید.
+4. بررسی کنید که هوک‌هایی که محتوا می‌نویسند به تودرتویی بیش از 4 سطح وابسته نباشند.
+5. آن را build کنید، زیر `plugins/` نصب کنید، در **تنظیمات ← افزونه‌ها** روشن کنید، و لاگ
+   آن را همان‌جا بخوانید.
+6. فرانت‌اند را به‌روز کنید: URLهای مسیر افزونه (`/api/plugins/<name>/…`)، fingerprintها یا
+   ورود کاربر نهایی جایی که کد به نشانی کلاینت وابسته بود، و
+   [تغییرهای دیگر](/fa/migrate/from-strapi/#تغییرات-فرانتاند) یک مهاجرت.
+
+</Steps>

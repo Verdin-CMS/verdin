@@ -1,13 +1,13 @@
 ---
 title: پایش
-description: یک نمونهٔ در حال اجرای Verdin را زیر نظر بگیرید — بررسی‌های /_health و /_ready، متریک‌های Prometheus در /_metrics و توکن آن‌ها، قالب لاگ، سطح‌ها و شناسهٔ درخواست‌ها.
+description: یک نمونهٔ در حال اجرای Verdin را زیر نظر بگیرید — بررسی‌های /_health و /_ready، متریک‌های Prometheus در /_metrics و یک داشبورد Grafana، ردیابی‌های OpenTelemetry، گزارش خطای Sentry، قالب لاگ، سطح‌ها و شناسهٔ درخواست‌ها.
 sidebar:
   order: 10
 ---
 
-یک نمونهٔ Verdin از طریق دو نقطهٔ پایانی سلامت، متریک‌های اختیاری Prometheus
-و لاگ‌های ساخت‌یافته دربارهٔ خودش گزارش می‌دهد. این صفحه فهرست می‌کند که هر کدام چه برمی‌گرداند و چگونه
-روشن می‌شود.
+یک نمونهٔ Verdin از طریق دو نقطهٔ پایانی سلامت، متریک‌های اختیاری Prometheus،
+ردیابی‌های اختیاری OpenTelemetry و گزارش‌های خطای Sentry، و لاگ‌های ساخت‌یافته دربارهٔ خودش گزارش می‌دهد.
+این صفحه فهرست می‌کند که هر کدام چه برمی‌گرداند و چگونه روشن می‌شود.
 
 ## بررسی‌های سلامت
 
@@ -63,18 +63,87 @@ scrape_configs:
 | --- | --- | --- | --- |
 | `verdin_http_requests_total` | counter | `area`، `method`، `status` | درخواست‌های HTTP پاسخ‌داده‌شده. |
 | `verdin_http_request_duration_seconds` | histogram | `area`، `method`، `status` | زمان پاسخ به درخواست‌ها. bucketها از 5 ms تا 10 s. |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`، `kind`، `function` | زمانی که تابع‌های [افزونه](/fa/extending/plugins/) گرفتند. همان bucketها. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`، `kind`، `function` | فراخوانی‌های افزونه که شکست خوردند: trap، time-out، خروجی‌ای که JSON نیست، یا `{ error }` یک تابع راه‌اندازی. |
 | `verdin_webhook_deliveries_pending` | gauge | | ارسال‌های وب‌هوک در انتظار فرستاده شدن. |
 | `verdin_realtime_subscribers` | gauge | | جریان‌های رویداد بلادرنگ باز. |
+| `verdin_cluster_events_total` | counter | `direction` | رویدادهای [گذرگاه رویداد مشترک](/fa/deploy/scaling/#گذرگاه-رویداد-مشترک) وقتی `[cluster].bus` تنظیم شده است: `sent` به نمونه‌های دیگر، `received` از آن‌ها، `dropped` (صف پر یا نوشتن ناموفق). |
 | `verdin_uptime_seconds` | gauge | | ثانیه‌ها از زمان شروع فرایند. |
 | `verdin_build_info` | gauge | `version` | همیشه 1؛ نسخهٔ در حال اجرا. |
 
 `area` بخشی از سرور است: `api` (API محتوا)، `admin_api`، `admin` (فایل‌های
 پنل)، `graphql`، `mcp`، `uploads`، `internal` (مسیرهایی که با `/_` شروع می‌شوند) یا `other`.
 `status` کلاس وضعیت است: `2xx`، `3xx`، `4xx` یا `5xx`.
+برای فراخوانی‌های افزونه، `kind` برابر `hook`، `route`، `job`، `startup` یا `graphql` است؛ سری‌های افزونه
+بعد از نخستین فراخوانی ظاهر می‌شوند (بخش
+[مرجع افزونه](/fa/extending/plugin-reference/#متریکها) را ببینید).
 
 هشدارهای مفید: شکست `/_ready`، افزایش سهم `5xx`، رشد
-`verdin_webhook_deliveries_pending` (یک مقصد وب‌هوک از دسترس خارج است)، و صفر شدن دوبارهٔ `verdin_uptime_seconds`
-(راه‌اندازی‌های مجدد).
+`verdin_webhook_deliveries_pending` (یک مقصد وب‌هوک از دسترس خارج است)، افزایش
+`verdin_plugin_call_errors_total` یا hookهای کند افزونه (نوشتن‌هایی را که روی آن‌ها اجرا می‌شوند به تأخیر می‌اندازند)،
+و صفر شدن دوبارهٔ `verdin_uptime_seconds` (راه‌اندازی‌های مجدد).
+
+### داشبورد Grafana
+
+[`docker/grafana/verdin.json`](https://github.com/Verdin-CMS/verdin/blob/main/docker/grafana/verdin.json)
+یک داشبورد برای این متریک‌هاست: نرخ درخواست، سهم `5xx` و چندک‌های تأخیر بر حسب بخش، متد و کلاس وضعیت،
+ارسال‌های وب‌هوک در انتظار، مشترکان بلادرنگ، ترافیک گذرگاه رویداد، و نرخ فراخوانی افزونه‌ها، p95 و خطاها برای هر
+تابع افزونه. آن را در Grafana وارد کنید (**Dashboards → New → Import**) و منبع دادهٔ Prometheus خود را انتخاب کنید؛
+متغیرهای `instance` و `area` در بالا همهٔ پنل‌ها را فیلتر می‌کنند.
+
+## ردیابی‌ها (OpenTelemetry)
+
+Verdin می‌تواند ردیابی هر درخواست را از طریق OTLP/HTTP به یک collector مربوط به OpenTelemetry (OpenTelemetry
+Collector، Grafana Alloy یا Tempo، Jaeger، Honeycomb، Datadog…) صادر کند. به‌طور پیش‌فرض خاموش است:
+
+```toml title="verdin.toml"
+[telemetry]
+enabled = true
+endpoint = "http://otel-collector:4318"
+```
+
+متغیرهای استاندارد هم کار می‌کنند و بر فایل برتری دارند:
+
+```sh
+VERDIN_TELEMETRY__ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=<key>
+OTEL_SERVICE_NAME=cms-production
+```
+
+هر ردیابی شامل این‌هاست:
+
+- **یک span درخواست** (از نوع `server`)، با نامی از متد و مسیر که شناسه‌ها در آن با `{id}` جایگزین شده‌اند
+  (`PUT /api/articles/{id}`)، همراه با `http.response.status_code` و وضعیت خطا برای `5xx`. درخواستی با هدر W3C
+  `traceparent` به ردیابی فراخواننده می‌پیوندد.
+- **یک span برای هر دستور پایگاه داده** (از نوع `client`) زیر آن: `db.system.name`
+  (`postgresql`، `mysql`، `mariadb` یا `sqlite`) و `db.query.text`، همان SQL با placeholderهای `?`
+  خودش. مقدارهای bind‌شده هرگز ثبت نمی‌شوند، بنابراین محتوا، گذرواژه‌ها و توکن‌ها از ردیابی‌ها بیرون می‌مانند.
+  `COMMIT` و `ROLLBACK` spanهای خودشان را دارند، و در SQLite یک span با نام `write lock` نشان می‌دهد یک نوشتن
+  چقدر منتظر نویسنده‌های جلوتر از خود مانده است.
+- رویدادهای لاگی که هنگام پاسخ به درخواست نوشته شده‌اند، به‌صورت رویدادهای span.
+
+دستورهایی که بیرون از یک درخواست اجرا می‌شوند (راه‌اندازی، مهاجرت‌ها، کارهای پس‌زمینه) ردیابی نمی‌شوند.
+`[telemetry].sample_ratio` سهمی از ردیابی‌ها را نگه می‌دارد (`0.1` از هر ده ردیابی یکی را نگه می‌دارد)؛
+spanها به‌صورت دسته‌ای فرستاده می‌شوند و هنگام توقف سرور flush می‌شوند. سطح لاگ ردیابی‌ها را فیلتر نمی‌کند:
+`[log].level = "warn"` همچنان هر درخواست را صادر می‌کند.
+
+## گزارش خطا (Sentry)
+
+یک DSN تنظیم کنید تا panicها و پاسخ‌های `5xx` به [Sentry](https://sentry.io) (یا سرویسی سازگار با Sentry
+مانند GlitchTip) فرستاده شوند:
+
+```sh
+SENTRY_DSN=https://<key>@o0.ingest.sentry.io/<project>
+```
+
+`[telemetry].sentry_dsn` هم کار می‌کند؛ متغیر برتری دارد. یک `5xx` به‌صورت رویداد خطای
+`POST /api/articles answered 500` می‌رسد، با برچسب‌های `http.method`، `http.status_code` و
+`request_id` که با هدر `X-Request-Id` و خط‌های لاگ همان درخواست مطابقت دارد.
+رویدادها نسخهٔ Verdin را به‌عنوان release و `production` (`verdin start`) یا `development` (`verdin dev`) را
+به‌عنوان environment دارند، مگر اینکه `SENTRY_ENVIRONMENT` یا `[telemetry].sentry_environment` نام دیگری بدهد.
+URLها با پنهان‌کردن مقدارهای query که شبیه رمز هستند گزارش می‌شوند، مانند لاگ‌ها؛ بدنه و هدر درخواست‌ها هرگز
+فرستاده نمی‌شوند.
 
 ## لاگ‌ها
 

@@ -299,7 +299,7 @@ GET /api/articles?fields=title,slug
 
 | شکل | آنچه populate می‌شود |
 | --- | --- |
-| `populate=*` | همهٔ روابط، فیلدهای رسانه، کامپوننت‌ها و ناحیه‌های پویا، تا یک سطح |
+| `populate=*` | همهٔ روابط، فیلدهای رسانه، کامپوننت‌ها و ناحیه‌های پویا، تا یک سطح، و `localizations` روی نوع‌های بومی‌سازی‌شده |
 | `populate=category,tags` یا `populate[0]=category&populate[1]=tags` | فیلدهای نام‌برده |
 | `populate[category]=true` | فیلد نام‌برده (`false` آن را کنار می‌گذارد) |
 | `populate[category][fields][0]=name` | فیلد، همراه با گزینه‌ها |
@@ -347,6 +347,15 @@ GET /api/articles?populate[category][fields][0]=name
 `locale=fr` نسخهٔ فرانسوی نوع‌های بومی‌سازی‌شده را می‌خواند و می‌نویسد. بدون آن، درخواست‌ها از
 زبان پیش‌فرض استفاده می‌کنند. یک کد نامعتبر یا ناشناخته `400` است. نوع‌هایی که بومی‌سازی‌شده
 نیستند آن را نادیده می‌گیرند. [بین‌المللی‌سازی](/fa/concepts/internationalization/) را ببینید.
+
+روی نوع‌های بومی‌سازی‌شده، `populate=localizations` نسخه‌های دیگر زبان سند را در همان وضعیت اضافه می‌کند،
+هر کدام با `locale` خودش. گزینه‌های یک رابطهٔ populate‌شده را می‌گیرد (`fields`، `filters`، `sort`،
+`populate`، `count`)، و `populate=*` آن را شامل می‌شود. نوع‌هایی که بومی‌سازی‌شده نیستند `localizations` ندارند.
+
+`GET /api/i18n/locales` زبان‌ها را به‌صورت یک آرایهٔ ساده به شکل Strapi فهرست می‌کند (`id`،
+`documentId`، `name`، `code`، `isDefault`، `createdAt`، `updatedAt`، `publishedAt`،
+`locale`). به مجوز `find` روی `plugin::i18n.locale` نیاز دارد. بخش
+[بومی‌سازی محتوا](/fa/guides/content/localizing-content/#فهرست-کردن-زبانها) را ببینید.
 
 ## جستجو
 
