@@ -46,6 +46,7 @@ Without the generated types every route is accepted and documents are `Record<st
 | `single(route).find / update / delete` | `/api/:route` |
 | `upload(files, info?)` | `POST /api/upload` (multipart) |
 | `files(params?)` | `GET /api/upload/files` |
+| `locales()` | `GET /api/i18n/locales` |
 | `graphql(query, variables?)` | `POST /graphql` (the GraphQL feature must be on) |
 
 Query parameters use Strapi v5's format and are serialized in bracket notation. `stringify` is exported for building URLs yourself.

@@ -92,3 +92,12 @@ test('graphql and custom prefixes', async () => {
   await verdin.collection('tags').find();
   assert.equal(calls[2]?.url, 'http://localhost:1337/content/tags');
 });
+
+test('locales', async () => {
+  const english = { id: 1, documentId: 'l1', name: 'English', code: 'en', isDefault: true, locale: null };
+  const { calls, fetcher } = fakeFetch(() => ({ body: [english] }));
+  const verdin = createClient({ url: 'https://cms.example.com', fetch: fetcher });
+  const locales = await verdin.locales();
+  assert.equal(calls[0]?.url, 'https://cms.example.com/api/i18n/locales');
+  assert.equal(locales[0]?.code, 'en', 'a plain array, no data envelope');
+});

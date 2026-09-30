@@ -140,6 +140,7 @@ fn sort_fields_populate() {
         q.sort,
         [Sort::by("title", true), Sort::by("views", false), Sort::by("created_at", false),]
     );
+    assert!(query("sort=rating:desc").unwrap().sort[0].decimal, "decimals sort as numbers");
     assert!(error("sort=meta").contains("cannot sort"));
     assert!(error("sort=title:up").contains("invalid sort direction"));
 

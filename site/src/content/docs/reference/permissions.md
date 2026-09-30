@@ -114,9 +114,10 @@ versions once, on upgrade.
 ## Content API actions
 
 The public role, API tokens with the **Custom** type and end-user roles grant these actions
-per content type. The media library (`plugin::upload`) and the end-user accounts of
-`/api/users` (`plugin::users-permissions.user`) have rows of their own in the same
-grid. Everything is closed by default.
+per content type. The media library (`plugin::upload`), the end-user accounts of
+`/api/users` (`plugin::users-permissions.user`) and the list of locales at
+`/api/i18n/locales` (`plugin::i18n.locale`) have rows of their own in the same grid.
+Everything is closed by default.
 
 | Action | Label | Allows |
 | --- | --- | --- |
@@ -128,8 +129,9 @@ grid. Everything is closed by default.
 | `publish` | Publish | `POST /api/{pluralName}/{documentId}/actions/publish` (also `unpublish` and `discard-draft`). |
 | `readDrafts` | Read drafts | Reading `?status=draft`. |
 
-`publish` and `readDrafts` do not apply to the media library and users rows. Reading
-drafts needs `readDrafts` on top of `find` or `findOne`.
+`publish` and `readDrafts` do not apply to the media library and users rows. The
+locales row takes `find` only, as Strapi's i18n plugin does. Reading drafts needs
+`readDrafts` on top of `find` or `findOne`.
 
 ### API token types
 

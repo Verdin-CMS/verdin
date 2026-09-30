@@ -37,10 +37,7 @@ pub fn value_to_json(
             if options.decimal_as_string {
                 Json::String(value.normalize().to_string())
             } else {
-                value
-                    .to_f64()
-                    .and_then(serde_json::Number::from_f64)
-                    .map_or(Json::Null, Json::Number)
+                decimal_number(value)
             }
         }
         SqlValue::Text(value) => Json::String(value),
@@ -48,5 +45,40 @@ pub fn value_to_json(
         SqlValue::Time(value) => Json::String(format_time(value)),
         SqlValue::DateTime(value) => Json::String(format_datetime(value)),
         SqlValue::Json(value) => value,
+    }
+}
+
+/// A decimal as a JSON number, the way Strapi (JavaScript) prints it: whole values as
+/// integers (`25`, not `25.0`), others as the shortest float that reads back the same.
+fn decimal_number(value: rust_decimal::Decimal) -> Json {
+    if value.fract().is_zero()
+        && let Some(whole) = value.to_i64()
+    {
+        return Json::from(whole);
+    }
+    value.to_f64().and_then(serde_json::Number::from_f64).map_or(Json::Null, Json::Number)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn number(text: &str) -> String {
+        let value = SqlValue::Decimal(text.parse().unwrap());
+        value_to_json(None, value, OutputOptions::default()).to_string()
+    }
+
+    #[test]
+    fn decimals_print_like_javascript_numbers() {
+        assert_eq!(number("25"), "25");
+        assert_eq!(number("25.00"), "25");
+        assert_eq!(number("-3.000"), "-3");
+        assert_eq!(number("0.00"), "0");
+        assert_eq!(number("12.50"), "12.5");
+        assert_eq!(number("0.1"), "0.1");
+        assert_eq!(number("-1234.56"), "-1234.56");
+        let exact = OutputOptions { decimal_as_string: true };
+        let text = value_to_json(None, SqlValue::Decimal("25.00".parse().unwrap()), exact);
+        assert_eq!(text, Json::String("25".into()));
     }
 }

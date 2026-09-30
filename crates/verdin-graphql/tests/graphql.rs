@@ -37,7 +37,10 @@ fn schema() -> Schema {
             "name": { "type": "string" },
             "articles": { "type": "relation", "relation": "oneToMany", "target": "article", "mappedBy": "category" }
         })),
-        ct("tag", "tags", false, json!({ "label": { "type": "string" } })),
+        ct("tag", "tags", false, json!({
+            "label": { "type": "string" },
+            "weight": { "type": "decimal", "precision": 10, "scale": 2 }
+        })),
         Source::content_type("page", json!({ "kind": "collectionType", "singularName": "page", "pluralName": "pages",
             "displayName": "Page", "pluginOptions": { "i18n": { "localized": true } },
             "attributes": { "title": { "type": "string" } } }).to_string()),
@@ -376,6 +379,23 @@ async fn plugin_fields() {
 }
 
 #[tokio::test]
+async fn whole_decimals_are_integers() {
+    let app = App::new(verdin_graphql::Options::default()).await;
+    for (label, weight) in [("whole", "25"), ("half", "12.5")] {
+        let query = format!(
+            r#"mutation {{ createTag(data: {{ label: "{label}", weight: {weight} }}) {{ label }} }}"#
+        );
+        app.ok(&query, json!({})).await;
+    }
+    let data = app.ok(r#"{ tags(sort: ["weight:desc"]) { label weight } }"#, json!({})).await;
+    // `25`, not `25.0`: an integer in the JSON, as Strapi returns it.
+    assert_eq!(data["tags"][0], json!({ "label": "whole", "weight": 25 }));
+    assert!(data["tags"][0]["weight"].is_i64(), "{data}");
+    assert_eq!(data["tags"][1], json!({ "label": "half", "weight": 12.5 }));
+    app.done().await;
+}
+
+#[tokio::test]
 async fn localized_types_expose_their_locale() {
     let app = App::new(verdin_graphql::Options::default()).await;
     let data = app
@@ -396,6 +416,17 @@ async fn localized_types_expose_their_locale() {
     };
     assert!(names("page").contains(&"locale".to_owned()), "{data}");
     assert!(!names("tag").contains(&"locale".to_owned()), "only localized types have it");
+    assert!(names("page").contains(&"localizations".to_owned()), "{data}");
+    assert!(!names("tag").contains(&"localizations".to_owned()));
+    app.ok(r#"mutation { createPage(data: { title: "Home" }) { documentId } }"#, json!({})).await;
+    let pages = app
+        .ok(r#"{ pages { title locale localizations(sort: ["title"]) { title } } }"#, json!({}))
+        .await;
+    assert_eq!(
+        pages["pages"],
+        json!([{ "title": "Home", "locale": "en", "localizations": [] }]),
+        "no other locale yet"
+    );
     let delete = data["mutations"]["fields"]
         .as_array()
         .unwrap()

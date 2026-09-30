@@ -60,11 +60,13 @@ pub struct Sort {
     pub descending: bool,
     /// `sort=author.name`: `column` of the document a to-one relation points at.
     pub via: Option<SortVia>,
+    /// A `decimal` column, sorted as a number where it is stored as text (SQLite).
+    pub decimal: bool,
 }
 
 impl Sort {
     pub fn by(column: impl Into<String>, descending: bool) -> Self {
-        Self { column: column.into(), descending, via: None }
+        Self { column: column.into(), descending, via: None, decimal: false }
     }
 }
 

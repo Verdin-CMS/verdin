@@ -281,8 +281,12 @@ pub fn router(
             mark_text,
         ));
     let site_service = state.service.clone();
-    let router =
-        config.http.apply(regular).merge(uploads).fallback(handlers::not_found).with_state(state);
+    let router = config
+        .http
+        .apply(regular.merge(i18n::content_routes()))
+        .merge(uploads)
+        .fallback(handlers::not_found)
+        .with_state(state);
     let router = match site {
         Some(site) => router.merge(config.http.apply(site_routes::routes(site, site_service))),
         None => router,

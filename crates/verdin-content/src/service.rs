@@ -26,7 +26,7 @@ use crate::events::{
     DocumentEvent, DocumentHook, DocumentListener, EventKind, HookAction, HookContext,
 };
 use verdin_query::{
-    Field, FieldCategory, Filter, PageMode, Populate, Query, Sort, Status, SubQuery,
+    Field, FieldCategory, Filter, LOCALIZATIONS, PageMode, Populate, Query, Sort, Status, SubQuery,
 };
 
 use crate::input::{Position, RelationOp, RelationWrite, check_required, check_rules, prepare};
@@ -421,6 +421,12 @@ impl DocumentService {
                 return Ok(());
             }
             for item in populate {
+                if item.field == LOCALIZATIONS && model.fields.has_localizations() {
+                    let default = SubQuery::default();
+                    let sub = item.query.as_ref().unwrap_or(&default);
+                    self.populate_localizations(model, docs, sub, status, denied).await?;
+                    continue;
+                }
                 let Some(field) = model.fields.get(&item.field) else { continue };
                 if field.morph.is_some() {
                     let default = SubQuery::default();
@@ -571,6 +577,102 @@ impl DocumentService {
             }
             Ok(())
         })
+    }
+
+    /// `localizations`: the other locale versions of each document, in the same state
+    /// (published, or draft with `status=draft`), each with its `locale`. Their own
+    /// relations resolve in their locale.
+    async fn populate_localizations(
+        &self,
+        model: &TypeModel,
+        docs: &mut [Doc],
+        sub: &SubQuery,
+        status: Status,
+        denied: &[String],
+    ) -> Result<()> {
+        let current = self.locale_of(model)?;
+        let mut fields = if sub.count {
+            public_fields(model, Some(&[]), &[])
+        } else {
+            public_fields(model, sub.fields.as_deref(), &sub.populate)
+        };
+        if !sub.count
+            && !fields.iter().any(|field| field.api == "locale")
+            && let Some(locale) = model.fields.get("locale")
+        {
+            fields.push(locale);
+        }
+        let kinds: Vec<ColumnKind> = fields.iter().map(|field| field.kind).collect();
+        let wanted: Vec<String> = {
+            let mut seen = HashSet::new();
+            docs.iter()
+                .map(|doc| doc.document_id.clone())
+                .filter(|id| seen.insert(id.clone()))
+                .collect()
+        };
+        let context = self.context_locale();
+        let filter = FilterContext::with_locale(status, &context);
+        let mut found: Vec<Doc> = Vec::new();
+        for chunk in wanted.chunks(IN_CHUNK) {
+            let mut select = SqlBuilder::new(self.db.flavor());
+            write_select(&mut select, model.table(), &fields);
+            select.push(" WHERE ").column(Some(BASE), "document_id").push(" IN ");
+            write_list(&mut select, chunk.iter().map(|id| SqlValue::Text(id.clone())));
+            select.push(" AND ").column(Some(BASE), "locale").push(" <> ");
+            select.param(SqlValue::Text(current.clone())).push(" AND ");
+            select
+                .column(Some(BASE), "publication_state")
+                .push(" = ")
+                .param(SqlValue::SmallInt(state_for(model, status)));
+            if let Some(inner) = &sub.filters {
+                select.push(" AND ");
+                write_filter(&mut select, inner, BASE, filter);
+            }
+            if sub.sort.is_empty() {
+                select.push(" ORDER BY ").column(Some(BASE), "locale");
+            } else {
+                write_order_by(&mut select, &sub.sort, Some(BASE), filter);
+            }
+            let rows = self.db.queries().fetch_all(&select.sql, &select.params, &kinds).await?;
+            found.extend(rows.into_iter().map(|row| self.to_doc(&fields, row)));
+        }
+        if !sub.count && !sub.populate.is_empty() {
+            // Nested relations of each version resolve in that version's locale.
+            let mut by_locale: Vec<(String, Vec<usize>, Vec<Doc>)> = Vec::new();
+            for (index, doc) in found.drain(..).enumerate() {
+                let locale = doc.json.get("locale").and_then(Json::as_str).unwrap_or("");
+                match by_locale.iter_mut().find(|(code, _, _)| code == locale) {
+                    Some((_, indexes, group)) => {
+                        indexes.push(index);
+                        group.push(doc);
+                    }
+                    None => by_locale.push((locale.to_owned(), vec![index], vec![doc])),
+                }
+            }
+            let mut ordered: Vec<(usize, Doc)> = Vec::new();
+            for (locale, indexes, mut group) in by_locale {
+                self.in_locale(Some(locale))
+                    .populate_relations(model, &mut group, &sub.populate, status, denied)
+                    .await?;
+                ordered.extend(indexes.into_iter().zip(group));
+            }
+            ordered.sort_by_key(|(index, _)| *index);
+            found = ordered.into_iter().map(|(_, doc)| doc).collect();
+        }
+        let mut per_document: HashMap<String, Vec<Json>> = HashMap::new();
+        for doc in found {
+            per_document.entry(doc.document_id).or_default().push(Json::Object(doc.json));
+        }
+        for doc in docs.iter_mut() {
+            let items = per_document.get(&doc.document_id).cloned().unwrap_or_default();
+            let value = if sub.count {
+                serde_json::json!({ "count": items.len() })
+            } else {
+                Json::Array(items)
+            };
+            doc.json.insert(LOCALIZATIONS.into(), value);
+        }
+        Ok(())
     }
 
     /// `(source_id, target_document_id)` links of the given source rows, in order.

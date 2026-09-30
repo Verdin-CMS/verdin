@@ -801,7 +801,8 @@ fn grants(
         .map(|grant| {
             let upload = grant.subject == verdin_auth::UPLOAD_SUBJECT;
             let users = grant.subject == verdin_auth::USERS_SUBJECT;
-            if !upload && !users {
+            let locales = grant.subject == verdin_auth::LOCALES_SUBJECT;
+            if !upload && !users && !locales {
                 state.service.registry().get(&grant.subject).map_err(|_| {
                     ApiError::BadRequest(format!("unknown content type `{}`", grant.subject))
                 })?;
@@ -809,9 +810,13 @@ fn grants(
             let action = ContentAction::parse(&grant.action).ok_or_else(|| {
                 ApiError::BadRequest(format!("unknown content API action `{}`", grant.action))
             })?;
-            if (upload || users)
-                && matches!(action, ContentAction::Publish | ContentAction::ReadDrafts)
-            {
+            let inapplicable = if locales {
+                action != ContentAction::Find
+            } else {
+                (upload || users)
+                    && matches!(action, ContentAction::Publish | ContentAction::ReadDrafts)
+            };
+            if inapplicable {
                 return Err(ApiError::BadRequest(format!(
                     "`{}` does not apply to `{}`",
                     grant.action, grant.subject
@@ -1291,6 +1296,27 @@ fn admin_query(
     query_for(&state.service, &state.config.limits, uid, raw, principal, grant)
 }
 
+/// Drops `localizations` from a populate tree (a localized type's other locale versions;
+/// an attribute of that name has a field of its own and stays).
+fn without_localizations(
+    populate: &mut Vec<verdin_query::Populate>,
+    fields: &verdin_query::TypeFields,
+    catalog: &verdin_query::Catalog,
+) {
+    if fields.has_localizations() {
+        populate.retain(|item| item.field != verdin_query::LOCALIZATIONS);
+    }
+    for item in populate.iter_mut() {
+        let target = fields
+            .get(&item.field)
+            .and_then(|field| field.relation.as_ref())
+            .and_then(|relation| catalog.get(&relation.target));
+        if let (Some(query), Some(target)) = (&mut item.query, target) {
+            without_localizations(&mut query.populate, target, catalog);
+        }
+    }
+}
+
 /// [`admin_query`] without a router (background jobs).
 pub(crate) fn query_for(
     service: &DocumentService,
@@ -1313,6 +1339,9 @@ pub(crate) fn query_for(
     );
     let catalog = related.as_ref().unwrap_or(registry.catalog());
     let mut query = verdin_query::parse_request(raw, fields, catalog, limits)?;
+    // The admin panel reads locale versions one at a time (roles may be limited to some
+    // locales): `localizations` is for the content API.
+    without_localizations(&mut query.populate, fields, catalog);
     if let Some(view) = &restricted
         && query.fields.is_none()
     {

@@ -299,7 +299,7 @@ Relations, media, components and dynamic zones are returned only when populated:
 
 | Form | Populates |
 | --- | --- |
-| `populate=*` | Every relation, media field, component and dynamic zone, one level deep |
+| `populate=*` | Every relation, media field, component and dynamic zone, one level deep, and `localizations` on localized types |
 | `populate=category,tags` or `populate[0]=category&populate[1]=tags` | The named fields |
 | `populate[category]=true` | The named field (`false` leaves it out) |
 | `populate[category][fields][0]=name` | The field, with options |
@@ -347,6 +347,16 @@ On writes, `status=draft` saves the draft without publishing it. See
 `locale=fr` reads and writes the French version of localized types. Without it, requests use
 the default locale. An invalid or unknown code is a `400`. Types that are not localized
 ignore it. See [Internationalization](/concepts/internationalization/).
+
+On localized types, `populate=localizations` adds the document's other locale versions, in
+the same status, each with its `locale`. It takes the options of a populated relation
+(`fields`, `filters`, `sort`, `populate`, `count`), and is included by `populate=*`. Types
+that are not localized have no `localizations`.
+
+`GET /api/i18n/locales` lists the locales as a plain array in Strapi's shape (`id`,
+`documentId`, `name`, `code`, `isDefault`, `createdAt`, `updatedAt`, `publishedAt`,
+`locale`). It needs the `find` grant on `plugin::i18n.locale`. See
+[Localizing content](/guides/content/localizing-content/#list-the-locales).
 
 ## Search
 

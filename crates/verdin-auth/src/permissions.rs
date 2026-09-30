@@ -64,6 +64,8 @@ pub mod actions {
 pub const UPLOAD_SUBJECT: &str = "plugin::upload";
 /// `/api/users` (end users managed over the content API).
 pub const USERS_SUBJECT: &str = "plugin::users-permissions.user";
+/// `GET /api/i18n/locales` (Strapi's i18n plugin): `find` only.
+pub const LOCALES_SUBJECT: &str = "plugin::i18n.locale";
 
 /// Restricts a content permission to documents the user created.
 pub const IS_CREATOR: &str = "is-creator";

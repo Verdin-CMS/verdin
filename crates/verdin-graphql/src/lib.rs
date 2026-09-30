@@ -228,6 +228,15 @@ pub fn schema_with(
                 filters = filters.field(InputValue::new(field, TypeRef::named(ty)));
             }
         }
+        if fields.has_localizations() {
+            // The other locale versions of the document, as in REST and Strapi.
+            let localizations = json_field(
+                verdin_query::LOCALIZATIONS,
+                TypeRef::named_nn_list_nn(&type_name),
+                Shape::List,
+            );
+            object = object.field(with_list_arguments(localizations, &type_name));
+        }
         for system in ["createdAt", "updatedAt", "publishedAt"] {
             object = object.field(json_field(system, TypeRef::named("DateTime"), Shape::Scalar));
             filters = filters.field(InputValue::new(system, TypeRef::named("DateTimeFilterInput")));

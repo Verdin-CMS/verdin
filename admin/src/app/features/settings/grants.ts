@@ -7,7 +7,13 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
 import { Schema } from '../../core/schema';
-import { CONTENT_ACTIONS, Grant, UPLOAD_SUBJECT, USERS_SUBJECT } from '../../core/types';
+import {
+  CONTENT_ACTIONS,
+  Grant,
+  LOCALES_SUBJECT,
+  UPLOAD_SUBJECT,
+  USERS_SUBJECT,
+} from '../../core/types';
 
 type ContentAction = (typeof CONTENT_ACTIONS)[number];
 type Coverage = 'none' | 'some' | 'all';
@@ -23,6 +29,9 @@ interface Row {
 
 /** Drafts and publishing do not apply to media files and end users. */
 const UPLOAD_ACTIONS: readonly ContentAction[] = ['find', 'findOne', 'create', 'update', 'delete'];
+
+/** `GET /api/i18n/locales` is the only locales route. */
+const LOCALES_ACTIONS: readonly ContentAction[] = ['find'];
 
 const ACTION_LABELS: Record<ContentAction, MessageKey> = {
   find: 'settings.grants.action.find',
@@ -144,7 +153,7 @@ export class GrantsMatrix {
   protected readonly types = computed(() =>
     [...this.schema.contentTypes()].sort((a, b) => a.displayName.localeCompare(b.displayName)),
   );
-  /** Content types, then the media library and the end users (`/api/users`). */
+  /** Content types, then the media library, the end users (`/api/users`) and the locales. */
   protected readonly rows = computed<Row[]>(() => [
     ...this.types().map((type) => ({
       subject: type.uid,
@@ -163,6 +172,12 @@ export class GrantsMatrix {
       label: this.t('settings.grants.users'),
       icon: 'lucideContactRound',
       actions: UPLOAD_ACTIONS,
+    },
+    {
+      subject: LOCALES_SUBJECT,
+      label: this.t('settings.roles.locales'),
+      icon: 'lucideLanguages',
+      actions: LOCALES_ACTIONS,
     },
   ]);
 

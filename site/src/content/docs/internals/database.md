@@ -85,7 +85,7 @@ A builder pushes SQL text and `ident()` names (quoted for the flavor) and collec
 | date, time, datetime | `date`, `time(3)`, `timestamptz(3)` | `date`, `time(3)`, `datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite stores decimals, dates and times as fixed-format text so nothing is rounded and text order matches numeric and chronological order. Which attribute maps to which model type is in [attribute types](/reference/attribute-types/).
+SQLite stores dates and times as fixed-format text, so text order matches chronological order. It stores decimals as text too, so nothing is rounded when they are saved. Text order is not numeric order for decimals, so filters and sorts on a decimal cast the column to `REAL` on SQLite. Those comparisons are exact to about 15 significant digits, and the values returned are still exact. Which attribute maps to which model type is in [attribute types](/reference/attribute-types/).
 
 MySQL and MariaDB tables are created with `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` and an accent- and case-insensitive collation: `utf8mb4_0900_ai_ci` on MySQL, `utf8mb4_uca1400_ai_ci` on MariaDB.
 

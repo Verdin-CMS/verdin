@@ -4,7 +4,7 @@
 use async_graphql::SelectionField;
 use async_graphql::{Name, Value};
 use indexmap::IndexMap;
-use verdin_query::{FieldCategory, Node, TypeFields};
+use verdin_query::{FieldCategory, LOCALIZATIONS, Node, TypeFields};
 
 use crate::Model;
 
@@ -133,15 +133,28 @@ pub fn populate<'a>(
     let mut map = IndexMap::new();
     for selected in selection {
         let name = selected.name();
-        let Some(field) = fields.get(name) else { continue };
-        match field.category {
+        let localizations = name == LOCALIZATIONS && fields.has_localizations();
+        let category = match fields.get(name) {
+            _ if localizations => FieldCategory::Relation,
+            Some(field) => field.category,
+            None => continue,
+        };
+        match category {
             FieldCategory::Scalar => {}
             FieldCategory::Nested | FieldCategory::Media | FieldCategory::Morph => {
                 map.insert(name.to_owned(), Node::Leaf("true".into()));
             }
             FieldCategory::Relation => {
-                let relation = field.relation.as_ref().expect("relation info");
-                let Some(target) = model.catalog.get(&relation.target) else { continue };
+                // `localizations`: other versions of the same type.
+                let target = if localizations {
+                    Some(fields)
+                } else {
+                    fields
+                        .get(name)
+                        .and_then(|field| field.relation.as_ref())
+                        .and_then(|relation| model.catalog.get(&relation.target))
+                };
+                let Some(target) = target else { continue };
                 let mut sub = IndexMap::new();
                 if let Ok(arguments) = selected.arguments() {
                     list_arguments(&arguments, &mut sub);

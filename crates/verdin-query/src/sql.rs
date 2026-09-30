@@ -4,6 +4,9 @@
 //! pattern operators compare exactly (binary collation on MySQL/MariaDB, whose default
 //! collations are case- and accent-insensitive); the `…i` operators are case-insensitive
 //! (on SQLite only for ASCII). Sorting puts NULLs last in both directions.
+//!
+//! SQLite stores `decimal` values as text; they are compared and sorted as `REAL` there
+//! (exact to about 15 significant digits), the other engines have a native decimal type.
 
 use verdin_db::{Flavor, SqlValue};
 
@@ -242,8 +245,16 @@ fn operand<'a>(
     alias: Option<&str>,
 ) -> &'a mut SqlBuilder {
     use verdin_db::ColumnKind as K;
+    let real = out.flavor == Flavor::Sqlite && condition.kind == K::Decimal;
+    if real {
+        out.push("CAST(");
+    }
     if condition.path.is_empty() {
-        return out.column(alias, &condition.column);
+        out.column(alias, &condition.column);
+        if real {
+            out.push(" AS REAL)");
+        }
+        return out;
     }
     let numeric =
         matches!(condition.kind, K::SmallInt | K::Int | K::BigInt | K::Double | K::Decimal);
@@ -272,9 +283,32 @@ fn operand<'a>(
             out.push("json_extract(");
             out.column(alias, &condition.column);
             out.push(&format!(", '$.{}')", condition.path.join(".")));
+            if real {
+                out.push(" AS REAL)");
+            }
         }
     }
     out
+}
+
+/// On SQLite, `decimal` parameters are bound as `REAL` to match the cast column: bound as
+/// text they would compare as strings (or never match a JSON number).
+fn sqlite_decimals(condition: Condition, flavor: Flavor) -> Condition {
+    use rust_decimal::prelude::ToPrimitive;
+    if flavor != Flavor::Sqlite || condition.kind != verdin_db::ColumnKind::Decimal {
+        return condition;
+    }
+    let real = |value: SqlValue| match value {
+        SqlValue::Decimal(value) => SqlValue::Double(value.to_f64().unwrap_or_default()),
+        other => other,
+    };
+    let operand = match condition.operand {
+        Operand::Value(value) => Operand::Value(real(value)),
+        Operand::List(values) => Operand::List(values.into_iter().map(real).collect()),
+        Operand::Pair(low, high) => Operand::Pair(real(low), real(high)),
+        Operand::None => Operand::None,
+    };
+    Condition { operand, ..condition }
 }
 
 /// JSON booleans read back as text: `true`/`false` on PostgreSQL and MySQL, `1`/`0` on
@@ -304,7 +338,7 @@ fn json_booleans(condition: &Condition, flavor: Flavor) -> Condition {
 }
 
 fn write_condition(out: &mut SqlBuilder, condition: &Condition, alias: Option<&str>) {
-    let condition = &json_booleans(condition, out.flavor);
+    let condition = &sqlite_decimals(json_booleans(condition, out.flavor), out.flavor);
     let mysql = out.flavor.is_mysql_family();
     let exact_text = mysql && condition.kind == verdin_db::ColumnKind::Text;
     let col = |out: &mut SqlBuilder| {
@@ -474,11 +508,20 @@ pub fn write_order_by(
     out.push(" ORDER BY ");
     for item in sort {
         let direction = if item.descending { "DESC" } else { "ASC" };
-        let expression = |out: &mut SqlBuilder| match &item.via {
-            None => {
-                out.column(alias, &item.column);
+        let real = out.flavor == Flavor::Sqlite && item.decimal;
+        let expression = |out: &mut SqlBuilder| {
+            if real {
+                out.push("CAST(");
             }
-            Some(via) => write_sort_via(out, via, &item.column, alias.unwrap_or(""), context),
+            match &item.via {
+                None => {
+                    out.column(alias, &item.column);
+                }
+                Some(via) => write_sort_via(out, via, &item.column, alias.unwrap_or(""), context),
+            }
+            if real {
+                out.push(" AS REAL)");
+            }
         };
         if out.flavor.is_mysql_family() {
             expression(out);
