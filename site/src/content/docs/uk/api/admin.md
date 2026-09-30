@@ -90,6 +90,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   скрипту, а не зі сторінок іншого сайту.
 - Успішні зміни записуються в [журнал аудиту](/uk/guides/content/audit-logs/).
 
+## Списки
+
+Списки налаштувань розбиваються на сторінки за `page` (від 1) і `pageSize`. Вони відповідають
+рядками сторінки та лічильниками:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Список | Типовий розмір сторінки (максимум) | Порядок | Інші параметри |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Спочатку найстаріші | |
+| `GET /webhooks` | 25 (100) | Спочатку найстаріші | `meta.events` перелічує події, на які можна підписати вебхук |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Спочатку найновіші | |
+| `GET /releases` | 25 (100) | Спочатку найновіші | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | За джерелом | `search` збігається з джерелом або призначенням |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | За назвою | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Спочатку найновіші | |
+| `GET /deploy/targets` | 25 (100) | Спочатку найстаріші | |
+| `GET /deploy/deployments` | 25 (100) | Спочатку найновіші | `targetId`; `limit` — застарілий псевдонім `pageSize` |
+| `GET /end-users` | 25 (100) | Спочатку найновіші | `search` збігається з іменем користувача або email |
+| `GET /audit-logs` | 50 (200) | Спочатку найновіші | Див. [Журнали аудиту](/uk/guides/content/audit-logs/) |
+
+Більший `pageSize` знижується до максимуму. Щоб прочитати весь список, запитуйте сторінки,
+доки `page` не досягне `pageCount`:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Маршрути вмісту розбиваються на сторінки так само, як REST API, через `pagination[page]` і
+`pagination[pageSize]`.
+
 ## Групи маршрутів
 
 Шляхи вказано відносно `/admin/api`. Маршрутизатори містяться в

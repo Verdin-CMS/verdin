@@ -198,11 +198,17 @@ API вмісту відповідає формі REST і GraphQL Strapi v5, то
 
 ## Перепишіть власний код
 
+Код у `src/` переїжджає до [плагіна WebAssembly](/uk/extending/plugins/). [Перенесення власного
+коду](/uk/migrate/porting-custom-code/) проводить через lifecycle, маршрути, cron-завдання та
+`bootstrap` справжнього проєкту з робочим прикладом плагіна.
+
 | Strapi | Verdin |
 | --- | --- |
-| Хуки lifecycle, middlewares Document Service | Хуки плагінів (`beforeCreate`, `afterUpdate`…) у [плагіні WebAssembly](/uk/extending/plugins/) |
+| Хуки lifecycle, middlewares Document Service | Хуки плагінів (`beforeCreate`, `afterUpdate`…) |
 | Власні маршрути й контролери | Маршрути плагінів під `/api/plugins/<name>/` |
+| `bootstrap()` у `src/index.js` (наповнення, налаштування публічних дозволів) | Функція запуску плагіна (`[startup]`) з можливістю `public_permissions` для публічної ролі |
 | Cron-завдання | Завдання плагінів (`[[jobs]]`) |
+| Власний ендпоінт, що зберігає надіслані форми | Вбудовані [Форми](/uk/guides/frontend/forms/) |
 | Власні поля | Власні поля плагінів |
 | Віджети адмінки | Віджети плагінів або вбудовані віджети панелі |
 | Логотип, кольори й тексти адмінки | `[admin.branding]` у `verdin.toml` |

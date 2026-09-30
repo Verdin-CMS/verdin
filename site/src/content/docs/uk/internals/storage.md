@@ -127,7 +127,7 @@ INDEX  (target_document_id)
 | Адміністратори | `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (refresh tokens), `vd_admin_tokens` (посилання запрошення й скидання), `vd_admin_two_factor`, `vd_admin_passkeys`, `vd_spent_challenges` |
 | Доступ до API вмісту | `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` |
 | Кінцеві користувачі | `vd_users`, `vd_user_roles`, `vd_user_role_permissions`, `vd_end_user_sessions` |
-| Екземпляр | `vd_settings` (перемикачі функцій, макети видів редагування, разові маркери оновлень), `vd_locales` |
+| Екземпляр | `vd_settings` (перемикачі функцій, макети видів редагування, разові маркери оновлень), `vd_locales`, `vd_cluster_events` (спільна шина подій, див. [Кілька екземплярів](/uk/deploy/scaling/)) |
 | Медіа | `vd_files`, `vd_folders` |
 | Робочий процес вмісту | `vd_history_versions`, `vd_releases`, `vd_release_actions`, `vd_workflows`, `vd_workflow_stages`, `vd_document_stages` |
 | Співпраця | `vd_comments`, `vd_tasks`, `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` |

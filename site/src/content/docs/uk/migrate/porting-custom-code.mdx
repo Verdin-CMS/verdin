@@ -1,0 +1,407 @@
+---
+title: Перенесення власного коду
+description: Перенесіть власний код проєкту Strapi до плагіна Verdin — контролери й маршрути, lifecycle, сервіси, bootstrap, cron-завдання, віджети адмінки, форми, policies і middlewares — з робочим прикладом і обмеженнями, які слід врахувати.
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi` переносить схему й вміст проєкту Strapi, але не JavaScript з `src/`:
+Verdin не виконує JavaScript на сервері. Цей код стає [плагіном WebAssembly](/uk/extending/plugins/):
+хуки для lifecycle, маршрути для власних контролерів, функція запуску для `bootstrap`, завдання
+для cron-завдань. Ця сторінка зіставляє кожен вид коду Strapi з його відповідником у Verdin,
+проводить через код справжнього проєкту, перенесений до плагіна, і перелічує обмеження, які слід
+врахувати.
+
+Робочий приклад —
+[`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port):
+плагін `tienda`, написаний на Rust, зі схемою, яка йому потрібна, і README, що збирає та
+встановлює його. Якщо ви ще ніколи не писали плагін, спершу прочитайте
+[посібник із плагінів](/uk/extending/plugin-tutorial/); [довідник плагінів](/uk/extending/plugin-reference/)
+містить кожен payload і функцію хоста.
+
+## Куди що переходить
+
+| Strapi | Verdin | Примітки |
+| --- | --- | --- |
+| Власні маршрути й контролери (`src/api/*/routes`, `controllers`) | Маршрути плагіна: `[routes]`, одна функція для `/api/plugins/<name>/…` | URL змінюється. Функція сама розподіляє за методом і шляхом. |
+| Lifecycle (`lifecycles.js`), middlewares Document Service | `[[hooks]]` для `beforeCreate`, `afterUpdate`… | Ті самі назви подій. Хуки before можуть замінити дані або відхилити запис. |
+| Сервіси (`src/api/*/services`) | Функції в модулі плагіна та `verdin_content` для `strapi.documents(…)` | Спільних сервісів між плагінами немає. |
+| `bootstrap()` у `src/index.js` | Функція `[startup]` | Виконується під час запуску, коли плагін вмикають і коли змінюються його налаштування. |
+| `register()` | Переносити нічого | Маніфест оголошує те, що налаштовував `register`. |
+| Cron-завдання (`config/cron-tasks.js`) | `[[jobs]]` | Синтаксис cron в UTC, секунди необов'язкові. |
+| Конфігурація плагіна (`config/plugins.js`) | `[[settings]]` і `verdin_config` | Редагується в **Налаштування → Плагіни**. |
+| `strapi.log` | `verdin_log` | Журнал сервера й **Налаштування → Плагіни → Журнал**. |
+| Віджети адмінки (`app.widgets.register`) | `[[admin.widgets]]`: Web Components | Або вбудовані віджети панелі. |
+| Власні поля | `[[admin.fields]]` | Назва `customField` у схемі зберігається. |
+| Injection zones, власні сторінки адмінки, розширення React | Не підтримується | Брендування — в `[admin.branding]`. |
+| Власний ендпоінт, що зберігає надіслані форми | Вбудовані [Форми](/uk/guides/frontend/forms/) | Валідація, пастка для спаму, обмеження частоти, листи та експорт CSV включено. |
+| Policies і middlewares | Вбудовані дозволи, обмеження частоти й CORS; перевірки у ваших маршрутах плагіна | Немає хука в конвеєр запитів. Див. [Policies і middlewares](#policies-і-middlewares). |
+| Листи з коду (`strapi.plugin('email')`) | HTTP API поштового провайдера через можливість `http` | Функції хоста для пошти немає. |
+
+## Проєкт-приклад
+
+Проєкт Strapi, що лежить в основі прикладу, — невеликий магазин з опитуваннями:
+
+- **`producto`**: товари з прапорцями `a_la_venta` (у продажу) і `reservable` (можна резервувати).
+- **`reserva`**: резервації, які надсилають відвідувачі. Lifecycle `beforeCreate` примусово
+  ставить `estado` у `pendiente`, перевіряє, що пов'язаний товар у продажу й може бути
+  зарезервований, і обмежує `unidades` діапазоном 1–10.
+- **`encuesta`** і **`voto`**: опитування зі списком варіантів і їхні голоси. Два власні
+  маршрути, `POST /api/polls/:slug/vote` і `GET /api/polls/:slug/results`, дозволяють один голос
+  на відвідувача й опитування, лише у відкритих опитуваннях і лише за допустимий варіант.
+  Cron-завдання закриває опитування, чия дата `cierra_el` минула.
+- **`bootstrap`** задає дозволи публічної ролі, щоб свіжа установка не лишалася відкритою.
+- **Віджет адмінки** показує відкриті опитування.
+
+У Verdin усе це — один плагін, `tienda`:
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml маніфест
+    - src/lib.rs хуки, маршрути, завдання й функція запуску
+    - admin/index.js віджет панелі
+</FileTree>
+
+```toml title="plugin/plugin.toml (abridged)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+Uid типів вмісту коротші, ніж у Strapi: `api::producto`, а не `api::producto.producto`.
+
+## Lifecycle → хуки
+
+Lifecycle Strapi, спрощено:
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+Хук Verdin отримує `{ event, uid, documentId, locale, data }` і відповідає `{ "data": … }`, щоб
+замінити те, що записується, `{ "error": "…" }`, щоб відхилити запис (клієнт отримує 400 з
+повідомленням, як з `ApplicationError` у Strapi), або `{}`, щоб пропустити його:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+Що слід знати під час перенесення lifecycle:
+
+- **`data` — це дані запиту в тому вигляді, як їх надіслано.** Зв'язок може надійти як
+  documentId, як `{ "documentId": … }`, як список або як `{ connect }` / `{ set }` (адмін-панель
+  і клієнти відрізняються). `relation_id` у прикладі приймає всі варіанти. У `beforeUpdate`
+  `data` містить лише надіслані поля.
+- **Дані, які ви повертаєте, валідуються** так само, як оригінал, після хука: хук не може
+  записати те, що схема відхиляє. Межі схеми (`min`, `max`) відхиляють значення; хук може
+  натомість його обмежити, як тут.
+- **Хуки не знають, хто пише.** У вході немає ні користувача, ні токена. Перевірки, що залежать
+  від викликача, належать до дозволів або до маршруту плагіна.
+- **Хуки after не отримують даних**: `{ event, uid, documentId, locale }`, надсилається після
+  фіксації запису. Якщо вони потрібні, прочитайте запис через `verdin_content`.
+- **Хук, що завершується збоєм, не блокує запис.** Якщо модуль потрапляє в trap або спливає час,
+  помилку записують у журнал, а запис триває; відхиляє його лише відповідь `{ error }`.
+- **Записи, зроблені плагінами, пропускають хуки before.** Правило, яке має діяти для кожного
+  запису, треба застосувати й у будь-якому коді плагіна, що пише цей тип.
+
+## Контролери й власні маршрути → маршрути плагіна
+
+Strapi обслуговував маршрути опитувань за адресою `/api/polls/:slug/vote`. Плагін Verdin
+обслуговує все під `/api/plugins/<name>/`, тож фронтенд викликає
+`/api/plugins/tienda/polls/:slug/vote` (або зворотний проксі переписує старий шлях). Одна
+експортована функція отримує кожен запит і розподіляє за методом і шляхом:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+Запит — це `{ method, path, query, headers, body, actor }`, де `body` — рядок, який ви
+розбираєте самі, а `query` — необроблений рядок запиту. Відповідь — `{ status, headers?, body }`.
+Ніщо не формує її за вас: щоб фронтенд Strapi продовжував працювати, відповідайте `{ "data": … }`
+і, у разі помилок, `{ "data": null, "error": { "status", "name", "message", "details" } }`, як це
+роблять допоміжні `ok` і `fail` у прикладі.
+
+Маршрут голосування перевіряє по порядку: коректне тіло, опитування з таким slug, `estado` —
+`abierta`, варіант входить до `opciones`, і відсутність попереднього голосу з тим самим
+fingerprint. Потім він створює `voto` і відповідає 201 з результатами.
+
+<Aside type="caution" title="У маршрутах плагіна немає адреси клієнта">
+Маршрути плагіна отримують лише заголовки `content-type`, `accept`, `user-agent` і
+`accept-language`: ні IP-адреси, ні cookies, ні значення `Authorization`. Контролер Strapi, що
+використовував `ctx.request.ip` для «одного голосу на відвідувача», потребує іншого ключа.
+Приклад бере `fingerprint` із тіла запиту, який формує сайт (випадковий id у local storage або
+хеш ознак браузера). Це зупиняє подвійні кліки й випадкові повтори, але не затятого виборця. Для
+жорсткіших обмежень вимагайте користувача, що увійшов (`actor`), або поставте перевірку перед
+Verdin.
+</Aside>
+
+Інші відмінності від маршрутів Strapi:
+
+- **Маршрути публічні.** Публічний доступ і дозволи API-токенів не застосовуються. `actor`
+  каже, хто викликає: `{ "kind": "public" }`, `{ "kind": "token", "id": … }` або
+  `{ "kind": "user", "id": … }` (кінцевий користувач; лише id). Відхиляйте те, що викликач не
+  може робити, як це робила б policy Strapi. Недійсний токен відхиляється з 401 до запуску
+  плагіна.
+- **Один виклик одночасно на плагін.** Виклики до плагіна чекають один на одного, тож перевірка
+  й створення в маршруті голосування не можуть переплестися на одному екземплярі. З кількома
+  екземплярами можуть; приклад також зберігає `clave` (`<poll>:<fingerprint>`) з `unique: true`,
+  тож база даних відхиляє дублікат, що прослизнув.
+- **Обмеження частоти застосовуються**: `[api].public_rate_limit` і `[api].token_rate_limit`
+  рахують маршрути плагінів так само, як решту API вмісту.
+- **Анонімні відповіді `GET` можуть кешуватися**, коли задано `[api].cache_ttl_secs`. Записи
+  вмісту очищають кеш, голоси включно.
+- **Зберігаються лише деякі заголовки відповіді**: `content-type`, `cache-control`, `location`,
+  `etag`, `last-modified` і `content-disposition`.
+
+## Сервіси → функції та виклики вмісту
+
+Сервіс Strapi — це спільний код; у плагіні він — звичайна функція в модулі. Виклики
+`strapi.documents(uid)` стають викликами `verdin_content`, обмеженими можливостями `read` і
+`write`:
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `findMany` з `"pagination": { "pageSize": 1 }`, потім `meta.pagination.total` |
+
+- **Читання повертає опубліковані версії**, якщо запит не просить `"status": "draft"`. Хук, що
+  шукає товар лише з чернеткою, нічого не знаходить, як і каже повідомлення про помилку в
+  прикладі.
+- **Записи публікуються**, якщо запит не має `"status": "draft"`, як і запис через REST.
+- **Запит іде за правилами REST API.** `private` атрибути не можна використовувати у
+  фільтрах чи `fields`, тож `clave` у прикладі не private (публічна роль не має доступу до
+  голосів, тож ніхто інший її не читає).
+- **Жодного сирого SQL, жодного `strapi.db.query`.** Усе йде через Document Service з його
+  валідацією, вебхуками, історією та журналом аудиту.
+- **Без WASI немає годинника.** Задайте `wasi = true` у маніфесті, щоб мати час і випадкові
+  числа; завдання в прикладі натомість використовує `scheduledAt`, який отримує.
+
+## `bootstrap` → функція запуску
+
+Проєкти Strapi часто задають дозволи публічної ролі в `bootstrap`, щоб свіжа база даних була
+придатною до використання й не було відкрито більше, ніж потрібно. Функція запуску Verdin
+робить те саме з можливістю `public_permissions`:
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- Вона виконується з `{ "reason": "start" | "enabled" | "settings" }`: коли сервер запускається
+  з увімкненим плагіном, коли плагін вмикають і коли змінюються його налаштування. Зробіть її
+  безпечною для повторного запуску: перед створенням перевіряйте, що ви наповнюєте.
+- `set` **замінює всі** публічні дозволи, тож зміни, зроблені в **Налаштування → Публічний
+  доступ**, скасовуються під час наступного запуску. У прикладі є налаштування, що це вимикає.
+- Вона виконується у фоні на власному екземплярі модуля з власним лімітом часу
+  (`[startup].timeout_ms`, типово 30 секунд), тож повільне наповнення не затримує хуки й
+  маршрути. Збій або відповідь `{ "error" }` записується в журнал; плагін залишається
+  увімкненим.
+- З кількома екземплярами її виконують лише ті, що мають `[plugins].run_jobs = true`.
+
+## Cron-завдання → завдання
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+Завдання отримує `{ "scheduledAt": "…" }` і в прикладі оновлює кожне відкрите опитування, чий
+`cierra_el` раніший. Завдання виконуються в UTC, лише поки плагін увімкнено, і лише на
+екземплярах з `[plugins].run_jobs = true`. Запуск, пропущений, поки сервер не працював, не
+надолужується.
+
+## Віджети адмінки
+
+Віджет адмінки Strapi — це компонент React; віджет Verdin — це custom element у скрипті `admin/`
+плагіна, оголошений у маніфесті:
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+Елемент отримує `context` з `fetch`. Віджет у прикладі викликає власний маршрут плагіна
+`GET /api/plugins/tienda/polls`. Запити до API вмісту (включно з маршрутами плагінів) ідуть без
+сесії адміністратора, тож маршрут, який використовує віджет, має бути прийнятним для публіки або
+приймати API-токен. Injection zones, власні сторінки адмінки й розширення React не мають
+відповідника. Див. [Точки розширення адмінки](/uk/extending/plugin-reference/#точки-розширення-адмінки).
+
+## Власні форми → Форми
+
+Форма пропозицій чи контактів у Strapi — це зазвичай власний ендпоінт (або тип вмісту з
+публічним дозволом `create`) плюс код, що надсилає комусь лист. Не переносьте її: вбудована
+функція [Форми](/uk/guides/frontend/forms/) робить усе це без коду. Редактори визначають поля в
+адмінці, сайт надсилає `POST /api/_forms/{slug}`, а надіслані дані валідуються, розсилаються на
+адреси **Сповіщати** та експортуються як CSV. Форми також мають пастку для спаму й обмеження
+частоти на відвідувача (10 надсилань на хвилину), чого маршрут плагіна зробити не може, бо не
+бачить адреси клієнта.
+
+## Policies і middlewares
+
+Verdin не має хука в конвеєр HTTP-запитів. Натомість він пропонує:
+
+| Strapi | Verdin |
+| --- | --- |
+| Policies типу `is-authenticated` на маршрутах REST | Публічний доступ, дозволи API-токенів і ролі кінцевих користувачів. Див. [Дозволи](/uk/reference/permissions/). Тонші правила (кінцевий користувач редагує лише власні записи) потребують маршруту плагіна. |
+| Policy на власному маршруті | Перевірте `actor` у маршруті плагіна. |
+| Middleware обмеження частоти | `[api].public_rate_limit`, `[api].token_rate_limit` і `[admin].auth_rate_limit`. |
+| Middleware CORS чи заголовків безпеки | `[api].cors_origins`; інші заголовки відповіді — на зворотному проксі. |
+| Middleware, що переписує запити чи відповіді основних маршрутів | Не підтримується. Використовуйте маршрут плагіна для нової поведінки або зворотний проксі. |
+| Policy, що відхиляє деякі записи | Хук before, що відповідає `{ error }`, не знаючи викликача. |
+
+## Обмеження, які слід врахувати
+
+- **Немає адреси клієнта й мало заголовків** у маршрутах плагіна (див. вище).
+- **Записи, зроблені плагінами, пропускають хуки before усіх плагінів**, тож правила в хуках
+  before на них не діють.
+- **Хуки after, запущені власними записами плагіна, виконуються після повернення його
+  виклику**, а не всередині запису, а хуки, що пишуть, вкладаються щонайбільше на 4 рівні (див.
+  [Записи, зроблені плагінами](/uk/extending/plugin-reference/#записи-зроблені-плагінами)).
+  Подальшу роботу, яка має відбутися до відповіді, робіть у коді, що пише, після повернення
+  `verdin_content`.
+- **Один виклик одночасно на плагін**: повільний маршрут затримує хуки цього плагіна. Тримайте
+  виклики короткими й стежте за `verdin_plugin_call_duration_seconds` у
+  [метриках](/uk/deploy/monitoring/).
+- **Маршрути публічні** і мають перевіряти `actor`.
+- **Verdin 0.11 або новіший** для функції запуску та `verdin_public_permissions`: модуль, що
+  імпортує функцію хоста, якої сервер не має, не завантажується взагалі.
+
+## Чекліст
+
+<Steps>
+
+1. Імпортуйте проєкт через `verdin import strapi`, потім складіть список коду в `src/`:
+   маршрути, контролери, сервіси, lifecycle, policies, middlewares, `bootstrap`, cron-завдання
+   та розширення адмінки.
+2. Відкиньте те, що Verdin робить вбудовано: форми, публічні дозволи, задані вручну, обмеження
+   частоти, CORS, вебхуки, заплановану публікацію ([Релізи](/uk/guides/content/releases/)).
+3. Напишіть один плагін з рештою, за прикладом: хуки, маршрути, завдання, функція запуску. Дайте
+   йому лише потрібні можливості.
+4. Перевірте, що хуки, які пишуть вміст, не покладаються на вкладеність глибшу за 4 рівні.
+5. Зберіть його, встановіть у `plugins/`, увімкніть у **Налаштування → Плагіни** і прочитайте
+   там його журнал.
+6. Оновіть фронтенд: URL маршрутів плагінів (`/api/plugins/<name>/…`), fingerprint або вхід
+   кінцевого користувача там, де код спирався на адресу клієнта, та
+   [інші зміни](/uk/migrate/from-strapi/#зміни-у-фронтенді) під час міграції.
+
+</Steps>
