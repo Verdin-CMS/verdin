@@ -1,0 +1,133 @@
+---
+title: Installation
+description: Install the verdin binary with the install script, Homebrew, a .deb package, winget, cargo binstall or from source, or run the Docker image.
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin is one binary with the admin panel built in. Every release publishes it for
+Linux (x86-64 and ARM64, static musl builds), macOS (Intel and Apple silicon) and
+Windows (x86-64), with a `SHA256SUMS` file, on the
+[releases page](https://github.com/verdin-cms/verdin/releases). Pick whichever way of
+installing it suits your machine; they all install the same binary.
+
+Check it with:
+
+```sh frame="terminal"
+verdin --version
+```
+
+Then follow the [Quickstart](/start/quickstart/) from `verdin new`.
+
+## Install script (Linux and macOS)
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh
+```
+
+The script detects the system and architecture, downloads the matching archive from
+the latest GitHub release, checks it against the release's `SHA256SUMS` and installs
+`verdin` to `/usr/local/bin` when run as root, else to `~/.local/bin`. It needs `curl`
+or `wget`, `tar`, and `sha256sum`, `shasum` or `openssl`.
+
+| Option | Variable | Default |
+| --- | --- | --- |
+| `--version <X.Y.Z>` | `VERDIN_VERSION` | The latest release |
+| `--dir <directory>` | `VERDIN_INSTALL_DIR` | `/usr/local/bin` (root) or `~/.local/bin` |
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh -s -- --version 0.11.0 --dir /opt/verdin/bin
+```
+
+To read the script before running it, download it first:
+`curl -fsSLO https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh`.
+
+## Package managers
+
+<Tabs syncKey="package-manager">
+  <TabItem label="Homebrew">
+
+On macOS and Linux:
+
+```sh frame="terminal"
+brew install verdin-cms/tap/verdin
+```
+
+The formula installs the release binary (the musl build on Linux). `brew upgrade verdin`
+moves to the next release.
+
+  </TabItem>
+  <TabItem label="Debian / Ubuntu">
+
+Download the `.deb` for your architecture (`amd64` or `arm64`) from the release and
+install it:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/verdin_0.11.0-1_amd64.deb
+sudo apt install ./verdin_0.11.0-1_amd64.deb
+```
+
+The package adds a `verdin` system user, a systemd service (not enabled) and the
+configuration in `/etc/verdin/`. [Linux server](/deploy/linux-server/) walks through
+running it. There is no apt repository yet: upgrade by installing the next release's
+`.deb`.
+
+  </TabItem>
+  <TabItem label="winget">
+
+On Windows:
+
+```powershell frame="terminal"
+winget install VerdinCMS.Verdin
+```
+
+winget adds `verdin` to the `PATH` of new terminals. Without winget, download the
+`.zip` from the release and put `verdin.exe` somewhere on your `PATH`.
+
+  </TabItem>
+  <TabItem label="cargo binstall">
+
+With [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), Cargo downloads the
+release binary instead of compiling it:
+
+```sh frame="terminal"
+cargo binstall --git https://github.com/verdin-cms/verdin verdin
+```
+
+  </TabItem>
+</Tabs>
+
+## Docker
+
+The image `ghcr.io/verdin-cms/verdin` runs the same binary on `linux/amd64` and
+`linux/arm64`:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 --version
+```
+
+See [Docker](/deploy/docker/) for volumes, configuration and Compose files.
+
+## From source
+
+With Rust 1.95 or later and Node.js 24 (to build the admin panel):
+
+```sh frame="terminal"
+git clone https://github.com/verdin-cms/verdin && cd verdin
+(cd admin && npm ci && npm run build)
+cargo install --locked --path crates/verdin --features embed-admin
+```
+
+Without `--features embed-admin` the binary has no admin panel, unless you point
+`[admin].assets_dir` at a built copy.
+
+## Verify a download by hand
+
+Each release has a `SHA256SUMS` file listing every archive and package:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS     # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
+```

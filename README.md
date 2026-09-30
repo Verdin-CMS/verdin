@@ -33,12 +33,35 @@ docker run -p 1337:1337 --env-file verdin.env \
   -v ./schema:/data/schema:ro ghcr.io/verdin-cms/verdin
 ```
 
-With the binary ([releases](https://github.com/verdin-cms/verdin/releases)):
+With the binary:
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh   # Linux, macOS
 verdin new my-site            # verdin.toml, schema/, .env with fresh secrets, SQLite
 cd my-site && verdin dev      # --database postgres|mysql|mariadb for other engines
 ```
+
+Other ways to install it ([details](https://verdin-cms.github.io/verdin/start/installation/)):
+
+| | |
+|---|---|
+| Homebrew | `brew install verdin-cms/tap/verdin` |
+| Debian / Ubuntu | the `.deb` from the [release](https://github.com/verdin-cms/verdin/releases) (systemd service, `verdin` user) |
+| Windows | `winget install VerdinCMS.Verdin` |
+| cargo | `cargo binstall --git https://github.com/verdin-cms/verdin verdin` |
+| Archives | [releases](https://github.com/verdin-cms/verdin/releases), with `SHA256SUMS` |
+
+### Deploy
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/verdin-cms/verdin)
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/verdin-cms/verdin/tree/main)
+
+The buttons deploy the blog example ([one-click deploys](https://verdin-cms.github.io/verdin/deploy/one-click/),
+also Railway, Fly.io and Coolify). For your own project:
+[Helm chart](https://verdin-cms.github.io/verdin/deploy/helm/) (`deploy/helm/verdin`),
+[production Compose with Caddy](https://verdin-cms.github.io/verdin/deploy/compose/) (`deploy/compose`),
+[Linux server](https://verdin-cms.github.io/verdin/deploy/linux-server/) and the other
+[deployment guides](https://verdin-cms.github.io/verdin/deploy/production-checklist/).
 
 ## Development
 

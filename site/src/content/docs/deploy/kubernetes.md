@@ -7,7 +7,8 @@ sidebar:
 
 This page runs a Verdin project on Kubernetes. The main setup is stateless: PostgreSQL
 (or MySQL/MariaDB) outside the pods, media on S3-compatible storage, and as many
-replicas as you need. A single-replica setup with a volume for SQLite follows.
+replicas as you need. A single-replica setup with a volume for SQLite follows. The
+[Helm chart](/deploy/helm/) packages these manifests with values for each setting.
 
 The manifests use stable APIs (`apps/v1`, `v1`) and were validated against the
 Kubernetes schemas with `kubeconform -strict` on 2026-09-29, not run on a live cluster. Replace every value in
