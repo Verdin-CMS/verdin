@@ -127,7 +127,7 @@ De platformtabellen horen bij elk afgeleid model, dus de migratie-engine maakt z
 | Beheerders | `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (refresh tokens), `vd_admin_tokens` (uitnodigings- en herstellinks), `vd_admin_two_factor`, `vd_admin_passkeys`, `vd_spent_challenges` |
 | Toegang tot de content-API | `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` |
 | Eindgebruikers | `vd_users`, `vd_user_roles`, `vd_user_role_permissions`, `vd_end_user_sessions` |
-| Instantie | `vd_settings` (functieschakelaars, lay-outs van bewerkweergaven, eenmalige upgrademarkeringen), `vd_locales` |
+| Instantie | `vd_settings` (functieschakelaars, lay-outs van bewerkweergaven, eenmalige upgrademarkeringen), `vd_locales`, `vd_cluster_events` (de gedeelde eventbus, zie [Meerdere instanties](/nl/deploy/scaling/)) |
 | Media | `vd_files`, `vd_folders` |
 | Contentworkflow | `vd_history_versions`, `vd_releases`, `vd_release_actions`, `vd_workflows`, `vd_workflow_stages`, `vd_document_stages` |
 | Samenwerking | `vd_comments`, `vd_tasks`, `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` |

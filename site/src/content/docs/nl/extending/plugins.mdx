@@ -21,6 +21,7 @@ pagina legt uit wat plugins kunnen en hoe je er een installeert; om er een te sc
 | **Hooks op schrijfacties** | Voordat een item wordt aangemaakt, bijgewerkt, gepubliceerd, gedepubliceerd of verwijderd, of zijn concept wordt verworpen: de gegevens wijzigen of de schrijfactie met een melding weigeren. Na de schrijfactie: erop reageren (loggen, melden, synchroniseren). |
 | **Routes** | HTTP-endpoints serveren onder `/api/plugins/<name>/…`: een webhookontvanger, een berekende feed, een proxy naar een andere service. |
 | **Geplande jobs** | Een functie draaien volgens een cron-schema (UTC). |
+| **Opstartfunctie** | Een functie draaien wanneer de plugin start, wordt aangezet of zijn instellingen wijzigen: seeden, de openbare rol instellen (Strapi's `bootstrap`). |
 | **GraphQL-velden** | Velden `name(args: JSON): JSON` toevoegen aan `Query` of `Mutation`. |
 | **Dashboardwidgets** | Types widgets toevoegen aan het dashboard van het beheerpaneel, als Web Components. |
 | **Aangepaste velden** | Attributen een eigen editor in het beheerpaneel geven (een kleurkiezer, een kaart), als Web Components; de waarde wordt opgeslagen als gewoon attribuuttype. |
@@ -49,6 +50,7 @@ doet, gaat via een paar hostfuncties, en de server controleert elke aanroep tege
 | `write` | Items van de vermelde types aanmaken, bijwerken, publiceren, depubliceren en verwijderen (en ook lezen). |
 | `http` | HTTP-requests naar de vermelde hosts (`api.example.com`, `*.example.com`). |
 | `kv` | Een eigen key-value-store, in de database van Verdin. |
+| `public_permissions` | De contentrechten van de openbare rol voor de content-API lezen en vervangen. |
 
 <Diagram
   caption="Aanroepen naar een plugin, en wat zijn hostaanroepen kunnen bereiken"

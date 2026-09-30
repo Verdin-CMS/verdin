@@ -85,7 +85,7 @@ Een builder voegt SQL-tekst en `ident()`-namen toe (gequote voor de flavor) en v
 | date, time, datetime | `date`, `time(3)`, `timestamptz(3)` | `date`, `time(3)`, `datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite slaat decimalen, datums en tijden op als tekst in een vast formaat, zodat er niets wordt afgerond en de tekstvolgorde overeenkomt met de numerieke en chronologische volgorde. Welk attribuut bij welk modeltype hoort, staat in [attribuuttypes](/nl/reference/attribute-types/).
+SQLite slaat datums en tijden op als tekst in een vast formaat, zodat de tekstvolgorde overeenkomt met de chronologische volgorde. Decimalen slaat het ook als tekst op, zodat er bij het opslaan niets wordt afgerond. De tekstvolgorde is voor decimalen niet de numerieke volgorde, dus filters en sorteringen op een decimaal casten de kolom op SQLite naar `REAL`. Die vergelijkingen zijn exact tot ongeveer 15 significante cijfers, en de teruggegeven waarden blijven exact. Welk attribuut bij welk modeltype hoort, staat in [attribuuttypes](/nl/reference/attribute-types/).
 
 Tabellen in MySQL en MariaDB worden aangemaakt met `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` en een collatie die accenten en hoofdletters negeert: `utf8mb4_0900_ai_ci` op MySQL, `utf8mb4_uca1400_ai_ci` op MariaDB.
 

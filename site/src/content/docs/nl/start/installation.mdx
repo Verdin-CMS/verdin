@@ -1,0 +1,133 @@
+---
+title: Installatie
+description: Installeer de binary verdin met het installatiescript, Homebrew, een .deb-pakket, winget, cargo binstall of vanuit de broncode, of draai het Docker-image.
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin is één binary met het beheerpaneel ingebouwd. Elke release publiceert hem voor
+Linux (x86-64 en ARM64, statische musl-builds), macOS (Intel en Apple silicon) en
+Windows (x86-64), met een bestand `SHA256SUMS`, op de
+[releasepagina](https://github.com/verdin-cms/verdin/releases). Kies de manier van installeren
+die bij je machine past; ze installeren allemaal dezelfde binary.
+
+Controleer hem met:
+
+```sh frame="terminal"
+verdin --version
+```
+
+Volg daarna de [Quickstart](/nl/start/quickstart/) vanaf `verdin new`.
+
+## Installatiescript (Linux en macOS)
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh
+```
+
+Het script detecteert het systeem en de architectuur, downloadt het passende archief van de
+nieuwste GitHub-release, controleert het tegen de `SHA256SUMS` van de release en installeert
+`verdin` in `/usr/local/bin` als het als root draait, anders in `~/.local/bin`. Het heeft `curl`
+of `wget`, `tar`, en `sha256sum`, `shasum` of `openssl` nodig.
+
+| Optie | Variabele | Standaard |
+| --- | --- | --- |
+| `--version <X.Y.Z>` | `VERDIN_VERSION` | De nieuwste release |
+| `--dir <directory>` | `VERDIN_INSTALL_DIR` | `/usr/local/bin` (root) of `~/.local/bin` |
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh -s -- --version 0.11.0 --dir /opt/verdin/bin
+```
+
+Om het script te lezen voordat je het draait, download je het eerst:
+`curl -fsSLO https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh`.
+
+## Pakketbeheerders
+
+<Tabs syncKey="package-manager">
+  <TabItem label="Homebrew">
+
+Op macOS en Linux:
+
+```sh frame="terminal"
+brew install verdin-cms/tap/verdin
+```
+
+De formula installeert de releasebinary (de musl-build op Linux). `brew upgrade verdin`
+gaat naar de volgende release.
+
+  </TabItem>
+  <TabItem label="Debian / Ubuntu">
+
+Download de `.deb` voor je architectuur (`amd64` of `arm64`) van de release en
+installeer hem:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/verdin_0.11.0-1_amd64.deb
+sudo apt install ./verdin_0.11.0-1_amd64.deb
+```
+
+Het pakket voegt een systeemgebruiker `verdin` toe, een systemd-service (niet ingeschakeld) en de
+configuratie in `/etc/verdin/`. [Linux-server](/nl/deploy/linux-server/) loopt door het
+draaien ervan. Er is nog geen apt-repository: upgrade door de `.deb` van de volgende release te
+installeren.
+
+  </TabItem>
+  <TabItem label="winget">
+
+Op Windows:
+
+```powershell frame="terminal"
+winget install VerdinCMS.Verdin
+```
+
+winget voegt `verdin` toe aan het `PATH` van nieuwe terminals. Zonder winget download je de
+`.zip` van de release en zet je `verdin.exe` ergens in je `PATH`.
+
+  </TabItem>
+  <TabItem label="cargo binstall">
+
+Met [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) downloadt Cargo de
+releasebinary in plaats van hem te compileren:
+
+```sh frame="terminal"
+cargo binstall --git https://github.com/verdin-cms/verdin verdin
+```
+
+  </TabItem>
+</Tabs>
+
+## Docker
+
+Het image `ghcr.io/verdin-cms/verdin` draait dezelfde binary op `linux/amd64` en
+`linux/arm64`:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 --version
+```
+
+Zie [Docker](/nl/deploy/docker/) voor volumes, configuratie en Compose-bestanden.
+
+## Vanuit de broncode
+
+Met Rust 1.95 of later en Node.js 24 (om het beheerpaneel te bouwen):
+
+```sh frame="terminal"
+git clone https://github.com/verdin-cms/verdin && cd verdin
+(cd admin && npm ci && npm run build)
+cargo install --locked --path crates/verdin --features embed-admin
+```
+
+Zonder `--features embed-admin` heeft de binary geen beheerpaneel, tenzij je
+`[admin].assets_dir` naar een gebouwde kopie laat wijzen.
+
+## Een download met de hand verifiëren
+
+Elke release heeft een bestand `SHA256SUMS` dat elk archief en pakket opsomt:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS     # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
+```

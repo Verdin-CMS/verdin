@@ -7,7 +7,8 @@ sidebar:
 
 Deze pagina draait een Verdin-project op Kubernetes. De hoofdopstelling is stateless: PostgreSQL
 (of MySQL/MariaDB) buiten de pods, media op S3-compatibele opslag, en zoveel replica's als je
-nodig hebt. Daarna volgt een opstelling met één replica en een volume voor SQLite.
+nodig hebt. Daarna volgt een opstelling met één replica en een volume voor SQLite. De
+[Helm-chart](/nl/deploy/helm/) verpakt deze manifesten met values voor elke instelling.
 
 De manifesten gebruiken stabiele API's (`apps/v1`, `v1`) en zijn op 2026-09-29 met
 `kubeconform -strict` gevalideerd tegen de Kubernetes-schema's, niet op een echt cluster gedraaid.
@@ -38,7 +39,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -157,8 +161,9 @@ Opmerkingen bij het manifest:
   labels, zodat hij ook verkeer bedient), of accepteer dat jobs op elke replica draaien.
   Webhooks, geplande releases en de dagelijkse samenvatting worden in de database geclaimd en
   draaien één keer. Zie [Meerdere instanties draaien](/nl/deploy/scaling/).
-- **Realtime.** Eventstreams (`/api/_events`) blijven op de pod waarmee ze verbinden. Gebruik
-  session affinity op de Ingress als je [realtime](/nl/guides/frontend/realtime/) gebruikt.
+- **Realtime, presence, caches en zoeken.** `[cluster].bus = "database"` brengt elke pod de events
+  van de andere (zie [de gedeelde eventbus](/nl/deploy/scaling/#gedeelde-eventbus)). Zonder de bus
+  blijven eventstreams (`/api/_events`) op de pod waarmee ze verbinden: gebruik session affinity op de Ingress als je [realtime](/nl/guides/frontend/realtime/) gebruikt.
 
 ## Eén replica met SQLite
 

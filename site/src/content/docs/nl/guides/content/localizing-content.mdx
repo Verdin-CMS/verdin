@@ -168,7 +168,65 @@ Wat je kunt verwachten:
   zijn, worden door elke locale gedeeld.
 - Webhook-payloads en versies in de geschiedenis leggen de locale vast.
 
-Anders dan in Strapi heeft de content-API geen route `/api/i18n/locales`. De locales staan in de
-admin-API op `GET /admin/api/i18n/locales`, en worden beheerd met `POST`,
-`PUT /admin/api/i18n/locales/{code}` en `DELETE /admin/api/i18n/locales/{code}`
-(`locales.manage`).
+### Andere localeversies
+
+Populeer `localizations` om de andere localeversies van een document mee te krijgen, zoals in Strapi v5.
+Ze worden alleen teruggegeven als ze gepopuleerd zijn, met `populate=localizations` of `populate=*`:
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- De versies hebben dezelfde status als het document: standaard gepubliceerde versies, concepten
+  met `status=draft`. Een locale met alleen een concept blijft weg uit een gepubliceerde lezing.
+- `localizations` accepteert de opties van een gepopuleerde relatie: `fields`, `filters`, `sort`,
+  `populate` en `count`. Bijvoorbeeld `populate[localizations][fields][0]=title`. Elke
+  versie bevat altijd `locale`, en haar eigen relaties worden in haar locale gelezen.
+- GraphQL heeft een veld `localizations` op gelokaliseerde types, met `filters` en `sort`.
+- Types die niet gelokaliseerd zijn, hebben geen `localizations`, en het populeren ervan geeft `400`.
+- De admin-API laat `localizations` weg.
+
+### De locales opvragen
+
+`GET /api/i18n/locales` geeft de locales terug in de vorm van Strapi, als een gewone array (zonder
+`data`-envelop):
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+Net als Strapi's `listLocales` is de route gesloten voor het publiek totdat je hem toestaat. Geef
+`find` op de rij **Locales** (`plugin::i18n.locale`) in **Instellingen → Openbare toegang**, op een
+eindgebruikersrol, of op een aangepast API-token. Tokens met **Volledige toegang** en **Alleen lezen**
+kunnen hem al lezen. `documentId` wordt afgeleid van de localecode, dus hij blijft gelijk na
+herstarts en exports. Een Strapi-import neemt het recht `listLocales` mee. De getypeerde client leest
+de lijst met `verdin.locales()`.
+
+De locales worden beheerd in de admin-API: opgevraagd met `GET /admin/api/i18n/locales`, en
+gewijzigd met `POST`, `PUT /admin/api/i18n/locales/{code}` en
+`DELETE /admin/api/i18n/locales/{code}` (`locales.manage`).

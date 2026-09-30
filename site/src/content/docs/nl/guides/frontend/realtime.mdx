@@ -136,9 +136,11 @@ De stream aanroepen vanaf een site op een andere origin vereist die origin in
 
 ## Achter een load balancer
 
-Events zijn die van de instantie waarmee een client verbonden is. Gebruik bij meerdere instanties
-sticky sessions voor `/api/_events`, of laat realtime-clients met één instantie verbinden. Zie
-[Schalen](/nl/deploy/scaling/).
+Zet bij meerdere instanties de gedeelde eventbus aan (`[cluster].bus = "database"`): een client die
+met een willekeurige instantie verbonden is, ontvangt dan de events van alle instanties. Zonder
+de bus zijn events die van de instantie waarmee een client verbonden is; gebruik sticky sessions
+voor `/api/_events`, of laat realtime-clients met één instantie verbinden. Zie
+[Schalen](/nl/deploy/scaling/#gedeelde-eventbus).
 
 Het beheerpaneel gebruikt zijn eigen stream (`/admin/api/events`) voor live updates, presence en
 zachte vergrendelingen tijdens het bewerken; zie de [referentie van de realtime-API](/nl/api/realtime/).

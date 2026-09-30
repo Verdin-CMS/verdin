@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 Configuratie werkt in lagen: **ingebouwde standaardwaarden ← `verdin.toml` ← omgeving**. Het
@@ -238,8 +239,22 @@ Zie [Plugins](/nl/extending/plugins/).
 
 | Sleutel | Standaard | Beschrijving |
 | --- | --- | --- |
-| `enabled` | `false` | Prometheus-metrics serveren op `/_metrics`: HTTP-requests per gebied (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), methode en statusklasse met latentiehistogrammen, openstaande webhook-afleveringen, open realtime-streams en uptime. |
+| `enabled` | `false` | Prometheus-metrics serveren op `/_metrics`: HTTP-requests per gebied (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), methode en statusklasse met latentiehistogrammen, openstaande webhook-afleveringen, open realtime-streams, verkeer van de eventbus en uptime. |
 | `token` | niet ingesteld | Scrapes vereisen `Authorization: Bearer <token>`. `VERDIN_METRICS_TOKEN` wint ervan. Zonder token kan iedereen die de poort bereikt de metrics lezen. |
+
+## `[telemetry]`
+
+Traces en foutrapporten, beide standaard uit en alleen gebruikt door `verdin start` en
+`verdin dev` (zie [Monitoring](/nl/deploy/monitoring/#traces-opentelemetry)).
+
+| Sleutel | Standaard | Beschrijving |
+| --- | --- | --- |
+| `enabled` | `false` | OpenTelemetry-traces van HTTP-requests en hun databasequery's exporteren via OTLP/HTTP (protobuf). `OTEL_SDK_DISABLED=true` zet het uit. |
+| `endpoint` | niet ingesteld (`http://localhost:4318`) | Basis-URL van de collector; `/v1/traces` wordt toegevoegd. `OTEL_EXPORTER_OTLP_ENDPOINT` (basis-URL) en `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (volledige URL) winnen ervan. |
+| `service_name` | `"verdin"` | `service.name` van de traces. `OTEL_SERVICE_NAME` wint ervan. |
+| `sample_ratio` | `1.0` | Aandeel bewaarde traces, van `0.0` tot `1.0`. Een request met een header `traceparent` volgt de beslissing van de aanroeper. |
+| `sentry_dsn` | niet ingesteld | Panics en 5xx-responses naar Sentry rapporteren. `SENTRY_DSN` wint ervan. |
+| `sentry_environment` | niet ingesteld | Sentry-omgeving. `SENTRY_ENVIRONMENT` wint ervan; niet ingesteld: `production` in `verdin start` en `development` in `verdin dev`. |
 
 ## `[ai]`
 
@@ -286,8 +301,26 @@ Het API-token wordt gelezen uit `VERDIN_CDN_TOKEN` (naar webhooks verzonden als 
 | `dir` | `"data/search"` | Map van de index, relatief ten opzichte van het project. Als je hem verwijdert, wordt de index bij de volgende start opnieuw opgebouwd. |
 | `memory_mb` | `50` | Geheugenbudget voor het indexeren. |
 
-De index staat op de schijf van de instantie en volgt de schrijfacties van die instantie: houd
-zoeken bij meerdere instanties op één instantie (of bouw hem na een deploy opnieuw op).
+De index staat op de schijf van de instantie. Zet bij meerdere instanties de [eventbus](#cluster)
+aan, zodat elke index de schrijfacties van alle instanties volgt.
+
+## `[cluster]`
+
+De gedeelde eventbus, voor meerdere instanties van één project (zie
+[Meerdere instanties draaien](/nl/deploy/scaling/#gedeelde-eventbus)).
+
+| Sleutel | Standaard | Beschrijving |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`: realtime events, presence, cache-invalidatie en zoekupdates blijven in elke instantie. `database`: ze bereiken elke instantie via de database van het project (`LISTEN/NOTIFY` op PostgreSQL, polling op MySQL, MariaDB en SQLite). |
+| `poll_interval_ms` | `1000` | Hoe vaak MySQL, MariaDB en SQLite de events van andere instanties lezen. PostgreSQL wordt gewekt door `NOTIFY` en gebruikt dit tempo alleen zolang het niet kan luisteren. |
+| `instance_id` | niet ingesteld (willekeurig bij elke start) | De naam van deze instantie op de bus en in de logs. |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+Zet het op elke instantie, of met `VERDIN_CLUSTER__BUS=database`.
 
 ## Omgevingsvariabelen
 
@@ -308,5 +341,9 @@ Naast de overschrijvingen `VERDIN_<SECTION>__<KEY>` leest Verdin deze variabelen
 | `VERDIN_CDN_TOKEN` | API-token van de provider van `[cdn]`. |
 | `VERDIN_IMAGE_SECRET` | Ondertekent URL's van afbeeldingstransformaties (zie [`[upload.transforms]`](#uploadtransforms)). |
 | `VERDIN_METRICS_TOKEN` | Bearer-token voor scrapes van `/_metrics` als `[metrics].enabled`; wint van `[metrics].token`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Collector voor de traces van [`[telemetry]`](#telemetry); winnen van `[telemetry].endpoint`. De andere standaardvariabelen `OTEL_EXPORTER_OTLP_*` (headers, timeout, compressie) gelden ook. |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | Resource van de geëxporteerde traces; `OTEL_SERVICE_NAME` wint van `[telemetry].service_name`. |
+| `OTEL_SDK_DISABLED` | `true` zet het exporteren van traces uit, ook als `[telemetry].enabled`. |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT` | Foutrapportage naar Sentry; winnen van `[telemetry].sentry_dsn` en `sentry_environment`. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Inloggegevens van de S3-uploadprovider. |
 | `RUST_LOG` | Logfilter; gaat voor op `[log].level`. |

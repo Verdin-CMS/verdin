@@ -303,7 +303,7 @@ zijn:
 
 | Vorm | Populeert |
 | --- | --- |
-| `populate=*` | Elke relatie, elk mediaveld, elke component en dynamische zone, één niveau diep |
+| `populate=*` | Elke relatie, elk mediaveld, elke component en dynamische zone, één niveau diep, en `localizations` op gelokaliseerde types |
 | `populate=category,tags` of `populate[0]=category&populate[1]=tags` | De genoemde velden |
 | `populate[category]=true` | Het genoemde veld (`false` laat het weg) |
 | `populate[category][fields][0]=name` | Het veld, met opties |
@@ -353,6 +353,16 @@ Bij schrijfacties slaat `status=draft` het concept op zonder het te publiceren. 
 `locale=fr` leest en schrijft de Franse versie van gelokaliseerde types. Zonder deze parameter
 gebruiken requests de standaardlocale. Een ongeldige of onbekende code geeft `400`. Types die niet
 gelokaliseerd zijn, negeren hem. Zie [Internationalisatie](/nl/concepts/internationalization/).
+
+Op gelokaliseerde types voegt `populate=localizations` de andere localeversies van het document toe,
+in dezelfde status, elk met zijn `locale`. Het accepteert de opties van een gepopuleerde relatie
+(`fields`, `filters`, `sort`, `populate`, `count`) en zit in `populate=*`. Types die niet
+gelokaliseerd zijn, hebben geen `localizations`.
+
+`GET /api/i18n/locales` geeft de locales terug als een gewone array in de vorm van Strapi (`id`,
+`documentId`, `name`, `code`, `isDefault`, `createdAt`, `updatedAt`, `publishedAt`,
+`locale`). Het heeft het recht `find` op `plugin::i18n.locale` nodig. Zie
+[Content lokaliseren](/nl/guides/content/localizing-content/#de-locales-opvragen).
 
 ## Zoeken
 

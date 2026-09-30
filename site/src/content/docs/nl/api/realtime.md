@@ -128,6 +128,10 @@ De editor toont die aan de anderen, maar blokkeert hun opslaan niet. Presence le
 
 ## Meerdere instanties
 
-Events en presence zijn die van de instantie waarmee een client verbonden is. Achter een
-load balancer routeer je `/api/_events` en `/admin/api/events` met sticky sessions, of laat je
-realtime-clients met één instantie verbinden. Zie [Schalen](/nl/deploy/scaling/).
+Met de gedeelde eventbus (`[cluster].bus = "database"`) bevatten de streams van elke instantie de
+events van alle instanties, en zijn presence en soft locks op elke instantie gelijk. Events van
+een andere instantie komen aan binnen `[cluster].poll_interval_ms` (MySQL, MariaDB, SQLite) of
+meteen (PostgreSQL, `LISTEN/NOTIFY`). Zonder de bus zijn events en presence die van de instantie
+waarmee een client verbonden is: routeer `/api/_events` en `/admin/api/events` met sticky
+sessions, of laat je realtime-clients met één instantie verbinden.
+Zie [Schalen](/nl/deploy/scaling/#gedeelde-eventbus).

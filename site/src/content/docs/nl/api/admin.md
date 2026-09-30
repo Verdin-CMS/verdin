@@ -91,6 +91,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   script, niet vanaf de pagina's van een andere site.
 - Geslaagde wijzigingen worden vastgelegd in de [auditlog](/nl/guides/content/audit-logs/).
 
+## Lijsten
+
+Instellingenlijsten worden gepagineerd met `page` (vanaf 1) en `pageSize`. Ze antwoorden met de
+rijen van de pagina en de aantallen:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Lijst | Standaard paginagrootte (maximum) | Volgorde | Andere parameters |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Oudste eerst | |
+| `GET /webhooks` | 25 (100) | Oudste eerst | `meta.events` somt de events op waarop een webhook zich kan abonneren |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Nieuwste eerst | |
+| `GET /releases` | 25 (100) | Nieuwste eerst | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | Op bron | `search` matcht de bron of de bestemming |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | Op naam | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Nieuwste eerst | |
+| `GET /deploy/targets` | 25 (100) | Oudste eerst | |
+| `GET /deploy/deployments` | 25 (100) | Nieuwste eerst | `targetId`; `limit` is een verouderde alias van `pageSize` |
+| `GET /end-users` | 25 (100) | Nieuwste eerst | `search` matcht de gebruikersnaam of het e-mailadres |
+| `GET /audit-logs` | 50 (200) | Nieuwste eerst | Zie [Auditlogs](/nl/guides/content/audit-logs/) |
+
+Een grotere `pageSize` wordt verlaagd tot het maximum. Om een hele lijst te lezen, vraag je pagina's
+op totdat `page` `pageCount` bereikt:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Contentroutes pagineren zoals de REST-API, met `pagination[page]` en
+`pagination[pageSize]`.
+
 ## Routegroepen
 
 Paden zijn relatief ten opzichte van `/admin/api`. De routers staan in

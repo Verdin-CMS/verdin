@@ -2,7 +2,7 @@
 title: Compatibiliteit met Strapi
 description: Welke functies en API's van Strapi v5 Verdin ondersteunt, gedeeltelijk ondersteunt of niet ondersteunt — REST, GraphQL, gebruikers en rechten, uploads, i18n, concept en publicatie, code-extensies, het beheerpaneel en Enterprise-functies.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin behoudt het contentmodel en de content-API's van Strapi v5, zodat frontends en content
@@ -59,7 +59,7 @@ equivalent.
 | Shadow CRUD (bewerkingen per type uitschakelen) | Ondersteund | De instelling `disabled` van de functie. |
 | Eigen resolvers en schema-extensies | Gedeeltelijk | Rootvelden opgelost door plugins (`[[graphql]]` in `plugin.toml`); geen `extensionService`. |
 | Mutaties van Users & Permissions (`login`, `register`, `me`…) | Niet ondersteund | Gebruik de REST-routes. |
-| Queries/mutaties voor upload en i18n (`uploadFiles`, `i18NLocales`…) | Niet ondersteund | Gebruik de REST-routes en het beheerpaneel. |
+| Queries/mutaties voor upload en i18n (`uploadFiles`, `i18NLocales`…) | Niet ondersteund | Gebruik de REST-routes (`GET /api/i18n/locales`) en het beheerpaneel. `localizations` op gelokaliseerde types wordt ondersteund. |
 | Limieten, GraphiQL | Ondersteund | `maxDepth`, `maxComplexity`, schakelaars voor introspectie en playground. |
 
 ## Users & Permissions (eindgebruikers)
@@ -94,8 +94,8 @@ Zet **Instellingen → Functies → Gebruikers en rechten** aan. Zie [Eindgebrui
 | --- | --- | --- |
 | Gelokaliseerde types en niet-gelokaliseerde velden | Ondersteund | `pluginOptions.i18n.localized`, ook per attribuut. |
 | `?locale=` bij REST, `locale` in GraphQL | Ondersteund | Een onbekende locale geeft `400`. |
-| `localizations` in responses | Niet ondersteund | Lees een andere locale met hetzelfde `documentId` en `?locale=`. |
-| `GET /api/i18n/locales` | Niet ondersteund | Locales worden beheerd in het beheerpaneel (**Instellingen → Internationalisatie**). |
+| `localizations` in responses | Ondersteund | Alleen als gepopuleerd (`populate=localizations`, `populate=*`), met dezelfde opties als een relatie. Ook een GraphQL-veld. De admin-API laat het weg. |
+| `GET /api/i18n/locales` | Ondersteund | Een gewone array in de vorm van Strapi. Vereist `find` op `plugin::i18n.locale` (rij **Locales** van het rechtenraster), zoals Strapi's `listLocales`. `documentId` wordt afgeleid van de localecode. Locales worden beheerd in het beheerpaneel (**Instellingen → Internationalisatie**). |
 
 ## Concept en publicatie
 
@@ -107,11 +107,14 @@ Zet **Instellingen → Functies → Gebruikers en rechten** aan. Zie [Eindgebrui
 
 ## Aanpassingen aan de server
 
+Zie [Eigen code porten](/nl/migrate/porting-custom-code/) voor hoe je elk daarvan verplaatst.
+
 | Strapi | Status | Verdin |
 | --- | --- | --- |
 | Lifecycle hooks, middlewares van de Document Service | Gedeeltelijk | Before- en after-hooks in WebAssembly-plugins, die een schrijfactie kunnen wijzigen of weigeren. Geen JavaScript. |
 | Eigen controllers, services, routes | Gedeeltelijk | Pluginroutes onder `/api/plugins/<name>/`. |
 | Policies en middlewares | Niet ondersteund | Rechten en rate limits zijn ingebouwd. |
+| `register` / `bootstrap` | Gedeeltelijk | De opstartfunctie van een plugin, die draait wanneer de plugin start, wordt aangezet of zijn instellingen wijzigen; ze kan content seeden en de rechten van de openbare rol vervangen. |
 | Cron-taken | Gedeeltelijk | Pluginjobs. |
 | Document Service / Entity Service in JavaScript | Niet ondersteund | Geen JavaScript-runtime. |
 | npm-plugins uit de marketplace van Strapi | Niet ondersteund | |

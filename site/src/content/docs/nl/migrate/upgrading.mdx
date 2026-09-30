@@ -2,7 +2,7 @@
 title: Verdin upgraden
 description: Upgrade een Verdin-installatie — de binary of het Docker-image, de migraties die bij het starten draaien, en de opvallende of brekende wijzigingen van elke minorversie.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -117,6 +117,33 @@ elkaar draaien dan een rolling deploy duurt.
 
 Opvallende en brekende wijzigingen per versie, oudste als laatste. De
 [changelog](/nl/project/changelog/) heeft de volledige lijst.
+
+### 0.10 → 0.11
+
+De migratie die bij het starten draait, voegt één tabel toe, `vd_cluster_events`, die alleen wordt
+gebruikt bij `[cluster] bus = "database"`.
+
+- **Decimalen**: hele `decimal`-waarden worden teruggegeven als JSON-gehele getallen (`25`, niet
+  `25.0`), zoals Strapi ze teruggeeft. Clients die het JSON-type strikt controleren, merken dat
+  misschien; `[api] decimal_as_string` is ongewijzigd. Op SQLite vergelijken `sort` en
+  `$gt`/`$lt`/`$between` op decimalen nu getallen in plaats van tekst, dus resultaten die op de
+  oude (verkeerde) volgorde steunden, veranderen.
+- **`populate=*` op gelokaliseerde types** geeft ook `localizations` terug, de andere localeversies
+  van het document, zoals Strapi v5. Een schema-attribuut met de naam `localizations` behoudt zijn
+  betekenis.
+- **Plugins**: after-hooks die door de eigen schrijfacties van een plugin worden afgevuurd, draaien
+  zodra haar aanroep terugkeert in plaats van binnen de schrijfactie, en hooks die schrijven nesten
+  hoogstens 4 niveaus diep. Hostfuncties stoppen bij de tijdslimiet van de aanroep.
+- **Meerdere instanties**: zet `[cluster] bus = "database"` op elke instantie, zodat realtime
+  streams, presence, de responsecache en de zoekindex wijzigingen op de andere volgen (zie
+  [Schalen](/nl/deploy/scaling/)).
+- **Scripts die adminlijsten lezen**: `GET /admin/api/users`, `/roles`, `/api-tokens`,
+  `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` en
+  `/deploy/targets` geven 25 rijen terug tenzij je `pageSize` meegeeft (hoogstens 100), met
+  `meta.pagination`, zoals de lijsten die al gepagineerd waren. Loop de pagina's af met
+  `?page=` totdat `page` `meta.pagination.pageCount` bereikt. `/deploy/deployments` pagineert op
+  dezelfde manier in plaats van de laatste 50 terug te geven; `limit` werkt nog als verouderde
+  alias van `pageSize`. Zie [Lijsten](/nl/api/admin/#lijsten).
 
 ### 0.9.1 → 0.10
 

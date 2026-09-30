@@ -1,12 +1,13 @@
 ---
 title: Pluginreferentie
-description: Het manifest plugin.toml, capabilities, hooks en hun payloads, hostfuncties, routes, jobs, GraphQL-velden, uitbreidingspunten van het beheerpaneel en limieten.
+description: Het manifest plugin.toml, capabilities, hooks en hun payloads, hostfuncties, routes, jobs, de opstartfunctie, GraphQL-velden, uitbreidingspunten van het beheerpaneel, limieten en metrics.
 sidebar:
   order: 3
 ---
 
 <!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
-plugins_admin.rs, crates/verdin-graphql/src/lib.rs and admin/src/app/core/plugin-extensions.ts. -->
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
 
 Deze pagina is het volledige contract tussen Verdin en een plugin: het manifest, wat Verdin naar
 elke geëxporteerde functie stuurt en terugverwacht, en de hostfuncties die een module kan
@@ -39,6 +40,7 @@ read = ["api::article"]
 write = ["api::tag"]
 http = ["api.example.com"]
 kv = true
+public_permissions = true
 
 [limits]
 timeout_ms = 5000
@@ -55,6 +57,10 @@ function = "handle"
 [[jobs]]
 schedule = "*/15 * * * *"
 function = "refresh"
+
+[startup]
+function = "seed"
+timeout_ms = 30000
 
 [[graphql]]
 name = "slugStats"
@@ -102,6 +108,7 @@ Onbekende sleutels zijn fouten, in elke tabel.
 | `write` | `[]` | Contenttypes die hij mag `create`, `update`, `delete`, `publish` en `unpublish`. Impliceert `read`. |
 | `http` | `[]` | Hosts waarnaar de module HTTP-requests mag sturen: `api.example.com`, of `*.example.com`. |
 | `kv` | `false` | De eigen key-value-opslag van de plugin (`verdin_kv_get`, `verdin_kv_set`). |
+| `public_permissions` | `false` | De contentrechten van de openbare rol voor de content-API lezen en vervangen (`verdin_public_permissions`). |
 
 Capabilities beperken alleen hostaanroepen. Hooks draaien op de types die ze noemen, wat `read`
 ook zegt, en routes zijn voor iedereen bereikbaar.
@@ -135,8 +142,9 @@ Events:
 | `beforeDiscardDraft` | `afterDiscardDraft` |
 
 De namen zijn de lifecyclenamen van Strapi. Hooks draaien bij schrijfacties vanuit het
-beheerpaneel, de REST- en GraphQL-API's en releases, maar niet bij schrijfacties door plugins (zie
-[Schrijfacties door plugins](#schrijfacties-door-plugins)) of door de commando's `verdin import`.
+beheerpaneel, de REST- en GraphQL-API's en releases, maar niet bij schrijfacties door de commando's
+`verdin import`. Schrijfacties door plugins draaien de after-hooks maar niet de before-hooks (zie
+[Schrijfacties door plugins](#schrijfacties-door-plugins)).
 
 ### `[routes]`
 
@@ -152,6 +160,18 @@ Het pad volgt `[api].prefix`.
 | --- | --- |
 | `schedule` | Cron-expressie, in UTC, met optionele seconden: `*/15 * * * *`, `0 0 3 * * *`. |
 | `function` | De geëxporteerde functie die wordt aangeroepen. |
+
+### `[startup]`
+
+Een functie die draait wanneer de plugin start: wat een Strapi-project in `bootstrap` doet
+(content seeden, de openbare rol instellen).
+
+| Sleutel | Standaard | Beschrijving |
+| --- | --- | --- |
+| `function` | verplicht | De geëxporteerde functie die wordt aangeroepen. |
+| `timeout_ms` | `30000` | Haar eigen tijdslimiet, in milliseconden (seeden kan langer duren dan een hook). Moet positief zijn. |
+
+Zie [Opstartfunctie](#opstartfunctie) voor wanneer ze draait.
 
 ### `[[graphql]]`
 
@@ -289,6 +309,33 @@ De uitvoer wordt genegeerd; mislukkingen worden gelogd. Jobs draaien alleen zola
 staat, en alleen op instanties met `[plugins].run_jobs = true`. Een run die gemist is terwijl de
 server uit lag, wordt niet ingehaald.
 
+### Opstartfunctie
+
+Input: `{ "reason": "start" | "enabled" | "settings" }`:
+
+| `reason` | Wanneer |
+| --- | --- |
+| `start` | De server is gestart met de plugin aan. |
+| `enabled` | De plugin is aangezet (hier, of op een andere instantie en hier opgepikt). |
+| `settings` | Haar instellingen zijn gewijzigd terwijl ze aan stond (hier opgeslagen, of van een andere instantie opgepikt). |
+
+Uitvoer: `{ "error": "message" }` telt als mislukking; al het andere (`{}`, leeg) als succes. Een
+mislukking (trap, time-out, `{ error }`) gaat naar het log van de plugin en het serverlog; de plugin
+blijft aan, en de functie draait opnieuw bij de volgende start, het volgende aanzetten of de
+volgende wijziging van de instellingen.
+
+De functie draait op de achtergrond, nadat de server draait, dus requests worden intussen bediend.
+Ze draait op een eigen module-instantie met `[startup].timeout_ms`, zodat een trage seed de hooks en
+routes van de plugin niet ophoudt. After-hooks die door haar schrijfacties worden afgevuurd, draaien
+zodra ze terugkeert (zie [Schrijfacties door plugins](#schrijfacties-door-plugins)). Het geheugen
+van de module wordt niet gedeeld met de gewone instantie van de plugin: bewaar toestand in
+`verdin_kv_set` of in content.
+
+Bij meerdere instanties draaien alleen die met `[plugins].run_jobs = true` opstartfuncties (één
+instantie, als je het [schaaladvies](/nl/deploy/scaling/) volgt): ze werken op de gedeelde
+database, dus één keer is genoeg. Schrijf de functie zo dat opnieuw draaien onschadelijk is: zoek
+op wat je seedt voordat je het aanmaakt.
+
 ### GraphQL-velden
 
 Input: `{ "args": …, "actor": … }`, met `args` het argument `args` van het veld (willekeurige JSON,
@@ -308,6 +355,10 @@ geven JSON als strings; `Json<Value>` in `extism-pdk` regelt de conversie.
 | `verdin_kv_get` | De sleutel, als gewone string | De opgeslagen JSON-waarde, of `null` |
 | `verdin_kv_set` | `{ "key": "…", "value": … }` | geen |
 | `verdin_config` | geen | Het instellingenobject, met de gedeclareerde standaardwaarden ingevuld |
+| `verdin_public_permissions` | `{ "op": "get" }` of `{ "op": "set", "permissions": [...] }` | `{ "permissions": [...] }`, of `{ "error": "…" }` |
+
+Een module die een hostfunctie importeert die de server niet heeft (een oudere Verdin), kan niet
+worden geladen: elke aanroep ervan mislukt met `unknown import` in het serverlog.
 
 ### `verdin_log`
 
@@ -349,9 +400,25 @@ versies terug, tenzij de query om `"status": "draft"` vraagt.
 #### Schrijfacties door plugins
 
 Schrijfacties via `verdin_content` slaan de **before**-hooks van elke plugin over, zodat een plugin
-daar niet in een lus kan raken door zijn eigen wijzigingen. Al het andere geldt wel: validatie,
-reviewfasen, webhooks, geschiedenis, de auditlog, en de **after**-hooks van alle plugins, de
-schrijvende inbegrepen. Bescherm een after-hook die het type schrijft waarnaar hij luistert.
+daar niet in een lus kan raken door zijn eigen wijzigingen, en regels die je in before-hooks zet
+(standaardwaarden, controles) gelden er niet voor. Al het andere geldt wel: validatie, reviewfasen,
+webhooks, geschiedenis, de auditlog, en de **after**-hooks van alle plugins, de schrijvende
+inbegrepen.
+
+After-hooks die door de schrijfacties van een plugin worden afgevuurd, draaien niet binnen de
+schrijfactie: ze worden in de wachtrij gezet en draaien zodra de aanroep van de plugin (route, job,
+GraphQL-resolver, hook of opstartfunctie) is teruggekeerd en de instantie van de plugin heeft
+vrijgegeven, voordat het antwoord van de route wordt verzonden. Een plugin kan dus een type
+schrijven waarop hij after-hooks heeft, en ketens door meerdere plugins werken.
+
+- Hooks die schrijven, vuren weer hooks af, **hoogstens `4` niveaus diep** (een schrijfactie vanuit
+  REST of GraphQL is niveau 1). Diepere hooks worden overgeslagen met een waarschuwing in het log
+  van de plugin, wat voorkomt dat een hook die het type schrijft waarnaar hij luistert eindeloos
+  in een lus blijft.
+- Hostfuncties (`verdin_content`, `verdin_public_permissions`, de key-value-store) stoppen bij de
+  tijdslimiet van de aanroep en geven een fout terug aan de module, en een aanroeper wacht hoogstens
+  de tijdslimiet plus 10 seconden op een plugin die bezig is. Een vastgelopen aanroep kan de plugin,
+  of een nette stop, niet eindeloos vasthouden.
 
 ### `verdin_kv_get` en `verdin_kv_set`
 
@@ -364,6 +431,33 @@ Zonder de capability `kv` geven leesacties `null` terug en worden schrijfacties 
 Geeft de instellingen terug die zijn opgeslagen in **Instellingen → Plugins**, met de `default`
 van elke gedeclareerde instelling ingevuld voor ontbrekende sleutels. `{}` als er niets is
 opgeslagen.
+
+### `verdin_public_permissions`
+
+Leest of vervangt de contentrechten van de openbare rol voor de content-API, wat **Instellingen →
+Openbare toegang** bewerkt. Vereist de capability `public_permissions`; zonder die antwoordt elke
+aanroep met `{ "error": "…" }`.
+
+```json
+{ "op": "set", "permissions": [
+  { "subject": "api::article", "action": "find" },
+  { "subject": "api::article", "action": "findOne" },
+  { "subject": "api::comment", "action": "create" }
+] }
+```
+
+| `op` | Effect |
+| --- | --- |
+| `get` | Niets; geeft de huidige rechten terug. |
+| `set` | Vervangt **alle** openbare rechten door `permissions` (een lege lijst verwijdert ze allemaal). |
+
+Beide antwoorden `{ "permissions": [{ "subject", "action" }, …] }`, gesorteerd. `subject` is de uid
+van een contenttype, `plugin::upload` (de mediabibliotheek), `plugin::users-permissions.user`
+(eindgebruikers via de content-API) of `plugin::i18n.locale` (alleen `find`). `action` is `find`,
+`findOne`, `create`, `update`, `delete`, `publish` of `readDrafts` (de laatste twee gelden niet
+voor uploads en eindgebruikers). Ze worden gecontroleerd zoals het rechtenraster van de beheerder:
+een onbekend subject of een onbekende actie, of een die niet van toepassing is, antwoordt met
+`{ "error": "…" }` en wijzigt niets. Elke `set` wordt in het serverlog geschreven.
 
 ### HTTP
 
@@ -432,10 +526,10 @@ de editor het gewone invoerveld voor het opslagtype. Zie
 
 | Limiet | Waarde |
 | --- | --- |
-| Tijd per aanroep | `[limits].timeout_ms`, standaard 5.000 ms |
+| Tijd per aanroep | `[limits].timeout_ms`, standaard 5.000 ms (`[startup].timeout_ms`, standaard 30.000 ms, voor de opstartfunctie) |
 | Geheugen | `[limits].memory_mb`, standaard 64 MB |
-| Gelijktijdigheid | Eén aanroep tegelijk per plugin; aanroepen wachten op elkaar |
-| Module-instantie | Eén per plugin, gebouwd bij het eerste gebruik; opnieuw gebouwd nadat een aanroep faalt (het geheugen gaat verloren) |
+| Gelijktijdigheid | Eén aanroep tegelijk per plugin; aanroepen wachten op elkaar (de opstartfunctie draait ernaast) |
+| Module-instantie | Eén per plugin, gebouwd bij het eerste gebruik; opnieuw gebouwd nadat een aanroep faalt (het geheugen gaat verloren). De opstartfunctie krijgt bij elke run een verse |
 | Log | 200 berichten per plugin, elk 2.000 tekens, in het geheugen |
 | KV-sleutels | 1 tot 255 bytes |
 | Request-headers van routes | `content-type`, `accept`, `user-agent`, `accept-language` |
@@ -444,3 +538,19 @@ de editor het gewone invoerveld voor het opslagtype. Zie
 Wijzigingen aan een manifest of module gelden na een herstart; schakelaars en instellingen gelden
 meteen. Plugins beheren vereist `plugins.manage` (zie de
 [rechtenreferentie](/nl/reference/permissions/)).
+
+## Metrics
+
+Met [`[metrics]`](/nl/deploy/monitoring/) aan rapporteert `/_metrics` elke aanroep die een
+geëxporteerde functie bereikte:
+
+| Metric | Type | Labels | Betekenis |
+| --- | --- | --- | --- |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | Tijd die pluginfuncties namen. Buckets van 5 ms tot 10 s. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Aanroepen die faalden: een trap, een time-out, uitvoer die geen JSON is, of het `{ error }` van een opstartfunctie. |
+
+`kind` is `hook`, `route`, `job`, `startup` of `graphql`. Een before-hook die een schrijfactie
+weigert met `{ error }` gaf een antwoord, dus telt niet als mislukking. Aanroepen van een functie
+die de module niet exporteert, worden niet vastgelegd, zodat de labels begrensd blijven door de
+geïnstalleerde plugins. De reeksen verschijnen na de eerste aanroep van een plugin; elke instantie
+telt haar eigen aanroepen.

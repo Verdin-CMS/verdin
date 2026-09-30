@@ -120,8 +120,8 @@ Gemeld als waarschuwingen:
 Helemaal niet geïmporteerd: beheerders en beheerdersrollen, API-tokens, transfer tokens, webhooks,
 releases, fasen van reviewworkflows, contentgeschiedenis en auditlogs, en de instellingen van
 Strapi-plugins. Je Strapi-code — controllers, services, routes, policies, middlewares, lifecycle
-hooks, cron-taken en aanpassingen van het beheerpaneel — heeft geen Verdin-equivalent om naar te
-converteren; zie [Eigen code opnieuw bouwen](#eigen-code-opnieuw-bouwen).
+hooks, cron-taken en aanpassingen van het beheerpaneel — wordt niet geconverteerd: bouw haar
+opnieuw zoals beschreven in [Eigen code opnieuw bouwen](#eigen-code-opnieuw-bouwen).
 
 <Aside type="note">
 Aangepaste velden behouden hun `customField`-naam, zoals `plugin::color-picker.color`. De editor
@@ -203,11 +203,17 @@ Genereer voor getypeerde toegang TypeScript-types met `verdin types` en gebruik 
 
 ## Eigen code opnieuw bouwen
 
+Code in `src/` verhuist naar een [WebAssembly-plugin](/nl/extending/plugins/). [Eigen code
+porten](/nl/migrate/porting-custom-code/) loopt door de lifecycles, routes, cron-taak en `bootstrap`
+van een echt project, met een uitgewerkte voorbeeldplugin.
+
 | Strapi | Verdin |
 | --- | --- |
-| Lifecycle hooks, middlewares van de document service | Plugin-hooks (`beforeCreate`, `afterUpdate`…) in een [WebAssembly-plugin](/nl/extending/plugins/) |
+| Lifecycle hooks, middlewares van de document service | Plugin-hooks (`beforeCreate`, `afterUpdate`…) |
 | Eigen routes en controllers | Pluginroutes onder `/api/plugins/<name>/` |
+| `bootstrap()` in `src/index.js` (seeden, openbare rechten instellen) | De opstartfunctie van de plugin (`[startup]`), met de capability `public_permissions` voor de openbare rol |
 | Cron-taken | Pluginjobs (`[[jobs]]`) |
+| Een eigen endpoint dat formulierinzendingen opslaat | Ingebouwde [Formulieren](/nl/guides/frontend/forms/) |
 | Aangepaste velden | Aangepaste velden van plugins |
 | Adminwidgets | Pluginwidgets, of de ingebouwde dashboardwidgets |
 | Logo, kleuren en teksten van het beheerpaneel | `[admin.branding]` in `verdin.toml` |

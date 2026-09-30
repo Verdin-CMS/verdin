@@ -228,8 +228,10 @@ Een exact decimaal getal.
 Waarden worden afgerond op `scale` cijfers (half van nul af, zoals de databases doen), en geweigerd
 als ze meer dan `precision - scale` cijfers vóór de komma hebben. Schrijfacties accepteren getallen
 en numerieke strings. Opgeslagen als `numeric(precision,scale)` (`text` op SQLite, zodat er niets
-wordt afgerond). API: een getal, of een exacte string met
-[`[api].decimal_as_string`](/nl/reference/configuration/).
+wordt afgerond). API: een getal, zoals Strapi het teruggeeft. Hele waarden zijn gehele getallen
+(`25`, niet `25.0`) en andere zijn de kortste float die hetzelfde terugleest (`12.5`). Met
+[`[api].decimal_as_string`](/nl/reference/configuration/) geeft de API in plaats daarvan een
+exacte string terug.
 
 ## Datums en booleans
 

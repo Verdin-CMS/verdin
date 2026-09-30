@@ -1,0 +1,415 @@
+---
+title: Eigen code porten
+description: Verplaats de eigen code van een Strapi-project naar een Verdin-plugin — controllers en routes, lifecycles, services, bootstrap, cron-taken, adminwidgets, formulieren, policies en middlewares — met een uitgewerkt voorbeeld en de limieten waarmee je rekening moet houden.
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi` neemt het schema en de content van een Strapi-project mee, maar niet de
+JavaScript in `src/`: Verdin draait geen JavaScript op de server. Die code wordt een
+[WebAssembly-plugin](/nl/extending/plugins/): hooks voor lifecycles, routes voor eigen
+controllers, een opstartfunctie voor `bootstrap`, jobs voor cron-taken. Deze pagina koppelt elk
+soort Strapi-code aan zijn Verdin-tegenhanger, loopt door de code van een echt project die naar
+een plugin is geport, en somt de limieten op waarmee je rekening moet houden.
+
+Het uitgewerkte voorbeeld is
+[`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port):
+de plugin `tienda`, geschreven in Rust, met het schema dat ze nodig heeft en een README die haar
+bouwt en installeert. Lees eerst de [plugintutorial](/nl/extending/plugin-tutorial/) als je nog
+nooit een plugin hebt geschreven; de [pluginreferentie](/nl/extending/plugin-reference/) heeft elke
+payload en hostfunctie.
+
+## Waar elk onderdeel heen gaat
+
+| Strapi | Verdin | Opmerkingen |
+| --- | --- | --- |
+| Eigen routes en controllers (`src/api/*/routes`, `controllers`) | Pluginroutes: `[routes]`, één functie voor `/api/plugins/<name>/…` | De URL verandert. De functie verdeelt zelf op methode en pad. |
+| Lifecycles (`lifecycles.js`), middlewares van de Document Service | `[[hooks]]` op `beforeCreate`, `afterUpdate`… | Dezelfde eventnamen. Before-hooks kunnen de gegevens vervangen of de schrijfactie weigeren. |
+| Services (`src/api/*/services`) | Functies in de module van de plugin, en `verdin_content` voor `strapi.documents(…)` | Geen gedeelde services tussen plugins. |
+| `bootstrap()` in `src/index.js` | Functie `[startup]` | Draait bij het starten, wanneer de plugin wordt aangezet en wanneer haar instellingen wijzigen. |
+| `register()` | Niets om te porten | Het manifest declareert wat `register` instelde. |
+| Cron-taken (`config/cron-tasks.js`) | `[[jobs]]` | Cron-syntaxis in UTC, seconden optioneel. |
+| Pluginconfiguratie (`config/plugins.js`) | `[[settings]]` en `verdin_config` | Bewerkt in **Instellingen → Plugins**. |
+| `strapi.log` | `verdin_log` | Serverlog en **Instellingen → Plugins → Logs**. |
+| Adminwidgets (`app.widgets.register`) | `[[admin.widgets]]`: Web Components | Of de ingebouwde dashboardwidgets. |
+| Aangepaste velden | `[[admin.fields]]` | De naam `customField` in het schema blijft behouden. |
+| Injection zones, eigen adminpagina's, React-extensies | Niet ondersteund | Branding staat in `[admin.branding]`. |
+| Een eigen endpoint dat formulierinzendingen opslaat | Ingebouwde [Formulieren](/nl/guides/frontend/forms/) | Validatie, spamval, rate limit, e-mails en CSV-export inbegrepen. |
+| Policies en middlewares | Ingebouwde rechten, rate limits en CORS; controles in je pluginroutes | Geen haak in de requestpijplijn. Zie [Policies en middlewares](#policies-en-middlewares). |
+| E-mails vanuit code (`strapi.plugin('email')`) | De HTTP-API van een e-mailprovider, via de capability `http` | Geen hostfunctie voor e-mail. |
+
+## Het voorbeeldproject
+
+Het Strapi-project achter het voorbeeld is een kleine winkel met polls:
+
+- **`producto`**: producten, met de vlaggen `a_la_venta` (te koop) en `reservable`.
+- **`reserva`**: reserveringen die bezoekers versturen. Een lifecycle `beforeCreate` dwingt
+  `estado` af op `pendiente`, controleert dat het gerelateerde product te koop en reserveerbaar
+  is, en beperkt `unidades` tot 1–10.
+- **`encuesta`** en **`voto`**: polls met een lijst opties, en hun stemmen. Twee eigen
+  routes, `POST /api/polls/:slug/vote` en `GET /api/polls/:slug/results`, staan één stem
+  per bezoeker en poll toe, alleen in open polls en alleen voor een geldige optie. Een cron-taak
+  sluit polls waarvan de datum `cierra_el` is verstreken.
+- **`bootstrap`** stelt de rechten van de openbare rol in, zodat een verse installatie niet open
+  blijft staan.
+- Een **adminwidget** toont de open polls.
+
+In Verdin is dat alles één plugin, `tienda`:
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml het manifest
+    - src/lib.rs hooks, routes, de job en de opstartfunctie
+    - admin/index.js de dashboardwidget
+</FileTree>
+
+```toml title="plugin/plugin.toml (ingekort)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+Uid's van contenttypes zijn korter dan die van Strapi: `api::producto`, niet
+`api::producto.producto`.
+
+## Lifecycles naar hooks
+
+De Strapi-lifecycle, vereenvoudigd:
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+De Verdin-hook ontvangt `{ event, uid, documentId, locale, data }` en antwoordt
+`{ "data": … }` om te vervangen wat er wordt geschreven, `{ "error": "…" }` om de schrijfactie te
+weigeren (de client krijgt een 400 met de melding, zoals bij Strapi's `ApplicationError`), of `{}`
+om haar door te laten:
+
+```rust title="plugin/src/lib.rs (ingekort)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+Wat je moet weten bij het porten van lifecycles:
+
+- **`data` is de data van het request zoals verstuurd.** Een relatie kan binnenkomen als een
+  documentId, als `{ "documentId": … }`, als een lijst, of als `{ connect }` / `{ set }` (het
+  beheerpaneel en clients verschillen). De `relation_id` van het voorbeeld accepteert ze allemaal.
+  Bij `beforeUpdate` bevat `data` alleen de meegestuurde velden.
+- **De gegevens die je teruggeeft, worden gevalideerd** zoals het origineel, na de hook: een hook
+  kan niets schrijven wat het schema weigert. Schemagrenzen (`min`, `max`) weigeren een waarde; een
+  hook kan haar in plaats daarvan begrenzen, zoals hier.
+- **Hooks weten niet wie er schrijft.** Er is geen gebruiker of token in de input. Controles die
+  van de aanroeper afhangen, horen in de rechten, of in een pluginroute.
+- **After-hooks krijgen geen data**: `{ event, uid, documentId, locale }`, verzonden zodra de
+  schrijfactie is vastgelegd. Lees het item met `verdin_content` als je het nodig hebt.
+- **Een falende hook blokkeert de schrijfactie niet.** Als de module een trap geeft of een
+  time-out krijgt, wordt de fout gelogd en gaat de schrijfactie door; alleen een antwoord
+  `{ error }` weigert haar.
+- **Schrijfacties door plugins slaan before-hooks over.** Een regel die voor elke schrijfactie
+  moet gelden, moet ook worden toegepast door elke plugincode die dat type schrijft.
+
+## Controllers en eigen routes naar pluginroutes
+
+Strapi serveerde de pollroutes op `/api/polls/:slug/vote`. Een Verdin-plugin serveert
+alles onder `/api/plugins/<name>/`, dus de frontend roept
+`/api/plugins/tienda/polls/:slug/vote` aan (of een reverse proxy herschrijft het oude pad). Eén
+geëxporteerde functie ontvangt elk request en verdeelt op methode en pad:
+
+```rust title="plugin/src/lib.rs (ingekort)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+Het request is `{ method, path, query, headers, body, actor }`, met `body` als string die je zelf
+parset en `query` als de ruwe querystring. Het antwoord is
+`{ status, headers?, body }`. Niets vormt het voor je: om een Strapi-frontend te laten werken,
+antwoord je `{ "data": … }` en, bij fouten,
+`{ "data": null, "error": { "status", "name", "message", "details" } }`, zoals de hulpfuncties
+`ok` en `fail` van het voorbeeld doen.
+
+De stemroute controleert, in volgorde: een geldige body, een poll met die slug, `estado` is
+`abierta`, de optie is een van de `opciones`, en geen eerdere stem met dezelfde fingerprint.
+Daarna maakt ze de `voto` aan en antwoordt met 201 en de resultaten.
+
+<Aside type="caution" title="Geen clientadres in pluginroutes">
+Pluginroutes ontvangen alleen de headers `content-type`, `accept`, `user-agent` en
+`accept-language`: geen IP-adres, cookies of `Authorization`-waarde. Een Strapi-controller die
+`ctx.request.ip` gebruikte voor "één stem per bezoeker" heeft een andere sleutel nodig. Het
+voorbeeld neemt een `fingerprint` uit de requestbody, die de site maakt (een willekeurig id
+bewaard in local storage, of een hash van browsereigenschappen). Het stopt dubbelklikken en
+toevallige herhalingen, geen vastberaden stemmer. Voor strengere limieten vereis je een ingelogde
+eindgebruiker (de `actor`) of zet je de controle vóór Verdin.
+</Aside>
+
+Andere verschillen met Strapi-routes:
+
+- **Routes zijn openbaar.** Openbare toegang en rechten van API-tokens worden niet toegepast.
+  `actor` zegt wie er aanroept: `{ "kind": "public" }`, `{ "kind": "token", "id": … }` of
+  `{ "kind": "user", "id": … }` (een eindgebruiker; alleen het id). Weiger wat de aanroeper niet
+  mag doen, zoals een Strapi-policy zou doen. Een ongeldig token wordt met een 401 geweigerd
+  voordat de plugin draait.
+- **Eén aanroep tegelijk per plugin.** Aanroepen van een plugin wachten op elkaar, dus de controle
+  en het aanmaken in de stemroute kunnen op één instantie niet door elkaar lopen. Bij meerdere
+  instanties wel; het voorbeeld slaat ook een `clave` (`<poll>:<fingerprint>`) op met
+  `unique: true`, zodat de database een duplicaat weigert dat erdoor glipt.
+- **Rate limits gelden**: `[api].public_rate_limit` en `[api].token_rate_limit` tellen pluginroutes
+  zoals de rest van de content-API.
+- **Anonieme `GET`-antwoorden kunnen worden gecachet** als `[api].cache_ttl_secs` is ingesteld.
+  Contentschrijfacties legen de cache, stemmen inbegrepen.
+- **Slechts enkele response-headers blijven behouden**: `content-type`, `cache-control`,
+  `location`, `etag`, `last-modified` en `content-disposition`.
+
+## Services naar functies en contentaanroepen
+
+Een Strapi-service is gedeelde code; in een plugin is het een gewone functie in de module.
+Aanroepen van `strapi.documents(uid)` worden aanroepen van `verdin_content`, begrensd door de
+capabilities `read` en `write`:
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `findMany` met `"pagination": { "pageSize": 1 }`, daarna `meta.pagination.total` |
+
+- **Leesacties geven gepubliceerde versies terug**, tenzij de query om `"status": "draft"` vraagt.
+  Een hook die een product met alleen een concept opzoekt, vindt niets, zoals de foutmelding van
+  het voorbeeld zegt.
+- **Schrijfacties worden gepubliceerd** tenzij het request `"status": "draft"` heeft, zoals een
+  REST-schrijfactie.
+- **De query volgt de regels van de REST-API.** `private`-attributen kunnen niet worden gebruikt
+  in filters of `fields`, dus de `clave` van het voorbeeld is niet private (de openbare rol heeft
+  geen toegang tot stemmen, dus niemand anders leest haar).
+- **Geen ruwe SQL, geen `strapi.db.query`.** Alles gaat via de Document Service, met zijn
+  validatie, webhooks, geschiedenis en auditlog.
+- **Geen klok zonder WASI.** Stel `wasi = true` in het manifest in voor de tijd en willekeurige
+  getallen; de job van het voorbeeld gebruikt in plaats daarvan de `scheduledAt` die ze ontvangt.
+
+## `bootstrap` naar de opstartfunctie
+
+Strapi-projecten stellen vaak de rechten van de openbare rol in in `bootstrap`, zodat een verse
+database bruikbaar is en niet meer openstaat dan nodig. De opstartfunctie van Verdin doet
+hetzelfde met de capability `public_permissions`:
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (ingekort)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- Ze draait met `{ "reason": "start" | "enabled" | "settings" }`: wanneer de server start
+  met de plugin aan, wanneer de plugin wordt aangezet, en wanneer haar instellingen wijzigen. Maak
+  haar veilig om opnieuw te draaien: zoek op wat je seedt voordat je het aanmaakt.
+- `set` **vervangt alle** openbare rechten, dus wijzigingen in **Instellingen → Openbare
+  toegang** worden bij de volgende start ongedaan gemaakt. Het voorbeeld heeft een instelling om
+  dit uit te zetten.
+- Ze draait op de achtergrond op een eigen module-instantie, met een eigen tijdslimiet
+  (`[startup].timeout_ms`, standaard 30 seconden), zodat een trage seed hooks en routes niet
+  ophoudt. Een mislukking, of een antwoord `{ "error" }`, wordt gelogd; de plugin blijft aan.
+- Bij meerdere instanties draaien alleen die met `[plugins].run_jobs = true` haar.
+
+## Cron-taken naar jobs
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+De job ontvangt `{ "scheduledAt": "…" }` en werkt in het voorbeeld elke open poll bij
+waarvan `cierra_el` eerder is. Jobs draaien in UTC, alleen zolang de plugin aan staat, en alleen op
+instanties met `[plugins].run_jobs = true`. Een run die gemist is terwijl de server uit lag, wordt
+niet ingehaald.
+
+## Adminwidgets
+
+Een Strapi-adminwidget is een React-component; een Verdin-widget is een custom element in het
+`admin/`-script van de plugin, gedeclareerd in het manifest:
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+Het element krijgt een `context` met `fetch`. De widget van het voorbeeld roept de eigen route
+`GET /api/plugins/tienda/polls` van de plugin aan. Requests naar de content-API (pluginroutes
+inbegrepen) gaan zonder de sessie van de beheerder, dus een route die een widget gebruikt, moet
+geschikt zijn voor het publiek, of een API-token accepteren. Injection zones, eigen adminpagina's
+en React-extensies hebben geen equivalent. Zie
+[Uitbreidingspunten van het beheerpaneel](/nl/extending/plugin-reference/#uitbreidingspunten-van-het-beheerpaneel).
+
+## Eigen formulieren naar Formulieren
+
+Een suggestie- of contactformulier in Strapi is meestal een eigen endpoint (of een contenttype
+met een openbaar recht `create`) plus code die iemand e-mailt. Port het niet: de ingebouwde
+functie [Formulieren](/nl/guides/frontend/forms/) doet dat allemaal zonder code. Redacteuren
+definiëren de velden in het beheerpaneel, de site post naar `POST /api/_forms/{slug}`, en
+inzendingen worden gevalideerd, gemaild naar de **Notify**-adressen en als CSV geëxporteerd.
+Formulieren hebben ook een spamval en een rate limit per bezoeker (10 inzendingen per minuut), wat
+een pluginroute niet kan doen omdat ze het adres van de client niet ziet.
+
+## Policies en middlewares
+
+Verdin heeft geen haak in de HTTP-requestpijplijn. Wat het in plaats daarvan biedt:
+
+| Strapi | Verdin |
+| --- | --- |
+| Policies in de stijl van `is-authenticated` op REST-routes | Openbare toegang, rechten van API-tokens en eindgebruikersrollen. Zie [Rechten](/nl/reference/permissions/). Fijnere regels (een eindgebruiker die alleen zijn eigen items bewerkt) hebben een pluginroute nodig. |
+| Een policy op een eigen route | Controleer `actor` in de pluginroute. |
+| Een rate-limit-middleware | `[api].public_rate_limit`, `[api].token_rate_limit` en `[admin].auth_rate_limit`. |
+| Een CORS- of security-headers-middleware | `[api].cors_origins`; andere response-headers bij de reverse proxy. |
+| Een middleware die requests of responses van kernroutes herschrijft | Niet ondersteund. Gebruik een pluginroute voor het nieuwe gedrag, of een reverse proxy. |
+| Een policy die sommige schrijfacties weigert | Een before-hook die `{ error }` antwoordt, zonder de aanroeper te kennen. |
+
+## Limieten om rekening mee te houden
+
+- **Geen clientadres en weinig headers** in pluginroutes (zie hierboven).
+- **Schrijfacties door plugins slaan de before-hooks van elke plugin over**, dus regels in
+  before-hooks gelden er niet voor.
+- **After-hooks die door de eigen schrijfacties van een plugin worden afgevuurd, draaien nadat haar
+  aanroep terugkeert**, niet binnen de schrijfactie, en hooks die schrijven nesten hoogstens 4
+  niveaus diep (zie
+  [Schrijfacties door plugins](/nl/extending/plugin-reference/#schrijfacties-door-plugins)). Doe
+  vervolgwerk dat vóór het antwoord moet gebeuren in de code die schrijft, nadat
+  `verdin_content` terugkeert.
+- **Eén aanroep tegelijk per plugin**: een trage route vertraagt de hooks van die plugin. Houd
+  aanroepen kort, en let op `verdin_plugin_call_duration_seconds` in de
+  [metrics](/nl/deploy/monitoring/).
+- **Routes zijn openbaar** en moeten `actor` controleren.
+- **Verdin 0.11 of later** voor de opstartfunctie en `verdin_public_permissions`: een
+  module die een hostfunctie importeert die de server mist, wordt helemaal niet geladen.
+
+## Checklist
+
+<Steps>
+
+1. Importeer het project met `verdin import strapi` en inventariseer dan de code in `src/`: routes,
+   controllers, services, lifecycles, policies, middlewares, `bootstrap`, cron-taken en
+   admin-extensies.
+2. Laat vallen wat Verdin ingebouwd doet: formulieren, met de hand ingestelde openbare rechten,
+   rate limits, CORS, webhooks, gepland publiceren ([Releases](/nl/guides/content/releases/)).
+3. Schrijf met de rest één plugin, volgens het voorbeeld: hooks, routes, een job, een
+   opstartfunctie. Geef haar alleen de capabilities die ze nodig heeft.
+4. Controleer dat hooks die content schrijven niet op nesting dieper dan 4 niveaus steunen.
+5. Bouw haar, installeer haar onder `plugins/`, zet haar aan in **Instellingen → Plugins** en lees
+   daar haar log.
+6. Werk de frontend bij: URL's van pluginroutes (`/api/plugins/<name>/…`), fingerprints of
+   inloggen van eindgebruikers waar de code op het adres van de client steunde, en de
+   [andere wijzigingen](/nl/migrate/from-strapi/#wijzigingen-in-de-frontend) van een migratie.
+
+</Steps>

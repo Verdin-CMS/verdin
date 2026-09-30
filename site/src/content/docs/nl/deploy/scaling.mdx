@@ -1,6 +1,6 @@
 ---
 title: Meerdere instanties draaien
-description: Draai meerdere Verdin-instanties van één project achter een load balancer — wat ze via de database delen, wat per instantie blijft, en de instellingen die je moet aanpassen.
+description: Draai meerdere Verdin-instanties van één project achter een load balancer — wat ze via de database delen, de gedeelde eventbus, wat per instantie blijft, en de instellingen die je moet aanpassen.
 sidebar:
   order: 8
   label: Meerdere instanties
@@ -13,7 +13,7 @@ achter een load balancer draaien voor beschikbaarheid of belasting. Deze pagina 
 instanties delen, wat elke instantie voor zichzelf houdt, en welke instellingen ertoe doen.
 
 <Diagram
-  caption="Instanties delen de database en de mediaopslag; caches, rate limits en eventstreams blijven in elke instantie."
+  caption="Instanties delen de database en de mediaopslag; met de eventbus aan bereiken realtime events, presence, cache-invalidatie en zoekupdates elke instantie via de database."
   code={`flowchart LR
   LB[Load balancer] --> A[Instantie 1]
   LB --> B[Instantie 2]
@@ -40,6 +40,9 @@ instanties delen, wat elke instantie voor zichzelf houdt, en welke instellingen 
   mount voor de lokale provider hetzelfde volume op elke instantie.
 - **Healthchecks.** Richt de load balancer op `GET /_ready`, dat `503` antwoordt als de database
   niet bereikbaar is. `GET /_health` zegt alleen dat het proces draait; gebruik het voor liveness.
+- **De gedeelde eventbus.** Zet `[cluster].bus = "database"` op elke instantie, zodat realtime
+  events, presence, cache-invalidatie en zoekupdates ze allemaal bereiken (zie
+  [Gedeelde eventbus](#gedeelde-eventbus)).
 - **Pluginjobs op één instantie.** Stel `[plugins].run_jobs = false` in op alle instanties op één
   na; anders draait elke instantie de geplande jobs.
 - **Metrics per instantie.** Met `[metrics].enabled = true` serveert elke instantie haar eigen
@@ -71,24 +74,74 @@ meer nodig heeft. Zie [Schemamigraties](/nl/concepts/schema-migrations/).
 | Challenges van toegangssleutels | Gebruikte challenges worden in de database vastgelegd, dus elke challenge wordt over alle instanties heen één keer beantwoord. |
 | Opschonen van de auditlog | Draait op elke instantie; oude rijen twee keer verwijderen kan geen kwaad. |
 | Key-value-store van plugins | In de database. |
+| Realtime events, presence en soft locks | Met de [eventbus](#gedeelde-eventbus): een client die met een willekeurige instantie verbonden is, ontvangt de events van alle instanties en ziet elke beheerder op een item. |
+| De cache voor anonieme responses | Met de eventbus leegt een schrijfactie op een willekeurige instantie de cache van elke instantie. |
+| De zoekindex | Met de eventbus leest elke instantie de items die de andere wijzigen opnieuw in en indexeert ze. |
+| Getransformeerde afbeeldingen | Met de eventbus verdwijnt een gewijzigd of verwijderd bestand uit de transformatiecache van elke instantie. |
 
 ## Wat op elke instantie blijft
 
 - **Rate limits** worden door elke instantie apart geteld. Met `n` instanties kan een client tot
   `n` keer `[api].public_rate_limit` requests per minuut doen. Dwing een globale limiet af op de
   load balancer als je die nodig hebt.
-- **De cache voor anonieme responses** (`[api].cache_ttl_secs`). Een schrijfactie leegt de cache
-  van de instantie die hem deed; de andere kunnen de vorige response serveren totdat hun regel
-  verloopt. Houd de TTL op een paar seconden, of `0`.
-- **Realtime-events en presence** zijn die van de instantie waarmee een client verbonden is.
-  Gebruik sticky sessions voor de eventstreams (zie [Realtime](/nl/guides/frontend/realtime/)).
-- **De zoekindex** (`[search]`) staat op de schijf van de instantie en volgt alleen de
-  schrijfacties die die instantie doet. Schakel hem in op één instantie en routeer
-  `_q`-requests daarheen, of accepteer dat de andere achterlopen totdat ze met een lege indexmap
-  herstarten.
+- **Zonder de eventbus** (`[cluster].bus = "none"`, de standaard) zijn realtime-events en presence
+  die van de instantie waarmee een client verbonden is (gebruik sticky sessions voor de
+  eventstreams, zie [Realtime](/nl/guides/frontend/realtime/)), leegt een schrijfactie alleen de
+  responsecache van haar eigen instantie (houd `[api].cache_ttl_secs` op een paar seconden, of
+  `0`), en volgt de zoekindex alleen de schrijfacties van zijn instantie.
+- **De zoekindex** (`[search]`) staat op de schijf van elke instantie. Met de eventbus indexeren
+  instanties elkaars wijzigingen terwijl ze gebeuren; een instantie die met een lege indexmap start,
+  bouwt hem op uit de database. Wijzigingen die zijn gemaakt terwijl een instantie uit lag,
+  bereiken zijn index wanneer de index opnieuw wordt opgebouwd: verwijder de map voordat je hem
+  start, of bouw na een deploy opnieuw op.
 - **Afbeeldingstransformaties** (`[upload.transforms]`) worden per instantie gecachet onder
   `cache_dir`. Zet een CDN vóór `/uploads` om ze te delen.
 - **Geplande pluginjobs**: zie `run_jobs` hierboven.
+
+## Gedeelde eventbus
+
+Sommige dingen gebeuren in het geheugen: de realtime-streams, wie welk item bewerkt, de cache voor
+anonieme responses, de zoekindex. De eventbus brengt ze van de instantie waar ze gebeuren naar de
+andere.
+
+```toml title="verdin.toml"
+[cluster]
+bus = "database"
+```
+
+Of `VERDIN_CLUSTER__BUS=database`, op elke instantie. De bus gebruikt de database van het project,
+dus er is geen andere service nodig:
+
+- **PostgreSQL**: een instantie schrijft elk event naar de tabel `vd_cluster_events` en wekt de
+  andere met `NOTIFY`. Elke instantie houdt één van haar poolverbindingen aan voor `LISTEN`. De
+  notificatie noemt alleen de afzender, zodat events van elke grootte onder de limiet van 8000 bytes
+  van PostgreSQL blijven. Als de verbinding wegvalt, verbindt de instantie opnieuw en leest de tabel
+  om bij te komen. Ze leest de tabel ook elke 30 seconden voor het geval een notificatie verloren
+  gaat.
+- **MySQL, MariaDB en SQLite**: elke instantie leest elke `poll_interval_ms` (standaard 1000) nieuwe
+  rijen van `vd_cluster_events`. De query gebruikt de primaire sleutel, dus een lege tabel lezen
+  kost weinig. Verlaag het interval voor snellere updates; de wijziging van één instantie bereikt de
+  andere binnen het interval.
+
+Wat er reist: contentschrijfacties (naar de realtime-streams, de responsecache en de zoekindex, die
+het gewijzigde item opnieuw leest), mediawijzigingen (streams, cache, transformatiecache),
+presence-heartbeats en meldingen over opmerkingen en taken voor het beheerpaneel. Elke instantie
+negeert haar eigen events. Webhooks, CDN-purges, geschiedenis, auditlogs en plugin-hooks reizen
+niet: de instantie die de wijziging deed, draait ze één keer.
+
+Rijen worden na 10 minuten verwijderd. Een nieuwe instantie begint met het volgende event, niet met
+de eerdere. Een instantie die het niet bijhoudt, of haar databaseverbinding verliest, laat events
+vallen in plaats van een schrijfactie vast te houden. De metric `verdin_cluster_events_total` telt
+verzonden, ontvangen en vervallen events (zie [Monitoring](/nl/deploy/monitoring/#prometheus-metrics)).
+
+Elke instantie noemt zichzelf op de bus met een willekeurig id bij elke start, of met
+`[cluster].instance_id` als je dat instelt (bijvoorbeeld een podnaam). Het id onderscheidt alleen
+instanties van elkaar; er hangt niets anders van af.
+
+Laat `bus` bij één instantie op `none`: events blijven in het geheugen en er wordt niets geschreven.
+
+Backends voor Redis en NATS zijn er nog niet. De databasebus dekt elke ondersteunde database zonder
+dat er iets anders hoeft te draaien.
 
 ## Instellingen
 
@@ -102,8 +155,14 @@ sync_interval_secs = 10
 run_jobs = true
 
 [api]
-# Short-lived when each instance keeps its own cache.
-cache_ttl_secs = 5
+# Emptied on every instance by the event bus; keep it short without it.
+cache_ttl_secs = 60
+
+[cluster]
+# Share realtime events, presence, cache invalidation and search updates.
+bus = "database"
+# MySQL, MariaDB and SQLite: how often to read other instances' events.
+poll_interval_ms = 1000
 ```
 
 Stel `run_jobs` per instantie in met `VERDIN_PLUGINS__RUN_JOBS=false`.
@@ -112,4 +171,5 @@ Stel `run_jobs` per instantie in met `VERDIN_PLUGINS__RUN_JOBS=false`.
 
 Elke instantie opent tot `[database].pool_max` verbindingen (standaard 10). Houd
 `instances × pool_max` onder de limiet van de server, met ruimte voor migraties, back-ups en
-onderhoud. De standaardlimiet van PostgreSQL is 100 verbindingen.
+onderhoud. De standaardlimiet van PostgreSQL is 100 verbindingen. Op PostgreSQL houdt de eventbus één van de
+verbindingen van elke instantie aan voor `LISTEN`.
