@@ -21,6 +21,7 @@ in der [Plugin-Referenz](/de/extending/plugin-reference/).
 | **Hooks auf Schreibvorgängen** | Bevor ein Eintrag angelegt, aktualisiert, veröffentlicht, zurückgezogen, gelöscht oder sein Entwurf verworfen wird, die Daten ändern oder den Schreibvorgang mit einer Meldung ablehnen. Nach dem Schreiben darauf reagieren (protokollieren, benachrichtigen, synchronisieren). |
 | **Routen** | HTTP-Endpunkte unter `/api/plugins/<name>/…` bereitstellen: einen Webhook-Empfänger, einen berechneten Feed, einen Proxy zu einem anderen Dienst. |
 | **Geplante Jobs** | Eine Funktion nach Cron-Zeitplan (UTC) ausführen. |
+| **Startfunktion** | Eine Funktion ausführen, wenn das Plugin startet, eingeschaltet wird oder sich seine Einstellungen ändern: Seeding, die öffentliche Rolle einrichten (Strapis `bootstrap`). |
 | **GraphQL-Felder** | Felder `name(args: JSON): JSON` zu `Query` oder `Mutation` hinzufügen. |
 | **Dashboard-Widgets** | Widget-Typen zum Admin-Dashboard hinzufügen, als Web Components. |
 | **Benutzerdefinierte Felder** | Attributen einen eigenen Editor im Admin-Panel geben (einen Farbwähler, eine Karte), als Web Components; der Wert wird als regulärer Attributtyp gespeichert. |
@@ -49,6 +50,7 @@ prüft jeden Aufruf gegen die **Fähigkeiten**, die das Manifest deklariert:
 | `write` | Einträge der aufgeführten Typen anlegen, aktualisieren, veröffentlichen, zurückziehen und löschen (und lesen). |
 | `http` | HTTP-Anfragen an die aufgeführten Hosts (`api.example.com`, `*.example.com`). |
 | `kv` | Einen eigenen Key-Value-Speicher in der Datenbank von Verdin. |
+| `public_permissions` | Die Berechtigungen der öffentlichen Rolle für die Content-API lesen und ersetzen. |
 
 <Diagram
   caption="Aufrufe in ein Plugin und was seine Host-Aufrufe erreichen"

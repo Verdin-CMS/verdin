@@ -8,7 +8,8 @@ sidebar:
 Diese Seite betreibt ein Verdin-Projekt auf Kubernetes. Das Haupt-Setup ist zustandslos:
 PostgreSQL (oder MySQL/MariaDB) außerhalb der Pods, Medien auf S3-kompatiblem Speicher und so
 viele Replicas, wie du brauchst. Danach folgt ein Setup mit einer Replica und einem Volume für
-SQLite.
+SQLite. Das [Helm-Chart](/de/deploy/helm/) verpackt diese Manifeste mit Werten für jede
+Einstellung.
 
 Die Manifeste nutzen stabile APIs (`apps/v1`, `v1`) und wurden am 29.09.2026 mit
 `kubeconform -strict` gegen die Kubernetes-Schemas validiert, aber nicht auf einem echten
@@ -40,7 +41,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -160,9 +164,10 @@ Hinweise zum Manifest:
   akzeptiere, dass Jobs auf jeder Replica laufen. Webhooks, geplante Releases und der tägliche
   Digest werden in der Datenbank beansprucht und laufen einmal. Siehe
   [Mehrere Instanzen betreiben](/de/deploy/scaling/).
-- **Echtzeit.** Event-Streams (`/api/_events`) bleiben auf dem Pod, mit dem sie verbunden sind.
-  Nutze Session Affinity am Ingress, wenn du [Echtzeit](/de/guides/frontend/realtime/)
-  verwendest.
+- **Echtzeit, Präsenz, Caches und Suche.** `[cluster].bus = "database"` bringt jedem Pod die
+  Events der anderen (siehe [den gemeinsamen Event-Bus](/de/deploy/scaling/#gemeinsamer-event-bus)).
+  Ohne ihn bleiben Event-Streams (`/api/_events`) auf dem Pod, mit dem sie verbunden sind: Nutze
+  Session Affinity am Ingress, wenn du [Echtzeit](/de/guides/frontend/realtime/) verwendest.
 
 ## Eine Replica mit SQLite
 

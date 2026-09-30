@@ -130,7 +130,10 @@ sie den anderen an, blockiert aber nicht deren Speichern. Präsenz lesen erforde
 
 ## Mehrere Instanzen
 
-Events und Präsenz sind die der Instanz, mit der ein Client verbunden ist. Hinter einem
-Load Balancer leite `/api/_events` und `/admin/api/events` mit Sticky Sessions weiter, oder
-lass Echtzeit-Clients gegen eine einzige Instanz laufen. Siehe
-[Skalierung](/de/deploy/scaling/).
+Mit dem gemeinsamen Event-Bus (`[cluster].bus = "database"`) tragen die Streams jeder Instanz
+die Events aller Instanzen, und Präsenz und weiche Sperren sind auf jeder Instanz dieselben.
+Events einer anderen Instanz kommen innerhalb von `[cluster].poll_interval_ms` an (MySQL,
+MariaDB, SQLite) oder sofort (PostgreSQL, `LISTEN/NOTIFY`). Ohne den Bus sind Events und
+Präsenz die der Instanz, mit der ein Client verbunden ist: Leite `/api/_events` und
+`/admin/api/events` mit Sticky Sessions weiter, oder lass Echtzeit-Clients gegen eine einzige
+Instanz laufen. Siehe [Skalierung](/de/deploy/scaling/#gemeinsamer-event-bus).

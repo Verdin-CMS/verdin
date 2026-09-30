@@ -233,8 +233,10 @@ Eine exakte Dezimalzahl.
 Werte werden auf `scale` Ziffern gerundet (kaufmännisch, weg von null, wie es die Datenbanken
 tun) und abgelehnt, wenn sie vor dem Punkt mehr als `precision - scale` Ziffern haben.
 Schreibvorgänge akzeptieren Zahlen und numerische Strings. Gespeichert als
-`numeric(precision,scale)` (auf SQLite `text`, damit nichts gerundet wird). API: eine Zahl
-oder mit [`[api].decimal_as_string`](/de/reference/configuration/) ein exakter String.
+`numeric(precision,scale)` (auf SQLite `text`, damit nichts gerundet wird). API: eine Zahl, wie Strapi sie zurückgibt.
+Ganze Werte sind Ganzzahlen (`25`, nicht `25.0`), andere der kürzeste Float, der sich gleich
+zurücklesen lässt (`12.5`). Mit [`[api].decimal_as_string`](/de/reference/configuration/) gibt
+die API stattdessen einen exakten String zurück.
 
 ## Datumswerte und Booleans
 

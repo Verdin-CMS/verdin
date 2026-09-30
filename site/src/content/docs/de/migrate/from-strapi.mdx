@@ -121,8 +121,8 @@ Als Warnungen gemeldet:
 Gar nicht importiert: Admin-Benutzer und Admin-Rollen, API-Tokens, Transfer-Tokens, Webhooks,
 Releases, Phasen von Review-Workflows, Inhaltsverlauf und Audit-Logs sowie die Einstellungen von
 Strapi-Plugins. Für deinen Strapi-Code – Controller, Services, Routen, Policies, Middlewares,
-Lifecycle-Hooks, Cron-Tasks und Anpassungen des Admin-Panels – gibt es in Verdin nichts, in das
-er sich umwandeln ließe; siehe [Eigenen Code neu bauen](#eigenen-code-neu-bauen).
+Lifecycle-Hooks, Cron-Tasks und Anpassungen des Admin-Panels – wird nicht umgewandelt: Baue
+ihn neu, wie unter [Eigenen Code neu bauen](#eigenen-code-neu-bauen) beschrieben.
 
 <Aside type="note">
 Benutzerdefinierte Felder behalten ihren `customField`-Namen, etwa
@@ -207,11 +207,17 @@ Für typisierten Zugriff erzeugst du TypeScript-Typen mit `verdin types` und nut
 
 ## Eigenen Code neu bauen
 
+Code in `src/` zieht in ein [WebAssembly-Plugin](/de/extending/plugins/) um. [Eigenen Code
+portieren](/de/migrate/porting-custom-code/) führt anhand eines echten Projekts durch
+Lifecycles, Routen, Cron-Task und `bootstrap`, mit einem durchgespielten Beispiel-Plugin.
+
 | Strapi | Verdin |
 | --- | --- |
-| Lifecycle-Hooks, Middlewares des Document Service | Plugin-Hooks (`beforeCreate`, `afterUpdate`…) in einem [WebAssembly-Plugin](/de/extending/plugins/) |
+| Lifecycle-Hooks, Middlewares des Document Service | Plugin-Hooks (`beforeCreate`, `afterUpdate`…) |
 | Eigene Routen und Controller | Plugin-Routen unter `/api/plugins/<name>/` |
+| `bootstrap()` in `src/index.js` (Seeding, öffentliche Berechtigungen setzen) | Die Startfunktion des Plugins (`[startup]`), mit der Fähigkeit `public_permissions` für die öffentliche Rolle |
 | Cron-Tasks | Plugin-Jobs (`[[jobs]]`) |
+| Ein eigener Endpunkt, der Formulareinsendungen speichert | Eingebaute [Formulare](/de/guides/frontend/forms/) |
 | Benutzerdefinierte Felder | Benutzerdefinierte Felder aus Plugins |
 | Admin-Widgets | Plugin-Widgets oder die eingebauten Dashboard-Widgets |
 | Logo, Farben und Texte des Admin-Panels | `[admin.branding]` in `verdin.toml` |

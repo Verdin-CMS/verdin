@@ -94,6 +94,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   Skript aus auf, nicht aus den Seiten einer anderen Website.
 - Erfolgreiche Änderungen landen im [Audit-Log](/de/guides/content/audit-logs/).
 
+## Listen
+
+Einstellungslisten werden mit `page` (ab 1) und `pageSize` paginiert. Sie antworten mit den
+Zeilen der Seite und den Zählungen:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Liste | Standard-Seitengröße (Maximum) | Reihenfolge | Weitere Parameter |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Älteste zuerst | |
+| `GET /webhooks` | 25 (100) | Älteste zuerst | `meta.events` listet die Events, die ein Webhook abonnieren kann |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Neueste zuerst | |
+| `GET /releases` | 25 (100) | Neueste zuerst | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | Nach Quelle | `search` trifft auf die Quelle oder das Ziel |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | Nach Name | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Neueste zuerst | |
+| `GET /deploy/targets` | 25 (100) | Älteste zuerst | |
+| `GET /deploy/deployments` | 25 (100) | Neueste zuerst | `targetId`; `limit` ist ein veralteter Alias von `pageSize` |
+| `GET /end-users` | 25 (100) | Neueste zuerst | `search` trifft auf den Benutzernamen oder die E-Mail |
+| `GET /audit-logs` | 50 (200) | Neueste zuerst | Siehe [Audit-Logs](/de/guides/content/audit-logs/) |
+
+Ein größeres `pageSize` wird auf das Maximum gesenkt. Um eine ganze Liste zu lesen, fordere
+Seiten an, bis `page` `pageCount` erreicht:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Content-Routen paginieren wie die REST-API, mit `pagination[page]` und
+`pagination[pageSize]`.
+
 ## Routengruppen
 
 Die Pfade sind relativ zu `/admin/api`. Die Router liegen in

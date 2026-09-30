@@ -174,7 +174,68 @@ Was dich erwartet:
   teilen sich alle Sprachen.
 - Webhook-Payloads und Versionen im Verlauf halten die Sprache fest.
 
-Anders als bei Strapi hat die Content-API keine Route `/api/i18n/locales`. Die Sprachen listet
-die Admin-API unter `GET /admin/api/i18n/locales`, verwaltet werden sie mit `POST`,
-`PUT /admin/api/i18n/locales/{code}` und `DELETE /admin/api/i18n/locales/{code}`
-(`locales.manage`).
+### Andere Sprachversionen
+
+Lade `localizations` per Populate, um die anderen Sprachversionen eines Dokuments gleich mit
+zu bekommen, wie in Strapi v5. Sie werden nur zurückgegeben, wenn sie geladen werden, mit
+`populate=localizations` oder `populate=*`:
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- Die Versionen haben denselben Status wie das Dokument: standardmäßig veröffentlichte
+  Versionen, mit `status=draft` Entwürfe. Eine Sprache, die nur einen Entwurf hat, fehlt in
+  einer Lesung veröffentlichter Versionen.
+- `localizations` nimmt die Optionen einer geladenen Relation: `fields`, `filters`, `sort`,
+  `populate` und `count`. Zum Beispiel `populate[localizations][fields][0]=title`. Jede Version
+  enthält immer `locale`, und ihre eigenen Relationen werden in ihrer Sprache gelesen.
+- GraphQL hat auf lokalisierten Typen ein Feld `localizations`, mit `filters` und `sort`.
+- Nicht lokalisierte Typen haben kein `localizations`, und es zu laden ergibt `400`.
+- Die Admin-API lässt `localizations` weg.
+
+### Die Sprachen auflisten
+
+`GET /api/i18n/locales` listet die Sprachen in Strapis Form, als einfaches Array (ohne
+`data`-Hülle):
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+Wie Strapis `listLocales` ist die Route für die Öffentlichkeit gesperrt, bis du sie erlaubst.
+Vergib `find` auf der Zeile **Sprachen** (`plugin::i18n.locale`) unter **Einstellungen →
+Öffentlicher Zugriff**, auf einer Endbenutzer-Rolle oder auf einem benutzerdefinierten
+API-Token. Tokens mit Vollzugriff und schreibgeschützte Tokens können sie bereits lesen.
+`documentId` wird aus dem Sprachcode abgeleitet und bleibt deshalb über Neustarts und Exporte
+hinweg gleich. Ein Strapi-Import bringt die Berechtigung `listLocales` mit. Der typisierte
+Client liest die Liste mit `verdin.locales()`.
+
+Die Sprachen werden in der Admin-API verwaltet: aufgelistet mit `GET /admin/api/i18n/locales`
+und geändert mit `POST`, `PUT /admin/api/i18n/locales/{code}` und
+`DELETE /admin/api/i18n/locales/{code}` (`locales.manage`).

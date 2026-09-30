@@ -1,6 +1,6 @@
 ---
 title: Mehrere Instanzen betreiben
-description: Mehrere Verdin-Instanzen eines Projekts hinter einem Load Balancer betreiben – was sie über die Datenbank teilen, was pro Instanz bleibt und welche Einstellungen du ändern musst.
+description: Mehrere Verdin-Instanzen eines Projekts hinter einem Load Balancer betreiben – was sie über die Datenbank teilen, der gemeinsame Event-Bus, was pro Instanz bleibt und welche Einstellungen du ändern musst.
 sidebar:
   order: 8
   label: Mehrere Instanzen
@@ -13,7 +13,7 @@ Projekts hinter einem Load Balancer betreiben, für Verfügbarkeit oder Last. Di
 was die Instanzen teilen, was jede für sich behält und welche Einstellungen wichtig sind.
 
 <Diagram
-  caption="Instanzen teilen Datenbank und Medienspeicher; Caches, Rate Limits und Event-Streams bleiben in jeder Instanz."
+  caption="Instanzen teilen Datenbank und Medienspeicher; mit aktivem Event-Bus erreichen Echtzeit-Events, Präsenz, Cache-Invalidierung und Suchaktualisierungen über die Datenbank jede Instanz."
   code={`flowchart LR
   LB[Load Balancer] --> A[Instanz 1]
   LB --> B[Instanz 2]
@@ -42,6 +42,9 @@ was die Instanzen teilen, was jede für sich behält und welche Einstellungen wi
 - **Health Checks.** Richte den Load Balancer auf `GET /_ready`, das mit `503` antwortet, wenn
   die Datenbank nicht erreichbar ist. `GET /_health` sagt nur, dass der Prozess läuft; nimm es
   für die Liveness.
+- **Der gemeinsame Event-Bus.** Setze `[cluster].bus = "database"` auf jeder Instanz, damit
+  Echtzeit-Events, Präsenz, Cache-Invalidierung und Suchaktualisierungen alle erreichen (siehe
+  [Gemeinsamer Event-Bus](#gemeinsamer-event-bus)).
 - **Plugin-Jobs auf einer Instanz.** Setze `[plugins].run_jobs = false` auf jeder Instanz bis
   auf eine; sonst führt jede Instanz die geplanten Jobs aus.
 - **Metriken pro Instanz.** Mit `[metrics].enabled = true` liefert jede Instanz ihr eigenes
@@ -74,24 +77,77 @@ Instanz des alten Schemas die Daten mehr braucht. Siehe
 | Passkey-Challenges | Verbrauchte Challenges werden in der Datenbank festgehalten, jede wird also instanzübergreifend nur einmal beantwortet. |
 | Bereinigung des Audit-Logs | Läuft auf jeder Instanz; alte Zeilen doppelt zu löschen schadet nicht. |
 | Key-Value-Speicher der Plugins | In der Datenbank. |
+| Echtzeit-Events, Präsenz und weiche Sperren | Mit dem [Event-Bus](#gemeinsamer-event-bus): Ein Client, der mit irgendeiner Instanz verbunden ist, bekommt die Events aller Instanzen und sieht jeden Admin in einem Eintrag. |
+| Der Antwort-Cache für anonyme Anfragen | Mit dem Event-Bus leert ein Schreibvorgang auf irgendeiner Instanz den Cache jeder Instanz. |
+| Der Suchindex | Mit dem Event-Bus liest und indexiert jede Instanz die Einträge neu, die die anderen ändern. |
+| Transformierte Bilder | Mit dem Event-Bus verschwindet eine geänderte oder gelöschte Datei aus dem Transform-Cache jeder Instanz. |
 
 ## Was auf jeder Instanz bleibt
 
 - **Rate Limits** zählt jede Instanz für sich. Mit `n` Instanzen kann ein Client bis zum
   `n`-Fachen von `[api].public_rate_limit` Anfragen pro Minute stellen. Setze ein globales
   Limit am Load Balancer durch, wenn du eines brauchst.
-- **Der Antwort-Cache für anonyme Anfragen** (`[api].cache_ttl_secs`). Ein Schreibvorgang leert
-  den Cache der Instanz, die ihn ausgeführt hat; die anderen können die vorherige Antwort
-  ausliefern, bis ihr Eintrag abläuft. Halte die TTL bei wenigen Sekunden oder bei `0`.
-- **Echtzeit-Events und Präsenz** sind die der Instanz, mit der ein Client verbunden ist. Nutze
-  Sticky Sessions für die Event-Streams (siehe [Echtzeit](/de/guides/frontend/realtime/)).
-- **Der Suchindex** (`[search]`) liegt auf der Festplatte der Instanz und folgt nur den
-  Schreibvorgängen dieser Instanz. Aktiviere ihn auf einer Instanz und leite `_q`-Anfragen
-  dorthin, oder akzeptiere, dass die anderen zurückfallen, bis sie mit leerem Indexverzeichnis
-  neu starten.
+- **Ohne den Event-Bus** (`[cluster].bus = "none"`, der Standard) sind Echtzeit-Events und
+  Präsenz die der Instanz, mit der ein Client verbunden ist (nutze Sticky Sessions für die
+  Event-Streams), ein Schreibvorgang leert nur den Antwort-Cache seiner eigenen Instanz (halte
+  `[api].cache_ttl_secs` bei wenigen Sekunden oder bei `0`), und der Suchindex folgt nur den
+  Schreibvorgängen seiner Instanz.
+- **Der Suchindex** (`[search]`) liegt auf der Festplatte jeder Instanz. Mit dem Event-Bus
+  indexieren die Instanzen die Änderungen der anderen, sobald sie passieren; eine Instanz, die
+  mit leerem Indexverzeichnis startet, baut ihn aus der Datenbank auf. Änderungen, die passiert
+  sind, während eine Instanz aus war, erreichen ihren Index, wenn er neu aufgebaut wird: Lösche
+  das Verzeichnis vor dem Start oder baue nach einem Deploy neu auf.
 - **Bildtransformationen** (`[upload.transforms]`) werden pro Instanz unter `cache_dir`
   gecacht. Stell ein CDN vor `/uploads`, um sie zu teilen.
 - **Geplante Plugin-Jobs**: siehe `run_jobs` oben.
+
+## Gemeinsamer Event-Bus
+
+Manches passiert im Arbeitsspeicher: die Echtzeit-Streams, wer welchen Eintrag bearbeitet, der
+Antwort-Cache für anonyme Anfragen, der Suchindex. Der Event-Bus trägt es von der Instanz, auf
+der es passiert, zu den anderen.
+
+```toml title="verdin.toml"
+[cluster]
+bus = "database"
+```
+
+Oder `VERDIN_CLUSTER__BUS=database`, auf jeder Instanz. Der Bus nutzt die Datenbank des
+Projekts und braucht deshalb keinen weiteren Dienst:
+
+- **PostgreSQL**: Eine Instanz schreibt jedes Event in die Tabelle `vd_cluster_events` und
+  weckt die anderen mit `NOTIFY`. Jede Instanz behält eine ihrer Pool-Verbindungen für
+  `LISTEN`. Die Benachrichtigung nennt nur den Absender, sodass Events jeder Größe unter dem
+  Limit von 8000 Byte in PostgreSQL bleiben. Bricht die Verbindung ab, verbindet sich die
+  Instanz neu und liest die Tabelle, um aufzuholen. Sie liest die Tabelle außerdem alle 30
+  Sekunden, falls eine Benachrichtigung verloren geht.
+- **MySQL, MariaDB und SQLite**: Jede Instanz liest neue Zeilen von `vd_cluster_events` alle
+  `poll_interval_ms` (standardmäßig 1000). Die Abfrage nutzt den Primärschlüssel, eine leere
+  Tabelle zu lesen kostet also wenig. Senke das Intervall für schnellere Aktualisierungen; die
+  Änderung einer Instanz erreicht die anderen innerhalb des Intervalls.
+
+Was übertragen wird: Content-Schreibvorgänge (an die Echtzeit-Streams, den Antwort-Cache und
+den Suchindex, der den geänderten Eintrag erneut liest), Medienänderungen (Streams, Cache,
+Transform-Cache), Präsenz-Heartbeats sowie Kommentar- und Aufgabenhinweise für den Admin. Jede
+Instanz ignoriert ihre eigenen Events. Webhooks, CDN-Purges, Verlauf, Audit-Logs und
+Plugin-Hooks werden nicht übertragen: Die Instanz, die die Änderung gemacht hat, führt sie
+einmal aus.
+
+Zeilen werden nach 10 Minuten gelöscht. Eine neue Instanz beginnt mit dem nächsten Event, nicht
+mit den früheren. Eine Instanz, die nicht mithalten kann oder ihre Datenbankverbindung
+verliert, verwirft Events, statt einen Schreibvorgang aufzuhalten. Die Metrik
+`verdin_cluster_events_total` zählt gesendete, empfangene und verworfene Events (siehe
+[Monitoring](/de/deploy/monitoring/#prometheus-metriken)).
+
+Jede Instanz nennt sich auf dem Bus bei jedem Start mit einer zufälligen ID oder mit
+`[cluster].instance_id`, falls du sie setzt (zum Beispiel einen Pod-Namen). Die ID
+unterscheidet die Instanzen nur; nichts anderes hängt von ihr ab.
+
+Lass `bus` bei einer einzigen Instanz auf `none`: Events bleiben im Arbeitsspeicher und nichts
+wird geschrieben.
+
+Redis- und NATS-Backends gibt es noch nicht. Der Datenbank-Bus deckt jede unterstützte
+Datenbank ab, ohne dass etwas anderes laufen muss.
 
 ## Einstellungen
 
@@ -105,8 +161,14 @@ sync_interval_secs = 10
 run_jobs = true
 
 [api]
-# Short-lived when each instance keeps its own cache.
-cache_ttl_secs = 5
+# Emptied on every instance by the event bus; keep it short without it.
+cache_ttl_secs = 60
+
+[cluster]
+# Share realtime events, presence, cache invalidation and search updates.
+bus = "database"
+# MySQL, MariaDB and SQLite: how often to read other instances' events.
+poll_interval_ms = 1000
 ```
 
 Setze `run_jobs` pro Instanz mit `VERDIN_PLUGINS__RUN_JOBS=false`.
@@ -115,4 +177,5 @@ Setze `run_jobs` pro Instanz mit `VERDIN_PLUGINS__RUN_JOBS=false`.
 
 Jede Instanz öffnet bis zu `[database].pool_max` Verbindungen (standardmäßig 10). Halte
 `instances × pool_max` unter dem Limit des Servers, mit Luft für Migrationen, Backups und
-Wartung. Das Standardlimit von PostgreSQL liegt bei 100 Verbindungen.
+Wartung. Das Standardlimit von PostgreSQL liegt bei 100 Verbindungen. Auf PostgreSQL behält der
+Event-Bus eine der Verbindungen jeder Instanz für `LISTEN`.

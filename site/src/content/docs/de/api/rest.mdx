@@ -308,7 +308,7 @@ Relationen, Medien, Komponenten und Dynamic Zones werden nur zurückgegeben, wen
 
 | Form | Lädt |
 | --- | --- |
-| `populate=*` | Jede Relation, jedes Medienfeld, jede Komponente und Dynamic Zone, eine Ebene tief |
+| `populate=*` | Jede Relation, jedes Medienfeld, jede Komponente und Dynamic Zone, eine Ebene tief, und `localizations` auf lokalisierten Typen |
 | `populate=category,tags` oder `populate[0]=category&populate[1]=tags` | Die genannten Felder |
 | `populate[category]=true` | Das genannte Feld (`false` lässt es weg) |
 | `populate[category][fields][0]=name` | Das Feld, mit Optionen |
@@ -359,6 +359,16 @@ Beim Schreiben speichert `status=draft` den Entwurf, ohne ihn zu veröffentliche
 `locale=fr` liest und schreibt die französische Version lokalisierter Typen. Ohne den Parameter
 nutzen Anfragen die Standardsprache. Ein ungültiger oder unbekannter Code ergibt `400`. Nicht
 lokalisierte Typen ignorieren ihn. Siehe [Internationalisierung](/de/concepts/internationalization/).
+
+Auf lokalisierten Typen fügt `populate=localizations` die anderen Sprachversionen des Dokuments
+hinzu, im selben Status und jeweils mit ihrem `locale`. Es nimmt die Optionen einer geladenen
+Relation (`fields`, `filters`, `sort`, `populate`, `count`) und ist in `populate=*` enthalten.
+Nicht lokalisierte Typen haben kein `localizations`.
+
+`GET /api/i18n/locales` listet die Sprachen als einfaches Array in Strapis Form (`id`,
+`documentId`, `name`, `code`, `isDefault`, `createdAt`, `updatedAt`, `publishedAt`,
+`locale`). Es braucht die Berechtigung `find` auf `plugin::i18n.locale`. Siehe
+[Inhalte lokalisieren](/de/guides/content/localizing-content/#die-sprachen-auflisten).
 
 ## Suche
 

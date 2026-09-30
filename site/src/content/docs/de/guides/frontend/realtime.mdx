@@ -139,9 +139,11 @@ Den Stream von einer Website auf einem anderen Origin aufzurufen braucht diesen 
 
 ## Hinter einem Load Balancer
 
-Events sind die der Instanz, mit der ein Client verbunden ist. Bei mehreren Instanzen nutze
-Sticky Sessions für `/api/_events`, oder richte Echtzeit-Clients auf eine einzige Instanz. Siehe
-[Skalierung](/de/deploy/scaling/).
+Schalte bei mehreren Instanzen den gemeinsamen Event-Bus ein (`[cluster].bus = "database"`):
+Ein Client, der mit irgendeiner Instanz verbunden ist, bekommt dann die Events aller Instanzen.
+Ohne ihn sind Events die der Instanz, mit der ein Client verbunden ist; nutze Sticky Sessions
+für `/api/_events`, oder richte Echtzeit-Clients auf eine einzige Instanz. Siehe
+[Skalierung](/de/deploy/scaling/#gemeinsamer-event-bus).
 
 Das Admin-Panel nutzt einen eigenen Stream (`/admin/api/events`) für Live-Updates, Präsenz und
 weiche Sperren beim Bearbeiten; siehe die [Referenz der Echtzeit-API](/de/api/realtime/).

@@ -85,7 +85,7 @@ Ein Builder schiebt SQL-Text und `ident()`-Namen (für den Flavor gequotet) und 
 | date, time, datetime | `date`, `time(3)`, `timestamptz(3)` | `date`, `time(3)`, `datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite speichert Dezimalzahlen, Datumswerte und Uhrzeiten als Text in festem Format, damit nichts gerundet wird und die Textreihenfolge der numerischen und chronologischen Reihenfolge entspricht. Welches Attribut auf welchen Modelltyp abgebildet wird, steht unter [Attributtypen](/de/reference/attribute-types/).
+SQLite speichert Datumswerte und Uhrzeiten als Text in festem Format, damit die Textreihenfolge der chronologischen Reihenfolge entspricht. Dezimalzahlen speichert es ebenfalls als Text, damit beim Speichern nichts gerundet wird. Die Textreihenfolge ist bei Dezimalzahlen nicht die numerische Reihenfolge, deshalb wandeln Filter und Sortierungen auf einer Dezimalzahl die Spalte auf SQLite in `REAL` um. Diese Vergleiche sind auf etwa 15 signifikante Stellen genau, und die zurückgegebenen Werte sind weiterhin exakt. Welches Attribut auf welchen Modelltyp abgebildet wird, steht unter [Attributtypen](/de/reference/attribute-types/).
 
 Tabellen auf MySQL und MariaDB werden mit `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` und einer akzent- und groß-/kleinschreibungsunabhängigen Collation angelegt: `utf8mb4_0900_ai_ci` auf MySQL, `utf8mb4_uca1400_ai_ci` auf MariaDB.
 

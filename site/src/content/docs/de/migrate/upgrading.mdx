@@ -2,7 +2,7 @@
 title: Verdin aktualisieren
 description: Eine Verdin-Installation aktualisieren – die Binärdatei oder das Docker-Image, die Migrationen beim Start und die wichtigen oder inkompatiblen Änderungen jeder Minor-Version.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -119,6 +119,34 @@ länger nebeneinander laufen, als ein Rolling Deploy dauert.
 
 Wichtige und inkompatible Änderungen pro Version, die älteste zuletzt. Das
 [Changelog](/de/project/changelog/) enthält die vollständige Liste.
+
+### 0.10 → 0.11
+
+Die Migration, die beim Start läuft, fügt eine Tabelle hinzu, `vd_cluster_events`, die nur
+bei `[cluster] bus = "database"` genutzt wird.
+
+- **Dezimalzahlen**: Ganze `decimal`-Werte werden als JSON-Ganzzahlen zurückgegeben (`25`, nicht
+  `25.0`), wie Strapi es tut. Clients, die den JSON-Typ streng prüfen, könnten es bemerken;
+  `[api] decimal_as_string` ist unverändert. Auf SQLite vergleichen `sort` und
+  `$gt`/`$lt`/`$between` auf Dezimalzahlen jetzt Zahlen statt Text, sodass sich Ergebnisse
+  ändern, die auf der alten (falschen) Reihenfolge beruhten.
+- **`populate=*` auf lokalisierten Typen** liefert jetzt auch `localizations`, die anderen
+  Sprachversionen des Dokuments, wie Strapi v5. Ein Schemaattribut namens `localizations`
+  behält seine Bedeutung.
+- **Plugins**: After-Hooks, die durch die eigenen Schreibvorgänge eines Plugins ausgelöst
+  werden, laufen, sobald sein Aufruf zurückkehrt, statt im Schreibvorgang, und Hooks, die
+  schreiben, verschachteln sich höchstens 4 Ebenen tief. Host-Funktionen halten am Zeitlimit
+  des Aufrufs an.
+- **Mehrere Instanzen**: Setze `[cluster] bus = "database"` auf jeder Instanz, damit
+  Echtzeit-Streams, Präsenz, der Antwort-Cache und der Suchindex den Änderungen der anderen
+  folgen (siehe [Skalierung](/de/deploy/scaling/)).
+- **Skripte, die Admin-Listen lesen**: `GET /admin/api/users`, `/roles`, `/api-tokens`,
+  `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` und
+  `/deploy/targets` liefern 25 Zeilen, sofern du nicht `pageSize` angibst (höchstens 100),
+  mit `meta.pagination`, wie die Listen, die schon paginiert waren. Gehe die Seiten mit
+  `?page=` durch, bis `page` `meta.pagination.pageCount` erreicht. `/deploy/deployments`
+  paginiert genauso, statt die letzten 50 zu liefern; `limit` funktioniert weiter als
+  veralteter Alias von `pageSize`. Siehe [Listen](/de/api/admin/#listen).
 
 ### 0.9.1 → 0.10
 

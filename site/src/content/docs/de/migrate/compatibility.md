@@ -2,7 +2,7 @@
 title: Kompatibilität mit Strapi
 description: Welche Funktionen und APIs von Strapi v5 Verdin unterstützt, teilweise unterstützt oder nicht unterstützt – REST, GraphQL, Benutzer und Berechtigungen, Uploads, i18n, Entwurf und Veröffentlichung, Code-Erweiterungen, das Admin-Panel und Enterprise-Funktionen.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin behält das Inhaltsmodell und die Content-APIs von Strapi v5 bei, damit Frontends und
@@ -58,7 +58,7 @@ die üblichen Fälle ab; der Hinweis sagt, was fehlt. **Nicht unterstützt** hat
 | Shadow CRUD (Operationen pro Typ abschalten) | Unterstützt | Die Einstellung `disabled` der Funktion. |
 | Eigene Resolver und Schemaerweiterungen | Teilweise | Root-Felder, die Plugins auflösen (`[[graphql]]` in `plugin.toml`); kein `extensionService`. |
 | Mutations von Users & Permissions (`login`, `register`, `me`…) | Nicht unterstützt | Nutze die REST-Routen. |
-| Queries/Mutations für Upload und i18n (`uploadFiles`, `i18NLocales`…) | Nicht unterstützt | Nutze die REST-Routen und das Admin-Panel. |
+| Queries/Mutations für Upload und i18n (`uploadFiles`, `i18NLocales`…) | Nicht unterstützt | Nutze die REST-Routen (`GET /api/i18n/locales`) und das Admin-Panel. `localizations` auf lokalisierten Typen wird unterstützt. |
 | Limits, GraphiQL | Unterstützt | `maxDepth`, `maxComplexity`, Schalter für Introspektion und Playground. |
 
 ## Users & Permissions (Endnutzer)
@@ -94,8 +94,8 @@ Schalte **Einstellungen → Funktionen → Benutzer und Berechtigungen** ein. Si
 | --- | --- | --- |
 | Lokalisierte Typen und nicht lokalisierte Felder | Unterstützt | `pluginOptions.i18n.localized`, auch pro Attribut. |
 | `?locale=` bei REST, `locale` in GraphQL | Unterstützt | Eine unbekannte Sprache ergibt `400`. |
-| `localizations` in Antworten | Nicht unterstützt | Lies eine andere Sprache mit derselben `documentId` und `?locale=`. |
-| `GET /api/i18n/locales` | Nicht unterstützt | Sprachen werden im Admin-Panel verwaltet (**Einstellungen → Internationalisierung**). |
+| `localizations` in Antworten | Unterstützt | Nur wenn geladen (`populate=localizations`, `populate=*`), mit denselben Optionen wie eine Relation. Auch ein GraphQL-Feld. Die Admin-API lässt es weg. |
+| `GET /api/i18n/locales` | Unterstützt | Ein einfaches Array in Strapis Form. Braucht `find` auf `plugin::i18n.locale` (Zeile **Sprachen** des Berechtigungsrasters), wie Strapis `listLocales`. `documentId` wird aus dem Sprachcode abgeleitet. Sprachen werden im Admin-Panel verwaltet (**Einstellungen → Internationalisierung**). |
 
 ## Entwurf und Veröffentlichung
 
@@ -107,11 +107,14 @@ Schalte **Einstellungen → Funktionen → Benutzer und Berechtigungen** ein. Si
 
 ## Anpassungen am Server
 
+Wie du jedes davon umziehst, steht unter [Eigenen Code portieren](/de/migrate/porting-custom-code/).
+
 | Strapi | Status | Verdin |
 | --- | --- | --- |
 | Lifecycle-Hooks, Middlewares des Document Service | Teilweise | Before-/After-Hooks in WebAssembly-Plugins, die einen Schreibvorgang ändern oder ablehnen können. Kein JavaScript. |
 | Eigene Controller, Services, Routen | Teilweise | Plugin-Routen unter `/api/plugins/<name>/`. |
 | Policies und Middlewares | Nicht unterstützt | Berechtigungen und Rate Limits sind eingebaut. |
+| `register` / `bootstrap` | Teilweise | Die Startfunktion eines Plugins, die läuft, wenn das Plugin startet, eingeschaltet wird oder sich seine Einstellungen ändern; sie kann Inhalte anlegen und die Berechtigungen der öffentlichen Rolle ersetzen. |
 | Cron-Tasks | Teilweise | Plugin-Jobs. |
 | Document Service / Entity Service in JavaScript | Nicht unterstützt | Keine JavaScript-Laufzeit. |
 | npm-Plugins aus dem Strapi-Marketplace | Nicht unterstützt | |
