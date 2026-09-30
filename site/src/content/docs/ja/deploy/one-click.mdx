@@ -1,0 +1,78 @@
+---
+title: ワンクリックデプロイ
+description: このリポジトリのファイルを使って、Verdin のスターター（ブログのサンプル）を Render、DigitalOcean App Platform、Railway、Fly.io、Coolify にデプロイし、その後フォークして自分のスキーマに置き換えます。
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+リポジトリには、複数のプラットフォーム向けのデプロイ用ファイルがあります。どれも [`deploy/one-click/Dockerfile`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/Dockerfile) をビルドします。これは、公式イメージに[ブログのサンプル](https://github.com/verdin-cms/verdin/tree/main/examples/blog)のスキーマと小さな設定を加えたものです。これで、数分で Verdin が動き出します。
+
+<Aside>
+デプロイされたサーバーは `start --migrate` を実行するので、コンテンツタイプビルダーはオフで、スキーマはイメージから読み込まれます。自分のプロジェクトでは、**リポジトリをフォーク**し、`examples/blog/schema` を自分のスキーマに置き換えて（または Dockerfile の `COPY` 行を変更して）、フォークをデプロイしてください。各プラットフォームのページ（[Render](/ja/deploy/render/)、[Railway](/ja/deploy/railway/)、[Fly.io](/ja/deploy/fly/)）では、自分のリポジトリでの同じ構成を紹介しています。
+</Aside>
+
+ファイルは 2026-09-30 に各プラットフォームのリファレンスと照らして確認しましたが、実際のアカウントにデプロイしたものはありません。
+
+| プラットフォーム | ファイル | データベース | メディア |
+| --- | --- | --- | --- |
+| Render | [`render.yaml`](https://github.com/verdin-cms/verdin/blob/main/render.yaml) | Render PostgreSQL | `/data` の 1 GB のディスク |
+| DigitalOcean | [`.do/deploy.template.yaml`](https://github.com/verdin-cms/verdin/blob/main/.do/deploy.template.yaml) | 開発用 PostgreSQL | Spaces（App Platform にはディスクがありません） |
+| Railway | [`deploy/one-click/railway.json`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/railway.json) | Railway PostgreSQL | `/data` のボリューム |
+| Fly.io | [`deploy/one-click/fly.toml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/fly.toml) | ボリューム上の SQLite | `/data` のボリューム |
+| Coolify | [`deploy/one-click/compose.coolify.yaml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/compose.coolify.yaml) | PostgreSQL サービス | `/data` のボリューム |
+
+Dockerfile は `USER root` で終わります。これらのプラットフォームは root が所有するボリュームをマウントするため、イメージのユーザー（uid `65532`）では書き込めないからです。ボリュームが uid `65532` で書き込める場合や、インスタンスに状態を保持しない場合は、その行を削除してください。
+
+## Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/verdin-cms/verdin)
+
+Blueprint は、Web サービス（ディスクに必要な Starter プラン）、PostgreSQL のデータベース、2 つのシークレット（一度だけ生成され、その後は保持されます）を作成します。Render は `VERDIN_SERVER__PUBLIC_URL` を尋ねます。サービスのアドレス `https://<name>.onrender.com`、または自分のドメインを入力してください。フォークからは、`https://render.com/deploy?repo=<your fork's URL>` を使います。
+
+## DigitalOcean App Platform
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/verdin-cms/verdin/tree/main)
+
+スペックは、サービスと開発用データベースを作成します。求められたら、`verdin secrets` の 2 つの値を `VERDIN_ADMIN_JWT_SECRET` と `VERDIN_TOKEN_PEPPER` に貼り付けます。
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets
+```
+
+App Platform には永続ディスクがないので、Spaces のバケットを追加するまで、アップロードしたファイルはデプロイのたびに失われます。サービスに `VERDIN_UPLOAD__PROVIDER__NAME=s3`、`VERDIN_UPLOAD__PROVIDER__BUCKET`、`VERDIN_UPLOAD__PROVIDER__REGION`、`VERDIN_UPLOAD__PROVIDER__ENDPOINT`（`https://<region>.digitaloceanspaces.com`）、`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`、`AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` を設定してください。フォークの場合は、スペックの `repo_clone_url` を変更します。
+
+## Railway
+
+1. リポジトリをフォークし、Railway でフォークからプロジェクトを作成します。
+2. サービスの設定で、設定ファイルのパスを `deploy/one-click/railway.json` に設定します（Dockerfile とヘルスチェックを選択します）。
+3. PostgreSQL のデータベースと、`/data` にマウントしたボリュームを追加し、[Railway](/ja/deploy/railway/#2-プロジェクトを作成する) の変数を設定します。`VERDIN_DATABASE_URL`、2 つのシークレット、`VERDIN_SERVER__PUBLIC_URL` です。ターゲットポート `1337` でドメインを生成します。
+
+## Fly.io
+
+リポジトリ（またはフォーク）のクローンから、`flyctl` にサインインした状態で実行します。
+
+```sh frame="terminal"
+fly launch --no-deploy --copy-config --config deploy/one-click/fly.toml --ha=false
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets | fly secrets import --config deploy/one-click/fly.toml
+fly deploy --config deploy/one-click/fly.toml --dockerfile deploy/one-click/Dockerfile .
+```
+
+これは、SQLite とアップロードを 1 GB のボリュームに置いた 1 つの Machine を実行します。先に `fly.toml` の `app` と `primary_region` を変更してください。PostgreSQL と Tigris を使う場合は [Fly.io](/ja/deploy/fly/) を参照してください。
+
+## Coolify
+
+Coolify で、フォーク（またはこのリポジトリ）からリソースを追加し、ビルドパックは **Docker Compose**、ベースディレクトリは `/`、Compose ファイルは `/deploy/one-click/compose.coolify.yaml` にします。Coolify は、その中の `SERVICE_*` 変数を埋めます。
+
+| 変数 | Coolify が生成するもの |
+| --- | --- |
+| `SERVICE_FQDN_VERDIN_1337` | Coolify のプロキシがポート 1337 にルーティングするドメイン（`VERDIN_SERVER__PUBLIC_URL` にも使われます）。 |
+| `SERVICE_BASE64_64_JWT`、`SERVICE_BASE64_64_PEPPER` | 2 つのシークレット。各 64 文字で、デプロイをまたいで保持されます。 |
+| `SERVICE_USER_POSTGRES`、`SERVICE_PASSWORD_POSTGRES` | データベースの認証情報。 |
+
+Coolify のプロキシが TLS を終端するので、Caddy は不要です。Coolify を使わずに自分で管理するサーバーには、[本番環境での Docker Compose](/ja/deploy/compose/) を使ってください。
+
+## 最初のデプロイの後
+
+`https://<your address>/admin/` を開き、最初の管理者を登録します。その後、[本番チェックリスト](/ja/deploy/production-checklist/)を読んでください。

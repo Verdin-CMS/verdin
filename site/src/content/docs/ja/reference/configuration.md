@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 設定は階層になっています: **組み込みのデフォルト ← `verdin.toml` ← 環境変数**。ファイルは任意で、すべてのキーにデフォルトがあります。不明なキーは拒否されるので、タイプミスは無視されずに起動時に失敗します。
@@ -219,8 +220,21 @@ provider = { name = "s3", bucket = "media", region = "auto",
 
 | キー | デフォルト | 説明 |
 | --- | --- | --- |
-| `enabled` | `false` | `/_metrics` で Prometheus のメトリクスを提供します。領域（`api`、`admin_api`、`graphql`、`mcp`、`uploads` など）、メソッド、ステータスのクラスごとの HTTP リクエストとレイテンシーのヒストグラム、保留中の Webhook の配信、開いているリアルタイムのストリーム、稼働時間です。 |
+| `enabled` | `false` | `/_metrics` で Prometheus のメトリクスを提供します。領域（`api`、`admin_api`、`graphql`、`mcp`、`uploads` など）、メソッド、ステータスのクラスごとの HTTP リクエストとレイテンシーのヒストグラム、保留中の Webhook の配信、開いているリアルタイムのストリーム、イベントバスのトラフィック、稼働時間です。 |
 | `token` | 未設定 | スクレイプに `Authorization: Bearer <token>` が必要になります。`VERDIN_METRICS_TOKEN` がこれより優先されます。トークンがない場合、ポートに到達できる誰もがメトリクスを読めます。 |
+
+## `[telemetry]`
+
+トレースとエラー報告。どちらもデフォルトではオフで、`verdin start` と `verdin dev` だけが使います（[監視](/ja/deploy/monitoring/#トレースopentelemetry)を参照）。
+
+| キー | デフォルト | 説明 |
+| --- | --- | --- |
+| `enabled` | `false` | HTTP リクエストとそのデータベースクエリの OpenTelemetry のトレースを、OTLP/HTTP（protobuf）でエクスポートします。`OTEL_SDK_DISABLED=true` でオフになります。 |
+| `endpoint` | 未設定（`http://localhost:4318`） | コレクターのベース URL。`/v1/traces` が付加されます。`OTEL_EXPORTER_OTLP_ENDPOINT`（ベース URL）と `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`（完全な URL）が優先されます。 |
+| `service_name` | `"verdin"` | トレースの `service.name`。`OTEL_SERVICE_NAME` が優先されます。 |
+| `sample_ratio` | `1.0` | 残すトレースの割合。`0.0` から `1.0`。`traceparent` ヘッダーを持つリクエストは、呼び出し元の判断に従います。 |
+| `sentry_dsn` | 未設定 | パニックと 5xx のレスポンスを Sentry に報告します。`SENTRY_DSN` が優先されます。 |
+| `sentry_environment` | 未設定 | Sentry の環境。`SENTRY_ENVIRONMENT` が優先されます。未設定の場合、`verdin start` では `production`、`verdin dev` では `development` です。 |
 
 ## `[ai]`
 
@@ -262,7 +276,24 @@ API トークンは `VERDIN_CDN_TOKEN` から読み込みます（Webhook には
 | `dir` | `"data/search"` | インデックスのディレクトリ。プロジェクトからの相対パス。削除すると、次の起動時にインデックスが再構築されます。 |
 | `memory_mb` | `50` | インデックス作成に使うメモリの上限。 |
 
-インデックスはインスタンスのディスクにあり、そのインスタンスの書き込みに追従します。インスタンスが複数ある場合は、検索を 1 つのインスタンスに限定してください（またはデプロイ後に再構築します）。
+インデックスはインスタンスのディスクにあります。インスタンスが複数ある場合は、[イベントバス](#cluster)をオンにすると、各インデックスがすべてのインスタンスの書き込みに追従します。
+
+## `[cluster]`
+
+1 つのプロジェクトの複数のインスタンス向けの共有イベントバスです（[複数のインスタンスの実行](/ja/deploy/scaling/#共有イベントバス)を参照）。
+
+| キー | デフォルト | 説明 |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`: リアルタイムのイベント、プレゼンス、キャッシュの無効化、検索の更新は各インスタンスにとどまります。`database`: プロジェクトのデータベースを通じてすべてのインスタンスに届きます（PostgreSQL では `LISTEN/NOTIFY`、MySQL、MariaDB、SQLite ではポーリング）。 |
+| `poll_interval_ms` | `1000` | MySQL、MariaDB、SQLite が他のインスタンスのイベントを読む間隔。PostgreSQL は `NOTIFY` で起こされ、リッスンできない間だけこの間隔を使います。 |
+| `instance_id` | 未設定（起動のたびにランダム） | バス上とログでのこのインスタンスの名前。 |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+すべてのインスタンスで設定するか、`VERDIN_CLUSTER__BUS=database` で設定します。
 
 ## 環境変数
 
@@ -283,5 +314,9 @@ API トークンは `VERDIN_CDN_TOKEN` から読み込みます（Webhook には
 | `VERDIN_CDN_TOKEN` | `[cdn]` のプロバイダーの API トークン。 |
 | `VERDIN_IMAGE_SECRET` | 画像の変換の URL に署名します（[`[upload.transforms]`](#uploadtransforms) を参照）。 |
 | `VERDIN_METRICS_TOKEN` | `[metrics].enabled` の場合の `/_metrics` のスクレイプ用の Bearer トークン。`[metrics].token` より優先されます。 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | [`[telemetry]`](#telemetry) のトレースのコレクター。`[telemetry].endpoint` より優先されます。その他の標準の `OTEL_EXPORTER_OTLP_*` 変数（ヘッダー、タイムアウト、圧縮）も適用されます。 |
+| `OTEL_SERVICE_NAME`、`OTEL_RESOURCE_ATTRIBUTES` | エクスポートされるトレースのリソース。`OTEL_SERVICE_NAME` は `[telemetry].service_name` より優先されます。 |
+| `OTEL_SDK_DISABLED` | `true` にすると、`[telemetry].enabled` でもトレースのエクスポートをオフにします。 |
+| `SENTRY_DSN`、`SENTRY_ENVIRONMENT` | Sentry のエラー報告。`[telemetry].sentry_dsn` と `sentry_environment` より優先されます。 |
 | `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` | S3 のアップロードプロバイダーの認証情報。 |
 | `RUST_LOG` | ログのフィルター。`[log].level` より優先されます。 |

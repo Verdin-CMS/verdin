@@ -1,11 +1,11 @@
 ---
 title: 監視
-description: 稼働中の Verdin インスタンスを監視します。/_health と /_ready のチェック、/_metrics の Prometheus メトリクスとそのトークン、ログの形式、レベル、リクエスト ID を説明します。
+description: 稼働中の Verdin インスタンスを監視します。/_health と /_ready のチェック、/_metrics の Prometheus メトリクスと Grafana ダッシュボード、OpenTelemetry のトレース、Sentry のエラー報告、ログの形式、レベル、リクエスト ID を説明します。
 sidebar:
   order: 10
 ---
 
-Verdin のインスタンスは、2 つのヘルスエンドポイント、任意の Prometheus メトリクス、構造化ログを通じて自身の状態を報告します。このページでは、それぞれが返すものとオンにする方法を説明します。
+Verdin のインスタンスは、2 つのヘルスエンドポイント、任意の Prometheus メトリクス、任意の OpenTelemetry のトレースと Sentry のエラー報告、構造化ログを通じて自身の状態を報告します。このページでは、それぞれが返すものとオンにする方法を説明します。
 
 ## ヘルスチェック
 
@@ -55,14 +55,59 @@ scrape_configs:
 | --- | --- | --- | --- |
 | `verdin_http_requests_total` | counter | `area`、`method`、`status` | 処理した HTTP リクエスト。 |
 | `verdin_http_request_duration_seconds` | histogram | `area`、`method`、`status` | リクエストの処理時間。バケットは 5 ms から 10 s まで。 |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`、`kind`、`function` | [プラグイン](/ja/extending/plugins/)の関数にかかった時間。バケットは同じ。 |
+| `verdin_plugin_call_errors_total` | counter | `plugin`、`kind`、`function` | 失敗したプラグインの呼び出し。トラップ、タイムアウト、JSON ではない出力、または起動関数の `{ error }`。 |
 | `verdin_webhook_deliveries_pending` | gauge | | 送信待ちの Webhook の配信。 |
 | `verdin_realtime_subscribers` | gauge | | 開いているリアルタイムのイベントストリーム。 |
+| `verdin_cluster_events_total` | counter | `direction` | `[cluster].bus` を設定した場合の[共有イベントバス](/ja/deploy/scaling/#共有イベントバス)上のイベント。他のインスタンスへの送信は `sent`、他のインスタンスからの受信は `received`、破棄（キューが満杯、または書き込みの失敗）は `dropped`。 |
 | `verdin_uptime_seconds` | gauge | | プロセスの起動からの秒数。 |
 | `verdin_build_info` | gauge | `version` | 常に 1。実行中のバージョン。 |
 
 `area` はサーバーの部分です: `api`（コンテンツ API）、`admin_api`、`admin`（パネルのファイル）、`graphql`、`mcp`、`uploads`、`internal`（`/_` で始まるパス）、`other`。`status` はステータスのクラスです: `2xx`、`3xx`、`4xx`、`5xx`。
+プラグインの呼び出しでは、`kind` は `hook`、`route`、`job`、`startup`、`graphql` のいずれかです。プラグインのシリーズは最初の呼び出しの後に現れます（[プラグインのリファレンス](/ja/extending/plugin-reference/#メトリクス)を参照）。
 
-役立つアラート: `/_ready` の失敗、`5xx` の割合の上昇、`verdin_webhook_deliveries_pending` の増加（Webhook の送信先がダウンしている）、`verdin_uptime_seconds` のリセット（再起動）。
+役立つアラート: `/_ready` の失敗、`5xx` の割合の上昇、`verdin_webhook_deliveries_pending` の増加（Webhook の送信先がダウンしている）、`verdin_plugin_call_errors_total` の増加や遅いプラグインのフック（フックが実行される書き込みを遅らせます）、`verdin_uptime_seconds` のリセット（再起動）。
+
+### Grafana ダッシュボード
+
+[`docker/grafana/verdin.json`](https://github.com/Verdin-CMS/verdin/blob/main/docker/grafana/verdin.json) は、これらのメトリクス用のダッシュボードです。リクエストレート、`5xx` の割合、エリア・メソッド・ステータスクラスごとのレイテンシの分位数、送信待ちの Webhook の配信、リアルタイムのサブスクライバー、イベントバスのトラフィック、プラグインの関数ごとの呼び出しレート、p95、エラーを表示します。Grafana でインポートし（**Dashboards → New → Import**）、Prometheus のデータソースを選んでください。上部の `instance` と `area` の変数が、すべてのパネルを絞り込みます。
+
+## トレース（OpenTelemetry）
+
+Verdin は、すべてのリクエストのトレースを、OTLP/HTTP で OpenTelemetry のコレクター（OpenTelemetry Collector、Grafana Alloy、Tempo、Jaeger、Honeycomb、Datadog など）にエクスポートできます。デフォルトではオフです。
+
+```toml title="verdin.toml"
+[telemetry]
+enabled = true
+endpoint = "http://otel-collector:4318"
+```
+
+標準の変数も使え、ファイルより優先されます。
+
+```sh
+VERDIN_TELEMETRY__ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=<key>
+OTEL_SERVICE_NAME=cms-production
+```
+
+各トレースには次のものが含まれます。
+
+- **リクエストのスパン**（kind は `server`）。名前はメソッドとパスで、ID は `{id}` に置き換えられます（`PUT /api/articles/{id}`）。`http.response.status_code` を持ち、`5xx` ではエラーステータスになります。W3C の `traceparent` ヘッダー付きのリクエストは、呼び出し元のトレースに参加します。
+- **データベースのステートメントごとのスパン**（kind は `client`）。その下に付き、`db.system.name`（`postgresql`、`mysql`、`mariadb`、`sqlite`）と、`?` プレースホルダーを含む SQL である `db.query.text` を持ちます。バインドされた値は記録されないので、コンテンツ、パスワード、トークンはトレースに含まれません。`COMMIT` と `ROLLBACK` には独自のスパンがあり、SQLite では `write lock` のスパンが、書き込みが先行する書き込み処理を待った時間を示します。
+- リクエストの処理中に書かれたログイベント。スパンのイベントとして付きます。
+
+リクエストの外で実行されるステートメント（起動、マイグレーション、バックグラウンドジョブ）はトレースされません。`[telemetry].sample_ratio` はトレースの一定の割合を残します（`0.1` なら 10 個に 1 個）。スパンはバッチで送信され、サーバーの停止時にフラッシュされます。ログレベルはトレースを絞り込みません。`[log].level = "warn"` でも、すべてのリクエストがエクスポートされます。
+
+## エラー報告（Sentry）
+
+DSN を設定すると、パニックと `5xx` のレスポンスを [Sentry](https://sentry.io)（または GlitchTip などの Sentry 互換サービス）に送信します。
+
+```sh
+SENTRY_DSN=https://<key>@o0.ingest.sentry.io/<project>
+```
+
+`[telemetry].sentry_dsn` でも設定でき、変数が優先されます。`5xx` は、`POST /api/articles answered 500` というエラーイベントとして届き、`http.method`、`http.status_code`、`request_id` のタグが付きます。`request_id` は `X-Request-Id` ヘッダーとそのリクエストのログ行に一致します。イベントには、リリースとして Verdin のバージョンが、環境として `production`（`verdin start`）または `development`（`verdin dev`）が付きます。`SENTRY_ENVIRONMENT` や `[telemetry].sentry_environment` で別の名前を指定した場合を除きます。URL は、ログと同様に、秘密らしいクエリの値を隠して報告されます。リクエストのボディとヘッダーは送信されません。
 
 ## ログ
 

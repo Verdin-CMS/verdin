@@ -134,4 +134,53 @@ const { data } = await verdin.collection('articles').find({ locale: 'fr' });
 - 多言語化された型が別の多言語化された型にリンクしている場合、読み取りでは同じロケールで対象が解決され、リレーションを介したフィルターも同じです。多言語化されていない対象は、すべてのロケールで共有されます。
 - Webhook のペイロードと履歴のバージョンには、ロケールが記録されます。
 
-Strapi と異なり、コンテンツ API には `/api/i18n/locales` のルートがありません。ロケールは Admin API の `GET /admin/api/i18n/locales` で一覧でき、`POST`、`PUT /admin/api/i18n/locales/{code}`、`DELETE /admin/api/i18n/locales/{code}`（`locales.manage`）で管理します。
+### 他のロケール版
+
+Strapi v5 と同様に、`localizations` を populate すると、ドキュメントの他のロケール版を一緒に取得できます。`populate=localizations` または `populate=*` で populate したときにだけ返されます。
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- 各バージョンは、ドキュメントと同じステータスです。デフォルトでは公開版で、`status=draft` なら下書きです。下書きしかないロケールは、公開版の読み取りからは除外されます。
+- `localizations` は、populate したリレーションと同じオプション（`fields`、`filters`、`sort`、`populate`、`count`）を受け付けます。たとえば `populate[localizations][fields][0]=title` です。各バージョンには常に `locale` が含まれ、そのバージョン自身のリレーションはそのロケールで読み取られます。
+- GraphQL では、多言語化された型に `filters` と `sort` を受け付ける `localizations` フィールドがあります。
+- 多言語化されていない型には `localizations` がなく、populate すると `400` になります。
+- Admin API には `localizations` は含まれません。
+
+### ロケールの一覧
+
+`GET /api/i18n/locales` は、ロケールを Strapi と同じ形のプレーンな配列（`data` の包みなし）で返します。
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+Strapi の `listLocales` と同様に、このルートは許可するまで公開されません。**設定 → 公開アクセス**、エンドユーザーのロール、またはカスタム API トークンで、**ロケール**の行（`plugin::i18n.locale`）に `find` を許可してください。フルアクセスと読み取り専用のトークンは、すでに読み取れます。`documentId` はロケールコードから導かれるので、再起動やエクスポートをまたいでも同じままです。Strapi のインポートでは、`listLocales` の権限も引き継がれます。型付きクライアントは `verdin.locales()` で一覧を読み取ります。
+
+ロケールの管理は Admin API で行います。`GET /admin/api/i18n/locales` で一覧し、`POST`、`PUT /admin/api/i18n/locales/{code}`、`DELETE /admin/api/i18n/locales/{code}`（`locales.manage`）で変更します。

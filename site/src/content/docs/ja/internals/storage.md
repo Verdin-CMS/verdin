@@ -127,7 +127,7 @@ INDEX  (target_document_id)
 | 管理者 | `vd_admin_users`、`vd_admin_roles`、`vd_admin_user_roles`、`vd_admin_permissions`、`vd_sessions`（リフレッシュトークン）、`vd_admin_tokens`（招待と再設定のリンク）、`vd_admin_two_factor`、`vd_admin_passkeys`、`vd_spent_challenges` |
 | コンテンツ API へのアクセス | `vd_api_tokens`、`vd_api_token_permissions`、`vd_public_permissions` |
 | エンドユーザー | `vd_users`、`vd_user_roles`、`vd_user_role_permissions`、`vd_end_user_sessions` |
-| インスタンス | `vd_settings`（機能の切り替え、編集ビューのレイアウト、一回限りのアップグレードの印）、`vd_locales` |
+| インスタンス | `vd_settings`（機能の切り替え、編集ビューのレイアウト、一回限りのアップグレードの印）、`vd_locales`、`vd_cluster_events`（共有イベントバス。[複数のインスタンス](/ja/deploy/scaling/)を参照） |
 | メディア | `vd_files`、`vd_folders` |
 | コンテンツのワークフロー | `vd_history_versions`、`vd_releases`、`vd_release_actions`、`vd_workflows`、`vd_workflow_stages`、`vd_document_stages` |
 | コラボレーション | `vd_comments`、`vd_tasks`、`vd_document_views`、`vd_document_votes`、`vd_polls`、`vd_poll_votes` |

@@ -1,0 +1,311 @@
+---
+title: 独自のコードの移植
+description: Strapi プロジェクトの独自のコードを Verdin のプラグインに移します。コントローラーとルート、ライフサイクル、サービス、bootstrap、cron のタスク、管理画面のウィジェット、フォーム、ポリシーとミドルウェアを、実例と、あらかじめ考慮しておく制限とともに説明します。
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi` は Strapi プロジェクトのスキーマとコンテンツを取り込みますが、`src/` の JavaScript は取り込みません。Verdin はサーバーで JavaScript を実行しないからです。そのコードは [WebAssembly のプラグイン](/ja/extending/plugins/)になります。ライフサイクルはフック、独自のコントローラーはルート、`bootstrap` は起動関数、cron のタスクはジョブです。このページでは、Strapi のコードの種類ごとに Verdin での対応先を示し、実際のプロジェクトのコードをプラグインに移植する流れを順に説明し、あらかじめ考慮しておく制限を挙げます。
+
+実例は [`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port) です。Rust で書かれた `tienda` プラグインに、必要なスキーマと、ビルドしてインストールするまでを説明する README が付いています。プラグインを書いたことがない場合は、先に[プラグインのチュートリアル](/ja/extending/plugin-tutorial/)を読んでください。すべてのペイロードとホスト関数は[プラグインのリファレンス](/ja/extending/plugin-reference/)にあります。
+
+## 各部分の移行先
+
+| Strapi | Verdin | 備考 |
+| --- | --- | --- |
+| 独自のルートとコントローラー（`src/api/*/routes`、`controllers`） | プラグインのルート: `[routes]`。`/api/plugins/<name>/…` に対して 1 つの関数 | URL が変わります。関数自身がメソッドとパスで振り分けます。 |
+| ライフサイクル（`lifecycles.js`）、Document Service のミドルウェア | `beforeCreate`、`afterUpdate` などの `[[hooks]]` | イベント名は同じです。before フックはデータを置き換えたり、書き込みを拒否したりできます。 |
+| サービス（`src/api/*/services`） | プラグインのモジュール内の関数と、`strapi.documents(…)` の代わりの `verdin_content` | プラグイン間で共有されるサービスはありません。 |
+| `src/index.js` の `bootstrap()` | `[startup]` 関数 | 起動時、プラグインがオンに切り替えられたとき、設定が変更されたときに実行されます。 |
+| `register()` | 移植するものはありません | `register` が設定していたものは、マニフェストで宣言します。 |
+| cron のタスク（`config/cron-tasks.js`） | `[[jobs]]` | UTC の cron 構文。秒は任意です。 |
+| プラグインの設定（`config/plugins.js`） | `[[settings]]` と `verdin_config` | **設定 → プラグイン**で編集します。 |
+| `strapi.log` | `verdin_log` | サーバーのログと**設定 → プラグイン → ログ**。 |
+| 管理画面のウィジェット（`app.widgets.register`） | `[[admin.widgets]]`: Web Components | または組み込みのダッシュボードのウィジェット。 |
+| カスタムフィールド | `[[admin.fields]]` | スキーマの `customField` の名前は保たれます。 |
+| インジェクションゾーン、独自の管理画面のページ、React の拡張 | 非対応 | ブランディングは `[admin.branding]` にあります。 |
+| フォームの送信内容を保存する独自のエンドポイント | 組み込みの[フォーム](/ja/guides/frontend/forms/) | バリデーション、スパムトラップ、レート制限、メール、CSV のエクスポートが含まれます。 |
+| ポリシーとミドルウェア | 組み込みの権限、レート制限、CORS。プラグインのルート内でのチェック | リクエストのパイプラインへのフックはありません。[ポリシーとミドルウェア](#ポリシーとミドルウェア)を参照。 |
+| コードからのメール（`strapi.plugin('email')`） | `http` ケイパビリティを通じたメールプロバイダーの HTTP API | メール用のホスト関数はありません。 |
+
+## サンプルのプロジェクト
+
+サンプルの元になった Strapi プロジェクトは、投票機能のある小さなショップです。
+
+- **`producto`**: 商品。`a_la_venta`（販売中）と `reservable`（予約可能）のフラグを持ちます。
+- **`reserva`**: 訪問者から送られる予約。`beforeCreate` のライフサイクルが、`estado` を強制的に `pendiente` にし、関連する商品が販売中かつ予約可能であることを確認し、`unidades` を 1〜10 に収めます。
+- **`encuesta`** と **`voto`**: 選択肢のリストを持つ投票と、その票。2 つの独自ルート `POST /api/polls/:slug/vote` と `GET /api/polls/:slug/results` が、訪問者と投票ごとに 1 票だけ、開いている投票に対してだけ、有効な選択肢に対してだけ許可します。cron のタスクが、`cierra_el` の日付を過ぎた投票を閉じます。
+- **`bootstrap`** は公開ロールの権限を設定するので、新規インストールが開きっぱなしになりません。
+- **管理画面のウィジェット**が、開いている投票を表示します。
+
+Verdin では、そのすべてが 1 つのプラグイン `tienda` になります。
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml マニフェスト
+    - src/lib.rs フック、ルート、ジョブ、起動関数
+    - admin/index.js ダッシュボードのウィジェット
+</FileTree>
+
+```toml title="plugin/plugin.toml (abridged)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+コンテンツタイプの UID は Strapi のものより短くなります。`api::producto.producto` ではなく `api::producto` です。
+
+## ライフサイクルからフックへ
+
+Strapi のライフサイクル（簡略化）:
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+Verdin のフックは `{ event, uid, documentId, locale, data }` を受け取り、書き込まれる内容を置き換えるには `{ "data": … }`、書き込みを拒否するには `{ "error": "…" }`（クライアントは、Strapi の `ApplicationError` と同様に、メッセージ付きの 400 を受け取ります）、通すには `{}` を返します。
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+ライフサイクルを移植するときに知っておくこと:
+
+- **`data` は、送信されたままのリクエストのデータです。** リレーションは、documentId、`{ "documentId": … }`、リスト、`{ connect }` / `{ set }` のいずれかで届くことがあります（管理パネルとクライアントで異なります）。サンプルの `relation_id` はそのすべてを受け付けます。`beforeUpdate` では、`data` には送信されたフィールドだけが入ります。
+- **返したデータは、フックの後に、元のデータと同様にバリデーションされます。** フックは、スキーマが拒否するものを書き込むことはできません。スキーマの範囲（`min`、`max`）は値を拒否しますが、フックなら、ここでのように値を範囲内に収められます。
+- **フックは、誰が書き込んでいるかを知りません。** 入力にユーザーやトークンはありません。呼び出し元に依存するチェックは、権限かプラグインのルートに置いてください。
+- **after フックにはデータが渡されません**: `{ event, uid, documentId, locale }` が、書き込みがコミットされた後に送られます。必要なら `verdin_content` でエントリーを読み取ってください。
+- **失敗したフックは書き込みを止めません。** モジュールがトラップしたりタイムアウトしたりした場合、エラーはログに記録され、書き込みは続行されます。書き込みを拒否するのは `{ error }` の応答だけです。
+- **プラグインによる書き込みは before フックをスキップします。** すべての書き込みで守られるべきルールは、その型に書き込むプラグインのコードでも適用する必要があります。
+
+## コントローラーと独自ルートからプラグインのルートへ
+
+Strapi は投票のルートを `/api/polls/:slug/vote` で提供していました。Verdin のプラグインはすべてを `/api/plugins/<name>/` 配下で提供するので、フロントエンドは `/api/plugins/tienda/polls/:slug/vote` を呼び出します（またはリバースプロキシで古いパスを書き換えます）。エクスポートされた 1 つの関数がすべてのリクエストを受け取り、メソッドとパスで振り分けます。
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+リクエストは `{ method, path, query, headers, body, actor }` で、`body` は自分で解析する文字列、`query` は生のクエリ文字列です。応答は `{ status, headers?, body }` です。形を整えてくれるものはありません。Strapi のフロントエンドを動かし続けるには、`{ "data": … }` を返し、エラーのときは `{ "data": null, "error": { "status", "name", "message", "details" } }` を返してください。サンプルの `ok` と `fail` のヘルパーがそうしています。
+
+投票のルートは、次の順に確認します。有効なボディ、そのスラッグの投票があること、`estado` が `abierta` であること、選択肢が `opciones` のいずれかであること、同じフィンガープリントの以前の投票がないこと。その後、`voto` を作成し、結果とともに 201 を返します。
+
+<Aside type="caution" title="プラグインのルートにはクライアントのアドレスがありません">
+プラグインのルートが受け取るヘッダーは、`content-type`、`accept`、`user-agent`、`accept-language` だけです。IP アドレス、Cookie、`Authorization` の値はありません。「訪問者ごとに 1 票」のために `ctx.request.ip` を使っていた Strapi のコントローラーには、別のキーが必要です。サンプルは、サイトが作る `fingerprint`（ローカルストレージに保持したランダムな ID、またはブラウザーの特徴のハッシュ）をリクエストのボディから受け取ります。ダブルクリックや軽い繰り返しは防げますが、本気で投票を繰り返す人は防げません。より強い制限が必要なら、サインイン済みのエンドユーザー（`actor`）を必須にするか、Verdin の前段でチェックしてください。
+</Aside>
+
+Strapi のルートとのその他の違い:
+
+- **ルートは公開されています。** 公開アクセスと API トークンの権限は適用されません。`actor` が誰が呼び出しているかを示します: `{ "kind": "public" }`、`{ "kind": "token", "id": … }`、`{ "kind": "user", "id": … }`（エンドユーザー。ID のみ）。Strapi のポリシーと同じように、呼び出し元に許されないことは拒否してください。無効なトークンは、プラグインが実行される前に 401 で拒否されます。
+- **プラグインごとに一度に 1 つの呼び出し。** プラグインへの呼び出しは互いを待つので、投票のルートのチェックと作成が、1 つのインスタンス上で割り込み合うことはありません。インスタンスが複数ある場合は割り込み合う可能性があります。サンプルは `unique: true` の `clave`（`<poll>:<fingerprint>`）も保存するので、すり抜けた重複はデータベースが拒否します。
+- **レート制限が適用されます**: `[api].public_rate_limit` と `[api].token_rate_limit` は、コンテンツ API の他の部分と同じようにプラグインのルートを数えます。
+- **匿名の `GET` の応答はキャッシュできます**（`[api].cache_ttl_secs` を設定した場合）。コンテンツの書き込みはキャッシュを空にします。投票も含まれます。
+- **保持されるレスポンスヘッダーは一部だけです**: `content-type`、`cache-control`、`location`、`etag`、`last-modified`、`content-disposition`。
+
+## サービスから関数とコンテンツの呼び出しへ
+
+Strapi のサービスは共有されるコードです。プラグインでは、モジュール内の普通の関数になります。`strapi.documents(uid)` の呼び出しは、`read` と `write` のケイパビリティで制限された `verdin_content` の呼び出しになります。
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `"pagination": { "pageSize": 1 }` を付けた `findMany` の、`meta.pagination.total` |
+
+- **読み取りは公開バージョンを返します。** クエリで `"status": "draft"` を指定した場合を除きます。下書きしかない商品を調べるフックは、サンプルのエラーメッセージにあるように、何も見つけません。
+- **書き込みは公開されます。** リクエストに `"status": "draft"` がない限り、REST の書き込みと同じです。
+- **クエリは REST API のルールに従います。** `private` の属性は、フィルターや `fields` に使えないので、サンプルの `clave` は private にしていません（公開ロールには投票へのアクセスがないので、他の誰も読めません）。
+- **生の SQL も `strapi.db.query` もありません。** すべて Document Service を通り、そのバリデーション、Webhook、履歴、監査ログが適用されます。
+- **WASI なしでは時計がありません。** 時刻や乱数が必要なら、マニフェストに `wasi = true` を設定します。サンプルのジョブは、代わりに受け取る `scheduledAt` を使います。
+
+## `bootstrap` から起動関数へ
+
+Strapi のプロジェクトでは、新しいデータベースを使える状態にしつつ、必要以上に開かないよう、公開ロールの権限を `bootstrap` で設定することがよくあります。Verdin の起動関数は、`public_permissions` ケイパビリティを使って同じことをします。
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- `{ "reason": "start" | "enabled" | "settings" }` を受けて実行されます。プラグインがオンの状態でサーバーが起動したとき、プラグインがオンに切り替えられたとき、設定が変更されたときです。もう一度実行しても安全なように書いてください。シード投入するものは、作成する前に探します。
+- `set` は公開の権限を**すべて置き換える**ので、**設定 → 公開アクセス**で行った変更は、次の起動で元に戻ります。サンプルには、これをオフにする設定があります。
+- 専用のモジュールのインスタンスで、独自の制限時間（`[startup].timeout_ms`、デフォルトは 30 秒）でバックグラウンドで実行されるので、遅いシード投入がフックやルートを止めることはありません。失敗や `{ "error" }` の応答はログに記録され、プラグインはオンのままです。
+- インスタンスが複数ある場合、実行するのは `[plugins].run_jobs = true` のインスタンスだけです。
+
+## cron のタスクからジョブへ
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+ジョブは `{ "scheduledAt": "…" }` を受け取り、サンプルでは、`cierra_el` がそれより前のすべての開いている投票を更新します。ジョブは UTC で、プラグインがオンの間だけ、`[plugins].run_jobs = true` のインスタンスでだけ実行されます。サーバーが停止していた間に逃した実行は、後から行われません。
+
+## 管理画面のウィジェット
+
+Strapi の管理画面のウィジェットは React コンポーネントですが、Verdin のウィジェットは、プラグインの `admin/` スクリプト内のカスタム要素で、マニフェストで宣言します。
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+要素は `fetch` を持つ `context` を受け取ります。サンプルのウィジェットは、プラグイン自身の `GET /api/plugins/tienda/polls` ルートを呼び出します。コンテンツ API（プラグインのルートを含む）へのリクエストは、管理者のセッションなしで送られるので、ウィジェットが使うルートは、公開されていても問題ないものか、API トークンを受け付けるものにしてください。インジェクションゾーン、独自の管理画面のページ、React の拡張には、対応するものがありません。[管理画面の拡張ポイント](/ja/extending/plugin-reference/#管理画面の拡張ポイント)を参照してください。
+
+## 独自のフォームからフォームへ
+
+Strapi での提案フォームやお問い合わせフォームは、たいてい独自のエンドポイント（または公開の `create` 権限を持つコンテンツタイプ）と、誰かにメールを送るコードでできています。移植しないでください。組み込みの[フォーム](/ja/guides/frontend/forms/)機能が、コードなしでそのすべてを行います。エディターが管理画面でフィールドを定義し、サイトが `POST /api/_forms/{slug}` に送信し、送信内容はバリデーションされ、**通知先**のアドレスにメールされ、CSV としてエクスポートされます。フォームには、スパムトラップと訪問者ごとのレート制限（1 分あたり 10 件の送信）もあります。プラグインのルートはクライアントのアドレスが見えないので、これはできません。
+
+## ポリシーとミドルウェア
+
+Verdin には、HTTP リクエストのパイプラインへのフックがありません。代わりに提供されるもの:
+
+| Strapi | Verdin |
+| --- | --- |
+| REST ルートの `is-authenticated` 形式のポリシー | 公開アクセス、API トークンの権限、エンドユーザーのロール。[権限](/ja/reference/permissions/)を参照。より細かいルール（エンドユーザーが自分のエントリーだけを編集する、など）には、プラグインのルートが必要です。 |
+| 独自ルートのポリシー | プラグインのルートで `actor` を確認します。 |
+| レート制限のミドルウェア | `[api].public_rate_limit`、`[api].token_rate_limit`、`[admin].auth_rate_limit`。 |
+| CORS やセキュリティヘッダーのミドルウェア | `[api].cors_origins`。その他のレスポンスヘッダーはリバースプロキシで。 |
+| コアのルートのリクエストやレスポンスを書き換えるミドルウェア | 非対応。新しい動作にはプラグインのルートか、リバースプロキシを使ってください。 |
+| 一部の書き込みを拒否するポリシー | `{ error }` を返す before フック。呼び出し元は分かりません。 |
+
+## あらかじめ考慮しておく制限
+
+- プラグインのルートには**クライアントのアドレスがなく、ヘッダーも少ない**（上記を参照）。
+- **プラグインによる書き込みは、すべてのプラグインの before フックをスキップする**ので、before フックのルールはそれらには適用されません。
+- **プラグイン自身の書き込みで発火した after フックは、その呼び出しが返った後に実行されます。** 書き込みの内側ではありません。また、書き込みを行うフックのネストは最大 4 階層です（[プラグインによる書き込み](/ja/extending/plugin-reference/#プラグインによる書き込み)を参照）。レスポンスの前に行う必要があるフォローアップの処理は、`verdin_content` が返った後の、書き込みを行うコードの中で行ってください。
+- **プラグインごとに一度に 1 つの呼び出し**: 遅いルートは、そのプラグインのフックを遅らせます。呼び出しは短く保ち、[メトリクス](/ja/deploy/monitoring/)の `verdin_plugin_call_duration_seconds` を見てください。
+- **ルートは公開されている**ので、`actor` を確認する必要があります。
+- 起動関数と `verdin_public_permissions` には **Verdin 0.11 以降**が必要です。サーバーにないホスト関数をインポートするモジュールは、まったく読み込まれません。
+
+## チェックリスト
+
+<Steps>
+
+1. `verdin import strapi` でプロジェクトをインポートし、`src/` のコードを一覧にします。ルート、コントローラー、サービス、ライフサイクル、ポリシー、ミドルウェア、`bootstrap`、cron のタスク、管理画面の拡張です。
+2. Verdin が組み込みで行うものは外します。フォーム、手で設定した公開の権限、レート制限、CORS、Webhook、予約公開（[リリース](/ja/guides/content/releases/)）です。
+3. 残りを、サンプルに倣って 1 つのプラグインにまとめます。フック、ルート、ジョブ、起動関数です。必要なケイパビリティだけを与えてください。
+4. コンテンツを書き込むフックが、4 階層より深いネストに依存していないことを確認します。
+5. ビルドして `plugins/` にインストールし、**設定 → プラグイン**でオンにして、そこでログを読みます。
+6. フロントエンドを更新します。プラグインのルートの URL（`/api/plugins/<name>/…`）、コードがクライアントのアドレスに頼っていた箇所のフィンガープリントやエンドユーザーのサインイン、そして移行の[その他の変更](/ja/migrate/from-strapi/#フロントエンドの変更)です。
+
+</Steps>

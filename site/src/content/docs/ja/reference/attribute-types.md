@@ -199,7 +199,7 @@ Strapi の blocks の JSON としてのリッチテキスト。`paragraph`、`he
 | `unique` | | [`unique`](#unique) を参照。 |
 | `default` | | 範囲内の数値。 |
 
-値は `scale` 桁に丸められ（データベースと同じく、0 から遠ざかる方向への四捨五入）、小数点より前の桁が `precision - scale` 桁を超えると拒否されます。書き込みでは数値と数値の文字列を受け付けます。`numeric(precision,scale)`（SQLite では何も丸めないよう `text`）として保存されます。API: 数値、または [`[api].decimal_as_string`](/ja/reference/configuration/) を使えば正確な文字列。
+値は `scale` 桁に丸められ（データベースと同じく、0 から遠ざかる方向への四捨五入）、小数点より前の桁が `precision - scale` 桁を超えると拒否されます。書き込みでは数値と数値の文字列を受け付けます。`numeric(precision,scale)`（SQLite では何も丸めないよう `text`）として保存されます。API: Strapi と同じ数値。整数値は整数（`25`。`25.0` ではない）で、それ以外は同じ値に読み戻せる最短の浮動小数点数（`12.5`）です。[`[api].decimal_as_string`](/ja/reference/configuration/) を使うと、API は代わりに正確な文字列を返します。
 
 ## 日付とブール値
 

@@ -64,6 +64,37 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
 - Admin API はクロスオリジンのリクエストには一切応答しません。他のサイトのページからではなく、サーバーやスクリプトから呼び出してください。
 - 成功した変更は[監査ログ](/ja/guides/content/audit-logs/)に記録されます。
 
+## 一覧
+
+設定の一覧は `page`（1 から）と `pageSize` でページ分割されます。レスポンスにはそのページの行と件数が含まれます。
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| 一覧 | デフォルトのページサイズ（最大） | 順序 | その他のパラメーター |
+| --- | --- | --- | --- |
+| `GET /users`、`GET /roles`、`GET /api-tokens` | 25（100） | 古い順 | |
+| `GET /webhooks` | 25（100） | 古い順 | `meta.events` に、Webhook が購読できるイベントが入ります |
+| `GET /webhooks/{id}/deliveries` | 25（100） | 新しい順 | |
+| `GET /releases` | 25（100） | 新しい順 | `status`（`pending`、`running`、`done`、`failed`） |
+| `GET /site/redirects` | 25（100） | ソース順 | `search` はソースまたは宛先に一致します |
+| `GET /site/menus`、`GET /site/forms` | 25（100） | 名前順 | |
+| `GET /site/forms/{id}/submissions` | 25（100） | 新しい順 | |
+| `GET /deploy/targets` | 25（100） | 古い順 | |
+| `GET /deploy/deployments` | 25（100） | 新しい順 | `targetId`。`limit` は `pageSize` の非推奨のエイリアスです |
+| `GET /end-users` | 25（100） | 新しい順 | `search` はユーザー名またはメールアドレスに一致します |
+| `GET /audit-logs` | 50（200） | 新しい順 | [監査ログ](/ja/guides/content/audit-logs/)を参照 |
+
+最大値より大きい `pageSize` は最大値に下げられます。一覧全体を読むには、`page` が `pageCount` に達するまでページをリクエストしてください。
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+コンテンツのルートは REST API と同様に、`pagination[page]` と `pagination[pageSize]` でページ分割します。
+
 ## ルートグループ
 
 パスは `/admin/api` からの相対パスです。ルーターは [`crates/verdin-api/src/admin.rs`](https://github.com/Verdin-CMS/verdin/blob/main/crates/verdin-api/src/admin.rs) と、その隣にある `*_admin.rs` モジュールにあります。

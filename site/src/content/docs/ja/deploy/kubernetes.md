@@ -5,7 +5,7 @@ sidebar:
   order: 7
 ---
 
-このページでは、Verdin のプロジェクトを Kubernetes で実行します。主な構成はステートレスです。PostgreSQL（または MySQL/MariaDB）は Pod の外に置き、メディアは S3 互換ストレージに置き、レプリカは必要なだけ増やせます。その後に、SQLite 用のボリュームを使う 1 レプリカの構成を紹介します。
+このページでは、Verdin のプロジェクトを Kubernetes で実行します。主な構成はステートレスです。PostgreSQL（または MySQL/MariaDB）は Pod の外に置き、メディアは S3 互換ストレージに置き、レプリカは必要なだけ増やせます。その後に、SQLite 用のボリュームを使う 1 レプリカの構成を紹介します。[Helm チャート](/ja/deploy/helm/)は、これらのマニフェストを、設定ごとの values とともにパッケージしたものです。
 
 マニフェストは安定版の API（`apps/v1`、`v1`）を使い、2026-09-29 に `kubeconform -strict` で Kubernetes のスキーマと照合しましたが、実際のクラスターでは動かしていません。山かっこ内の値はすべて置き換えてください。
 
@@ -33,7 +33,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -139,7 +142,7 @@ spec:
 - **読み取り専用のルートファイルシステム。** アップロードは `/tmp` を通じてストリーミングされるので、書き込み可能な `emptyDir` が必要です。画像変換のキャッシュと検索インデックスを使う場合も、書き込み可能なディレクトリが必要です（上の `/tmp/transforms`。`VERDIN_SEARCH__DIR` も設定してください）。
 - **シャットダウン。** Verdin は `SIGTERM` で停止します。
 - **プラグインのジョブ。** スケジュールされたプラグインのジョブは、`[plugins].run_jobs` が true のすべてのレプリカで実行されます。`replicas: 1` と `VERDIN_PLUGINS__RUN_JOBS=true` を持つ Deployment をもう 1 つ実行する（同じラベルなのでトラフィックも処理します）か、各レプリカでジョブが実行されることを受け入れてください。Webhook、予約されたリリース、日次ダイジェストはデータベースで担当が決まり、1 回だけ実行されます。[複数のインスタンスの実行](/ja/deploy/scaling/)を参照してください。
-- **リアルタイム。** イベントストリーム（`/api/_events`）は接続先の Pod にとどまります。[リアルタイム](/ja/guides/frontend/realtime/)を使う場合は、Ingress でセッションアフィニティを使ってください。
+- **リアルタイム、プレゼンス、キャッシュ、検索。** `[cluster].bus = "database"` を設定すると、各 Pod に他の Pod のイベントが届きます（[共有イベントバス](/ja/deploy/scaling/#共有イベントバス)を参照）。設定しない場合、イベントストリーム（`/api/_events`）は接続先の Pod にとどまります。[リアルタイム](/ja/guides/frontend/realtime/)を使う場合は、Ingress でセッションアフィニティを使ってください。
 
 ## SQLite を使う 1 レプリカの構成
 

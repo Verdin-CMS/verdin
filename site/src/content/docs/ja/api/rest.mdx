@@ -269,7 +269,7 @@ GET /api/articles?fields=title,slug
 
 | 形式 | populate の対象 |
 | --- | --- |
-| `populate=*` | すべてのリレーション、メディアフィールド、コンポーネント、ダイナミックゾーン（1 階層） |
+| `populate=*` | すべてのリレーション、メディアフィールド、コンポーネント、ダイナミックゾーン（1 階層）と、多言語化された型の `localizations` |
 | `populate=category,tags` または `populate[0]=category&populate[1]=tags` | 指定したフィールド |
 | `populate[category]=true` | 指定したフィールド（`false` で除外） |
 | `populate[category][fields][0]=name` | オプション付きのフィールド |
@@ -306,6 +306,10 @@ GET /api/articles?populate[category][fields][0]=name
 ## ロケール
 
 `locale=fr` は、多言語化された型のフランス語版を読み書きします。指定しない場合、リクエストはデフォルトのロケールを使います。無効なコードや不明なコードは `400` になります。多言語化されていない型では無視されます。[国際化](/ja/concepts/internationalization/)を参照してください。
+
+多言語化された型では、`populate=localizations` がドキュメントの他のロケール版を同じステータスで追加し、それぞれに `locale` が付きます。populate したリレーションと同じオプション（`fields`、`filters`、`sort`、`populate`、`count`）を受け付け、`populate=*` にも含まれます。多言語化されていない型には `localizations` がありません。
+
+`GET /api/i18n/locales` は、ロケールを Strapi と同じ形（`id`、`documentId`、`name`、`code`、`isDefault`、`createdAt`、`updatedAt`、`publishedAt`、`locale`）のプレーンな配列で返します。`plugin::i18n.locale` に対する `find` の許可が必要です。[コンテンツの多言語化](/ja/guides/content/localizing-content/#ロケールの一覧)を参照してください。
 
 ## 検索
 

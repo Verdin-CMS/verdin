@@ -1,12 +1,13 @@
 ---
 title: プラグインのリファレンス
-description: plugin.toml マニフェスト、機能、フックとそのペイロード、ホスト関数、ルート、ジョブ、GraphQL フィールド、管理画面の拡張ポイント、制限を説明します。
+description: plugin.toml マニフェスト、機能、フックとそのペイロード、ホスト関数、ルート、ジョブ、起動関数、GraphQL フィールド、管理画面の拡張ポイント、制限、メトリクスを説明します。
 sidebar:
   order: 3
 ---
 
 <!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
-plugins_admin.rs, crates/verdin-graphql/src/lib.rs and admin/src/app/core/plugin-extensions.ts. -->
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
 
 このページは、Verdin とプラグインの間の完全な取り決めです。マニフェスト、Verdin が各エクスポート関数に送るものと期待する戻り値、そしてモジュールが呼び出せるホスト関数を扱います。入門は[プラグイン](/ja/extending/plugins/)、実例は[プラグインのチュートリアル](/ja/extending/plugin-tutorial/)を参照してください。
 
@@ -34,6 +35,7 @@ read = ["api::article"]
 write = ["api::tag"]
 http = ["api.example.com"]
 kv = true
+public_permissions = true
 
 [limits]
 timeout_ms = 5000
@@ -50,6 +52,10 @@ function = "handle"
 [[jobs]]
 schedule = "*/15 * * * *"
 function = "refresh"
+
+[startup]
+function = "seed"
+timeout_ms = 30000
 
 [[graphql]]
 name = "slugStats"
@@ -97,6 +103,7 @@ default = "-"
 | `write` | `[]` | `create`、`update`、`delete`、`publish`、`unpublish` できるコンテンツタイプ。`read` を含みます。 |
 | `http` | `[]` | モジュールが HTTP リクエストを送れるホスト。`api.example.com` または `*.example.com`。 |
 | `kv` | `false` | プラグイン専用のキーバリューストレージ（`verdin_kv_get`、`verdin_kv_set`）。 |
+| `public_permissions` | `false` | 公開ロールのコンテンツ API の権限の読み取りと置き換え（`verdin_public_permissions`）。 |
 
 機能が制限するのはホストの呼び出しだけです。フックは `read` にかかわらず指定した型で実行され、ルートには誰でもアクセスできます。
 
@@ -128,7 +135,7 @@ default = "-"
 | `beforeUnpublish` | `afterUnpublish` |
 | `beforeDiscardDraft` | `afterDiscardDraft` |
 
-名前は Strapi のライフサイクルの名前です。フックは、管理パネル、REST と GraphQL の API、リリースからの書き込みで実行されますが、プラグインによる書き込み（[プラグインによる書き込み](#プラグインによる書き込み)を参照）や `verdin import` コマンドによる書き込みでは実行されません。
+名前は Strapi のライフサイクルの名前です。フックは、管理パネル、REST と GraphQL の API、リリースからの書き込みで実行されますが、`verdin import` コマンドによる書き込みでは実行されません。プラグインによる書き込みでは after フックは実行されますが、before フックは実行されません（[プラグインによる書き込み](#プラグインによる書き込み)を参照）。
 
 ### `[routes]`
 
@@ -144,6 +151,17 @@ default = "-"
 | --- | --- |
 | `schedule` | UTC の cron 式。秒は任意: `*/15 * * * *`、`0 0 3 * * *`。 |
 | `function` | 呼び出すエクスポート関数。 |
+
+### `[startup]`
+
+プラグインの開始時に実行される関数です。Strapi のプロジェクトが `bootstrap` で行うこと（コンテンツのシード投入、公開ロールの設定）に使います。
+
+| キー | デフォルト | 説明 |
+| --- | --- | --- |
+| `function` | 必須 | 呼び出すエクスポート関数。 |
+| `timeout_ms` | `30000` | この関数専用の制限時間（ミリ秒）。シード投入はフックより時間がかかることがあるためです。正の値である必要があります。 |
+
+実行されるタイミングは[起動関数](#起動関数)を参照してください。
 
 ### `[[graphql]]`
 
@@ -263,6 +281,22 @@ default = "-"
 
 入力: `{ "scheduledAt": "2026-09-29T03:00:00+00:00" }`。実行が予定されていた時刻です。出力は無視され、失敗はログに記録されます。ジョブはプラグインがオンの間だけ、`[plugins].run_jobs = true` のインスタンスでだけ実行されます。サーバーが停止していた間に逃した実行は、後から行われません。
 
+### 起動関数
+
+入力: `{ "reason": "start" | "enabled" | "settings" }`:
+
+| `reason` | タイミング |
+| --- | --- |
+| `start` | プラグインがオンの状態でサーバーが起動した。 |
+| `enabled` | プラグインがオンに切り替えられた（ここで、または別のインスタンスで切り替えられ、ここで反映された）。 |
+| `settings` | オンの間に設定が変更された（ここで保存された、または別のインスタンスから反映された）。 |
+
+出力: `{ "error": "message" }` は失敗として数えられ、それ以外（`{}`、空）は成功として扱われます。失敗（トラップ、タイムアウト、`{ error }`）はプラグインのログとサーバーのログに記録されます。プラグインはオンのままで、関数は次の起動、切り替え、設定の変更のときにもう一度実行されます。
+
+関数はサーバーが起動した後にバックグラウンドで実行されるので、その間もリクエストは処理されます。専用のモジュールのインスタンスで `[startup].timeout_ms` の制限で実行されるので、遅いシード投入がプラグインのフックやルートを止めることはありません。この関数の書き込みで発火した after フックは、関数が返ってから実行されます（[プラグインによる書き込み](#プラグインによる書き込み)を参照）。モジュールのメモリはプラグインの通常のインスタンスとは共有されません。状態は `verdin_kv_set` かコンテンツに保存してください。
+
+インスタンスが複数ある場合、起動関数を実行するのは `[plugins].run_jobs = true` のインスタンスだけです（[スケーリングの助言](/ja/deploy/scaling/)に従っていれば 1 つ）。共有のデータベースに対して動作するので、1 回で十分です。もう一度実行されても害がないように書いてください。シード投入するものは、作成する前に探します。
+
 ### GraphQL フィールド
 
 入力: `{ "args": …, "actor": … }`。`args` はフィールドの `args` 引数（任意の JSON、または `null`）、`actor` はルートと同じです。出力がフィールドの値になります。失敗した場合やプラグインが無効な場合は、コード `PLUGIN_ERROR` の GraphQL エラーを返します。ルートと同様に、アクセスの確認はプラグインが行います。
@@ -278,6 +312,9 @@ default = "-"
 | `verdin_kv_get` | プレーンな文字列としてのキー | 保存された JSON 値、または `null` |
 | `verdin_kv_set` | `{ "key": "…", "value": … }` | なし |
 | `verdin_config` | なし | 宣言したデフォルトで補完された設定オブジェクト |
+| `verdin_public_permissions` | `{ "op": "get" }` または `{ "op": "set", "permissions": [...] }` | `{ "permissions": [...] }`、または `{ "error": "…" }` |
+
+サーバーが持たないホスト関数（古い Verdin）をインポートするモジュールは読み込めません。その関数へのすべての呼び出しは、サーバーのログに `unknown import` で失敗します。
 
 ### `verdin_log`
 
@@ -314,7 +351,12 @@ default = "-"
 
 #### プラグインによる書き込み
 
-`verdin_content` を通じた書き込みは、すべてのプラグインの **before** フックをスキップするので、プラグインがそこで自分の変更によってループすることはありません。それ以外はすべて適用されます。バリデーション、レビューの段階、Webhook、履歴、監査ログ、そして書き込んだプラグイン自身を含むすべてのプラグインの **after** フックです。監視している型に書き込む after フックには、ガードを入れてください。
+`verdin_content` を通じた書き込みは、すべてのプラグインの **before** フックをスキップするので、プラグインがそこで自分の変更によってループすることはなく、before フックに置いたルール（デフォルト値、チェック）はそれらの書き込みには適用されません。それ以外はすべて適用されます。バリデーション、レビューの段階、Webhook、履歴、監査ログ、そして書き込んだプラグイン自身を含むすべてのプラグインの **after** フックです。
+
+プラグインの書き込みで発火した after フックは、書き込みの内側では実行されません。キューに入れられ、プラグインの呼び出し（ルート、ジョブ、GraphQL リゾルバー、フック、起動関数）が返ってプラグインのインスタンスを解放した後、ルートのレスポンスが送られる前に実行されます。そのため、プラグインは自分が after フックを持つ型に書き込むことができ、複数のプラグインをまたぐ連鎖も動作します。
+
+- 書き込みを行うフックはさらにフックを発火させますが、**最大 `4` 階層**までです（REST や GraphQL からの書き込みが 1 階層目）。それより深いフックはスキップされ、プラグインのログに警告が記録されます。これにより、監視している型に書き込むフックが無限にループすることを防ぎます。
+- ホスト関数（`verdin_content`、`verdin_public_permissions`、キーバリューストア）は、呼び出しの制限時間で停止してモジュールにエラーを返します。呼び出し元は、ビジー状態のプラグインを最大で制限時間に 10 秒を加えた時間だけ待ちます。止まった呼び出しが、プラグインやグレースフルな停止を永遠に止めることはありません。
 
 ### `verdin_kv_get` と `verdin_kv_set`
 
@@ -323,6 +365,25 @@ default = "-"
 ### `verdin_config`
 
 **設定 → プラグイン**で保存された設定を、宣言した各設定の `default` で欠けたキーを補完して返します。何も保存されていない場合は `{}` です。
+
+### `verdin_public_permissions`
+
+公開ロールのコンテンツ API の権限を読み取り、または置き換えます。**設定 → 公開アクセス**で編集できるものです。`public_permissions` の機能が必要で、ない場合はすべての呼び出しが `{ "error": "…" }` を返します。
+
+```json
+{ "op": "set", "permissions": [
+  { "subject": "api::article", "action": "find" },
+  { "subject": "api::article", "action": "findOne" },
+  { "subject": "api::comment", "action": "create" }
+] }
+```
+
+| `op` | 効果 |
+| --- | --- |
+| `get` | 何もしません。現在の権限を返します。 |
+| `set` | 公開の権限を**すべて** `permissions` で置き換えます（空のリストならすべて削除します）。 |
+
+どちらも、ソートされた `{ "permissions": [{ "subject", "action" }, …] }` を返します。`subject` は、コンテンツタイプの UID、`plugin::upload`（メディアライブラリ）、`plugin::users-permissions.user`（コンテンツ API 越しのエンドユーザー）、`plugin::i18n.locale`（`find` のみ）のいずれかです。`action` は `find`、`findOne`、`create`、`update`、`delete`、`publish`、`readDrafts` のいずれかです（最後の 2 つは、アップロードとエンドユーザーには適用されません）。管理画面の権限グリッドと同じように確認されます。不明な subject や action、または適用されないものは `{ "error": "…" }` を返し、何も変更しません。すべての `set` はサーバーのログに記録されます。
 
 ### HTTP
 
@@ -375,13 +436,24 @@ customElements.define('slugs-stats', SlugStats);
 
 | 制限 | 値 |
 | --- | --- |
-| 1 回の呼び出しの時間 | `[limits].timeout_ms`、デフォルトは 5,000 ms |
+| 1 回の呼び出しの時間 | `[limits].timeout_ms`、デフォルトは 5,000 ms（起動関数は `[startup].timeout_ms`、デフォルトは 30,000 ms） |
 | メモリ | `[limits].memory_mb`、デフォルトは 64 MB |
-| 並行性 | プラグインごとに一度に 1 つの呼び出し。呼び出しは互いを待ちます |
-| モジュールのインスタンス | プラグインごとに 1 つ。初回使用時に作られ、呼び出しが失敗すると作り直されます（メモリは失われます） |
+| 並行性 | プラグインごとに一度に 1 つの呼び出し。呼び出しは互いを待ちます（起動関数はそれらと並行して実行されます） |
+| モジュールのインスタンス | プラグインごとに 1 つ。初回使用時に作られ、呼び出しが失敗すると作り直されます（メモリは失われます）。起動関数は実行のたびに新しいものを使います |
 | ログ | プラグインごとに 200 件、各 2,000 文字、メモリ内 |
 | KV のキー | 1〜255 バイト |
 | ルートのリクエストヘッダー | `content-type`、`accept`、`user-agent`、`accept-language` |
 | ルートのレスポンスヘッダー | `content-type`、`cache-control`、`location`、`etag`、`last-modified`、`content-disposition` |
 
 マニフェストやモジュールの変更は再起動後に反映され、切り替えと設定はすぐに反映されます。プラグインの管理には `plugins.manage` が必要です（[権限のリファレンス](/ja/reference/permissions/)を参照）。
+
+## メトリクス
+
+[`[metrics]`](/ja/deploy/monitoring/) をオンにすると、`/_metrics` はエクスポート関数に到達したすべての呼び出しを報告します。
+
+| メトリクス | 型 | ラベル | 意味 |
+| --- | --- | --- | --- |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`、`kind`、`function` | プラグインの関数にかかった時間。バケットは 5 ms から 10 s まで。 |
+| `verdin_plugin_call_errors_total` | counter | `plugin`、`kind`、`function` | 失敗した呼び出し。トラップ、タイムアウト、JSON ではない出力、または起動関数の `{ error }`。 |
+
+`kind` は `hook`、`route`、`job`、`startup`、`graphql` のいずれかです。`{ error }` で書き込みを拒否する before フックは、答えを返したので失敗には数えられません。モジュールがエクスポートしていない関数の呼び出しは記録されないので、ラベルの種類はインストールされたプラグインの範囲に収まります。シリーズはプラグインの最初の呼び出しの後に現れます。各インスタンスは自分の呼び出しだけを数えます。

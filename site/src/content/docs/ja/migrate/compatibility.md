@@ -2,7 +2,7 @@
 title: Strapi との互換性
 description: Verdin が対応している、一部対応している、対応していない Strapi v5 の機能と API。REST、GraphQL、ユーザーと権限、アップロード、i18n、下書きと公開、コードによる拡張、管理パネル、Enterprise の機能を扱います。
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin は Strapi v5 のコンテンツモデルとコンテンツ API を保っているので、フロントエンドとコンテンツを移行できます（[Strapi からの移行](/ja/migrate/from-strapi/)を参照）。ただし、Strapi の*コードベース*をそのまま置き換えるものではありません。JavaScript のランタイムはないので、独自のコードは WebAssembly のプラグインとして作り直します。このページでは、Verdin 0.10.0 時点での各領域とその状況を一覧にします。
@@ -53,7 +53,7 @@ Verdin は Strapi v5 のコンテンツモデルとコンテンツ API を保っ
 | Shadow CRUD（型ごとの操作の無効化） | 対応 | 機能の `disabled` の設定。 |
 | 独自のリゾルバーとスキーマの拡張 | 一部対応 | プラグインが解決するルートのフィールド（`plugin.toml` の `[[graphql]]`）。`extensionService` はありません。 |
 | Users & Permissions のミューテーション（`login`、`register`、`me` など） | 非対応 | REST のルートを使ってください。 |
-| アップロードと i18n のクエリ・ミューテーション（`uploadFiles`、`i18NLocales` など） | 非対応 | REST のルートと管理パネルを使ってください。 |
+| アップロードと i18n のクエリ・ミューテーション（`uploadFiles`、`i18NLocales` など） | 非対応 | REST のルート（`GET /api/i18n/locales`）と管理パネルを使ってください。多言語化された型の `localizations` は対応しています。 |
 | 制限、GraphiQL | 対応 | `maxDepth`、`maxComplexity`、イントロスペクションとプレイグラウンドの切り替え。 |
 
 ## Users & Permissions（エンドユーザー）
@@ -88,8 +88,8 @@ Verdin は Strapi v5 のコンテンツモデルとコンテンツ API を保っ
 | --- | --- | --- |
 | 多言語化された型と多言語化されないフィールド | 対応 | `pluginOptions.i18n.localized`。属性ごとにも指定できます。 |
 | REST の `?locale=`、GraphQL の `locale` | 対応 | 不明なロケールは `400` です。 |
-| レスポンスの `localizations` | 非対応 | 同じ `documentId` と `?locale=` で別のロケールを読んでください。 |
-| `GET /api/i18n/locales` | 非対応 | ロケールは管理画面（**設定 → 国際化**）で管理します。 |
+| レスポンスの `localizations` | 対応 | populate したときだけ（`populate=localizations`、`populate=*`）。リレーションと同じオプションが使えます。GraphQL のフィールドでもあります。Admin API には含まれません。 |
+| `GET /api/i18n/locales` | 対応 | Strapi と同じ形のプレーンな配列。Strapi の `listLocales` と同様に、`plugin::i18n.locale`（権限グリッドの**ロケール**の行）に対する `find` が必要です。`documentId` はロケールコードから導かれます。ロケールは管理画面（**設定 → 国際化**）で管理します。 |
 
 ## 下書きと公開
 
@@ -101,11 +101,14 @@ Verdin は Strapi v5 のコンテンツモデルとコンテンツ API を保っ
 
 ## サーバーのカスタマイズ
 
+それぞれの移行方法は、[独自のコードの移植](/ja/migrate/porting-custom-code/)を参照してください。
+
 | Strapi | 状況 | Verdin |
 | --- | --- | --- |
 | ライフサイクルフック、Document Service のミドルウェア | 一部対応 | WebAssembly のプラグインの before/after フック。書き込みを変更したり拒否したりできます。JavaScript はありません。 |
 | 独自のコントローラー、サービス、ルート | 一部対応 | `/api/plugins/<name>/` 配下のプラグインのルート。 |
 | ポリシーとミドルウェア | 非対応 | 権限とレート制限は組み込まれています。 |
+| `register` / `bootstrap` | 一部対応 | プラグインの起動関数。プラグインの開始時、オン切り替え時、設定の変更時に実行され、コンテンツのシード投入や、公開ロールの権限の置き換えができます。 |
 | cron のタスク | 一部対応 | プラグインのジョブ。 |
 | JavaScript の Document Service / Entity Service | 非対応 | JavaScript のランタイムはありません。 |
 | Strapi のマーケットプレイスの npm のプラグイン | 非対応 | |

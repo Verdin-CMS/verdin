@@ -1,0 +1,116 @@
+---
+title: インストール
+description: インストールスクリプト、Homebrew、.deb パッケージ、winget、cargo binstall、またはソースから verdin のバイナリをインストールするか、Docker イメージを実行します。
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin は、管理パネルを組み込んだ 1 つのバイナリです。各リリースでは、Linux（x86-64 と ARM64、静的な musl ビルド）、macOS（Intel と Apple silicon）、Windows（x86-64）向けに、`SHA256SUMS` ファイルとともに[リリースのページ](https://github.com/verdin-cms/verdin/releases)で公開されます。お使いのマシンに合った方法を選んでください。どの方法でも、インストールされるバイナリは同じです。
+
+次のコマンドで確認します。
+
+```sh frame="terminal"
+verdin --version
+```
+
+その後は、[クイックスタート](/ja/start/quickstart/)を `verdin new` から進めてください。
+
+## インストールスクリプト（Linux と macOS）
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh
+```
+
+スクリプトは、システムとアーキテクチャを検出し、最新の GitHub リリースから対応するアーカイブをダウンロードし、リリースの `SHA256SUMS` と照合して、root で実行した場合は `/usr/local/bin` に、そうでなければ `~/.local/bin` に `verdin` をインストールします。`curl` または `wget`、`tar`、そして `sha256sum`、`shasum`、`openssl` のいずれかが必要です。
+
+| オプション | 変数 | デフォルト |
+| --- | --- | --- |
+| `--version <X.Y.Z>` | `VERDIN_VERSION` | 最新のリリース |
+| `--dir <directory>` | `VERDIN_INSTALL_DIR` | `/usr/local/bin`（root）または `~/.local/bin` |
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh -s -- --version 0.11.0 --dir /opt/verdin/bin
+```
+
+実行する前にスクリプトを読みたい場合は、先にダウンロードしてください。`curl -fsSLO https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh`。
+
+## パッケージマネージャー
+
+<Tabs syncKey="package-manager">
+  <TabItem label="Homebrew">
+
+macOS と Linux の場合:
+
+```sh frame="terminal"
+brew install verdin-cms/tap/verdin
+```
+
+formula はリリースのバイナリ（Linux では musl ビルド）をインストールします。`brew upgrade verdin` で次のリリースに移れます。
+
+  </TabItem>
+  <TabItem label="Debian / Ubuntu">
+
+リリースから、お使いのアーキテクチャ（`amd64` または `arm64`）用の `.deb` をダウンロードしてインストールします。
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/verdin_0.11.0-1_amd64.deb
+sudo apt install ./verdin_0.11.0-1_amd64.deb
+```
+
+パッケージは、`verdin` システムユーザー、systemd のサービス（有効化はされません）、`/etc/verdin/` の設定を追加します。実行方法は [Linux サーバー](/ja/deploy/linux-server/)で説明しています。apt のリポジトリはまだありません。アップグレードは、次のリリースの `.deb` をインストールして行ってください。
+
+  </TabItem>
+  <TabItem label="winget">
+
+Windows の場合:
+
+```powershell frame="terminal"
+winget install VerdinCMS.Verdin
+```
+
+winget は、新しいターミナルの `PATH` に `verdin` を追加します。winget を使わない場合は、リリースから `.zip` をダウンロードし、`verdin.exe` を `PATH` のどこかに置いてください。
+
+  </TabItem>
+  <TabItem label="cargo binstall">
+
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) を使うと、Cargo はコンパイルする代わりにリリースのバイナリをダウンロードします。
+
+```sh frame="terminal"
+cargo binstall --git https://github.com/verdin-cms/verdin verdin
+```
+
+  </TabItem>
+</Tabs>
+
+## Docker
+
+`ghcr.io/verdin-cms/verdin` のイメージは、`linux/amd64` と `linux/arm64` で同じバイナリを実行します。
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 --version
+```
+
+ボリューム、設定、Compose ファイルについては [Docker](/ja/deploy/docker/) を参照してください。
+
+## ソースから
+
+Rust 1.95 以降と、管理パネルをビルドするための Node.js 24 が必要です。
+
+```sh frame="terminal"
+git clone https://github.com/verdin-cms/verdin && cd verdin
+(cd admin && npm ci && npm run build)
+cargo install --locked --path crates/verdin --features embed-admin
+```
+
+`--features embed-admin` を付けないと、ビルド済みのコピーを `[admin].assets_dir` で指定しない限り、バイナリに管理パネルは含まれません。
+
+## ダウンロードを手動で検証する
+
+各リリースには、すべてのアーカイブとパッケージを一覧にした `SHA256SUMS` ファイルがあります。
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS     # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
+```

@@ -85,7 +85,7 @@ Verdin は、ORM や `sea-query` ではなく独自の小さなビルダーで S
 | date、time、datetime | `date`、`time(3)`、`timestamptz(3)` | `date`、`time(3)`、`datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite は小数、日付、時刻を固定形式のテキストとして保存するので、何も丸められず、テキストの順序が数値や時系列の順序と一致します。どの属性がどのモデルの型に対応するかは[属性の型](/ja/reference/attribute-types/)にあります。
+SQLite は日付と時刻を固定形式のテキストとして保存するので、テキストの順序が時系列の順序と一致します。小数もテキストとして保存するので、保存時に何も丸められません。ただし小数ではテキストの順序が数値の順序と一致しないため、SQLite では小数に対するフィルターとソートでカラムを `REAL` にキャストします。この比較は有効桁数およそ 15 桁まで正確で、返される値は引き続き正確です。どの属性がどのモデルの型に対応するかは[属性の型](/ja/reference/attribute-types/)にあります。
 
 MySQL と MariaDB のテーブルは、`ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` と、アクセントと大文字小文字を区別しない照合順序で作成されます。MySQL では `utf8mb4_0900_ai_ci`、MariaDB では `utf8mb4_uca1400_ai_ci` です。
 

@@ -2,7 +2,7 @@
 title: Verdin のアップグレード
 description: Verdin のインストールをアップグレードします。バイナリまたは Docker イメージ、起動時に実行されるマイグレーション、各マイナーバージョンの注目すべき変更や互換性のない変更を説明します。
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -90,6 +90,16 @@ import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
 ## アップグレードの注意事項
 
 バージョンごとの注目すべき変更と互換性のない変更です。古いものが最後に並びます。完全な一覧は[チェンジログ](/ja/project/changelog/)にあります。
+
+### 0.10 → 0.11
+
+起動時に実行されるマイグレーションが、テーブルを 1 つ `vd_cluster_events` 追加します。`[cluster] bus = "database"` のときだけ使われます。
+
+- **小数**: 整数値の `decimal` は、Strapi と同様に JSON の整数として返されます（`25`。`25.0` ではない）。JSON の型を厳密に確認するクライアントでは気づくことがあります。`[api] decimal_as_string` は変わりません。SQLite では、小数に対する `sort` と `$gt`/`$lt`/`$between` が、テキストではなく数値で比較されるようになったので、以前の（誤った）順序に頼っていた結果は変わります。
+- **多言語化された型での `populate=*`** は、Strapi v5 と同様に `localizations`（ドキュメントの他のロケール版）も返します。スキーマの `localizations` という名前の属性は、これまでの意味のままです。
+- **プラグイン**: プラグイン自身の書き込みで発火する after フックは、書き込みの内側ではなく、その呼び出しが返ってから 1 回実行されます。書き込みを行うフックのネストは最大 4 階層です。ホスト関数は、呼び出しの制限時間で停止します。
+- **複数のインスタンス**: すべてのインスタンスで `[cluster] bus = "database"` を設定すると、リアルタイムのストリーム、プレゼンス、レスポンスキャッシュ、検索インデックスが、他のインスタンスでの変更に追従します（[スケーリング](/ja/deploy/scaling/)を参照）。
+- **Admin の一覧を読むスクリプト**: `GET /admin/api/users`、`/roles`、`/api-tokens`、`/webhooks`、`/releases`、`/site/redirects`、`/site/menus`、`/site/forms`、`/deploy/targets` は、`pageSize`（最大 100）を渡さない限り 25 行を返し、すでにページ分割されていた一覧と同様に `meta.pagination` が付きます。`page` が `meta.pagination.pageCount` に達するまで、`?page=` でページをたどってください。`/deploy/deployments` は、最新の 50 件を返す代わりに同じようにページ分割されます。`limit` は、非推奨の `pageSize` のエイリアスとして引き続き使えます。[一覧](/ja/api/admin/#一覧)を参照してください。
 
 ### 0.9.1 → 0.10
 
