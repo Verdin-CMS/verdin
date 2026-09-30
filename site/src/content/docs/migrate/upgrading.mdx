@@ -118,6 +118,16 @@ running side by side for longer than a rolling deploy takes.
 Notable and breaking changes per version, oldest last. The [changelog](/project/changelog/)
 has the complete list.
 
+### 0.10 → 0.11
+
+- **Scripts that read admin lists**: `GET /admin/api/users`, `/roles`, `/api-tokens`,
+  `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` and
+  `/deploy/targets` return 25 rows unless you pass `pageSize` (at most 100), with
+  `meta.pagination`, like the lists that were already paged. Walk the pages with
+  `?page=` until `page` reaches `meta.pagination.pageCount`. `/deploy/deployments` pages
+  the same way instead of returning the latest 50; `limit` still works as a deprecated
+  alias of `pageSize`. See [Lists](/api/admin/#lists).
+
 ### 0.9.1 → 0.10
 
 No database migration. The documentation moved from `docs/` to this site.

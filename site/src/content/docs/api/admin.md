@@ -88,6 +88,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   from another site's pages.
 - Successful changes are recorded in the [audit log](/guides/content/audit-logs/).
 
+## Lists
+
+Settings lists are paged with `page` (from 1) and `pageSize`. They answer the rows of the
+page and the counts:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| List | Default page size (maximum) | Order | Other parameters |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Oldest first | |
+| `GET /webhooks` | 25 (100) | Oldest first | `meta.events` lists the events a webhook can subscribe to |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Newest first | |
+| `GET /releases` | 25 (100) | Newest first | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | By source | `search` matches the source or the destination |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | By name | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Newest first | |
+| `GET /deploy/targets` | 25 (100) | Oldest first | |
+| `GET /deploy/deployments` | 25 (100) | Newest first | `targetId`; `limit` is a deprecated alias of `pageSize` |
+| `GET /end-users` | 25 (100) | Newest first | `search` matches the username or the email |
+| `GET /audit-logs` | 50 (200) | Newest first | See [Audit logs](/guides/content/audit-logs/) |
+
+A larger `pageSize` is lowered to the maximum. To read a whole list, request pages until
+`page` reaches `pageCount`:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Content routes page like the REST API, with `pagination[page]` and
+`pagination[pageSize]`.
+
 ## Route groups
 
 Paths are relative to `/admin/api`. The routers are in
