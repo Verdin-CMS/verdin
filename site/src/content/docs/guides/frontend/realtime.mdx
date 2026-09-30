@@ -133,9 +133,11 @@ Calling the stream from a site on another origin needs that origin in
 
 ## Behind a load balancer
 
-Events are those of the instance a client is connected to. With several instances, use
-sticky sessions for `/api/_events`, or point realtime clients at a single instance. See
-[Scaling](/deploy/scaling/).
+With several instances, turn on the shared event bus (`[cluster].bus = "database"`): a
+client connected to any instance then receives the events of all of them. Without it,
+events are those of the instance a client is connected to; use sticky sessions for
+`/api/_events`, or point realtime clients at a single instance. See
+[Scaling](/deploy/scaling/#shared-event-bus).
 
 The admin panel uses its own stream (`/admin/api/events`) for live updates, presence and
 soft locks while editing; see the [realtime API reference](/api/realtime/).

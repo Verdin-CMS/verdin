@@ -39,7 +39,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -158,7 +161,9 @@ Notes on the manifest:
   `VERDIN_PLUGINS__RUN_JOBS=true` (same labels, so it also serves traffic), or accept
   that jobs run on each replica. Webhooks, scheduled releases and the daily digest are
   claimed in the database and run once. See [Running several instances](/deploy/scaling/).
-- **Realtime.** Event streams (`/api/_events`) stay on the pod they connect to. Use
+- **Realtime, presence, caches and search.** `[cluster].bus = "database"` brings every
+  pod the others' events (see [the shared event bus](/deploy/scaling/#shared-event-bus)).
+  Without it, event streams (`/api/_events`) stay on the pod they connect to: use
   session affinity on the Ingress if you use [realtime](/guides/frontend/realtime/).
 
 ## Single replica with SQLite

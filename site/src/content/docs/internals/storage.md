@@ -127,7 +127,7 @@ The platform tables are part of every derived model, so the migration engine cre
 | Admins | `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (refresh tokens), `vd_admin_tokens` (invitation and reset links), `vd_admin_two_factor`, `vd_admin_passkeys`, `vd_spent_challenges` |
 | Content API access | `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` |
 | End users | `vd_users`, `vd_user_roles`, `vd_user_role_permissions`, `vd_end_user_sessions` |
-| Instance | `vd_settings` (feature switches, edit-view layouts, one-off upgrade markers), `vd_locales` |
+| Instance | `vd_settings` (feature switches, edit-view layouts, one-off upgrade markers), `vd_locales`, `vd_cluster_events` (the shared event bus, see [Several instances](/deploy/scaling/)) |
 | Media | `vd_files`, `vd_folders` |
 | Content workflow | `vd_history_versions`, `vd_releases`, `vd_release_actions`, `vd_workflows`, `vd_workflow_stages`, `vd_document_stages` |
 | Collaboration | `vd_comments`, `vd_tasks`, `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` |

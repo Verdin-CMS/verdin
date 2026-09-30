@@ -238,7 +238,7 @@ See [Plugins](/extending/plugins/).
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `enabled` | `false` | Serve Prometheus metrics at `/_metrics`: HTTP requests by area (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), method and status class with latency histograms, pending webhook deliveries, open realtime streams and uptime. |
+| `enabled` | `false` | Serve Prometheus metrics at `/_metrics`: HTTP requests by area (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), method and status class with latency histograms, pending webhook deliveries, open realtime streams, event bus traffic and uptime. |
 | `token` | unset | Scrapes need `Authorization: Bearer <token>`. `VERDIN_METRICS_TOKEN` wins over it. Without a token, anyone who reaches the port can read the metrics. |
 
 ## `[telemetry]`
@@ -300,8 +300,26 @@ The API token is read from `VERDIN_CDN_TOKEN` (sent as a bearer token to webhook
 | `dir` | `"data/search"` | Index directory, relative to the project. Deleting it rebuilds the index on the next start. |
 | `memory_mb` | `50` | Indexing memory budget. |
 
-The index lives on the instance's disk and follows that instance's writes: with several
-instances, keep the search on one (or rebuild after a deploy).
+The index lives on the instance's disk. With several instances, turn on the
+[event bus](#cluster) so that each index follows the writes of all of them.
+
+## `[cluster]`
+
+The shared event bus, for several instances of one project (see
+[Running several instances](/deploy/scaling/#shared-event-bus)).
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`: realtime events, presence, cache invalidation and search updates stay in each instance. `database`: they reach every instance through the project's database (`LISTEN/NOTIFY` on PostgreSQL, polling on MySQL, MariaDB and SQLite). |
+| `poll_interval_ms` | `1000` | How often MySQL, MariaDB and SQLite read other instances' events. PostgreSQL is woken by `NOTIFY` and uses this pace only while it cannot listen. |
+| `instance_id` | unset (random at each start) | This instance's name on the bus and in the logs. |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+Set it on every instance, or with `VERDIN_CLUSTER__BUS=database`.
 
 ## Environment variables
 

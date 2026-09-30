@@ -1,6 +1,6 @@
 ---
 title: Running several instances
-description: Run several Verdin instances of one project behind a load balancer — what they share through the database, what stays per instance, and the settings to change.
+description: Run several Verdin instances of one project behind a load balancer — what they share through the database, the shared event bus, what stays per instance, and the settings to change.
 sidebar:
   order: 8
   label: Several instances
@@ -13,7 +13,7 @@ project behind a load balancer for availability or load. This page lists what th
 instances share, what each one keeps to itself, and the settings that matter.
 
 <Diagram
-  caption="Instances share the database and the media storage; caches, rate limits and event streams stay in each instance."
+  caption="Instances share the database and the media storage; with the event bus on, realtime events, presence, cache invalidation and search updates reach every instance through the database."
   code={`flowchart LR
   LB[Load balancer] --> A[Instance 1]
   LB --> B[Instance 2]
@@ -41,6 +41,9 @@ instances share, what each one keeps to itself, and the settings that matter.
 - **Health checks.** Point the load balancer at `GET /_ready`, which answers `503` when
   the database cannot be reached. `GET /_health` only says the process is up; use it for
   liveness.
+- **The shared event bus.** Set `[cluster].bus = "database"` on every instance, so that
+  realtime events, presence, cache invalidation and search updates reach all of them (see
+  [Shared event bus](#shared-event-bus)).
 - **Plugin jobs on one instance.** Set `[plugins].run_jobs = false` on every instance but
   one; otherwise each instance runs the scheduled jobs.
 - **Metrics per instance.** With `[metrics].enabled = true`, each instance serves its own
@@ -72,24 +75,74 @@ data. See [Schema migrations](/concepts/schema-migrations/).
 | Passkey challenges | Spent challenges are recorded in the database, so each is answered once across instances. |
 | Audit log pruning | Runs on every instance; deleting old rows twice is harmless. |
 | Plugin key-value store | In the database. |
+| Realtime events, presence and soft locks | With the [event bus](#shared-event-bus): a client connected to any instance receives the events of all of them and sees every admin on an entry. |
+| The anonymous response cache | With the event bus, a write on any instance empties the cache of every instance. |
+| The search index | With the event bus, every instance re-reads and indexes the entries the others change. |
+| Transformed images | With the event bus, a changed or deleted file leaves every instance's transform cache. |
 
 ## What stays on each instance
 
 - **Rate limits** are counted by each instance. With `n` instances, a client can make
   up to `n` times `[api].public_rate_limit` requests per minute. Enforce a global limit
   at the load balancer if you need one.
-- **The anonymous response cache** (`[api].cache_ttl_secs`). A write empties the cache
-  of the instance that made it; the others can serve the previous response until their
-  entry expires. Keep the TTL to a few seconds, or `0`.
-- **Realtime events and presence** are those of the instance a client is connected to.
-  Use sticky sessions for the event streams (see [Realtime](/guides/frontend/realtime/)).
-- **The search index** (`[search]`) lives on the instance's disk and follows only the
-  writes that instance makes. Enable it on one instance and route `_q` requests there,
-  or accept that the others fall behind until they restart with an empty index
-  directory.
+- **Without the event bus** (`[cluster].bus = "none"`, the default), realtime events and
+  presence are those of the instance a client is connected to (use sticky sessions for
+  the event streams), a write empties only its own instance's response cache (keep
+  `[api].cache_ttl_secs` to a few seconds, or `0`), and the search index follows only
+  the writes its instance makes.
+- **The search index** (`[search]`) lives on each instance's disk. With the event bus,
+  instances index each other's changes as they happen; an instance that starts with an
+  empty index directory builds it from the database. Changes made while an instance was
+  down reach its index when the index is rebuilt: delete the directory before starting
+  it, or rebuild after a deploy.
 - **Image transformations** (`[upload.transforms]`) are cached per instance under
   `cache_dir`. Put a CDN in front of `/uploads` to share them.
 - **Scheduled plugin jobs**: see `run_jobs` above.
+
+## Shared event bus
+
+Some things happen in memory: the realtime streams, who is editing which entry, the
+anonymous response cache, the search index. The event bus carries them from the
+instance where they happen to the others.
+
+```toml title="verdin.toml"
+[cluster]
+bus = "database"
+```
+
+Or `VERDIN_CLUSTER__BUS=database`, on every instance. The bus uses the project's
+database, so it needs no other service:
+
+- **PostgreSQL**: an instance writes each event to the `vd_cluster_events` table and
+  wakes the others with `NOTIFY`. Each instance keeps one of its pool connections for
+  `LISTEN`. The notification only names the sender, so events of any size stay
+  under PostgreSQL's 8000-byte limit. If the connection drops, the instance reconnects
+  and reads the table to catch up. It also reads the table every 30 seconds in case a
+  notification is lost.
+- **MySQL, MariaDB and SQLite**: each instance reads new rows of `vd_cluster_events`
+  every `poll_interval_ms` (1000 by default). The query uses the primary key, so reading
+  an empty table costs little. Lower the interval for faster updates; one instance's
+  change reaches the others within the interval.
+
+What travels: content writes (to the realtime streams, the response cache and the search
+index, which reads the changed entry again), media changes (streams, cache, transform
+cache), presence heartbeats and comment and task notices for the admin. Each instance
+ignores its own events. Webhooks, CDN purges, history, audit logs and plugin hooks do
+not travel: the instance that made the change runs them once.
+
+Rows are deleted after 10 minutes. A new instance starts with the next event, not the
+earlier ones. An instance that cannot keep up, or loses its database connection, drops
+events rather than holding a write. The `verdin_cluster_events_total` metric counts
+events sent, received and dropped (see [Monitoring](/deploy/monitoring/#prometheus-metrics)).
+
+Each instance names itself on the bus with a random id at each start, or with
+`[cluster].instance_id` if you set it (a pod name, for example). The id only
+tells instances apart; nothing else depends on it.
+
+With one instance, leave `bus` at `none`: events stay in memory and nothing is written.
+
+Redis and NATS backends are not available yet. The database bus covers every supported
+database with nothing else to run.
 
 ## Settings
 
@@ -103,8 +156,14 @@ sync_interval_secs = 10
 run_jobs = true
 
 [api]
-# Short-lived when each instance keeps its own cache.
-cache_ttl_secs = 5
+# Emptied on every instance by the event bus; keep it short without it.
+cache_ttl_secs = 60
+
+[cluster]
+# Share realtime events, presence, cache invalidation and search updates.
+bus = "database"
+# MySQL, MariaDB and SQLite: how often to read other instances' events.
+poll_interval_ms = 1000
 ```
 
 Set `run_jobs` per instance with `VERDIN_PLUGINS__RUN_JOBS=false`.
@@ -113,4 +172,5 @@ Set `run_jobs` per instance with `VERDIN_PLUGINS__RUN_JOBS=false`.
 
 Each instance opens up to `[database].pool_max` connections (10 by default). Keep
 `instances × pool_max` below the server's limit, with room for migrations, backups and
-maintenance. PostgreSQL's default limit is 100 connections.
+maintenance. PostgreSQL's default limit is 100 connections. On PostgreSQL, the event bus
+keeps one of each instance's connections for `LISTEN`.

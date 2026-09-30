@@ -126,6 +126,10 @@ others, but it does not block their saves. Reading presence needs `content.read`
 
 ## Several instances
 
-Events and presence are those of the instance a client is connected to. Behind a load
-balancer, route `/api/_events` and `/admin/api/events` with sticky sessions, or run realtime
-clients against one instance. See [Scaling](/deploy/scaling/).
+With the shared event bus (`[cluster].bus = "database"`), every instance's streams carry
+the events of all of them, and presence and soft locks are the same on every instance.
+Events from another instance arrive within `[cluster].poll_interval_ms` (MySQL, MariaDB,
+SQLite) or at once (PostgreSQL, `LISTEN/NOTIFY`). Without the bus, events and presence
+are those of the instance a client is connected to: route `/api/_events` and
+`/admin/api/events` with sticky sessions, or run realtime clients against one instance.
+See [Scaling](/deploy/scaling/#shared-event-bus).

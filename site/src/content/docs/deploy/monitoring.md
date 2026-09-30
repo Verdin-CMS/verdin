@@ -67,6 +67,7 @@ With several instances, scrape each one: every instance counts its own requests.
 | `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Plugin calls that failed: a trap, a time-out, output that is not JSON, or a startup function's `{ error }`. |
 | `verdin_webhook_deliveries_pending` | gauge | | Webhook deliveries waiting to be sent. |
 | `verdin_realtime_subscribers` | gauge | | Open realtime event streams. |
+| `verdin_cluster_events_total` | counter | `direction` | Events on the [shared event bus](/deploy/scaling/#shared-event-bus), with `[cluster].bus` set: `sent` to other instances, `received` from them, `dropped` (a full queue or a failed write). |
 | `verdin_uptime_seconds` | gauge | | Seconds since the process started. |
 | `verdin_build_info` | gauge | `version` | Always 1; the running version. |
 
@@ -86,8 +87,8 @@ and `verdin_uptime_seconds` resetting (restarts).
 
 [`docker/grafana/verdin.json`](https://github.com/Verdin-CMS/verdin/blob/main/docker/grafana/verdin.json)
 is a dashboard for these metrics: request rate, share of `5xx` and latency quantiles by
-area, method and status class, pending webhook deliveries, realtime subscribers, and
-plugin call rate, p95 and errors per plugin function. Import it in Grafana
+area, method and status class, pending webhook deliveries, realtime subscribers, event
+bus traffic, and plugin call rate, p95 and errors per plugin function. Import it in Grafana
 (**Dashboards → New → Import**) and pick your Prometheus data source; the `instance` and
 `area` variables at the top filter every panel.
 
