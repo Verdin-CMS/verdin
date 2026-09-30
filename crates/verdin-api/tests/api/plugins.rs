@@ -139,9 +139,10 @@ async fn plugins_hook_route_and_extend() {
     assert_eq!(switched["data"]["startup"], json!({ "function": "startup", "timeout_ms": 30000 }));
 
     // Switching it on ran its startup function, which opened reading articles to the
-    // public role (and only that).
+    // public role (and only that). It compiles its own instance first (seconds on a busy
+    // CI runner).
     let mut public = Value::Null;
-    for _ in 0..100 {
+    for _ in 0..600 {
         (_, public) = app
             .call_as(Method::GET, "/admin/api/public-permissions", None, As::Bearer(&admin))
             .await;
@@ -233,9 +234,11 @@ async fn failed_startup_leaves_the_plugin_on() {
         .await;
     assert_eq!(status, StatusCode::OK, "{switched}");
 
-    // The failure lands in the plugin's log; the plugin stays on and keeps serving.
+    // The failure lands in the plugin's log; the plugin stays on and keeps serving. The
+    // startup function compiles its own instance first, which takes seconds on a busy CI
+    // runner.
     let mut failure = None;
-    for _ in 0..100 {
+    for _ in 0..600 {
         let (_, logs) = app
             .call_as(Method::GET, "/admin/api/plugins/sample/logs", None, As::Bearer(&admin))
             .await;
