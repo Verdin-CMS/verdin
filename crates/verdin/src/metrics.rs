@@ -1,6 +1,7 @@
 //! Prometheus metrics at `/_metrics` (`[metrics]`): HTTP requests by area, method and
-//! status class with latency histograms, the webhook queue, realtime subscribers and
-//! uptime. Text exposition format 0.0.4, no dependencies.
+//! status class with latency histograms, plugin calls by plugin, kind and function, the
+//! webhook queue, realtime subscribers and uptime. Text exposition format 0.0.4, no
+//! dependencies.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -23,6 +24,41 @@ struct Series {
     buckets: [u64; BUCKETS.len()],
 }
 
+impl Series {
+    fn observe(&mut self, elapsed: Duration) {
+        let seconds = elapsed.as_secs_f64();
+        self.count += 1;
+        self.sum += seconds;
+        for (bucket, upper) in self.buckets.iter_mut().zip(BUCKETS) {
+            if seconds <= upper {
+                *bucket += 1;
+            }
+        }
+    }
+
+    /// `{name}_bucket`, `_sum` and `_count` lines for one label set.
+    fn render(&self, out: &mut String, name: &str, labels: &str) {
+        for (upper, count) in BUCKETS.iter().zip(self.buckets) {
+            let _ = writeln!(out, "{name}_bucket{{{labels},le=\"{upper}\"}} {count}");
+        }
+        let _ = writeln!(out, "{name}_bucket{{{labels},le=\"+Inf\"}} {}", self.count);
+        let _ = writeln!(out, "{name}_sum{{{labels}}} {}", self.sum);
+        let _ = writeln!(out, "{name}_count{{{labels}}} {}", self.count);
+    }
+}
+
+/// Calls of one plugin function: durations and failures (traps, time-outs, invalid output).
+#[derive(Default)]
+struct PluginSeries {
+    series: Series,
+    errors: u64,
+}
+
+/// A label value with `\`, `"` and new lines escaped.
+fn label(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")
+}
+
 /// Paths that name the area of a request (`/api`, `/admin`, …), longest first.
 #[derive(Clone)]
 pub struct Metrics {
@@ -33,6 +69,9 @@ struct Inner {
     started: Instant,
     areas: Vec<(String, &'static str)>,
     requests: Mutex<BTreeMap<(&'static str, String, &'static str), Series>>,
+    /// By plugin, kind and function: plugins and their exports are fixed at load, so the
+    /// label set is bounded.
+    plugin_calls: Mutex<BTreeMap<(String, &'static str, String), PluginSeries>>,
     token: Option<String>,
     db: Database,
     realtime: verdin_api::realtime::Realtime,
@@ -60,6 +99,7 @@ impl Metrics {
                 started: Instant::now(),
                 areas,
                 requests: Mutex::default(),
+                plugin_calls: Mutex::default(),
                 token: token.filter(|token| !token.is_empty()),
                 db,
                 realtime,
@@ -86,16 +126,31 @@ impl Metrics {
             400..=499 => "4xx",
             _ => "5xx",
         };
-        let seconds = elapsed.as_secs_f64();
         let mut requests = self.inner.requests.lock().expect("metrics");
-        let series = requests.entry((area, method.to_owned(), class)).or_default();
-        series.count += 1;
-        series.sum += seconds;
-        for (bucket, upper) in series.buckets.iter_mut().zip(BUCKETS) {
-            if seconds <= upper {
-                *bucket += 1;
-            }
-        }
+        requests.entry((area, method.to_owned(), class)).or_default().observe(elapsed);
+    }
+
+    /// Records the plugins' calls from now on.
+    pub fn observe_plugins(&self, plugins: &verdin_plugins::Plugins) {
+        let metrics = self.clone();
+        plugins.set_observer(Arc::new(move |plugin, kind, function, elapsed, failed| {
+            metrics.record_plugin_call(plugin, kind, function, elapsed, failed);
+        }));
+    }
+
+    fn record_plugin_call(
+        &self,
+        plugin: &str,
+        kind: verdin_plugins::CallKind,
+        function: &str,
+        elapsed: Duration,
+        failed: bool,
+    ) {
+        let mut calls = self.inner.plugin_calls.lock().expect("metrics");
+        let entry =
+            calls.entry((plugin.to_owned(), kind.as_str(), function.to_owned())).or_default();
+        entry.series.observe(elapsed);
+        entry.errors += u64::from(failed);
     }
 
     async fn render(&self) -> String {
@@ -125,27 +180,40 @@ impl Metrics {
             let _ = writeln!(out, "# TYPE verdin_http_request_duration_seconds histogram");
             for ((area, method, class), series) in requests.iter() {
                 let labels = format!("area=\"{area}\",method=\"{method}\",status=\"{class}\"");
-                for (upper, count) in BUCKETS.iter().zip(series.buckets) {
-                    let _ = writeln!(
-                        out,
-                        "verdin_http_request_duration_seconds_bucket{{{labels},le=\"{upper}\"}} {count}"
+                series.render(&mut out, "verdin_http_request_duration_seconds", &labels);
+            }
+        }
+
+        {
+            let calls = self.inner.plugin_calls.lock().expect("metrics");
+            if !calls.is_empty() {
+                let _ = writeln!(
+                    out,
+                    "# HELP verdin_plugin_call_duration_seconds Time plugin functions took."
+                );
+                let _ = writeln!(out, "# TYPE verdin_plugin_call_duration_seconds histogram");
+                for ((plugin, kind, function), calls) in calls.iter() {
+                    let labels = format!(
+                        "plugin=\"{}\",kind=\"{kind}\",function=\"{}\"",
+                        label(plugin),
+                        label(function)
                     );
+                    calls.series.render(&mut out, "verdin_plugin_call_duration_seconds", &labels);
                 }
                 let _ = writeln!(
                     out,
-                    "verdin_http_request_duration_seconds_bucket{{{labels},le=\"+Inf\"}} {}",
-                    series.count
+                    "# HELP verdin_plugin_call_errors_total Plugin calls that failed (trap, time-out, invalid output)."
                 );
-                let _ = writeln!(
-                    out,
-                    "verdin_http_request_duration_seconds_sum{{{labels}}} {}",
-                    series.sum
-                );
-                let _ = writeln!(
-                    out,
-                    "verdin_http_request_duration_seconds_count{{{labels}}} {}",
-                    series.count
-                );
+                let _ = writeln!(out, "# TYPE verdin_plugin_call_errors_total counter");
+                for ((plugin, kind, function), calls) in calls.iter() {
+                    let _ = writeln!(
+                        out,
+                        "verdin_plugin_call_errors_total{{plugin=\"{}\",kind=\"{kind}\",function=\"{}\"}} {}",
+                        label(plugin),
+                        label(function),
+                        calls.errors
+                    );
+                }
             }
         }
 
@@ -271,5 +339,33 @@ mod tests {
         );
         assert!(text.contains(r#"verdin_http_request_duration_seconds_bucket{area="api",method="GET",status="2xx",le="+Inf"} 3"#));
         assert!(text.contains("verdin_realtime_subscribers 0"));
+        assert!(!text.contains("verdin_plugin_call"), "no plugin calls yet");
+    }
+
+    #[tokio::test]
+    async fn plugin_calls_by_plugin_kind_and_function() {
+        use verdin_plugins::CallKind;
+        let db = Database::connect("sqlite::memory:", &Default::default()).await.unwrap();
+        let metrics = Metrics::new(db, Default::default(), "/api", "/admin", None);
+        let millis = Duration::from_millis;
+        metrics.record_plugin_call("shop", CallKind::Hook, "before_create", millis(3), false);
+        metrics.record_plugin_call("shop", CallKind::Hook, "before_create", millis(30), true);
+        metrics.record_plugin_call("shop", CallKind::Startup, "start", millis(700), false);
+        metrics.record_plugin_call("shop", CallKind::Route, "a\"b", millis(1), false);
+        let text = metrics.render().await;
+        let hook = r#"plugin="shop",kind="hook",function="before_create""#;
+        for line in [
+            format!(r#"verdin_plugin_call_duration_seconds_bucket{{{hook},le="0.005"}} 1"#),
+            format!(r#"verdin_plugin_call_duration_seconds_bucket{{{hook},le="0.05"}} 2"#),
+            format!(r#"verdin_plugin_call_duration_seconds_count{{{hook}}} 2"#),
+            format!("verdin_plugin_call_errors_total{{{hook}}} 1"),
+            r#"verdin_plugin_call_errors_total{plugin="shop",kind="startup",function="start"} 0"#
+                .to_owned(),
+            r#"verdin_plugin_call_duration_seconds_count{plugin="shop",kind="route",function="a\"b"} 1"#
+                .to_owned(),
+            "# TYPE verdin_plugin_call_duration_seconds histogram".to_owned(),
+        ] {
+            assert!(text.contains(&line), "{line} in {text}");
+        }
     }
 }

@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::{Value, json};
 use verdin_content::events::{BoxFuture, DocumentHook, HookAction, HookContext};
 use verdin_migrate::{ApplyOptions, Renames, Risk};
-use verdin_plugins::{PluginError, PluginHost, Plugins, StartupReason};
+use verdin_plugins::{CallKind, PluginError, PluginHost, Plugins, StartupReason};
 use verdin_testkit::TestDb;
 
 #[derive(Default)]
@@ -143,8 +143,8 @@ kv = true"#,
         )
         .await
         .unwrap();
-    plugins.call("sample", "tick", &json!({})).await.unwrap();
-    plugins.call("sample", "tick", &json!({})).await.unwrap();
+    plugins.call(CallKind::Job, "sample", "tick", &json!({})).await.unwrap();
+    plugins.call(CallKind::Job, "sample", "tick", &json!({})).await.unwrap();
     let hello = plugins
         .handle("sample", &json!({ "path": "/hello", "actor": { "kind": "public" } }))
         .await
@@ -178,7 +178,7 @@ kv = true"#,
         200
     );
     assert!(matches!(
-        plugins.call("sample", "missing", &json!({})).await,
+        plugins.call(CallKind::Job, "sample", "missing", &json!({})).await,
         Err(PluginError::NotFound)
     ));
     test.drop().await;
@@ -188,7 +188,7 @@ kv = true"#,
 async fn storage_needs_its_capability() {
     let (test, plugins, _dir, _) = setup(r#"read = []"#).await;
     plugins.apply(&json!({ "sample": { "enabled": true } }));
-    plugins.call("sample", "tick", &json!({})).await.unwrap();
+    plugins.call(CallKind::Job, "sample", "tick", &json!({})).await.unwrap();
     let hello = plugins.handle("sample", &json!({ "path": "/hello" })).await.unwrap();
     assert_eq!(hello["body"]["ticks"], Value::Null, "kv writes are ignored without `kv`");
     assert_eq!(hello["body"]["message"], "hello world");
@@ -258,6 +258,34 @@ public_permissions = true"#,
     plugins.set_run_startup(false);
     plugins.apply(&json!({ "sample": { "enabled": false } }));
     assert!(plugins.spawn_startup(plugins.apply(&on(json!({})))).is_none());
+    test.drop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn calls_are_observed() {
+    let (test, plugins, _dir, _) = setup(r#"kv = true"#).await;
+    let seen: Arc<Mutex<Vec<(String, CallKind, String, bool)>>> = Arc::default();
+    let sink = seen.clone();
+    plugins.set_observer(Arc::new(move |plugin, kind, function, _, failed| {
+        sink.lock().unwrap().push((plugin.to_owned(), kind, function.to_owned(), failed));
+    }));
+    plugins.apply(&json!({ "sample": { "enabled": true } }));
+    plugins.handle("sample", &json!({ "path": "/hello" })).await.unwrap();
+    assert!(plugins.handle("sample", &json!({ "path": "/panic" })).await.is_err());
+    assert!(plugins.call(CallKind::Job, "sample", "missing", &json!({})).await.is_err());
+    // Without the capability the startup function answers an error: a failed call.
+    assert!(plugins.startup("sample", StartupReason::Start).await.is_err());
+    let entry =
+        |kind, function: &str, failed| ("sample".to_owned(), kind, function.to_owned(), failed);
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec![
+            entry(CallKind::Route, "handle", false),
+            entry(CallKind::Route, "handle", true),
+            entry(CallKind::Startup, "startup", true),
+        ],
+        "unknown functions are not recorded"
+    );
     test.drop().await;
 }
 

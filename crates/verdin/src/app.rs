@@ -643,7 +643,7 @@ fn graphql_router(
                             (plugins.clone(), name.clone(), function.clone());
                         Box::pin(async move {
                             plugins
-                                .call(&name, &function, &input)
+                                .call(verdin_plugins::CallKind::Graphql, &name, &function, &input)
                                 .await
                                 .map_err(|error| error.to_string())
                         })

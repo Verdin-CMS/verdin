@@ -543,6 +543,9 @@ async fn start(project: Project, mode: Mode, migrate: bool) -> Result<()> {
     for plugin in plugins.list() {
         tracing::info!(plugin = %plugin.manifest.name, version = %plugin.manifest.version, "plugin found");
     }
+    if let Some(metrics) = &metrics {
+        metrics.observe_plugins(&plugins);
+    }
     let mailer =
         verdin_email::Mailer::new(&project.config.email, &verdin_email::EmailSecrets::from_env())
             .context("configuring [email]")?;

@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use extism::{PTR, UserData};
 use serde::Serialize;
@@ -75,6 +75,32 @@ pub enum StartupReason {
     Settings,
 }
 
+/// What a plugin call was for, as the metrics label it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CallKind {
+    Hook,
+    Route,
+    Job,
+    Startup,
+    Graphql,
+}
+
+impl CallKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Hook => "hook",
+            Self::Route => "route",
+            Self::Job => "job",
+            Self::Startup => "startup",
+            Self::Graphql => "graphql",
+        }
+    }
+}
+
+/// Sees every call that reached an exported function: `(plugin, kind, function, elapsed,
+/// failed)`. Functions come from the modules' exports, so the label set is bounded.
+pub type CallObserver = Arc<dyn Fn(&str, CallKind, &str, Duration, bool) + Send + Sync>;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LogLine {
     pub at: String,
@@ -88,12 +114,20 @@ struct Shared {
     capabilities: manifest::Capabilities,
     db: Database,
     host: Arc<RwLock<Option<Arc<dyn PluginHost>>>>,
+    observer: Arc<RwLock<Option<CallObserver>>>,
     runtime: tokio::runtime::Handle,
     settings: RwLock<Value>,
     logs: Mutex<VecDeque<LogLine>>,
 }
 
 impl Shared {
+    fn observe(&self, kind: CallKind, function: &str, started: Instant, failed: bool) {
+        let observer = self.observer.read().expect("plugin observer").clone();
+        if let Some(observer) = observer {
+            observer(&self.name, kind, function, started.elapsed(), failed);
+        }
+    }
+
     fn log(&self, level: &str, message: &str) {
         match level {
             "error" => tracing::error!(plugin = %self.name, "{message}"),
@@ -347,6 +381,7 @@ struct Inner {
     /// Directories that could not be loaded.
     errors: Vec<(PathBuf, String)>,
     host: Arc<RwLock<Option<Arc<dyn PluginHost>>>>,
+    observer: Arc<RwLock<Option<CallObserver>>>,
     /// Whether this instance runs startup functions (the one that runs the jobs).
     run_startup: AtomicBool,
 }
@@ -363,6 +398,7 @@ impl Default for Plugins {
                 plugins: Vec::new(),
                 errors: Vec::new(),
                 host: Arc::default(),
+                observer: Arc::default(),
                 run_startup: AtomicBool::new(true),
             }),
         }
@@ -374,6 +410,7 @@ impl Plugins {
     /// [`Plugins::apply`]). Must run inside a Tokio runtime.
     pub fn load(dir: &Path, db: Database) -> Self {
         let host: Arc<RwLock<Option<Arc<dyn PluginHost>>>> = Arc::default();
+        let observer: Arc<RwLock<Option<CallObserver>>> = Arc::default();
         let mut plugins: Vec<Arc<Plugin>> = Vec::new();
         let mut errors = Vec::new();
         let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
@@ -398,6 +435,7 @@ impl Plugins {
                         capabilities: manifest.capabilities.clone(),
                         db: db.clone(),
                         host: host.clone(),
+                        observer: observer.clone(),
                         runtime: tokio::runtime::Handle::current(),
                         settings: RwLock::new(json!({})),
                         logs: Mutex::default(),
@@ -417,13 +455,24 @@ impl Plugins {
             tracing::warn!(plugin = %path.display(), %error, "plugin not loaded");
         }
         Self {
-            inner: Arc::new(Inner { plugins, errors, host, run_startup: AtomicBool::new(true) }),
+            inner: Arc::new(Inner {
+                plugins,
+                errors,
+                host,
+                observer,
+                run_startup: AtomicBool::new(true),
+            }),
         }
     }
 
     /// Gives plugins access to content (again after each rebuild of the app).
     pub fn set_host(&self, host: Arc<dyn PluginHost>) {
         *self.inner.host.write().expect("plugin host") = Some(host);
+    }
+
+    /// Reports every call's duration (the Prometheus metrics).
+    pub fn set_observer(&self, observer: CallObserver) {
+        *self.inner.observer.write().expect("plugin observer") = Some(observer);
     }
 
     /// With several instances, only the one that runs the scheduled jobs runs startup
@@ -484,6 +533,7 @@ impl Plugins {
         }
         let input = json!({ "reason": reason }).to_string();
         let worker = plugin.clone();
+        let started = Instant::now();
         let result = tokio::task::spawn_blocking(move || worker.startup_blocking(&input))
             .await
             .map_err(|error| PluginError::Call(error.to_string()))
@@ -496,6 +546,10 @@ impl Plugins {
                 }
                 None => Ok(()),
             });
+        if !matches!(result, Err(PluginError::NotFound)) {
+            let function = plugin.manifest.startup.as_ref().map_or("", |s| s.function.as_str());
+            plugin.shared.observe(CallKind::Startup, function, started, result.is_err());
+        }
         result?;
         tracing::info!(plugin = %name, ?reason, "plugin started");
         Ok(())
@@ -519,9 +573,10 @@ impl Plugins {
         }))
     }
 
-    /// Calls `function` of an enabled plugin.
+    /// Calls `function` of an enabled plugin (`kind` labels it in the metrics).
     pub async fn call(
         &self,
+        kind: CallKind,
         name: &str,
         function: &str,
         input: &Value,
@@ -530,7 +585,7 @@ impl Plugins {
         if !plugin.enabled() {
             return Err(PluginError::Disabled);
         }
-        call(plugin, function.to_owned(), input).await
+        call(plugin, kind, function.to_owned(), input).await
     }
 
     /// Serves a route of a plugin: `{ method, path, query, headers, body, actor }` →
@@ -539,7 +594,7 @@ impl Plugins {
         let plugin = self.get(name).ok_or(PluginError::NotFound)?;
         let function =
             plugin.manifest.routes.as_ref().ok_or(PluginError::NotFound)?.function.clone();
-        self.call(name, &function, request).await
+        self.call(CallKind::Route, name, &function, request).await
     }
 
     fn hooked<'a>(
@@ -575,7 +630,7 @@ impl Plugins {
                         tokio::time::sleep(wait).await;
                         if plugin.enabled() {
                             let input = json!({ "scheduledAt": next.to_rfc3339() });
-                            if let Err(error) = call(plugin.clone(), function.clone(), &input).await {
+                            if let Err(error) = call(plugin.clone(), CallKind::Job, function.clone(), &input).await {
                                 tracing::warn!(plugin = %plugin.manifest.name, %function, %error, "job failed");
                             }
                         }
@@ -587,13 +642,26 @@ impl Plugins {
     }
 }
 
-async fn call(plugin: Arc<Plugin>, function: String, input: &Value) -> Result<Value, PluginError> {
+async fn call(
+    plugin: Arc<Plugin>,
+    kind: CallKind,
+    function: String,
+    input: &Value,
+) -> Result<Value, PluginError> {
     let input = input.to_string();
-    tokio::task::spawn_blocking(move || plugin.call_blocking(&function, &input))
+    let started = Instant::now();
+    let worker = plugin.clone();
+    let name = function.clone();
+    let result = tokio::task::spawn_blocking(move || worker.call_blocking(&name, &input))
         .await
         .map_err(|error| PluginError::Call(error.to_string()))
         .and_then(|output| output)
-        .and_then(|output| parse_output(&output))
+        .and_then(|output| parse_output(&output));
+    // Unknown functions are not recorded: they would make labels out of any name.
+    if !matches!(result, Err(PluginError::NotFound)) {
+        plugin.shared.observe(kind, &function, started, result.is_err());
+    }
+    result
 }
 
 fn parse_output(output: &str) -> Result<Value, PluginError> {
@@ -629,7 +697,7 @@ impl DocumentHook for Plugins {
                     "locale": context.locale,
                     "data": data,
                 });
-                match call(plugin.clone(), function, &input).await {
+                match call(plugin.clone(), CallKind::Hook, function, &input).await {
                     Ok(output) => {
                         if let Some(error) = output.get("error").and_then(Value::as_str) {
                             return Err(error.to_owned());
@@ -672,7 +740,7 @@ impl DocumentListener for Plugins {
                     "documentId": event.document_id,
                     "locale": event.locale,
                 });
-                if let Err(error) = call(plugin.clone(), function, &input).await {
+                if let Err(error) = call(plugin.clone(), CallKind::Hook, function, &input).await {
                     tracing::warn!(plugin = %plugin.manifest.name, %error, "after hook failed");
                 }
             }
