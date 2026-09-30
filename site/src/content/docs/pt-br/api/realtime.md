@@ -129,6 +129,10 @@ no tipo.
 
 ## Várias instâncias
 
-Os eventos e a presença são os da instância à qual o cliente está conectado. Atrás de um load
-balancer, roteie `/api/_events` e `/admin/api/events` com sticky sessions, ou conecte os
-clientes de tempo real a uma única instância. Veja [Escalabilidade](/pt-br/deploy/scaling/).
+Com o barramento de eventos compartilhado (`[cluster].bus = "database"`), os streams de todas
+as instâncias trazem os eventos de todas elas, e a presença e os soft locks são os mesmos em
+cada instância. Os eventos de outra instância chegam dentro de `[cluster].poll_interval_ms`
+(MySQL, MariaDB, SQLite) ou imediatamente (PostgreSQL, `LISTEN/NOTIFY`). Sem o barramento, os
+eventos e a presença são os da instância à qual o cliente está conectado: roteie
+`/api/_events` e `/admin/api/events` com sticky sessions, ou conecte os clientes de tempo real
+a uma única instância. Veja [Escalabilidade](/pt-br/deploy/scaling/#barramento-de-eventos-compartilhado).

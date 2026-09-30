@@ -1,6 +1,6 @@
 ---
 title: Como rodar várias instâncias
-description: Rode várias instâncias Verdin de um mesmo projeto atrás de um load balancer — o que elas compartilham pelo banco de dados, o que fica em cada instância e as configurações a mudar.
+description: Rode várias instâncias Verdin de um mesmo projeto atrás de um load balancer — o que elas compartilham pelo banco de dados, o barramento de eventos compartilhado, o que fica em cada instância e as configurações a mudar.
 sidebar:
   order: 8
   label: Várias instâncias
@@ -14,7 +14,7 @@ página lista o que as instâncias compartilham, o que cada uma guarda para si e
 que importam.
 
 <Diagram
-  caption="As instâncias compartilham o banco de dados e o armazenamento de mídia; caches, limites de taxa e streams de eventos ficam em cada instância."
+  caption="As instâncias compartilham o banco de dados e o armazenamento de mídia; com o barramento de eventos ativado, eventos de tempo real, presença, invalidação de cache e atualizações da busca chegam a todas as instâncias pelo banco de dados."
   code={`flowchart LR
   LB[Load balancer] --> A[Instância 1]
   LB --> B[Instância 2]
@@ -43,6 +43,9 @@ que importam.
 - **Health checks.** Aponte o load balancer para `GET /_ready`, que responde `503` quando o
   banco de dados não pode ser alcançado. `GET /_health` só diz que o processo está de pé;
   use-o para liveness.
+- **O barramento de eventos compartilhado.** Defina `[cluster].bus = "database"` em todas as
+  instâncias, para que eventos de tempo real, presença, invalidação de cache e atualizações da
+  busca cheguem a todas elas (veja [Barramento de eventos compartilhado](#barramento-de-eventos-compartilhado)).
 - **Jobs de plugins em uma única instância.** Defina `[plugins].run_jobs = false` em todas as
   instâncias menos uma; caso contrário, cada instância roda os jobs agendados.
 - **Métricas por instância.** Com `[metrics].enabled = true`, cada instância serve o seu próprio
@@ -74,24 +77,75 @@ precisar mais dos dados. Veja [Migrações de schema](/pt-br/concepts/schema-mig
 | Desafios de chaves de acesso | Os desafios usados são registrados no banco de dados, então cada um é respondido uma única vez entre as instâncias. |
 | Limpeza do log de auditoria | Roda em todas as instâncias; apagar linhas antigas duas vezes não causa problema. |
 | Armazenamento chave-valor dos plugins | No banco de dados. |
+| Eventos de tempo real, presença e soft locks | Com o [barramento de eventos](#barramento-de-eventos-compartilhado): um cliente conectado a qualquer instância recebe os eventos de todas e vê todos os administradores em uma entrada. |
+| O cache de respostas anônimas | Com o barramento de eventos, uma escrita em qualquer instância esvazia o cache de todas. |
+| O índice de busca | Com o barramento de eventos, cada instância relê e indexa as entradas que as outras alteram. |
+| Imagens transformadas | Com o barramento de eventos, um arquivo alterado ou apagado sai do cache de transformações de todas as instâncias. |
 
 ## O que fica em cada instância
 
 - **Os limites de taxa** são contados por cada instância. Com `n` instâncias, um cliente pode
   fazer até `n` vezes `[api].public_rate_limit` requisições por minuto. Imponha um limite
   global no load balancer se precisar de um.
-- **O cache de respostas anônimas** (`[api].cache_ttl_secs`). Uma escrita esvazia o cache da
-  instância que a fez; as outras podem servir a resposta anterior até que a sua entrada expire.
-  Mantenha o TTL em poucos segundos, ou em `0`.
-- **Os eventos de tempo real e a presença** são os da instância à qual o cliente está
-  conectado. Use sticky sessions para os streams de eventos (veja
-  [Tempo real](/pt-br/guides/frontend/realtime/)).
-- **O índice de busca** (`[search]`) fica no disco da instância e acompanha apenas as escritas
-  que essa instância faz. Ative-o em uma instância e roteie as requisições `_q` para lá, ou
-  aceite que as outras fiquem para trás até reiniciarem com um diretório de índice vazio.
+- **Sem o barramento de eventos** (`[cluster].bus = "none"`, o padrão), os eventos de tempo
+  real e a presença são os da instância à qual o cliente está conectado (use sticky sessions
+  para os streams de eventos), uma escrita esvazia apenas o cache de respostas da sua própria
+  instância (mantenha `[api].cache_ttl_secs` em poucos segundos, ou em `0`) e o índice de
+  busca acompanha apenas as escritas da sua instância.
+- **O índice de busca** (`[search]`) fica no disco de cada instância. Com o barramento de
+  eventos, as instâncias indexam as alterações umas das outras à medida que acontecem; uma
+  instância que inicia com um diretório de índice vazio o constrói a partir do banco de dados.
+  As alterações feitas enquanto uma instância estava fora do ar chegam ao seu índice quando ele
+  é reconstruído: apague o diretório antes de iniciá-la, ou reconstrua depois de um deploy.
 - **As transformações de imagens** (`[upload.transforms]`) ficam em cache por instância em
   `cache_dir`. Coloque uma CDN na frente de `/uploads` para compartilhá-las.
 - **Os jobs agendados de plugins**: veja `run_jobs` acima.
+
+## Barramento de eventos compartilhado
+
+Algumas coisas acontecem em memória: os streams de tempo real, quem está editando qual
+entrada, o cache de respostas anônimas, o índice de busca. O barramento de eventos as leva da
+instância em que acontecem para as outras.
+
+```toml title="verdin.toml"
+[cluster]
+bus = "database"
+```
+
+Ou `VERDIN_CLUSTER__BUS=database`, em todas as instâncias. O barramento usa o banco de dados do
+projeto, então não precisa de nenhum outro serviço:
+
+- **PostgreSQL**: uma instância grava cada evento na tabela `vd_cluster_events` e acorda as
+  outras com `NOTIFY`. Cada instância reserva uma das conexões do seu pool para `LISTEN`. A
+  notificação só informa o remetente, então eventos de qualquer tamanho ficam abaixo do limite
+  de 8000 bytes do PostgreSQL. Se a conexão cair, a instância reconecta e lê a tabela para
+  se atualizar. Ela também lê a tabela a cada 30 segundos, caso uma notificação se perca.
+- **MySQL, MariaDB e SQLite**: cada instância lê as novas linhas de `vd_cluster_events` a cada
+  `poll_interval_ms` (1000 por padrão). A consulta usa a chave primária, então ler uma tabela
+  vazia custa pouco. Diminua o intervalo para atualizações mais rápidas; a alteração de uma
+  instância chega às outras dentro do intervalo.
+
+O que viaja: escritas de conteúdo (para os streams de tempo real, o cache de respostas e o
+índice de busca, que relê a entrada alterada), alterações de mídia (streams, cache, cache de
+transformações), batimentos de presença e avisos de comentários e tarefas para a administração.
+Cada instância ignora os seus próprios eventos. Webhooks, purgas de CDN, histórico, logs de
+auditoria e hooks de plugins não viajam: a instância que fez a alteração os executa uma única
+vez.
+
+As linhas são apagadas após 10 minutos. Uma nova instância começa com o próximo evento, não com
+os anteriores. Uma instância que não consegue acompanhar, ou que perde a conexão com o banco de
+dados, descarta eventos em vez de segurar uma escrita. A métrica `verdin_cluster_events_total`
+conta os eventos enviados, recebidos e descartados (veja
+[Monitoramento](/pt-br/deploy/monitoring/#métricas-prometheus)).
+
+Cada instância se identifica no barramento com um id aleatório a cada início, ou com
+`[cluster].instance_id`, se você o definir (o nome de um pod, por exemplo). O id só serve para
+distinguir as instâncias; nada mais depende dele.
+
+Com uma única instância, deixe `bus` em `none`: os eventos ficam em memória e nada é gravado.
+
+Os backends Redis e NATS ainda não estão disponíveis. O barramento de banco de dados cobre todos
+os bancos de dados compatíveis sem nada mais para rodar.
 
 ## Configurações
 
@@ -105,8 +159,14 @@ sync_interval_secs = 10
 run_jobs = true
 
 [api]
-# Short-lived when each instance keeps its own cache.
-cache_ttl_secs = 5
+# Emptied on every instance by the event bus; keep it short without it.
+cache_ttl_secs = 60
+
+[cluster]
+# Share realtime events, presence, cache invalidation and search updates.
+bus = "database"
+# MySQL, MariaDB and SQLite: how often to read other instances' events.
+poll_interval_ms = 1000
 ```
 
 Defina `run_jobs` por instância com `VERDIN_PLUGINS__RUN_JOBS=false`.
@@ -115,4 +175,5 @@ Defina `run_jobs` por instância com `VERDIN_PLUGINS__RUN_JOBS=false`.
 
 Cada instância abre até `[database].pool_max` conexões (10 por padrão). Mantenha
 `instâncias × pool_max` abaixo do limite do servidor, com folga para migrações, backups e
-manutenção. O limite padrão do PostgreSQL é de 100 conexões.
+manutenção. O limite padrão do PostgreSQL é de 100 conexões. No PostgreSQL, o barramento de eventos
+reserva uma das conexões de cada instância para `LISTEN`.

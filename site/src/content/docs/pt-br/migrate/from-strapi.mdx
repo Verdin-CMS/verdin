@@ -123,8 +123,8 @@ Não são importados de forma alguma: os usuários e as funções de administra�
 API, os transfer tokens, os webhooks, os lançamentos, as etapas dos fluxos de revisão, o
 histórico de conteúdo e os logs de auditoria, e as configurações dos plugins do Strapi. O seu
 código Strapi — controllers, services, rotas, policies, middlewares, lifecycle hooks, tarefas
-cron e personalizações da administração — não tem equivalente no Verdin para o qual converter;
-veja [Reconstrua o código personalizado](#reconstrua-o-código-personalizado).
+cron e personalizações da administração — não é convertido: reconstrua-o como descrito em
+[Reconstrua o código personalizado](#reconstrua-o-código-personalizado).
 
 <Aside type="note">
 Os campos personalizados mantêm o seu nome `customField`, como `plugin::color-picker.color`. O
@@ -208,11 +208,17 @@ Para ter acesso tipado, gere os tipos TypeScript com `verdin types` e use o
 
 ## Reconstrua o código personalizado
 
+O código em `src/` passa para um [plugin WebAssembly](/pt-br/extending/plugins/). [Portar código
+personalizado](/pt-br/migrate/porting-custom-code/) acompanha os lifecycles, as rotas, a tarefa
+cron e o `bootstrap` de um projeto real, com um plugin de exemplo completo.
+
 | Strapi | Verdin |
 | --- | --- |
-| Lifecycle hooks, middlewares do Document Service | Hooks de plugins (`beforeCreate`, `afterUpdate`…) em um [plugin WebAssembly](/pt-br/extending/plugins/) |
+| Lifecycle hooks, middlewares do Document Service | Hooks de plugins (`beforeCreate`, `afterUpdate`…) |
 | Rotas e controllers personalizados | Rotas de plugins em `/api/plugins/<name>/` |
+| `bootstrap()` em `src/index.js` (popular conteúdo, definir permissões públicas) | A função de inicialização do plugin (`[startup]`), com a capacidade `public_permissions` para a função pública |
 | Tarefas cron | Jobs de plugins (`[[jobs]]`) |
+| Um endpoint personalizado que guarda envios de formulários | Os [Formulários](/pt-br/guides/frontend/forms/) integrados |
 | Campos personalizados | Campos personalizados de plugins |
 | Widgets da administração | Widgets de plugins, ou os widgets integrados do dashboard |
 | Logo, cores e textos da administração | `[admin.branding]` no `verdin.toml` |

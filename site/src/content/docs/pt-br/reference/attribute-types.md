@@ -226,8 +226,10 @@ Um número decimal exato.
 Os valores são arredondados para `scale` dígitos (metade para longe do zero, como fazem os bancos
 de dados) e rejeitados quando têm mais de `precision - scale` dígitos antes da vírgula. As
 escritas aceitam números e strings numéricas. Armazenado como `numeric(precision,scale)` (`text`
-no SQLite, para que nada seja arredondado). API: um número, ou uma string exata com
-[`[api].decimal_as_string`](/pt-br/reference/configuration/).
+no SQLite, para que nada seja arredondado). API: um número, como o Strapi o retorna. Os valores
+inteiros são inteiros (`25`, não `25.0`) e os demais são o menor float que lê de volta o mesmo
+valor (`12.5`). Com [`[api].decimal_as_string`](/pt-br/reference/configuration/), a API retorna
+uma string exata.
 
 ## Datas e booleanos
 

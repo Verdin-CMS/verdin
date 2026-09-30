@@ -127,7 +127,7 @@ As tabelas da plataforma fazem parte de todo modelo derivado, então o motor de 
 | Administradores | `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (tokens de renovação), `vd_admin_tokens` (links de convite e de redefinição), `vd_admin_two_factor`, `vd_admin_passkeys`, `vd_spent_challenges` |
 | Acesso à API de conteúdo | `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` |
 | Usuários finais | `vd_users`, `vd_user_roles`, `vd_user_role_permissions`, `vd_end_user_sessions` |
-| Instância | `vd_settings` (interruptores de recursos, layouts das telas de edição, marcadores de atualizações únicas), `vd_locales` |
+| Instância | `vd_settings` (interruptores de recursos, layouts das telas de edição, marcadores de atualizações únicas), `vd_locales`, `vd_cluster_events` (o barramento de eventos compartilhado, veja [Várias instâncias](/pt-br/deploy/scaling/)) |
 | Mídia | `vd_files`, `vd_folders` |
 | Fluxo de conteúdo | `vd_history_versions`, `vd_releases`, `vd_release_actions`, `vd_workflows`, `vd_workflow_stages`, `vd_document_stages` |
 | Colaboração | `vd_comments`, `vd_tasks`, `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` |

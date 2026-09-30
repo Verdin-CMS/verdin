@@ -2,7 +2,7 @@
 title: Atualização do Verdin
 description: Atualize uma instalação do Verdin — o binário ou a imagem Docker, as migrações que rodam na inicialização e as mudanças notáveis ou incompatíveis de cada versão minor.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -116,6 +116,33 @@ rodando lado a lado por mais tempo do que um rolling deploy leva.
 
 As mudanças notáveis e incompatíveis por versão, da mais recente para a mais antiga. O
 [changelog](/pt-br/project/changelog/) tem a lista completa.
+
+### 0.10 → 0.11
+
+A migração que roda na inicialização adiciona uma tabela, `vd_cluster_events`, usada apenas com
+`[cluster] bus = "database"`.
+
+- **Decimais**: os valores `decimal` inteiros são retornados como inteiros JSON (`25`, não
+  `25.0`), como o Strapi os retorna. Clientes que verificam o tipo JSON de forma estrita podem
+  notar; `[api] decimal_as_string` não mudou. No SQLite, `sort` e `$gt`/`$lt`/`$between` em
+  decimais agora comparam números em vez de texto, então os resultados que dependiam da antiga
+  ordem (errada) mudam.
+- **`populate=*` em tipos localizados** também retorna `localizations`, as outras versões de
+  idioma do documento, como faz o Strapi v5. Um atributo do schema chamado `localizations`
+  mantém o seu significado.
+- **Plugins**: os hooks after disparados pelas próprias escritas de um plugin rodam quando a sua
+  chamada retorna, em vez de dentro da escrita, e os hooks que escrevem aninham no máximo 4
+  níveis. As funções do host param no limite de tempo da chamada.
+- **Várias instâncias**: defina `[cluster] bus = "database"` em todas as instâncias para que os
+  streams de tempo real, a presença, o cache de respostas e o índice de busca acompanhem as
+  alterações feitas nas outras (veja [Escalabilidade](/pt-br/deploy/scaling/)).
+- **Scripts que leem listas da administração**: `GET /admin/api/users`, `/roles`, `/api-tokens`,
+  `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` e `/deploy/targets`
+  retornam 25 linhas, a menos que você passe `pageSize` (no máximo 100), com
+  `meta.pagination`, como as listas que já eram paginadas. Percorra as páginas com `?page=` até
+  que `page` chegue a `meta.pagination.pageCount`. `/deploy/deployments` pagina do mesmo modo em
+  vez de retornar os últimos 50; `limit` ainda funciona como alias obsoleto de `pageSize`. Veja
+  [Listas](/pt-br/api/admin/#listas).
 
 ### 0.9.1 → 0.10
 

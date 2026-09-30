@@ -92,6 +92,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   de um script, não das páginas de outro site.
 - As alterações bem-sucedidas ficam registradas no [log de auditoria](/pt-br/guides/content/audit-logs/).
 
+## Listas
+
+As listas das configurações são paginadas com `page` (a partir de 1) e `pageSize`. Elas
+respondem as linhas da página e as contagens:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Lista | Tamanho de página padrão (máximo) | Ordem | Outros parâmetros |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Mais antigos primeiro | |
+| `GET /webhooks` | 25 (100) | Mais antigos primeiro | `meta.events` lista os eventos que um webhook pode assinar |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Mais recentes primeiro | |
+| `GET /releases` | 25 (100) | Mais recentes primeiro | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | Por origem | `search` busca na origem ou no destino |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | Por nome | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Mais recentes primeiro | |
+| `GET /deploy/targets` | 25 (100) | Mais antigos primeiro | |
+| `GET /deploy/deployments` | 25 (100) | Mais recentes primeiro | `targetId`; `limit` é um alias obsoleto de `pageSize` |
+| `GET /end-users` | 25 (100) | Mais recentes primeiro | `search` busca no nome de usuário ou no e-mail |
+| `GET /audit-logs` | 50 (200) | Mais recentes primeiro | Veja [Logs de auditoria](/pt-br/guides/content/audit-logs/) |
+
+Um `pageSize` maior é reduzido ao máximo. Para ler uma lista inteira, peça páginas até que
+`page` chegue a `pageCount`:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+As rotas de conteúdo paginam como a API REST, com `pagination[page]` e
+`pagination[pageSize]`.
+
 ## Grupos de rotas
 
 Os caminhos são relativos a `/admin/api`. Os routers estão em

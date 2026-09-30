@@ -8,7 +8,8 @@ sidebar:
 Esta página roda um projeto Verdin no Kubernetes. A configuração principal é stateless:
 PostgreSQL (ou MySQL/MariaDB) fora dos pods, mídia em um armazenamento compatível com S3 e
 quantas réplicas você precisar. Em seguida vem uma configuração de réplica única com um volume
-para SQLite.
+para SQLite. O [chart Helm](/pt-br/deploy/helm/) empacota estes manifestos com valores para cada
+configuração.
 
 Os manifestos usam APIs estáveis (`apps/v1`, `v1`) e foram validados contra os schemas do
 Kubernetes com `kubeconform -strict` em 2026-09-29, sem rodar em um cluster real. Substitua todos
@@ -39,7 +40,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -159,7 +163,9 @@ Observações sobre o manifesto:
   aceite que os jobs rodem em cada réplica. Os webhooks, os lançamentos agendados e o resumo
   diário são reservados no banco de dados e rodam uma única vez. Veja
   [Como rodar várias instâncias](/pt-br/deploy/scaling/).
-- **Tempo real.** Os streams de eventos (`/api/_events`) ficam no pod ao qual se conectam. Use
+- **Tempo real, presença, caches e busca.** `[cluster].bus = "database"` leva a cada pod os
+  eventos dos outros (veja [o barramento de eventos compartilhado](/pt-br/deploy/scaling/#barramento-de-eventos-compartilhado)).
+  Sem ele, os streams de eventos (`/api/_events`) ficam no pod ao qual se conectam: use
   session affinity no Ingress se você usar [tempo real](/pt-br/guides/frontend/realtime/).
 
 ## Réplica única com SQLite

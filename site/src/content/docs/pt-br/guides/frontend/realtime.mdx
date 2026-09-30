@@ -136,9 +136,11 @@ Chamar o stream a partir de um site em outra origem exige essa origem em
 
 ## Atrás de um load balancer
 
-Os eventos são os da instância à qual o cliente está conectado. Com várias instâncias, use sticky
-sessions para `/api/_events`, ou aponte os clientes de tempo real para uma única instância. Veja
-[Várias instâncias](/pt-br/deploy/scaling/).
+Com várias instâncias, ative o barramento de eventos compartilhado (`[cluster].bus = "database"`):
+um cliente conectado a qualquer instância passa a receber os eventos de todas elas. Sem ele, os
+eventos são os da instância à qual o cliente está conectado; use sticky sessions para
+`/api/_events`, ou aponte os clientes de tempo real para uma única instância. Veja
+[Várias instâncias](/pt-br/deploy/scaling/#barramento-de-eventos-compartilhado).
 
 O painel de administração usa o seu próprio stream (`/admin/api/events`) para as atualizações ao
 vivo, a presença e os bloqueios leves durante a edição; veja a
