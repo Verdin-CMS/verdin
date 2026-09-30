@@ -1,0 +1,15 @@
+{
+  "kind": "collectionType",
+  "singularName": "encuesta",
+  "pluralName": "encuestas",
+  "displayName": "Encuesta",
+  "options": { "draftAndPublish": true },
+  "attributes": {
+    "titulo": { "type": "string", "required": true, "maxLength": 200 },
+    "slug": { "type": "uid", "targetField": "titulo", "required": true },
+    "pregunta": { "type": "text" },
+    "opciones": { "type": "json", "required": true },
+    "estado": { "type": "enumeration", "enum": ["abierta", "cerrada"], "default": "abierta" },
+    "cierra_el": { "type": "datetime" }
+  }
+}

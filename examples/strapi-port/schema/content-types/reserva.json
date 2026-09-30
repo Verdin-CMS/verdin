@@ -1,0 +1,15 @@
+{
+  "kind": "collectionType",
+  "singularName": "reserva",
+  "pluralName": "reservas",
+  "displayName": "Reserva",
+  "attributes": {
+    "nombre": { "type": "string", "required": true, "maxLength": 200 },
+    "email": { "type": "email", "required": true },
+    "telefono": { "type": "string", "maxLength": 40 },
+    "unidades": { "type": "integer" },
+    "notas": { "type": "text", "maxLength": 2000 },
+    "estado": { "type": "enumeration", "enum": ["pendiente", "confirmada", "cancelada"], "default": "pendiente" },
+    "producto": { "type": "relation", "relation": "manyToOne", "target": "producto" }
+  }
+}

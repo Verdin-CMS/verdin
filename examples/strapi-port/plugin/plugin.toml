@@ -1,0 +1,61 @@
+# The custom code of a Strapi shop, ported to a Verdin plugin (see ../README.md).
+name = "tienda"
+version = "0.1.0"
+description = "Reservation rules, poll voting, closing polls on time and the public role, ported from a Strapi project"
+
+[capabilities]
+# The reservation hook reads the product; the poll routes read polls and write votes; the
+# job closes polls. Hooks need no capability for the type they are on.
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+# Strapi: src/api/reserva/content-types/reserva/lifecycles.js → beforeCreate.
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+# An after hook is safe here because this plugin never writes reservations. Never add one
+# on a type the plugin writes (api::voto, api::encuesta): see the README.
+[[hooks]]
+on = "afterCreate"
+uid = "api::reserva"
+function = "after_create_reserva"
+
+# Strapi: src/api/encuesta/routes/custom.js + controllers → /api/plugins/tienda/…
+[routes]
+function = "handle"
+
+# Strapi: config/cron-tasks.js.
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+# Strapi: src/index.js → bootstrap().
+[startup]
+function = "startup"
+
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+description = "Votes so far in each open poll"
+
+[[settings]]
+key = "maxUnidades"
+label = "Most units per reservation"
+type = "integer"
+min = 1
+max = 100
+default = 10
+
+[[settings]]
+key = "lockPublicRole"
+label = "Reset the public role's permissions on startup"
+type = "boolean"
+default = true
+description = "Leaves the public role with reading products and polls and creating reservations"
