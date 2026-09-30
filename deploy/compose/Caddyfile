@@ -1,0 +1,19 @@
+# Caddy gets and renews a certificate for $VERDIN_DOMAIN (its DNS record must point at
+# this host, ports 80 and 443 open).
+{
+	email {$ACME_EMAIL}
+}
+
+{$VERDIN_DOMAIN} {
+	encode zstd gzip
+
+	# Media stored in RustFS (compose.s3.yaml): /media/<key> → bucket `media`.
+	handle /media/* {
+		reverse_proxy rustfs:9000
+	}
+
+	# Everything else: the API, the admin panel and event streams (flushed immediately).
+	handle {
+		reverse_proxy verdin:1337
+	}
+}

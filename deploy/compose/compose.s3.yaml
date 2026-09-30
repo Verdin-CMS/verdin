@@ -1,0 +1,52 @@
+# Adds RustFS (S3-compatible storage) on the same host and points Verdin's media library
+# at it. Files are public at https://$VERDIN_DOMAIN/media/<key> (see the Caddyfile).
+#   echo "S3_SECRET_KEY=$(openssl rand -hex 24)" >> .env
+#   docker compose -f compose.yaml -f compose.s3.yaml up -d
+# For AWS S3, Cloudflare R2 or another provider, drop the rustfs services and set the
+# VERDIN_UPLOAD__PROVIDER__* variables and AWS_* credentials to that provider's values.
+services:
+  verdin:
+    environment:
+      VERDIN_UPLOAD__PROVIDER__NAME: s3
+      VERDIN_UPLOAD__PROVIDER__BUCKET: media
+      VERDIN_UPLOAD__PROVIDER__REGION: us-east-1
+      VERDIN_UPLOAD__PROVIDER__ENDPOINT: http://rustfs:9000
+      VERDIN_UPLOAD__PROVIDER__PATH_STYLE: "true"
+      VERDIN_UPLOAD__PROVIDER__PUBLIC_URL: https://${VERDIN_DOMAIN}/media
+      AWS_ACCESS_KEY_ID: verdin
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+    depends_on:
+      rustfs-bucket:
+        condition: service_completed_successfully
+
+  rustfs:
+    image: rustfs/rustfs:latest   # pin a version for production
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: verdin
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+      RUSTFS_VOLUMES: /data
+    volumes:
+      - rustfs-data:/data
+    networks: [internal]
+
+  # Creates the `media` bucket once and makes its objects publicly readable.
+  rustfs-bucket:
+    image: amazon/aws-cli:latest
+    depends_on: [rustfs]
+    environment:
+      AWS_ACCESS_KEY_ID: verdin
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint:
+      - sh
+      - -c
+      - |
+        s3="aws --endpoint-url http://rustfs:9000"
+        for i in 1 2 3 4 5 6 7 8 9 10; do $$s3 s3 ls >/dev/null 2>&1 && break; sleep 2; done
+        $$s3 s3 ls s3://media >/dev/null 2>&1 || $$s3 s3 mb s3://media
+        $$s3 s3api put-bucket-policy --bucket media --policy '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::media/*"]}]}'
+    networks: [internal]
+
+volumes:
+  rustfs-data:

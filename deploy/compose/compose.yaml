@@ -1,0 +1,75 @@
+# Production recipe: Verdin + PostgreSQL behind Caddy (automatic HTTPS).
+#   cp .env.example .env                                   # set VERDIN_DOMAIN and ACME_EMAIL
+#   echo "DB_PASSWORD=$(openssl rand -hex 24)" >> .env
+#   docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets > verdin.env
+#   mkdir -p schema/content-types schema/components        # or copy your committed schema
+#   docker compose up -d
+# Media on S3-compatible storage (RustFS on the same host) instead of the verdin-data volume:
+#   docker compose -f compose.yaml -f compose.s3.yaml up -d
+# Guide: https://verdin-cms.github.io/verdin/deploy/compose/
+name: verdin
+
+services:
+  verdin:
+    image: ghcr.io/verdin-cms/verdin:${VERDIN_VERSION:-0.11}
+    restart: unless-stopped
+    # VERDIN_ADMIN_JWT_SECRET and VERDIN_TOKEN_PEPPER, from `verdin secrets`.
+    env_file: verdin.env
+    environment:
+      VERDIN_DATABASE_URL: postgres://verdin:${DB_PASSWORD:?set DB_PASSWORD in .env}@db:5432/verdin
+      VERDIN_SERVER__PUBLIC_URL: https://${VERDIN_DOMAIN:?set VERDIN_DOMAIN in .env}
+      # Caddy is the only proxy in front of Verdin; its address is in this subnet.
+      VERDIN_SERVER__TRUSTED_PROXIES: '["172.30.0.0/24"]'
+      VERDIN_SCHEMA__PATH: /app/schema
+    volumes:
+      # Local uploads, the image-transformation cache and the search index.
+      - verdin-data:/data
+      - ./schema:/app/schema:ro
+    networks: [internal]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: verdin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: verdin
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verdin -d verdin"]
+      interval: 5s
+      retries: 20
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      VERDIN_DOMAIN: ${VERDIN_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [internal]
+    depends_on: [verdin]
+
+networks:
+  internal:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  verdin-data:
+  db-data:
+  caddy-data:
+  caddy-config:
