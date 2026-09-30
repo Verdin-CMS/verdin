@@ -100,3 +100,52 @@ async fn huge_pages_are_empty() {
         assert_eq!(body["data"], json!([]), "{query}");
     }
 }
+
+fn products() -> Schema {
+    Schema::parse(&[Source::content_type(
+        "product",
+        json!({ "kind": "collectionType", "singularName": "product", "pluralName": "products",
+                "displayName": "Product",
+                "attributes": {
+                    "name": { "type": "string" },
+                    "price": { "type": "decimal", "precision": 10, "scale": 2 }
+                } })
+        .to_string(),
+    )])
+    .unwrap()
+}
+
+/// `decimal` values (text on SQLite) sort and compare as numbers through the REST API.
+#[tokio::test]
+async fn decimals_sort_and_compare_as_numbers() {
+    let app = App::new(products()).await;
+    for price in [10, 25, 8, 12, 6] {
+        let (status, body) =
+            app.post("/api/products", json!({ "name": format!("p{price}"), "price": price })).await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+    let prices = |body: &Value| -> Vec<f64> {
+        body["data"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{body}"))
+            .iter()
+            .map(|doc| doc["price"].as_f64().unwrap())
+            .collect()
+    };
+    for (query, expected) in [
+        ("sort=price:desc", vec![25.0, 12.0, 10.0, 8.0, 6.0]),
+        ("sort=price:asc", vec![6.0, 8.0, 10.0, 12.0, 25.0]),
+        ("filters[price][$gt]=9&sort=price:desc", vec![25.0, 12.0, 10.0]),
+        ("filters[price][$lt]=100&sort=price:desc", vec![25.0, 12.0, 10.0, 8.0, 6.0]),
+        (
+            "filters[price][$between][0]=8&filters[price][$between][1]=12&sort=price",
+            vec![8.0, 10.0, 12.0],
+        ),
+        ("filters[price][$eq]=12.00", vec![12.0]),
+    ] {
+        let (status, body) = app.get(&format!("/api/products?{query}")).await;
+        assert_eq!(status, StatusCode::OK, "{query}: {body}");
+        assert_eq!(prices(&body), expected, "{query}");
+    }
+    app.done().await;
+}

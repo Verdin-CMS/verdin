@@ -704,7 +704,8 @@ fn parse_sort(
                 continue;
             }
             let field = fields.get(name).filter(|field| field.is_sortable()).ok_or_else(cannot)?;
-            sort.push(Sort::by(field.column.clone(), descending));
+            let decimal = field.kind == ColumnKind::Decimal;
+            sort.push(Sort { decimal, ..Sort::by(field.column.clone(), descending) });
         }
     }
     Ok(sort)
@@ -735,6 +736,7 @@ fn relation_sort(
             target_draft_and_publish: relation.target_draft_and_publish,
             target_localized: relation.target_localized,
         }),
+        decimal: column.kind == ColumnKind::Decimal,
     })
 }
 
