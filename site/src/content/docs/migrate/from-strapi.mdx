@@ -120,8 +120,8 @@ Reported as warnings:
 Not imported at all: admin users and admin roles, API tokens, transfer tokens,
 webhooks, releases, review workflow stages, content history and audit logs, and the
 settings of Strapi plugins. Your Strapi code — controllers, services, routes, policies,
-middlewares, lifecycle hooks, cron tasks and admin customizations — has no Verdin
-equivalent to convert to; see [Rebuild custom code](#rebuild-custom-code).
+middlewares, lifecycle hooks, cron tasks and admin customizations — is not converted:
+rebuild it as described in [Rebuild custom code](#rebuild-custom-code).
 
 <Aside type="note">
 Custom fields keep their `customField` name, such as `plugin::color-picker.color`. The
@@ -205,11 +205,17 @@ For typed access, generate TypeScript types with `verdin types` and use the
 
 ## Rebuild custom code
 
+Code in `src/` moves to a [WebAssembly plugin](/extending/plugins/). [Porting custom
+code](/migrate/porting-custom-code/) walks through a real project's lifecycles, routes,
+cron task and `bootstrap`, with a worked example plugin.
+
 | Strapi | Verdin |
 | --- | --- |
-| Lifecycle hooks, document service middlewares | Plugin hooks (`beforeCreate`, `afterUpdate`…) in a [WebAssembly plugin](/extending/plugins/) |
+| Lifecycle hooks, document service middlewares | Plugin hooks (`beforeCreate`, `afterUpdate`…) |
 | Custom routes and controllers | Plugin routes under `/api/plugins/<name>/` |
+| `bootstrap()` in `src/index.js` (seeding, setting public permissions) | The plugin's startup function (`[startup]`), with the `public_permissions` capability for the public role |
 | Cron tasks | Plugin jobs (`[[jobs]]`) |
+| A custom endpoint that stores form submissions | Built-in [Forms](/guides/frontend/forms/) |
 | Custom fields | Plugin custom fields |
 | Admin widgets | Plugin widgets, or the built-in dashboard widgets |
 | Admin logo, colors and texts | `[admin.branding]` in `verdin.toml` |

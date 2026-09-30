@@ -21,6 +21,7 @@ page explains what plugins can do and how to install one; to write one, follow t
 | **Hooks on writes** | Before an entry is created, updated, published, unpublished, deleted or its draft discarded, change the data or refuse the write with a message. After the write, react to it (log, notify, sync). |
 | **Routes** | Serve HTTP endpoints under `/api/plugins/<name>/…`: a webhook receiver, a computed feed, a proxy to another service. |
 | **Scheduled jobs** | Run a function on a cron schedule (UTC). |
+| **Startup function** | Run a function when the plugin starts, is switched on or its settings change: seeding, setting up the public role (Strapi's `bootstrap`). |
 | **GraphQL fields** | Add `name(args: JSON): JSON` fields to `Query` or `Mutation`. |
 | **Dashboard widgets** | Add widget types to the admin dashboard, as Web Components. |
 | **Custom fields** | Give attributes a custom editor in the admin (a color picker, a map), as Web Components; the value is stored as a regular attribute type. |
@@ -49,6 +50,7 @@ the **capabilities** the manifest declares:
 | `write` | Creating, updating, publishing, unpublishing and deleting entries of the listed types (reading them too). |
 | `http` | HTTP requests to the listed hosts (`api.example.com`, `*.example.com`). |
 | `kv` | A key-value store of its own, in Verdin's database. |
+| `public_permissions` | Reading and replacing the public role's content API permissions. |
 
 <Diagram
   caption="Calls into a plugin, and what its host calls can reach"

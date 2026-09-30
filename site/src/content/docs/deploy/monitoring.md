@@ -63,6 +63,8 @@ With several instances, scrape each one: every instance counts its own requests.
 | --- | --- | --- | --- |
 | `verdin_http_requests_total` | counter | `area`, `method`, `status` | HTTP requests served. |
 | `verdin_http_request_duration_seconds` | histogram | `area`, `method`, `status` | Time to serve requests. Buckets from 5 ms to 10 s. |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | Time [plugin](/extending/plugins/) functions took. Same buckets. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Plugin calls that failed: a trap, a time-out, output that is not JSON, or a startup function's `{ error }`. |
 | `verdin_webhook_deliveries_pending` | gauge | | Webhook deliveries waiting to be sent. |
 | `verdin_realtime_subscribers` | gauge | | Open realtime event streams. |
 | `verdin_uptime_seconds` | gauge | | Seconds since the process started. |
@@ -71,10 +73,14 @@ With several instances, scrape each one: every instance counts its own requests.
 `area` is the part of the server: `api` (content API), `admin_api`, `admin` (the panel's
 files), `graphql`, `mcp`, `uploads`, `internal` (paths starting with `/_`) or `other`.
 `status` is the status class: `2xx`, `3xx`, `4xx` or `5xx`.
+For plugin calls, `kind` is `hook`, `route`, `job`, `startup` or `graphql`; the plugin
+series appear after the first call (see the
+[plugin reference](/extending/plugin-reference/#metrics)).
 
 Useful alerts: `/_ready` failing, a rising share of `5xx`, a growing
-`verdin_webhook_deliveries_pending` (a webhook target is down), and `verdin_uptime_seconds`
-resetting (restarts).
+`verdin_webhook_deliveries_pending` (a webhook target is down), a rising
+`verdin_plugin_call_errors_total` or slow plugin hooks (they delay the writes they run on),
+and `verdin_uptime_seconds` resetting (restarts).
 
 ## Logs
 

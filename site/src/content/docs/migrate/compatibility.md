@@ -2,7 +2,7 @@
 title: Strapi compatibility
 description: Which Strapi v5 features and APIs Verdin supports, supports in part or does not support — REST, GraphQL, users and permissions, uploads, i18n, draft and publish, code extensions, the admin panel and Enterprise features.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin keeps Strapi v5's content model and content APIs so that frontends and content
@@ -106,11 +106,14 @@ Turn on **Settings → Features → Users & permissions**. See [End users](/guid
 
 ## Server customization
 
+See [Porting custom code](/migrate/porting-custom-code/) for how to move each of these.
+
 | Strapi | Status | Verdin |
 | --- | --- | --- |
 | Lifecycle hooks, Document Service middlewares | Partial | Before/after hooks in WebAssembly plugins, which can change or refuse a write. No JavaScript. |
 | Custom controllers, services, routes | Partial | Plugin routes under `/api/plugins/<name>/`. |
 | Policies and middlewares | Not supported | Permissions and rate limits are built in. |
+| `register` / `bootstrap` | Partial | A plugin's startup function, run when the plugin starts, is switched on or its settings change; it can seed content and replace the public role's permissions. |
 | Cron tasks | Partial | Plugin jobs. |
 | Document Service / Entity Service in JavaScript | Not supported | No JavaScript runtime. |
 | npm plugins from the Strapi marketplace | Not supported | |
