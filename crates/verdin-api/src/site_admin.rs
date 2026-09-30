@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use verdin_auth::actions;
 
-use super::{AdminState, ApiResult, body, data, require};
+use super::{AdminState, ApiResult, PageQuery as ListPage, body, data, paged, require};
 use crate::error::ApiError;
 use crate::site::{FormField, FormSettings, Site};
 
@@ -56,8 +56,26 @@ fn permanent() -> i64 {
     301
 }
 
-async fn redirects(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
-    Ok(data(site(&state, &headers).await?.redirects().await?))
+#[derive(Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+struct RedirectQuery {
+    page: Option<u64>,
+    page_size: Option<u64>,
+    search: Option<String>,
+}
+
+/// `GET /site/redirects?page=&pageSize=&search=`: by source.
+async fn redirects(
+    State(state): State<AdminState>,
+    Query(query): Query<RedirectQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let page = ListPage { page: query.page, page_size: query.page_size };
+    let (rows, total) = site(&state, &headers)
+        .await?
+        .redirects_page(query.search.as_deref(), page.page(), page.size())
+        .await?;
+    Ok(paged(rows, page, total, json!({})))
 }
 
 async fn create_redirect(
@@ -108,8 +126,15 @@ fn empty_list() -> Value {
     Value::Array(Vec::new())
 }
 
-async fn menus(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
-    Ok(data(site(&state, &headers).await?.menus().await?))
+/// `GET /site/menus?page=&pageSize=`: by name.
+async fn menus(
+    State(state): State<AdminState>,
+    Query(query): Query<ListPage>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let (rows, total) =
+        site(&state, &headers).await?.menus_page(query.page(), query.size()).await?;
+    Ok(paged(rows, query, total, json!({})))
 }
 
 async fn get_menu(
@@ -163,8 +188,15 @@ struct FormBody {
     settings: FormSettings,
 }
 
-async fn forms(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
-    Ok(data(site(&state, &headers).await?.forms().await?))
+/// `GET /site/forms?page=&pageSize=`: by name.
+async fn forms(
+    State(state): State<AdminState>,
+    Query(query): Query<ListPage>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let (rows, total) =
+        site(&state, &headers).await?.forms_page(query.page(), query.size()).await?;
+    Ok(paged(rows, query, total, json!({})))
 }
 
 async fn get_form(

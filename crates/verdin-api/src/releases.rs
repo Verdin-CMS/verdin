@@ -101,20 +101,50 @@ impl Releases {
         &self.inner.db
     }
 
-    pub async fn list(&self, status: Option<&str>) -> Result<Vec<Release>, DbError> {
+    /// A page of releases (`page` from 1), newest first, optionally with one status, and
+    /// how many match.
+    pub async fn list(
+        &self,
+        status: Option<&str>,
+        page: u64,
+        page_size: u64,
+    ) -> Result<(Vec<Release>, u64), DbError> {
         let (filter, params) = match status {
             Some(status) => (" WHERE status = ?", vec![V::from(status)]),
             None => ("", Vec::new()),
         };
+        let size = page_size.clamp(1, 1000);
+        let offset = page.max(1).saturating_sub(1).saturating_mul(size).min(i64::MAX as u64);
+        let releases = self
+            .load(filter, &params, &format!(" ORDER BY id DESC LIMIT {size} OFFSET {offset}"))
+            .await?;
+        let total = self
+            .db()
+            .queries()
+            .fetch_all(&format!("SELECT COUNT(*) FROM {RELEASES}{filter}"), &params, &[K::BigInt])
+            .await?
+            .into_iter()
+            .next()
+            .and_then(|row| row.into_iter().next())
+            .and_then(|value| value.as_i64())
+            .unwrap_or_default();
+        Ok((releases, total.max(0) as u64))
+    }
+
+    pub async fn get(&self, id: i64) -> Result<Option<Release>, DbError> {
+        Ok(self.load(" WHERE id = ?", &[V::BigInt(id)], "").await?.into_iter().next())
+    }
+
+    async fn load(&self, filter: &str, params: &[V], tail: &str) -> Result<Vec<Release>, DbError> {
         let rows = self
             .db()
             .queries()
             .fetch_all(
                 &format!(
                     "SELECT id, name, scheduled_at, status, released_at, error, created_by, created_at, \
-                     updated_at FROM {RELEASES}{filter} ORDER BY id DESC LIMIT 500"
+                     updated_at FROM {RELEASES}{filter}{tail}"
                 ),
-                &params,
+                params,
                 &[K::BigInt, K::Text, K::DateTime, K::Text, K::DateTime, K::Text, K::BigInt, K::DateTime, K::DateTime],
             )
             .await?;
@@ -141,10 +171,6 @@ impl Releases {
             release.actions = self.actions(release.id).await?;
         }
         Ok(releases)
-    }
-
-    pub async fn get(&self, id: i64) -> Result<Option<Release>, DbError> {
-        Ok(self.list(None).await?.into_iter().find(|release| release.id == id))
     }
 
     async fn actions(&self, release_id: i64) -> Result<Vec<ReleaseAction>, DbError> {
@@ -178,21 +204,16 @@ impl Releases {
             .collect())
     }
 
-    /// Releases containing an entry (the editor's panel).
+    /// Releases containing an entry (the editor's panel), newest first.
     pub async fn for_entry(&self, uid: &str, document_id: &str) -> Result<Vec<Release>, DbError> {
-        let rows = self
-            .db()
-            .queries()
-            .fetch_all(
-                &format!(
-                    "SELECT DISTINCT release_id FROM {RELEASE_ACTIONS} WHERE content_type = ? AND document_id = ?"
-                ),
-                &[V::from(uid), V::from(document_id)],
-                &[K::BigInt],
-            )
-            .await?;
-        let ids: Vec<i64> = rows.into_iter().filter_map(|row| row[0].as_i64()).collect();
-        Ok(self.list(None).await?.into_iter().filter(|release| ids.contains(&release.id)).collect())
+        self.load(
+            &format!(
+                " WHERE id IN (SELECT release_id FROM {RELEASE_ACTIONS} WHERE content_type = ? AND document_id = ?)"
+            ),
+            &[V::from(uid), V::from(document_id)],
+            " ORDER BY id DESC",
+        )
+        .await
     }
 
     pub async fn create(

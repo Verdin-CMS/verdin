@@ -123,6 +123,13 @@ pub fn reported_status(body: &Json) -> Option<&'static str> {
     })
 }
 
+/// ` LIMIT … OFFSET …` for page `page` (from 1) of `page_size` rows.
+fn limit(page: u64, page_size: u64) -> String {
+    let size = page_size.clamp(1, 1000);
+    let offset = page.max(1).saturating_sub(1).saturating_mul(size).min(i64::MAX as u64);
+    format!(" LIMIT {size} OFFSET {offset}")
+}
+
 impl Deploys {
     pub fn new(db: Database, allow_private: bool) -> Self {
         let mut client = reqwest::Client::builder()
@@ -144,14 +151,50 @@ impl Deploys {
         crate::webhooks::check_url(url, self.inner.allow_private).map_err(DeployError::BadRequest)
     }
 
+    /// Every target, oldest first (the deploy button, the schedulers).
     pub async fn targets(&self, with_callbacks: bool) -> Result<Vec<Target>, DeployError> {
+        self.load_targets(with_callbacks, "", &[], "").await
+    }
+
+    /// A page of targets (`page` from 1), oldest first, and how many there are.
+    pub async fn targets_page(
+        &self,
+        with_callbacks: bool,
+        page: u64,
+        page_size: u64,
+    ) -> Result<(Vec<Target>, u64), DeployError> {
+        let targets = self.load_targets(with_callbacks, "", &[], &limit(page, page_size)).await?;
+        Ok((targets, self.count(DEPLOY_TARGETS, "", &[]).await?))
+    }
+
+    async fn count(&self, table: &str, filter: &str, params: &[V]) -> Result<u64, DeployError> {
+        Ok(self
+            .inner
+            .db
+            .queries()
+            .fetch_all(&format!("SELECT COUNT(*) FROM {table}{filter}"), params, &[K::BigInt])
+            .await
+            .map_err(db)?
+            .first()
+            .and_then(|row| row[0].as_i64())
+            .unwrap_or_default()
+            .max(0) as u64)
+    }
+
+    async fn load_targets(
+        &self,
+        with_callbacks: bool,
+        filter: &str,
+        params: &[V],
+        limit: &str,
+    ) -> Result<Vec<Target>, DeployError> {
         let rows = self
             .inner
             .db
             .queries()
             .fetch_all(
-                &format!("SELECT id, name, url, secret, created_at, updated_at FROM {DEPLOY_TARGETS} ORDER BY id"),
-                &[],
+                &format!("SELECT id, name, url, secret, created_at, updated_at FROM {DEPLOY_TARGETS}{filter} ORDER BY id{limit}"),
+                params,
                 &[K::BigInt, K::Text, K::Text, K::Text, K::DateTime, K::DateTime],
             )
             .await.map_err(db)?;
@@ -164,7 +207,7 @@ impl Deploys {
             let url = next().into_text().unwrap_or_default();
             let secret = next().into_text().unwrap_or_default();
             let (created_at, updated_at) = (at(&next()), at(&next()));
-            let last_deployment = self.deployments(Some(id), 1).await?.into_iter().next();
+            let last_deployment = self.latest_deployment(id).await?;
             targets.push(Target {
                 id,
                 name,
@@ -179,10 +222,10 @@ impl Deploys {
     }
 
     pub async fn target(&self, id: i64, with_callback: bool) -> Result<Target, DeployError> {
-        self.targets(with_callback)
+        self.load_targets(with_callback, " WHERE id = ?", &[V::BigInt(id)], "")
             .await?
             .into_iter()
-            .find(|target| target.id == id)
+            .next()
             .ok_or(DeployError::NotFound)
     }
 
@@ -251,28 +294,49 @@ impl Deploys {
         if deleted == 0 { Err(DeployError::NotFound) } else { Ok(()) }
     }
 
+    /// A page of deployments (`page` from 1), newest first, of one target or all, and how
+    /// many there are.
     pub async fn deployments(
         &self,
         target: Option<i64>,
-        limit: i64,
-    ) -> Result<Vec<Deployment>, DeployError> {
+        page: u64,
+        page_size: u64,
+    ) -> Result<(Vec<Deployment>, u64), DeployError> {
         let (filter, params) = match target {
             Some(id) => (" WHERE target_id = ?", vec![V::BigInt(id)]),
             None => ("", Vec::new()),
         };
+        let deployments = self.load_deployments(filter, &params, &limit(page, page_size)).await?;
+        Ok((deployments, self.count(DEPLOYMENTS, filter, &params).await?))
+    }
+
+    async fn latest_deployment(&self, target: i64) -> Result<Option<Deployment>, DeployError> {
+        Ok(self
+            .load_deployments(" WHERE target_id = ?", &[V::BigInt(target)], " LIMIT 1")
+            .await?
+            .into_iter()
+            .next())
+    }
+
+    async fn load_deployments(
+        &self,
+        filter: &str,
+        params: &[V],
+        limit: &str,
+    ) -> Result<Vec<Deployment>, DeployError> {
         let rows = self
             .inner
             .db
             .queries()
             .fetch_all(
                 &format!(
-                    "SELECT {DEPLOYMENT_COLUMNS} FROM {DEPLOYMENTS}{filter} ORDER BY id DESC LIMIT {}",
-                    limit.clamp(1, 200)
+                    "SELECT {DEPLOYMENT_COLUMNS} FROM {DEPLOYMENTS}{filter} ORDER BY id DESC{limit}"
                 ),
-                &params,
+                params,
                 &DEPLOYMENT_KINDS,
             )
-            .await.map_err(db)?;
+            .await
+            .map_err(db)?;
         Ok(rows.into_iter().map(deployment).collect())
     }
 
@@ -408,7 +472,7 @@ impl Deploys {
             .iter()
             .find_map(|key| body.get(key).and_then(Json::as_str))
             .map(|text| text.chars().take(1000).collect::<String>());
-        let Some(latest) = self.deployments(Some(id), 1).await?.into_iter().next() else {
+        let Some(latest) = self.latest_deployment(id).await? else {
             return Ok(true);
         };
         self.inner

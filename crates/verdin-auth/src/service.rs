@@ -267,6 +267,13 @@ fn for_update(flavor: Flavor) -> &'static str {
     if flavor == Flavor::Sqlite { "" } else { " FOR UPDATE" }
 }
 
+/// ` LIMIT … OFFSET …` for page `page` (from 1) of `page_size` rows (at most 1,000).
+fn limit(page: u64, page_size: u64) -> String {
+    let size = page_size.clamp(1, 1000);
+    let offset = page.max(1).saturating_sub(1).saturating_mul(size).min(i64::MAX as u64);
+    format!(" LIMIT {size} OFFSET {offset}")
+}
+
 fn placeholders(count: usize) -> String {
     vec!["?"; count].join(", ")
 }
@@ -699,6 +706,15 @@ impl AuthService {
         (encode_jwt(&self.config.jwt_secret, &claims), truncate_millis(expires))
     }
 
+    async fn count(&self, table: &str) -> Result<u64> {
+        let rows = self
+            .db
+            .queries()
+            .fetch_all(&format!("SELECT COUNT(*) FROM {table}"), &[], &[K::BigInt])
+            .await?;
+        Ok(rows.first().map_or(0, |row| int(&row[0])) as u64)
+    }
+
     async fn revoke_user_sessions(&self, user_id: i64) -> Result<()> {
         self.db
             .queries()
@@ -715,11 +731,17 @@ impl AuthService {
     // ---------------------------------------------------------------- users
 
     pub async fn users(&self) -> Result<Vec<AdminUser>> {
-        self.load_users(None).await
+        self.load_users(None, "").await
+    }
+
+    /// A page of admins (`page` from 1), oldest first, and how many there are.
+    pub async fn users_page(&self, page: u64, page_size: u64) -> Result<(Vec<AdminUser>, u64)> {
+        let users = self.load_users(None, &limit(page, page_size)).await?;
+        Ok((users, self.count(ADMIN_USERS).await?))
     }
 
     pub async fn user(&self, id: i64) -> Result<AdminUser> {
-        self.load_users(Some(id)).await?.into_iter().next().ok_or(AuthError::NotFound)
+        self.load_users(Some(id), "").await?.into_iter().next().ok_or(AuthError::NotFound)
     }
 
     pub async fn user_by_email(&self, email: &str) -> Result<AdminUser> {
@@ -737,7 +759,7 @@ impl AuthService {
         self.user(id).await
     }
 
-    async fn load_users(&self, id: Option<i64>) -> Result<Vec<AdminUser>> {
+    async fn load_users(&self, id: Option<i64>, limit: &str) -> Result<Vec<AdminUser>> {
         let (filter, params) = match id {
             Some(id) => (" WHERE id = ?", vec![V::BigInt(id)]),
             None => ("", Vec::new()),
@@ -747,7 +769,7 @@ impl AuthService {
             .queries()
             .fetch_all(
                 &format!(
-                    "SELECT id, email, firstname, lastname, is_active, created_at, updated_at FROM {ADMIN_USERS}{filter} ORDER BY id"
+                    "SELECT id, email, firstname, lastname, is_active, created_at, updated_at FROM {ADMIN_USERS}{filter} ORDER BY id{limit}"
                 ),
                 &params,
                 &[K::BigInt, K::Text, K::Text, K::Text, K::Bool, K::DateTime, K::DateTime],
@@ -979,18 +1001,24 @@ impl AuthService {
     // ---------------------------------------------------------------- roles
 
     pub async fn roles(&self) -> Result<Vec<Role>> {
-        self.load_roles(None).await
+        self.load_roles(None, "").await
+    }
+
+    /// A page of roles (`page` from 1), oldest first, and how many there are.
+    pub async fn roles_page(&self, page: u64, page_size: u64) -> Result<(Vec<Role>, u64)> {
+        let roles = self.load_roles(None, &limit(page, page_size)).await?;
+        Ok((roles, self.count(ADMIN_ROLES).await?))
     }
 
     pub async fn role(&self, id: i64) -> Result<Role> {
-        self.load_roles(Some(id)).await?.into_iter().next().ok_or(AuthError::NotFound)
+        self.load_roles(Some(id), "").await?.into_iter().next().ok_or(AuthError::NotFound)
     }
 
     pub async fn role_by_code(&self, code: &str) -> Result<Role> {
         self.roles().await?.into_iter().find(|role| role.code == code).ok_or(AuthError::NotFound)
     }
 
-    async fn load_roles(&self, id: Option<i64>) -> Result<Vec<Role>> {
+    async fn load_roles(&self, id: Option<i64>, limit: &str) -> Result<Vec<Role>> {
         let (filter, params) = match id {
             Some(id) => (" WHERE id = ?", vec![V::BigInt(id)]),
             None => ("", Vec::new()),
@@ -999,7 +1027,7 @@ impl AuthService {
             .db
             .queries()
             .fetch_all(
-                &format!("SELECT id, code, name, description, builtin, require_2fa FROM {ADMIN_ROLES}{filter} ORDER BY id"),
+                &format!("SELECT id, code, name, description, builtin, require_2fa FROM {ADMIN_ROLES}{filter} ORDER BY id{limit}"),
                 &params,
                 &[K::BigInt, K::Text, K::Text, K::Text, K::Bool, K::Bool],
             )
@@ -1172,14 +1200,20 @@ impl AuthService {
     // ----------------------------------------------------------- API tokens
 
     pub async fn api_tokens(&self) -> Result<Vec<ApiToken>> {
-        self.load_tokens(None).await
+        self.load_tokens(None, "").await
+    }
+
+    /// A page of API tokens (`page` from 1), oldest first, and how many there are.
+    pub async fn api_tokens_page(&self, page: u64, page_size: u64) -> Result<(Vec<ApiToken>, u64)> {
+        let tokens = self.load_tokens(None, &limit(page, page_size)).await?;
+        Ok((tokens, self.count(API_TOKENS).await?))
     }
 
     pub async fn api_token(&self, id: i64) -> Result<ApiToken> {
-        self.load_tokens(Some(id)).await?.into_iter().next().ok_or(AuthError::NotFound)
+        self.load_tokens(Some(id), "").await?.into_iter().next().ok_or(AuthError::NotFound)
     }
 
-    async fn load_tokens(&self, id: Option<i64>) -> Result<Vec<ApiToken>> {
+    async fn load_tokens(&self, id: Option<i64>, limit: &str) -> Result<Vec<ApiToken>> {
         let (filter, params) = match id {
             Some(id) => (" WHERE id = ?", vec![V::BigInt(id)]),
             None => ("", Vec::new()),
@@ -1189,7 +1223,7 @@ impl AuthService {
             .queries()
             .fetch_all(
                 &format!(
-                    "SELECT id, name, description, kind, token_prefix, expires_at, last_used_at, created_at FROM {API_TOKENS}{filter} ORDER BY id"
+                    "SELECT id, name, description, kind, token_prefix, expires_at, last_used_at, created_at FROM {API_TOKENS}{filter} ORDER BY id{limit}"
                 ),
                 &params,
                 &[K::BigInt, K::Text, K::Text, K::Text, K::Text, K::DateTime, K::DateTime, K::DateTime],

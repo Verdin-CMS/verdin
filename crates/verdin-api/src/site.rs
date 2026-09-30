@@ -520,6 +520,13 @@ const MENU_KINDS: [K; 6] = [K::BigInt, K::Text, K::Text, K::Json, K::DateTime, K
 const FORM_KINDS: [K; 7] =
     [K::BigInt, K::Text, K::Text, K::Json, K::Json, K::DateTime, K::DateTime];
 
+/// ` LIMIT … OFFSET …` for page `page` (from 1) of `page_size` rows.
+fn limit(page: u64, page_size: u64) -> String {
+    let size = page_size.clamp(1, 1000);
+    let offset = page.max(1).saturating_sub(1).saturating_mul(size).min(i64::MAX as u64);
+    format!(" LIMIT {size} OFFSET {offset}")
+}
+
 impl Site {
     pub fn new(db: Database) -> Self {
         Self { db }
@@ -527,13 +534,45 @@ impl Site {
 
     // Redirects.
 
+    /// Every redirect, by source (the middleware and the checks).
     pub async fn redirects(&self) -> Result<Vec<Redirect>, ApiError> {
+        self.load_redirects("", &[], "").await
+    }
+
+    /// A page of redirects by source (`page` from 1), those whose source or destination
+    /// contains `search` if given, and how many match.
+    pub async fn redirects_page(
+        &self,
+        search: Option<&str>,
+        page: u64,
+        page_size: u64,
+    ) -> Result<(Vec<Redirect>, u64), ApiError> {
+        let (filter, params) = match search.map(str::trim).filter(|search| !search.is_empty()) {
+            Some(search) => {
+                let like = format!("%{}%", search.to_lowercase().replace(['%', '_'], ""));
+                (
+                    " WHERE LOWER(source) LIKE ? OR LOWER(destination) LIKE ?",
+                    vec![V::Text(like.clone()), V::Text(like)],
+                )
+            }
+            None => ("", Vec::new()),
+        };
+        let redirects = self.load_redirects(filter, &params, &limit(page, page_size)).await?;
+        Ok((redirects, self.count(REDIRECTS, filter, &params).await?))
+    }
+
+    async fn load_redirects(
+        &self,
+        filter: &str,
+        params: &[V],
+        limit: &str,
+    ) -> Result<Vec<Redirect>, ApiError> {
         let rows = self
             .db
             .queries()
             .fetch_all(
-                &format!("SELECT id, source, destination, status, created_at, updated_at FROM {REDIRECTS} ORDER BY source, id"),
-                &[],
+                &format!("SELECT id, source, destination, status, created_at, updated_at FROM {REDIRECTS}{filter} ORDER BY source, id{limit}"),
+                params,
                 &[K::BigInt, K::Text, K::Text, K::Int, K::DateTime, K::DateTime],
             )
             .await
@@ -677,12 +716,31 @@ impl Site {
     }
 
     pub async fn menus(&self) -> Result<Vec<Menu>, ApiError> {
+        self.load_menus("", &[], "").await
+    }
+
+    /// A page of menus by name (`page` from 1), and how many there are.
+    pub async fn menus_page(
+        &self,
+        page: u64,
+        page_size: u64,
+    ) -> Result<(Vec<Menu>, u64), ApiError> {
+        let menus = self.load_menus("", &[], &limit(page, page_size)).await?;
+        Ok((menus, self.count(MENUS, "", &[]).await?))
+    }
+
+    async fn load_menus(
+        &self,
+        filter: &str,
+        params: &[V],
+        limit: &str,
+    ) -> Result<Vec<Menu>, ApiError> {
         let rows = self
             .db
             .queries()
             .fetch_all(
-                &format!("SELECT id, slug, name, items, created_at, updated_at FROM {MENUS} ORDER BY name, id"),
-                &[],
+                &format!("SELECT id, slug, name, items, created_at, updated_at FROM {MENUS}{filter} ORDER BY name, id{limit}"),
+                params,
                 &MENU_KINDS,
             )
             .await
@@ -705,7 +763,7 @@ impl Site {
     }
 
     pub async fn menu_by_id(&self, id: i64) -> Result<Option<Menu>, ApiError> {
-        Ok(self.menus().await?.into_iter().find(|menu| menu.id == id))
+        Ok(self.load_menus(" WHERE id = ?", &[V::BigInt(id)], "").await?.into_iter().next())
     }
 
     pub async fn save_menu(
@@ -883,12 +941,31 @@ impl Site {
     }
 
     pub async fn forms(&self) -> Result<Vec<Form>, ApiError> {
+        self.load_forms("", &[], "").await
+    }
+
+    /// A page of forms by name (`page` from 1), and how many there are.
+    pub async fn forms_page(
+        &self,
+        page: u64,
+        page_size: u64,
+    ) -> Result<(Vec<Form>, u64), ApiError> {
+        let forms = self.load_forms("", &[], &limit(page, page_size)).await?;
+        Ok((forms, self.count(FORMS, "", &[]).await?))
+    }
+
+    async fn load_forms(
+        &self,
+        filter: &str,
+        params: &[V],
+        limit: &str,
+    ) -> Result<Vec<Form>, ApiError> {
         let rows = self
             .db
             .queries()
             .fetch_all(
-                &format!("SELECT id, slug, name, fields, settings, created_at, updated_at FROM {FORMS} ORDER BY name, id"),
-                &[],
+                &format!("SELECT id, slug, name, fields, settings, created_at, updated_at FROM {FORMS}{filter} ORDER BY name, id{limit}"),
+                params,
                 &FORM_KINDS,
             )
             .await
@@ -897,11 +974,28 @@ impl Site {
     }
 
     pub async fn form_by_slug(&self, slug: &str) -> Result<Option<Form>, ApiError> {
-        Ok(self.forms().await?.into_iter().find(|form| form.slug == slug))
+        Ok(self
+            .load_forms(" WHERE slug = ?", &[V::Text(slug.into())], "")
+            .await?
+            .into_iter()
+            .next())
     }
 
     pub async fn form_by_id(&self, id: i64) -> Result<Option<Form>, ApiError> {
-        Ok(self.forms().await?.into_iter().find(|form| form.id == id))
+        Ok(self.load_forms(" WHERE id = ?", &[V::BigInt(id)], "").await?.into_iter().next())
+    }
+
+    async fn count(&self, table: &str, filter: &str, params: &[V]) -> Result<u64, ApiError> {
+        Ok(self
+            .db
+            .queries()
+            .fetch_all(&format!("SELECT COUNT(*) FROM {table}{filter}"), params, &[K::BigInt])
+            .await
+            .map_err(db)?
+            .first()
+            .and_then(|row| row[0].as_i64())
+            .unwrap_or_default()
+            .max(0) as u64)
     }
 
     pub async fn save_form(

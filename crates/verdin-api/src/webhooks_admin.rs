@@ -16,7 +16,7 @@ use verdin_db::value::{format_datetime, truncate_millis};
 use verdin_db::{ColumnKind as K, SqlValue as V};
 use verdin_migrate::system::{WEBHOOK_DELIVERIES, WEBHOOKS};
 
-use super::{AdminState, ApiResult, body, data, require};
+use super::{AdminState, ApiResult, PageQuery as ListPage, body, data, paged, require};
 use crate::error::ApiError;
 use crate::webhooks::{Attempt, EVENTS, Webhook, Webhooks, check_url};
 
@@ -143,14 +143,20 @@ async fn with_last_delivery(webhooks: &Webhooks, hook: &Webhook) -> Result<Value
     Ok(value)
 }
 
-async fn list(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
+/// `GET /webhooks?page=&pageSize=`: oldest first, each with its last delivery.
+async fn list(
+    State(state): State<AdminState>,
+    Query(query): Query<ListPage>,
+    headers: HeaderMap,
+) -> ApiResult {
     let webhooks = service(&state, &headers).await?;
     let hooks = webhooks.list().await.map_err(internal)?;
-    let mut items = Vec::with_capacity(hooks.len());
-    for hook in hooks.iter() {
+    let shown = query.slice(&hooks);
+    let mut items = Vec::with_capacity(shown.len());
+    for hook in shown.iter() {
         items.push(with_last_delivery(&webhooks, hook).await?);
     }
-    Ok(axum::Json(json!({ "data": items, "meta": { "events": EVENTS } })).into_response())
+    Ok(paged(items, query, hooks.len() as u64, json!({ "events": EVENTS })))
 }
 
 async fn get_one(

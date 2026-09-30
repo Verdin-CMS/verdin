@@ -9,7 +9,7 @@ use crate::client::ClientIp;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{Path, Query as QueryParams, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -326,6 +326,50 @@ fn data(value: impl serde::Serialize) -> Response {
     Json(json!({ "data": value })).into_response()
 }
 
+/// `?page=&pageSize=` of the admin's lists: 25 rows a page unless asked, at most 100.
+#[derive(Deserialize, Default, Clone, Copy)]
+#[serde(default, rename_all = "camelCase")]
+struct PageQuery {
+    page: Option<u64>,
+    page_size: Option<u64>,
+}
+
+impl PageQuery {
+    fn page(self) -> u64 {
+        self.page.unwrap_or(1).max(1)
+    }
+
+    fn size(self) -> u64 {
+        self.page_size.unwrap_or(25).clamp(1, 100)
+    }
+
+    /// Rows before this page.
+    fn offset(self) -> u64 {
+        (self.page() - 1).saturating_mul(self.size())
+    }
+
+    /// This page of a list held in memory.
+    fn slice<T: Clone>(self, items: &[T]) -> Vec<T> {
+        let start = usize::try_from(self.offset()).unwrap_or(usize::MAX).min(items.len());
+        let end = start.saturating_add(self.size() as usize).min(items.len());
+        items[start..end].to_vec()
+    }
+}
+
+/// `{ data, meta: { pagination } }`, with `extra` merged into `meta`.
+fn paged(value: impl serde::Serialize, query: PageQuery, total: u64, extra: Value) -> Response {
+    let (page, size) = (query.page(), query.size());
+    let mut meta = match extra {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    };
+    meta.insert(
+        "pagination".into(),
+        json!({ "page": page, "pageSize": size, "total": total, "pageCount": total.div_ceil(size) }),
+    );
+    Json(json!({ "data": value, "meta": meta })).into_response()
+}
+
 async fn principal(state: &AdminState, headers: &HeaderMap) -> Result<AdminPrincipal, ApiError> {
     let principal = principal_during_setup(state, headers).await?;
     if principal.user.two_factor_required && !principal.user.two_factor {
@@ -594,9 +638,14 @@ async fn guard_privileged(
     Ok(())
 }
 
-async fn list_users(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
+async fn list_users(
+    State(state): State<AdminState>,
+    QueryParams(query): QueryParams<PageQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
     require(&state, &headers, actions::USERS_MANAGE).await?;
-    Ok(data(state.auth.users().await?))
+    let (rows, total) = state.auth.users_page(query.page(), query.size()).await?;
+    Ok(paged(rows, query, total, json!({})))
 }
 
 async fn get_user(
@@ -723,9 +772,14 @@ fn check_subjects(state: &AdminState, permissions: &[Permission]) -> Result<(), 
     Ok(())
 }
 
-async fn list_roles(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
+async fn list_roles(
+    State(state): State<AdminState>,
+    QueryParams(query): QueryParams<PageQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
     require(&state, &headers, actions::ROLES_MANAGE).await?;
-    Ok(data(state.auth.roles().await?))
+    let (rows, total) = state.auth.roles_page(query.page(), query.size()).await?;
+    Ok(paged(rows, query, total, json!({})))
 }
 
 async fn get_role(
@@ -859,9 +913,14 @@ struct TokenPatch {
     permissions: Option<Vec<GrantBody>>,
 }
 
-async fn list_tokens(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
+async fn list_tokens(
+    State(state): State<AdminState>,
+    QueryParams(query): QueryParams<PageQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
     require(&state, &headers, actions::TOKENS_MANAGE).await?;
-    Ok(data(state.auth.api_tokens().await?))
+    let (rows, total) = state.auth.api_tokens_page(query.page(), query.size()).await?;
+    Ok(paged(rows, query, total, json!({})))
 }
 
 async fn get_token(

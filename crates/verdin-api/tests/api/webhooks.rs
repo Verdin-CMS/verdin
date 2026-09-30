@@ -121,6 +121,14 @@ async fn signed_deliveries_for_subscribed_events() {
     assert!(listed["data"][0].get("secret").is_none());
     assert_eq!(listed["data"][0]["signed"], true);
     assert!(listed["meta"]["events"].as_array().unwrap().contains(&json!("media.delete")));
+    assert_eq!(
+        listed["meta"]["pagination"],
+        json!({ "page": 1, "pageSize": 25, "total": 1, "pageCount": 1 })
+    );
+    let (_, past) =
+        app.call_as(Method::GET, "/admin/api/webhooks?page=2", None, As::Bearer(&admin)).await;
+    assert_eq!(past["data"], json!([]));
+    assert!(past["meta"]["events"].is_array(), "the events stay");
 
     // Created and published over the content API; pages are not subscribed.
     let (status, created) = app.post("/api/articles", json!({ "title": "Hello" })).await;

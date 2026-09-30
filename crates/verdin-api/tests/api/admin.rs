@@ -361,6 +361,39 @@ async fn tokens_roles_and_public_permissions() {
         "shown once"
     );
     assert_eq!(
+        list["meta"]["pagination"],
+        json!({ "page": 1, "pageSize": 25, "total": 2, "pageCount": 1 })
+    );
+
+    // Pages of tokens, admins and roles.
+    for name in ["second", "third"] {
+        let body = json!({ "name": name, "kind": "read-only" });
+        app.call_as(Method::POST, "/admin/api/api-tokens", Some(body), As::Bearer(&admin)).await;
+    }
+    let (_, page) = app
+        .call_as(Method::GET, "/admin/api/api-tokens?page=2&pageSize=3", None, As::Bearer(&admin))
+        .await;
+    assert_eq!(page["data"].as_array().unwrap().len(), 1, "{page}");
+    assert_eq!(page["data"][0]["name"], "third");
+    assert_eq!(
+        page["meta"]["pagination"],
+        json!({ "page": 2, "pageSize": 3, "total": 4, "pageCount": 2 })
+    );
+    let (_, page) = app
+        .call_as(Method::GET, "/admin/api/api-tokens?pageSize=1000", None, As::Bearer(&admin))
+        .await;
+    assert_eq!(page["meta"]["pagination"]["pageSize"], 100, "at most 100 a page");
+    let (_, users) =
+        app.call_as(Method::GET, "/admin/api/users?page=2", None, As::Bearer(&admin)).await;
+    assert_eq!(users["data"], json!([]));
+    assert_eq!(users["meta"]["pagination"]["total"], 1);
+    let (_, roles) =
+        app.call_as(Method::GET, "/admin/api/roles?pageSize=1", None, As::Bearer(&admin)).await;
+    assert_eq!(roles["data"].as_array().unwrap().len(), 1);
+    let total = roles["meta"]["pagination"]["total"].as_u64().unwrap();
+    assert!(total >= 3, "{roles}");
+    assert_eq!(roles["meta"]["pagination"]["pageCount"], total);
+    assert_eq!(
         app.call_as(Method::GET, "/api/pages", None, As::Bearer(&key)).await.0,
         StatusCode::OK
     );

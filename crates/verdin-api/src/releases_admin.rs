@@ -8,11 +8,14 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use serde::Deserialize;
+use serde_json::json;
 use time::OffsetDateTime;
 use verdin_auth::{Grant, actions};
 use verdin_query::temporal::parse_datetime;
 
-use super::{AdminState, ApiResult, body, content_grant, data, ensure_owner, require};
+use super::{
+    AdminState, ApiResult, PageQuery, body, content_grant, data, ensure_owner, paged, require,
+};
 use crate::error::ApiError;
 use crate::releases::Releases;
 
@@ -35,9 +38,11 @@ fn service(state: &AdminState) -> Result<&Releases, ApiError> {
 }
 
 #[derive(Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 struct ListQuery {
     status: Option<String>,
+    page: Option<u64>,
+    page_size: Option<u64>,
 }
 
 async fn list(
@@ -47,7 +52,10 @@ async fn list(
 ) -> ApiResult {
     let releases = service(&state)?;
     require(&state, &headers, actions::RELEASES_MANAGE).await?;
-    Ok(data(releases.list(query.status.as_deref()).await.map_err(internal)?))
+    let page = PageQuery { page: query.page, page_size: query.page_size };
+    let (rows, total) =
+        releases.list(query.status.as_deref(), page.page(), page.size()).await.map_err(internal)?;
+    Ok(paged(rows, page, total, json!({})))
 }
 
 #[derive(Deserialize)]

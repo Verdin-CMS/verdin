@@ -8,10 +8,10 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 use verdin_auth::{AdminPrincipal, actions};
 
-use super::{AdminState, ApiResult, body, data, principal, require};
+use super::{AdminState, ApiResult, PageQuery, body, data, paged, principal, require};
 use crate::deploy::{Deploys, Target};
 use crate::error::ApiError;
 
@@ -56,11 +56,17 @@ fn with_urls(state: &AdminState, mut target: Target) -> Target {
     target
 }
 
-async fn targets(State(state): State<AdminState>, headers: HeaderMap) -> ApiResult {
+/// `GET /deploy/targets?page=&pageSize=`: oldest first.
+async fn targets(
+    State(state): State<AdminState>,
+    Query(query): Query<PageQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
     let deploys = service(&state)?;
     let (_, manage) = deployer(&state, &headers).await?;
-    let targets = deploys.targets(manage).await?;
-    Ok(data(targets.into_iter().map(|target| with_urls(&state, target)).collect::<Vec<_>>()))
+    let (targets, total) = deploys.targets_page(manage, query.page(), query.size()).await?;
+    let targets: Vec<_> = targets.into_iter().map(|target| with_urls(&state, target)).collect();
+    Ok(paged(targets, query, total, json!({})))
 }
 
 #[derive(Deserialize)]
@@ -124,9 +130,13 @@ async fn trigger(
 #[serde(rename_all = "camelCase")]
 struct DeploymentsQuery {
     target_id: Option<i64>,
-    limit: Option<i64>,
+    page: Option<u64>,
+    page_size: Option<u64>,
+    /// Deprecated alias of `pageSize` (before 0.11).
+    limit: Option<u64>,
 }
 
+/// `GET /deploy/deployments?targetId=&page=&pageSize=`: newest first.
 async fn deployments(
     State(state): State<AdminState>,
     Query(query): Query<DeploymentsQuery>,
@@ -134,7 +144,9 @@ async fn deployments(
 ) -> ApiResult {
     let deploys = service(&state)?;
     deployer(&state, &headers).await?;
-    Ok(data(deploys.deployments(query.target_id, query.limit.unwrap_or(50)).await?))
+    let page = PageQuery { page: query.page, page_size: query.page_size.or(query.limit) };
+    let (rows, total) = deploys.deployments(query.target_id, page.page(), page.size()).await?;
+    Ok(paged(rows, page, total, json!({})))
 }
 
 /// Providers' notifications (public: the path carries the target's secret).

@@ -198,6 +198,11 @@ async fn publishes_together_and_on_schedule() {
         .call_as(Method::GET, "/admin/api/releases?status=pending", None, As::Bearer(&admin))
         .await;
     assert_eq!(pending["data"], json!([]));
+    assert_eq!(pending["meta"]["pagination"]["total"], 0);
+    let (_, all) =
+        app.call_as(Method::GET, "/admin/api/releases?pageSize=1", None, As::Bearer(&admin)).await;
+    assert_eq!(all["data"][0]["name"], "Later", "newest first");
+    assert_eq!(all["meta"]["pagination"]["total"], 2);
     assert_eq!(
         app.call_as(Method::GET, "/admin/api/releases", None, As::Anonymous).await.0,
         StatusCode::UNAUTHORIZED
@@ -259,5 +264,60 @@ async fn records_failed_actions() {
         .call_as(Method::DELETE, &format!("/admin/api/releases/{id}"), None, As::Bearer(&admin))
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+    app.done().await;
+}
+
+#[tokio::test]
+async fn finds_releases_past_the_first_page() {
+    let app = App::new(schema()).await;
+    let admin = admin(&app).await;
+    let document = draft(&app, &admin, "Old").await;
+    let (_, oldest) = app
+        .call_as(
+            Method::POST,
+            "/admin/api/releases",
+            Some(json!({ "name": "Oldest" })),
+            As::Bearer(&admin),
+        )
+        .await;
+    let oldest = oldest["data"]["id"].as_i64().unwrap();
+    let (status, _) = app
+        .call_as(
+            Method::POST,
+            &format!("/admin/api/releases/{oldest}/actions"),
+            Some(action("api::article", &document, "publish")),
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    // More than the 500 the list used to stop at.
+    for number in 0..510 {
+        app.releases.create(&format!("Release {number}"), None, None).await.unwrap();
+    }
+
+    let (status, found) = app
+        .call_as(Method::GET, &format!("/admin/api/releases/{oldest}"), None, As::Bearer(&admin))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    assert_eq!(found["data"]["actions"].as_array().unwrap().len(), 1);
+    let (_, for_entry) = app
+        .call_as(
+            Method::GET,
+            &format!("/admin/api/content/api::article/{document}/releases"),
+            None,
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(for_entry["data"][0]["id"], oldest, "{for_entry}");
+
+    let (_, last) = app
+        .call_as(Method::GET, "/admin/api/releases?page=6&pageSize=100", None, As::Bearer(&admin))
+        .await;
+    assert_eq!(
+        last["meta"]["pagination"],
+        json!({ "page": 6, "pageSize": 100, "total": 511, "pageCount": 6 })
+    );
+    assert_eq!(last["data"].as_array().unwrap().len(), 11);
+    assert_eq!(last["data"][10]["id"], oldest, "oldest last");
     app.done().await;
 }

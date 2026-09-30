@@ -65,6 +65,18 @@ async fn redirects_and_menus() {
     )
     .await;
     assert_eq!(code, StatusCode::CREATED);
+    let (_, found) =
+        call(Method::GET, "/admin/api/site/redirects?search=B.EXAMPLE".into(), None).await;
+    assert_eq!(found["data"].as_array().unwrap().len(), 1, "{found}");
+    assert_eq!(found["data"][0]["source"], "/a");
+    assert_eq!(found["meta"]["pagination"]["total"], 1);
+    let (_, second) =
+        call(Method::GET, "/admin/api/site/redirects?page=2&pageSize=1".into(), None).await;
+    assert_eq!(second["data"][0]["source"], "/old", "by source");
+    assert_eq!(
+        second["meta"]["pagination"],
+        json!({ "page": 2, "pageSize": 1, "total": 2, "pageCount": 2 })
+    );
     let (code, public) = app.call_as(Method::GET, "/api/_redirects", None, As::Anonymous).await;
     assert_eq!(code, StatusCode::OK);
     assert_eq!(
@@ -92,6 +104,12 @@ async fn redirects_and_menus() {
     assert_eq!(code, StatusCode::CREATED, "{menu}");
     let (code, _) = call(Method::POST, "/admin/api/site/menus".into(), Some(json!({ "slug": "bad", "name": "Bad", "items": [{ "label": "x", "url": "javascript:alert(1)" }] }))).await;
     assert_eq!(code, StatusCode::BAD_REQUEST, "only real links");
+    let (_, menus) = call(Method::GET, "/admin/api/site/menus".into(), None).await;
+    assert_eq!(menus["data"][0]["slug"], "main");
+    assert_eq!(
+        menus["meta"]["pagination"],
+        json!({ "page": 1, "pageSize": 25, "total": 1, "pageCount": 1 })
+    );
     let (code, public) = app.call_as(Method::GET, "/api/_menus/main", None, As::Anonymous).await;
     assert_eq!(code, StatusCode::OK, "{public}");
     let items = public["data"]["items"].as_array().unwrap();
@@ -119,6 +137,10 @@ async fn forms_and_submissions() {
         app.call_as(Method::POST, "/admin/api/site/forms", Some(form), As::Bearer(&admin)).await;
     assert_eq!(code, StatusCode::CREATED, "{created}");
     let id = created["data"]["id"].as_i64().unwrap();
+    let (_, forms) =
+        app.call_as(Method::GET, "/admin/api/site/forms?page=2", None, As::Bearer(&admin)).await;
+    assert_eq!(forms["data"], json!([]));
+    assert_eq!(forms["meta"]["pagination"]["total"], 1);
     let (_, definition) =
         app.call_as(Method::GET, "/api/_forms/contact", None, As::Anonymous).await;
     assert_eq!(definition["data"]["fields"][2]["options"], json!(["sales", "help"]));

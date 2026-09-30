@@ -86,6 +86,7 @@ async fn deploy_targets_and_callbacks() {
     let ed = login["data"]["accessToken"].as_str().unwrap().to_owned();
     let (_, listed) = call(Method::GET, "/admin/api/deploy/targets".into(), None, ed.clone()).await;
     assert!(listed["data"][0].get("callbackPath").is_none(), "{listed}");
+    assert_eq!(listed["meta"]["pagination"]["total"], 1);
     let (code, _) =
         call(Method::DELETE, format!("/admin/api/deploy/targets/{id}"), None, ed.clone()).await;
     assert_eq!(code, StatusCode::FORBIDDEN);
@@ -126,6 +127,19 @@ async fn deploy_targets_and_callbacks() {
             .await;
     assert_eq!(history["data"][0]["status"], "ready", "{history}");
     assert_eq!(history["data"][0]["url"], "https://site.example");
+    assert_eq!(
+        history["meta"]["pagination"],
+        json!({ "page": 1, "pageSize": 25, "total": 1, "pageCount": 1 })
+    );
+    let (_, limited) = call(
+        Method::GET,
+        format!("/admin/api/deploy/deployments?targetId={id}&limit=1&page=2"),
+        None,
+        ed.clone(),
+    )
+    .await;
+    assert_eq!(limited["data"], json!([]), "`limit` is `pageSize`");
+    assert_eq!(limited["meta"]["pagination"]["pageSize"], 1);
 
     // A hook that refuses is recorded as failed.
     status.store(500, Ordering::SeqCst);
