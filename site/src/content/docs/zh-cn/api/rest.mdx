@@ -269,7 +269,7 @@ GET /api/articles?fields=title,slug
 
 | 写法 | Populate 的内容 |
 | --- | --- |
-| `populate=*` | 所有关联、媒体字段、组件和动态区域，深度一层 |
+| `populate=*` | 所有关联、媒体字段、组件和动态区域，深度一层，以及本地化类型上的 `localizations` |
 | `populate=category,tags` 或 `populate[0]=category&populate[1]=tags` | 指定的字段 |
 | `populate[category]=true` | 指定的字段（`false` 则排除它） |
 | `populate[category][fields][0]=name` | 该字段，并附带选项 |
@@ -306,6 +306,10 @@ GET /api/articles?populate[category][fields][0]=name
 ## 语言区域
 
 `locale=fr` 读写本地化类型的法语版本。不传时，请求使用默认语言区域。无效或未知的代码返回 `400`。未本地化的类型会忽略它。参见[国际化](/zh-cn/concepts/internationalization/)。
+
+在本地化类型上，`populate=localizations` 会加入该文档其他语言区域的版本（状态相同），每个版本都带有各自的 `locale`。它接受已 populate 关联的选项（`fields`、`filters`、`sort`、`populate`、`count`），并且包含在 `populate=*` 中。未本地化的类型没有 `localizations`。
+
+`GET /api/i18n/locales` 以 Strapi 的格式返回语言区域的普通数组（`id`、`documentId`、`name`、`code`、`isDefault`、`createdAt`、`updatedAt`、`publishedAt`、`locale`）。它需要对 `plugin::i18n.locale` 拥有 `find` 授权。参见[本地化内容](/zh-cn/guides/content/localizing-content/#列出语言区域)。
 
 ## 搜索
 

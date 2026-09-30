@@ -1,0 +1,116 @@
+---
+title: 安装
+description: 使用安装脚本、Homebrew、.deb 软件包、winget、cargo binstall 或从源码安装 verdin 二进制文件，或者运行 Docker 镜像。
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin 是一个内置管理后台的二进制文件。每次发布都会为 Linux（x86-64 和 ARM64，静态 musl 构建）、macOS（Intel 和 Apple 芯片）以及 Windows（x86-64）发布它，并附带 `SHA256SUMS` 文件，见[发布页面](https://github.com/verdin-cms/verdin/releases)。选择适合你机器的安装方式即可；它们安装的都是同一个二进制文件。
+
+用下面的命令检查：
+
+```sh frame="terminal"
+verdin --version
+```
+
+然后从 `verdin new` 开始，按[快速开始](/zh-cn/start/quickstart/)继续。
+
+## 安装脚本（Linux 和 macOS）
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh
+```
+
+脚本会检测系统和架构，从最新的 GitHub 发布下载匹配的压缩包，用该发布的 `SHA256SUMS` 校验它，然后把 `verdin` 安装到 `/usr/local/bin`（以 root 身份运行时），否则安装到 `~/.local/bin`。它需要 `curl` 或 `wget`、`tar`，以及 `sha256sum`、`shasum` 或 `openssl`。
+
+| 选项 | 变量 | 默认值 |
+| --- | --- | --- |
+| `--version <X.Y.Z>` | `VERDIN_VERSION` | 最新发布 |
+| `--dir <directory>` | `VERDIN_INSTALL_DIR` | `/usr/local/bin`（root）或 `~/.local/bin` |
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh -s -- --version 0.11.0 --dir /opt/verdin/bin
+```
+
+如果想在运行之前先阅读脚本，请先下载它：`curl -fsSLO https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh`。
+
+## 包管理器
+
+<Tabs syncKey="package-manager">
+  <TabItem label="Homebrew">
+
+在 macOS 和 Linux 上：
+
+```sh frame="terminal"
+brew install verdin-cms/tap/verdin
+```
+
+该 formula 安装发布的二进制文件（Linux 上为 musl 构建）。`brew upgrade verdin` 会升级到下一个发布。
+
+  </TabItem>
+  <TabItem label="Debian / Ubuntu">
+
+从发布页面下载适合你架构（`amd64` 或 `arm64`）的 `.deb` 并安装：
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/verdin_0.11.0-1_amd64.deb
+sudo apt install ./verdin_0.11.0-1_amd64.deb
+```
+
+该软件包会添加一个 `verdin` 系统用户、一个 systemd 服务（未启用），以及位于 `/etc/verdin/` 的配置。[Linux 服务器](/zh-cn/deploy/linux-server/)逐步介绍如何运行它。目前还没有 apt 仓库：升级时请安装下一个发布的 `.deb`。
+
+  </TabItem>
+  <TabItem label="winget">
+
+在 Windows 上：
+
+```powershell frame="terminal"
+winget install VerdinCMS.Verdin
+```
+
+winget 会把 `verdin` 添加到新终端的 `PATH` 中。没有 winget 时，请从发布页面下载 `.zip`，并把 `verdin.exe` 放到 `PATH` 中的某个位置。
+
+  </TabItem>
+  <TabItem label="cargo binstall">
+
+使用 [cargo-binstall](https://github.com/cargo-bins/cargo-binstall)，Cargo 会下载发布的二进制文件，而不是编译它：
+
+```sh frame="terminal"
+cargo binstall --git https://github.com/verdin-cms/verdin verdin
+```
+
+  </TabItem>
+</Tabs>
+
+## Docker
+
+镜像 `ghcr.io/verdin-cms/verdin` 在 `linux/amd64` 和 `linux/arm64` 上运行同一个二进制文件：
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 --version
+```
+
+卷、配置和 Compose 文件请参见 [Docker](/zh-cn/deploy/docker/)。
+
+## 从源码安装
+
+需要 Rust 1.95 或更高版本，以及 Node.js 24（用于构建管理后台）：
+
+```sh frame="terminal"
+git clone https://github.com/verdin-cms/verdin && cd verdin
+(cd admin && npm ci && npm run build)
+cargo install --locked --path crates/verdin --features embed-admin
+```
+
+不带 `--features embed-admin` 时，二进制文件没有管理后台，除非你把 `[admin].assets_dir` 指向已构建的副本。
+
+## 手动验证下载
+
+每个发布都有一个 `SHA256SUMS` 文件，列出每个压缩包和软件包：
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS     # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
+```

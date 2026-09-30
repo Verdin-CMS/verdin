@@ -134,4 +134,53 @@ const { data } = await verdin.collection('articles').find({ locale: 'fr' });
 - 当本地化类型链接到另一个本地化类型时，读取会在同一语言区域中解析目标，通过关联的过滤也是如此。非本地化的目标由所有语言区域共享。
 - webhook 负载和历史版本都会记录语言区域。
 
-与 Strapi 不同，内容 API 没有 `/api/i18n/locales` 路由。语言区域在管理 API 的 `GET /admin/api/i18n/locales` 中列出，并通过 `POST`、`PUT /admin/api/i18n/locales/{code}` 和 `DELETE /admin/api/i18n/locales/{code}` 管理（`locales.manage`）。
+### 其他语言区域版本
+
+populate `localizations` 即可连同文档一起获取它其他语言区域的版本，与 Strapi v5 相同。只有 populate 时才会返回，使用 `populate=localizations` 或 `populate=*`：
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- 这些版本的状态与文档相同：默认为已发布的版本，使用 `status=draft` 时为草稿。只有草稿的语言区域会被已发布读取排除在外。
+- `localizations` 接受已 populate 关联的选项：`fields`、`filters`、`sort`、`populate` 和 `count`。例如 `populate[localizations][fields][0]=title`。每个版本始终包含 `locale`，其自身的关联按它自己的语言区域读取。
+- GraphQL 在本地化类型上有一个 `localizations` 字段，带有 `filters` 和 `sort`。
+- 未本地化的类型没有 `localizations`，对它执行 populate 会返回 `400`。
+- 管理 API 不包含 `localizations`。
+
+### 列出语言区域
+
+`GET /api/i18n/locales` 以 Strapi 的格式列出语言区域，为普通数组（没有 `data` 包裹）：
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+与 Strapi 的 `listLocales` 一样，该路由在你允许之前对公众关闭。请在 **设置 → 公开访问** 中、在某个最终用户角色上，或在某个自定义 API 令牌上，授予 **Locales** 行（`plugin::i18n.locale`）的 `find`。完全访问和只读令牌已经可以读取它。`documentId` 由语言区域代码派生，因此在重启和导出之间保持不变。Strapi 导入会带上 `listLocales` 权限。类型化客户端通过 `verdin.locales()` 读取该列表。
+
+语言区域在管理 API 中管理：通过 `GET /admin/api/i18n/locales` 列出，并通过 `POST`、`PUT /admin/api/i18n/locales/{code}` 和 `DELETE /admin/api/i18n/locales/{code}` 修改（`locales.manage`）。

@@ -1,12 +1,13 @@
 ---
 title: 插件参考
-description: plugin.toml 清单、能力、钩子及其负载、宿主函数、路由、任务、GraphQL 字段、管理后台扩展点以及限制。
+description: plugin.toml 清单、能力、钩子及其负载、宿主函数、路由、任务、启动函数、GraphQL 字段、管理后台扩展点、限制和指标。
 sidebar:
   order: 3
 ---
 
 <!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
-plugins_admin.rs, crates/verdin-graphql/src/lib.rs and admin/src/app/core/plugin-extensions.ts. -->
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
 
 本页是 Verdin 与插件之间的完整约定：清单、Verdin 发送给每个导出函数的内容及其期望的返回值，以及模块可以调用的宿主函数。入门介绍请参见[插件](/zh-cn/extending/plugins/)；完整示例请参见[插件教程](/zh-cn/extending/plugin-tutorial/)。
 
@@ -34,6 +35,7 @@ read = ["api::article"]
 write = ["api::tag"]
 http = ["api.example.com"]
 kv = true
+public_permissions = true
 
 [limits]
 timeout_ms = 5000
@@ -50,6 +52,10 @@ function = "handle"
 [[jobs]]
 schedule = "*/15 * * * *"
 function = "refresh"
+
+[startup]
+function = "seed"
+timeout_ms = 30000
 
 [[graphql]]
 name = "slugStats"
@@ -97,6 +103,7 @@ default = "-"
 | `write` | `[]` | 可以执行 `create`、`update`、`delete`、`publish` 和 `unpublish` 的内容类型。隐含 `read`。 |
 | `http` | `[]` | 模块可以发送 HTTP 请求的主机：`api.example.com` 或 `*.example.com`。 |
 | `kv` | `false` | 插件自己的键值存储（`verdin_kv_get`、`verdin_kv_set`）。 |
+| `public_permissions` | `false` | 读取和替换公开角色的内容 API 权限（`verdin_public_permissions`）。 |
 
 能力只限制宿主调用。钩子会在其指定的类型上运行，与 `read` 无关；路由则任何人都可以访问。
 
@@ -128,7 +135,7 @@ default = "-"
 | `beforeUnpublish` | `afterUnpublish` |
 | `beforeDiscardDraft` | `afterDiscardDraft` |
 
-这些名称沿用 Strapi 的生命周期名称。钩子会在来自管理后台、REST 和 GraphQL API 以及发布计划的写入时运行，但不会在插件执行的写入（参见[插件执行的写入](#插件执行的写入)）或 `verdin import` 命令执行的写入时运行。
+这些名称沿用 Strapi 的生命周期名称。钩子会在来自管理后台、REST 和 GraphQL API 以及发布计划的写入时运行，但不会在 `verdin import` 命令执行的写入时运行。插件执行的写入会运行 after 钩子，但不会运行 before 钩子（参见[插件执行的写入](#插件执行的写入)）。
 
 ### `[routes]`
 
@@ -144,6 +151,17 @@ default = "-"
 | --- | --- |
 | `schedule` | Cron 表达式，使用 UTC，秒字段可选：`*/15 * * * *`、`0 0 3 * * *`。 |
 | `function` | 要调用的导出函数。 |
+
+### `[startup]`
+
+插件启动时运行的函数：即 Strapi 项目在 `bootstrap` 中所做的事（填充内容、设置公开角色）。
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `function` | 必填 | 要调用的导出函数。 |
+| `timeout_ms` | `30000` | 它自己的时间限制，单位为毫秒（填充数据可能比钩子花更长时间）。必须为正数。 |
+
+它何时运行，参见[启动函数](#启动函数)。
 
 ### `[[graphql]]`
 
@@ -263,6 +281,22 @@ default = "-"
 
 输入：`{ "scheduledAt": "2026-09-29T03:00:00+00:00" }`，即本次运行计划执行的时间。输出会被忽略；失败会被记录。任务只在插件开启时运行，并且只在 `[plugins].run_jobs = true` 的实例上运行。服务器宕机期间错过的运行不会补跑。
 
+### 启动函数
+
+输入：`{ "reason": "start" | "enabled" | "settings" }`：
+
+| `reason` | 时机 |
+| --- | --- |
+| `start` | 服务器在该插件开启的状态下启动。 |
+| `enabled` | 插件被开启（在本实例上，或在另一个实例上开启后由本实例获知）。 |
+| `settings` | 插件开启期间它的设置发生了变化（在本实例上保存，或由其他实例同步而来）。 |
+
+输出：`{ "error": "message" }` 视为失败；其他任何内容（`{}`、空）视为成功。失败（trap、超时、`{ error }`）会记录到插件的日志和服务器日志；插件保持开启，该函数会在下一次启动、开启或设置变更时再次运行。
+
+该函数在服务器启动之后于后台运行，因此期间请求照常处理。它在自己独立的模块实例上以 `[startup].timeout_ms` 运行，因此缓慢的数据填充不会阻塞插件的钩子和路由。它的写入所触发的 after 钩子会在它返回之后运行（参见[插件执行的写入](#插件执行的写入)）。该模块的内存不与插件的常规实例共享：请把状态保存在 `verdin_kv_set` 或内容中。
+
+有多个实例时，只有 `[plugins].run_jobs = true` 的实例才会运行启动函数（按照[扩缩容建议](/zh-cn/deploy/scaling/)配置时即一个实例）：它们操作的是共享数据库，所以运行一次就够了。请把函数写成再次运行也无害：创建之前先查找你要填充的内容。
+
 ### GraphQL 字段
 
 输入：`{ "args": …, "actor": … }`，其中 `args` 是该字段的 `args` 参数（任意 JSON，或 `null`），`actor` 与路由中的相同。输出即该字段的值。失败或插件已停用时，返回错误码为 `PLUGIN_ERROR` 的 GraphQL 错误。与路由一样，由插件自行检查访问权限。
@@ -278,6 +312,9 @@ default = "-"
 | `verdin_kv_get` | 键，普通字符串 | 存储的 JSON 值，或 `null` |
 | `verdin_kv_set` | `{ "key": "…", "value": … }` | 无 |
 | `verdin_config` | 无 | 设置对象，已填入声明的默认值 |
+| `verdin_public_permissions` | `{ "op": "get" }` 或 `{ "op": "set", "permissions": [...] }` | `{ "permissions": [...] }`，或 `{ "error": "…" }` |
+
+如果模块导入了服务器没有的宿主函数（较旧的 Verdin），就无法加载：对它的每次调用都会在服务器日志中以 `unknown import` 失败。
 
 ### `verdin_log`
 
@@ -314,7 +351,12 @@ default = "-"
 
 #### 插件执行的写入
 
-通过 `verdin_content` 执行的写入会跳过所有插件的 **before** 钩子，因此插件不会在那里因自己的修改而陷入循环。其他一切照常适用：校验、审核阶段、webhook、历史记录、审计日志，以及所有插件（包括执行写入的插件）的 **after** 钩子。如果 after 钩子会写入它所监听的类型，请加以防护。
+通过 `verdin_content` 执行的写入会跳过所有插件的 **before** 钩子，因此插件不会在那里因自己的修改而陷入循环，你放在 before 钩子中的规则（默认值、检查）也不会对它们生效。其他一切照常适用：校验、审核阶段、webhook、历史记录、审计日志，以及所有插件（包括执行写入的插件）的 **after** 钩子。
+
+插件的写入所触发的 after 钩子不会在写入内部运行：它们会排队，等插件的调用（路由、任务、GraphQL 解析器、钩子或启动函数）返回并释放插件实例之后、路由响应发送之前运行。因此插件可以写入它自己设有 after 钩子的类型，经过多个插件的链式调用也能正常工作。
+
+- 执行写入的钩子会触发更多钩子，**最多嵌套 `4` 层**（来自 REST 或 GraphQL 的写入为第 1 层）。更深的钩子会被跳过，并在插件的日志中记录一条警告，这样写入自己所监听类型的钩子就不会无限循环。
+- 宿主函数（`verdin_content`、`verdin_public_permissions`、键值存储）会在调用的时间限制处停止，并向模块返回错误；调用方等待一个繁忙插件的时间最多为时间限制加 10 秒。卡住的调用不会永远占住插件或阻碍正常停止。
 
 ### `verdin_kv_get` 和 `verdin_kv_set`
 
@@ -323,6 +365,25 @@ default = "-"
 ### `verdin_config`
 
 返回在 **设置 → 插件** 中保存的设置，并为缺失的键填入每个已声明设置的 `default`。没有保存任何内容时返回 `{}`。
+
+### `verdin_public_permissions`
+
+读取或替换公开角色的内容 API 权限，即 **设置 → 公开访问** 所编辑的内容。需要 `public_permissions` 能力；没有它时，每次调用都返回 `{ "error": "…" }`。
+
+```json
+{ "op": "set", "permissions": [
+  { "subject": "api::article", "action": "find" },
+  { "subject": "api::article", "action": "findOne" },
+  { "subject": "api::comment", "action": "create" }
+] }
+```
+
+| `op` | 效果 |
+| --- | --- |
+| `get` | 不做任何修改；返回当前权限。 |
+| `set` | 用 `permissions` 替换**全部**公开权限（空列表会移除所有权限）。 |
+
+两者都返回 `{ "permissions": [{ "subject", "action" }, …] }`，已排序。`subject` 是内容类型 uid、`plugin::upload`（媒体库）、`plugin::users-permissions.user`（通过内容 API 访问的最终用户）或 `plugin::i18n.locale`（仅 `find`）。`action` 是 `find`、`findOne`、`create`、`update`、`delete`、`publish` 或 `readDrafts`（后两者不适用于上传和最终用户）。它们会像管理后台的授权网格那样被检查：未知的 subject 或 action，或不适用的组合，会返回 `{ "error": "…" }` 且不做任何修改。每次 `set` 都会写入服务器日志。
 
 ### HTTP
 
@@ -375,13 +436,24 @@ customElements.define('slugs-stats', SlugStats);
 
 | 限制项 | 值 |
 | --- | --- |
-| 每次调用的时间 | `[limits].timeout_ms`，默认 5,000 ms |
+| 每次调用的时间 | `[limits].timeout_ms`，默认 5,000 ms（启动函数使用 `[startup].timeout_ms`，默认 30,000 ms） |
 | 内存 | `[limits].memory_mb`，默认 64 MB |
-| 并发 | 每个插件同一时间只处理一次调用；调用之间相互等待 |
-| 模块实例 | 每个插件一个，首次使用时构建；调用失败后重建（其内存会丢失） |
+| 并发 | 每个插件同一时间只处理一次调用；调用之间相互等待（启动函数与它们并行运行） |
+| 模块实例 | 每个插件一个，首次使用时构建；调用失败后重建（其内存会丢失）。启动函数每次运行都会得到一个全新的实例 |
 | 日志 | 每个插件 200 条消息，每条 2,000 个字符，保存在内存中 |
 | KV 键 | 1 到 255 字节 |
 | 路由请求头 | `content-type`、`accept`、`user-agent`、`accept-language` |
 | 路由响应头 | `content-type`、`cache-control`、`location`、`etag`、`last-modified`、`content-disposition` |
 
 对清单或模块的修改在重启后生效；开关和设置立即生效。管理插件需要 `plugins.manage`（参见[权限参考](/zh-cn/reference/permissions/)）。
+
+## 指标
+
+开启 [`[metrics]`](/zh-cn/deploy/monitoring/) 后，`/_metrics` 会报告每一次到达导出函数的调用：
+
+| 指标 | 类型 | 标签 | 含义 |
+| --- | --- | --- | --- |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`、`kind`、`function` | 插件函数的耗时。桶从 5 ms 到 10 s。 |
+| `verdin_plugin_call_errors_total` | counter | `plugin`、`kind`、`function` | 失败的调用：陷阱（trap）、超时、输出不是 JSON，或启动函数返回的 `{ error }`。 |
+
+`kind` 为 `hook`、`route`、`job`、`startup` 或 `graphql`。用 `{ error }` 拒绝写入的 before 钩子给出了答复，因此不计为失败。对模块未导出的函数的调用不会被记录，所以标签数量受已安装插件的限制。序列在插件第一次调用之后才会出现；每个实例只统计自己的调用。

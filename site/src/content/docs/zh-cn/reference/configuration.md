@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 配置是分层的：**内置默认值 ← `verdin.toml` ← 环境变量**。配置文件是可选的；每个键都有默认值。未知的键会被拒绝，因此拼写错误会在启动时失败，而不是被忽略。
@@ -219,8 +220,21 @@ provider = { name = "s3", bucket = "media", region = "auto",
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `enabled` | `false` | 在 `/_metrics` 提供 Prometheus 指标：按领域（`api`、`admin_api`、`graphql`、`mcp`、`uploads`……）、方法和状态码类别统计的 HTTP 请求及延迟直方图、待发送的 webhook 投递、打开的实时事件流以及运行时间。 |
+| `enabled` | `false` | 在 `/_metrics` 提供 Prometheus 指标：按领域（`api`、`admin_api`、`graphql`、`mcp`、`uploads`……）、方法和状态码类别统计的 HTTP 请求及延迟直方图、待发送的 webhook 投递、打开的实时事件流、事件总线流量以及运行时间。 |
 | `token` | 未设置 | 抓取需要 `Authorization: Bearer <token>`。`VERDIN_METRICS_TOKEN` 优先于它。没有令牌时，任何能访问该端口的人都可以读取指标。 |
+
+## `[telemetry]`
+
+追踪和错误报告，两者默认都关闭，且仅由 `verdin start` 和 `verdin dev` 使用（参见[监控](/zh-cn/deploy/monitoring/#opentelemetry-追踪)）。
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `enabled` | `false` | 通过 OTLP/HTTP（protobuf）导出 HTTP 请求及其数据库查询的 OpenTelemetry 追踪。`OTEL_SDK_DISABLED=true` 会将其关闭。 |
+| `endpoint` | 未设置（`http://localhost:4318`） | 采集器的基础 URL；会追加 `/v1/traces`。`OTEL_EXPORTER_OTLP_ENDPOINT`（基础 URL）和 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`（完整 URL）优先。 |
+| `service_name` | `"verdin"` | 追踪的 `service.name`。`OTEL_SERVICE_NAME` 优先。 |
+| `sample_ratio` | `1.0` | 保留的追踪比例，从 `0.0` 到 `1.0`。带有 `traceparent` 头的请求遵循调用方的决定。 |
+| `sentry_dsn` | 未设置 | 把 panic 和 5xx 响应报告给 Sentry。`SENTRY_DSN` 优先。 |
+| `sentry_environment` | 未设置 | Sentry 环境。`SENTRY_ENVIRONMENT` 优先；未设置时，`verdin start` 为 `production`，`verdin dev` 为 `development`。 |
 
 ## `[ai]`
 
@@ -262,7 +276,24 @@ API 令牌从 `VERDIN_CDN_TOKEN` 读取（对 webhook 以 bearer 令牌的形式
 | `dir` | `"data/search"` | 索引目录，相对于项目。删除它后，下次启动时会重建索引。 |
 | `memory_mb` | `50` | 建立索引的内存预算。 |
 
-索引位于实例的磁盘上，只跟踪该实例的写入：有多个实例时，请只在一个实例上提供搜索（或在部署后重建）。
+索引位于实例的磁盘上。有多个实例时，请开启[事件总线](#cluster)，让每个索引都跟随所有实例的写入。
+
+## `[cluster]`
+
+共享事件总线，用于同一项目的多个实例（参见[运行多个实例](/zh-cn/deploy/scaling/#共享事件总线)）。
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`：实时事件、在线状态、缓存失效和搜索更新留在各自的实例中。`database`：它们通过项目的数据库到达每个实例（PostgreSQL 上为 `LISTEN/NOTIFY`，MySQL、MariaDB 和 SQLite 上为轮询）。 |
+| `poll_interval_ms` | `1000` | MySQL、MariaDB 和 SQLite 读取其他实例事件的频率。PostgreSQL 由 `NOTIFY` 唤醒，仅在无法监听时才使用这个节奏。 |
+| `instance_id` | 未设置（每次启动随机生成） | 该实例在总线上和日志中的名称。 |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+请在每个实例上设置，或使用 `VERDIN_CLUSTER__BUS=database`。
 
 ## 环境变量
 
@@ -283,5 +314,9 @@ API 令牌从 `VERDIN_CDN_TOKEN` 读取（对 webhook 以 bearer 令牌的形式
 | `VERDIN_CDN_TOKEN` | `[cdn]` 提供方的 API 令牌。 |
 | `VERDIN_IMAGE_SECRET` | 为图片转换 URL 签名（参见 [`[upload.transforms]`](#uploadtransforms)）。 |
 | `VERDIN_METRICS_TOKEN` | 开启 `[metrics].enabled` 时抓取 `/_metrics` 所用的 bearer 令牌；优先于 `[metrics].token`。 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | [`[telemetry]`](#telemetry) 追踪的采集器；优先于 `[telemetry].endpoint`。其他标准的 `OTEL_EXPORTER_OTLP_*` 变量（请求头、超时、压缩）同样适用。 |
+| `OTEL_SERVICE_NAME`、`OTEL_RESOURCE_ATTRIBUTES` | 导出追踪的资源；`OTEL_SERVICE_NAME` 优先于 `[telemetry].service_name`。 |
+| `OTEL_SDK_DISABLED` | `true` 会关闭追踪导出，即使 `[telemetry].enabled` 已开启。 |
+| `SENTRY_DSN`、`SENTRY_ENVIRONMENT` | Sentry 错误报告；优先于 `[telemetry].sentry_dsn` 和 `sentry_environment`。 |
 | `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` | S3 上传提供方的凭据。 |
 | `RUST_LOG` | 日志过滤器；优先于 `[log].level`。 |

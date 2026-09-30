@@ -5,7 +5,7 @@ sidebar:
   order: 7
 ---
 
-本页在 Kubernetes 上运行一个 Verdin 项目。主方案是无状态的：PostgreSQL（或 MySQL/MariaDB）位于 Pod 之外，媒体放在 S3 兼容存储上，副本数量按需设置。之后还介绍了一个使用卷存放 SQLite 的单副本方案。
+本页在 Kubernetes 上运行一个 Verdin 项目。主方案是无状态的：PostgreSQL（或 MySQL/MariaDB）位于 Pod 之外，媒体放在 S3 兼容存储上，副本数量按需设置。之后还介绍了一个使用卷存放 SQLite 的单副本方案。[Helm chart](/zh-cn/deploy/helm/) 把这些清单打包起来，并为每项设置提供了 values。
 
 这些清单使用稳定的 API（`apps/v1`、`v1`），已于 2026-09-29 用 `kubeconform -strict` 对照 Kubernetes schema 校验过，但没有在真实集群上运行过。请替换所有尖括号中的值。
 
@@ -33,7 +33,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -139,7 +142,7 @@ spec:
 - **只读根文件系统。** 上传内容会经由 `/tmp` 以流的方式传输，因此它需要一个可写的 `emptyDir`。如果使用图片转换缓存和搜索索引，它们也需要可写目录（上面的 `/tmp/transforms`；同时设置 `VERDIN_SEARCH__DIR`）。
 - **关闭。** Verdin 收到 `SIGTERM` 时停止。
 - **插件任务。** 定时插件任务会在每个 `[plugins].run_jobs` 为 true 的副本上运行。可以额外运行一个 `replicas: 1` 且设置了 `VERDIN_PLUGINS__RUN_JOBS=true` 的 Deployment（使用相同的标签，因此它也会处理流量），或者接受任务在每个副本上都运行。webhook、定时发布计划和每日摘要会在数据库中被领取，只运行一次。参见[运行多个实例](/zh-cn/deploy/scaling/)。
-- **实时。** 事件流（`/api/_events`）会一直停留在它所连接的 Pod 上。如果使用[实时](/zh-cn/guides/frontend/realtime/)功能，请在 Ingress 上使用会话亲和性。
+- **实时、在线状态、缓存和搜索。** `[cluster].bus = "database"` 会让每个 Pod 收到其他 Pod 的事件（参见[共享事件总线](/zh-cn/deploy/scaling/#共享事件总线)）。没有它时，事件流（`/api/_events`）会一直停留在它所连接的 Pod 上：如果使用[实时](/zh-cn/guides/frontend/realtime/)功能，请在 Ingress 上使用会话亲和性。
 
 ## SQLite 单副本
 

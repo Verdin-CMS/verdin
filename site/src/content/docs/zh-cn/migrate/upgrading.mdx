@@ -2,7 +2,7 @@
 title: 升级 Verdin
 description: 升级 Verdin 安装：二进制文件或 Docker 镜像、启动时执行的迁移，以及每个次版本的重要变更和破坏性变更。
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -90,6 +90,16 @@ import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
 ## 升级说明
 
 各版本的重要变更和破坏性变更，最旧的排在最后。完整列表请参见[更新日志](/zh-cn/project/changelog/)。
+
+### 0.10 → 0.11
+
+启动时运行的迁移会增加一张表 `vd_cluster_events`，仅在 `[cluster] bus = "database"` 时使用。
+
+- **小数**：整数值的 `decimal` 以 JSON 整数返回（`25`，而不是 `25.0`），与 Strapi 一致。严格检查 JSON 类型的客户端可能会注意到这一点；`[api] decimal_as_string` 保持不变。在 SQLite 上，对小数的 `sort` 以及 `$gt`/`$lt`/`$between` 现在比较的是数字而不是文本，因此依赖旧的（错误的）顺序的结果会发生变化。
+- **本地化类型上的 `populate=*`** 现在也会返回 `localizations`，即文档其他语言区域的版本，与 Strapi v5 相同。名为 `localizations` 的 schema 属性保持其原有含义。
+- **插件**：由插件自身写入触发的 after 钩子，现在会在插件调用返回之后运行，而不是在写入内部运行；执行写入的钩子最多嵌套 4 层。宿主函数会在调用的时间限制处停止。
+- **多个实例**：请在每个实例上设置 `[cluster] bus = "database"`，这样实时事件流、在线状态、响应缓存和搜索索引就会跟随其他实例所做的变更（参见[扩缩容](/zh-cn/deploy/scaling/)）。
+- **读取管理后台列表的脚本**：`GET /admin/api/users`、`/roles`、`/api-tokens`、`/webhooks`、`/releases`、`/site/redirects`、`/site/menus`、`/site/forms` 和 `/deploy/targets` 除非传入 `pageSize`（最大 100），否则返回 25 行，并带有 `meta.pagination`，与之前就已分页的列表相同。请用 `?page=` 逐页读取，直到 `page` 达到 `meta.pagination.pageCount`。`/deploy/deployments` 以同样方式分页，而不再返回最近的 50 条；`limit` 仍然可用，但已弃用，是 `pageSize` 的别名。参见[列表](/zh-cn/api/admin/#列表)。
 
 ### 0.9.1 → 0.10
 

@@ -127,7 +127,7 @@ INDEX  (target_document_id)
 | 管理员 | `vd_admin_users`、`vd_admin_roles`、`vd_admin_user_roles`、`vd_admin_permissions`、`vd_sessions`（刷新令牌）、`vd_admin_tokens`（邀请和重置链接）、`vd_admin_two_factor`、`vd_admin_passkeys`、`vd_spent_challenges` |
 | 内容 API 访问 | `vd_api_tokens`、`vd_api_token_permissions`、`vd_public_permissions` |
 | 终端用户 | `vd_users`、`vd_user_roles`、`vd_user_role_permissions`、`vd_end_user_sessions` |
-| 实例 | `vd_settings`（功能开关、编辑视图布局、一次性升级标记）、`vd_locales` |
+| 实例 | `vd_settings`（功能开关、编辑视图布局、一次性升级标记）、`vd_locales`、`vd_cluster_events`（共享事件总线，参见[运行多个实例](/zh-cn/deploy/scaling/)） |
 | 媒体 | `vd_files`、`vd_folders` |
 | 内容工作流 | `vd_history_versions`、`vd_releases`、`vd_release_actions`、`vd_workflows`、`vd_workflow_stages`、`vd_document_stages` |
 | 协作 | `vd_comments`、`vd_tasks`、`vd_document_views`、`vd_document_votes`、`vd_polls`、`vd_poll_votes` |

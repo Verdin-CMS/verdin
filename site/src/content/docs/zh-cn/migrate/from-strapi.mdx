@@ -102,7 +102,7 @@ Verdin 无法读取加密的导出文件（`.tar.gz.enc`）；请用 `--no-encry
 - `inversedBy` / `mappedBy` 与另一侧不匹配的关联的一半。
 - 无效的语言区域代码。
 
-完全不会导入的内容：管理员用户和管理员角色、API 令牌、传输令牌、webhook、发布计划、审核工作流阶段、内容历史和审计日志，以及 Strapi 插件的设置。你的 Strapi 代码（控制器、服务、路由、策略、中间件、生命周期钩子、cron 任务和管理后台定制）在 Verdin 中没有可以直接转换的对应物；参见[重写自定义代码](#重写自定义代码)。
+完全不会导入的内容：管理员用户和管理员角色、API 令牌、传输令牌、webhook、发布计划、审核工作流阶段、内容历史和审计日志，以及 Strapi 插件的设置。你的 Strapi 代码（控制器、服务、路由、策略、中间件、生命周期钩子、cron 任务和管理后台定制）不会被转换：请按[重写自定义代码](#重写自定义代码)中的说明重新构建。
 
 <Aside type="note">
 自定义字段会保留其 `customField` 名称，例如 `plugin::color-picker.color`。编辑器会通过提供该字段的[插件](/zh-cn/extending/plugins/)显示它们；如果没有这样的插件，则回退为存储类型对应的输入控件。
@@ -158,11 +158,15 @@ Verdin 会生成新的文档 id：Strapi 的 `documentId` 有 24 个字符，而
 
 ## 重写自定义代码
 
+`src/` 中的代码会迁移到 [WebAssembly 插件](/zh-cn/extending/plugins/)。[移植自定义代码](/zh-cn/migrate/porting-custom-code/)通过一个带有示例插件的真实项目，逐步讲解其中的生命周期、路由、cron 任务和 `bootstrap`。
+
 | Strapi | Verdin |
 | --- | --- |
-| 生命周期钩子、Document Service 中间件 | [WebAssembly 插件](/zh-cn/extending/plugins/)中的插件钩子（`beforeCreate`、`afterUpdate`……） |
+| 生命周期钩子、Document Service 中间件 | 插件钩子（`beforeCreate`、`afterUpdate`……） |
 | 自定义路由和控制器 | 位于 `/api/plugins/<name>/` 下的插件路由 |
+| `src/index.js` 中的 `bootstrap()`（填充数据、设置公开权限） | 插件的启动函数（`[startup]`），公开角色使用 `public_permissions` 能力 |
 | Cron 任务 | 插件任务（`[[jobs]]`） |
+| 保存表单提交的自定义端点 | 内置的[表单](/zh-cn/guides/frontend/forms/) |
 | 自定义字段 | 插件自定义字段 |
 | 管理后台小组件 | 插件小组件，或内置的仪表盘小组件 |
 | 管理后台 logo、颜色和文字 | `verdin.toml` 中的 `[admin.branding]` |

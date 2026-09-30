@@ -1,0 +1,311 @@
+---
+title: 移植自定义代码
+description: 把 Strapi 项目的自定义代码迁移到 Verdin 插件：控制器和路由、生命周期、服务、bootstrap、cron 任务、管理后台小组件、表单、策略和中间件，附带一个完整示例以及需要提前规划的限制。
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi` 会带来 Strapi 项目的 schema 和内容，但不包括 `src/` 中的 JavaScript：Verdin 在服务器上不运行任何 JavaScript。这些代码会变成一个 [WebAssembly 插件](/zh-cn/extending/plugins/)：用钩子处理生命周期，用路由取代自定义控制器，用启动函数取代 `bootstrap`，用任务取代 cron 任务。本页把每一类 Strapi 代码映射到对应的 Verdin 做法，逐步讲解一个真实项目的代码如何移植为插件，并列出需要提前规划的限制。
+
+完整示例是 [`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port)：用 Rust 编写的 `tienda` 插件，附带它所需的 schema 和一份用于构建并安装它的 README。如果你从未写过插件，请先阅读[插件教程](/zh-cn/extending/plugin-tutorial/)；[插件参考](/zh-cn/extending/plugin-reference/)列出了每个负载和宿主函数。
+
+## 各部分的去向
+
+| Strapi | Verdin | 说明 |
+| --- | --- | --- |
+| 自定义路由和控制器（`src/api/*/routes`、`controllers`） | 插件路由：`[routes]`，一个函数处理 `/api/plugins/<name>/…` | URL 会改变。该函数自己根据方法和路径分派。 |
+| 生命周期（`lifecycles.js`）、Document Service 中间件 | `beforeCreate`、`afterUpdate`…… 上的 `[[hooks]]` | 事件名称相同。before 钩子可以替换数据或拒绝写入。 |
+| 服务（`src/api/*/services`） | 插件模块中的函数，以及对应 `strapi.documents(…)` 的 `verdin_content` | 插件之间没有共享服务。 |
+| `src/index.js` 中的 `bootstrap()` | `[startup]` 函数 | 在启动时、插件被开启时以及其设置变更时运行。 |
+| `register()` | 无需移植 | 清单声明了 `register` 设置的内容。 |
+| Cron 任务（`config/cron-tasks.js`） | `[[jobs]]` | UTC 的 cron 语法，秒可选。 |
+| 插件配置（`config/plugins.js`） | `[[settings]]` 和 `verdin_config` | 在 **设置 → 插件** 中编辑。 |
+| `strapi.log` | `verdin_log` | 服务器日志和 **设置 → 插件 → 日志**。 |
+| 管理后台小组件（`app.widgets.register`） | `[[admin.widgets]]`：Web Components | 或者内置的仪表盘小组件。 |
+| 自定义字段 | `[[admin.fields]]` | schema 中的 `customField` 名称保持不变。 |
+| 注入区域、自定义管理后台页面、React 扩展 | 不支持 | 品牌定制在 `[admin.branding]` 中。 |
+| 保存表单提交的自定义端点 | 内置的[表单](/zh-cn/guides/frontend/forms/) | 已包含校验、垃圾信息陷阱、速率限制、邮件和 CSV 导出。 |
+| 策略和中间件 | 内置的权限、速率限制和 CORS；在你的插件路由中检查 | 无法介入请求管线。参见[策略和中间件](#策略和中间件)。 |
+| 代码中发送的邮件（`strapi.plugin('email')`） | 通过 `http` 能力调用邮件提供商的 HTTP API | 没有邮件宿主函数。 |
+
+## 示例项目
+
+示例所基于的 Strapi 项目是一个带投票功能的小型商店：
+
+- **`producto`**：商品，带有 `a_la_venta`（在售）和 `reservable`（可预订）标志。
+- **`reserva`**：访客提交的预订。`beforeCreate` 生命周期会把 `estado` 强制设为 `pendiente`，检查关联的商品是否在售且可预订，并把 `unidades` 限制在 1–10。
+- **`encuesta`** 和 **`voto`**：带有选项列表的投票及其选票。两个自定义路由 `POST /api/polls/:slug/vote` 和 `GET /api/polls/:slug/results`，每位访客对每个投票只允许投一票，只能在开放的投票中、且只能投给有效选项。一个 cron 任务会关闭 `cierra_el` 日期已过的投票。
+- **`bootstrap`** 设置公开角色的权限，这样新安装不会处于完全开放的状态。
+- 一个 **管理后台小组件** 显示开放的投票。
+
+在 Verdin 中，这一切都是一个插件 `tienda`：
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml 清单
+    - src/lib.rs 钩子、路由、任务和启动函数
+    - admin/index.js 仪表盘小组件
+</FileTree>
+
+```toml title="plugin/plugin.toml (abridged)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+内容类型的 uid 比 Strapi 的更短：是 `api::producto`，而不是 `api::producto.producto`。
+
+## 生命周期到钩子
+
+简化后的 Strapi 生命周期：
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+Verdin 的钩子接收 `{ event, uid, documentId, locale, data }`，并返回 `{ "data": … }` 来替换要写入的内容，返回 `{ "error": "…" }` 来拒绝写入（客户端会收到带有该消息的 400，与 Strapi 的 `ApplicationError` 相同），或返回 `{}` 让写入通过：
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+移植生命周期时需要了解：
+
+- **`data` 是请求原样发送的数据。** 关联可能以 documentId、`{ "documentId": … }`、列表或 `{ connect }` / `{ set }` 的形式到达（管理后台和客户端各不相同）。示例中的 `relation_id` 接受所有这些形式。在 `beforeUpdate` 中，`data` 只包含发送的字段。
+- **你返回的数据会像原来一样被校验**，在钩子之后进行：钩子无法写入 schema 所拒绝的内容。schema 的边界（`min`、`max`）会拒绝一个值；钩子可以改为把它限制在范围内，就像这里所做的那样。
+- **钩子不知道是谁在写入。** 输入中没有用户或令牌。依赖调用者的检查应放在权限中，或放在插件路由里。
+- **after 钩子拿不到数据**：`{ event, uid, documentId, locale }`，在写入提交之后发送。如果需要条目，请用 `verdin_content` 读取。
+- **失败的钩子不会阻止写入。** 如果模块陷入 trap 或超时，错误会被记录，写入继续进行；只有 `{ error }` 答复才会拒绝它。
+- **插件执行的写入会跳过 before 钩子。** 必须对每次写入都成立的规则，也必须由任何写入该类型的插件代码自行应用。
+
+## 控制器和自定义路由到插件路由
+
+Strapi 在 `/api/polls/:slug/vote` 提供投票路由。Verdin 插件把一切都放在 `/api/plugins/<name>/` 之下，所以前端要调用 `/api/plugins/tienda/polls/:slug/vote`（或者让反向代理改写旧路径）。一个导出的函数接收每个请求，并根据方法和路径分派：
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+请求为 `{ method, path, query, headers, body, actor }`，其中 `body` 是需要你自己解析的字符串，`query` 是原始查询字符串。答复为 `{ status, headers?, body }`。没有任何东西替你整理格式：要让 Strapi 前端继续工作，请返回 `{ "data": … }`，出错时返回 `{ "data": null, "error": { "status", "name", "message", "details" } }`，示例中的 `ok` 和 `fail` 辅助函数就是这么做的。
+
+投票路由按顺序检查：有效的请求体、具有该 slug 的投票、`estado` 为 `abierta`、选项是 `opciones` 之一，以及没有使用相同指纹的更早投票。然后它创建 `voto` 并以 201 返回结果。
+
+<Aside type="caution" title="插件路由中没有客户端地址">
+插件路由只会收到 `content-type`、`accept`、`user-agent` 和 `accept-language` 这几个请求头：没有 IP 地址、cookie 或 `Authorization` 值。用 `ctx.request.ip` 实现“每位访客一票”的 Strapi 控制器需要另一个键。示例从请求体中取得 `fingerprint`，它由站点生成（保存在 local storage 中的随机 id，或浏览器特征的哈希）。它能阻止双击和随手的重复提交，但拦不住一个决心要刷票的人。如需更强的限制，请要求已登录的最终用户（`actor`），或者把检查放在 Verdin 之前。
+</Aside>
+
+与 Strapi 路由的其他区别：
+
+- **路由是公开的。** 不会应用公开访问和 API 令牌的权限。`actor` 说明了是谁在调用：`{ "kind": "public" }`、`{ "kind": "token", "id": … }` 或 `{ "kind": "user", "id": … }`（最终用户；只有 id）。请像 Strapi 策略那样拒绝调用者无权执行的操作。无效的令牌会在插件运行之前以 401 被拒绝。
+- **每个插件同一时间只处理一次调用。** 对某个插件的调用会相互等待，因此投票路由中的检查和创建在单个实例上不会交错。有多个实例时它们可能交错；示例还存储了一个带 `unique: true` 的 `clave`（`<poll>:<fingerprint>`），这样数据库会拒绝漏网的重复项。
+- **速率限制适用**：`[api].public_rate_limit` 和 `[api].token_rate_limit` 对插件路由的计数方式与内容 API 的其余部分相同。
+- **匿名的 `GET` 响应可以被缓存**，前提是设置了 `[api].cache_ttl_secs`。内容写入会清空缓存，投票也包括在内。
+- **只保留部分响应头**：`content-type`、`cache-control`、`location`、`etag`、`last-modified` 和 `content-disposition`。
+
+## 服务到函数和内容调用
+
+Strapi 的服务是共享代码；在插件中，它就是模块里的普通函数。对 `strapi.documents(uid)` 的调用变成 `verdin_content` 调用，受 `read` 和 `write` 能力的限制：
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | 带 `"pagination": { "pageSize": 1 }` 的 `findMany`，然后读取 `meta.pagination.total` |
+
+- **读取返回已发布的版本**，除非查询要求 `"status": "draft"`。查找只有草稿的商品的钩子什么也找不到，示例的错误消息就是这么说的。
+- **写入会被发布**，除非请求带有 `"status": "draft"`，与 REST 写入相同。
+- **查询遵循 REST API 的规则。** `private` 属性不能用于过滤或 `fields`，所以示例中的 `clave` 不是 private（公开角色没有访问选票的权限，因此没有其他人能读到它）。
+- **没有原始 SQL，没有 `strapi.db.query`。** 一切都通过 Document Service，带着它的校验、webhook、历史记录和审计日志。
+- **没有 WASI 就没有时钟。** 在清单中设置 `wasi = true` 即可获得时间和随机数；示例的任务改用它收到的 `scheduledAt`。
+
+## `bootstrap` 到启动函数
+
+Strapi 项目经常在 `bootstrap` 中设置公开角色的权限，这样新数据库就可用，而且开放的内容不会超出需要。Verdin 的启动函数通过 `public_permissions` 能力做同样的事：
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- 它以 `{ "reason": "start" | "enabled" | "settings" }` 运行：服务器在插件开启的状态下启动时、插件被开启时，以及其设置变更时。请让它可以安全地重复运行：创建之前先查找你要填充的内容。
+- `set` 会**替换全部**公开权限，所以在 **设置 → 公开访问** 中所做的修改会在下次启动时被撤销。示例提供了一个用于关闭它的设置。
+- 它在后台、在自己独立的模块实例上、以自己的时间限制（`[startup].timeout_ms`，默认 30 秒）运行，因此缓慢的数据填充不会阻塞钩子和路由。失败或 `{ "error" }` 答复会被记录；插件保持开启。
+- 有多个实例时，只有 `[plugins].run_jobs = true` 的实例才会运行它。
+
+## Cron 任务到任务
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+任务接收 `{ "scheduledAt": "…" }`，在示例中，它会更新每个 `cierra_el` 更早的开放投票。任务使用 UTC，只在插件开启时运行，并且只在 `[plugins].run_jobs = true` 的实例上运行。服务器宕机期间错过的运行不会补跑。
+
+## 管理后台小组件
+
+Strapi 的管理后台小组件是一个 React 组件；Verdin 的小组件是插件 `admin/` 脚本中的自定义元素，在清单中声明：
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+该元素会得到带有 `fetch` 的 `context`。示例的小组件调用插件自己的 `GET /api/plugins/tienda/polls` 路由。发往内容 API（包括插件路由）的请求不带管理员的会话，所以小组件所用的路由必须对公众是可以接受的，或者接受 API 令牌。注入区域、自定义管理后台页面和 React 扩展没有对应的做法。参见[管理后台扩展点](/zh-cn/extending/plugin-reference/#管理后台扩展点)。
+
+## 自定义表单到表单功能
+
+Strapi 中的建议或联系表单通常是一个自定义端点（或一个带公开 `create` 权限的内容类型），加上给某人发邮件的代码。不要移植它：内置的[表单](/zh-cn/guides/frontend/forms/)功能无需代码就能完成这一切。编辑在管理后台中定义字段，站点向 `POST /api/_forms/{slug}` 提交，提交内容会被校验、通过邮件发送到 **Notify** 地址，并可导出为 CSV。表单还带有垃圾信息陷阱和按访客计算的速率限制（每分钟 10 次提交），这是插件路由做不到的，因为它看不到客户端的地址。
+
+## 策略和中间件
+
+Verdin 无法介入 HTTP 请求管线。它提供的替代方案：
+
+| Strapi | Verdin |
+| --- | --- |
+| REST 路由上 `is-authenticated` 风格的策略 | 公开访问、API 令牌权限和最终用户角色。参见[权限](/zh-cn/reference/permissions/)。更细的规则（最终用户只能编辑自己的条目）需要使用插件路由。 |
+| 自定义路由上的策略 | 在插件路由中检查 `actor`。 |
+| 速率限制中间件 | `[api].public_rate_limit`、`[api].token_rate_limit` 和 `[admin].auth_rate_limit`。 |
+| CORS 或安全响应头中间件 | `[api].cors_origins`；其他响应头在反向代理处设置。 |
+| 改写核心路由请求或响应的中间件 | 不支持。请用插件路由实现新行为，或使用反向代理。 |
+| 拒绝部分写入的策略 | 返回 `{ error }` 的 before 钩子，但它不知道调用者是谁。 |
+
+## 需要提前规划的限制
+
+- 插件路由中**没有客户端地址，且请求头很少**（见上文）。
+- **插件执行的写入会跳过所有插件的 before 钩子**，因此 before 钩子中的规则不会对它们生效。
+- **插件自身写入所触发的 after 钩子会在它的调用返回之后运行**，而不是在写入内部，并且执行写入的钩子最多嵌套 4 层（参见[插件执行的写入](/zh-cn/extending/plugin-reference/#插件执行的写入)）。必须在响应之前完成的后续工作，请放在执行写入的代码中，在 `verdin_content` 返回之后进行。
+- **每个插件同一时间只处理一次调用**：缓慢的路由会拖延该插件的钩子。请保持调用简短，并在[指标](/zh-cn/deploy/monitoring/)中关注 `verdin_plugin_call_duration_seconds`。
+- **路由是公开的**，必须检查 `actor`。
+- 启动函数和 `verdin_public_permissions` 需要 **Verdin 0.11 或更高版本**：导入了服务器所没有的宿主函数的模块根本无法加载。
+
+## 检查清单
+
+<Steps>
+
+1. 用 `verdin import strapi` 导入项目，然后列出 `src/` 中的代码：路由、控制器、服务、生命周期、策略、中间件、`bootstrap`、cron 任务和管理后台扩展。
+2. 去掉 Verdin 已内置的部分：表单、手动设置的公开权限、速率限制、CORS、webhook、定时发布（[发布计划](/zh-cn/guides/content/releases/)）。
+3. 按照示例，用一个插件承载其余部分：钩子、路由、任务、启动函数。只授予它所需的能力。
+4. 检查写入内容的钩子没有依赖超过 4 层的嵌套。
+5. 构建它，安装到 `plugins/` 下，在 **设置 → 插件** 中开启它，并在那里查看它的日志。
+6. 更新前端：插件路由的 URL（`/api/plugins/<name>/…`）、在代码依赖客户端地址的地方改用指纹或最终用户登录，以及迁移的[其他改动](/zh-cn/migrate/from-strapi/#前端需要的修改)。
+
+</Steps>

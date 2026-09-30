@@ -106,4 +106,4 @@ POST /admin/api/presence
 
 ## 多个实例
 
-事件和在线状态只属于客户端所连接的那个实例。在负载均衡器之后，请对 `/api/_events` 和 `/admin/api/events` 使用会话保持（sticky session），或者让实时客户端都连接同一个实例。参见[扩缩容](/zh-cn/deploy/scaling/)。
+启用共享事件总线（`[cluster].bus = "database"`）后，每个实例的事件流都会带有所有实例的事件，在线状态和软锁在每个实例上也都一致。来自其他实例的事件会在 `[cluster].poll_interval_ms` 内到达（MySQL、MariaDB、SQLite），或者立即到达（PostgreSQL，`LISTEN/NOTIFY`）。没有总线时，事件和在线状态只属于客户端所连接的那个实例：请对 `/api/_events` 和 `/admin/api/events` 使用会话保持（sticky session），或者让实时客户端都连接同一个实例。参见[扩缩容](/zh-cn/deploy/scaling/#共享事件总线)。

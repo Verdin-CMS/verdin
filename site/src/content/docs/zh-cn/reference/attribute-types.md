@@ -199,7 +199,7 @@ Markdown 文本。选项、存储和 API 与 `text` 相同；管理后台用 Mar
 | `unique` | | 参见 [`unique`](#unique)。 |
 | `default` | | 一个在范围内的数字。 |
 
-值会被舍入到 `scale` 位（与数据库一样四舍五入，远离零），小数点前超过 `precision - scale` 位时会被拒绝。写入时接受数字和数字字符串。以 `numeric(precision,scale)` 存储（SQLite 上为 `text`，因此不会舍入）。API：数字，设置 [`[api].decimal_as_string`](/zh-cn/reference/configuration/) 后为精确的字符串。
+值会被舍入到 `scale` 位（与数据库一样四舍五入，远离零），小数点前超过 `precision - scale` 位时会被拒绝。写入时接受数字和数字字符串。以 `numeric(precision,scale)` 存储（SQLite 上为 `text`，因此不会舍入）。API：数字，与 Strapi 返回的一致。整数值为整数（`25`，而不是 `25.0`），其他值为读回后相同的最短浮点数（`12.5`）。设置 [`[api].decimal_as_string`](/zh-cn/reference/configuration/) 后，API 改为返回精确的字符串。
 
 ## 日期和布尔值
 

@@ -2,7 +2,7 @@
 title: 与 Strapi 的兼容性
 description: Verdin 支持、部分支持或不支持哪些 Strapi v5 功能和 API：REST、GraphQL、用户与权限、上传、i18n、草稿与发布、代码扩展、管理后台和企业版功能。
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin 保留了 Strapi v5 的内容模型和内容 API，以便前端和内容可以迁移过来（参见[从 Strapi 迁移](/zh-cn/migrate/from-strapi/)）。它并不能直接替代 Strapi 的*代码库*：没有 JavaScript 运行时，因此自定义代码需要重写为 WebAssembly 插件。本页按领域列出各项功能的状态，截至 Verdin 0.10.0。
@@ -53,7 +53,7 @@ Verdin 保留了 Strapi v5 的内容模型和内容 API，以便前端和内容�
 | Shadow CRUD（按类型禁用操作） | 支持 | 该功能的 `disabled` 设置。 |
 | 自定义解析器和 schema 扩展 | 部分支持 | 由插件解析的根字段（`plugin.toml` 中的 `[[graphql]]`）；没有 `extensionService`。 |
 | 用户与权限的变更（`login`、`register`、`me`……） | 不支持 | 请使用 REST 路由。 |
-| 上传和 i18n 的查询/变更（`uploadFiles`、`i18NLocales`……） | 不支持 | 请使用 REST 路由和管理后台。 |
+| 上传和 i18n 的查询/变更（`uploadFiles`、`i18NLocales`……） | 不支持 | 请使用 REST 路由（`GET /api/i18n/locales`）和管理后台。本地化类型上的 `localizations` 受支持。 |
 | 限制、GraphiQL | 支持 | `maxDepth`、`maxComplexity`、内省和调试台开关。 |
 
 ## 用户与权限（终端用户）
@@ -88,8 +88,8 @@ Verdin 保留了 Strapi v5 的内容模型和内容 API，以便前端和内容�
 | --- | --- | --- |
 | 本地化类型和非本地化字段 | 支持 | `pluginOptions.i18n.localized`，也可以按属性设置。 |
 | REST 上的 `?locale=`，GraphQL 中的 `locale` | 支持 | 未知的语言区域返回 `400`。 |
-| 响应中的 `localizations` | 不支持 | 用相同的 `documentId` 和 `?locale=` 读取其他语言区域。 |
-| `GET /api/i18n/locales` | 不支持 | 语言区域在管理后台中管理（**设置 → 国际化**）。 |
+| 响应中的 `localizations` | 支持 | 只在 populate 时返回（`populate=localizations`、`populate=*`），选项与关联相同。也是一个 GraphQL 字段。管理 API 不包含它。 |
+| `GET /api/i18n/locales` | 支持 | Strapi 格式的普通数组。需要对 `plugin::i18n.locale` 拥有 `find`（权限网格的 **Locales** 行），与 Strapi 的 `listLocales` 相同。`documentId` 由语言区域代码派生。语言区域在管理后台中管理（**设置 → 国际化**）。 |
 
 ## 草稿与发布
 
@@ -101,11 +101,14 @@ Verdin 保留了 Strapi v5 的内容模型和内容 API，以便前端和内容�
 
 ## 服务器定制
 
+关于如何迁移其中每一项，参见[移植自定义代码](/zh-cn/migrate/porting-custom-code/)。
+
 | Strapi | 状态 | Verdin |
 | --- | --- | --- |
 | 生命周期钩子、Document Service 中间件 | 部分支持 | WebAssembly 插件中的 before/after 钩子，可以修改或拒绝写入。没有 JavaScript。 |
 | 自定义控制器、服务、路由 | 部分支持 | 位于 `/api/plugins/<name>/` 下的插件路由。 |
 | 策略和中间件 | 不支持 | 权限和速率限制是内置的。 |
+| `register` / `bootstrap` | 部分支持 | 插件的启动函数，在插件启动、被开启或其设置变更时运行；它可以填充内容并替换公开角色的权限。 |
 | Cron 任务 | 部分支持 | 插件任务。 |
 | JavaScript 中的 Document Service / Entity Service | 不支持 | 没有 JavaScript 运行时。 |
 | Strapi 市场中的 npm 插件 | 不支持 | |

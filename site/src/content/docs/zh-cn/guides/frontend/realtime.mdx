@@ -117,6 +117,6 @@ async function subscribe(token, onEvent) {
 
 ## 在负载均衡器之后
 
-事件只属于客户端所连接的那个实例。有多个实例时，请对 `/api/_events` 使用会话保持，或者让实时客户端都连接同一个实例。参见[扩缩容](/zh-cn/deploy/scaling/)。
+有多个实例时，请开启共享事件总线（`[cluster].bus = "database"`）：这样连接到任一实例的客户端都会收到所有实例的事件。没有它时，事件只属于客户端所连接的那个实例；请对 `/api/_events` 使用会话保持，或者让实时客户端都连接同一个实例。参见[扩缩容](/zh-cn/deploy/scaling/#共享事件总线)。
 
 管理后台使用自己的事件流（`/admin/api/events`），用于编辑时的实时更新、在线状态和软锁；参见[实时 API 参考](/zh-cn/api/realtime/)。

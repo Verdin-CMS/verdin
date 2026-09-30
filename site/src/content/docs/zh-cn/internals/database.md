@@ -85,7 +85,7 @@ Verdin 使用自己的小型构建器来构建 SQL，而不是使用 ORM 或 `se
 | date、time、datetime | `date`、`time(3)`、`timestamptz(3)` | `date`、`time(3)`、`datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite 把小数、日期和时间存储为固定格式的文本，这样就不会发生舍入，文本顺序也与数值顺序和时间顺序一致。哪个属性对应哪个模型类型，请参见[属性类型](/zh-cn/reference/attribute-types/)。
+SQLite 把日期和时间存储为固定格式的文本，这样文本顺序与时间顺序一致。它也把小数存储为文本，因此保存时不会发生舍入。对小数来说，文本顺序并不是数值顺序，所以在 SQLite 上，对小数的过滤和排序会把该列转换为 `REAL`。这些比较精确到约 15 位有效数字，返回的值仍然是精确的。哪个属性对应哪个模型类型，请参见[属性类型](/zh-cn/reference/attribute-types/)。
 
 MySQL 和 MariaDB 的表以 `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` 以及不区分重音和大小写的排序规则创建：MySQL 上为 `utf8mb4_0900_ai_ci`，MariaDB 上为 `utf8mb4_uca1400_ai_ci`。
 

@@ -64,6 +64,37 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
 - 管理 API 从不响应跨源请求：请从服务器或脚本调用它，而不要从其他网站的页面调用。
 - 成功的变更会记录在[审计日志](/zh-cn/guides/content/audit-logs/)中。
 
+## 列表
+
+设置类列表使用 `page`（从 1 开始）和 `pageSize` 分页。响应会返回该页的行和计数：
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| 列表 | 默认每页条数（上限） | 排序 | 其他参数 |
+| --- | --- | --- | --- |
+| `GET /users`、`GET /roles`、`GET /api-tokens` | 25（100） | 最早的在前 | |
+| `GET /webhooks` | 25（100） | 最早的在前 | `meta.events` 列出 webhook 可以订阅的事件 |
+| `GET /webhooks/{id}/deliveries` | 25（100） | 最新的在前 | |
+| `GET /releases` | 25（100） | 最新的在前 | `status`（`pending`、`running`、`done`、`failed`） |
+| `GET /site/redirects` | 25（100） | 按来源 | `search` 匹配来源或目标 |
+| `GET /site/menus`、`GET /site/forms` | 25（100） | 按名称 | |
+| `GET /site/forms/{id}/submissions` | 25（100） | 最新的在前 | |
+| `GET /deploy/targets` | 25（100） | 最早的在前 | |
+| `GET /deploy/deployments` | 25（100） | 最新的在前 | `targetId`；`limit` 是 `pageSize` 已弃用的别名 |
+| `GET /end-users` | 25（100） | 最新的在前 | `search` 匹配用户名或邮箱 |
+| `GET /audit-logs` | 50（200） | 最新的在前 | 参见[审计日志](/zh-cn/guides/content/audit-logs/) |
+
+过大的 `pageSize` 会被降到上限。要读取整个列表，请逐页请求，直到 `page` 达到 `pageCount`：
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+内容路由的分页方式与 REST API 相同，使用 `pagination[page]` 和 `pagination[pageSize]`。
+
 ## 路由分组
 
 路径相对于 `/admin/api`。路由器位于 [`crates/verdin-api/src/admin.rs`](https://github.com/Verdin-CMS/verdin/blob/main/crates/verdin-api/src/admin.rs) 及其旁边的 `*_admin.rs` 模块中。

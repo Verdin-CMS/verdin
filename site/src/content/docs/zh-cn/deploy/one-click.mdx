@@ -1,0 +1,78 @@
+---
+title: 一键部署
+description: 使用本仓库中的文件，把 Verdin 的入门项目（博客示例）部署到 Render、DigitalOcean App Platform、Railway、Fly.io 或 Coolify，然后 fork 它并换成你自己的 schema。
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+仓库中有适用于多个平台的部署文件。它们都构建 [`deploy/one-click/Dockerfile`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/Dockerfile)：即官方镜像加上[博客示例](https://github.com/verdin-cms/verdin/tree/main/examples/blog)的 schema 和一份小型配置。这样几分钟内就能得到一个运行中的 Verdin。
+
+<Aside>
+部署后的服务器运行 `start --migrate`，因此内容类型构建器是关闭的：schema 来自镜像。对于你自己的项目，请 **fork 该仓库**，用你的 schema 替换 `examples/blog/schema`（或修改 Dockerfile 的 `COPY` 行），然后部署这个 fork。各平台页面（[Render](/zh-cn/deploy/render/)、[Railway](/zh-cn/deploy/railway/)、[Fly.io](/zh-cn/deploy/fly/)）展示了在你自己的仓库中的同样设置。
+</Aside>
+
+这些文件已于 2026-09-30 对照各平台的参考文档检查过；没有一个在真实账户上部署过。
+
+| 平台 | 文件 | 数据库 | 媒体 |
+| --- | --- | --- | --- |
+| Render | [`render.yaml`](https://github.com/verdin-cms/verdin/blob/main/render.yaml) | Render PostgreSQL | `/data` 上的 1 GB 磁盘 |
+| DigitalOcean | [`.do/deploy.template.yaml`](https://github.com/verdin-cms/verdin/blob/main/.do/deploy.template.yaml) | 开发版 PostgreSQL | Spaces（App Platform 没有磁盘） |
+| Railway | [`deploy/one-click/railway.json`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/railway.json) | Railway PostgreSQL | `/data` 上的卷 |
+| Fly.io | [`deploy/one-click/fly.toml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/fly.toml) | 卷上的 SQLite | `/data` 上的卷 |
+| Coolify | [`deploy/one-click/compose.coolify.yaml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/compose.coolify.yaml) | PostgreSQL 服务 | `/data` 上的卷 |
+
+Dockerfile 以 `USER root` 结尾，因为这些平台挂载的卷归 root 所有，而镜像的用户（uid `65532`）无法写入。如果你的卷可以被 uid `65532` 写入，或者实例上不保存任何状态，请删除这一行。
+
+## Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/verdin-cms/verdin)
+
+Blueprint 会创建 Web 服务（Starter 套餐，磁盘需要它）、一个 PostgreSQL 数据库和两个密钥（生成一次，之后保留）。Render 会询问 `VERDIN_SERVER__PUBLIC_URL`：请输入服务地址 `https://<name>.onrender.com`，或者你的域名。对于 fork，请使用 `https://render.com/deploy?repo=<your fork's URL>`。
+
+## DigitalOcean App Platform
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/verdin-cms/verdin/tree/main)
+
+该 spec 会创建服务和一个开发数据库。出现提示时，把 `verdin secrets` 的两个值分别粘贴到 `VERDIN_ADMIN_JWT_SECRET` 和 `VERDIN_TOKEN_PEPPER`：
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets
+```
+
+App Platform 没有持久磁盘，因此在你添加 Spaces 存储桶之前，上传的文件每次部署都会丢失：请在服务上设置 `VERDIN_UPLOAD__PROVIDER__NAME=s3`、`VERDIN_UPLOAD__PROVIDER__BUCKET`、`VERDIN_UPLOAD__PROVIDER__REGION`、`VERDIN_UPLOAD__PROVIDER__ENDPOINT`（`https://<region>.digitaloceanspaces.com`）、`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`、`AWS_ACCESS_KEY_ID` 和 `AWS_SECRET_ACCESS_KEY`。对于 fork，请修改 spec 中的 `repo_clone_url`。
+
+## Railway
+
+1. Fork 该仓库，然后在 Railway 中基于这个 fork 创建项目。
+2. 在服务的设置中，把配置文件路径设置为 `deploy/one-click/railway.json`（它会选择 Dockerfile 和健康检查）。
+3. 添加一个 PostgreSQL 数据库和一个挂载在 `/data` 的卷，然后设置 [Railway](/zh-cn/deploy/railway/#2-创建项目) 中的变量：`VERDIN_DATABASE_URL`、两个密钥和 `VERDIN_SERVER__PUBLIC_URL`。生成一个目标端口为 `1337` 的域名。
+
+## Fly.io
+
+在仓库（或你的 fork）的克隆中，已登录 `flyctl` 的情况下：
+
+```sh frame="terminal"
+fly launch --no-deploy --copy-config --config deploy/one-click/fly.toml --ha=false
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets | fly secrets import --config deploy/one-click/fly.toml
+fly deploy --config deploy/one-click/fly.toml --dockerfile deploy/one-click/Dockerfile .
+```
+
+这会运行一个 Machine，SQLite 和上传内容放在 1 GB 的卷上。请先修改 `fly.toml` 中的 `app` 和 `primary_region`。[Fly.io](/zh-cn/deploy/fly/) 介绍了改用 PostgreSQL 和 Tigris 的方案。
+
+## Coolify
+
+在 Coolify 中，基于你的 fork（或本仓库）添加资源，构建包选择 **Docker Compose**，基础目录为 `/`，compose 文件为 `/deploy/one-click/compose.coolify.yaml`。Coolify 会填写其中的 `SERVICE_*` 变量：
+
+| 变量 | Coolify 生成的内容 |
+| --- | --- |
+| `SERVICE_FQDN_VERDIN_1337` | 由它的代理路由到 1337 端口的域名（同时用作 `VERDIN_SERVER__PUBLIC_URL`）。 |
+| `SERVICE_BASE64_64_JWT`、`SERVICE_BASE64_64_PEPPER` | 两个密钥，各 64 个字符，在多次部署之间保持不变。 |
+| `SERVICE_USER_POSTGRES`、`SERVICE_PASSWORD_POSTGRES` | 数据库凭据。 |
+
+Coolify 的代理负责终止 TLS，因此不需要 Caddy。对于不使用 Coolify、由你自己管理的服务器，请使用[生产环境中的 Docker Compose](/zh-cn/deploy/compose/)。
+
+## 首次部署之后
+
+打开 `https://<your address>/admin/` 并注册第一个管理员。然后阅读[生产检查清单](/zh-cn/deploy/production-checklist/)。
