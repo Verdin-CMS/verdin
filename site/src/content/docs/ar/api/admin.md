@@ -88,6 +88,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   من صفحات موقع آخر.
 - تُسجَّل التغييرات الناجحة في [سجل التدقيق](/ar/guides/content/audit-logs/).
 
+## القوائم
+
+تُقسَّم قوائم الإعدادات إلى صفحات بـ `page` (من 1) و`pageSize`. وتجيب بصفوف
+الصفحة والأعداد:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| القائمة | حجم الصفحة الافتراضي (الحد الأقصى) | الترتيب | معاملات أخرى |
+| --- | --- | --- | --- |
+| `GET /users`، `GET /roles`، `GET /api-tokens` | 25 (100) | الأقدم أولًا | |
+| `GET /webhooks` | 25 (100) | الأقدم أولًا | يسرد `meta.events` الأحداث التي يمكن لـ webhook الاشتراك فيها |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | الأحدث أولًا | |
+| `GET /releases` | 25 (100) | الأحدث أولًا | `status` (`pending` و`running` و`done` و`failed`) |
+| `GET /site/redirects` | 25 (100) | حسب المصدر | يطابق `search` المصدر أو الوجهة |
+| `GET /site/menus`، `GET /site/forms` | 25 (100) | حسب الاسم | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | الأحدث أولًا | |
+| `GET /deploy/targets` | 25 (100) | الأقدم أولًا | |
+| `GET /deploy/deployments` | 25 (100) | الأحدث أولًا | `targetId`؛ و`limit` اسم بديل مهجور لـ `pageSize` |
+| `GET /end-users` | 25 (100) | الأحدث أولًا | يطابق `search` اسم المستخدم أو البريد الإلكتروني |
+| `GET /audit-logs` | 50 (200) | الأحدث أولًا | راجع [سجلات التدقيق](/ar/guides/content/audit-logs/) |
+
+يُخفَّض `pageSize` الأكبر إلى الحد الأقصى. لقراءة قائمة كاملة، اطلب الصفحات إلى أن
+يبلغ `page` قيمة `pageCount`:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+تُقسَّم مسارات المحتوى إلى صفحات مثل REST API، بـ `pagination[page]` و
+`pagination[pageSize]`.
+
 ## مجموعات المسارات
 
 المسارات نسبية إلى `/admin/api`. الموجّهات موجودة في

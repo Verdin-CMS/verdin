@@ -1,0 +1,407 @@
+---
+title: نقل الشيفرة المخصصة
+description: انقل الشيفرة المخصصة لمشروع Strapi إلى إضافة Verdin — المتحكمات والمسارات، ودورات الحياة، والخدمات، وbootstrap، ومهام cron، وأدوات لوحة الإدارة، والنماذج، والسياسات والـ middlewares — مع مثال تطبيقي والحدود التي يجب التخطيط حولها.
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+يجلب `verdin import strapi` مخطط مشروع Strapi ومحتواه، لكن ليس
+شيفرة JavaScript في `src/`: لا يشغّل Verdin أي JavaScript على الخادم. تصبح تلك الشيفرة
+[إضافة WebAssembly](/ar/extending/plugins/): خطافات لدورات الحياة، ومسارات للمتحكمات
+المخصصة، ودالة بدء لـ `bootstrap`، ومهام لمهام cron. تربط هذه الصفحة كل
+نوع من شيفرة Strapi بما يقابله في Verdin، وتشرح خطوة بخطوة نقل شيفرة مشروع حقيقي
+إلى إضافة، وتسرد الحدود التي يجب التخطيط حولها.
+
+المثال التطبيقي هو
+[`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port):
+إضافة `tienda`، مكتوبة بـ Rust، مع المخطط الذي تحتاجه وملف README يبنيها
+ويثبّتها. اقرأ [دليل الإضافات التعليمي](/ar/extending/plugin-tutorial/) أولًا إن كنت
+لم تكتب إضافة قط؛ ففي [مرجع الإضافات](/ar/extending/plugin-reference/) كل
+حمولة ودالة مضيف.
+
+## أين تذهب كل قطعة
+
+| Strapi | Verdin | ملاحظات |
+| --- | --- | --- |
+| المسارات والمتحكمات المخصصة (`src/api/*/routes`، `controllers`) | مسارات الإضافات: `[routes]`، دالة واحدة لـ `/api/plugins/<name>/…` | يتغير عنوان URL. تتولى الدالة التوزيع حسب الطريقة والمسار بنفسها. |
+| دورات الحياة (`lifecycles.js`)، وmiddlewares خدمة المستندات | `[[hooks]]` على `beforeCreate` و`afterUpdate`… | أسماء الأحداث نفسها. تستطيع خطافات before استبدال البيانات أو رفض الكتابة. |
+| الخدمات (`src/api/*/services`) | دوال في وحدة الإضافة، و`verdin_content` بدل `strapi.documents(…)` | لا خدمات مشتركة بين الإضافات. |
+| `bootstrap()` في `src/index.js` | دالة `[startup]` | تعمل عند البدء، وعند تشغيل الإضافة، وعند تغيّر إعداداتها. |
+| `register()` | لا شيء لنقله | يعلن ملف manifest ما أعدّه `register`. |
+| مهام Cron (`config/cron-tasks.js`) | `[[jobs]]` | صيغة cron بتوقيت UTC، والثواني اختيارية. |
+| تهيئة الإضافة (`config/plugins.js`) | `[[settings]]` و`verdin_config` | تُحرَّر في **الإعدادات ← الإضافات**. |
+| `strapi.log` | `verdin_log` | سجل الخادم و**الإعدادات ← الإضافات ← السجلات**. |
+| أدوات لوحة الإدارة (`app.widgets.register`) | `[[admin.widgets]]`: Web Components | أو أدوات لوحة المعلومات المدمجة. |
+| الحقول المخصصة | `[[admin.fields]]` | يبقى اسم `customField` في المخطط. |
+| مناطق الحقن، وصفحات الإدارة المخصصة، وامتدادات React | غير مدعوم | التخصيص البصري في `[admin.branding]`. |
+| نقطة نهاية مخصصة تخزّن إرساليات النماذج | [النماذج](/ar/guides/frontend/forms/) المدمجة | تشمل التحقق، وفخ البريد المزعج، وحد المعدل، والبريد الإلكتروني، وتصدير CSV. |
+| السياسات والـ middlewares | الصلاحيات وحدود المعدل وCORS المدمجة؛ وفحوص في مسارات إضافتك | لا خطاف في مسار معالجة الطلب. راجع [السياسات والـ middlewares](#السياسات-والـ-middlewares). |
+| رسائل البريد من الشيفرة (`strapi.plugin('email')`) | واجهة HTTP لموفّر بريد، عبر القدرة `http` | لا توجد دالة مضيف للبريد. |
+
+## مشروع المثال
+
+مشروع Strapi الذي يقوم عليه المثال متجر صغير مع استطلاعات:
+
+- **`producto`**: المنتجات، مع علمَي `a_la_venta` (معروض للبيع) و`reservable` (قابل للحجز).
+- **`reserva`**: الحجوزات التي يرسلها الزوار. تفرض دورة الحياة `beforeCreate` القيمة `pendiente` على `estado`،
+  وتتحقق من أن المنتج المرتبط معروض للبيع وقابل للحجز، وتقيّد
+  `unidades` بين 1 و10.
+- **`encuesta`** و**`voto`**: الاستطلاعات مع قائمة خياراتها، وأصواتها. يسمح مساران مخصصان،
+  `POST /api/polls/:slug/vote` و`GET /api/polls/:slug/results`، بصوت واحد
+  لكل زائر واستطلاع، في الاستطلاعات المفتوحة فقط ولخيار صالح فقط. وتغلق مهمة cron
+  الاستطلاعات التي انقضى تاريخ `cierra_el` فيها.
+- يضبط **`bootstrap`** صلاحيات الدور العام، لكي لا يبقى التثبيت الجديد مفتوحًا.
+- تعرض **أداة في لوحة الإدارة** الاستطلاعات المفتوحة.
+
+في Verdin كل ذلك إضافة واحدة، `tienda`:
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml ملف manifest
+    - src/lib.rs الخطافات والمسارات والمهمة ودالة البدء
+    - admin/index.js أداة لوحة المعلومات
+</FileTree>
+
+```toml title="plugin/plugin.toml (abridged)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+قيم uid لأنواع المحتوى أقصر من قيم Strapi: `api::producto`، لا
+`api::producto.producto`.
+
+## دورات الحياة إلى خطافات
+
+دورة حياة Strapi، مبسّطة:
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+يستقبل خطاف Verdin `{ event, uid, documentId, locale, data }` ويجيب
+بـ `{ "data": … }` لاستبدال ما يُكتب، أو `{ "error": "…" }` لرفض الكتابة (يحصل
+العميل على 400 مع الرسالة، كما مع `ApplicationError` في Strapi)، أو `{}` لتمريرها:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+أمور يجب معرفتها عند نقل دورات الحياة:
+
+- **`data` هي بيانات الطلب كما أُرسلت.** قد تصل العلاقة كـ documentId، أو كـ
+  `{ "documentId": … }`، أو كقائمة، أو كـ `{ connect }` / `{ set }` (تختلف لوحة الإدارة
+  والعملاء). تقبلها كلها الدالة `relation_id` في المثال. وفي `beforeUpdate`،
+  لا تحمل `data` إلا الحقول المرسلة.
+- **تُتحقق البيانات التي تعيدها** مثل الأصل، بعد الخطاف: لا يستطيع الخطاف
+  كتابة ما يرفضه المخطط. حدود المخطط (`min` و`max`) ترفض قيمة؛ ويستطيع الخطاف
+  تقييدها بدلًا من ذلك، كما هنا.
+- **لا تعرف الخطافات من يكتب.** لا مستخدم ولا رمز في المدخل. الفحوص التي
+  تعتمد على المستدعي مكانها الصلاحيات، أو مسار إضافة.
+- **لا تتلقى خطافات after بيانات**: `{ event, uid, documentId, locale }`، تُرسل بعد أن تُثبَّت
+  الكتابة. اقرأ المدخل بـ `verdin_content` إن احتجت إليه.
+- **الخطاف الفاشل لا يحجب الكتابة.** إذا حدث trap في الوحدة أو انتهت مهلتها، يُسجَّل الخطأ
+  وتتابع الكتابة؛ ولا يرفضها إلا جواب `{ error }`.
+- **عمليات الكتابة التي تجريها الإضافات تتخطى خطافات before.** القاعدة التي يجب أن تسري على كل كتابة يجب
+  أن تُطبَّق أيضًا في أي شيفرة إضافة تكتب ذلك النوع.
+
+## المتحكمات والمسارات المخصصة إلى مسارات الإضافات
+
+كان Strapi يقدّم مسارات الاستطلاع على `/api/polls/:slug/vote`. أما إضافة Verdin فتقدّم
+كل شيء تحت `/api/plugins/<name>/`، فتستدعي الواجهة الأمامية
+`/api/plugins/tienda/polls/:slug/vote` (أو يعيد وكيل عكسي كتابة المسار القديم). دالة مُصدَّرة
+واحدة تستقبل كل طلب وتوزّع حسب الطريقة والمسار:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+الطلب هو `{ method, path, query, headers, body, actor }`، مع `body` كسلسلة نصية
+تحلّلها بنفسك و`query` كسلسلة الاستعلام الخام. والجواب هو
+`{ status, headers?, body }`. لا شيء يشكّله لك: لإبقاء واجهة Strapi الأمامية تعمل،
+أجب بـ `{ "data": … }` وفي حالة الأخطاء بـ
+`{ "data": null, "error": { "status", "name", "message", "details" } }`، كما تفعل
+الدالتان المساعدتان `ok` و`fail` في المثال.
+
+يفحص مسار التصويت بالترتيب: جسم صالح، واستطلاعًا بذلك الـ slug، و`estado` هو
+`abierta`، والخيار واحد من `opciones`، ولا صوت سابق بالبصمة نفسها.
+ثم ينشئ `voto` ويجيب بـ 201 مع النتائج.
+
+<Aside type="caution" title="لا عنوان للعميل في مسارات الإضافات">
+تتلقى مسارات الإضافات ترويسات `content-type` و`accept` و`user-agent` و
+`accept-language` فقط: لا عنوان IP ولا كعكات ولا قيمة `Authorization`. متحكم Strapi
+الذي استخدم `ctx.request.ip` لـ "صوت واحد لكل زائر" يحتاج إلى مفتاح آخر. يأخذ
+المثال `fingerprint` من جسم الطلب، يصنعه الموقع (معرّف عشوائي
+محفوظ في التخزين المحلي، أو تجزئة لسمات المتصفح). وهو يوقف النقرات المزدوجة والتكرار
+العرضي، لا ناخبًا مصممًا. لحدود أقوى، اشترط مستخدمًا نهائيًا مسجّل الدخول (الـ
+`actor`) أو ضع الفحص أمام Verdin.
+</Aside>
+
+اختلافات أخرى عن مسارات Strapi:
+
+- **المسارات عامة.** لا تُطبَّق صلاحيات الوصول العام ولا صلاحيات رموز API. يقول `actor`
+  من المستدعي: `{ "kind": "public" }` أو `{ "kind": "token", "id": … }` أو
+  `{ "kind": "user", "id": … }` (مستخدم نهائي؛ المعرّف فقط). ارفض ما لا يحق للمستدعي
+  فعله، كما ستفعل سياسة Strapi. يُرفض الرمز غير الصالح بـ 401 قبل أن تعمل
+  الإضافة.
+- **استدعاء واحد في كل مرة لكل إضافة.** تنتظر الاستدعاءات إلى إضافة بعضها، فلا يمكن للفحص
+  والإنشاء في مسار التصويت أن يتداخلا على نسخة واحدة. ومع عدة
+  نسخ يمكنهما ذلك؛ ولذلك يخزّن المثال أيضًا `clave` (`<poll>:<fingerprint>`) بـ
+  `unique: true`، فترفض قاعدة البيانات المكرر الذي يفلت.
+- **تنطبق حدود المعدل**: يعدّ `[api].public_rate_limit` و`[api].token_rate_limit` مسارات الإضافات
+  مثل بقية API المحتوى.
+- **يمكن تخزين إجابات `GET` المجهولة مؤقتًا** عند تعيين `[api].cache_ttl_secs`. تفرّغ
+  عمليات كتابة المحتوى الذاكرة، بما فيها الأصوات.
+- **لا يُحتفظ إلا ببعض ترويسات الاستجابة**: `content-type` و`cache-control` و`location` و
+  `etag` و`last-modified` و`content-disposition`.
+
+## الخدمات إلى دوال واستدعاءات محتوى
+
+خدمة Strapi شيفرة مشتركة؛ وفي الإضافة هي دالة عادية في الوحدة. تصبح استدعاءات
+`strapi.documents(uid)` استدعاءات `verdin_content`، تحدّها القدرتان `read` و`write`:
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `findMany` مع `"pagination": { "pageSize": 1 }`، ثم `meta.pagination.total` |
+
+- **تعيد القراءات النسخ المنشورة**، ما لم يطلب الاستعلام `"status": "draft"`. الخطاف
+  الذي يبحث عن منتج له مسودة فقط لا يجد شيئًا، كما تقول رسالة الخطأ في
+  المثال.
+- **الكتابات تُنشر** ما لم يحمل الطلب `"status": "draft"`، مثل كتابة REST.
+- **يتبع الاستعلام قواعد REST API.** لا يمكن استخدام السمات `private` في
+  عوامل التصفية أو `fields`، لذا فإن `clave` في المثال ليست private (ليس للدور العام
+  أي وصول إلى الأصوات، فلا يقرؤها أحد غيرك).
+- **لا SQL خام، ولا `strapi.db.query`.** كل شيء يمر عبر خدمة المستندات، بما فيها
+  التحقق والـ webhooks والسجل وسجل التدقيق.
+- **لا ساعة بدون WASI.** عيّن `wasi = true` في manifest للحصول على الوقت والأرقام
+  العشوائية؛ وتستخدم مهمة المثال `scheduledAt` الذي تستلمه بدلًا من ذلك.
+
+## `bootstrap` إلى دالة البدء
+
+كثيرًا ما تضبط مشاريع Strapi صلاحيات الدور العام في `bootstrap`، لكي تكون قاعدة البيانات الجديدة
+قابلة للاستخدام ولا يُفتح أكثر مما يلزم. تفعل دالة البدء في Verdin
+الشيء نفسه بالقدرة `public_permissions`:
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- تعمل بالمدخل `{ "reason": "start" | "enabled" | "settings" }`: عندما يبدأ الخادم
+  والإضافة مفعّلة، وعندما تُفعَّل الإضافة، وعندما تتغير إعداداتها. اجعلها
+  آمنة عند إعادة التشغيل: ابحث عما تهيّئه قبل إنشائه.
+- يستبدل `set` **كل** الصلاحيات العامة، فتُلغى التغييرات التي أُجريت في **الإعدادات ← الوصول
+  العام** عند البدء التالي. وفي المثال إعداد لتعطيل ذلك.
+- تعمل في الخلفية على نسخة وحدة خاصة بها، بحد وقت خاص بها
+  (`[startup].timeout_ms`، 30 ثانية افتراضيًا)، فلا تعطّل التهيئة البطيئة الخطافات
+  والمسارات. يُسجَّل الإخفاق، أو جواب `{ "error" }`؛ وتبقى الإضافة مفعّلة.
+- مع عدة نسخ، لا يشغّلها إلا النسخ التي فيها `[plugins].run_jobs = true`.
+
+## مهام Cron إلى مهام مجدولة
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+تستلم المهمة `{ "scheduledAt": "…" }` وتحدّث في المثال كل استطلاع مفتوح
+يسبق `cierra_el` فيه الوقت الحالي. تعمل المهام بتوقيت UTC، وما دامت الإضافة مفعّلة فقط، وعلى النسخ
+التي فيها `[plugins].run_jobs = true` فقط. التشغيل الذي فات أثناء توقف الخادم لا
+يُعوَّض.
+
+## أدوات لوحة الإدارة
+
+أداة لوحة الإدارة في Strapi مكوّن React؛ وأداة Verdin عنصر مخصص (custom element) في سكربت
+`admin/` الخاص بالإضافة، يُعلن عنه في manifest:
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+يحصل العنصر على `context` مع `fetch`. تستدعي أداة المثال مسار
+`GET /api/plugins/tienda/polls` الخاص بالإضافة. تذهب الطلبات إلى API المحتوى (بما فيها مسارات
+الإضافات) دون جلسة المسؤول، فيجب أن يكون المسار الذي تستخدمه الأداة مناسبًا
+للعموم، أو يقبل رمز API. مناطق الحقن وصفحات الإدارة المخصصة وامتدادات React
+لا مقابل لها. راجع [نقاط التوسيع في لوحة الإدارة](/ar/extending/plugin-reference/#نقاط-التوسيع-في-لوحة-الإدارة).
+
+## النماذج المخصصة إلى النماذج
+
+نموذج الاقتراحات أو الاتصال في Strapi عادةً نقطة نهاية مخصصة (أو نوع محتوى
+بصلاحية `create` عامة) مع شيفرة ترسل بريدًا إلى أحدهم. لا تنقله: فميزة
+[النماذج](/ar/guides/frontend/forms/) المدمجة تفعل كل ذلك دون شيفرة. يعرّف المحررون
+الحقول في لوحة الإدارة، ويرسل الموقع إلى `POST /api/_forms/{slug}`، وتُتحقق الإرساليات
+وتُرسل بالبريد إلى عناوين **الإشعار** وتُصدَّر كـ CSV. وللنماذج أيضًا فخ بريد مزعج
+وحد معدل لكل زائر (10 إرساليات في الدقيقة)، وهو ما لا يستطيعه مسار إضافة
+لأنه لا يرى عنوان العميل.
+
+## السياسات والـ middlewares
+
+لا يملك Verdin خطافًا في مسار معالجة طلبات HTTP. وما يقدّمه بدلًا من ذلك:
+
+| Strapi | Verdin |
+| --- | --- |
+| سياسات بأسلوب `is-authenticated` على مسارات REST | الوصول العام وصلاحيات رموز API وأدوار المستخدمين النهائيين. راجع [الصلاحيات](/ar/reference/permissions/). القواعد الأدق (مستخدم نهائي يحرّر مدخلاته فقط) تحتاج إلى مسار إضافة. |
+| سياسة على مسار مخصص | افحص `actor` في مسار الإضافة. |
+| middleware لحد المعدل | `[api].public_rate_limit` و`[api].token_rate_limit` و`[admin].auth_rate_limit`. |
+| middleware لـ CORS أو ترويسات الأمان | `[api].cors_origins`؛ والترويسات الأخرى للاستجابة عند الوكيل العكسي. |
+| middleware يعيد كتابة طلبات المسارات الأساسية أو استجاباتها | غير مدعوم. استخدم مسار إضافة للسلوك الجديد، أو وكيلًا عكسيًا. |
+| سياسة ترفض بعض عمليات الكتابة | خطاف before يجيب بـ `{ error }`، دون معرفة المستدعي. |
+
+## حدود يجب التخطيط حولها
+
+- **لا عنوان للعميل وترويسات قليلة** في مسارات الإضافات (راجع أعلاه).
+- **عمليات الكتابة التي تجريها الإضافات تتخطى خطافات before لكل الإضافات**، فلا تنطبق عليها
+  القواعد الموجودة في خطافات before.
+- **خطافات after التي تطلقها عمليات كتابة الإضافة نفسها تعمل بعد عودة استدعائها**، لا داخل
+  الكتابة، ولا تتداخل الخطافات التي تكتب أكثر من 4 مستويات (راجع
+  [عمليات الكتابة التي تجريها الإضافات](/ar/extending/plugin-reference/#عمليات-الكتابة-التي-تجريها-الإضافات)). نفّذ
+  العمل اللاحق الذي يجب أن يحدث قبل الاستجابة في الشيفرة التي تكتب، بعد
+  عودة `verdin_content`.
+- **استدعاء واحد في كل مرة لكل إضافة**: المسار البطيء يؤخر خطافات تلك الإضافة. أبقِ الاستدعاءات
+  قصيرة، وراقب `verdin_plugin_call_duration_seconds` في
+  [المراقبة](/ar/deploy/monitoring/).
+- **المسارات عامة** ويجب أن تفحص `actor`.
+- **Verdin 0.11 أو أحدث** لدالة البدء و`verdin_public_permissions`: الوحدة
+  التي تستورد دالة مضيف لا يملكها الخادم لا تُحمَّل أصلًا.
+
+## قائمة التحقق
+
+<Steps>
+
+1. استورد المشروع بـ `verdin import strapi`، ثم اسرد الشيفرة في `src/`: المسارات،
+   والمتحكمات، والخدمات، ودورات الحياة، والسياسات، والـ middlewares، و`bootstrap`، ومهام cron،
+   وامتدادات لوحة الإدارة.
+2. أسقط ما يوفره Verdin مدمجًا: النماذج، والصلاحيات العامة المضبوطة يدويًا، وحدود المعدل،
+   وCORS، والـ webhooks، والنشر المجدول ([حزم النشر](/ar/guides/content/releases/)).
+3. اكتب إضافة واحدة بالباقي، متبعًا المثال: خطافات، ومسارات، ومهمة، ودالة
+   بدء. امنحها القدرات التي تحتاجها فقط.
+4. تأكد أن الخطافات التي تكتب المحتوى لا تعتمد على تداخل أعمق من 4 مستويات.
+5. ابنِها، وثبّتها تحت `plugins/`، وفعّلها في **الإعدادات ← الإضافات**، واقرأ
+   سجلها هناك.
+6. حدّث الواجهة الأمامية: عناوين مسارات الإضافات (`/api/plugins/<name>/…`)، والبصمات أو
+   تسجيل دخول المستخدم النهائي حيث اعتمدت الشيفرة على عنوان العميل، و
+   [التغييرات الأخرى](/ar/migrate/from-strapi/#تغييرات-الواجهة-الأمامية) في الترحيل.
+
+</Steps>

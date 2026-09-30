@@ -1,0 +1,106 @@
+---
+title: النشر بنقرة واحدة
+description: انشر المشروع الأولي لـ Verdin (مثال المدونة) على Render أو DigitalOcean App Platform أو Railway أو Fly.io أو Coolify من الملفات الموجودة في هذا المستودع، ثم انسخه (fork) لمخططك الخاص.
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+في المستودع ملفات نشر لعدة منصات. كلها تبني
+[`deploy/one-click/Dockerfile`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/Dockerfile):
+الصورة الرسمية مع مخطط [مثال المدونة](https://github.com/verdin-cms/verdin/tree/main/examples/blog)
+وتهيئة صغيرة. وهذا يمنحك Verdin يعمل في دقائق قليلة.
+
+<Aside>
+يشغّل الخادم المنشور `start --migrate`، فمنشئ أنواع المحتوى معطّل: يأتي
+المخطط من الصورة. لمشروعك الخاص، **انسخ المستودع (fork)**، واستبدل
+`examples/blog/schema` بمخططك (أو غيّر سطر `COPY` في Dockerfile)،
+وانشر النسخة. تعرض صفحات المنصات ([Render](/ar/deploy/render/) و[Railway](/ar/deploy/railway/) و
+[Fly.io](/ar/deploy/fly/)) الإعداد نفسه في مستودع خاص بك.
+</Aside>
+
+فُحصت الملفات مقابل مرجع كل منصة في 2026-09-30؛ ولم يُنشر أي منها على
+حساب فعلي.
+
+| المنصة | الملف | قاعدة البيانات | الوسائط |
+| --- | --- | --- | --- |
+| Render | [`render.yaml`](https://github.com/verdin-cms/verdin/blob/main/render.yaml) | Render PostgreSQL | قرص 1 GB على `/data` |
+| DigitalOcean | [`.do/deploy.template.yaml`](https://github.com/verdin-cms/verdin/blob/main/.do/deploy.template.yaml) | Dev PostgreSQL | Spaces (لا أقراص في App Platform) |
+| Railway | [`deploy/one-click/railway.json`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/railway.json) | Railway PostgreSQL | وحدة تخزين على `/data` |
+| Fly.io | [`deploy/one-click/fly.toml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/fly.toml) | SQLite على وحدة التخزين | وحدة تخزين على `/data` |
+| Coolify | [`deploy/one-click/compose.coolify.yaml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/compose.coolify.yaml) | خدمة PostgreSQL | وحدة تخزين على `/data` |
+
+ينتهي Dockerfile بـ `USER root`، لأن هذه المنصات تركّب وحدات تخزين يملكها
+root ولا يستطيع مستخدم الصورة (uid `65532`) الكتابة عليها. احذف هذا السطر
+إن كانت وحدة تخزينك قابلة للكتابة من uid `65532`، أو إن كنت لا تحتفظ بأي حالة على النسخة.
+
+## Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/verdin-cms/verdin)
+
+ينشئ الـ Blueprint خدمة الويب (خطة Starter، التي تتطلبها الأقراص)، وقاعدة بيانات PostgreSQL
+والسرّين (يُولَّدان مرة واحدة ثم يُحتفظ بهما). يسأل Render عن
+`VERDIN_SERVER__PUBLIC_URL`: أدخل عنوان الخدمة، `https://<name>.onrender.com`،
+أو نطاقك. من نسخة fork، استخدم `https://render.com/deploy?repo=<your fork's URL>`.
+
+## DigitalOcean App Platform
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/verdin-cms/verdin/tree/main)
+
+تنشئ المواصفة الخدمة وقاعدة بيانات للتطوير. الصق قيمتَي
+`verdin secrets` في `VERDIN_ADMIN_JWT_SECRET` و`VERDIN_TOKEN_PEPPER` عند الطلب:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets
+```
+
+لا أقراص دائمة في App Platform، فتضيع الملفات المرفوعة عند كل نشر إلى أن
+تضيف حاوية Spaces: عيّن `VERDIN_UPLOAD__PROVIDER__NAME=s3` و
+`VERDIN_UPLOAD__PROVIDER__BUCKET` و`VERDIN_UPLOAD__PROVIDER__REGION` و
+`VERDIN_UPLOAD__PROVIDER__ENDPOINT` (`https://<region>.digitaloceanspaces.com`) و
+`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL` و`AWS_ACCESS_KEY_ID` و`AWS_SECRET_ACCESS_KEY`
+على الخدمة. أما لنسخة fork، فغيّر `repo_clone_url` في المواصفة.
+
+## Railway
+
+1. انسخ المستودع (fork)، ثم أنشئ في Railway مشروعًا من النسخة.
+2. في إعدادات الخدمة، عيّن مسار ملف التهيئة إلى
+   `deploy/one-click/railway.json` (وهو يختار Dockerfile وفحص السلامة).
+3. أضف قاعدة بيانات PostgreSQL ووحدة تخزين مركّبة على `/data`، ثم عيّن متغيرات
+   [Railway](/ar/deploy/railway/#2-أنشئ-المشروع): `VERDIN_DATABASE_URL` والسرّين
+   و`VERDIN_SERVER__PUBLIC_URL`. ولّد نطاقًا بالمنفذ الهدف `1337`.
+
+## Fly.io
+
+من نسخة مستنسخة للمستودع (أو من fork الخاص بك)، مع تسجيل دخول `flyctl`:
+
+```sh frame="terminal"
+fly launch --no-deploy --copy-config --config deploy/one-click/fly.toml --ha=false
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets | fly secrets import --config deploy/one-click/fly.toml
+fly deploy --config deploy/one-click/fly.toml --dockerfile deploy/one-click/Dockerfile .
+```
+
+يشغّل هذا Machine واحدة مع SQLite والرفوعات على وحدة تخزين بحجم 1 GB. غيّر `app` و
+`primary_region` في `fly.toml` أولًا. يغطي [Fly.io](/ar/deploy/fly/) PostgreSQL و
+Tigris بدلًا من ذلك.
+
+## Coolify
+
+في Coolify، أضف موردًا من fork الخاص بك (أو من هذا المستودع) بحزمة بناء **Docker
+Compose**، والمجلد الأساسي `/` وملف compose
+`/deploy/one-click/compose.coolify.yaml`. يملأ Coolify متغيرات `SERVICE_*` فيه:
+
+| المتغير | ما يولّده Coolify |
+| --- | --- |
+| `SERVICE_FQDN_VERDIN_1337` | نطاق يوجّهه وكيله إلى المنفذ 1337 (ويُستخدم أيضًا كـ `VERDIN_SERVER__PUBLIC_URL`). |
+| `SERVICE_BASE64_64_JWT`، `SERVICE_BASE64_64_PEPPER` | السرّان، 64 حرفًا لكل منهما، يُحتفظ بهما عبر عمليات النشر. |
+| `SERVICE_USER_POSTGRES`، `SERVICE_PASSWORD_POSTGRES` | بيانات اعتماد قاعدة البيانات. |
+
+ينهي وكيل Coolify TLS، فلا حاجة إلى Caddy. أما لخادم تديره بنفسك
+بدون Coolify، فاستخدم [Docker Compose في الإنتاج](/ar/deploy/compose/).
+
+## بعد أول نشر
+
+افتح `https://<your address>/admin/` وسجّل المسؤول الأول. ثم اقرأ
+[قائمة التحقق للإنتاج](/ar/deploy/production-checklist/).

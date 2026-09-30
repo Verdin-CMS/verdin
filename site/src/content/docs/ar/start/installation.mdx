@@ -1,0 +1,132 @@
+---
+title: التثبيت
+description: ثبّت الملف التنفيذي verdin بسكربت التثبيت أو Homebrew أو حزمة .deb أو winget أو cargo binstall أو من المصدر، أو شغّل صورة Docker.
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin ملف تنفيذي واحد مع لوحة الإدارة مدمجة فيه. يُنشر مع كل إصدار لأنظمة
+Linux (x86-64 وARM64، بناءات musl ساكنة) وmacOS (Intel وApple silicon) و
+Windows (x86-64)، مع ملف `SHA256SUMS`، على
+[صفحة الإصدارات](https://github.com/verdin-cms/verdin/releases). اختر الطريقة
+التي تناسب جهازك؛ كلها تثبّت الملف التنفيذي نفسه.
+
+تحقق منه بـ:
+
+```sh frame="terminal"
+verdin --version
+```
+
+ثم تابع [البدء السريع](/ar/start/quickstart/) من `verdin new`.
+
+## سكربت التثبيت (Linux وmacOS)
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh
+```
+
+يكتشف السكربت النظام والمعمارية، وينزّل الأرشيف المطابق من
+أحدث إصدار على GitHub، ويتحقق منه مقابل `SHA256SUMS` الخاص بالإصدار، ويثبّت
+`verdin` في `/usr/local/bin` عند تشغيله بصلاحيات root، وإلا في `~/.local/bin`. يحتاج إلى `curl`
+أو `wget`، و`tar`، و`sha256sum` أو `shasum` أو `openssl`.
+
+| الخيار | المتغير | الافتراضي |
+| --- | --- | --- |
+| `--version <X.Y.Z>` | `VERDIN_VERSION` | أحدث إصدار |
+| `--dir <directory>` | `VERDIN_INSTALL_DIR` | `/usr/local/bin` (root) أو `~/.local/bin` |
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh -s -- --version 0.11.0 --dir /opt/verdin/bin
+```
+
+لقراءة السكربت قبل تشغيله، نزّله أولًا:
+`curl -fsSLO https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh`.
+
+## مديرو الحزم
+
+<Tabs syncKey="package-manager">
+  <TabItem label="Homebrew">
+
+على macOS وLinux:
+
+```sh frame="terminal"
+brew install verdin-cms/tap/verdin
+```
+
+تثبّت الصيغة (formula) الملف التنفيذي للإصدار (بناء musl على Linux). ينقلك `brew upgrade verdin`
+إلى الإصدار التالي.
+
+  </TabItem>
+  <TabItem label="Debian / Ubuntu">
+
+نزّل ملف `.deb` لمعماريتك (`amd64` أو `arm64`) من الإصدار وثبّته:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/verdin_0.11.0-1_amd64.deb
+sudo apt install ./verdin_0.11.0-1_amd64.deb
+```
+
+تضيف الحزمة مستخدم نظام `verdin`، وخدمة systemd (غير مفعّلة) والتهيئة في
+`/etc/verdin/`. يشرح [خادم Linux](/ar/deploy/linux-server/) كيفية
+تشغيله. لا يوجد مستودع apt بعد: للترقية ثبّت ملف `.deb`
+للإصدار التالي.
+
+  </TabItem>
+  <TabItem label="winget">
+
+على Windows:
+
+```powershell frame="terminal"
+winget install VerdinCMS.Verdin
+```
+
+يضيف winget الأمر `verdin` إلى `PATH` في الطرفيات الجديدة. بدون winget، نزّل
+ملف `.zip` من الإصدار وضع `verdin.exe` في مكان ما ضمن `PATH`.
+
+  </TabItem>
+  <TabItem label="cargo binstall">
+
+مع [cargo-binstall](https://github.com/cargo-bins/cargo-binstall)، ينزّل Cargo
+الملف التنفيذي للإصدار بدل تصريفه:
+
+```sh frame="terminal"
+cargo binstall --git https://github.com/verdin-cms/verdin verdin
+```
+
+  </TabItem>
+</Tabs>
+
+## Docker
+
+تشغّل الصورة `ghcr.io/verdin-cms/verdin` الملف التنفيذي نفسه على `linux/amd64` و
+`linux/arm64`:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 --version
+```
+
+راجع [Docker](/ar/deploy/docker/) لوحدات التخزين والتهيئة وملفات Compose.
+
+## من المصدر
+
+مع Rust 1.95 أو أحدث وNode.js 24 (لبناء لوحة الإدارة):
+
+```sh frame="terminal"
+git clone https://github.com/verdin-cms/verdin && cd verdin
+(cd admin && npm ci && npm run build)
+cargo install --locked --path crates/verdin --features embed-admin
+```
+
+بدون `--features embed-admin` لا تكون في الملف التنفيذي لوحة إدارة، إلا إن وجّهت
+`[admin].assets_dir` إلى نسخة مبنية منها.
+
+## تحقق من تنزيل يدويًا
+
+لكل إصدار ملف `SHA256SUMS` يسرد كل أرشيف وحزمة:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS     # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
+```

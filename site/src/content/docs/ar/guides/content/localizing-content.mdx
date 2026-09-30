@@ -164,7 +164,65 @@ const { data } = await verdin.collection('articles').find({ locale: 'fr' });
   تتشاركها كل اللغات.
 - تسجّل حمولات الـ webhook ونسخ السجل اللغة.
 
-على عكس Strapi، ليس لـ API المحتوى مسار `/api/i18n/locales`. تُسرد اللغات في
-API الإدارة على `GET /admin/api/i18n/locales`، وتُدار عبر `POST` و
-`PUT /admin/api/i18n/locales/{code}` و`DELETE /admin/api/i18n/locales/{code}`
-(`locales.manage`).
+### نسخ اللغات الأخرى
+
+عبّئ `localizations` للحصول مع المستند على نسخه الأخرى بلغاتها، كما في Strapi v5.
+لا يُعاد إلا عند تعبئته، بـ `populate=localizations` أو `populate=*`:
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- النسخ بالحالة نفسها التي عليها المستند: النسخ المنشورة افتراضيًا،
+  والمسودات مع `status=draft`. اللغة التي لها مسودة فقط تُستبعد من القراءة المنشورة.
+- يقبل `localizations` خيارات العلاقة المعبّأة: `fields` و`filters` و`sort` و
+  `populate` و`count`. مثلًا `populate[localizations][fields][0]=title`. تتضمن كل
+  نسخة `locale` دائمًا، وتُقرأ علاقاتها بلغتها.
+- لدى GraphQL حقل `localizations` في الأنواع المترجمة، مع `filters` و`sort`.
+- الأنواع غير المترجمة ليس لها `localizations`، وتعبئته تعطي `400`.
+- يستبعد API الإدارة `localizations`.
+
+### سرد اللغات
+
+يسرد `GET /api/i18n/locales` اللغات بشكل Strapi، كمصفوفة بسيطة (بلا غلاف
+`data`):
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+كما في `listLocales` في Strapi، يبقى المسار مغلقًا أمام العموم إلى أن تسمح به. امنح
+`find` على صف **اللغات** (`plugin::i18n.locale`) في **الإعدادات ← الوصول العام**، أو على
+دور مستخدم نهائي، أو على رمز API مخصص. يستطيع رمزا الوصول الكامل والقراءة فقط
+قراءته أصلًا. يُشتق `documentId` من رمز اللغة، فيبقى ثابتًا عبر إعادات التشغيل
+والتصدير. ويجلب استيراد Strapi معه صلاحية `listLocales`. يقرأ العميل ذو الأنواع (typed client)
+القائمة بـ `verdin.locales()`.
+
+تُدار اللغات في API الإدارة: تُسرد على `GET /admin/api/i18n/locales`، وتُغيَّر
+عبر `POST` و`PUT /admin/api/i18n/locales/{code}` و
+`DELETE /admin/api/i18n/locales/{code}` (`locales.manage`).

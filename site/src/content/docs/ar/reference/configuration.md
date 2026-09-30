@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 التهيئة طبقات: **القيم الافتراضية المدمجة ← `verdin.toml` ← البيئة**. الملف
@@ -237,8 +238,22 @@ provider = { name = "s3", bucket = "media", region = "auto",
 
 | المفتاح | الافتراضي | الوصف |
 | --- | --- | --- |
-| `enabled` | `false` | تقديم مقاييس Prometheus على `/_metrics`: طلبات HTTP حسب المجال (`api`، `admin_api`، `graphql`، `mcp`، `uploads`…)، والطريقة، وفئة الحالة مع مدرجات زمن الاستجابة، وعمليات تسليم الـ webhooks المعلّقة، وتدفقات الوقت الفعلي المفتوحة، ومدة التشغيل. |
+| `enabled` | `false` | تقديم مقاييس Prometheus على `/_metrics`: طلبات HTTP حسب المجال (`api`، `admin_api`، `graphql`، `mcp`، `uploads`…)، والطريقة، وفئة الحالة مع مدرجات زمن الاستجابة، وعمليات تسليم الـ webhooks المعلّقة، وتدفقات الوقت الفعلي المفتوحة، وحركة ناقل الأحداث، ومدة التشغيل. |
 | `token` | غير معيَّن | تحتاج عمليات الجمع إلى `Authorization: Bearer <token>`. ويتغلب `VERDIN_METRICS_TOKEN` عليه. بدون رمز، يستطيع أي شخص يصل إلى المنفذ قراءة المقاييس. |
+
+## `[telemetry]`
+
+التتبعات وتقارير الأخطاء، وكلاهما معطّل افتراضيًا ولا يستخدمهما إلا `verdin start` و
+`verdin dev` (راجع [المراقبة](/ar/deploy/monitoring/#التتبعات-opentelemetry)).
+
+| المفتاح | الافتراضي | الوصف |
+| --- | --- | --- |
+| `enabled` | `false` | تصدير تتبعات OpenTelemetry لطلبات HTTP واستعلامات قاعدة البيانات الخاصة بها عبر OTLP/HTTP (protobuf). يعطّله `OTEL_SDK_DISABLED=true`. |
+| `endpoint` | غير معيَّن (`http://localhost:4318`) | عنوان URL الأساسي للمجمّع؛ ويُلحق به `/v1/traces`. يتغلب عليه `OTEL_EXPORTER_OTLP_ENDPOINT` (العنوان الأساسي) و`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (العنوان الكامل). |
+| `service_name` | `"verdin"` | قيمة `service.name` للتتبعات. يتغلب عليه `OTEL_SERVICE_NAME`. |
+| `sample_ratio` | `1.0` | نسبة التتبعات المحتفَظ بها، من `0.0` إلى `1.0`. الطلب الذي يحمل ترويسة `traceparent` يتبع قرار المستدعي. |
+| `sentry_dsn` | غير معيَّن | الإبلاغ عن حالات الـ panic واستجابات 5xx إلى Sentry. يتغلب عليه `SENTRY_DSN`. |
+| `sentry_environment` | غير معيَّن | بيئة Sentry. يتغلب عليه `SENTRY_ENVIRONMENT`؛ وإن لم يُعيَّن فهي `production` في `verdin start` و`development` في `verdin dev`. |
 
 ## `[ai]`
 
@@ -285,8 +300,26 @@ provider = "anthropic"
 | `dir` | `"data/search"` | مجلد الفهرس، نسبةً إلى المشروع. حذفه يعيد بناء الفهرس عند البدء التالي. |
 | `memory_mb` | `50` | ميزانية الذاكرة للفهرسة. |
 
-يعيش الفهرس على قرص النسخة ويتبع عمليات الكتابة في تلك النسخة: مع عدة
-نسخ، أبقِ البحث على واحدة (أو أعِد البناء بعد النشر).
+يعيش الفهرس على قرص النسخة. مع عدة نسخ، فعّل
+[ناقل الأحداث](#cluster) لكي يتبع كل فهرس عمليات الكتابة في جميعها.
+
+## `[cluster]`
+
+ناقل الأحداث المشترك، لعدة نسخ من مشروع واحد (راجع
+[تشغيل عدة نسخ](/ar/deploy/scaling/#ناقل-الأحداث-المشترك)).
+
+| المفتاح | الافتراضي | الوصف |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`: تبقى أحداث الوقت الفعلي والحضور وإبطال ذاكرة التخزين المؤقت وتحديثات البحث في كل نسخة. `database`: تصل إلى كل نسخة عبر قاعدة بيانات المشروع (`LISTEN/NOTIFY` في PostgreSQL، والاستطلاع الدوري في MySQL وMariaDB وSQLite). |
+| `poll_interval_ms` | `1000` | كم مرة تقرأ MySQL وMariaDB وSQLite أحداث النسخ الأخرى. تُوقَظ PostgreSQL بـ `NOTIFY` ولا تستخدم هذا الإيقاع إلا حين لا تستطيع الاستماع. |
+| `instance_id` | غير معيَّن (عشوائي عند كل بدء) | اسم هذه النسخة على الناقل وفي السجلات. |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+عيّنه على كل نسخة، أو بـ `VERDIN_CLUSTER__BUS=database`.
 
 ## متغيرات البيئة
 
@@ -307,5 +340,9 @@ provider = "anthropic"
 | `VERDIN_CDN_TOKEN` | رمز API لموفّر `[cdn]`. |
 | `VERDIN_IMAGE_SECRET` | يوقّع عناوين URL لتحويلات الصور (راجع [`[upload.transforms]`](#uploadtransforms)). |
 | `VERDIN_METRICS_TOKEN` | رمز bearer لعمليات جمع `/_metrics` عند `[metrics].enabled`؛ ويتغلب على `[metrics].token`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`، `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | المجمّع لتتبعات [`[telemetry]`](#telemetry)؛ يتغلبان على `[telemetry].endpoint`. وتنطبق أيضًا متغيرات `OTEL_EXPORTER_OTLP_*` القياسية الأخرى (الترويسات والمهلة والضغط). |
+| `OTEL_SERVICE_NAME`، `OTEL_RESOURCE_ATTRIBUTES` | مورد التتبعات المصدَّرة؛ ويتغلب `OTEL_SERVICE_NAME` على `[telemetry].service_name`. |
+| `OTEL_SDK_DISABLED` | القيمة `true` توقف تصدير التتبعات حتى عند `[telemetry].enabled`. |
+| `SENTRY_DSN`، `SENTRY_ENVIRONMENT` | الإبلاغ عن الأخطاء إلى Sentry؛ يتغلبان على `[telemetry].sentry_dsn` و`sentry_environment`. |
 | `AWS_ACCESS_KEY_ID`، `AWS_SECRET_ACCESS_KEY` | بيانات اعتماد موفّر الرفع S3. |
 | `RUST_LOG` | مرشّح السجلات؛ وله الأولوية على `[log].level`. |

@@ -7,7 +7,8 @@ sidebar:
 
 تشغّل هذه الصفحة مشروع Verdin على Kubernetes. الإعداد الرئيسي عديم الحالة (stateless): PostgreSQL
 (أو MySQL/MariaDB) خارج الـ pods، والوسائط على تخزين متوافق مع S3، وعدد
-النسخ المتماثلة (replicas) الذي تحتاجه. ويلي ذلك إعداد بنسخة متماثلة واحدة مع وحدة تخزين لـ SQLite.
+النسخ المتماثلة (replicas) الذي تحتاجه. ويلي ذلك إعداد بنسخة متماثلة واحدة مع وحدة تخزين لـ SQLite. تجمّع
+[مخطط Helm](/ar/deploy/helm/) ملفات manifest هذه مع قيم لكل إعداد.
 
 تستخدم ملفات manifest واجهات API مستقرة (`apps/v1`، `v1`) وقد تُحقق منها مقابل
 مخططات Kubernetes بـ `kubeconform -strict` في 2026-09-29، ولم تُشغَّل على عنقود فعلي. استبدل كل قيمة
@@ -39,7 +40,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -158,7 +162,9 @@ spec:
   `VERDIN_PLUGINS__RUN_JOBS=true` (بالتسميات نفسها، فيقدّم الحركة أيضًا)، أو اقبل
   أن تعمل المهام على كل نسخة. أما الـ webhooks وحزم النشر المجدولة والملخص اليومي
   فتُحجز في قاعدة البيانات وتُنفَّذ مرة واحدة. راجع [تشغيل عدة نسخ](/ar/deploy/scaling/).
-- **الوقت الفعلي.** تبقى تدفقات الأحداث (`/api/_events`) على الـ pod الذي تتصل به. استخدم
+- **الوقت الفعلي والحضور وذاكرات التخزين المؤقت والبحث.** يوصل `[cluster].bus = "database"` إلى كل
+  pod أحداث الآخرين (راجع [ناقل الأحداث المشترك](/ar/deploy/scaling/#ناقل-الأحداث-المشترك)).
+  بدونه، تبقى تدفقات الأحداث (`/api/_events`) على الـ pod الذي تتصل به: استخدم
   تقارب الجلسة (session affinity) على الـ Ingress إن كنت تستخدم [الوقت الفعلي](/ar/guides/frontend/realtime/).
 
 ## نسخة متماثلة واحدة مع SQLite

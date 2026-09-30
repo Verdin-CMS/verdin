@@ -299,7 +299,7 @@ GET /api/articles?fields=title,slug
 
 | الصيغة | تعبّئ |
 | --- | --- |
-| `populate=*` | كل علاقة وحقل وسائط ومكوّن ومنطقة ديناميكية، بعمق مستوى واحد |
+| `populate=*` | كل علاقة وحقل وسائط ومكوّن ومنطقة ديناميكية، بعمق مستوى واحد، و`localizations` في الأنواع المترجمة |
 | `populate=category,tags` أو `populate[0]=category&populate[1]=tags` | الحقول المسمّاة |
 | `populate[category]=true` | الحقل المسمّى (`false` يستبعده) |
 | `populate[category][fields][0]=name` | الحقل، مع خيارات |
@@ -347,6 +347,16 @@ GET /api/articles?populate[category][fields][0]=name
 `locale=fr` يقرأ ويكتب النسخة الفرنسية من الأنواع المترجمة. بدونه، تستخدم الطلبات
 اللغة الافتراضية. الرمز غير الصالح أو غير المعروف يعطي `400`. الأنواع غير المترجمة
 تتجاهله. راجع [التدويل](/ar/concepts/internationalization/).
+
+في الأنواع المترجمة، يضيف `populate=localizations` نسخ المستند الأخرى بلغاتها، بالحالة
+نفسها، وكل منها مع `locale` الخاص بها. يقبل خيارات العلاقة المعبّأة
+(`fields` و`filters` و`sort` و`populate` و`count`)، ويشمله `populate=*`. الأنواع
+غير المترجمة ليس لها `localizations`.
+
+يسرد `GET /api/i18n/locales` اللغات كمصفوفة بسيطة بشكل Strapi (`id` و
+`documentId` و`name` و`code` و`isDefault` و`createdAt` و`updatedAt` و`publishedAt` و
+`locale`). يحتاج إلى منح `find` على `plugin::i18n.locale`. راجع
+[ترجمة المحتوى](/ar/guides/content/localizing-content/#سرد-اللغات).
 
 ## البحث
 

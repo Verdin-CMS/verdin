@@ -85,7 +85,7 @@ pub struct Database { pool: Pool, flavor: Flavor, version: Version }
 | date، time، datetime | `date`، `time(3)`، `timestamptz(3)` | `date`، `time(3)`، `datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-يخزّن SQLite الأرقام العشرية والتواريخ والأوقات كنص بصيغة ثابتة فلا يُقرَّب شيء ويطابق الترتيب النصي الترتيب الرقمي والزمني. أي سمة تقابل أي نوع نموذج موجود في [أنواع السمات](/ar/reference/attribute-types/).
+يخزّن SQLite التواريخ والأوقات كنص بصيغة ثابتة، فيطابق الترتيب النصي الترتيب الزمني. ويخزّن الأرقام العشرية كنص أيضًا، فلا يُقرَّب شيء عند حفظها. لكن الترتيب النصي ليس ترتيبًا رقميًا للأعداد العشرية، لذا تحوّل عوامل التصفية والترتيب على عمود عشري العمود إلى `REAL` في SQLite. هذه المقارنات دقيقة حتى نحو 15 رقمًا معنويًا، وتبقى القيم المُعادة دقيقة. أي سمة تقابل أي نوع نموذج موجود في [أنواع السمات](/ar/reference/attribute-types/).
 
 تُنشأ جداول MySQL وMariaDB بـ `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` وبترتيب لا يميّز العلامات وحالة الأحرف: `utf8mb4_0900_ai_ci` في MySQL، و`utf8mb4_uca1400_ai_ci` في MariaDB.
 

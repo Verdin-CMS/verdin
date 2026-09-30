@@ -127,7 +127,7 @@ INDEX  (target_document_id)
 | المسؤولون | `vd_admin_users`، `vd_admin_roles`، `vd_admin_user_roles`، `vd_admin_permissions`، `vd_sessions` (رموز التجديد)، `vd_admin_tokens` (روابط الدعوة وإعادة التعيين)، `vd_admin_two_factor`، `vd_admin_passkeys`، `vd_spent_challenges` |
 | الوصول إلى API المحتوى | `vd_api_tokens`، `vd_api_token_permissions`، `vd_public_permissions` |
 | المستخدمون النهائيون | `vd_users`، `vd_user_roles`، `vd_user_role_permissions`، `vd_end_user_sessions` |
-| النسخة | `vd_settings` (مفاتيح الميزات، وتخطيطات عروض التحرير، وعلامات الترقية لمرة واحدة)، `vd_locales` |
+| النسخة | `vd_settings` (مفاتيح الميزات، وتخطيطات عروض التحرير، وعلامات الترقية لمرة واحدة)، `vd_locales`، `vd_cluster_events` (ناقل الأحداث المشترك، راجع [عدة نسخ](/ar/deploy/scaling/)) |
 | الوسائط | `vd_files`، `vd_folders` |
 | سير عمل المحتوى | `vd_history_versions`، `vd_releases`، `vd_release_actions`، `vd_workflows`، `vd_workflow_stages`، `vd_document_stages` |
 | التعاون | `vd_comments`، `vd_tasks`، `vd_document_views`، `vd_document_votes`، `vd_polls`، `vd_poll_votes` |
