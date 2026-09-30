@@ -21,6 +21,7 @@ dettagli nel [riferimento dei plugin](/it/extending/plugin-reference/).
 | **Hook sulle scritture** | Prima che una voce venga creata, aggiornata, pubblicata, rimossa dalla pubblicazione, eliminata o che la sua bozza venga scartata, modificare i dati o rifiutare la scrittura con un messaggio. Dopo la scrittura, reagire (log, notifiche, sincronizzazione). |
 | **Route** | Servire endpoint HTTP sotto `/api/plugins/<name>/…`: un ricevitore di webhook, un feed calcolato, un proxy verso un altro servizio. |
 | **Job pianificati** | Eseguire una funzione con una pianificazione cron (UTC). |
+| **Funzione di avvio** | Eseguire una funzione quando il plugin parte, viene attivato o le sue impostazioni cambiano: seeding, configurazione del ruolo pubblico (il `bootstrap` di Strapi). |
 | **Campi GraphQL** | Aggiungere campi `name(args: JSON): JSON` a `Query` o `Mutation`. |
 | **Widget della dashboard** | Aggiungere tipi di widget alla dashboard dell'admin, come Web Component. |
 | **Campi personalizzati** | Dare agli attributi un editor personalizzato nell'admin (un selettore di colore, una mappa), come Web Component; il valore viene memorizzato come un normale tipo di attributo. |
@@ -50,6 +51,7 @@ rispetto alle **capability** dichiarate dal manifest:
 | `write` | Creare, aggiornare, pubblicare, annullare la pubblicazione ed eliminare voci dei tipi elencati (e anche leggerle). |
 | `http` | Richieste HTTP verso gli host elencati (`api.example.com`, `*.example.com`). |
 | `kv` | Un key-value store proprio, nel database di Verdin. |
+| `public_permissions` | Lettura e sostituzione dei permessi della content API del ruolo pubblico. |
 
 <Diagram
   caption="Le chiamate verso un plugin, e cosa possono raggiungere le sue chiamate host"

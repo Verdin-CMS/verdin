@@ -1,13 +1,13 @@
 ---
 title: Monitoraggio
-description: Tieni d'occhio un'istanza Verdin in esecuzione — i check /_health e /_ready, le metriche Prometheus su /_metrics e il loro token, formato, livelli e request id dei log.
+description: Tieni d'occhio un'istanza Verdin in esecuzione — i check /_health e /_ready, le metriche Prometheus su /_metrics e una dashboard Grafana, le tracce OpenTelemetry, le segnalazioni di errori Sentry, formato, livelli e request id dei log.
 sidebar:
   order: 10
 ---
 
 Un'istanza Verdin riferisce su sé stessa tramite due endpoint di salute, metriche Prometheus
-opzionali e log strutturati. Questa pagina elenca cosa restituisce ciascuno e come
-attivarlo.
+opzionali, tracce OpenTelemetry e segnalazioni di errori Sentry opzionali, e log strutturati.
+Questa pagina elenca cosa restituisce ciascuno e come attivarlo.
 
 ## Health check
 
@@ -63,18 +63,93 @@ Con più istanze, fai lo scrape di ciascuna: ogni istanza conta le proprie richi
 | --- | --- | --- | --- |
 | `verdin_http_requests_total` | counter | `area`, `method`, `status` | Richieste HTTP servite. |
 | `verdin_http_request_duration_seconds` | histogram | `area`, `method`, `status` | Tempo per servire le richieste. Bucket da 5 ms a 10 s. |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | Tempo impiegato dalle funzioni dei [plugin](/it/extending/plugins/). Stessi bucket. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Chiamate ai plugin fallite: un trap, un time-out, un output che non è JSON, o l'`{ error }` di una funzione di avvio. |
 | `verdin_webhook_deliveries_pending` | gauge | | Invii di webhook in attesa di essere inviati. |
 | `verdin_realtime_subscribers` | gauge | | Stream di eventi realtime aperti. |
+| `verdin_cluster_events_total` | counter | `direction` | Eventi sul [bus di eventi condiviso](/it/deploy/scaling/#bus-di-eventi-condiviso), con `[cluster].bus` impostato: `sent` verso le altre istanze, `received` da esse, `dropped` (una coda piena o una scrittura fallita). |
 | `verdin_uptime_seconds` | gauge | | Secondi dall'avvio del processo. |
 | `verdin_build_info` | gauge | `version` | Sempre 1; la versione in esecuzione. |
 
 `area` è la parte del server: `api` (content API), `admin_api`, `admin` (i file del
 pannello), `graphql`, `mcp`, `uploads`, `internal` (path che iniziano con `/_`) o `other`.
 `status` è la classe dello stato: `2xx`, `3xx`, `4xx` o `5xx`.
+Per le chiamate ai plugin, `kind` è `hook`, `route`, `job`, `startup` o `graphql`; le serie
+dei plugin compaiono dopo la prima chiamata (vedi il
+[riferimento dei plugin](/it/extending/plugin-reference/#metriche)).
 
 Alert utili: `/_ready` che fallisce, una quota crescente di `5xx`, un
-`verdin_webhook_deliveries_pending` in aumento (un target dei webhook è giù), e
-`verdin_uptime_seconds` che si azzera (riavvii).
+`verdin_webhook_deliveries_pending` in aumento (un target dei webhook è giù), un
+`verdin_plugin_call_errors_total` in aumento o hook dei plugin lenti (ritardano le scritture
+su cui girano), e `verdin_uptime_seconds` che si azzera (riavvii).
+
+### Dashboard Grafana
+
+[`docker/grafana/verdin.json`](https://github.com/Verdin-CMS/verdin/blob/main/docker/grafana/verdin.json)
+è una dashboard per queste metriche: frequenza delle richieste, quota di `5xx` e quantili di
+latenza per area, metodo e classe di stato, invii di webhook in attesa, sottoscrittori
+realtime, traffico del bus di eventi, e frequenza delle chiamate ai plugin, p95 ed errori per
+funzione di plugin. Importala in Grafana (**Dashboards → New → Import**) e scegli la tua
+origine dati Prometheus; le variabili `instance` e `area` in alto filtrano ogni pannello.
+
+## Tracce (OpenTelemetry)
+
+Verdin può esportare la traccia di ogni richiesta verso un collector OpenTelemetry (l'
+OpenTelemetry Collector, Grafana Alloy o Tempo, Jaeger, Honeycomb, Datadog…) tramite
+OTLP/HTTP. È disattivato di default:
+
+```toml title="verdin.toml"
+[telemetry]
+enabled = true
+endpoint = "http://otel-collector:4318"
+```
+
+Funzionano anche le variabili standard, che prevalgono sul file:
+
+```sh
+VERDIN_TELEMETRY__ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=<key>
+OTEL_SERVICE_NAME=cms-production
+```
+
+Ogni traccia contiene:
+
+- **Uno span di richiesta** (kind `server`), chiamato con il metodo e il path con gli id
+  sostituiti da `{id}` (`PUT /api/articles/{id}`), con `http.response.status_code` e uno
+  stato di errore sui `5xx`. Una richiesta con un header W3C `traceparent` si unisce alla
+  traccia del chiamante.
+- **Uno span per ogni istruzione del database** (kind `client`) sotto di esso:
+  `db.system.name` (`postgresql`, `mysql`, `mariadb` o `sqlite`) e `db.query.text`, l'SQL con
+  i suoi placeholder `?`. I valori associati non vengono mai registrati, così contenuti,
+  password e token restano fuori dalle tracce. `COMMIT` e `ROLLBACK` hanno i propri span, e su
+  SQLite uno span `write lock` mostra quanto una scrittura ha atteso quelle che la
+  precedevano.
+- Gli eventi di log scritti mentre serviva la richiesta, come eventi dello span.
+
+Le istruzioni eseguite fuori da una richiesta (avvio, migrazioni, job in background) non
+vengono tracciate. `[telemetry].sample_ratio` conserva una quota delle tracce (`0.1` ne
+conserva una su dieci); gli span vengono inviati a lotti e svuotati quando il server si
+ferma. Il livello di log non filtra le tracce: `[log].level = "warn"` esporta comunque ogni
+richiesta.
+
+## Segnalazione degli errori (Sentry)
+
+Imposta un DSN per inviare panic e risposte `5xx` a [Sentry](https://sentry.io) (o a un
+servizio compatibile con Sentry come GlitchTip):
+
+```sh
+SENTRY_DSN=https://<key>@o0.ingest.sentry.io/<project>
+```
+
+Funziona anche `[telemetry].sentry_dsn`; la variabile prevale. Un `5xx` arriva come evento di
+errore `POST /api/articles answered 500`, con i tag `http.method`, `http.status_code` e
+`request_id`, che corrisponde all'header `X-Request-Id` e alle righe di log di quella
+richiesta. Gli eventi portano la versione di Verdin come release e `production`
+(`verdin start`) o `development` (`verdin dev`) come ambiente, a meno che `SENTRY_ENVIRONMENT`
+o `[telemetry].sentry_environment` ne indichino un altro. Gli URL vengono riportati con i
+valori della query che sembrano segreti nascosti, come nei log; corpi e header delle richieste
+non vengono mai inviati.
 
 ## Log
 

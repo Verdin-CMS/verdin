@@ -130,6 +130,10 @@ mostra agli altri, ma non blocca i loro salvataggi. Leggere la presenza richiede
 
 ## Più istanze
 
-Eventi e presenza sono quelli dell'istanza a cui un client è connesso. Dietro un load
-balancer, instrada `/api/_events` e `/admin/api/events` con sessioni sticky, o collega i
-client realtime a una sola istanza. Vedi [Scalabilità](/it/deploy/scaling/).
+Con il bus di eventi condiviso (`[cluster].bus = "database"`), gli stream di ogni istanza
+portano gli eventi di tutte, e presenza e soft lock sono gli stessi su ogni istanza. Gli
+eventi di un'altra istanza arrivano entro `[cluster].poll_interval_ms` (MySQL, MariaDB,
+SQLite) o subito (PostgreSQL, `LISTEN/NOTIFY`). Senza il bus, eventi e presenza sono quelli
+dell'istanza a cui un client è connesso: instrada `/api/_events` e `/admin/api/events` con
+sessioni sticky, o collega i client realtime a una sola istanza.
+Vedi [Scalabilità](/it/deploy/scaling/#bus-di-eventi-condiviso).

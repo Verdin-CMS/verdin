@@ -137,9 +137,11 @@ Chiamare lo stream da un sito su un'altra origine richiede quell'origine in
 
 ## Dietro un load balancer
 
-Gli eventi sono quelli dell'istanza a cui un client è connesso. Con più istanze, usa
-sessioni sticky per `/api/_events`, o collega i client realtime a una sola istanza. Vedi
-[Più istanze](/it/deploy/scaling/).
+Con più istanze, attiva il bus di eventi condiviso (`[cluster].bus = "database"`): un
+client connesso a qualsiasi istanza riceve allora gli eventi di tutte. Senza, gli eventi
+sono quelli dell'istanza a cui un client è connesso; usa sessioni sticky per
+`/api/_events`, o collega i client realtime a una sola istanza. Vedi
+[Più istanze](/it/deploy/scaling/#bus-di-eventi-condiviso).
 
 Il pannello di amministrazione usa il proprio stream (`/admin/api/events`) per aggiornamenti
 in tempo reale, presenza e lock morbidi durante la modifica; vedi il

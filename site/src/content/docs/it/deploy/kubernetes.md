@@ -8,7 +8,8 @@ sidebar:
 Questa pagina esegue un progetto Verdin su Kubernetes. La configurazione principale è
 stateless: PostgreSQL (o MySQL/MariaDB) fuori dai pod, i media su uno storage compatibile S3,
 e tutte le repliche che ti servono. Segue una configurazione a replica singola con un volume
-per SQLite.
+per SQLite. Il [chart Helm](/it/deploy/helm/) impacchetta questi manifest con valori per ogni
+impostazione.
 
 I manifest usano API stabili (`apps/v1`, `v1`) e sono stati validati rispetto agli schemi di
 Kubernetes con `kubeconform -strict` il 2026-09-29, non eseguiti su un cluster reale.
@@ -39,7 +40,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -159,9 +163,10 @@ Note sul manifest:
   che i job girino su ogni replica. Webhook, rilasci pianificati e digest giornaliero vengono
   presi in carico nel database ed eseguiti una sola volta. Vedi
   [Eseguire più istanze](/it/deploy/scaling/).
-- **Tempo reale.** Gli stream di eventi (`/api/_events`) restano sul pod a cui si
-  connettono. Usa la session affinity sull'Ingress se usi il
-  [tempo reale](/it/guides/frontend/realtime/).
+- **Tempo reale, presenza, cache e ricerca.** `[cluster].bus = "database"` porta a ogni pod
+  gli eventi degli altri (vedi [il bus di eventi condiviso](/it/deploy/scaling/#bus-di-eventi-condiviso)).
+  Senza, gli stream di eventi (`/api/_events`) restano sul pod a cui si connettono: usa la
+  session affinity sull'Ingress se usi il [tempo reale](/it/guides/frontend/realtime/).
 
 ## Replica singola con SQLite
 

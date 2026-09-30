@@ -2,7 +2,7 @@
 title: Aggiornare Verdin
 description: Aggiorna un'installazione di Verdin — il binario o l'immagine Docker, le migrazioni che girano all'avvio, e le modifiche importanti o incompatibili di ogni versione minore.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -120,6 +120,33 @@ istanze di due versioni minori più a lungo di quanto richieda un rolling deploy
 
 Modifiche importanti e incompatibili per versione, dalla più recente alla più vecchia. Il
 [changelog](/it/project/changelog/) ha l'elenco completo.
+
+### 0.10 → 0.11
+
+La migrazione che gira all'avvio aggiunge una tabella, `vd_cluster_events`, usata solo
+quando `[cluster] bus = "database"`.
+
+- **Decimali**: i valori `decimal` interi vengono restituiti come interi JSON (`25`, non
+  `25.0`), come fa Strapi. I client che controllano il tipo JSON in modo rigoroso potrebbero
+  accorgersene; `[api] decimal_as_string` è invariato. Su SQLite, `sort` e
+  `$gt`/`$lt`/`$between` sui decimali ora confrontano numeri invece di testo, quindi i
+  risultati che si basavano sul vecchio ordine (sbagliato) cambiano.
+- **`populate=*` sui tipi localizzati** restituisce anche `localizations`, le altre versioni
+  linguistiche del documento, come fa Strapi v5. Un attributo dello schema chiamato
+  `localizations` mantiene il suo significato.
+- **Plugin**: gli hook after scatenati dalle scritture di un plugin girano quando la sua
+  chiamata ritorna invece che dentro la scrittura, e gli hook che scrivono si annidano al
+  massimo di 4 livelli. Le funzioni host si fermano al limite di tempo della chiamata.
+- **Più istanze**: imposta `[cluster] bus = "database"` su ogni istanza così che stream
+  realtime, presenza, cache delle risposte e indice di ricerca seguano le modifiche fatte
+  sulle altre (vedi [Scalabilità](/it/deploy/scaling/)).
+- **Script che leggono gli elenchi admin**: `GET /admin/api/users`, `/roles`, `/api-tokens`,
+  `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` e
+  `/deploy/targets` restituiscono 25 righe a meno che tu non passi `pageSize` (al massimo
+  100), con `meta.pagination`, come gli elenchi già paginati. Scorri le pagine con `?page=`
+  finché `page` non raggiunge `meta.pagination.pageCount`. `/deploy/deployments` pagina allo
+  stesso modo invece di restituire le ultime 50; `limit` funziona ancora come alias
+  deprecato di `pageSize`. Vedi [Elenchi](/it/api/admin/#elenchi).
 
 ### 0.9.1 → 0.10
 

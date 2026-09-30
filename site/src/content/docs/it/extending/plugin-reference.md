@@ -1,6 +1,6 @@
 ---
 title: Riferimento dei plugin
-description: Il manifest plugin.toml, le capability, gli hook e i loro payload, le funzioni host, route, job, campi GraphQL, punti di estensione dell'admin e limiti.
+description: Il manifest plugin.toml, le capability, gli hook e i loro payload, le funzioni host, route, job, la funzione di avvio, campi GraphQL, punti di estensione dell'admin, limiti e metriche.
 sidebar:
   order: 3
 ---
@@ -40,6 +40,7 @@ read = ["api::article"]
 write = ["api::tag"]
 http = ["api.example.com"]
 kv = true
+public_permissions = true
 
 [limits]
 timeout_ms = 5000
@@ -56,6 +57,10 @@ function = "handle"
 [[jobs]]
 schedule = "*/15 * * * *"
 function = "refresh"
+
+[startup]
+function = "seed"
+timeout_ms = 30000
 
 [[graphql]]
 name = "slugStats"
@@ -103,6 +108,7 @@ Le chiavi sconosciute sono errori, in ogni tabella.
 | `write` | `[]` | Tipi di contenuto su cui può fare `create`, `update`, `delete`, `publish` e `unpublish`. Implica `read`. |
 | `http` | `[]` | Host a cui il modulo può inviare richieste HTTP: `api.example.com`, o `*.example.com`. |
 | `kv` | `false` | Lo storage key-value del plugin (`verdin_kv_get`, `verdin_kv_set`). |
+| `public_permissions` | `false` | Lettura e sostituzione dei permessi della content API del ruolo pubblico (`verdin_public_permissions`). |
 
 Le capability limitano solo le chiamate host. Gli hook girano sui tipi che nominano
 indipendentemente da `read`, e le route sono raggiungibili da chiunque.
@@ -137,8 +143,8 @@ Eventi:
 
 I nomi sono quelli dei lifecycle di Strapi. Gli hook girano sulle scritture dal pannello di
 amministrazione, dalle API REST e GraphQL e dai rilasci, ma non sulle scritture fatte dai
-plugin (vedi [Scritture fatte dai plugin](#scritture-fatte-dai-plugin)) né dai comandi
-`verdin import`.
+comandi `verdin import`. Le scritture fatte dai plugin eseguono gli hook after ma non gli
+hook before (vedi [Scritture fatte dai plugin](#scritture-fatte-dai-plugin)).
 
 ### `[routes]`
 
@@ -154,6 +160,18 @@ Il path segue `[api].prefix`.
 | --- | --- |
 | `schedule` | Espressione cron, in UTC, con secondi opzionali: `*/15 * * * *`, `0 0 3 * * *`. |
 | `function` | La funzione esportata da chiamare. |
+
+### `[startup]`
+
+Una funzione eseguita quando il plugin parte: ciò che un progetto Strapi fa in `bootstrap`
+(creare contenuti iniziali, configurare il ruolo pubblico).
+
+| Chiave | Default | Descrizione |
+| --- | --- | --- |
+| `function` | obbligatoria | La funzione esportata da chiamare. |
+| `timeout_ms` | `30000` | Il suo limite di tempo, in millisecondi (il seeding può richiedere più di un hook). Deve essere positivo. |
+
+Vedi [Funzione di avvio](#funzione-di-avvio) per quando viene eseguita.
 
 ### `[[graphql]]`
 
@@ -292,6 +310,34 @@ pianificata. L'output viene ignorato; i fallimenti vengono registrati nel log. I
 solo mentre il plugin è attivo, e solo sulle istanze con `[plugins].run_jobs = true`.
 Un'esecuzione persa mentre il server era giù non viene recuperata.
 
+### Funzione di avvio
+
+Input: `{ "reason": "start" | "enabled" | "settings" }`:
+
+| `reason` | Quando |
+| --- | --- |
+| `start` | Il server è partito con il plugin attivo. |
+| `enabled` | Il plugin è stato attivato (qui, o su un'altra istanza e rilevato qui). |
+| `settings` | Le sue impostazioni sono cambiate mentre era attivo (salvate qui, o rilevate da un'altra istanza). |
+
+Output: `{ "error": "message" }` conta come fallimento; qualsiasi altra cosa (`{}`, vuoto)
+come successo. Un fallimento (trap, time-out, `{ error }`) va nel log del plugin e nel log
+del server; il plugin resta attivo, e la funzione viene eseguita di nuovo al prossimo avvio,
+attivazione o modifica delle impostazioni.
+
+La funzione gira in background, dopo che il server è attivo, così nel frattempo le richieste
+vengono servite. Gira su un'istanza del modulo tutta sua con `[startup].timeout_ms`, così un
+seeding lento non blocca gli hook e le route del plugin. Gli hook after scatenati dalle sue
+scritture girano quando ritorna (vedi
+[Scritture fatte dai plugin](#scritture-fatte-dai-plugin)). La memoria del modulo non è
+condivisa con l'istanza normale del plugin: tieni lo stato in `verdin_kv_set` o nei
+contenuti.
+
+Con più istanze, eseguono le funzioni di avvio solo quelle con `[plugins].run_jobs = true`
+(una sola istanza, se segui il [consiglio sulla scalabilità](/it/deploy/scaling/)): agiscono
+sul database condiviso, quindi una volta basta. Scrivi la funzione in modo che eseguirla di
+nuovo sia innocuo: cerca ciò che inserisci prima di crearlo.
+
 ### Campi GraphQL
 
 Input: `{ "args": …, "actor": … }`, con `args` l'argomento `args` del campo (qualsiasi JSON,
@@ -311,6 +357,10 @@ restituiscono JSON come stringhe; `Json<Value>` in `extism-pdk` gestisce la conv
 | `verdin_kv_get` | La chiave, come stringa semplice | Il valore JSON memorizzato, o `null` |
 | `verdin_kv_set` | `{ "key": "…", "value": … }` | nessuno |
 | `verdin_config` | nessuno | L'oggetto delle impostazioni, con i default dichiarati compilati |
+| `verdin_public_permissions` | `{ "op": "get" }` o `{ "op": "set", "permissions": [...] }` | `{ "permissions": [...] }`, o `{ "error": "…" }` |
+
+Un modulo che importa una funzione host che il server non ha (un Verdin più vecchio) non
+può essere caricato: ogni chiamata fallisce con `unknown import` nel log del server.
 
 ### `verdin_log`
 
@@ -352,10 +402,25 @@ versioni pubblicate a meno che la query non chieda `"status": "draft"`.
 #### Scritture fatte dai plugin
 
 Le scritture tramite `verdin_content` saltano gli hook **before** di tutti i plugin, così un
-plugin non può entrare in loop sulle proprie modifiche. Tutto il resto si applica:
-validazione, fasi di revisione, webhook, cronologia, log di audit, e gli hook **after** di
-tutti i plugin, compreso quello che scrive. Proteggi un hook after che scrive sul tipo che
-sta ascoltando.
+plugin non può entrare in loop sulle proprie modifiche lì, e le regole che metti negli hook
+before (default, controlli) non si applicano a esse. Tutto il resto si applica: validazione,
+fasi di revisione, webhook, cronologia, log di audit, e gli hook **after** di tutti i plugin,
+compreso quello che scrive.
+
+Gli hook after scatenati dalle scritture di un plugin non girano dentro la scrittura: vengono
+messi in coda ed eseguiti quando la chiamata del plugin (route, job, resolver GraphQL, hook o
+funzione di avvio) è ritornata e ha rilasciato l'istanza del plugin, prima che la risposta
+della route venga inviata. Così un plugin può scrivere un tipo su cui ha hook after, e le
+catene tra più plugin funzionano.
+
+- Gli hook che scrivono scatenano altri hook, **al massimo fino a `4` livelli** (una scrittura
+  da REST o GraphQL è il livello 1). Gli hook più profondi vengono saltati con un avviso nel
+  log del plugin, cosa che impedisce a un hook che scrive sul tipo che ascolta di andare in
+  loop all'infinito.
+- Le funzioni host (`verdin_content`, `verdin_public_permissions`, il key-value store) si
+  fermano al limite di tempo della chiamata e restituiscono un errore al modulo, e un chiamante
+  attende al massimo il limite di tempo più 10 secondi per un plugin occupato. Una chiamata
+  bloccata non può trattenere il plugin, o un arresto ordinato, per sempre.
 
 ### `verdin_kv_get` e `verdin_kv_set`
 
@@ -368,6 +433,34 @@ ignorate.
 
 Restituisce le impostazioni salvate in **Impostazioni → Plugin**, con il `default` di ogni
 impostazione dichiarata compilato per le chiavi mancanti. `{}` quando non è salvato nulla.
+
+### `verdin_public_permissions`
+
+Legge o sostituisce i permessi della content API del ruolo pubblico, ciò che modifica
+**Impostazioni → Accesso pubblico**. Richiede la capability `public_permissions`; senza, ogni
+chiamata risponde `{ "error": "…" }`.
+
+```json
+{ "op": "set", "permissions": [
+  { "subject": "api::article", "action": "find" },
+  { "subject": "api::article", "action": "findOne" },
+  { "subject": "api::comment", "action": "create" }
+] }
+```
+
+| `op` | Effetto |
+| --- | --- |
+| `get` | Nulla; restituisce i permessi attuali. |
+| `set` | Sostituisce **tutti** i permessi pubblici con `permissions` (una lista vuota li rimuove tutti). |
+
+Entrambe rispondono `{ "permissions": [{ "subject", "action" }, …] }`, ordinati. `subject` è
+l'uid di un tipo di contenuto, `plugin::upload` (la libreria media),
+`plugin::users-permissions.user` (gli utenti finali tramite la content API) o
+`plugin::i18n.locale` (solo `find`). `action` è `find`, `findOne`, `create`, `update`,
+`delete`, `publish` o `readDrafts` (gli ultimi due non si applicano a upload e utenti finali).
+Vengono verificati come la griglia dei permessi dell'admin: un subject o un'azione
+sconosciuti, o che non si applicano, rispondono `{ "error": "…" }` e non cambiano nulla.
+Ogni `set` viene scritto nel log del server.
 
 ### HTTP
 
@@ -437,10 +530,10 @@ elemento manca, l'editor mostra l'input normale per il tipo di memorizzazione. V
 
 | Limite | Valore |
 | --- | --- |
-| Tempo per chiamata | `[limits].timeout_ms`, default 5.000 ms |
+| Tempo per chiamata | `[limits].timeout_ms`, default 5.000 ms (`[startup].timeout_ms`, default 30.000 ms, per la funzione di avvio) |
 | Memoria | `[limits].memory_mb`, default 64 MB |
-| Concorrenza | Una chiamata alla volta per plugin; le chiamate si aspettano a vicenda |
-| Istanza del modulo | Una per plugin, costruita al primo uso; ricostruita dopo che una chiamata fallisce (la sua memoria va persa) |
+| Concorrenza | Una chiamata alla volta per plugin; le chiamate si aspettano a vicenda (la funzione di avvio gira accanto a esse) |
+| Istanza del modulo | Una per plugin, costruita al primo uso; ricostruita dopo che una chiamata fallisce (la sua memoria va persa). La funzione di avvio ne riceve una nuova a ogni esecuzione |
 | Log | 200 messaggi per plugin, 2.000 caratteri ciascuno, in memoria |
 | Chiavi KV | Da 1 a 255 byte |
 | Header di richiesta delle route | `content-type`, `accept`, `user-agent`, `accept-language` |
@@ -449,3 +542,19 @@ elemento manca, l'editor mostra l'input normale per il tipo di memorizzazione. V
 Le modifiche a un manifest o a un modulo si applicano dopo un riavvio; interruttori e
 impostazioni si applicano subito. Gestire i plugin richiede `plugins.manage` (vedi il
 [riferimento dei permessi](/it/reference/permissions/)).
+
+## Metriche
+
+Con [`[metrics]`](/it/deploy/monitoring/) attivo, `/_metrics` riporta ogni chiamata che ha
+raggiunto una funzione esportata:
+
+| Metrica | Tipo | Label | Significato |
+| --- | --- | --- | --- |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | Tempo impiegato dalle funzioni dei plugin. Bucket da 5 ms a 10 s. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Chiamate fallite: un trap, un time-out, un output che non è JSON, o l'`{ error }` di una funzione di avvio. |
+
+`kind` è `hook`, `route`, `job`, `startup` o `graphql`. Un hook before che rifiuta una
+scrittura con `{ error }` ha dato una risposta, quindi non conta come fallimento. Le chiamate
+a una funzione che il modulo non esporta non vengono registrate, così le label restano
+limitate ai plugin installati. Le serie compaiono dopo la prima chiamata di un plugin; ogni
+istanza conta le proprie chiamate.

@@ -90,6 +90,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   script, non dalle pagine di un altro sito.
 - Le modifiche riuscite vengono registrate nel [log di audit](/it/guides/content/audit-logs/).
 
+## Elenchi
+
+Gli elenchi delle impostazioni sono paginati con `page` (da 1) e `pageSize`. Rispondono con
+le righe della pagina e con i conteggi:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Elenco | Dimensione di pagina predefinita (massima) | Ordine | Altri parametri |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Dal più vecchio | |
+| `GET /webhooks` | 25 (100) | Dal più vecchio | `meta.events` elenca gli eventi a cui un webhook può iscriversi |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Dal più recente | |
+| `GET /releases` | 25 (100) | Dal più recente | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | Per sorgente | `search` cerca nella sorgente o nella destinazione |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | Per nome | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Dal più recente | |
+| `GET /deploy/targets` | 25 (100) | Dal più vecchio | |
+| `GET /deploy/deployments` | 25 (100) | Dal più recente | `targetId`; `limit` è un alias deprecato di `pageSize` |
+| `GET /end-users` | 25 (100) | Dal più recente | `search` cerca nello username o nell'email |
+| `GET /audit-logs` | 50 (200) | Dal più recente | Vedi [Log di audit](/it/guides/content/audit-logs/) |
+
+Un `pageSize` più grande viene abbassato al massimo. Per leggere un elenco intero, richiedi
+le pagine finché `page` non raggiunge `pageCount`:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Le route dei contenuti paginano come la REST API, con `pagination[page]` e
+`pagination[pageSize]`.
+
 ## Gruppi di route
 
 I path sono relativi a `/admin/api`. I router sono in

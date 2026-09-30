@@ -120,8 +120,8 @@ Segnalato come avviso:
 Non importati affatto: utenti admin e ruoli admin, token API, transfer token, webhook,
 rilasci, fasi dei flussi di revisione, cronologia dei contenuti e log di audit, e le
 impostazioni dei plugin di Strapi. Il tuo codice Strapi — controller, service, route, policy,
-middleware, lifecycle hook, task cron e personalizzazioni dell'admin — non ha un equivalente
-Verdin in cui essere convertito; vedi
+middleware, lifecycle hook, task cron e personalizzazioni dell'admin — non viene convertito:
+ricostruiscilo come descritto in
 [Ricostruisci il codice personalizzato](#ricostruisci-il-codice-personalizzato).
 
 <Aside type="note">
@@ -206,11 +206,17 @@ Per un accesso tipizzato, genera i tipi TypeScript con `verdin types` e usa il
 
 ## Ricostruisci il codice personalizzato
 
+Il codice in `src/` passa a un [plugin WebAssembly](/it/extending/plugins/). [Portare il
+codice personalizzato](/it/migrate/porting-custom-code/) ripercorre lifecycle, route, task
+cron e `bootstrap` di un progetto reale, con un plugin di esempio.
+
 | Strapi | Verdin |
 | --- | --- |
-| Lifecycle hook, middleware del document service | Hook dei plugin (`beforeCreate`, `afterUpdate`…) in un [plugin WebAssembly](/it/extending/plugins/) |
+| Lifecycle hook, middleware del document service | Hook dei plugin (`beforeCreate`, `afterUpdate`…) |
 | Route e controller personalizzati | Route dei plugin sotto `/api/plugins/<name>/` |
+| `bootstrap()` in `src/index.js` (seeding, impostazione dei permessi pubblici) | La funzione di avvio del plugin (`[startup]`), con la capability `public_permissions` per il ruolo pubblico |
 | Task cron | Job dei plugin (`[[jobs]]`) |
+| Un endpoint personalizzato che salva l'invio di form | I [Form](/it/guides/frontend/forms/) integrati |
 | Campi personalizzati | Campi personalizzati dei plugin |
 | Widget dell'admin | Widget dei plugin, o i widget predefiniti della dashboard |
 | Logo, colori e testi dell'admin | `[admin.branding]` in `verdin.toml` |

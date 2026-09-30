@@ -1,0 +1,105 @@
+---
+title: Deploy con un clic
+description: Distribuisci lo starter di Verdin (l'esempio del blog) su Render, DigitalOcean App Platform, Railway, Fly.io o Coolify dai file di questo repository, poi fanne un fork per il tuo schema.
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Il repository ha file di deploy per diverse piattaforme. Tutti costruiscono
+[`deploy/one-click/Dockerfile`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/Dockerfile):
+l'immagine ufficiale con lo schema dell'[esempio del blog](https://github.com/verdin-cms/verdin/tree/main/examples/blog)
+e una piccola configurazione. Ottieni così un Verdin in esecuzione in pochi minuti.
+
+<Aside>
+Il server distribuito esegue `start --migrate`, quindi il content-type builder è disattivato:
+lo schema viene dall'immagine. Per il tuo progetto, **fai un fork del repository**, sostituisci
+`examples/blog/schema` con il tuo schema (o cambia la riga `COPY` del Dockerfile) e distribuisci
+il fork. Le pagine delle piattaforme ([Render](/it/deploy/render/), [Railway](/it/deploy/railway/),
+[Fly.io](/it/deploy/fly/)) mostrano la stessa configurazione in un repository tuo.
+</Aside>
+
+I file sono stati verificati rispetto al riferimento di ciascuna piattaforma il 2026-09-30;
+nessuno è stato distribuito su un account reale.
+
+| Piattaforma | File | Database | Media |
+| --- | --- | --- | --- |
+| Render | [`render.yaml`](https://github.com/verdin-cms/verdin/blob/main/render.yaml) | Render PostgreSQL | Disco da 1 GB su `/data` |
+| DigitalOcean | [`.do/deploy.template.yaml`](https://github.com/verdin-cms/verdin/blob/main/.do/deploy.template.yaml) | PostgreSQL di sviluppo | Spaces (nessun disco su App Platform) |
+| Railway | [`deploy/one-click/railway.json`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/railway.json) | Railway PostgreSQL | Un volume su `/data` |
+| Fly.io | [`deploy/one-click/fly.toml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/fly.toml) | SQLite sul volume | Un volume su `/data` |
+| Coolify | [`deploy/one-click/compose.coolify.yaml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/compose.coolify.yaml) | Servizio PostgreSQL | Un volume su `/data` |
+
+Il Dockerfile termina con `USER root`, perché queste piattaforme montano volumi di proprietà
+di root e l'utente dell'immagine (uid `65532`) non potrebbe scriverci. Rimuovi quella riga se
+il tuo volume è scrivibile dall'uid `65532`, o se non tieni stato sull'istanza.
+
+## Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/verdin-cms/verdin)
+
+Il Blueprint crea il web service (piano Starter, che i dischi richiedono), un database
+PostgreSQL e i due segreti (generati una volta, poi mantenuti). Render chiede
+`VERDIN_SERVER__PUBLIC_URL`: inserisci l'indirizzo del servizio, `https://<name>.onrender.com`,
+o il tuo dominio. Da un fork, usa `https://render.com/deploy?repo=<your fork's URL>`.
+
+## DigitalOcean App Platform
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/verdin-cms/verdin/tree/main)
+
+La spec crea il servizio e un database di sviluppo. Incolla i due valori di `verdin secrets`
+in `VERDIN_ADMIN_JWT_SECRET` e `VERDIN_TOKEN_PEPPER` quando richiesto:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets
+```
+
+App Platform non ha dischi persistenti, quindi i file caricati vanno persi a ogni deploy
+finché non aggiungi un bucket Spaces: imposta `VERDIN_UPLOAD__PROVIDER__NAME=s3`,
+`VERDIN_UPLOAD__PROVIDER__BUCKET`, `VERDIN_UPLOAD__PROVIDER__REGION`,
+`VERDIN_UPLOAD__PROVIDER__ENDPOINT` (`https://<region>.digitaloceanspaces.com`),
+`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`, `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY`
+sul servizio. Per un fork, cambia `repo_clone_url` nella spec.
+
+## Railway
+
+1. Fai un fork del repository, poi in Railway crea un progetto dal fork.
+2. Nelle impostazioni del servizio, imposta il path del file di configurazione a
+   `deploy/one-click/railway.json` (seleziona il Dockerfile e l'health check).
+3. Aggiungi un database PostgreSQL e un volume montato su `/data`, poi imposta le variabili di
+   [Railway](/it/deploy/railway/#2-crea-il-progetto): `VERDIN_DATABASE_URL`, i due segreti e
+   `VERDIN_SERVER__PUBLIC_URL`. Genera un dominio con porta di destinazione `1337`.
+
+## Fly.io
+
+Da un clone del repository (o del tuo fork), con `flyctl` autenticato:
+
+```sh frame="terminal"
+fly launch --no-deploy --copy-config --config deploy/one-click/fly.toml --ha=false
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets | fly secrets import --config deploy/one-click/fly.toml
+fly deploy --config deploy/one-click/fly.toml --dockerfile deploy/one-click/Dockerfile .
+```
+
+Questo esegue una Machine con SQLite e upload su un volume da 1 GB. Cambia prima `app` e
+`primary_region` in `fly.toml`. [Fly.io](/it/deploy/fly/) copre invece PostgreSQL e Tigris.
+
+## Coolify
+
+In Coolify, aggiungi una risorsa dal tuo fork (o da questo repository) con il build pack
+**Docker Compose**, base directory `/` e file compose `/deploy/one-click/compose.coolify.yaml`.
+Coolify compila le variabili `SERVICE_*` al suo interno:
+
+| Variabile | Coolify genera |
+| --- | --- |
+| `SERVICE_FQDN_VERDIN_1337` | Un dominio instradato dal suo proxy alla porta 1337 (usato anche come `VERDIN_SERVER__PUBLIC_URL`). |
+| `SERVICE_BASE64_64_JWT`, `SERVICE_BASE64_64_PEPPER` | I due segreti, di 64 caratteri ciascuno, mantenuti tra i deploy. |
+| `SERVICE_USER_POSTGRES`, `SERVICE_PASSWORD_POSTGRES` | Le credenziali del database. |
+
+Il proxy di Coolify termina il TLS, quindi non serve Caddy. Per un server che gestisci tu
+senza Coolify, usa [Docker Compose in produzione](/it/deploy/compose/).
+
+## Dopo il primo deploy
+
+Apri `https://<your address>/admin/` e registra il primo admin. Poi leggi la
+[checklist di produzione](/it/deploy/production-checklist/).

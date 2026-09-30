@@ -1,6 +1,6 @@
 ---
 title: Eseguire più istanze
-description: Esegui più istanze Verdin dello stesso progetto dietro un load balancer — cosa condividono tramite il database, cosa resta per istanza, e le impostazioni da cambiare.
+description: Esegui più istanze Verdin dello stesso progetto dietro un load balancer — cosa condividono tramite il database, il bus di eventi condiviso, cosa resta per istanza, e le impostazioni da cambiare.
 sidebar:
   order: 8
   label: Più istanze
@@ -13,7 +13,7 @@ progetto dietro un load balancer per disponibilità o carico. Questa pagina elen
 condividono le istanze, cosa tiene ciascuna per sé, e le impostazioni che contano.
 
 <Diagram
-  caption="Le istanze condividono il database e lo storage dei media; cache, limiti di frequenza e stream di eventi restano in ogni istanza."
+  caption="Le istanze condividono il database e lo storage dei media; con il bus di eventi attivo, eventi realtime, presenza, invalidazione della cache e aggiornamenti della ricerca raggiungono ogni istanza tramite il database."
   code={`flowchart LR
   LB[Load balancer] --> A[Istanza 1]
   LB --> B[Istanza 2]
@@ -42,6 +42,9 @@ condividono le istanze, cosa tiene ciascuna per sé, e le impostazioni che conta
 - **Health check.** Punta il load balancer su `GET /_ready`, che risponde `503` quando il
   database non è raggiungibile. `GET /_health` dice solo che il processo è attivo; usalo per
   la liveness.
+- **Il bus di eventi condiviso.** Imposta `[cluster].bus = "database"` su ogni istanza, così
+  che eventi realtime, presenza, invalidazione della cache e aggiornamenti della ricerca le
+  raggiungano tutte (vedi [Bus di eventi condiviso](#bus-di-eventi-condiviso)).
 - **Job dei plugin su una sola istanza.** Imposta `[plugins].run_jobs = false` su tutte le
   istanze tranne una; altrimenti ogni istanza esegue i job pianificati.
 - **Metriche per istanza.** Con `[metrics].enabled = true`, ogni istanza serve il proprio
@@ -74,24 +77,76 @@ istanza del vecchio schema ha più bisogno dei dati. Vedi
 | Challenge delle passkey | Le challenge usate vengono registrate nel database, così a ciascuna si risponde una sola volta tra le istanze. |
 | Pulizia del log di audit | Gira su ogni istanza; eliminare due volte le vecchie righe è innocuo. |
 | Key-value store dei plugin | Nel database. |
+| Eventi realtime, presenza e soft lock | Con il [bus di eventi](#bus-di-eventi-condiviso): un client connesso a qualsiasi istanza riceve gli eventi di tutte e vede ogni admin su una voce. |
+| La cache delle risposte anonime | Con il bus di eventi, una scrittura su qualsiasi istanza svuota la cache di ogni istanza. |
+| L'indice di ricerca | Con il bus di eventi, ogni istanza rilegge e indicizza le voci che le altre modificano. |
+| Immagini trasformate | Con il bus di eventi, un file modificato o eliminato esce dalla cache delle trasformazioni di ogni istanza. |
 
 ## Cosa resta su ogni istanza
 
 - **I limiti di frequenza** vengono contati da ogni istanza. Con `n` istanze, un client può
   fare fino a `n` volte `[api].public_rate_limit` richieste al minuto. Imponi un limite
   globale sul load balancer se ti serve.
-- **La cache delle risposte anonime** (`[api].cache_ttl_secs`). Una scrittura svuota la
-  cache dell'istanza che l'ha fatta; le altre possono servire la risposta precedente finché
-  la loro voce non scade. Tieni il TTL a pochi secondi, o `0`.
-- **Eventi realtime e presenza** sono quelli dell'istanza a cui un client è connesso. Usa
-  sessioni sticky per gli stream di eventi (vedi [Tempo reale](/it/guides/frontend/realtime/)).
-- **L'indice di ricerca** (`[search]`) vive sul disco dell'istanza e segue solo le scritture
-  fatte da quell'istanza. Attivalo su un'istanza e instrada lì le richieste `_q`, oppure
-  accetta che le altre restino indietro finché non ripartono con una directory dell'indice
-  vuota.
+- **Senza il bus di eventi** (`[cluster].bus = "none"`, il default), eventi realtime e
+  presenza sono quelli dell'istanza a cui un client è connesso (usa sessioni sticky per gli
+  stream di eventi), una scrittura svuota solo la cache delle risposte della propria istanza
+  (tieni `[api].cache_ttl_secs` a pochi secondi, o `0`), e l'indice di ricerca segue solo le
+  scritture della sua istanza.
+- **L'indice di ricerca** (`[search]`) vive sul disco di ogni istanza. Con il bus di eventi,
+  le istanze indicizzano le modifiche l'una dell'altra man mano che avvengono; un'istanza che
+  parte con una directory dell'indice vuota lo costruisce dal database. Le modifiche fatte
+  mentre un'istanza era ferma raggiungono il suo indice quando l'indice viene ricostruito:
+  elimina la directory prima di avviarla, o ricostruisci dopo un deploy.
 - **Le trasformazioni delle immagini** (`[upload.transforms]`) sono in cache per istanza sotto
   `cache_dir`. Metti una CDN davanti a `/uploads` per condividerle.
 - **Job pianificati dei plugin**: vedi `run_jobs` sopra.
+
+## Bus di eventi condiviso
+
+Alcune cose accadono in memoria: gli stream realtime, chi sta modificando quale voce, la
+cache delle risposte anonime, l'indice di ricerca. Il bus di eventi le porta dall'istanza in
+cui accadono alle altre.
+
+```toml title="verdin.toml"
+[cluster]
+bus = "database"
+```
+
+Oppure `VERDIN_CLUSTER__BUS=database`, su ogni istanza. Il bus usa il database del progetto,
+quindi non servono altri servizi:
+
+- **PostgreSQL**: un'istanza scrive ogni evento nella tabella `vd_cluster_events` e sveglia
+  le altre con `NOTIFY`. Ogni istanza tiene una delle connessioni del suo pool per `LISTEN`.
+  La notifica nomina solo il mittente, così eventi di qualsiasi dimensione restano sotto il
+  limite di 8000 byte di PostgreSQL. Se la connessione cade, l'istanza si riconnette e legge
+  la tabella per recuperare. Legge la tabella anche ogni 30 secondi, nel caso una notifica
+  vada persa.
+- **MySQL, MariaDB e SQLite**: ogni istanza legge le nuove righe di `vd_cluster_events` ogni
+  `poll_interval_ms` (1000 di default). La query usa la chiave primaria, quindi leggere una
+  tabella vuota costa poco. Abbassa l'intervallo per aggiornamenti più rapidi; la modifica di
+  un'istanza raggiunge le altre entro l'intervallo.
+
+Cosa viaggia: scritture di contenuti (verso gli stream realtime, la cache delle risposte e
+l'indice di ricerca, che rilegge la voce modificata), modifiche ai media (stream, cache,
+cache delle trasformazioni), heartbeat di presenza e avvisi di commenti e task per l'admin.
+Ogni istanza ignora i propri eventi. Webhook, purge della CDN, cronologia, log di audit e
+hook dei plugin non viaggiano: l'istanza che ha fatto la modifica li esegue una sola volta.
+
+Le righe vengono eliminate dopo 10 minuti. Una nuova istanza parte dall'evento successivo,
+non da quelli precedenti. Un'istanza che non riesce a stare al passo, o perde la connessione
+al database, scarta eventi invece di trattenere una scrittura. La metrica
+`verdin_cluster_events_total` conta gli eventi inviati, ricevuti e scartati (vedi
+[Monitoraggio](/it/deploy/monitoring/#metriche-prometheus)).
+
+Ogni istanza si identifica sul bus con un id casuale a ogni avvio, o con
+`[cluster].instance_id` se lo imposti (per esempio il nome di un pod). L'id serve solo a
+distinguere le istanze; nient'altro dipende da esso.
+
+Con una sola istanza, lascia `bus` a `none`: gli eventi restano in memoria e non si scrive
+nulla.
+
+I backend Redis e NATS non sono ancora disponibili. Il bus su database copre ogni database
+supportato senza altro da eseguire.
 
 ## Impostazioni
 
@@ -105,8 +160,14 @@ sync_interval_secs = 10
 run_jobs = true
 
 [api]
-# Short-lived when each instance keeps its own cache.
-cache_ttl_secs = 5
+# Emptied on every instance by the event bus; keep it short without it.
+cache_ttl_secs = 60
+
+[cluster]
+# Share realtime events, presence, cache invalidation and search updates.
+bus = "database"
+# MySQL, MariaDB and SQLite: how often to read other instances' events.
+poll_interval_ms = 1000
 ```
 
 Imposta `run_jobs` per istanza con `VERDIN_PLUGINS__RUN_JOBS=false`.
@@ -115,4 +176,4 @@ Imposta `run_jobs` per istanza con `VERDIN_PLUGINS__RUN_JOBS=false`.
 
 Ogni istanza apre fino a `[database].pool_max` connessioni (10 di default). Mantieni
 `instances × pool_max` sotto il limite del server, con margine per migrazioni, backup e
-manutenzione. Il limite di default di PostgreSQL è 100 connessioni.
+manutenzione. Il limite di default di PostgreSQL è 100 connessioni. Su PostgreSQL, il bus di eventi tiene una connessione di ogni istanza per `LISTEN`.

@@ -127,7 +127,7 @@ Le tabelle della piattaforma fanno parte di ogni modello derivato, quindi il mot
 | Admin | `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (refresh token), `vd_admin_tokens` (link di invito e di reimpostazione), `vd_admin_two_factor`, `vd_admin_passkeys`, `vd_spent_challenges` |
 | Accesso alla content API | `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` |
 | Utenti finali | `vd_users`, `vd_user_roles`, `vd_user_role_permissions`, `vd_end_user_sessions` |
-| Istanza | `vd_settings` (interruttori delle funzionalità, layout delle viste di modifica, marcatori di aggiornamenti una tantum), `vd_locales` |
+| Istanza | `vd_settings` (interruttori delle funzionalità, layout delle viste di modifica, marcatori di aggiornamenti una tantum), `vd_locales`, `vd_cluster_events` (il bus di eventi condiviso, vedi [Più istanze](/it/deploy/scaling/)) |
 | Media | `vd_files`, `vd_folders` |
 | Flusso dei contenuti | `vd_history_versions`, `vd_releases`, `vd_release_actions`, `vd_workflows`, `vd_workflow_stages`, `vd_document_stages` |
 | Collaborazione | `vd_comments`, `vd_tasks`, `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` |

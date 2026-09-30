@@ -231,8 +231,10 @@ Un numero decimale esatto.
 I valori vengono arrotondati a `scale` cifre (arrotondamento half away from zero, come fanno
 i database), e rifiutati quando hanno più di `precision - scale` cifre prima della virgola.
 Le scritture accettano numeri e stringhe numeriche. Memorizzato come
-`numeric(precision,scale)` (`text` su SQLite, così nulla viene arrotondato). API: un numero, o
-una stringa esatta con [`[api].decimal_as_string`](/it/reference/configuration/).
+`numeric(precision,scale)` (`text` su SQLite, così nulla viene arrotondato). API: un numero, come lo restituisce Strapi. I valori interi
+sono interi (`25`, non `25.0`) e gli altri sono il float più corto che si rilegge identico
+(`12.5`). Con [`[api].decimal_as_string`](/it/reference/configuration/) l'API restituisce
+invece una stringa esatta.
 
 ## Date e booleani
 

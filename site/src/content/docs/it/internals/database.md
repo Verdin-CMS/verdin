@@ -85,7 +85,7 @@ Un builder aggiunge testo SQL e nomi `ident()` (quotati per il flavor) e raccogl
 | date, time, datetime | `date`, `time(3)`, `timestamptz(3)` | `date`, `time(3)`, `datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite memorizza decimali, date e orari come testo a formato fisso, così nulla viene arrotondato e l'ordine del testo corrisponde all'ordine numerico e cronologico. Quale attributo corrisponde a quale tipo del modello è in [tipi di attributo](/it/reference/attribute-types/).
+SQLite memorizza date e orari come testo a formato fisso, così l'ordine del testo corrisponde all'ordine cronologico. Memorizza come testo anche i decimali, così nulla viene arrotondato al salvataggio. L'ordine del testo non è l'ordine numerico per i decimali, quindi filtri e ordinamenti su un decimale convertono la colonna in `REAL` su SQLite. Quei confronti sono esatti fino a circa 15 cifre significative, e i valori restituiti restano esatti. Quale attributo corrisponde a quale tipo del modello è in [tipi di attributo](/it/reference/attribute-types/).
 
 Le tabelle MySQL e MariaDB vengono create con `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` e una collation insensibile ad accenti e maiuscole/minuscole: `utf8mb4_0900_ai_ci` su MySQL, `utf8mb4_uca1400_ai_ci` su MariaDB.
 
