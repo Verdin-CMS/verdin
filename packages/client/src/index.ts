@@ -156,6 +156,11 @@ export class Client<S extends SchemaShape = AnySchema> {
     return this.request<MediaFile[]>('GET', `/upload/files${query ? `?${query}` : ''}`);
   }
 
+  /** The content locales (`plugin::i18n.locale` find grant), as Strapi's i18n plugin lists them. */
+  locales(): Promise<Locale[]> {
+    return this.request<Locale[]>('GET', '/i18n/locales');
+  }
+
   /** Runs a GraphQL operation (the `graphql` feature must be on). */
   async graphql<T = unknown>(query: string, variables?: Record<string, unknown>): Promise<T> {
     const response = await this.fetcher(`${this.options.url.replace(/\/+$/, '')}/graphql`, {
@@ -285,6 +290,19 @@ export interface MediaFile {
   size: number;
   url: string;
   [key: string]: unknown;
+}
+
+/** A content locale, as `GET /api/i18n/locales` returns it (Strapi's shape). */
+export interface Locale {
+  id: number;
+  documentId: string;
+  name: string;
+  code: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string;
+  locale: null;
 }
 
 export function createClient<S extends SchemaShape = AnySchema>(options: ClientOptions): Client<S> {

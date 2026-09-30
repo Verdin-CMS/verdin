@@ -300,6 +300,7 @@ mod tests {
                 json!({ "type": "plugin::users-permissions.permission", "id": 1, "data": { "action": "api::page.page.find" } }),
                 json!({ "type": "plugin::users-permissions.permission", "id": 2, "data": { "action": "api::page.page.findOne" } }),
                 json!({ "type": "plugin::users-permissions.permission", "id": 3, "data": { "action": "plugin::users-permissions.user.me" } }),
+                json!({ "type": "plugin::users-permissions.permission", "id": 4, "data": { "action": "plugin::i18n.locales.listLocales" } }),
                 json!({ "type": "plugin::users-permissions.user", "id": 1, "data": { "username": "ada", "email": "ada@example.com", "provider": "local",
                         "password": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", "confirmed": true, "blocked": false } }),
             ],
@@ -314,6 +315,7 @@ mod tests {
                 json!({ "kind": "relation.basic", "relation": "manyToOne", "left": { "type": "plugin::users-permissions.permission", "ref": 1, "field": "role" }, "right": { "type": "plugin::users-permissions.role", "ref": 2 } }),
                 json!({ "kind": "relation.basic", "relation": "manyToOne", "left": { "type": "plugin::users-permissions.permission", "ref": 2, "field": "role" }, "right": { "type": "plugin::users-permissions.role", "ref": 3 } }),
                 json!({ "kind": "relation.basic", "relation": "manyToOne", "left": { "type": "plugin::users-permissions.permission", "ref": 3, "field": "role" }, "right": { "type": "plugin::users-permissions.role", "ref": 1 } }),
+                json!({ "kind": "relation.basic", "relation": "manyToOne", "left": { "type": "plugin::users-permissions.permission", "ref": 4, "field": "role" }, "right": { "type": "plugin::users-permissions.role", "ref": 2 } }),
                 json!({ "kind": "relation.basic", "relation": "manyToOne", "left": { "type": "plugin::users-permissions.user", "ref": 1, "field": "role" }, "right": { "type": "plugin::users-permissions.role", "ref": 3 } }),
             ],
         );
@@ -347,6 +349,12 @@ mod tests {
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);
         assert_eq!(report.documents, 2, "Home and Accueil are one document");
         assert_eq!(report.versions["api::page"], 4, "Home: draft + published; Accueil; About");
+        let public = auth.content_actor(None).await.unwrap();
+        assert!(public.allows("api::page", verdin_auth::ContentAction::Find));
+        assert!(
+            public.allows(verdin_auth::LOCALES_SUBJECT, verdin_auth::ContentAction::Find),
+            "Strapi's listLocales permission"
+        );
 
         let service = service(&target).await;
         let published = service

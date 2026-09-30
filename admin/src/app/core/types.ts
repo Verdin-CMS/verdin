@@ -287,6 +287,8 @@ export const MEDIA_ACTIONS = [
 export const UPLOAD_SUBJECT = 'plugin::upload';
 /** Content API subject of `/api/users` (end users, as Strapi's users-permissions plugin). */
 export const USERS_SUBJECT = 'plugin::users-permissions.user';
+/** Content API subject of `GET /api/i18n/locales` (Strapi's i18n plugin): `find` only. */
+export const LOCALES_SUBJECT = 'plugin::i18n.locale';
 
 export const ADMIN_SETTINGS_ACTIONS = [
   'users.manage',

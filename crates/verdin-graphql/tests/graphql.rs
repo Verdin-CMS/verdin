@@ -416,6 +416,17 @@ async fn localized_types_expose_their_locale() {
     };
     assert!(names("page").contains(&"locale".to_owned()), "{data}");
     assert!(!names("tag").contains(&"locale".to_owned()), "only localized types have it");
+    assert!(names("page").contains(&"localizations".to_owned()), "{data}");
+    assert!(!names("tag").contains(&"localizations".to_owned()));
+    app.ok(r#"mutation { createPage(data: { title: "Home" }) { documentId } }"#, json!({})).await;
+    let pages = app
+        .ok(r#"{ pages { title locale localizations(sort: ["title"]) { title } } }"#, json!({}))
+        .await;
+    assert_eq!(
+        pages["pages"],
+        json!([{ "title": "Home", "locale": "en", "localizations": [] }]),
+        "no other locale yet"
+    );
     let delete = data["mutations"]["fields"]
         .as_array()
         .unwrap()

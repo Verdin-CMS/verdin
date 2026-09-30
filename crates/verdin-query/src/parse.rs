@@ -7,7 +7,7 @@ use verdin_schema::AttributeKind;
 
 use crate::QueryError;
 use crate::ast::*;
-use crate::fields::{Catalog, Field, FieldCategory, TypeFields};
+use crate::fields::{Catalog, Field, FieldCategory, LOCALIZATIONS, TypeFields};
 use crate::params::Node;
 use crate::temporal::{parse_date, parse_datetime, parse_time};
 
@@ -428,13 +428,26 @@ impl Parser<'_> {
                 && field.relation.as_ref().is_none_or(|relation| !catalog.denies(&relation.target))
         };
 
+        // The caller sees only some fields of the type: localizations select those.
+        let limited_localizations = || {
+            catalog
+                .limits(&fields.uid)
+                .then(|| SubQuery { fields: Some(fields.visible_scalars()), ..Default::default() })
+        };
         let entries: Vec<(String, Option<&Node>)> = match node {
             Node::Leaf(text) if text == "*" => {
-                return Ok(fields
+                let mut populate: Vec<Populate> = fields
                     .attributes()
                     .filter(populatable)
                     .map(|field| Populate { field: field.api.clone(), query: None })
-                    .collect());
+                    .collect();
+                if fields.has_localizations() {
+                    populate.push(Populate {
+                        field: LOCALIZATIONS.into(),
+                        query: limited_localizations(),
+                    });
+                }
+                return Ok(populate);
             }
             Node::Leaf(text) => text
                 .split(',')
@@ -461,6 +474,24 @@ impl Parser<'_> {
 
         let mut populate: Vec<Populate> = Vec::new();
         for (name, options) in entries {
+            if name == LOCALIZATIONS && fields.has_localizations() {
+                // The other locale versions of the same document: same type, same options
+                // as a to-many relation to it.
+                let query = match options {
+                    Some(options) => {
+                        let mut query = self.sub_query(options, fields, depth)?;
+                        if query.fields.is_none() && self.catalog.limits(&fields.uid) {
+                            query.fields = Some(fields.visible_scalars());
+                        }
+                        Some(query)
+                    }
+                    None => limited_localizations(),
+                };
+                if !populate.iter().any(|existing| existing.field == name) {
+                    populate.push(Populate { field: name, query });
+                }
+                continue;
+            }
             let field = fields
                 .get(&name)
                 .filter(populatable)

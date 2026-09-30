@@ -262,6 +262,15 @@ pub fn generate(schema: &Schema) -> String {
             let (ty, optional) = output(schema, attribute);
             let _ = writeln!(out, "  {}{}: {ty};", key(field), if optional { "?" } else { "" });
         }
+        if content_type.localized {
+            out.push_str("  locale: string;\n");
+            if !content_type.attributes.contains_key("localizations") {
+                let _ = writeln!(
+                    out,
+                    "  /** The other locale versions, when populated. */\n  localizations?: {name}[];"
+                );
+            }
+        }
         let _ = writeln!(out, "}}\nexport interface {name}Input {{");
         for (field, attribute) in &content_type.attributes {
             if let Some(ty) = input(schema, attribute) {
@@ -317,6 +326,7 @@ mod tests {
             Source::content_type(
                 "tag",
                 json!({ "kind": "collectionType", "singularName": "tag", "pluralName": "tags", "displayName": "Tag",
+                        "pluginOptions": { "i18n": { "localized": true } },
                         "attributes": { "label": { "type": "string" } } })
                 .to_string(),
             ),
@@ -336,11 +346,13 @@ mod tests {
             "export interface ComponentSharedSeo {",
             "  \"blog-posts\": { document: BlogPost; input: BlogPostInput };",
             "  tags?: string[] | { connect?:",
+            "  locale: string;\n  /** The other locale versions, when populated. */\n  localizations?: Tag[];",
         ] {
             assert!(ts.contains(expected), "missing `{expected}` in:\n{ts}");
         }
         assert!(!ts.contains("secret: string"), "private fields are not returned");
         assert!(ts.contains("  secret?: string | null;"), "but they can be written");
+        assert_eq!(ts.matches("localizations?").count(), 1, "localized types only");
     }
 }
 

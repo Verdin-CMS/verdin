@@ -7,6 +7,10 @@ use verdin_db::ColumnKind;
 use verdin_schema::naming::{link_table_name, media_table_name};
 use verdin_schema::{Attribute, AttributeKind, ContentType, MediaType, RelationKind, Schema};
 
+/// The populatable field of localized types holding a document's other locale versions
+/// (Strapi v5's `localizations`).
+pub const LOCALIZATIONS: &str = "localizations";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldCategory {
     /// Stored in a column and returned by default (includes `json`).
@@ -187,6 +191,12 @@ impl TypeFields {
 
     pub fn get(&self, api: &str) -> Option<&Field> {
         self.fields.get(api)
+    }
+
+    /// Whether `localizations` can be populated: the other locale versions of each
+    /// document (localized types, unless an attribute takes the name).
+    pub fn has_localizations(&self) -> bool {
+        self.localized && !self.fields.contains_key(LOCALIZATIONS)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Field> {

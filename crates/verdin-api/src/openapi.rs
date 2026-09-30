@@ -40,6 +40,19 @@ pub fn document(registry: &Registry, prefix: &str) -> Value {
             "publishedAt".into(),
             json!({ "type": ["string", "null"], "format": "date-time" }),
         );
+        if content_type.localized {
+            ordered.insert("locale".into(), json!({ "type": "string" }));
+            if !content_type.attributes.contains_key(verdin_query::LOCALIZATIONS) {
+                ordered.insert(
+                    verdin_query::LOCALIZATIONS.into(),
+                    json!({
+                        "type": "array",
+                        "description": "The other locale versions (with `populate`).",
+                        "items": reference
+                    }),
+                );
+            }
+        }
         document["properties"] = Value::Object(ordered);
         document["required"] = json!(["id", "documentId"]);
         schemas.insert(name.clone(), document);
@@ -122,6 +135,26 @@ pub fn document(registry: &Registry, prefix: &str) -> Value {
         }
     }
 
+    schemas.insert("Locale".into(), locale_schema());
+    paths.insert(
+        format!("{prefix}/i18n/locales"),
+        json!({
+            "get": operation(
+                &json!(["Internationalization"]),
+                "List the locales",
+                &json!([]),
+                None,
+                &json!({
+                    "description": "OK",
+                    "content": { "application/json": { "schema": {
+                        "type": "array", "items": { "$ref": "#/components/schemas/Locale" }
+                    }}}
+                }),
+                &error_responses(),
+            ),
+        }),
+    );
+
     schemas.insert("Pagination".into(), json!({
         "type": "object",
         "properties": {
@@ -135,6 +168,26 @@ pub fn document(registry: &Registry, prefix: &str) -> Value {
         "info": { "title": "Verdin content API", "version": env!("CARGO_PKG_VERSION") },
         "paths": paths,
         "components": { "schemas": schemas, "parameters": parameters() },
+    })
+}
+
+/// A locale of `GET /i18n/locales` (Strapi's shape).
+fn locale_schema() -> Value {
+    let date = json!({ "type": "string", "format": "date-time" });
+    json!({
+        "type": "object",
+        "required": ["id", "documentId", "name", "code", "isDefault"],
+        "properties": {
+            "id": { "type": "integer", "format": "int64" },
+            "documentId": { "type": "string" },
+            "name": { "type": "string" },
+            "code": { "type": "string" },
+            "createdAt": date,
+            "updatedAt": date,
+            "publishedAt": date,
+            "isDefault": { "type": "boolean" },
+            "locale": { "type": "null" }
+        }
     })
 }
 

@@ -393,7 +393,8 @@ pub async fn import(context: &Context<'_>) -> Result<Report> {
     Ok(report)
 }
 
-/// `api::article.article.find` → (`api::article`, find); the media library's actions.
+/// `api::article.article.find` → (`api::article`, find); the media library's actions and
+/// listing locales.
 fn strapi_permission(
     types: &HashMap<String, String>,
     action: &str,
@@ -408,6 +409,9 @@ fn strapi_permission(
             _ => return None,
         };
         return Some((verdin_auth::UPLOAD_SUBJECT.into(), action));
+    }
+    if action == "plugin::i18n.locales.listLocales" {
+        return Some((verdin_auth::LOCALES_SUBJECT.into(), A::Find));
     }
     let (uid, action) = action.rsplit_once('.')?;
     let action = A::parse(action).filter(|action| {

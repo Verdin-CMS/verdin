@@ -308,3 +308,170 @@ async fn permissions_per_locale() {
     );
     app.done().await;
 }
+
+async fn add_locale(app: &App, admin: &str, code: &str, name: &str) {
+    let (status, body) = app
+        .call_as(
+            Method::POST,
+            "/admin/api/i18n/locales",
+            Some(json!({ "code": code, "name": name })),
+            As::Bearer(admin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+/// `localizations`: the other locale versions of a document, populated as in Strapi v5.
+#[tokio::test]
+async fn localizations_are_populatable() {
+    let app = App::new(schema()).await;
+    let admin = register(&app).await;
+    add_locale(&app, &admin, "fr", "Français").await;
+    add_locale(&app, &admin, "de", "Deutsch").await;
+    let (_, category) = app.post("/api/categories", json!({ "name": "News" })).await;
+    let category = category["data"]["documentId"].as_str().unwrap().to_owned();
+    let (status, created) =
+        app.post("/api/articles", json!({ "title": "Hello", "slug": "hello", "price": 10 })).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let id = created["data"]["documentId"].as_str().unwrap().to_owned();
+    let url = format!("/api/articles/{id}");
+    let french = json!({ "data": { "title": "Bonjour", "slug": "bonjour", "category": category } });
+    let (status, body) = app.call(Method::PUT, &format!("{url}?locale=fr"), Some(french)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // A German draft only: not among the published localizations.
+    let german = json!({ "data": { "title": "Hallo", "slug": "hallo" } });
+    let (status, body) =
+        app.call(Method::PUT, &format!("{url}?locale=de&status=draft"), Some(german)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (_, plain) = app.get(&url).await;
+    assert!(plain["data"].get("localizations").is_none(), "only when populated: {plain}");
+
+    let locales = |body: &Value| -> Vec<String> {
+        body["data"]["localizations"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{body}"))
+            .iter()
+            .map(|doc| format!("{}:{}", doc["locale"].as_str().unwrap(), doc["title"]))
+            .collect()
+    };
+    let (status, body) = app.get(&format!("{url}?populate=localizations")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(locales(&body), ["fr:\"Bonjour\""]);
+    let french = &body["data"]["localizations"][0];
+    assert_eq!(french["documentId"], id.as_str());
+    assert_eq!(french["price"], 10, "shared fields");
+    assert!(french.get("publishedAt").is_some());
+    assert_eq!(locales(&app.get(&format!("{url}?populate=*")).await.1), ["fr:\"Bonjour\""]);
+    assert_eq!(
+        locales(&app.get(&format!("{url}?locale=fr&populate=localizations")).await.1),
+        ["en:\"Hello\""]
+    );
+    assert_eq!(
+        locales(&app.get(&format!("{url}?status=draft&populate[localizations]=true")).await.1),
+        ["de:\"Hallo\"", "fr:\"Bonjour\""]
+    );
+
+    // Lists, and the options of a populated relation.
+    let (_, list) = app.get("/api/articles?populate[0]=localizations").await;
+    assert_eq!(list["data"][0]["localizations"][0]["title"], "Bonjour", "{list}");
+    let (_, body) = app.get(&format!("{url}?populate[localizations][fields][0]=title")).await;
+    let keys: Vec<&String> = body["data"]["localizations"][0].as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["id", "documentId", "title", "locale"]);
+    let (_, body) = app.get(&format!("{url}?populate[localizations][count]=true")).await;
+    assert_eq!(body["data"]["localizations"], json!({ "count": 1 }));
+    let (_, body) =
+        app.get(&format!("{url}?populate[localizations][filters][title][$eq]=Nope")).await;
+    assert_eq!(body["data"]["localizations"], json!([]));
+    let (_, body) = app.get(&format!("{url}?populate[localizations][populate][0]=category")).await;
+    assert_eq!(body["data"]["localizations"][0]["category"]["name"], "News", "{body}");
+
+    // Types that are not localized have none.
+    let (status, _) = app.get("/api/categories?populate=localizations").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, body) = app.get("/api/categories?populate=*").await;
+    assert!(body["data"][0].get("localizations").is_none(), "{body}");
+
+    // The admin panel reads locale versions one at a time.
+    let (status, body) = app
+        .call_as(
+            Method::GET,
+            &format!("/admin/api/content/api::article/{id}?populate=*"),
+            None,
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["data"].get("localizations").is_none(), "{body}");
+    app.done().await;
+}
+
+/// `GET /api/i18n/locales`: Strapi's shape, and its `find` permission on
+/// `plugin::i18n.locale`.
+#[tokio::test]
+async fn locales_are_listed_like_strapi() {
+    let app = App::new(schema()).await;
+    let admin = register(&app).await;
+    add_locale(&app, &admin, "fr", "Français").await;
+
+    let (status, body) = app.get("/api/i18n/locales").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let locales = body.as_array().unwrap_or_else(|| panic!("a plain array: {body}"));
+    assert_eq!(locales.len(), 2);
+    let english = &locales[0];
+    let keys: Vec<&String> = english.as_object().unwrap().keys().collect();
+    assert_eq!(
+        keys,
+        [
+            "id",
+            "documentId",
+            "name",
+            "code",
+            "createdAt",
+            "updatedAt",
+            "publishedAt",
+            "isDefault",
+            "locale"
+        ]
+    );
+    assert_eq!(english["code"], "en");
+    assert_eq!(english["name"], "English");
+    assert_eq!(english["isDefault"], true);
+    assert_eq!(english["locale"], Value::Null);
+    assert_eq!(english["publishedAt"], english["createdAt"]);
+    assert!(english["id"].is_i64());
+    let document_id = english["documentId"].as_str().unwrap();
+    assert_eq!(document_id.len(), 24);
+    assert!(document_id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+    assert_eq!(locales[1]["code"], "fr");
+    assert_eq!(locales[1]["isDefault"], false);
+    assert_ne!(locales[1]["documentId"], english["documentId"]);
+    let (_, again) = app.get("/api/i18n/locales").await;
+    assert_eq!(again[0]["documentId"], document_id, "stable");
+
+    // Closed to the public until `find` is granted, like in Strapi.
+    let anonymous = || app.call_as(Method::GET, "/api/i18n/locales", None, As::Anonymous);
+    assert_eq!(anonymous().await.0, StatusCode::FORBIDDEN);
+    let grants = json!({ "permissions": [{ "subject": "plugin::i18n.locale", "action": "find" }] });
+    let (status, body) = app
+        .call_as(Method::PUT, "/admin/api/public-permissions", Some(grants), As::Bearer(&admin))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = anonymous().await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.as_array().unwrap().len(), 2);
+    for action in ["findOne", "create"] {
+        let bad =
+            json!({ "permissions": [{ "subject": "plugin::i18n.locale", "action": action }] });
+        let (status, _) = app
+            .call_as(Method::PUT, "/admin/api/public-permissions", Some(bad), As::Bearer(&admin))
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{action}");
+    }
+    // The OpenAPI document describes it.
+    let (_, openapi) = app.get("/api/_openapi.json").await;
+    assert!(openapi["paths"]["/api/i18n/locales"]["get"].is_object(), "{}", openapi["paths"]);
+    let article = &openapi["components"]["schemas"]["Article"]["properties"];
+    assert_eq!(article["localizations"]["items"]["$ref"], "#/components/schemas/Article");
+    app.done().await;
+}

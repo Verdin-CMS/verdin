@@ -58,7 +58,7 @@ cases; the note says what is missing. **Not supported** has no equivalent.
 | Shadow CRUD (disable operations per type) | Supported | The feature's `disabled` setting. |
 | Custom resolvers and schema extensions | Partial | Root fields resolved by plugins (`[[graphql]]` in `plugin.toml`); no `extensionService`. |
 | Users & Permissions mutations (`login`, `register`, `me`…) | Not supported | Use the REST routes. |
-| Upload and i18n queries/mutations (`uploadFiles`, `i18NLocales`…) | Not supported | Use the REST routes and the admin panel. |
+| Upload and i18n queries/mutations (`uploadFiles`, `i18NLocales`…) | Not supported | Use the REST routes (`GET /api/i18n/locales`) and the admin panel. `localizations` on localized types is supported. |
 | Limits, GraphiQL | Supported | `maxDepth`, `maxComplexity`, introspection and playground switches. |
 
 ## Users & Permissions (end users)
@@ -93,8 +93,8 @@ Turn on **Settings → Features → Users & permissions**. See [End users](/guid
 | --- | --- | --- |
 | Localized types and non-localized fields | Supported | `pluginOptions.i18n.localized`, per attribute too. |
 | `?locale=` on REST, `locale` in GraphQL | Supported | An unknown locale is a `400`. |
-| `localizations` in responses | Not supported | Read another locale with the same `documentId` and `?locale=`. |
-| `GET /api/i18n/locales` | Not supported | Locales are managed in the admin (**Settings → Internationalization**). |
+| `localizations` in responses | Supported | Only when populated (`populate=localizations`, `populate=*`), with the same options as a relation. Also a GraphQL field. The admin API leaves it out. |
+| `GET /api/i18n/locales` | Supported | A plain array in Strapi's shape. Needs `find` on `plugin::i18n.locale` (**Locales** row of the permissions grid), like Strapi's `listLocales`. `documentId` is derived from the locale code. Locales are managed in the admin (**Settings → Internationalization**). |
 
 ## Draft and publish
 
