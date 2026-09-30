@@ -21,6 +21,7 @@ el [tutorial de plugins](/es/extending/plugin-tutorial/), y consulta los detalle
 | **Hooks en las escrituras** | Antes de que una entrada se cree, se actualice, se publique, se despublique, se elimine o se descarte su borrador, cambiar los datos o rechazar la escritura con un mensaje. Después de la escritura, reaccionar a ella (registrar, notificar, sincronizar). |
 | **Rutas** | Servir endpoints HTTP bajo `/api/plugins/<name>/…`: un receptor de webhooks, un feed calculado, un proxy hacia otro servicio. |
 | **Tareas programadas** | Ejecutar una función según una programación cron (UTC). |
+| **Función de arranque** | Ejecutar una función cuando el plugin arranca, se activa o cambian sus ajustes: sembrar contenido, configurar el rol público (el `bootstrap` de Strapi). |
 | **Campos GraphQL** | Añadir campos `name(args: JSON): JSON` a `Query` o `Mutation`. |
 | **Widgets del panel de inicio** | Añadir tipos de widget al panel de inicio de la administración, como Web Components. |
 | **Campos personalizados** | Dar a los atributos un editor propio en el panel (un selector de color, un mapa), como Web Components; el valor se guarda como un tipo de atributo normal. |
@@ -50,6 +51,7 @@ comprueba cada llamada contra las **capacidades** que declara el manifiesto:
 | `write` | Crear, actualizar, publicar, despublicar y eliminar entradas de los tipos indicados (y también leerlas). |
 | `http` | Peticiones HTTP a los hosts indicados (`api.example.com`, `*.example.com`). |
 | `kv` | Un almacén clave-valor propio, en la base de datos de Verdin. |
+| `public_permissions` | Leer y reemplazar los permisos de la API de contenido del rol público. |
 
 <Diagram
   caption="Llamadas a un plugin, y lo que pueden alcanzar sus llamadas al host"

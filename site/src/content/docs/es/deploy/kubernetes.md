@@ -8,7 +8,8 @@ sidebar:
 Esta página ejecuta un proyecto de Verdin en Kubernetes. La configuración principal no tiene
 estado: PostgreSQL (o MySQL/MariaDB) fuera de los pods, los medios en un almacenamiento
 compatible con S3 y tantas réplicas como necesites. Después viene una configuración de una sola
-réplica con un volumen para SQLite.
+réplica con un volumen para SQLite. El [chart de Helm](/es/deploy/helm/) empaqueta estos
+manifiestos con valores para cada ajuste.
 
 Los manifiestos usan APIs estables (`apps/v1`, `v1`) y se validaron contra los esquemas de
 Kubernetes con `kubeconform -strict` el 2026-09-29, pero no se han ejecutado en un clúster
@@ -39,7 +40,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -159,8 +163,9 @@ Notas sobre el manifiesto:
   acepta que las tareas se ejecuten en cada réplica. Los webhooks, los lanzamientos programados
   y el resumen diario se reclaman en la base de datos y se ejecutan una sola vez. Consulta
   [Ejecutar varias instancias](/es/deploy/scaling/).
-- **Tiempo real.** Los flujos de eventos (`/api/_events`) se quedan en el pod al que se
-  conectan. Usa afinidad de sesión en el Ingress si usas el
+- **Tiempo real, presencia, cachés y búsqueda.** `[cluster].bus = "database"` hace llegar a
+  cada pod los eventos de los demás (consulta [el bus de eventos compartido](/es/deploy/scaling/#bus-de-eventos-compartido)).
+  Sin él, los flujos de eventos (`/api/_events`) se quedan en el pod al que se conectan: usa afinidad de sesión en el Ingress si usas el
   [tiempo real](/es/guides/frontend/realtime/).
 
 ## Una sola réplica con SQLite

@@ -131,7 +131,11 @@ se lo muestra a los demás, pero no impide que guarden. Leer la presencia requie
 
 ## Varias instancias
 
-Los eventos y la presencia son los de la instancia a la que está conectado cada cliente.
-Detrás de un balanceador de carga, enruta `/api/_events` y `/admin/api/events` con sesiones
-persistentes (sticky sessions), o conecta los clientes de tiempo real a una sola instancia.
-Consulta [Varias instancias](/es/deploy/scaling/).
+Con el bus de eventos compartido (`[cluster].bus = "database"`), los flujos de cada instancia
+llevan los eventos de todas, y la presencia y los bloqueos suaves son los mismos en todas las
+instancias. Los eventos de otra instancia llegan en `[cluster].poll_interval_ms` (MySQL,
+MariaDB, SQLite) o al instante (PostgreSQL, `LISTEN/NOTIFY`). Sin el bus, los eventos y la
+presencia son los de la instancia a la que está conectado cada cliente: enruta
+`/api/_events` y `/admin/api/events` con sesiones persistentes (sticky sessions), o conecta
+los clientes de tiempo real a una sola instancia.
+Consulta [Varias instancias](/es/deploy/scaling/#bus-de-eventos-compartido).

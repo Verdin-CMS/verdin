@@ -2,7 +2,7 @@
 title: Actualizar Verdin
 description: Actualiza una instalación de Verdin — el binario o la imagen de Docker, las migraciones que se ejecutan al arrancar y los cambios destacados o incompatibles de cada versión menor.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -120,6 +120,34 @@ funcionando a la vez más tiempo del que dura un despliegue progresivo.
 
 Cambios destacados e incompatibles por versión, de la más reciente a la más antigua. El
 [changelog](/es/project/changelog/) tiene la lista completa.
+
+### 0.10 → 0.11
+
+La migración que se ejecuta al arrancar añade una tabla, `vd_cluster_events`, que solo se usa
+con `[cluster] bus = "database"`.
+
+- **Decimales**: los valores `decimal` enteros se devuelven como enteros JSON (`25`, no `25.0`),
+  como hace Strapi. Los clientes que comprueban estrictamente el tipo JSON pueden notarlo;
+  `[api] decimal_as_string` no cambia. En SQLite, `sort` y `$gt`/`$lt`/`$between` sobre
+  decimales ahora comparan números en lugar de texto, así que cambian los resultados que
+  dependían del orden anterior (incorrecto).
+- **`populate=*` en tipos localizados** también devuelve `localizations`, las demás versiones de
+  idioma del documento, como hace Strapi v5. Un atributo del esquema llamado `localizations`
+  conserva su significado.
+- **Plugins**: los hooks after que disparan las escrituras de un plugin se ejecutan cuando
+  termina su llamada en lugar de dentro de la escritura, y los hooks que escriben se anidan
+  como máximo 4 niveles. Las funciones del host se detienen en el límite de tiempo de la
+  llamada.
+- **Varias instancias**: define `[cluster] bus = "database"` en todas las instancias para que los
+  flujos en tiempo real, la presencia, la caché de respuestas y el índice de búsqueda sigan los
+  cambios hechos en las demás (consulta [Ejecutar varias instancias](/es/deploy/scaling/)).
+- **Scripts que leen listas de administración**: `GET /admin/api/users`, `/roles`, `/api-tokens`,
+  `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` y
+  `/deploy/targets` devuelven 25 filas salvo que pases `pageSize` (como máximo 100), con
+  `meta.pagination`, como las listas que ya estaban paginadas. Recorre las páginas con
+  `?page=` hasta que `page` llegue a `meta.pagination.pageCount`. `/deploy/deployments` pagina
+  igual en lugar de devolver las últimas 50; `limit` sigue funcionando como alias obsoleto de
+  `pageSize`. Consulta [Listas](/es/api/admin/#listas).
 
 ### 0.9.1 → 0.10
 

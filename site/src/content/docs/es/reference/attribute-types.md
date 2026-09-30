@@ -228,8 +228,10 @@ Un número decimal exacto.
 Los valores se redondean a `scale` dígitos (hacia fuera del cero en caso de empate, como hacen
 las bases de datos), y se rechazan cuando tienen más de `precision - scale` dígitos antes del
 separador. Las escrituras aceptan números y cadenas numéricas. Se guarda como
-`numeric(precision,scale)` (`text` en SQLite, para que no se redondee nada). API: un número, o una
-cadena exacta con [`[api].decimal_as_string`](/es/reference/configuration/).
+`numeric(precision,scale)` (`text` en SQLite, para que no se redondee nada). API: un número, como lo
+devuelve Strapi. Los valores enteros son enteros (`25`, no `25.0`) y los demás son el float más
+corto que se lee de vuelta igual (`12.5`). Con
+[`[api].decimal_as_string`](/es/reference/configuration/) la API devuelve una cadena exacta.
 
 ## Fechas y booleanos
 

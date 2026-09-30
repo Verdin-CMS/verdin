@@ -2,7 +2,7 @@
 title: Compatibilidad con Strapi
 description: Qué funcionalidades y APIs de Strapi v5 soporta Verdin, cuáles soporta en parte y cuáles no — REST, GraphQL, usuarios y permisos, subidas, i18n, borrador y publicación, extensiones de código, el panel de administración y las funcionalidades Enterprise.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin conserva el modelo de contenido y las APIs de contenido de Strapi v5 para que los
@@ -58,7 +58,7 @@ casos habituales; la nota dice qué falta. **No soportado** no tiene equivalente
 | Shadow CRUD (desactivar operaciones por tipo) | Soportado | El ajuste `disabled` de la funcionalidad. |
 | Resolvers propios y extensiones del esquema | Parcial | Campos raíz resueltos por plugins (`[[graphql]]` en `plugin.toml`); sin `extensionService`. |
 | Mutaciones de Users & Permissions (`login`, `register`, `me`…) | No soportado | Usa las rutas REST. |
-| Consultas y mutaciones de subida e i18n (`uploadFiles`, `i18NLocales`…) | No soportado | Usa las rutas REST y el panel de administración. |
+| Consultas y mutaciones de subida e i18n (`uploadFiles`, `i18NLocales`…) | No soportado | Usa las rutas REST (`GET /api/i18n/locales`) y el panel de administración. `localizations` en los tipos localizados está soportado. |
 | Límites, GraphiQL | Soportado | Interruptores de `maxDepth`, `maxComplexity`, introspección y playground. |
 
 ## Users & Permissions (usuarios finales)
@@ -94,8 +94,8 @@ Activa **Configuración → Funcionalidades → Usuarios y permisos**. Consulta
 | --- | --- | --- |
 | Tipos localizados y campos no localizados | Soportado | `pluginOptions.i18n.localized`, también por atributo. |
 | `?locale=` en REST, `locale` en GraphQL | Soportado | Un idioma desconocido da un `400`. |
-| `localizations` en las respuestas | No soportado | Lee otro idioma con el mismo `documentId` y `?locale=`. |
-| `GET /api/i18n/locales` | No soportado | Los idiomas se gestionan en el panel (**Configuración → Internacionalización**). |
+| `localizations` en las respuestas | Soportado | Solo cuando se puebla (`populate=localizations`, `populate=*`), con las mismas opciones que una relación. También es un campo de GraphQL. La API de administración lo deja fuera. |
+| `GET /api/i18n/locales` | Soportado | Un array simple con la forma de Strapi. Necesita `find` sobre `plugin::i18n.locale` (fila **Idiomas** de la cuadrícula de permisos), como el `listLocales` de Strapi. `documentId` se deriva del código del idioma. Los idiomas se gestionan en el panel (**Configuración → Internacionalización**). |
 
 ## Borrador y publicación
 
@@ -107,11 +107,14 @@ Activa **Configuración → Funcionalidades → Usuarios y permisos**. Consulta
 
 ## Personalización del servidor
 
+Consulta [Portar código propio](/es/migrate/porting-custom-code/) para saber cómo mover cada uno.
+
 | Strapi | Estado | Verdin |
 | --- | --- | --- |
 | Hooks de ciclo de vida, middlewares del Document Service | Parcial | Hooks before/after en plugins WebAssembly, que pueden cambiar o rechazar una escritura. Sin JavaScript. |
 | Controladores, servicios y rutas propios | Parcial | Rutas de plugins bajo `/api/plugins/<name>/`. |
 | Policies y middlewares | No soportado | Los permisos y los límites de peticiones vienen integrados. |
+| `register` / `bootstrap` | Parcial | La función de arranque de un plugin, que se ejecuta cuando el plugin arranca, se activa o cambian sus ajustes; puede sembrar contenido y reemplazar los permisos del rol público. |
 | Tareas cron | Parcial | Tareas de plugins. |
 | Document Service / Entity Service en JavaScript | No soportado | No hay runtime de JavaScript. |
 | Plugins npm del marketplace de Strapi | No soportado | |

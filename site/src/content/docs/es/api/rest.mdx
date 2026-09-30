@@ -311,7 +311,7 @@ populan:
 
 | Forma | Popula |
 | --- | --- |
-| `populate=*` | Todas las relaciones, campos de medios, componentes y zonas dinámicas, a un nivel de profundidad |
+| `populate=*` | Todas las relaciones, campos de medios, componentes y zonas dinámicas, a un nivel de profundidad, y `localizations` en los tipos localizados |
 | `populate=category,tags` o `populate[0]=category&populate[1]=tags` | Los campos indicados |
 | `populate[category]=true` | El campo indicado (`false` lo deja fuera) |
 | `populate[category][fields][0]=name` | El campo, con opciones |
@@ -363,6 +363,16 @@ En las escrituras, `status=draft` guarda el borrador sin publicarlo. Consulta
 peticiones usan el idioma por defecto. Un código no válido o desconocido da un `400`. Los
 tipos no localizados lo ignoran. Consulta
 [Internacionalización](/es/concepts/internationalization/).
+
+En los tipos localizados, `populate=localizations` añade las demás versiones de idioma del
+documento, en el mismo estado, cada una con su `locale`. Acepta las opciones de una relación
+poblada (`fields`, `filters`, `sort`, `populate`, `count`) y lo incluye `populate=*`. Los
+tipos no localizados no tienen `localizations`.
+
+`GET /api/i18n/locales` enumera los idiomas como un array simple con la forma de Strapi
+(`id`, `documentId`, `name`, `code`, `isDefault`, `createdAt`, `updatedAt`, `publishedAt`,
+`locale`). Necesita el permiso `find` sobre `plugin::i18n.locale`. Consulta
+[Localizar contenido](/es/guides/content/localizing-content/#listar-los-idiomas).
 
 ## Búsqueda
 

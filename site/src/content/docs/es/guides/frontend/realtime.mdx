@@ -138,9 +138,11 @@ Llamar al flujo desde un sitio de otro origen necesita ese origen en
 
 ## Detrás de un balanceador de carga
 
-Los eventos son los de la instancia a la que está conectado cada cliente. Con varias instancias,
-usa sesiones persistentes para `/api/_events`, o conecta los clientes de tiempo real a una sola
-instancia. Consulta [Varias instancias](/es/deploy/scaling/).
+Con varias instancias, activa el bus de eventos compartido (`[cluster].bus = "database"`): un
+cliente conectado a cualquier instancia recibe entonces los eventos de todas. Sin él, los
+eventos son los de la instancia a la que está conectado cada cliente; usa sesiones persistentes
+para `/api/_events`, o conecta los clientes de tiempo real a una sola instancia. Consulta
+[Varias instancias](/es/deploy/scaling/#bus-de-eventos-compartido).
 
 El panel de administración usa su propio flujo (`/admin/api/events`) para las actualizaciones en
 directo, la presencia y los bloqueos blandos durante la edición; consulta la

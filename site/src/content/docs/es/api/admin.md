@@ -95,6 +95,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
 - Los cambios realizados con éxito quedan en el
   [registro de auditoría](/es/guides/content/audit-logs/).
 
+## Listas
+
+Las listas de configuración se paginan con `page` (desde 1) y `pageSize`. Responden con las
+filas de la página y los totales:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Lista | Tamaño de página por defecto (máximo) | Orden | Otros parámetros |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Más antiguos primero | |
+| `GET /webhooks` | 25 (100) | Más antiguos primero | `meta.events` enumera los eventos a los que se puede suscribir un webhook |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Más recientes primero | |
+| `GET /releases` | 25 (100) | Más recientes primero | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | Por origen | `search` busca en el origen o en el destino |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | Por nombre | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Más recientes primero | |
+| `GET /deploy/targets` | 25 (100) | Más antiguos primero | |
+| `GET /deploy/deployments` | 25 (100) | Más recientes primero | `targetId`; `limit` es un alias obsoleto de `pageSize` |
+| `GET /end-users` | 25 (100) | Más recientes primero | `search` busca en el nombre de usuario o en el correo |
+| `GET /audit-logs` | 50 (200) | Más recientes primero | Consulta [Registros de auditoría](/es/guides/content/audit-logs/) |
+
+Un `pageSize` mayor se reduce al máximo. Para leer una lista completa, pide páginas hasta que
+`page` llegue a `pageCount`:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Las rutas de contenido paginan como la API REST, con `pagination[page]` y
+`pagination[pageSize]`.
+
 ## Grupos de rutas
 
 Las rutas son relativas a `/admin/api`. Los routers están en
