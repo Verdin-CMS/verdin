@@ -232,7 +232,10 @@ Les valeurs sont arrondies à `scale` chiffres (au plus loin de zéro pour les d
 les bases de données), et rejetées quand elles ont plus de `precision - scale` chiffres avant la
 virgule. Les écritures acceptent des nombres et des chaînes numériques. Stocké en
 `numeric(precision,scale)` (`text` sur SQLite, pour que rien ne soit arrondi). API : un nombre,
-ou une chaîne exacte avec [`[api].decimal_as_string`](/fr/reference/configuration/).
+comme le renvoie Strapi. Les valeurs entières sont des entiers (`25`, pas `25.0`) et les autres
+sont le plus court flottant qui se relit à l’identique (`12.5`). Avec
+[`[api].decimal_as_string`](/fr/reference/configuration/), l’API renvoie à la place une chaîne
+exacte.
 
 ## Dates et booléens
 

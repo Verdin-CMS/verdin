@@ -138,9 +138,11 @@ Appeler le flux depuis un site sur une autre origine nécessite cette origine da
 
 ## Derrière un répartiteur de charge
 
-Les événements sont ceux de l’instance à laquelle un client est connecté. Avec plusieurs
-instances, utilisez des sticky sessions pour `/api/_events`, ou faites pointer les clients temps
-réel vers une seule instance. Voir [Exécuter plusieurs instances](/fr/deploy/scaling/).
+Avec plusieurs instances, activez le bus d’événements partagé (`[cluster].bus = "database"`) :
+un client connecté à n’importe quelle instance reçoit alors les événements de toutes. Sans lui,
+les événements sont ceux de l’instance à laquelle un client est connecté ; utilisez des sticky
+sessions pour `/api/_events`, ou faites pointer les clients temps réel vers une seule instance.
+Voir [Exécuter plusieurs instances](/fr/deploy/scaling/#bus-dévénements-partagé).
 
 Le panneau d’administration utilise son propre flux (`/admin/api/events`) pour les mises à jour
 en direct, la présence et les verrous souples pendant l’édition ; voir la

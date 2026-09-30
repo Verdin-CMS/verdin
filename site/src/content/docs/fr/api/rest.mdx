@@ -310,7 +310,7 @@ sont peuplés :
 
 | Forme | Peuple |
 | --- | --- |
-| `populate=*` | Toutes les relations, champs de média, composants et zones dynamiques, sur un niveau |
+| `populate=*` | Toutes les relations, champs de média, composants et zones dynamiques, sur un niveau, et `localizations` sur les types localisés |
 | `populate=category,tags` ou `populate[0]=category&populate[1]=tags` | Les champs nommés |
 | `populate[category]=true` | Le champ nommé (`false` l’exclut) |
 | `populate[category][fields][0]=name` | Le champ, avec des options |
@@ -360,6 +360,16 @@ un `400` sur les types sans brouillon et publication.
 `locale=fr` lit et écrit la version française des types localisés. Sans ce paramètre, les
 requêtes utilisent la langue par défaut. Un code invalide ou inconnu donne un `400`. Les types
 non localisés l’ignorent. Voir [Internationalisation](/fr/concepts/internationalization/).
+
+Sur les types localisés, `populate=localizations` ajoute les autres versions linguistiques du
+document, dans le même statut, chacune avec son `locale`. Il accepte les options d’une
+relation peuplée (`fields`, `filters`, `sort`, `populate`, `count`) et est inclus par
+`populate=*`. Les types non localisés n’ont pas de `localizations`.
+
+`GET /api/i18n/locales` liste les langues sous forme de simple tableau, au format de Strapi
+(`id`, `documentId`, `name`, `code`, `isDefault`, `createdAt`, `updatedAt`, `publishedAt`,
+`locale`). Il nécessite le droit `find` sur `plugin::i18n.locale`. Voir
+[Localiser du contenu](/fr/guides/content/localizing-content/#lister-les-langues).
 
 ## Recherche
 

@@ -21,6 +21,7 @@ détails dans la [référence des plugins](/fr/extending/plugin-reference/).
 | **Hooks sur les écritures** | Avant qu’une entrée soit créée, modifiée, publiée, dépubliée, supprimée ou que son brouillon soit abandonné, modifier les données ou refuser l’écriture avec un message. Après l’écriture, y réagir (journaliser, notifier, synchroniser). |
 | **Routes** | Servir des endpoints HTTP sous `/api/plugins/<name>/…` : un récepteur de webhooks, un flux calculé, un proxy vers un autre service. |
 | **Tâches planifiées** | Exécuter une fonction selon une planification cron (UTC). |
+| **Fonction de démarrage** | Exécuter une fonction quand le plugin démarre, est activé ou que ses paramètres changent : amorçage de données, configuration du rôle public (le `bootstrap` de Strapi). |
 | **Champs GraphQL** | Ajouter des champs `name(args: JSON): JSON` à `Query` ou `Mutation`. |
 | **Widgets du tableau de bord** | Ajouter des types de widgets au tableau de bord de l’administration, sous forme de Web Components. |
 | **Champs personnalisés** | Donner aux attributs un éditeur personnalisé dans l’administration (un sélecteur de couleur, une carte), sous forme de Web Components ; la valeur est stockée comme un type d’attribut ordinaire. |
@@ -50,6 +51,7 @@ vérifie chaque appel par rapport aux **capacités** que déclare le manifeste :
 | `write` | La création, la modification, la publication, la dépublication et la suppression des entrées des types listés (ainsi que leur lecture). |
 | `http` | Les requêtes HTTP vers les hôtes listés (`api.example.com`, `*.example.com`). |
 | `kv` | Un stockage clé-valeur qui lui est propre, dans la base de données de Verdin. |
+| `public_permissions` | La lecture et le remplacement des autorisations de l’API de contenu du rôle public. |
 
 <Diagram
   caption="Les appels vers un plugin, et ce que ses appels à l’hôte peuvent atteindre"

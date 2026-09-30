@@ -132,7 +132,11 @@ présence nécessite `content.read` sur le type.
 
 ## Plusieurs instances
 
-Les événements et la présence sont ceux de l’instance à laquelle un client est connecté.
-Derrière un répartiteur de charge, routez `/api/_events` et `/admin/api/events` avec des
+Avec le bus d’événements partagé (`[cluster].bus = "database"`), les flux de chaque instance
+transportent les événements de toutes les autres, et la présence et les verrous souples sont
+les mêmes sur chaque instance. Les événements d’une autre instance arrivent dans un délai de
+`[cluster].poll_interval_ms` (MySQL, MariaDB, SQLite) ou immédiatement (PostgreSQL,
+`LISTEN/NOTIFY`). Sans le bus, les événements et la présence sont ceux de l’instance à
+laquelle un client est connecté : routez `/api/_events` et `/admin/api/events` avec des
 sessions persistantes (sticky sessions), ou faites pointer les clients temps réel vers une
-seule instance. Voir [Exécuter plusieurs instances](/fr/deploy/scaling/).
+seule instance. Voir [Exécuter plusieurs instances](/fr/deploy/scaling/#bus-dévénements-partagé).

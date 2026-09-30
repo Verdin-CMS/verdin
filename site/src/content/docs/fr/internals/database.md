@@ -85,7 +85,7 @@ Un constructeur ajoute du texte SQL et des noms `ident()` (entre guillemets selo
 | date, time, datetime | `date`, `time(3)`, `timestamptz(3)` | `date`, `time(3)`, `datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite stocke les décimaux, les dates et les heures sous forme de texte à format fixe, pour que rien ne soit arrondi et que l’ordre textuel corresponde à l’ordre numérique et chronologique. La correspondance entre attributs et types du modèle figure dans [Types d’attributs](/fr/reference/attribute-types/).
+SQLite stocke les dates et les heures sous forme de texte à format fixe, pour que l’ordre textuel corresponde à l’ordre chronologique. Il stocke aussi les décimaux sous forme de texte, pour que rien ne soit arrondi à l’enregistrement. L’ordre textuel n’est pas l’ordre numérique pour les décimaux : les filtres et les tris sur un décimal convertissent donc la colonne en `REAL` sur SQLite. Ces comparaisons sont exactes à environ 15 chiffres significatifs, et les valeurs renvoyées restent exactes. La correspondance entre attributs et types du modèle figure dans [Types d’attributs](/fr/reference/attribute-types/).
 
 Les tables MySQL et MariaDB sont créées avec `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` et une collation insensible aux accents et à la casse : `utf8mb4_0900_ai_ci` sur MySQL, `utf8mb4_uca1400_ai_ci` sur MariaDB.
 

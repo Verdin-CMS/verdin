@@ -95,6 +95,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   serveur ou un script, pas depuis les pages d’un autre site.
 - Les modifications réussies sont enregistrées dans le [journal d’audit](/fr/guides/content/audit-logs/).
 
+## Listes
+
+Les listes des paramètres sont paginées avec `page` (à partir de 1) et `pageSize`. Elles
+répondent avec les lignes de la page et les totaux :
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Liste | Taille de page par défaut (maximum) | Ordre | Autres paramètres |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Les plus anciens d’abord | |
+| `GET /webhooks` | 25 (100) | Les plus anciens d’abord | `meta.events` liste les événements auxquels un webhook peut s’abonner |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Les plus récents d’abord | |
+| `GET /releases` | 25 (100) | Les plus récentes d’abord | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | Par source | `search` correspond à la source ou à la destination |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | Par nom | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Les plus récentes d’abord | |
+| `GET /deploy/targets` | 25 (100) | Les plus anciennes d’abord | |
+| `GET /deploy/deployments` | 25 (100) | Les plus récents d’abord | `targetId` ; `limit` est un alias obsolète de `pageSize` |
+| `GET /end-users` | 25 (100) | Les plus récents d’abord | `search` correspond au nom d’utilisateur ou à l’e-mail |
+| `GET /audit-logs` | 50 (200) | Les plus récentes d’abord | Voir [Journaux d’audit](/fr/guides/content/audit-logs/) |
+
+Un `pageSize` plus grand est ramené au maximum. Pour lire une liste entière, demandez des
+pages jusqu’à ce que `page` atteigne `pageCount` :
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Les routes de contenu paginent comme l’API REST, avec `pagination[page]` et
+`pagination[pageSize]`.
+
 ## Groupes de routes
 
 Les chemins sont relatifs à `/admin/api`. Les routeurs se trouvent dans

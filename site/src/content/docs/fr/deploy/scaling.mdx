@@ -1,6 +1,6 @@
 ---
 title: Exécuter plusieurs instances
-description: Exécutez plusieurs instances Verdin d’un même projet derrière un répartiteur de charge — ce qu’elles partagent via la base de données, ce qui reste propre à chaque instance, et les paramètres à modifier.
+description: Exécutez plusieurs instances Verdin d’un même projet derrière un répartiteur de charge — ce qu’elles partagent via la base de données, le bus d’événements partagé, ce qui reste propre à chaque instance, et les paramètres à modifier.
 sidebar:
   order: 8
   label: Plusieurs instances
@@ -14,7 +14,7 @@ page liste ce que les instances partagent, ce que chacune garde pour elle, et le
 comptent.
 
 <Diagram
-  caption="Les instances partagent la base de données et le stockage des médias ; les caches, les limites de débit et les flux d’événements restent dans chaque instance."
+  caption="Les instances partagent la base de données et le stockage des médias ; avec le bus d’événements activé, les événements temps réel, la présence, l’invalidation des caches et les mises à jour de la recherche atteignent chaque instance via la base de données."
   code={`flowchart LR
   LB[Répartiteur de charge] --> A[Instance 1]
   LB --> B[Instance 2]
@@ -43,6 +43,10 @@ comptent.
 - **Des health checks.** Pointez le répartiteur de charge vers `GET /_ready`, qui répond `503`
   quand la base de données est injoignable. `GET /_health` indique seulement que le processus
   tourne ; utilisez-le pour la liveness.
+- **Le bus d’événements partagé.** Définissez `[cluster].bus = "database"` sur chaque
+  instance, pour que les événements temps réel, la présence, l’invalidation des caches et les
+  mises à jour de la recherche les atteignent toutes (voir
+  [Bus d’événements partagé](#bus-dévénements-partagé)).
 - **Les tâches de plugins sur une seule instance.** Définissez `[plugins].run_jobs = false` sur
   toutes les instances sauf une ; sinon, chaque instance exécute les tâches planifiées.
 - **Des métriques par instance.** Avec `[metrics].enabled = true`, chaque instance sert son
@@ -75,25 +79,78 @@ n’a plus besoin des données. Voir [Migrations de schéma](/fr/concepts/schema
 | Challenges de passkeys | Les challenges utilisés sont enregistrés dans la base de données : chacun ne reçoit qu’une réponse, toutes instances confondues. |
 | Purge du journal d’audit | S’exécute sur chaque instance ; supprimer deux fois d’anciennes lignes est sans conséquence. |
 | Stockage clé-valeur des plugins | Dans la base de données. |
+| Événements temps réel, présence et verrous souples | Avec le [bus d’événements](#bus-dévénements-partagé) : un client connecté à n’importe quelle instance reçoit les événements de toutes et voit chaque administrateur sur une entrée. |
+| Le cache des réponses anonymes | Avec le bus d’événements, une écriture sur n’importe quelle instance vide le cache de chaque instance. |
+| L’index de recherche | Avec le bus d’événements, chaque instance relit et indexe les entrées que les autres modifient. |
+| Images transformées | Avec le bus d’événements, un fichier modifié ou supprimé quitte le cache de transformation de chaque instance. |
 
 ## Ce qui reste propre à chaque instance
 
 - **Les limites de débit** sont comptées par chaque instance. Avec `n` instances, un client peut
   faire jusqu’à `n` fois `[api].public_rate_limit` requêtes par minute. Appliquez une limite
   globale au niveau du répartiteur de charge si vous en avez besoin.
-- **Le cache des réponses anonymes** (`[api].cache_ttl_secs`). Une écriture vide le cache de
-  l’instance qui l’a effectuée ; les autres peuvent servir la réponse précédente jusqu’à
-  l’expiration de leur entrée. Limitez le TTL à quelques secondes, ou à `0`.
-- **Les événements temps réel et la présence** sont ceux de l’instance à laquelle un client est
-  connecté. Utilisez des sticky sessions pour les flux d’événements (voir
-  [Temps réel](/fr/guides/frontend/realtime/)).
-- **L’index de recherche** (`[search]`) réside sur le disque de l’instance et ne suit que les
-  écritures de cette instance. Activez-le sur une seule instance et routez-y les requêtes `_q`,
-  ou acceptez que les autres prennent du retard jusqu’à leur redémarrage avec un répertoire
-  d’index vide.
+- **Sans le bus d’événements** (`[cluster].bus = "none"`, la valeur par défaut), les
+  événements temps réel et la présence sont ceux de l’instance à laquelle un client est
+  connecté (utilisez des sticky sessions pour les flux d’événements), une écriture ne vide que
+  le cache des réponses de sa propre instance (limitez `[api].cache_ttl_secs` à quelques
+  secondes, ou à `0`), et l’index de recherche ne suit que les écritures de son instance.
+- **L’index de recherche** (`[search]`) réside sur le disque de chaque instance. Avec le bus
+  d’événements, les instances indexent les modifications des autres au fur et à mesure ; une
+  instance qui démarre avec un répertoire d’index vide le construit à partir de la base de
+  données. Les modifications faites pendant qu’une instance était arrêtée n’atteignent son index
+  que lorsque celui-ci est reconstruit : supprimez le répertoire avant de la démarrer, ou
+  reconstruisez-le après un déploiement.
 - **Les transformations d’images** (`[upload.transforms]`) sont mises en cache par instance
   sous `cache_dir`. Placez un CDN devant `/uploads` pour les partager.
 - **Les tâches planifiées des plugins** : voir `run_jobs` ci-dessus.
+
+## Bus d’événements partagé
+
+Certaines choses se passent en mémoire : les flux temps réel, qui modifie quelle entrée, le
+cache des réponses anonymes, l’index de recherche. Le bus d’événements les transporte de
+l’instance où elles se produisent vers les autres.
+
+```toml title="verdin.toml"
+[cluster]
+bus = "database"
+```
+
+Ou `VERDIN_CLUSTER__BUS=database`, sur chaque instance. Le bus utilise la base de données du
+projet ; il n’a donc besoin d’aucun autre service :
+
+- **PostgreSQL** : une instance écrit chaque événement dans la table `vd_cluster_events` et
+  réveille les autres avec `NOTIFY`. Chaque instance garde une des connexions de son pool pour
+  `LISTEN`. La notification ne nomme que l’émetteur : des événements de toute taille restent
+  donc sous la limite de 8000 octets de PostgreSQL. Si la connexion tombe, l’instance se
+  reconnecte et lit la table pour rattraper son retard. Elle lit aussi la table toutes les
+  30 secondes au cas où une notification se perdrait.
+- **MySQL, MariaDB et SQLite** : chaque instance lit les nouvelles lignes de
+  `vd_cluster_events` toutes les `poll_interval_ms` (1000 par défaut). La requête utilise la clé
+  primaire : lire une table vide coûte peu. Baissez l’intervalle pour des mises à jour plus
+  rapides ; la modification d’une instance atteint les autres dans cet intervalle.
+
+Ce qui circule : les écritures de contenu (vers les flux temps réel, le cache des réponses et
+l’index de recherche, qui relit l’entrée modifiée), les modifications de médias (flux, cache,
+cache de transformation), les signaux de présence et les avis de commentaires et de tâches
+pour l’administration. Chaque instance ignore ses propres événements. Les webhooks, les purges
+de CDN, l’historique, les journaux d’audit et les hooks de plugins ne circulent pas : l’instance
+qui a fait la modification les exécute une seule fois.
+
+Les lignes sont supprimées au bout de 10 minutes. Une nouvelle instance commence par
+l’événement suivant, pas par les précédents. Une instance qui n’arrive pas à suivre, ou qui
+perd sa connexion à la base de données, abandonne des événements plutôt que de bloquer une
+écriture. La métrique `verdin_cluster_events_total` compte les événements envoyés, reçus et
+abandonnés (voir [Supervision](/fr/deploy/monitoring/#métriques-prometheus)).
+
+Chaque instance se nomme sur le bus avec un identifiant aléatoire à chaque démarrage, ou avec
+`[cluster].instance_id` si vous le définissez (un nom de pod, par exemple). L’identifiant sert
+seulement à distinguer les instances ; rien d’autre n’en dépend.
+
+Avec une seule instance, laissez `bus` à `none` : les événements restent en mémoire et rien
+n’est écrit.
+
+Les backends Redis et NATS ne sont pas encore disponibles. Le bus sur la base de données couvre
+toutes les bases de données prises en charge sans rien d’autre à faire tourner.
 
 ## Paramètres
 
@@ -107,8 +164,14 @@ sync_interval_secs = 10
 run_jobs = true
 
 [api]
-# Short-lived when each instance keeps its own cache.
-cache_ttl_secs = 5
+# Emptied on every instance by the event bus; keep it short without it.
+cache_ttl_secs = 60
+
+[cluster]
+# Share realtime events, presence, cache invalidation and search updates.
+bus = "database"
+# MySQL, MariaDB and SQLite: how often to read other instances' events.
+poll_interval_ms = 1000
 ```
 
 Définissez `run_jobs` par instance avec `VERDIN_PLUGINS__RUN_JOBS=false`.
@@ -117,4 +180,5 @@ Définissez `run_jobs` par instance avec `VERDIN_PLUGINS__RUN_JOBS=false`.
 
 Chaque instance ouvre jusqu’à `[database].pool_max` connexions (10 par défaut). Gardez
 `instances × pool_max` sous la limite du serveur, avec de la marge pour les migrations, les
-sauvegardes et la maintenance. La limite par défaut de PostgreSQL est de 100 connexions.
+sauvegardes et la maintenance. La limite par défaut de PostgreSQL est de 100 connexions. Sur
+PostgreSQL, le bus d’événements garde une des connexions de chaque instance pour `LISTEN`.

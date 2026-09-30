@@ -1,0 +1,421 @@
+---
+title: Porter le code personnalisé
+description: Faites migrer le code personnalisé d’un projet Strapi vers un plugin Verdin — contrôleurs et routes, lifecycles, services, bootstrap, tâches cron, widgets d’administration, formulaires, policies et middlewares — avec un exemple complet et les limites à prévoir.
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi` reprend le schéma et le contenu d’un projet Strapi, mais pas le
+JavaScript de `src/` : Verdin n’exécute aucun JavaScript côté serveur. Ce code devient un
+[plugin WebAssembly](/fr/extending/plugins/) : des hooks pour les lifecycles, des routes pour les
+contrôleurs personnalisés, une fonction de démarrage pour `bootstrap`, des tâches pour les tâches
+cron. Cette page associe chaque type de code Strapi à son équivalent Verdin, parcourt le code d’un
+vrai projet porté vers un plugin, et liste les limites à prévoir.
+
+L’exemple complet est
+[`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port) :
+le plugin `tienda`, écrit en Rust, avec le schéma dont il a besoin et un README qui le construit
+et l’installe. Lisez d’abord le [tutoriel des plugins](/fr/extending/plugin-tutorial/) si vous
+n’avez jamais écrit de plugin ; la [référence des plugins](/fr/extending/plugin-reference/)
+contient chaque payload et chaque fonction hôte.
+
+## Où va chaque élément
+
+| Strapi | Verdin | Notes |
+| --- | --- | --- |
+| Routes et contrôleurs personnalisés (`src/api/*/routes`, `controllers`) | Routes de plugin : `[routes]`, une fonction pour `/api/plugins/<name>/…` | L’URL change. La fonction répartit elle-même selon la méthode et le chemin. |
+| Lifecycles (`lifecycles.js`), middlewares du Document Service | `[[hooks]]` sur `beforeCreate`, `afterUpdate`… | Mêmes noms d’événements. Les hooks before peuvent remplacer les données ou refuser l’écriture. |
+| Services (`src/api/*/services`) | Fonctions dans le module du plugin, et `verdin_content` pour `strapi.documents(…)` | Pas de services partagés entre plugins. |
+| `bootstrap()` dans `src/index.js` | Fonction `[startup]` | S’exécute au démarrage, quand le plugin est activé et quand ses paramètres changent. |
+| `register()` | Rien à porter | Le manifeste déclare ce que `register` mettait en place. |
+| Tâches cron (`config/cron-tasks.js`) | `[[jobs]]` | Syntaxe cron en UTC, secondes facultatives. |
+| Configuration des plugins (`config/plugins.js`) | `[[settings]]` et `verdin_config` | Modifiée dans **Paramètres → Plugins**. |
+| `strapi.log` | `verdin_log` | Journal du serveur et **Paramètres → Plugins → Journaux**. |
+| Widgets d’administration (`app.widgets.register`) | `[[admin.widgets]]` : Web Components | Ou les widgets intégrés du tableau de bord. |
+| Champs personnalisés | `[[admin.fields]]` | Le nom `customField` dans le schéma est conservé. |
+| Zones d’injection, pages d’administration personnalisées, extensions React | Non pris en charge | L’habillage est dans `[admin.branding]`. |
+| Un endpoint personnalisé qui stocke des soumissions de formulaire | [Formulaires](/fr/guides/frontend/forms/) intégrés | Validation, piège à spam, limite de débit, e-mails et export CSV inclus. |
+| Policies et middlewares | Autorisations, limites de débit et CORS intégrés ; vérifications dans vos routes de plugin | Aucun point d’accroche dans le pipeline de requêtes. Voir [Policies et middlewares](#policies-et-middlewares). |
+| E-mails depuis le code (`strapi.plugin('email')`) | L’API HTTP d’un fournisseur d’e-mail, via la capacité `http` | Pas de fonction hôte d’e-mail. |
+
+## Le projet d’exemple
+
+Le projet Strapi à l’origine de l’exemple est une petite boutique avec des sondages :
+
+- **`producto`** : des produits, avec les indicateurs `a_la_venta` (en vente) et `reservable`.
+- **`reserva`** : des réservations envoyées par les visiteurs. Un lifecycle `beforeCreate` force
+  `estado` à `pendiente`, vérifie que le produit lié est en vente et réservable, et ramène
+  `unidades` entre 1 et 10.
+- **`encuesta`** et **`voto`** : des sondages avec une liste d’options, et leurs votes. Deux
+  routes personnalisées, `POST /api/polls/:slug/vote` et `GET /api/polls/:slug/results`,
+  autorisent un vote par visiteur et par sondage, seulement dans les sondages ouverts et
+  seulement pour une option valide. Une tâche cron ferme les sondages dont la date `cierra_el`
+  est passée.
+- **`bootstrap`** définit les autorisations du rôle public, pour qu’une installation neuve ne
+  reste pas ouverte.
+- Un **widget d’administration** affiche les sondages ouverts.
+
+Dans Verdin, tout cela tient dans un seul plugin, `tienda` :
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml le manifeste
+    - src/lib.rs les hooks, les routes, la tâche et la fonction de démarrage
+    - admin/index.js le widget du tableau de bord
+</FileTree>
+
+```toml title="plugin/plugin.toml (abridged)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+Les uid de types de contenu sont plus courts que ceux de Strapi : `api::producto`, pas
+`api::producto.producto`.
+
+## Des lifecycles aux hooks
+
+Le lifecycle Strapi, simplifié :
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+Le hook Verdin reçoit `{ event, uid, documentId, locale, data }` et répond `{ "data": … }` pour
+remplacer ce qui est écrit, `{ "error": "…" }` pour refuser l’écriture (le client reçoit un 400
+avec le message, comme avec l’`ApplicationError` de Strapi), ou `{}` pour la laisser passer :
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+À savoir en portant des lifecycles :
+
+- **`data` est la donnée de la requête telle qu’envoyée.** Une relation peut arriver comme un
+  documentId, comme `{ "documentId": … }`, comme une liste, ou comme `{ connect }` / `{ set }`
+  (le panneau d’administration et les clients diffèrent). Le `relation_id` de l’exemple les
+  accepte tous. Sur `beforeUpdate`, `data` ne contient que les champs envoyés.
+- **Les données que vous renvoyez sont validées** comme l’original, après le hook : un hook ne
+  peut pas écrire quelque chose que le schéma refuse. Les bornes du schéma (`min`, `max`) refusent
+  une valeur ; un hook peut plutôt la ramener dans les bornes, comme ici.
+- **Les hooks ne savent pas qui écrit.** Il n’y a ni utilisateur ni jeton dans l’entrée. Les
+  vérifications qui dépendent de l’appelant relèvent des autorisations, ou d’une route de plugin.
+- **Les hooks after ne reçoivent aucune donnée** : `{ event, uid, documentId, locale }`, envoyé
+  une fois l’écriture validée. Lisez l’entrée avec `verdin_content` si vous en avez besoin.
+- **Un hook qui échoue ne bloque pas l’écriture.** Si le module fait un trap ou dépasse le délai,
+  l’erreur est journalisée et l’écriture continue ; seule une réponse `{ error }` la refuse.
+- **Les écritures faites par des plugins sautent les hooks before.** Une règle qui doit valoir
+  pour toute écriture doit aussi être appliquée par tout code de plugin qui écrit ce type.
+
+## Des contrôleurs et routes personnalisées aux routes de plugin
+
+Strapi servait les routes des sondages sur `/api/polls/:slug/vote`. Un plugin Verdin sert
+tout sous `/api/plugins/<name>/` : le frontend appelle donc
+`/api/plugins/tienda/polls/:slug/vote` (ou un reverse proxy réécrit l’ancien chemin). Une seule
+fonction exportée reçoit chaque requête et répartit selon la méthode et le chemin :
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+La requête est `{ method, path, query, headers, body, actor }`, avec `body` sous forme de chaîne
+que vous analysez vous-même et `query` sous forme de chaîne de requête brute. La réponse est
+`{ status, headers?, body }`. Rien ne la met en forme pour vous : pour qu’un frontend Strapi
+continue de fonctionner, répondez `{ "data": … }` et, en cas d’erreur,
+`{ "data": null, "error": { "status", "name", "message", "details" } }`, comme le font les
+helpers `ok` et `fail` de l’exemple.
+
+La route de vote vérifie, dans l’ordre : un corps valide, un sondage avec ce slug, `estado` vaut
+`abierta`, l’option fait partie de `opciones`, et aucun vote antérieur avec la même empreinte.
+Elle crée ensuite le `voto` et répond 201 avec les résultats.
+
+<Aside type="caution" title="Pas d’adresse client dans les routes de plugin">
+Les routes de plugin ne reçoivent que les en-têtes `content-type`, `accept`, `user-agent` et
+`accept-language` : pas d’adresse IP, de cookies ni de valeur `Authorization`. Un contrôleur
+Strapi qui utilisait `ctx.request.ip` pour « un vote par visiteur » a besoin d’une autre clé.
+L’exemple prend une `fingerprint` dans le corps de la requête, que le site fabrique (un
+identifiant aléatoire gardé dans le stockage local, ou un hachage de traits du navigateur). Cela
+arrête les doubles clics et les répétitions occasionnelles, pas un votant déterminé. Pour des
+limites plus fortes, exigez un utilisateur final connecté (l’`actor`) ou placez la vérification
+devant Verdin.
+</Aside>
+
+Autres différences avec les routes Strapi :
+
+- **Les routes sont publiques.** L’accès public et les autorisations des jetons d’API ne sont pas
+  appliqués. `actor` dit qui appelle : `{ "kind": "public" }`, `{ "kind": "token", "id": … }` ou
+  `{ "kind": "user", "id": … }` (un utilisateur final ; seulement l’id). Refusez ce que
+  l’appelant n’a pas le droit de faire, comme le ferait une policy Strapi. Un jeton invalide est
+  refusé avec un 401 avant l’exécution du plugin.
+- **Un appel à la fois par plugin.** Les appels à un plugin s’attendent les uns les autres : la
+  vérification et la création de la route de vote ne peuvent donc pas s’entrelacer sur une
+  instance. Avec plusieurs instances, elles le peuvent ; l’exemple stocke aussi une `clave`
+  (`<poll>:<fingerprint>`) avec `unique: true`, si bien que la base de données refuse un doublon
+  qui passerait.
+- **Les limites de débit s’appliquent** : `[api].public_rate_limit` et `[api].token_rate_limit`
+  comptent les routes de plugin comme le reste de l’API de contenu.
+- **Les réponses `GET` anonymes peuvent être mises en cache** quand `[api].cache_ttl_secs` est
+  défini. Les écritures de contenu vident le cache, votes compris.
+- **Seuls certains en-têtes de réponse sont conservés** : `content-type`, `cache-control`,
+  `location`, `etag`, `last-modified` et `content-disposition`.
+
+## Des services aux fonctions et aux appels de contenu
+
+Un service Strapi est du code partagé ; dans un plugin, c’est une fonction ordinaire du module.
+Les appels à `strapi.documents(uid)` deviennent des appels `verdin_content`, limités par les
+capacités `read` et `write` :
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `findMany` avec `"pagination": { "pageSize": 1 }`, puis `meta.pagination.total` |
+
+- **Les lectures renvoient les versions publiées**, sauf si la requête demande
+  `"status": "draft"`. Un hook qui cherche un produit qui n’existe qu’en brouillon ne trouve
+  rien, comme le dit le message d’erreur de l’exemple.
+- **Les écritures sont publiées** sauf si la requête contient `"status": "draft"`, comme une
+  écriture REST.
+- **La requête suit les règles de l’API REST.** Les attributs `private` ne peuvent pas être
+  utilisés dans les filtres ni dans `fields` : la `clave` de l’exemple n’est donc pas privée (le
+  rôle public n’a aucun accès aux votes, personne d’autre ne la lit).
+- **Pas de SQL brut, pas de `strapi.db.query`.** Tout passe par le Document Service, avec sa
+  validation, ses webhooks, son historique et son journal d’audit.
+- **Pas d’horloge sans WASI.** Définissez `wasi = true` dans le manifeste pour l’heure et les
+  nombres aléatoires ; la tâche de l’exemple utilise plutôt le `scheduledAt` qu’elle reçoit.
+
+## De `bootstrap` à la fonction de démarrage
+
+Les projets Strapi définissent souvent les autorisations du rôle public dans `bootstrap`, pour
+qu’une base de données neuve soit utilisable et que rien de plus que nécessaire ne soit ouvert.
+La fonction de démarrage de Verdin fait la même chose avec la capacité `public_permissions` :
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- Elle s’exécute avec `{ "reason": "start" | "enabled" | "settings" }` : quand le serveur démarre
+  avec le plugin activé, quand le plugin est activé, et quand ses paramètres changent. Faites en
+  sorte qu’on puisse la relancer sans danger : cherchez ce que vous amorcez avant de le créer.
+- `set` **remplace toutes** les autorisations publiques : les modifications faites dans
+  **Paramètres → Accès public** sont donc annulées au prochain démarrage. L’exemple a un paramètre
+  pour désactiver cela.
+- Elle s’exécute en arrière-plan sur une instance de module à part, avec sa propre limite de temps
+  (`[startup].timeout_ms`, 30 secondes par défaut) : un amorçage lent ne retient donc pas les
+  hooks et les routes. Un échec, ou une réponse `{ "error" }`, est journalisé ; le plugin reste
+  activé.
+- Avec plusieurs instances, seules celles avec `[plugins].run_jobs = true` l’exécutent.
+
+## Des tâches cron aux jobs
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+Le job reçoit `{ "scheduledAt": "…" }` et, dans l’exemple, met à jour chaque sondage ouvert dont
+`cierra_el` est antérieur. Les jobs s’exécutent en UTC, seulement tant que le plugin est activé,
+et seulement sur les instances avec `[plugins].run_jobs = true`. Une exécution manquée pendant que
+le serveur était arrêté n’est pas rattrapée.
+
+## Widgets d’administration
+
+Un widget d’administration Strapi est un composant React ; un widget Verdin est un custom element
+dans le script `admin/` du plugin, déclaré dans le manifeste :
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+L’élément reçoit un `context` avec `fetch`. Le widget de l’exemple appelle la route
+`GET /api/plugins/tienda/polls` du plugin lui-même. Les requêtes vers l’API de contenu (routes de
+plugin comprises) partent sans la session de l’administrateur : une route qu’un widget utilise
+doit donc convenir au public, ou accepter un jeton d’API. Les zones d’injection, les pages
+d’administration personnalisées et les extensions React n’ont pas d’équivalent. Voir
+[Points d’extension de l’administration](/fr/extending/plugin-reference/#points-dextension-de-ladministration).
+
+## Des formulaires personnalisés aux Formulaires
+
+Un formulaire de suggestions ou de contact dans Strapi est généralement un endpoint personnalisé
+(ou un type de contenu avec une autorisation `create` publique) plus du code qui envoie un e-mail
+à quelqu’un. Ne le portez pas : la fonctionnalité intégrée [Formulaires](/fr/guides/frontend/forms/)
+fait tout cela sans code. Les rédacteurs définissent les champs dans l’administration, le site
+envoie à `POST /api/_forms/{slug}`, et les soumissions sont validées, envoyées par e-mail aux
+adresses **Notify** et exportées en CSV. Les formulaires ont aussi un piège à spam et une limite
+de débit par visiteur (10 soumissions par minute), ce qu’une route de plugin ne peut pas faire
+parce qu’elle ne voit pas l’adresse du client.
+
+## Policies et middlewares
+
+Verdin n’a aucun point d’accroche dans le pipeline des requêtes HTTP. Ce qu’il offre à la place :
+
+| Strapi | Verdin |
+| --- | --- |
+| Policies de type `is-authenticated` sur les routes REST | Accès public, autorisations des jetons d’API et rôles des utilisateurs finaux. Voir [Autorisations](/fr/reference/permissions/). Des règles plus fines (un utilisateur final qui ne modifie que ses propres entrées) demandent une route de plugin. |
+| Une policy sur une route personnalisée | Vérifiez `actor` dans la route de plugin. |
+| Un middleware de limitation de débit | `[api].public_rate_limit`, `[api].token_rate_limit` et `[admin].auth_rate_limit`. |
+| Un middleware CORS ou d’en-têtes de sécurité | `[api].cors_origins` ; les autres en-têtes de réponse au niveau du reverse proxy. |
+| Un middleware qui réécrit les requêtes ou les réponses des routes du cœur | Non pris en charge. Utilisez une route de plugin pour le nouveau comportement, ou un reverse proxy. |
+| Une policy qui refuse certaines écritures | Un hook before qui répond `{ error }`, sans connaître l’appelant. |
+
+## Limites à prévoir
+
+- **Pas d’adresse client et peu d’en-têtes** dans les routes de plugin (voir plus haut).
+- **Les écritures faites par des plugins sautent les hooks before de tous les plugins** : les
+  règles des hooks before ne s’y appliquent donc pas.
+- **Les hooks after déclenchés par les propres écritures d’un plugin s’exécutent après le retour
+  de son appel**, pas dans l’écriture, et les hooks qui écrivent s’imbriquent sur 4 niveaux au
+  maximum (voir
+  [Écritures faites par les plugins](/fr/extending/plugin-reference/#écritures-faites-par-les-plugins)).
+  Faites le travail de suivi qui doit avoir lieu avant la réponse dans le code qui écrit, une fois
+  que `verdin_content` a rendu la main.
+- **Un appel à la fois par plugin** : une route lente retarde les hooks de ce plugin. Gardez les
+  appels courts, et surveillez `verdin_plugin_call_duration_seconds` dans les
+  [métriques](/fr/deploy/monitoring/).
+- **Les routes sont publiques** et doivent vérifier `actor`.
+- **Verdin 0.11 ou plus récent** pour la fonction de démarrage et `verdin_public_permissions` : un
+  module qui importe une fonction hôte que le serveur n’a pas ne se charge pas du tout.
+
+## Check-list
+
+<Steps>
+
+1. Importez le projet avec `verdin import strapi`, puis listez le code de `src/` : routes,
+   contrôleurs, services, lifecycles, policies, middlewares, `bootstrap`, tâches cron et
+   extensions d’administration.
+2. Abandonnez ce que Verdin fait en natif : formulaires, autorisations publiques définies à la
+   main, limites de débit, CORS, webhooks, publication planifiée
+   ([Releases](/fr/guides/content/releases/)).
+3. Écrivez un seul plugin avec le reste, en suivant l’exemple : hooks, routes, un job, une
+   fonction de démarrage. Ne lui donnez que les capacités dont il a besoin.
+4. Vérifiez que les hooks qui écrivent du contenu ne reposent pas sur une imbrication de plus de
+   4 niveaux.
+5. Construisez-le, installez-le sous `plugins/`, activez-le dans **Paramètres → Plugins**, et
+   lisez-y son journal.
+6. Mettez à jour le frontend : les URL des routes de plugin (`/api/plugins/<name>/…`), les
+   empreintes ou la connexion des utilisateurs finaux là où le code reposait sur l’adresse du
+   client, et les [autres changements](/fr/migrate/from-strapi/#modifications-du-frontend) d’une
+   migration.
+
+</Steps>

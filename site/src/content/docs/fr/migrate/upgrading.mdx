@@ -2,7 +2,7 @@
 title: Mettre à niveau Verdin
 description: Mettez à niveau une installation Verdin — le binaire ou l’image Docker, les migrations qui s’exécutent au démarrage, et les changements notables ou incompatibles de chaque version mineure.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -121,6 +121,33 @@ instances de deux versions mineures plus longtemps que ne dure un déploiement p
 
 Les changements notables et incompatibles par version, du plus récent au plus ancien. Le
 [changelog](/fr/project/changelog/) contient la liste complète.
+
+### 0.10 → 0.11
+
+La migration qui s’exécute au démarrage ajoute une table, `vd_cluster_events`, utilisée
+seulement avec `[cluster] bus = "database"`.
+
+- **Décimaux** : les valeurs `decimal` entières sont renvoyées comme des entiers JSON (`25`, pas
+  `25.0`), comme le fait Strapi. Les clients qui vérifient strictement le type JSON peuvent le
+  remarquer ; `[api] decimal_as_string` est inchangé. Sur SQLite, `sort` et
+  `$gt`/`$lt`/`$between` sur les décimaux comparent désormais des nombres au lieu de texte : les
+  résultats qui reposaient sur l’ancien ordre (erroné) changent.
+- **`populate=*` sur les types localisés** renvoie aussi `localizations`, les autres versions
+  linguistiques du document, comme le fait Strapi v5. Un attribut de schéma nommé
+  `localizations` garde son sens.
+- **Plugins** : les hooks after déclenchés par les propres écritures d’un plugin s’exécutent une
+  fois son appel terminé au lieu de l’être dans l’écriture, et les hooks qui écrivent s’imbriquent
+  sur 4 niveaux au maximum. Les fonctions hôtes s’arrêtent à la limite de temps de l’appel.
+- **Plusieurs instances** : définissez `[cluster] bus = "database"` sur chaque instance pour que
+  les flux temps réel, la présence, le cache des réponses et l’index de recherche suivent les
+  modifications faites sur les autres (voir [Exécuter plusieurs instances](/fr/deploy/scaling/)).
+- **Scripts qui lisent les listes d’administration** : `GET /admin/api/users`, `/roles`,
+  `/api-tokens`, `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` et
+  `/deploy/targets` renvoient 25 lignes sauf si vous passez `pageSize` (100 au maximum), avec
+  `meta.pagination`, comme les listes qui étaient déjà paginées. Parcourez les pages avec
+  `?page=` jusqu’à ce que `page` atteigne `meta.pagination.pageCount`. `/deploy/deployments`
+  pagine de la même façon au lieu de renvoyer les 50 derniers ; `limit` fonctionne toujours
+  comme alias obsolète de `pageSize`. Voir [Listes](/fr/api/admin/#listes).
 
 ### 0.9.1 → 0.10
 
