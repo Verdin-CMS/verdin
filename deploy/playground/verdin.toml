@@ -1,0 +1,36 @@
+# Configuration of the hosted playground (deploy/playground/Dockerfile): the blog
+# example on SQLite, wiped and seeded again every hour by run.sh. Nothing in it is kept.
+
+[server]
+host = "0.0.0.0"
+port = 1337
+
+[schema]
+path = "/app/schema"
+
+[log]
+format = "json"
+
+[api]
+# Visitors share the instance: keep anonymous traffic in check. Behind a proxy, set
+# VERDIN_SERVER__TRUSTED_PROXIES or every visitor counts as the proxy's address.
+public_rate_limit = 300
+
+[upload]
+provider = { name = "local", dir = "/var/lib/verdin-playground/uploads" }
+max_file_size = 2_000_000   # bytes: demo images only
+
+[upload.transforms]
+cache_dir = "/var/lib/verdin-playground/transforms"
+
+[search]
+enabled = true
+dir = "/var/lib/verdin-playground/search"
+
+[webhooks]
+# Deliveries to private addresses stay blocked (the default); public URLs still work.
+allow_private_networks = false
+retention_days = 1
+
+[history]
+max_versions = 5
