@@ -92,6 +92,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   скрипта, а не со страниц другого сайта.
 - Успешные изменения записываются в [журнал аудита](/ru/guides/content/audit-logs/).
 
+## Списки
+
+Списки настроек разбиваются на страницы параметрами `page` (с 1) и `pageSize`. В ответе —
+строки страницы и счётчики:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Список | Размер страницы по умолчанию (максимум) | Порядок | Другие параметры |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Сначала старые | |
+| `GET /webhooks` | 25 (100) | Сначала старые | `meta.events` перечисляет события, на которые можно подписать вебхук |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Сначала новые | |
+| `GET /releases` | 25 (100) | Сначала новые | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | По источнику | `search` ищет в источнике или в назначении |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | По названию | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Сначала новые | |
+| `GET /deploy/targets` | 25 (100) | Сначала старые | |
+| `GET /deploy/deployments` | 25 (100) | Сначала новые | `targetId`; `limit` — устаревший псевдоним `pageSize` |
+| `GET /end-users` | 25 (100) | Сначала новые | `search` ищет в имени пользователя или в email |
+| `GET /audit-logs` | 50 (200) | Сначала новые | См. [Журналы аудита](/ru/guides/content/audit-logs/) |
+
+Слишком большой `pageSize` снижается до максимума. Чтобы прочитать список целиком,
+запрашивайте страницы, пока `page` не достигнет `pageCount`:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Маршруты контента разбиваются на страницы так же, как REST API, параметрами
+`pagination[page]` и `pagination[pageSize]`.
+
 ## Группы маршрутов
 
 Пути указаны относительно `/admin/api`. Роутеры находятся в

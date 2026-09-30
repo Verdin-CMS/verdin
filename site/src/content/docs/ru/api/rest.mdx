@@ -306,7 +306,7 @@ GET /api/articles?fields=title,slug
 
 | Форма | Что подгружает |
 | --- | --- |
-| `populate=*` | Все связи, медиаполя, компоненты и динамические зоны на один уровень вглубь |
+| `populate=*` | Все связи, медиаполя, компоненты и динамические зоны на один уровень вглубь, а на локализованных типах и `localizations` |
 | `populate=category,tags` или `populate[0]=category&populate[1]=tags` | Указанные поля |
 | `populate[category]=true` | Указанное поле (`false` его исключает) |
 | `populate[category][fields][0]=name` | Поле с параметрами |
@@ -355,6 +355,16 @@ GET /api/articles?populate[category][fields][0]=name
 `locale=fr` читает и записывает французскую версию локализованных типов. Без параметра
 запросы используют локаль по умолчанию. Неверный или неизвестный код даёт `400`. Типы без
 локализации игнорируют этот параметр. См. [Интернационализация](/ru/concepts/internationalization/).
+
+На локализованных типах `populate=localizations` добавляет остальные языковые версии
+документа в том же статусе, каждую со своим `locale`. Он принимает параметры подгружаемой
+связи (`fields`, `filters`, `sort`, `populate`, `count`) и включается в `populate=*`. У
+нелокализованных типов `localizations` нет.
+
+`GET /api/i18n/locales` возвращает локали простым массивом в формате Strapi (`id`,
+`documentId`, `name`, `code`, `isDefault`, `createdAt`, `updatedAt`, `publishedAt`,
+`locale`). Нужно право `find` на `plugin::i18n.locale`. См.
+[Локализация контента](/ru/guides/content/localizing-content/#список-локалей).
 
 ## Поиск
 

@@ -8,6 +8,7 @@ sidebar:
 На этой странице проект Verdin запускается в Kubernetes. Основная конфигурация не хранит
 состояния: PostgreSQL (или MySQL/MariaDB) вне подов, медиа в S3-совместимом хранилище и
 столько реплик, сколько нужно. Ниже описана конфигурация с одной репликой и томом для SQLite.
+[Helm-чарт](/ru/deploy/helm/) упаковывает эти манифесты со значениями для каждой настройки.
 
 Манифесты используют стабильные API (`apps/v1`, `v1`) и проверены по схемам Kubernetes с
 помощью `kubeconform -strict` 2026-09-29, но на реальном кластере не запускались. Замените
@@ -38,7 +39,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -158,9 +162,11 @@ spec:
   смиритесь с тем, что задания выполняются на каждой реплике. Вебхуки, запланированные релизы
   и ежедневная сводка забираются через базу данных и выполняются один раз. См.
   [Запуск нескольких экземпляров](/ru/deploy/scaling/).
-- **Реальное время.** Потоки событий (`/api/_events`) остаются на том поде, к которому
-  подключились. Если вы используете [реальное время](/ru/guides/frontend/realtime/),
-  включите привязку сессий (session affinity) на Ingress.
+- **Реальное время, присутствие, кеши и поиск.** `[cluster].bus = "database"` доставляет
+  каждому поду события остальных (см. [общую шину событий](/ru/deploy/scaling/#общая-шина-событий)).
+  Без неё потоки событий (`/api/_events`) остаются на том поде, к которому подключились:
+  если вы используете [реальное время](/ru/guides/frontend/realtime/), включите привязку
+  сессий (session affinity) на Ingress.
 
 ## Одна реплика с SQLite
 

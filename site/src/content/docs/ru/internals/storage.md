@@ -127,7 +127,7 @@ INDEX  (target_document_id)
 | Администраторы | `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (refresh-токены), `vd_admin_tokens` (ссылки приглашения и сброса), `vd_admin_two_factor`, `vd_admin_passkeys`, `vd_spent_challenges` |
 | Доступ к content API | `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` |
 | Конечные пользователи | `vd_users`, `vd_user_roles`, `vd_user_role_permissions`, `vd_end_user_sessions` |
-| Экземпляр | `vd_settings` (переключатели функций, раскладки представлений редактирования, разовые маркеры обновлений), `vd_locales` |
+| Экземпляр | `vd_settings` (переключатели функций, раскладки представлений редактирования, разовые маркеры обновлений), `vd_locales`, `vd_cluster_events` (общая шина событий, см. [Несколько экземпляров](/ru/deploy/scaling/)) |
 | Медиа | `vd_files`, `vd_folders` |
 | Работа с контентом | `vd_history_versions`, `vd_releases`, `vd_release_actions`, `vd_workflows`, `vd_workflow_stages`, `vd_document_stages` |
 | Совместная работа | `vd_comments`, `vd_tasks`, `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` |

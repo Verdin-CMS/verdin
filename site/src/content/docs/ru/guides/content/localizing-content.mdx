@@ -167,7 +167,66 @@ const { data } = await verdin.collection('articles').find({ locale: 'fr' });
   общие для всех локалей.
 - Полезная нагрузка вебхуков и версии истории записывают локаль.
 
-В отличие от Strapi, у content API нет маршрута `/api/i18n/locales`. Локали перечисляются в
-admin API по адресу `GET /admin/api/i18n/locales` и управляются через `POST`,
+### Другие языковые версии
+
+Подгрузите `localizations`, чтобы получить вместе с документом его остальные языковые версии,
+как в Strapi v5. Поле возвращается только при подгрузке, через `populate=localizations` или
+`populate=*`:
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- Версии имеют тот же статус, что и документ: по умолчанию опубликованные, черновики — с
+  `status=draft`. Локаль, у которой есть только черновик, в чтение опубликованного не попадает.
+- `localizations` принимает параметры подгружаемой связи: `fields`, `filters`, `sort`,
+  `populate` и `count`. Например, `populate[localizations][fields][0]=title`. Каждая версия
+  всегда содержит `locale`, а её собственные связи читаются в её локали.
+- В GraphQL у локализованных типов есть поле `localizations` с `filters` и `sort`.
+- У нелокализованных типов `localizations` нет, и попытка подгрузить его даёт `400`.
+- Admin API `localizations` не возвращает.
+
+### Список локалей
+
+`GET /api/i18n/locales` возвращает локали в формате Strapi, простым массивом (без обёртки
+`data`):
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+Как и `listLocales` в Strapi, маршрут закрыт для публики, пока вы его не разрешите. Выдайте
+право `find` на строку **Локали** (`plugin::i18n.locale`) в **Настройки → Публичный доступ**,
+роли конечных пользователей или собственному API-токену. Токены с полным доступом и только
+для чтения уже могут его читать. `documentId` выводится из кода локали, поэтому остаётся
+одним и тем же после перезапусков и экспортов. Импорт из Strapi переносит и разрешение
+`listLocales`. Типизированный клиент читает список через `verdin.locales()`.
+
+Локалями управляет admin API: список — `GET /admin/api/i18n/locales`, изменения — `POST`,
 `PUT /admin/api/i18n/locales/{code}` и `DELETE /admin/api/i18n/locales/{code}`
 (`locales.manage`).

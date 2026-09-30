@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 Конфигурация многослойная: **встроенные значения по умолчанию ← `verdin.toml` ← окружение**.
@@ -239,8 +240,22 @@ provider = { name = "s3", bucket = "media", region = "auto",
 
 | Ключ | По умолчанию | Описание |
 | --- | --- | --- |
-| `enabled` | `false` | Отдавать метрики Prometheus на `/_metrics`: HTTP-запросы по областям (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), методу и классу статуса с гистограммами задержки, ожидающие доставки вебхуков, открытые потоки реального времени и время работы. |
+| `enabled` | `false` | Отдавать метрики Prometheus на `/_metrics`: HTTP-запросы по областям (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), методу и классу статуса с гистограммами задержки, ожидающие доставки вебхуков, открытые потоки реального времени, трафик шины событий и время работы. |
 | `token` | не задан | Сбор метрик требует `Authorization: Bearer <token>`. `VERDIN_METRICS_TOKEN` имеет приоритет. Без токена метрики может читать любой, кто достучится до порта. |
+
+## `[telemetry]`
+
+Трассы и отчёты об ошибках; оба выключены по умолчанию и используются только в `verdin start`
+и `verdin dev` (см. [Мониторинг](/ru/deploy/monitoring/#трассы-opentelemetry)).
+
+| Ключ | По умолчанию | Описание |
+| --- | --- | --- |
+| `enabled` | `false` | Экспортировать трассы OpenTelemetry HTTP-запросов и их запросов к базе данных по OTLP/HTTP (protobuf). `OTEL_SDK_DISABLED=true` выключает экспорт. |
+| `endpoint` | не задан (`http://localhost:4318`) | Базовый URL коллектора; к нему добавляется `/v1/traces`. `OTEL_EXPORTER_OTLP_ENDPOINT` (базовый URL) и `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (полный URL) имеют приоритет. |
+| `service_name` | `"verdin"` | `service.name` трасс. `OTEL_SERVICE_NAME` имеет приоритет. |
+| `sample_ratio` | `1.0` | Доля сохраняемых трасс, от `0.0` до `1.0`. Запрос с заголовком `traceparent` следует решению вызывающей стороны. |
+| `sentry_dsn` | не задан | Отправлять паники и ответы 5xx в Sentry. `SENTRY_DSN` имеет приоритет. |
+| `sentry_environment` | не задан | Окружение Sentry. `SENTRY_ENVIRONMENT` имеет приоритет; если не задано, `production` в `verdin start` и `development` в `verdin dev`. |
 
 ## `[ai]`
 
@@ -287,8 +302,26 @@ API-токен читается из `VERDIN_CDN_TOKEN` (отправляетс�
 | `dir` | `"data/search"` | Каталог индекса относительно проекта. Если его удалить, индекс перестроится при следующем запуске. |
 | `memory_mb` | `50` | Бюджет памяти на индексирование. |
 
-Индекс хранится на диске экземпляра и отслеживает записи этого экземпляра: при нескольких
-экземплярах держите поиск на одном (или перестраивайте индекс после деплоя).
+Индекс хранится на диске экземпляра. При нескольких экземплярах включите
+[шину событий](#cluster), чтобы каждый индекс следовал за записями всех экземпляров.
+
+## `[cluster]`
+
+Общая шина событий для нескольких экземпляров одного проекта (см.
+[Запуск нескольких экземпляров](/ru/deploy/scaling/#общая-шина-событий)).
+
+| Ключ | По умолчанию | Описание |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`: события реального времени, присутствие, сброс кеша и обновления поиска остаются в каждом экземпляре. `database`: они доходят до каждого экземпляра через базу данных проекта (`LISTEN/NOTIFY` в PostgreSQL, опрос в MySQL, MariaDB и SQLite). |
+| `poll_interval_ms` | `1000` | Как часто MySQL, MariaDB и SQLite читают события других экземпляров. PostgreSQL просыпается по `NOTIFY` и использует этот темп, только пока не может слушать. |
+| `instance_id` | не задан (случайный при каждом запуске) | Имя этого экземпляра в шине и в логах. |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+Задайте его на каждом экземпляре или через `VERDIN_CLUSTER__BUS=database`.
 
 ## Переменные окружения
 
@@ -309,5 +342,9 @@ API-токен читается из `VERDIN_CDN_TOKEN` (отправляетс�
 | `VERDIN_CDN_TOKEN` | API-токен провайдера `[cdn]`. |
 | `VERDIN_IMAGE_SECRET` | Подписывает URL преобразований изображений (см. [`[upload.transforms]`](#uploadtransforms)). |
 | `VERDIN_METRICS_TOKEN` | Bearer-токен для сбора `/_metrics`, когда задано `[metrics].enabled`; имеет приоритет над `[metrics].token`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Коллектор для трасс [`[telemetry]`](#telemetry); имеют приоритет над `[telemetry].endpoint`. Остальные стандартные переменные `OTEL_EXPORTER_OTLP_*` (заголовки, тайм-аут, сжатие) тоже действуют. |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | Ресурс экспортируемых трасс; `OTEL_SERVICE_NAME` имеет приоритет над `[telemetry].service_name`. |
+| `OTEL_SDK_DISABLED` | `true` выключает экспорт трасс, даже когда `[telemetry].enabled`. |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT` | Отчёты об ошибках в Sentry; имеют приоритет над `[telemetry].sentry_dsn` и `sentry_environment`. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Учётные данные провайдера загрузок S3. |
 | `RUST_LOG` | Фильтр логов; имеет приоритет над `[log].level`. |
