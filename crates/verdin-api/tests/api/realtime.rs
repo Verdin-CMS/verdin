@@ -24,10 +24,10 @@ fn schema() -> Schema {
 }
 
 /// An open SSE stream; `next` returns the next event's `(name, data)`.
-struct Stream(Body);
+pub(crate) struct Stream(Body);
 
 impl Stream {
-    async fn open(app: &App, uri: &str, bearer: Option<&str>) -> (StatusCode, Stream) {
+    pub(crate) async fn open(app: &App, uri: &str, bearer: Option<&str>) -> (StatusCode, Stream) {
         let mut request = Request::get(uri);
         if let Some(bearer) = bearer {
             request = request.header("authorization", format!("Bearer {bearer}"));
@@ -37,7 +37,7 @@ impl Stream {
         (response.status(), Stream(response.into_body()))
     }
 
-    async fn next(&mut self) -> Option<(String, Value)> {
+    pub(crate) async fn next(&mut self) -> Option<(String, Value)> {
         let mut text = String::new();
         loop {
             let frame = tokio::time::timeout(Duration::from_millis(500), self.0.frame())

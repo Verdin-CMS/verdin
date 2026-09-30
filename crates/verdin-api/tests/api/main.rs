@@ -8,6 +8,7 @@ mod admin;
 mod ai;
 mod audit;
 mod clone;
+mod cluster;
 mod comments;
 mod components;
 mod conditions;

@@ -11,6 +11,7 @@ pub fn base_url() -> String {
 /// A database of its own for one test: a temp file on SQLite, a fresh database elsewhere.
 pub struct TestDb {
     pub db: Database,
+    url: String,
     admin: Option<(Database, String)>,
     _dir: Option<tempfile::TempDir>,
 }
@@ -25,7 +26,7 @@ impl TestDb {
             let dir = tempfile::tempdir().unwrap();
             let url = format!("sqlite://{}", dir.path().join("test.db").display());
             let db = Database::connect(&url, &options).await.unwrap();
-            return Self { db, admin: None, _dir: Some(dir) };
+            return Self { db, url, admin: None, _dir: Some(dir) };
         }
 
         let admin = Database::connect(&base, &options).await.unwrap();
@@ -42,7 +43,14 @@ impl TestDb {
         let mut url = url::Url::parse(&base).unwrap();
         url.set_path(&format!("/{name}"));
         let db = Database::connect(url.as_str(), &options).await.unwrap();
-        Self { db, admin: Some((admin, name)), _dir: None }
+        Self { db, url: url.into(), admin: Some((admin, name)), _dir: None }
+    }
+
+    /// A pool of its own on the same database, as a second instance of the project opens
+    /// it. The original owns the database: drop it last.
+    pub async fn connect_again(&self) -> Self {
+        let db = Database::connect(&self.url, &ConnectOptions::default()).await.unwrap();
+        Self { db, url: self.url.clone(), admin: None, _dir: None }
     }
 
     pub fn flavor(&self) -> Flavor {

@@ -57,6 +57,17 @@ pub struct App {
     pub review: verdin_api::review::Review,
     pub realtime: verdin_api::realtime::Realtime,
     pub search: Option<verdin_search::Search>,
+    /// The shared event bus's tasks ([`App::pair`]).
+    bus: Option<verdin_api::cluster::BusTasks>,
+}
+
+/// Whether an app shares events with others through the database bus.
+enum Bus {
+    None,
+    /// The first instance on a new database.
+    First,
+    /// Another instance on the first one's database.
+    Peer(TestDb),
 }
 
 /// Who a request authenticates as.
@@ -106,8 +117,17 @@ impl App {
 
     /// Like [`App::with_users`], with OAuth client secrets `(provider, secret)`.
     pub async fn build(schema: Schema, settings: Value, oauth_secrets: &[(&str, &str)]) -> Self {
-        Self::build_with(schema, settings, oauth_secrets, Default::default(), None, None, None)
-            .await
+        Self::build_with(
+            schema,
+            settings,
+            oauth_secrets,
+            Default::default(),
+            None,
+            None,
+            None,
+            Bus::None,
+        )
+        .await
     }
 
     /// With the plugins installed in `dir` (all disabled until switched on).
@@ -120,13 +140,58 @@ impl App {
             Some(dir),
             None,
             None,
+            Bus::None,
         )
         .await
     }
 
     /// With rate limits and the anonymous reads cache.
     pub async fn with_traffic(schema: Schema, traffic: verdin_api::cache::TrafficConfig) -> Self {
-        Self::build_with(schema, serde_json::json!({}), &[], traffic, None, None, None).await
+        Self::build_with(schema, serde_json::json!({}), &[], traffic, None, None, None, Bus::None)
+            .await
+    }
+
+    /// Two instances of one project on the same database (each with its own pool), sharing
+    /// events through the database bus, with the anonymous reads cache.
+    pub async fn pair(schema: Schema) -> (Self, Self) {
+        Self::pair_with(schema, None).await
+    }
+
+    /// Like [`App::pair`], with a search index each (in `dirs`).
+    pub async fn pair_with_search(
+        schema: Schema,
+        dirs: (&std::path::Path, &std::path::Path),
+    ) -> (Self, Self) {
+        Self::pair_with(schema, Some(dirs)).await
+    }
+
+    async fn pair_with(
+        schema: Schema,
+        search: Option<(&std::path::Path, &std::path::Path)>,
+    ) -> (Self, Self) {
+        let traffic = verdin_api::cache::TrafficConfig {
+            cache_ttl: std::time::Duration::from_secs(60),
+            cache_entries: 100,
+            ..Default::default()
+        };
+        let json = serde_json::json!({});
+        let (first_dir, second_dir) = search.unzip();
+        let first = Self::build_with(
+            schema.clone(),
+            json.clone(),
+            &[],
+            traffic,
+            None,
+            first_dir,
+            None,
+            Bus::First,
+        )
+        .await;
+        let test = first.test.connect_again().await;
+        let second =
+            Self::build_with(schema, json, &[], traffic, None, second_dir, None, Bus::Peer(test))
+                .await;
+        (first, second)
     }
 
     /// With the full-text search index in `dir` (built before this returns).
@@ -139,6 +204,7 @@ impl App {
             None,
             Some(dir),
             None,
+            Bus::None,
         )
         .await
     }
@@ -152,10 +218,20 @@ impl App {
             max_tokens: None,
         };
         let ai = verdin_api::ai::Ai::new(&config, None).unwrap();
-        Self::build_with(schema, serde_json::json!({}), &[], Default::default(), None, None, ai)
-            .await
+        Self::build_with(
+            schema,
+            serde_json::json!({}),
+            &[],
+            Default::default(),
+            None,
+            None,
+            ai,
+            Bus::None,
+        )
+        .await
     }
 
+    #[allow(clippy::too_many_arguments)] // one switch per harness variant
     async fn build_with(
         schema: Schema,
         settings: Value,
@@ -164,10 +240,15 @@ impl App {
         plugins_dir: Option<&std::path::Path>,
         search_dir: Option<&std::path::Path>,
         ai: Option<verdin_api::ai::Ai>,
+        bus: Bus,
     ) -> Self {
         let cache =
             verdin_api::cache::ResponseCache::new(traffic.cache_ttl, traffic.cache_entries.max(1));
-        let test = TestDb::new().await;
+        let (test, shared, peer) = match bus {
+            Bus::None => (TestDb::new().await, false, false),
+            Bus::First => (TestDb::new().await, true, false),
+            Bus::Peer(test) => (test, true, true),
+        };
         let audit = verdin_api::audit::Audit::new(
             test.db.clone(),
             std::time::Duration::from_secs(90 * 86_400),
@@ -185,7 +266,8 @@ impl App {
         auth.bootstrap().await.unwrap();
         let (_, token) = auth
             .create_api_token(NewApiToken {
-                name: "tests".into(),
+                // A peer's token beside the first instance's.
+                name: if peer { "peer" } else { "tests" }.into(),
                 description: None,
                 kind: TokenKind::FullAccess,
                 expires_in_days: None,
@@ -212,7 +294,19 @@ impl App {
                 ..Default::default()
             },
         );
-        let realtime = verdin_api::realtime::Realtime::new();
+        let (bus, bus_runner) = if shared {
+            let backend = verdin_api::cluster::DatabaseBus::new(
+                test.db.clone(),
+                std::time::Duration::from_millis(20),
+            );
+            let instance = verdin_auth::crypto::random_hex::<8>();
+            let (bus, runner) =
+                verdin_api::cluster::EventBus::new(instance, std::sync::Arc::new(backend));
+            (bus, Some(runner))
+        } else {
+            (verdin_api::cluster::EventBus::local(), None)
+        };
+        let realtime = verdin_api::realtime::Realtime::new().with_bus(bus.clone());
         let upload = verdin_upload::UploadService::new(
             test.db.clone(),
             verdin_upload::Storage::with_store(store, "local", "/uploads"),
@@ -221,7 +315,8 @@ impl App {
         .with_listener(std::sync::Arc::new(webhooks.clone()))
         .with_listener(std::sync::Arc::new(cache.clone()))
         .with_listener(std::sync::Arc::new(audit.clone()))
-        .with_listener(realtime.file_listener());
+        .with_listener(realtime.file_listener())
+        .with_listener(bus.file_listener());
         // 10 versions per document, to exercise pruning.
         let history = verdin_api::History::new(test.db.clone(), 10);
         let releases = verdin_api::releases::Releases::new(test.db.clone());
@@ -236,6 +331,7 @@ impl App {
             audit.listener(),
             realtime.listener(),
             comments.listener(),
+            bus.listener(),
         ];
         realtime.set_draft_types(
             registry
@@ -264,6 +360,25 @@ impl App {
             );
             search.wait_ready().await;
         }
+        let bus = bus_runner.map(|runner| {
+            bus.set_service(
+                verdin_content::DocumentService::new(
+                    test.db.clone(),
+                    registry.clone(),
+                    Default::default(),
+                )
+                .with_locales(locales.clone()),
+            );
+            // Streams last: subscribers who hear of a change read fresh answers.
+            let mut documents = vec![cache.listener()];
+            documents.extend(search.as_ref().map(verdin_search::Search::listener));
+            documents.push(realtime.listener());
+            runner.spawn(verdin_api::cluster::Consumers {
+                realtime: Some(realtime.clone()),
+                documents,
+                files: vec![std::sync::Arc::new(cache.clone()), realtime.file_listener()],
+            })
+        });
         let admin = AdminConfig {
             secure_cookies: false,
             auth_rate_limit: 1000,
@@ -353,6 +468,7 @@ impl App {
             review,
             realtime,
             search,
+            bus,
         }
     }
 
@@ -467,6 +583,9 @@ impl App {
     }
 
     pub async fn done(self) {
+        if let Some(bus) = self.bus {
+            bus.stop().await;
+        }
         self.test.drop().await;
     }
 }
