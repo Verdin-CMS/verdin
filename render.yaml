@@ -1,0 +1,36 @@
+# Render Blueprint behind the "Deploy to Render" button: the blog example
+# (deploy/one-click/Dockerfile) with a Render PostgreSQL database and uploads on a disk.
+# Guide: https://verdin-cms.github.io/verdin/deploy/one-click/
+services:
+  - type: web
+    name: verdin
+    runtime: docker
+    dockerfilePath: ./deploy/one-click/Dockerfile
+    dockerContext: .
+    # Disks need a paid instance type.
+    plan: starter
+    healthCheckPath: /_ready
+    disk:
+      name: verdin-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: VERDIN_DATABASE_URL
+        fromDatabase:
+          name: verdin-db
+          property: connectionString
+      # Generated once when the Blueprint is created, then kept. Never regenerate the
+      # pepper: every API token would stop working.
+      - key: VERDIN_ADMIN_JWT_SECRET
+        generateValue: true
+      - key: VERDIN_TOKEN_PEPPER
+        generateValue: true
+      # The address browsers use, e.g. https://verdin-xxxx.onrender.com or your domain.
+      - key: VERDIN_SERVER__PUBLIC_URL
+        sync: false
+
+databases:
+  - name: verdin-db
+    databaseName: verdin
+    user: verdin
+    postgresMajorVersion: "17"

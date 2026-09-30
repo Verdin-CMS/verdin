@@ -1,0 +1,33 @@
+# One Fly Machine with SQLite and uploads on a volume. From the repository root:
+#   fly launch --no-deploy --copy-config --config deploy/one-click/fly.toml --ha=false
+#   docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets | fly secrets import --config deploy/one-click/fly.toml
+#   fly deploy --config deploy/one-click/fly.toml --dockerfile deploy/one-click/Dockerfile .
+# Guide: https://verdin-cms.github.io/verdin/deploy/one-click/
+app = "my-verdin"                # yours: a unique app name
+primary_region = "fra"           # yours
+
+[env]
+  VERDIN_DATABASE_URL = "sqlite:///data/verdin.db"
+
+[http_service]
+  internal_port = 1337
+  force_https = true
+  # Webhooks, scheduled releases and plugin jobs run inside the server: keep it running.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/_ready"
+
+[mounts]
+  source = "verdin_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[[vm]]
+  memory = "512mb"

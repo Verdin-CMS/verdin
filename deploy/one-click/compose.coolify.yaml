@@ -1,0 +1,43 @@
+# Coolify: New resource → Docker Compose (from this repository), compose file
+# deploy/one-click/compose.coolify.yaml. Coolify fills the SERVICE_* variables: a domain
+# routed to port 1337, the database password and the two secrets (generated once).
+# Guide: https://verdin-cms.github.io/verdin/deploy/one-click/#coolify
+services:
+  verdin:
+    build:
+      context: ../..
+      dockerfile: deploy/one-click/Dockerfile
+    environment:
+      - SERVICE_FQDN_VERDIN_1337
+      - VERDIN_SERVER__PUBLIC_URL=${SERVICE_FQDN_VERDIN}
+      - VERDIN_ADMIN_JWT_SECRET=${SERVICE_BASE64_64_JWT}
+      - VERDIN_TOKEN_PEPPER=${SERVICE_BASE64_64_PEPPER}
+      - VERDIN_DATABASE_URL=postgres://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@db:5432/verdin
+    volumes:
+      - verdin-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/verdin", "healthcheck"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 30s
+
+  db:
+    image: postgres:17
+    environment:
+      - POSTGRES_USER=${SERVICE_USER_POSTGRES}
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - POSTGRES_DB=verdin
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d verdin"]
+      interval: 5s
+      retries: 20
+
+volumes:
+  verdin-data:
+  db-data:

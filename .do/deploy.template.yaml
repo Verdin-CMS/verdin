@@ -1,0 +1,41 @@
+# DigitalOcean App Platform spec behind the "Deploy to DigitalOcean" button: the blog
+# example (deploy/one-click/Dockerfile) with a development PostgreSQL database.
+# App Platform has no persistent disks: set the VERDIN_UPLOAD__PROVIDER__* variables for
+# a Spaces bucket, or uploaded files are lost on every deploy.
+# Guide: https://verdin-cms.github.io/verdin/deploy/one-click/
+spec:
+  name: verdin
+  services:
+    - name: verdin
+      git:
+        repo_clone_url: https://github.com/verdin-cms/verdin.git
+        branch: main
+      source_dir: /
+      dockerfile_path: deploy/one-click/Dockerfile
+      http_port: 1337
+      instance_count: 1
+      instance_size_slug: apps-s-1vcpu-1gb
+      health_check:
+        http_path: /_ready
+        initial_delay_seconds: 20
+      envs:
+        - key: VERDIN_DATABASE_URL
+          scope: RUN_TIME
+          value: ${db.DATABASE_URL}
+        - key: VERDIN_SERVER__PUBLIC_URL
+          scope: RUN_TIME
+          value: ${APP_URL}
+        # Paste the two values printed by `verdin secrets` (or
+        # `docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets`).
+        - key: VERDIN_ADMIN_JWT_SECRET
+          scope: RUN_TIME
+          type: SECRET
+          value: ""
+        - key: VERDIN_TOKEN_PEPPER
+          scope: RUN_TIME
+          type: SECRET
+          value: ""
+  databases:
+    - name: db
+      engine: PG
+      production: false

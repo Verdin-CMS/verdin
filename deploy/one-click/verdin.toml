@@ -1,0 +1,21 @@
+# Configuration of the one-click deploys. Override any key with VERDIN_<SECTION>__<KEY>,
+# e.g. VERDIN_SERVER__PUBLIC_URL=https://cms.example.com. Secrets and the database URL
+# come from the platform's environment.
+
+[server]
+host = "0.0.0.0"
+port = 1337
+
+[schema]
+path = "/app/schema"
+
+[log]
+format = "json"
+
+# Media: local files in /data/uploads (through /app/public/uploads) unless the
+# VERDIN_UPLOAD__PROVIDER__* variables select S3-compatible storage.
+[upload.transforms]
+cache_dir = "/data/.cache/transforms"
+
+[search]
+dir = "/data/search"
