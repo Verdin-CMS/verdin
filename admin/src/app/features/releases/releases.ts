@@ -22,6 +22,7 @@ import { Features } from '../../core/features';
 import { I18n } from '../../core/i18n/i18n';
 import { Release, Releases, isEditable, sortReleases } from '../../core/releases';
 import { PageHeader } from '../../shared/components/page-header';
+import { Pagination } from '../../shared/components/pagination';
 import { ReleaseDialog, ReleaseStatusBadge } from './release-parts';
 
 /** Releases: entries published or unpublished together, now or at a scheduled date. */
@@ -37,6 +38,7 @@ import { ReleaseDialog, ReleaseStatusBadge } from './release-parts';
     HlmSkeletonImports,
     HlmTableImports,
     PageHeader,
+    Pagination,
     ReleaseDialog,
     ReleaseStatusBadge,
   ],
@@ -184,6 +186,15 @@ import { ReleaseDialog, ReleaseStatusBadge } from './release-parts';
               </tbody>
             </table>
           </div>
+          @if (pageCount() > 1) {
+            <vd-pagination
+              class="bg-muted/30 border-t px-4 py-2"
+              [page]="page()"
+              [pageCount]="pageCount()"
+              [disabled]="loading()"
+              (pageChange)="load($event)"
+            />
+          }
         </div>
       }
     </div>
@@ -204,7 +215,11 @@ export class ReleasesPage implements OnInit {
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
+  /** The page shown, newest first (pending ones first within it). */
   protected readonly releases = signal<Release[] | null>(null);
+  protected readonly page = signal(1);
+  protected readonly pageCount = signal(1);
+  protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly dialogOpen = signal(false);
   protected readonly editing = signal<Release | null>(null);
@@ -220,15 +235,24 @@ export class ReleasesPage implements OnInit {
     if (this.features.enabled('releases')) await this.load();
   }
 
-  protected async load(): Promise<void> {
+  protected async load(page = this.page()): Promise<void> {
+    this.loading.set(true);
     try {
-      this.releases.set(sortReleases(await this.service.list()));
+      const response = await this.service.list(page);
+      const pageCount = Math.max(1, response.meta.pagination?.pageCount ?? 1);
+      // The last page emptied (a delete): show the one before.
+      if (!response.data.length && page > 1) return await this.load(Math.min(page - 1, pageCount));
+      this.releases.set(sortReleases(response.data));
+      this.page.set(page);
+      this.pageCount.set(pageCount);
       this.error.set(null);
     } catch (error) {
       const failure = ApiFailure.from(error);
       // The feature was switched off meanwhile.
       if (failure.status === 404) void this.features.load().catch(() => undefined);
       this.error.set(failure.message);
+    } finally {
+      this.loading.set(false);
     }
   }
 

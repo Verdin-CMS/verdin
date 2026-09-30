@@ -722,8 +722,9 @@ export class RolesPage {
     });
   }
 
+  /** Every role (the sidebar selects among them), a page of 100 at a time. */
   private fetch(): Promise<Role[]> {
-    return this.api.get<Role[]>('/roles');
+    return this.api.listAll<Role>('/roles');
   }
 
   /**

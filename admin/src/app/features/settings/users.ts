@@ -3,7 +3,6 @@ import {
   Component,
   computed,
   inject,
-  linkedSignal,
   resource,
   signal,
 } from '@angular/core';
@@ -30,8 +29,10 @@ import { I18n } from '../../core/i18n/i18n';
 import { loadErrorOf } from '../../core/loading';
 import { TwoFactor } from '../../core/two-factor';
 import { AdminUser, Role } from '../../core/types';
+import { PAGE_SIZE, pagedList } from '../../core/paging';
 import { LoadError } from '../../shared/components/load-error';
 import { PageHeader } from '../../shared/components/page-header';
+import { Pagination } from '../../shared/components/pagination';
 
 interface Draft {
   id: number | null;
@@ -64,6 +65,7 @@ interface Draft {
     HlmSkeletonImports,
     LoadError,
     PageHeader,
+    Pagination,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -82,8 +84,8 @@ interface Draft {
         </div>
       </vd-page-header>
       @if (loadError(); as message) {
-        <vd-load-error [message]="message" (retry)="data.reload()" />
-      } @else if (!data.hasValue()) {
+        <vd-load-error [message]="message" (retry)="retry()" />
+      } @else if (list.rows() === null) {
         <hlm-skeleton
           class="h-48 rounded-xl"
           role="status"
@@ -248,9 +250,19 @@ interface Draft {
               </tbody>
             </table>
           </div>
-          <div class="text-muted-foreground bg-muted/30 border-t px-4 py-2 text-xs">
-            {{ t('settings.users.count', { count: users().length }) }}
-          </div>
+          @if (list.pageCount() > 1) {
+            <vd-pagination
+              class="bg-muted/30 border-t px-4 py-2"
+              [(page)]="list.page"
+              [pageCount]="list.pageCount()"
+              [disabled]="list.loading()"
+              [summary]="t('settings.users.count', { count: list.total() })"
+            />
+          } @else {
+            <div class="text-muted-foreground bg-muted/30 border-t px-4 py-2 text-xs">
+              {{ t('settings.users.count', { count: list.total() }) }}
+            </div>
+          }
         </div>
       }
     </div>
@@ -474,23 +486,17 @@ export class UsersPage {
   protected readonly auth = inject(Auth);
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
-  /** The users and the roles they can be given, loaded together. */
-  protected readonly data = resource({
-    loader: async () => {
-      const [users, roles] = await Promise.all([
-        this.api.get<AdminUser[]>('/users'),
-        this.api.get<Role[]>('/roles'),
-      ]);
-      return { users, roles };
-    },
-  });
-  protected readonly loadError = loadErrorOf(this.data);
-  /** The loaded users, replaced by a fresh list after each change. */
-  protected readonly users = linkedSignal<AdminUser[]>(() =>
-    this.data.hasValue() ? this.data.value().users : [],
+  /** A page of users, reloaded after each change. */
+  protected readonly list = pagedList((page) =>
+    this.api.list<AdminUser>('/users', `page=${page}&pageSize=${PAGE_SIZE}`),
   );
+  protected readonly users = computed(() => this.list.rows() ?? []);
+  /** Every role, for the role picker. */
+  private readonly rolesList = resource({ loader: () => this.api.listAll<Role>('/roles') });
+  private readonly rolesError = loadErrorOf(this.rolesList);
+  protected readonly loadError = computed(() => this.list.error() ?? this.rolesError());
   protected readonly roles = computed<Role[]>(() =>
-    this.data.hasValue() ? this.data.value().roles : [],
+    this.rolesList.hasValue() ? this.rolesList.value() : [],
   );
   protected readonly draft = signal<Draft | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -501,6 +507,11 @@ export class UsersPage {
   protected readonly inviting = signal<number | null>(null);
   /** The user whose second factors are about to be reset (confirm dialog). */
   protected readonly resetting = signal<AdminUser | null>(null);
+
+  protected retry(): void {
+    this.list.reload();
+    if (this.rolesError()) this.rolesList.reload();
+  }
 
   protected edit(user: AdminUser | null): void {
     this.error.set(null);
@@ -543,7 +554,7 @@ export class UsersPage {
   protected async resetTwoFactor(user: AdminUser): Promise<void> {
     try {
       await this.twoFactor.reset(user.id);
-      this.users.set(await this.api.get<AdminUser[]>('/users'));
+      this.list.reload();
       toast.success(this.t('twoFactor.user.resetDone', { email: user.email }));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
@@ -607,7 +618,7 @@ export class UsersPage {
         if (invitation) this.invitation.set({ email: draft.email, invitation });
         else toast.success(this.t('settings.users.saved'));
       }
-      this.users.set(await this.api.get<AdminUser[]>('/users'));
+      this.list.reload();
       this.draft.set(null);
     } catch (error) {
       this.error.set(ApiFailure.from(error).message);
@@ -643,7 +654,7 @@ export class UsersPage {
     if (!confirm(this.t('settings.users.confirmDelete', { email: user.email }))) return;
     try {
       await this.api.delete(`/users/${user.id}`);
-      this.users.set(await this.api.get<AdminUser[]>('/users'));
+      this.list.removed();
       toast.success(this.t('settings.users.deleted'));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);

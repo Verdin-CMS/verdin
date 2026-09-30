@@ -101,6 +101,19 @@ export class Api {
     }
   }
 
+  /**
+   * Every row of a paged admin list (`?page=&pageSize=`), 100 at a time: for pickers and
+   * checks that need the whole list.
+   */
+  listAll<T>(path: string, query?: string): Promise<T[]> {
+    return collectPages((page) =>
+      this.list<T>(
+        path,
+        [query, `page=${page}&pageSize=${ALL_PAGE_SIZE}`].filter(Boolean).join('&'),
+      ),
+    );
+  }
+
   /** A POST whose answer keeps its `meta` (e.g. `{ data, meta: { leftOut } }`). */
   async postWithMeta<T, M>(
     path: string,
@@ -180,6 +193,23 @@ export class Api {
   delete(path: string, query?: string): Promise<void> {
     return this.request<void>('DELETE', path, undefined, query);
   }
+}
+
+/** The largest page the admin API serves. */
+export const ALL_PAGE_SIZE = 100;
+
+/** The rows of every page `load` gives, until the last one (at most `maxPages`). */
+export async function collectPages<T>(
+  load: (page: number) => Promise<ListResponse<T>>,
+  maxPages = 100,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const response = await load(page);
+    rows.push(...response.data);
+    if (!response.data.length || page >= (response.meta?.pagination?.pageCount ?? 1)) break;
+  }
+  return rows;
 }
 
 /** A downloaded file. */

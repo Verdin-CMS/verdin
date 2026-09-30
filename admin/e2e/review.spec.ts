@@ -81,7 +81,10 @@ test('a review workflow holds publishing until its stage', async ({ page }) => {
   await ensureStoryType(page);
   await setReview(page, true);
   const api = await admin(page);
-  const roles = (await (await api.get('/roles')).json()).data as { code: string; name: string }[];
+  const roles = (await (await api.get('/roles?pageSize=100')).json()).data as {
+    code: string;
+    name: string;
+  }[];
   const superAdmin = roles.find((role) => role.code === 'super-admin')!;
   const name = `Editorial ${Date.now()}`;
 

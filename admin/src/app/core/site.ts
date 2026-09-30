@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import { Api, ApiFailure, ListResponse } from './api';
+import { PAGE_SIZE } from './paging';
 import { Attributes } from './types';
 
 // ------------------------------------------------------------------ redirects
@@ -253,8 +254,16 @@ export class Site {
   private readonly api = inject(Api);
   private readonly http = inject(HttpClient);
 
-  redirects(): Promise<Redirect[]> {
-    return this.api.get<Redirect[]>('/site/redirects');
+  /** A page of redirects by source, those whose source or destination contains `search`. */
+  redirects(page: number, search = '', pageSize = PAGE_SIZE): Promise<ListResponse<Redirect>> {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (search.trim()) params.set('search', search.trim());
+    return this.api.list<Redirect>('/site/redirects', params.toString());
+  }
+
+  /** Every redirect (export, import and the duplicate and loop checks). */
+  allRedirects(): Promise<Redirect[]> {
+    return this.api.listAll<Redirect>('/site/redirects');
   }
 
   createRedirect(input: RedirectInput): Promise<Redirect> {
@@ -269,8 +278,8 @@ export class Site {
     return this.api.delete(`/site/redirects/${id}`);
   }
 
-  menus(): Promise<Menu[]> {
-    return this.api.get<Menu[]>('/site/menus');
+  menus(page: number, pageSize = PAGE_SIZE): Promise<ListResponse<Menu>> {
+    return this.api.list<Menu>('/site/menus', `page=${page}&pageSize=${pageSize}`);
   }
 
   menu(id: number): Promise<Menu> {
@@ -289,8 +298,8 @@ export class Site {
     return this.api.delete(`/site/menus/${id}`);
   }
 
-  forms(): Promise<Form[]> {
-    return this.api.get<Form[]>('/site/forms');
+  forms(page: number, pageSize = PAGE_SIZE): Promise<ListResponse<Form>> {
+    return this.api.list<Form>('/site/forms', `page=${page}&pageSize=${pageSize}`);
   }
 
   form(id: number): Promise<Form> {

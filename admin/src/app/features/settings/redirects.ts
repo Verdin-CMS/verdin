@@ -4,8 +4,7 @@ import {
   Component,
   computed,
   inject,
-  linkedSignal,
-  resource,
+  OnDestroy,
   signal,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
@@ -23,7 +22,7 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
-import { loadErrorOf } from '../../core/loading';
+import { pagedList } from '../../core/paging';
 import {
   REDIRECT_STATUSES,
   Redirect,
@@ -31,13 +30,13 @@ import {
   RedirectProblem,
   RedirectStatus,
   Site,
-  filterRedirects,
   redirectProblems,
   redirectsFromCsv,
   redirectsToCsv,
   saveBlob,
 } from '../../core/site';
 import { PageHeader } from '../../shared/components/page-header';
+import { Pagination } from '../../shared/components/pagination';
 import { SiteAccessNotice, siteAccess } from './site-access';
 
 /** The row being edited: `id` is `null` for the new row. */
@@ -77,6 +76,7 @@ const STATUS_LABELS: Record<RedirectStatus, MessageKey> = {
     HlmSpinnerImports,
     HlmTableImports,
     PageHeader,
+    Pagination,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -110,7 +110,7 @@ const STATUS_LABELS: Record<RedirectStatus, MessageKey> = {
             <button
               hlmBtn
               variant="outline"
-              [disabled]="!redirects()!.length"
+              [disabled]="!list.total() || exporting()"
               (click)="exportCsv()"
             >
               <ng-icon name="lucideDownload" /> {{ t('redirects.export') }}
@@ -144,11 +144,11 @@ const STATUS_LABELS: Record<RedirectStatus, MessageKey> = {
                 [attr.aria-label]="t('redirects.search')"
                 [placeholder]="t('redirects.search')"
                 [value]="search()"
-                (input)="search.set($any($event.target).value)"
+                (input)="setSearch($any($event.target).value)"
               />
             </div>
             <span class="text-muted-foreground ms-auto text-xs" aria-live="polite">{{
-              t('redirects.count', { count: visible().length })
+              t('redirects.count', { count: list.total() })
             }}</span>
           </div>
           <div hlmTableContainer>
@@ -259,9 +259,9 @@ const STATUS_LABELS: Record<RedirectStatus, MessageKey> = {
                               <ng-icon name="lucideSignpost" />
                             </div>
                             <h2 hlmEmptyTitle>
-                              {{ search() ? t('redirects.noMatches') : t('redirects.emptyTitle') }}
+                              {{ query() ? t('redirects.noMatches') : t('redirects.emptyTitle') }}
                             </h2>
-                            @if (!search()) {
+                            @if (!query()) {
                               <p hlmEmptyDescription>{{ t('redirects.emptyHint') }}</p>
                             }
                           </div>
@@ -273,6 +273,14 @@ const STATUS_LABELS: Record<RedirectStatus, MessageKey> = {
               </tbody>
             </table>
           </div>
+          @if (list.pageCount() > 1) {
+            <vd-pagination
+              class="bg-muted/30 border-t px-4 py-2"
+              [(page)]="list.page"
+              [pageCount]="list.pageCount()"
+              [disabled]="list.loading()"
+            />
+          }
         </div>
       }
     </div>
@@ -376,7 +384,7 @@ const STATUS_LABELS: Record<RedirectStatus, MessageKey> = {
     </ng-template>
   `,
 })
-export class RedirectsPage {
+export class RedirectsPage implements OnDestroy {
   private readonly site = inject(Site);
   private readonly config = inject(RUNTIME_CONFIG);
   protected readonly t = inject(I18n).t;
@@ -386,29 +394,31 @@ export class RedirectsPage {
   protected readonly statuses = REDIRECT_STATUSES;
   protected readonly statusLabels = STATUS_LABELS;
   protected readonly problemLabels = PROBLEM_LABELS;
-  /** The list loads once the feature is known to be on (idle until then). */
-  private readonly loaded = resource({
-    params: () => (this.access() === 'ok' ? true : undefined),
-    loader: () => this.site.redirects(),
-  });
-  protected readonly error = loadErrorOf(this.loaded);
-  /** The list being edited: the loaded one, then kept in step with each save locally. */
-  protected readonly redirects = linkedSignal<Redirect[] | null>(() =>
-    this.loaded.hasValue() ? this.loaded.value() : null,
-  );
+  /** The search box, and the search applied (debounced). */
   protected readonly search = signal('');
+  protected readonly query = signal('');
+  /** A page of redirects, searched on the server; loads once the feature is known to be on. */
+  protected readonly list = pagedList(
+    (page, query: string) => this.site.redirects(page, query),
+    () => (this.access() === 'ok' ? this.query() : undefined),
+  );
+  protected readonly error = this.list.error;
+  /** The rows shown (`null` until the first page arrives). */
+  protected readonly redirects = this.list.rows;
+  /** Every redirect, loaded when the editor opens, for the duplicate and loop checks. */
+  private readonly all = signal<Redirect[] | null>(null);
+  protected readonly exporting = signal(false);
+  private searchTimer: ReturnType<typeof setTimeout> | undefined;
   protected readonly draft = signal<RedirectDraft | null>(null);
   protected readonly showErrors = signal(false);
   protected readonly serverError = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly importing = signal(false);
 
-  protected readonly visible = computed(() =>
-    filterRedirects(this.redirects() ?? [], this.search()),
-  );
+  protected readonly visible = computed(() => this.redirects() ?? []);
   protected readonly problems = computed(() => {
     const draft = this.draft();
-    return draft ? redirectProblems(draft, this.redirects() ?? [], draft.id) : [];
+    return draft ? redirectProblems(draft, this.all() ?? this.visible(), draft.id) : [];
   });
   protected readonly sourceInvalid = computed(
     () => this.showErrors() && this.problems().some((p) => p === 'source' || p === 'duplicate'),
@@ -422,15 +432,37 @@ export class RedirectsPage {
     return (REDIRECT_STATUSES as readonly number[]).includes(code) ? (code as RedirectStatus) : 301;
   }
 
+  ngOnDestroy(): void {
+    clearTimeout(this.searchTimer);
+  }
+
+  protected setSearch(value: string): void {
+    this.search.set(value);
+    clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.applySearch(value.trim()), 250);
+  }
+
+  private applySearch(query: string): void {
+    clearTimeout(this.searchTimer);
+    this.list.page.set(1);
+    this.query.set(query);
+  }
+
   private open(draft: RedirectDraft): void {
     this.showErrors.set(false);
     this.serverError.set(null);
     this.draft.set(draft);
     setTimeout(() => document.getElementById('redirect-source')?.focus());
+    // The server checks too: without the whole list, the page's rows are checked.
+    this.site.allRedirects().then(
+      (all) => this.all.set(all),
+      () => this.all.set(null),
+    );
   }
 
   protected startNew(): void {
     this.search.set('');
+    if (this.query()) this.applySearch('');
     this.open({ id: null, source: '', destination: '', status: 301 });
   }
 
@@ -466,16 +498,16 @@ export class RedirectsPage {
     try {
       if (draft.id === null) {
         const created = await this.site.createRedirect(input);
-        this.redirects.update((list) => sortBySource([...(list ?? []), created]));
         toast.success(this.t('redirects.created', { source: created.source }));
       } else {
         const updated = await this.site.updateRedirect(draft.id, input);
         this.redirects.update((list) =>
-          sortBySource((list ?? []).map((item) => (item.id === updated.id ? updated : item))),
+          (list ?? []).map((item) => (item.id === updated.id ? updated : item)),
         );
         toast.success(this.t('redirects.saved', { source: updated.source }));
       }
       this.draft.set(null);
+      this.list.reload();
     } catch (error) {
       const failure = ApiFailure.from(error);
       this.serverError.set(
@@ -489,16 +521,24 @@ export class RedirectsPage {
   protected async remove(redirect: Redirect): Promise<void> {
     try {
       await this.site.deleteRedirect(redirect.id);
-      this.redirects.update((list) => (list ?? []).filter((item) => item.id !== redirect.id));
+      this.list.removed();
       toast.success(this.t('redirects.deleted', { source: redirect.source }));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
     }
   }
 
-  protected exportCsv(): void {
-    const csv = redirectsToCsv(this.redirects() ?? []);
-    saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), 'redirects.csv');
+  /** Every redirect as CSV, not only the page shown. */
+  protected async exportCsv(): Promise<void> {
+    this.exporting.set(true);
+    try {
+      const csv = redirectsToCsv(await this.site.allRedirects());
+      saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), 'redirects.csv');
+    } catch (error) {
+      toast.error(ApiFailure.from(error).message);
+    } finally {
+      this.exporting.set(false);
+    }
   }
 
   /** Creates the redirects of a CSV file, one by one; existing sources are updated. */
@@ -510,28 +550,27 @@ export class RedirectsPage {
     this.importing.set(true);
     try {
       const { redirects, invalid } = redirectsFromCsv(await file.text());
+      const bySource = new Map(
+        (await this.site.allRedirects()).map((item) => [item.source, item] as const),
+      );
       let created = 0;
       let updated = 0;
       const failed: string[] = [];
       for (const redirect of redirects) {
-        const existing = (this.redirects() ?? []).find((item) => item.source === redirect.source);
+        const existing = bySource.get(redirect.source);
         try {
           if (existing) {
-            const saved = await this.site.updateRedirect(existing.id, redirect);
-            this.redirects.update((list) =>
-              (list ?? []).map((item) => (item.id === saved.id ? saved : item)),
-            );
+            bySource.set(redirect.source, await this.site.updateRedirect(existing.id, redirect));
             updated++;
           } else {
-            const saved = await this.site.createRedirect(redirect);
-            this.redirects.update((list) => [...(list ?? []), saved]);
+            bySource.set(redirect.source, await this.site.createRedirect(redirect));
             created++;
           }
         } catch (error) {
           failed.push(`${redirect.source}: ${ApiFailure.from(error).message}`);
         }
       }
-      this.redirects.update((list) => sortBySource(list ?? []));
+      this.list.reload();
       const skipped = invalid.length + failed.length;
       const summary = this.t('redirects.imported', { created, updated, skipped });
       if (skipped) {
@@ -552,8 +591,4 @@ export class RedirectsPage {
       this.importing.set(false);
     }
   }
-}
-
-function sortBySource(list: Redirect[]): Redirect[] {
-  return [...list].sort((a, b) => a.source.localeCompare(b.source) || a.id - b.id);
 }

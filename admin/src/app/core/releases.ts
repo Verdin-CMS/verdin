@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 
-import { Api } from './api';
+import { Api, ListResponse } from './api';
+import { PAGE_SIZE } from './paging';
 
 export type ReleaseStatus = 'pending' | 'running' | 'done' | 'failed';
 export type ReleaseActionKind = 'publish' | 'unpublish';
@@ -110,8 +111,16 @@ export function hasEntry(
 export class Releases {
   private readonly api = inject(Api);
 
-  list(status?: ReleaseStatus): Promise<Release[]> {
-    return this.api.get<Release[]>('/releases', status ? `status=${status}` : undefined);
+  /** A page of releases, newest first, optionally with one status. */
+  list(page: number, status?: ReleaseStatus, pageSize = PAGE_SIZE): Promise<ListResponse<Release>> {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (status) params.set('status', status);
+    return this.api.list<Release>('/releases', params.toString());
+  }
+
+  /** Every release with `status`. */
+  all(status: ReleaseStatus): Promise<Release[]> {
+    return this.api.listAll<Release>('/releases', `status=${status}`);
   }
 
   get(id: number | string): Promise<Release> {

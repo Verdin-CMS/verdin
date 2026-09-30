@@ -532,7 +532,7 @@ export class SsoSettingsDialog {
   /** Listed again each time the dialog opens (or its feature changes while open). */
   private readonly roleList = resource({
     params: () => (this.open() ? this.feature() : undefined),
-    loader: () => this.api.get<Role[]>('/roles').catch(() => null),
+    loader: () => this.api.listAll<Role>('/roles').catch(() => null),
   });
   /**
    * `null` when the roles cannot be listed: codes are typed instead. The last list stays

@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 
-import { Api } from './api';
+import { Api, ListResponse } from './api';
+import { PAGE_SIZE } from './paging';
 
 /**
  * `triggered` (the hook accepted the call), `failed` (it refused), then what the provider
@@ -52,8 +53,9 @@ export interface CdnStatus {
 export class Deploys {
   private readonly api = inject(Api);
 
+  /** Every target, oldest first. */
   targets(): Promise<DeployTarget[]> {
-    return this.api.get<DeployTarget[]>('/deploy/targets');
+    return this.api.listAll<DeployTarget>('/deploy/targets');
   }
 
   create(name: string, url: string): Promise<DeployTarget> {
@@ -74,15 +76,20 @@ export class Deploys {
     return this.api.post<Deployment>(`/deploy/targets/${id}/trigger`);
   }
 
-  deployments(targetId?: number, limit = 50): Promise<Deployment[]> {
-    const params = new URLSearchParams({ limit: String(limit) });
+  /** A page of deployments, newest first, of one target or all. */
+  deployments(
+    targetId: number | undefined,
+    page: number,
+    pageSize = PAGE_SIZE,
+  ): Promise<ListResponse<Deployment>> {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (targetId !== undefined) params.set('targetId', String(targetId));
-    return this.api.get<Deployment[]>('/deploy/deployments', params.toString());
+    return this.api.list<Deployment>('/deploy/deployments', params.toString());
   }
 
   /** The latest deployment of a target (`null` when it never deployed). */
   async latest(targetId: number): Promise<Deployment | null> {
-    return (await this.deployments(targetId, 1))[0] ?? null;
+    return (await this.deployments(targetId, 1, 1)).data[0] ?? null;
   }
 
   cdn(): Promise<CdnStatus> {

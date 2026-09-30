@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { Api, ListResponse } from './api';
+import { PAGE_SIZE } from './paging';
 
 export type DeliveryStatus = 'pending' | 'sending' | 'succeeded' | 'failed';
 
@@ -206,11 +207,16 @@ export function prettyJson(value: unknown): string {
 export class Webhooks {
   private readonly api = inject(Api);
 
-  async list(): Promise<{ webhooks: Webhook[]; events: string[] }> {
-    const response = (await this.api.list<Webhook>('/webhooks')) as ListResponse<Webhook> & {
-      meta: { events?: string[] };
-    };
-    return { webhooks: response.data, events: response.meta.events ?? [...EVENTS] };
+  /** A page of webhooks, oldest first, and the events they can subscribe to. */
+  async list(
+    page: number,
+    pageSize = PAGE_SIZE,
+  ): Promise<ListResponse<Webhook> & { events: string[] }> {
+    const response = (await this.api.list<Webhook>(
+      '/webhooks',
+      `page=${page}&pageSize=${pageSize}`,
+    )) as ListResponse<Webhook> & { meta: { events?: string[] } };
+    return { ...response, events: response.meta.events ?? [...EVENTS] };
   }
 
   get(id: number | string): Promise<Webhook> {

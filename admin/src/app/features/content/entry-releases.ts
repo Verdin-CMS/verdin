@@ -251,7 +251,7 @@ export class EntryReleases {
     this.pending.set(null);
     this.adding.set(true);
     try {
-      const pending = sortReleases(await this.service.list('pending'));
+      const pending = sortReleases(await this.service.all('pending'));
       this.pending.set(pending);
       this.choice.set(pending[0] ? String(pending[0].id) : '');
     } catch (error) {

@@ -258,7 +258,7 @@ export class EntryCollab {
     this.directoryLoaded = true;
     try {
       if (this.auth.can('users.manage')) {
-        const users = await this.api.get<AdminUser[]>('/users');
+        const users = await this.api.listAll<AdminUser>('/users');
         this.directory.set(
           users
             .filter((user) => user.isActive)

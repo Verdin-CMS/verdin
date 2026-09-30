@@ -44,6 +44,7 @@ import { loadErrorOf } from '../../core/loading';
 import { MessageKey } from '../../core/i18n/keys';
 import { DeployStatusBadge } from '../../shared/components/deploy-status';
 import { PageHeader } from '../../shared/components/page-header';
+import { Pagination } from '../../shared/components/pagination';
 
 /** The target dialog: `id` is `null` for a new target. */
 interface TargetForm {
@@ -88,6 +89,7 @@ const CALLBACK_LABELS: Record<CallbackProvider, { label: MessageKey; hint: Messa
     HlmTableImports,
     HlmTabsImports,
     PageHeader,
+    Pagination,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -366,6 +368,15 @@ const CALLBACK_LABELS: Record<CallbackProvider, { label: MessageKey; hint: Messa
                 </tbody>
               </table>
             </div>
+          }
+          @if (historyPageCount() > 1) {
+            <vd-pagination
+              class="border-t px-4 py-2"
+              [label]="t('deploy.history.title')"
+              [(page)]="historyPage"
+              [pageCount]="historyPageCount()"
+              [disabled]="historyLoading()"
+            />
           }
         </section>
 
@@ -682,12 +693,16 @@ export class DeploymentsPage {
     () => this.targetList.hasValue() || !!this.targetList.error(),
   );
   protected readonly historyTarget = signal('');
-  /** Refetches when the target filter changes; a failure is a toast and keeps the list. */
+  protected readonly historyPage = signal(1);
+  /** Refetches when the page or the target filter changes; a failure is a toast and keeps the list. */
   protected readonly historyList = resource({
-    params: () => (this.targetsSettled() ? { target: this.historyTarget() } : undefined),
+    params: () =>
+      this.targetsSettled()
+        ? { target: this.historyTarget(), page: this.historyPage() }
+        : undefined,
     loader: ({ params }) =>
       this.service
-        .deployments(params.target ? Number(params.target) : undefined, 50)
+        .deployments(params.target ? Number(params.target) : undefined, params.page)
         .catch((error: unknown) => {
           toast.error(ApiFailure.from(error).message);
           throw error;
@@ -695,8 +710,15 @@ export class DeploymentsPage {
   });
   /** The history shown: the last list loaded, kept up to date by polls. */
   protected readonly history = linkedSignal<Deployment[] | undefined, Deployment[]>({
-    source: () => (this.historyList.hasValue() ? this.historyList.value() : undefined),
+    source: () => (this.historyList.hasValue() ? this.historyList.value().data : undefined),
     computation: (list, previous) => list ?? previous?.value ?? [],
+  });
+  protected readonly historyPageCount = linkedSignal<number | undefined, number>({
+    source: () =>
+      this.historyList.hasValue()
+        ? (this.historyList.value().meta.pagination?.pageCount ?? 1)
+        : undefined,
+    computation: (count, previous) => count ?? previous?.value ?? 1,
   });
   protected readonly historyLoading = this.historyList.isLoading;
   private readonly cdnStatus = resource({
@@ -742,6 +764,7 @@ export class DeploymentsPage {
   }
 
   protected setHistoryTarget(id: string): void {
+    this.historyPage.set(1);
     this.historyTarget.set(id);
   }
 
@@ -763,8 +786,10 @@ export class DeploymentsPage {
     this.history.update((list) => {
       const known = list.some((item) => item.id === deployment.id);
       if (known) return list.map((item) => (item.id === deployment.id ? deployment : item));
+      // New deployments show at the top of the first page.
       const filter = this.historyTarget();
-      return !filter || Number(filter) === id ? [deployment, ...list] : list;
+      const shown = this.historyPage() === 1 && (!filter || Number(filter) === id);
+      return shown ? [deployment, ...list] : list;
     });
   }
 

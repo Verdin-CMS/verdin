@@ -29,7 +29,10 @@ test('two admins on the same entry see each other and each other’s changes', a
   );
 
   // A second administrator, with the same role as the first.
-  const roles = (await (await api.get('/roles')).json()).data as { id: number; code: string }[];
+  const roles = (await (await api.get('/roles?pageSize=100')).json()).data as {
+    id: number;
+    code: string;
+  }[];
   const superAdmin = roles.find((role) => role.code.includes('super')) ?? roles[0];
   const email = `bob-${run}@example.com`;
   const password = 'bob password 1';

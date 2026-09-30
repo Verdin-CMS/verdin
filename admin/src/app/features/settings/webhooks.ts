@@ -1,11 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  resource,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -22,8 +15,10 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 import { ApiFailure } from '../../core/api';
 import { Auth } from '../../core/auth';
 import { I18n } from '../../core/i18n/i18n';
+import { pagedList } from '../../core/paging';
 import { Webhook, Webhooks } from '../../core/webhooks';
 import { PageHeader } from '../../shared/components/page-header';
+import { Pagination } from '../../shared/components/pagination';
 import { DeliveryStatusBadge, announceAttempt } from './webhook-deliveries';
 
 /** Settings → Webhooks: HTTP callbacks for content and media events. */
@@ -43,6 +38,7 @@ import { DeliveryStatusBadge, announceAttempt } from './webhook-deliveries';
     HlmSwitchImports,
     HlmTableImports,
     PageHeader,
+    Pagination,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -69,9 +65,9 @@ import { DeliveryStatusBadge, announceAttempt } from './webhook-deliveries';
           <p hlmAlertTitle>{{ t('settings.webhooks.loadError') }}</p>
           <p hlmAlertDescription>{{ message }}</p>
         </div>
-      } @else if (!webhooks.hasValue()) {
+      } @else if (webhooks.rows() === null) {
         <hlm-skeleton class="h-48 rounded-xl" />
-      } @else if (webhooks.value().length === 0) {
+      } @else if (webhooks.rows()!.length === 0) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">
           <div hlmEmptyHeader>
             <div hlmEmptyMedia variant="icon"><ng-icon name="lucideWebhook" /></div>
@@ -100,7 +96,7 @@ import { DeliveryStatusBadge, announceAttempt } from './webhook-deliveries';
                 </tr>
               </thead>
               <tbody hlmTBody>
-                @for (webhook of webhooks.value(); track webhook.id) {
+                @for (webhook of webhooks.rows(); track webhook.id) {
                   <tr hlmTr>
                     <td hlmTd class="ps-4">
                       <a
@@ -259,6 +255,14 @@ import { DeliveryStatusBadge, announceAttempt } from './webhook-deliveries';
               </tbody>
             </table>
           </div>
+          @if (webhooks.pageCount() > 1) {
+            <vd-pagination
+              class="bg-muted/30 border-t px-4 py-2"
+              [(page)]="webhooks.page"
+              [pageCount]="webhooks.pageCount()"
+              [disabled]="webhooks.loading()"
+            />
+          }
         </div>
       }
     </div>
@@ -270,12 +274,10 @@ export class WebhooksPage {
   protected readonly i18n = inject(I18n);
   protected readonly t = this.i18n.t;
 
-  protected readonly webhooks = resource({
-    loader: async () => (await this.service.list()).webhooks,
-  });
+  protected readonly webhooks = pagedList((page) => this.service.list(page));
   /** The load failure's message; a 404 means the feature is off. */
   protected readonly error = computed(() => {
-    const error = this.webhooks.error();
+    const error = this.webhooks.list.error();
     if (!error) return null;
     const failure = ApiFailure.from(error);
     return failure.status === 404 ? this.t('settings.webhooks.featureOff') : failure.message;
@@ -288,11 +290,9 @@ export class WebhooksPage {
     this.busy.set(webhook.id);
     try {
       const updated = await this.service.setEnabled(webhook, enabled);
-      if (this.webhooks.hasValue()) {
-        this.webhooks.update((list) =>
-          (list ?? []).map((item) => (item.id === webhook.id ? { ...item, ...updated } : item)),
-        );
-      }
+      this.webhooks.rows.update((list) =>
+        list ? list.map((item) => (item.id === webhook.id ? { ...item, ...updated } : item)) : list,
+      );
       toast.success(
         this.t(enabled ? 'settings.webhooks.turnedOn' : 'settings.webhooks.turnedOff', {
           name: webhook.name,
@@ -301,7 +301,7 @@ export class WebhooksPage {
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
       // Put the switch back.
-      if (this.webhooks.hasValue()) this.webhooks.update((list) => (list ? [...list] : list));
+      this.webhooks.rows.update((list) => (list ? [...list] : list));
     } finally {
       this.busy.set(null);
     }
@@ -322,9 +322,7 @@ export class WebhooksPage {
   protected async remove(webhook: Webhook): Promise<void> {
     try {
       await this.service.remove(webhook.id);
-      if (this.webhooks.hasValue()) {
-        this.webhooks.update((list) => (list ?? []).filter((item) => item.id !== webhook.id));
-      }
+      this.webhooks.removed();
       toast.success(this.t('settings.webhooks.deleted', { name: webhook.name }));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);

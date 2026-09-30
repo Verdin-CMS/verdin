@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, resource } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -11,10 +11,11 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
-import { loadErrorOf } from '../../core/loading';
 import { fromItems, countItems } from '../../core/menu-tree';
+import { pagedList } from '../../core/paging';
 import { Menu, Site } from '../../core/site';
 import { PageHeader } from '../../shared/components/page-header';
+import { Pagination } from '../../shared/components/pagination';
 import { SiteAccessNotice, siteAccess } from './site-access';
 
 /** Settings → Menus: navigation trees that sites fetch from `/api/_menus/{slug}`. */
@@ -31,6 +32,7 @@ import { SiteAccessNotice, siteAccess } from './site-access';
     HlmSkeletonImports,
     HlmTableImports,
     PageHeader,
+    Pagination,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -55,9 +57,9 @@ import { SiteAccessNotice, siteAccess } from './site-access';
         <vd-site-access [access]="access()" feature="menus" />
       } @else if (error(); as message) {
         <p class="text-destructive text-sm" role="alert">{{ message }}</p>
-      } @else if (!menus.hasValue()) {
+      } @else if (menus.rows() === null) {
         <hlm-skeleton class="h-48 rounded-xl" />
-      } @else if (menus.value().length === 0) {
+      } @else if (menus.rows()!.length === 0) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">
           <div hlmEmptyHeader>
             <div hlmEmptyMedia variant="icon"><ng-icon name="lucideListTree" /></div>
@@ -85,7 +87,7 @@ import { SiteAccessNotice, siteAccess } from './site-access';
                 </tr>
               </thead>
               <tbody hlmTBody>
-                @for (menu of menus.value(); track menu.id) {
+                @for (menu of menus.rows(); track menu.id) {
                   <tr hlmTr data-menu>
                     <td hlmTd class="ps-4">
                       <a class="group flex flex-col" [routerLink]="['/settings/menus', menu.id]">
@@ -156,6 +158,14 @@ import { SiteAccessNotice, siteAccess } from './site-access';
               </tbody>
             </table>
           </div>
+          @if (menus.pageCount() > 1) {
+            <vd-pagination
+              class="bg-muted/30 border-t px-4 py-2"
+              [(page)]="menus.page"
+              [pageCount]="menus.pageCount()"
+              [disabled]="menus.loading()"
+            />
+          }
         </div>
       }
     </div>
@@ -169,11 +179,11 @@ export class MenusPage {
   protected readonly access = siteAccess('menus');
   protected readonly endpoint = `${this.config.contentApiBase}/_menus/{slug}`;
   /** The menus, loaded once the page can be used (idle until then). */
-  protected readonly menus = resource({
-    params: () => (this.access() === 'ok' ? true : undefined),
-    loader: () => this.site.menus(),
-  });
-  protected readonly error = loadErrorOf(this.menus);
+  protected readonly menus = pagedList(
+    (page) => this.site.menus(page),
+    () => (this.access() === 'ok' ? true : undefined),
+  );
+  protected readonly error = this.menus.error;
 
   protected count(menu: Menu): number {
     return countItems(fromItems(menu.items));
@@ -182,9 +192,7 @@ export class MenusPage {
   protected async remove(menu: Menu): Promise<void> {
     try {
       await this.site.deleteMenu(menu.id);
-      if (this.menus.hasValue()) {
-        this.menus.update((list) => (list ?? []).filter((item) => item.id !== menu.id));
-      }
+      this.menus.removed();
       toast.success(this.t('menus.deleted', { name: menu.name }));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);

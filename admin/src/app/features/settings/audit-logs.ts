@@ -496,7 +496,7 @@ export class AuditLogsPage {
   /** The actor filter's choices; without them (or `users.manage`) it falls back to an id. */
   private readonly usersList = resource({
     params: () => this.auth.can('users.manage') || undefined,
-    loader: () => this.api.get<AdminUser[]>('/users').catch(() => null),
+    loader: () => this.api.listAll<AdminUser>('/users').catch(() => null),
   });
   protected readonly users = computed(() =>
     this.usersList.hasValue() ? this.usersList.value() : null,

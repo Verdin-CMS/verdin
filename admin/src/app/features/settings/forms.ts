@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, resource } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
@@ -11,9 +11,10 @@ import { HlmTableImports } from '@spartan-ng/helm/table';
 
 import { ApiFailure, RUNTIME_CONFIG } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
-import { loadErrorOf } from '../../core/loading';
+import { pagedList } from '../../core/paging';
 import { Form, Site } from '../../core/site';
 import { PageHeader } from '../../shared/components/page-header';
+import { Pagination } from '../../shared/components/pagination';
 import { SiteAccessNotice, siteAccess } from './site-access';
 
 /** Settings → Forms: forms that sites render and post to `/api/_forms/{slug}`. */
@@ -30,6 +31,7 @@ import { SiteAccessNotice, siteAccess } from './site-access';
     HlmSkeletonImports,
     HlmTableImports,
     PageHeader,
+    Pagination,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -54,9 +56,9 @@ import { SiteAccessNotice, siteAccess } from './site-access';
         <vd-site-access [access]="access()" feature="forms" />
       } @else if (error(); as message) {
         <p class="text-destructive text-sm" role="alert">{{ message }}</p>
-      } @else if (!forms.hasValue()) {
+      } @else if (forms.rows() === null) {
         <hlm-skeleton class="h-48 rounded-xl" />
-      } @else if (forms.value().length === 0) {
+      } @else if (forms.rows()!.length === 0) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">
           <div hlmEmptyHeader>
             <div hlmEmptyMedia variant="icon"><ng-icon name="lucideClipboardList" /></div>
@@ -84,7 +86,7 @@ import { SiteAccessNotice, siteAccess } from './site-access';
                 </tr>
               </thead>
               <tbody hlmTBody>
-                @for (form of forms.value(); track form.id) {
+                @for (form of forms.rows(); track form.id) {
                   <tr hlmTr data-form>
                     <td hlmTd class="ps-4">
                       <a class="group flex flex-col" [routerLink]="['/settings/forms', form.id]">
@@ -155,6 +157,14 @@ import { SiteAccessNotice, siteAccess } from './site-access';
               </tbody>
             </table>
           </div>
+          @if (forms.pageCount() > 1) {
+            <vd-pagination
+              class="bg-muted/30 border-t px-4 py-2"
+              [(page)]="forms.page"
+              [pageCount]="forms.pageCount()"
+              [disabled]="forms.loading()"
+            />
+          }
         </div>
       }
     </div>
@@ -168,18 +178,16 @@ export class FormsPage {
   protected readonly access = siteAccess('forms');
   protected readonly endpoint = `${this.config.contentApiBase}/_forms/{slug}`;
   /** The forms, loaded once the page can be used (idle until then). */
-  protected readonly forms = resource({
-    params: () => (this.access() === 'ok' ? true : undefined),
-    loader: () => this.site.forms(),
-  });
-  protected readonly error = loadErrorOf(this.forms);
+  protected readonly forms = pagedList(
+    (page) => this.site.forms(page),
+    () => (this.access() === 'ok' ? true : undefined),
+  );
+  protected readonly error = this.forms.error;
 
   protected async remove(form: Form): Promise<void> {
     try {
       await this.site.deleteForm(form.id);
-      if (this.forms.hasValue()) {
-        this.forms.update((list) => (list ?? []).filter((item) => item.id !== form.id));
-      }
+      this.forms.removed();
       toast.success(this.t('forms.deleted', { name: form.name }));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);

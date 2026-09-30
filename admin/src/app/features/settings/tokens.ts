@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, resource, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { toast } from '@spartan-ng/brain/sonner';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
@@ -18,10 +18,11 @@ import { Account } from '../../core/account';
 import { Api, ApiFailure } from '../../core/api';
 import { I18n } from '../../core/i18n/i18n';
 import { MessageKey } from '../../core/i18n/keys';
-import { loadErrorOf } from '../../core/loading';
+import { PAGE_SIZE, pagedList } from '../../core/paging';
 import { ApiToken, Grant, TokenKind } from '../../core/types';
 import { LoadError } from '../../shared/components/load-error';
 import { PageHeader } from '../../shared/components/page-header';
+import { Pagination } from '../../shared/components/pagination';
 import { GrantsMatrix } from './grants';
 
 const KINDS: Record<
@@ -56,6 +57,7 @@ const KINDS: Record<
     HlmSkeletonImports,
     LoadError,
     PageHeader,
+    Pagination,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -75,14 +77,14 @@ const KINDS: Record<
       </vd-page-header>
 
       @if (loadError(); as message) {
-        <vd-load-error [message]="message" (retry)="tokens.reload()" />
-      } @else if (!tokens.hasValue()) {
+        <vd-load-error [message]="message" (retry)="list.reload()" />
+      } @else if (list.rows() === null) {
         <hlm-skeleton
           class="h-48 rounded-xl"
           role="status"
           [attr.aria-label]="t('common.loading')"
         />
-      } @else if (tokens.value().length === 0) {
+      } @else if (list.rows()!.length === 0) {
         <div hlmEmpty class="rounded-xl border border-dashed py-16">
           <div hlmEmptyHeader>
             <div hlmEmptyMedia variant="icon"><ng-icon name="lucideKeyRound" /></div>
@@ -112,7 +114,7 @@ const KINDS: Record<
                 </tr>
               </thead>
               <tbody hlmTBody>
-                @for (token of tokens.value(); track token.id) {
+                @for (token of list.rows(); track token.id) {
                   <tr hlmTr>
                     <td hlmTd class="ps-4">
                       <div class="flex items-center gap-3">
@@ -198,6 +200,14 @@ const KINDS: Record<
               </tbody>
             </table>
           </div>
+          @if (list.pageCount() > 1) {
+            <vd-pagination
+              class="bg-muted/30 border-t px-4 py-2"
+              [(page)]="list.page"
+              [pageCount]="list.pageCount()"
+              [disabled]="list.loading()"
+            />
+          }
         </div>
       }
     </div>
@@ -350,8 +360,11 @@ export class TokensPage {
   protected readonly t = this.i18n.t;
   protected readonly kinds = Object.keys(KINDS) as TokenKind[];
   protected readonly expiryOptions = [7, 30, 90];
-  protected readonly tokens = resource({ loader: () => this.fetch() });
-  protected readonly loadError = loadErrorOf(this.tokens);
+  /** A page of tokens, reloaded after each change. */
+  protected readonly list = pagedList((page) =>
+    this.api.list<ApiToken>('/api-tokens', `page=${page}&pageSize=${PAGE_SIZE}`),
+  );
+  protected readonly loadError = this.list.error;
   protected readonly dialogOpen = signal(false);
   protected readonly created = signal<string | null>(null);
   protected readonly name = signal('');
@@ -362,18 +375,6 @@ export class TokensPage {
   protected readonly error = signal<string | null>(null);
   /** The token whose regeneration awaits confirmation. */
   protected readonly regenerating = signal<ApiToken | null>(null);
-
-  private fetch(): Promise<ApiToken[]> {
-    return this.api.get<ApiToken[]>('/api-tokens');
-  }
-
-  /**
-   * The list again after a change, awaited (not `tokens.reload()`): a failure lands in the
-   * caller's catch (dialog error / toast) rather than replacing the list, as before.
-   */
-  private async reload(): Promise<void> {
-    this.tokens.set(await this.fetch());
-  }
 
   protected kindLabel(kind: TokenKind): MessageKey {
     return KINDS[kind]?.label ?? 'settings.tokens.kind.custom';
@@ -418,7 +419,7 @@ export class TokensPage {
         permissions: this.kind() === 'custom' ? this.grants() : [],
       });
       this.created.set(token.accessKey ?? null);
-      await this.reload();
+      this.list.reload();
     } catch (error) {
       this.error.set(ApiFailure.from(error).message);
     }
@@ -431,7 +432,7 @@ export class TokensPage {
       this.error.set(null);
       this.created.set(updated.accessKey ?? null);
       this.dialogOpen.set(true);
-      await this.reload();
+      this.list.reload();
       toast.success(this.t('settings.tokens.regenerated'));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
@@ -447,7 +448,7 @@ export class TokensPage {
     if (!confirm(this.t('settings.tokens.confirmDelete', { name: token.name }))) return;
     try {
       await this.api.delete(`/api-tokens/${token.id}`);
-      await this.reload();
+      this.list.removed();
       toast.success(this.t('settings.tokens.deleted'));
     } catch (error) {
       toast.error(ApiFailure.from(error).message);
