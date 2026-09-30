@@ -2,7 +2,7 @@
 title: תאימות ל-Strapi
 description: אילו תכונות ו-APIs של Strapi v5 נתמכים ב-Verdin, נתמכים חלקית או אינם נתמכים — REST, GraphQL, משתמשים והרשאות, העלאות, i18n, טיוטה ופרסום, הרחבות קוד, פאנל הניהול ותכונות Enterprise.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin שומר על מודל התוכן ועל APIs התוכן של Strapi v5 כדי שפרונטאנדים ותוכן יוכלו לעבור
@@ -57,7 +57,7 @@ Verdin שומר על מודל התוכן ועל APIs התוכן של Strapi v5 �
 | Shadow CRUD (השבתת פעולות לכל סוג) | נתמך | ההגדרה `disabled` של התכונה. |
 | resolvers מותאמים והרחבות סכמה | חלקי | שדות שורש שנפתרים על ידי תוספים (`[[graphql]]` ב-`plugin.toml`); אין `extensionService`. |
 | מוטציות של Users & Permissions (`login`, `register`, `me`…) | לא נתמך | השתמשו בנתיבי ה-REST. |
-| שאילתות/מוטציות של העלאות ו-i18n (`uploadFiles`, `i18NLocales`…) | לא נתמך | השתמשו בנתיבי ה-REST ובפאנל הניהול. |
+| שאילתות/מוטציות של העלאות ו-i18n (`uploadFiles`, `i18NLocales`…) | לא נתמך | השתמשו בנתיבי ה-REST (`GET /api/i18n/locales`) ובפאנל הניהול. `localizations` בסוגים מתורגמים נתמך. |
 | מגבלות, GraphiQL | נתמך | `maxDepth`, `maxComplexity`, מתגי אינטרוספקציה וסביבת ניסוי. |
 
 ## Users & Permissions (משתמשי קצה)
@@ -92,8 +92,8 @@ Verdin שומר על מודל התוכן ועל APIs התוכן של Strapi v5 �
 | --- | --- | --- |
 | סוגים מתורגמים ושדות שאינם מתורגמים | נתמך | `pluginOptions.i18n.localized`, גם לכל מאפיין. |
 | `?locale=` ב-REST, `locale` ב-GraphQL | נתמך | שפה לא מוכרת היא `400`. |
-| `localizations` בתגובות | לא נתמך | קראו שפה אחרת עם אותו `documentId` ו-`?locale=`. |
-| `GET /api/i18n/locales` | לא נתמך | השפות מנוהלות בפאנל הניהול (**הגדרות ← בינאום**). |
+| `localizations` בתגובות | נתמך | רק כשממלאים אותו (`populate=localizations`, `populate=*`), עם אותן אפשרויות כמו של קשר. גם שדה GraphQL. API הניהול משמיט אותו. |
+| `GET /api/i18n/locales` | נתמך | מערך פשוט במבנה של Strapi. דורש `find` על `plugin::i18n.locale` (שורת **שפות** בטבלת ההרשאות), כמו `listLocales` ב-Strapi. `documentId` נגזר מקוד השפה. השפות מנוהלות בפאנל הניהול (**הגדרות ← בינאום**). |
 
 ## טיוטה ופרסום
 
@@ -105,11 +105,14 @@ Verdin שומר על מודל התוכן ועל APIs התוכן של Strapi v5 �
 
 ## התאמה אישית של השרת
 
+ראו [העברת קוד מותאם](/he/migrate/porting-custom-code/) לאופן שבו מעבירים כל אחד מאלה.
+
 | Strapi | סטטוס | Verdin |
 | --- | --- | --- |
 | Lifecycle hooks, middlewares של Document Service | חלקי | before/after hooks בתוספי WebAssembly, שיכולים לשנות או לדחות כתיבה. בלי JavaScript. |
 | Controllers, services ונתיבים מותאמים | חלקי | נתיבי תוספים תחת `/api/plugins/<name>/`. |
 | Policies ו-middlewares | לא נתמך | הרשאות והגבלות קצב מובנות. |
+| `register` / `bootstrap` | חלקי | פונקציית ההפעלה של תוסף, שרצה כשהתוסף עולה, מופעל או כשההגדרות שלו משתנות; היא יכולה לזרוע תוכן ולהחליף את הרשאות התפקיד הציבורי. |
 | משימות Cron | חלקי | משימות של תוספים. |
 | Document Service / Entity Service ב-JavaScript | לא נתמך | אין runtime של JavaScript. |
 | תוספי npm מה-marketplace של Strapi | לא נתמך | |

@@ -220,8 +220,10 @@ crates/verdin-migrate/src/derive.rs and sql.rs (storage), and crates/verdin-cont
 
 הערכים מעוגלים ל-`scale` ספרות (חצי הרחק מאפס, כמו שמסדי הנתונים עושים), ונדחים כשיש להם יותר
 מ-`precision - scale` ספרות לפני הנקודה. כתיבות מקבלות מספרים ומחרוזות מספריות. נשמר
-כ-`numeric(precision,scale)` (`text` ב-SQLite, כך ששום דבר לא מעוגל). ב-API: מספר, או מחרוזת
-מדויקת עם [`[api].decimal_as_string`](/he/reference/configuration/).
+כ-`numeric(precision,scale)` (`text` ב-SQLite, כך ששום דבר לא מעוגל). ב-API: מספר, כמו ש-Strapi
+מחזיר אותו. ערכים שלמים הם מספרים שלמים (`25`, לא `25.0`) והאחרים הם ה-float הקצר ביותר
+שנקרא חזרה באותו ערך (`12.5`). עם [`[api].decimal_as_string`](/he/reference/configuration/)
+ה-API מחזיר במקום זאת מחרוזת מדויקת.
 
 ## תאריכים ובוליאניים
 

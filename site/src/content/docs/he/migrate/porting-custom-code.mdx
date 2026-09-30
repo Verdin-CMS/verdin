@@ -1,0 +1,393 @@
+---
+title: העברת קוד מותאם
+description: העבירו את הקוד המותאם של פרויקט Strapi לתוסף של Verdin — controllers ונתיבים, lifecycles, services, bootstrap, משימות cron, ווידג'טים לפאנל הניהול, טפסים, policies ו-middlewares — עם דוגמה עובדת והמגבלות שצריך לתכנן סביבן.
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi` מביא את הסכמה והתוכן של פרויקט Strapi, אבל לא את ה-JavaScript שב-`src/`:
+Verdin לא מריץ JavaScript בשרת. הקוד הזה הופך ל[תוסף WebAssembly](/he/extending/plugins/):
+hooks עבור lifecycles, נתיבים עבור controllers מותאמים, פונקציית הפעלה עבור `bootstrap`,
+משימות עבור משימות cron. העמוד הזה ממפה כל סוג של קוד Strapi למקבילה שלו ב-Verdin, עובר על
+קוד של פרויקט אמיתי שהועבר לתוסף, ומפרט את המגבלות שצריך לתכנן סביבן.
+
+הדוגמה העובדת היא
+[`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port):
+התוסף `tienda`, כתוב ב-Rust, עם הסכמה שהוא צריך ו-README שבונה ומתקין אותו. קראו קודם את
+[מדריך התוספים](/he/extending/plugin-tutorial/) אם מעולם לא כתבתם תוסף; ב[תיעוד
+התוספים](/he/extending/plugin-reference/) יש כל payload וכל פונקציית מארח.
+
+## לאן כל חלק הולך
+
+| Strapi | Verdin | הערות |
+| --- | --- | --- |
+| נתיבים ו-controllers מותאמים (`src/api/*/routes`, `controllers`) | נתיבי תוסף: `[routes]`, פונקציה אחת עבור `/api/plugins/<name>/…` | ה-URL משתנה. הפונקציה מפנה לפי שיטה ונתיב בעצמה. |
+| Lifecycles (`lifecycles.js`), middlewares של Document Service | `[[hooks]]` על `beforeCreate`, `afterUpdate`… | אותם שמות אירועים. before hooks יכולים להחליף את הנתונים או לדחות את הכתיבה. |
+| Services (`src/api/*/services`) | פונקציות במודול של התוסף, ו-`verdin_content` עבור `strapi.documents(…)` | אין services משותפים בין תוספים. |
+| `bootstrap()` ב-`src/index.js` | פונקציית `[startup]` | רצה בהפעלה, כשהתוסף מופעל וכשההגדרות שלו משתנות. |
+| `register()` | אין מה להעביר | המניפסט מצהיר על מה ש-`register` הגדיר. |
+| משימות cron (`config/cron-tasks.js`) | `[[jobs]]` | תחביר cron ב-UTC, שניות אופציונליות. |
+| תצורת תוספים (`config/plugins.js`) | `[[settings]]` ו-`verdin_config` | נערכת ב-**הגדרות ← תוספים**. |
+| `strapi.log` | `verdin_log` | יומן השרת ו-**הגדרות ← תוספים ← יומנים**. |
+| ווידג'טים לפאנל הניהול (`app.widgets.register`) | `[[admin.widgets]]`: Web Components | או הווידג'טים המובנים של לוח הבקרה. |
+| שדות מותאמים | `[[admin.fields]]` | השם `customField` בסכמה נשמר. |
+| Injection zones, דפי ניהול מותאמים, הרחבות React | לא נתמך | המיתוג ב-`[admin.branding]`. |
+| endpoint מותאם ששומר שליחות טפסים | [טפסים](/he/guides/frontend/forms/) מובנים | אימות, מלכודת ספאם, הגבלת קצב, הודעות דוא"ל וייצוא CSV כלולים. |
+| Policies ו-middlewares | הרשאות, הגבלות קצב ו-CORS מובנים; בדיקות בנתיבי התוסף שלכם | אין נקודת חיבור לצינור הבקשות. ראו [Policies ו-middlewares](#policies-ו-middlewares). |
+| הודעות דוא"ל מקוד (`strapi.plugin('email')`) | ה-HTTP API של ספק דוא"ל, דרך היכולת `http` | אין פונקציית מארח לדוא"ל. |
+
+## פרויקט הדוגמה
+
+פרויקט ה-Strapi שמאחורי הדוגמה הוא חנות קטנה עם סקרים:
+
+- **`producto`**: מוצרים, עם הדגלים `a_la_venta` (למכירה) ו-`reservable` (ניתן להזמנה).
+- **`reserva`**: הזמנות ששולחים מבקרים. lifecycle מסוג `beforeCreate` כופה על `estado` להיות
+  `pendiente`, בודק שהמוצר הקשור למכירה וניתן להזמנה, וחותך את `unidades` לטווח 1–10.
+- **`encuesta`** ו-**`voto`**: סקרים עם רשימת אפשרויות, וההצבעות שלהם. שני נתיבים מותאמים,
+  `POST /api/polls/:slug/vote` ו-`GET /api/polls/:slug/results`, מתירים הצבעה אחת לכל מבקר
+  וסקר, רק בסקרים פתוחים ורק עבור אפשרות תקפה. משימת cron סוגרת סקרים שהתאריך `cierra_el`
+  שלהם עבר.
+- **`bootstrap`** מגדיר את ההרשאות של התפקיד הציבורי, כך שהתקנה חדשה לא נשארת פתוחה.
+- **ווידג'ט ניהול** מציג את הסקרים הפתוחים.
+
+ב-Verdin כל זה תוסף אחד, `tienda`:
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml המניפסט
+    - src/lib.rs hooks, נתיבים, המשימה ופונקציית ההפעלה
+    - admin/index.js ווידג'ט לוח הבקרה
+</FileTree>
+
+```toml title="plugin/plugin.toml (מקוצר)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+מזהי (uid) סוגי התוכן קצרים יותר משל Strapi: `api::producto`, לא `api::producto.producto`.
+
+## מ-lifecycles ל-hooks
+
+ה-lifecycle של Strapi, בפישוט:
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+ה-hook של Verdin מקבל `{ event, uid, documentId, locale, data }` ועונה `{ "data": … }` כדי
+להחליף את מה שנכתב, `{ "error": "…" }` כדי לדחות את הכתיבה (הלקוח מקבל 400 עם ההודעה, כמו
+עם `ApplicationError` של Strapi), או `{}` כדי לתת לה לעבור:
+
+```rust title="plugin/src/lib.rs (מקוצר)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+דברים שכדאי לדעת כשמעבירים lifecycles:
+
+- **`data` הוא הנתונים של הבקשה כפי שנשלחו.** קשר יכול להגיע כ-documentId, כ-
+  `{ "documentId": … }`, כרשימה, או כ-`{ connect }` / `{ set }` (פאנל הניהול והלקוחות
+  נבדלים). `relation_id` בדוגמה מקבל את כולם. ב-`beforeUpdate`, `data` מחזיק רק את השדות
+  שנשלחו.
+- **הנתונים שאתם מחזירים מאומתים** כמו המקוריים, אחרי ה-hook: hook לא יכול לכתוב משהו
+  שהסכמה דוחה. גבולות הסכמה (`min`, `max`) דוחים ערך; hook יכול לחתוך אותו במקום, כמו כאן.
+- **hooks לא יודעים מי כותב.** אין משתמש או אסימון בקלט. בדיקות שתלויות בקורא שייכות
+  להרשאות, או לנתיב תוסף.
+- **after hooks לא מקבלים נתונים**: `{ event, uid, documentId, locale }`, שנשלח אחרי שהכתיבה
+  בוצעה (commit). קראו את הרשומה עם `verdin_content` אם אתם צריכים אותה.
+- **hook שנכשל לא חוסם את הכתיבה.** אם המודול נופל (trap) או חורג מהזמן, השגיאה נרשמת
+  והכתיבה נמשכת; רק תשובת `{ error }` דוחה אותה.
+- **כתיבות שמבוצעות על ידי תוספים מדלגות על before hooks.** כלל שחייב לחול על כל כתיבה חייב
+  להיות מיושם גם בכל קוד תוסף שכותב את הסוג הזה.
+
+## מ-controllers ונתיבים מותאמים לנתיבי תוסף
+
+Strapi הגיש את נתיבי הסקר ב-`/api/polls/:slug/vote`. תוסף Verdin מגיש הכול תחת
+`/api/plugins/<name>/`, ולכן הפרונטאנד קורא ל-`/api/plugins/tienda/polls/:slug/vote` (או
+ש-reverse proxy משכתב את הנתיב הישן). פונקציה מיוצאת אחת מקבלת כל בקשה ומפנה לפי שיטה ונתיב:
+
+```rust title="plugin/src/lib.rs (מקוצר)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+הבקשה היא `{ method, path, query, headers, body, actor }`, כש-`body` הוא מחרוזת שאתם מפענחים
+בעצמכם ו-`query` היא מחרוזת השאילתה הגולמית. התשובה היא `{ status, headers?, body }`. שום דבר
+לא מעצב אותה בשבילכם: כדי שפרונטאנד של Strapi ימשיך לעבוד, ענו `{ "data": … }` ובשגיאות
+`{ "data": null, "error": { "status", "name", "message", "details" } }`, כמו שעושים
+העוזרים `ok` ו-`fail` בדוגמה.
+
+נתיב ההצבעה בודק, לפי הסדר: גוף תקף, סקר עם ה-slug הזה, `estado` הוא `abierta`, האפשרות היא
+אחת מ-`opciones`, ואין הצבעה קודמת עם אותו fingerprint. אז הוא יוצר את ה-`voto` ועונה 201
+עם התוצאות.
+
+<Aside type="caution" title="אין כתובת לקוח בנתיבי תוספים">
+נתיבי תוספים מקבלים רק את הכותרות `content-type`, `accept`, `user-agent` ו-`accept-language`:
+בלי כתובת IP, עוגיות או ערך `Authorization`. controller של Strapi שהשתמש ב-`ctx.request.ip`
+עבור "הצבעה אחת לכל מבקר" צריך מפתח אחר. הדוגמה לוקחת `fingerprint` מגוף הבקשה, שהאתר יוצר
+(מזהה אקראי ששמור באחסון מקומי, או hash של מאפייני הדפדפן). זה עוצר לחיצות כפולות וחזרות
+מקריות, לא מצביע נחרץ. עבור הגבלות חזקות יותר, דרשו משתמש קצה מחובר (ה-`actor`) או שימו את
+הבדיקה לפני Verdin.
+</Aside>
+
+הבדלים נוספים מנתיבי Strapi:
+
+- **נתיבים הם ציבוריים.** גישה ציבורית והרשאות אסימוני API לא מוחלות. `actor` אומר מי קורא:
+  `{ "kind": "public" }`, `{ "kind": "token", "id": … }` או `{ "kind": "user", "id": … }`
+  (משתמש קצה; רק המזהה). דחו את מה שהקורא לא רשאי לעשות, כמו שהייתה עושה policy של Strapi.
+  אסימון לא תקין נדחה עם 401 לפני שהתוסף רץ.
+- **קריאה אחת בכל פעם לכל תוסף.** קריאות לתוסף מחכות זו לזו, כך שהבדיקה וההכנסה בנתיב
+  ההצבעה לא יכולות להשתלב במופע אחד. עם כמה מופעים הן יכולות; הדוגמה שומרת גם `clave`
+  (`<poll>:<fingerprint>`) עם `unique: true`, כך שמסד הנתונים דוחה כפילות שחמקה.
+- **הגבלות קצב חלות**: `[api].public_rate_limit` ו-`[api].token_rate_limit` סופרות נתיבי
+  תוספים כמו שאר API התוכן.
+- **תשובות `GET` אנונימיות יכולות להישמר במטמון** כש-`[api].cache_ttl_secs` מוגדר. כתיבות
+  תוכן מרוקנות את המטמון, הצבעות כלולות.
+- **רק חלק מכותרות התגובה נשמרות**: `content-type`, `cache-control`, `location`, `etag`,
+  `last-modified` ו-`content-disposition`.
+
+## מ-services לפונקציות וקריאות תוכן
+
+Service של Strapi הוא קוד משותף; בתוסף זו פונקציה רגילה במודול. קריאות ל-`strapi.documents(uid)`
+הופכות לקריאות `verdin_content`, מוגבלות על ידי היכולות `read` ו-`write`:
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `findMany` עם `"pagination": { "pageSize": 1 }`, ואז `meta.pagination.total` |
+
+- **קריאות מחזירות גרסאות מפורסמות**, אלא אם השאילתה מבקשת `"status": "draft"`. hook שמחפש
+  מוצר שיש לו רק טיוטה לא מוצא כלום, כמו שהודעת השגיאה בדוגמה אומרת.
+- **כתיבות מתפרסמות** אלא אם הבקשה כוללת `"status": "draft"`, כמו כתיבת REST.
+- **השאילתה עוקבת אחרי הכללים של ה-REST API.** מאפייני `private` לא ניתנים לשימוש ב-filters
+  או ב-`fields`, ולכן `clave` בדוגמה אינו private (לתפקיד הציבורי אין גישה להצבעות, כך
+  שאף אחד אחר לא קורא אותו).
+- **אין SQL גולמי, אין `strapi.db.query`.** הכול עובר דרך ה-Document Service, עם האימות,
+  ה-webhooks, ההיסטוריה ויומן הביקורת שלו.
+- **אין שעון בלי WASI.** הגדירו `wasi = true` במניפסט עבור הזמן ומספרים אקראיים; המשימה
+  בדוגמה משתמשת ב-`scheduledAt` שהיא מקבלת במקום.
+
+## מ-`bootstrap` לפונקציית ההפעלה
+
+פרויקטי Strapi מגדירים לעתים קרובות את ההרשאות של התפקיד הציבורי ב-`bootstrap`, כדי שמסד נתונים
+חדש יהיה שמיש ושום דבר לא יהיה פתוח יותר מהנדרש. פונקציית ההפעלה של Verdin עושה את אותו דבר
+עם היכולת `public_permissions`:
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (מקוצר)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- היא רצה עם `{ "reason": "start" | "enabled" | "settings" }`: כשהשרת עולה כשהתוסף פעיל,
+  כשהתוסף מופעל, וכשההגדרות שלו משתנות. הפכו אותה לבטוחה להרצה חוזרת: חפשו את מה שאתם זורעים
+  לפני שאתם יוצרים אותו.
+- `set` **מחליף את כל** ההרשאות הציבוריות, ולכן שינויים שנעשו ב-**הגדרות ← גישה ציבורית**
+  מבוטלים בהפעלה הבאה. בדוגמה יש הגדרה שמכבה את זה.
+- היא רצה ברקע על מופע מודול משלה, עם מגבלת זמן משלה (`[startup].timeout_ms`, 30 שניות כברירת
+  מחדל), כך שזריעה איטית לא עוצרת hooks ונתיבים. כישלון, או תשובת `{ "error" }`, נרשמים;
+  התוסף נשאר פעיל.
+- עם כמה מופעים, רק אלה עם `[plugins].run_jobs = true` מריצים אותה.
+
+## ממשימות cron למשימות
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+המשימה מקבלת `{ "scheduledAt": "…" }` ובדוגמה מעדכנת כל סקר פתוח ש-`cierra_el` שלו מוקדם
+יותר. משימות רצות ב-UTC, רק כשהתוסף פעיל, ורק במופעים עם `[plugins].run_jobs = true`. הרצה
+שהוחמצה בזמן שהשרת היה למטה לא מושלמת.
+
+## ווידג'טים לפאנל הניהול
+
+ווידג'ט ניהול של Strapi הוא רכיב React; ווידג'ט של Verdin הוא custom element בסקריפט
+`admin/` של התוסף, שמוצהר במניפסט:
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+ה-element מקבל `context` עם `fetch`. הווידג'ט בדוגמה קורא לנתיב של התוסף עצמו
+`GET /api/plugins/tienda/polls`. בקשות ל-API התוכן (כולל נתיבי תוספים) יוצאות בלי הסשן של
+המנהל, ולכן נתיב שווידג'ט משתמש בו חייב להתאים לציבור, או לקבל אסימון API. ל-Injection zones,
+דפי ניהול מותאמים והרחבות React אין מקבילה. ראו
+[נקודות הרחבה בפאנל הניהול](/he/extending/plugin-reference/#נקודות-הרחבה-בפאנל-הניהול).
+
+## מטפסים מותאמים ל-Forms
+
+טופס הצעות או יצירת קשר ב-Strapi הוא בדרך כלל endpoint מותאם (או סוג תוכן עם הרשאת `create`
+ציבורית) בתוספת קוד ששולח דוא"ל למישהו. אל תעבירו אותו: תכונת ה-[טפסים](/he/guides/frontend/forms/)
+המובנית עושה את כל זה בלי קוד. עורכים מגדירים את השדות בניהול, האתר שולח ל-
+`POST /api/_forms/{slug}`, והשליחות מאומתות, נשלחות בדוא"ל לכתובות **Notify** ומיוצאות כ-CSV.
+לטפסים יש גם מלכודת ספאם והגבלת קצב לכל מבקר (10 שליחות בדקה), מה שנתיב תוסף לא יכול לעשות
+כי הוא לא רואה את כתובת הלקוח.
+
+## Policies ו-middlewares
+
+ל-Verdin אין נקודת חיבור לצינור בקשות ה-HTTP. מה שהוא מציע במקום:
+
+| Strapi | Verdin |
+| --- | --- |
+| policies בסגנון `is-authenticated` על נתיבי REST | גישה ציבורית, הרשאות אסימוני API ותפקידי משתמשי קצה. ראו [הרשאות](/he/reference/permissions/). כללים עדינים יותר (משתמש קצה שעורך רק את הרשומות שלו) דורשים נתיב תוסף. |
+| policy על נתיב מותאם | בדקו את `actor` בנתיב התוסף. |
+| middleware של הגבלת קצב | `[api].public_rate_limit`, `[api].token_rate_limit` ו-`[admin].auth_rate_limit`. |
+| middleware של CORS או כותרות אבטחה | `[api].cors_origins`; כותרות תגובה אחרות ב-reverse proxy. |
+| middleware ששכתב בקשות או תגובות של נתיבי ליבה | לא נתמך. השתמשו בנתיב תוסף להתנהגות החדשה, או ב-reverse proxy. |
+| policy שדוחה כתיבות מסוימות | before hook שעונה `{ error }`, בלי לדעת מי הקורא. |
+
+## מגבלות שצריך לתכנן סביבן
+
+- **אין כתובת לקוח וכותרות מעטות** בנתיבי תוספים (ראו למעלה).
+- **כתיבות שמבוצעות על ידי תוספים מדלגות על before hooks של כל התוספים**, ולכן כללים ב-before
+  hooks לא חלים עליהן.
+- **after hooks שכתיבות של תוסף מפעילות רצים אחרי שהקריאה שלו חוזרת**, לא בתוך הכתיבה,
+  ו-hooks שכותבים מקננים לכל היותר 4 רמות (ראו
+  [כתיבות שמבוצעות על ידי תוספים](/he/extending/plugin-reference/#כתיבות-שמבוצעות-על-ידי-תוספים)).
+  עבודת המשך שחייבת לקרות לפני התגובה צריכה להיעשות בקוד שכותב, אחרי ש-`verdin_content`
+  חוזר.
+- **קריאה אחת בכל פעם לכל תוסף**: נתיב איטי מעכב את ה-hooks של אותו תוסף. שמרו על קריאות
+  קצרות, והתבוננו ב-`verdin_plugin_call_duration_seconds` ב[מדדים](/he/deploy/monitoring/).
+- **נתיבים הם ציבוריים** וחייבים לבדוק את `actor`.
+- **Verdin 0.11 ומעלה** עבור פונקציית ההפעלה ו-`verdin_public_permissions`: מודול שמייבא
+  פונקציית מארח שחסרה בשרת לא נטען בכלל.
+
+## רשימת בדיקה
+
+<Steps>
+
+1. ייבאו את הפרויקט עם `verdin import strapi`, ואז פרטו את הקוד ב-`src/`: נתיבים,
+   controllers, services, lifecycles, policies, middlewares, `bootstrap`, משימות cron
+   והרחבות ניהול.
+2. השמיטו את מה ש-Verdin עושה מובנה: טפסים, הרשאות ציבוריות שהוגדרו ידנית, הגבלות קצב,
+   CORS, webhooks, פרסום מתוזמן ([מהדורות](/he/guides/content/releases/)).
+3. כתבו תוסף אחד עם השאר, לפי הדוגמה: hooks, נתיבים, משימה, פונקציית הפעלה. תנו לו רק את
+   היכולות שהוא צריך.
+4. ודאו ש-hooks שכותבים תוכן לא מסתמכים על קינון עמוק מ-4 רמות.
+5. בנו אותו, התקינו אותו תחת `plugins/`, הפעילו אותו ב-**הגדרות ← תוספים**, וקראו שם את
+   היומן שלו.
+6. עדכנו את הפרונטאנד: כתובות נתיבי התוסף (`/api/plugins/<name>/…`), fingerprints או התחברות
+   משתמש קצה במקום שבו הקוד הסתמך על כתובת הלקוח, וה[שינויים
+   האחרים](/he/migrate/from-strapi/#שינויים-בפרונטאנד) של מעבר.
+
+</Steps>

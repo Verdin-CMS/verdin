@@ -124,6 +124,9 @@ POST /admin/api/presence
 
 ## כמה מופעים
 
-האירועים והנוכחות הם של המופע שאליו הלקוח מחובר. מאחורי מאזן עומסים, נתבו את
-`/api/_events` ואת `/admin/api/events` עם sticky sessions, או הריצו את לקוחות הזמן האמת
-מול מופע אחד. ראו [הרחבה](/he/deploy/scaling/).
+עם אפיק האירועים המשותף (`[cluster].bus = "database"`), הזרמים של כל מופע נושאים את
+האירועים של כולם, והנוכחות והנעילות הרכות זהות בכל מופע. אירועים ממופע אחר מגיעים בתוך
+`[cluster].poll_interval_ms` (MySQL, MariaDB, SQLite) או מיד (PostgreSQL, `LISTEN/NOTIFY`).
+בלי האפיק, האירועים והנוכחות הם של המופע שאליו הלקוח מחובר: נתבו את `/api/_events` ואת
+`/admin/api/events` עם sticky sessions, או הריצו את לקוחות הזמן האמת מול מופע אחד. ראו
+[הרחבה](/he/deploy/scaling/#אפיק-אירועים-משותף).

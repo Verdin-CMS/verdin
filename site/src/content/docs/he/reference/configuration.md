@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 התצורה בנויה בשכבות: **ברירות מחדל מובנות ← `verdin.toml` ← סביבה**. הקובץ אופציונלי; לכל
@@ -232,8 +233,22 @@ provider = { name = "s3", bucket = "media", region = "auto",
 
 | מפתח | ברירת מחדל | תיאור |
 | --- | --- | --- |
-| `enabled` | `false` | הגשת מדדי Prometheus ב-`/_metrics`: בקשות HTTP לפי תחום (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), שיטה ומחלקת סטטוס עם היסטוגרמות של זמני תגובה, שליחות webhook ממתינות, זרמי זמן אמת פתוחים וזמן פעולה. |
+| `enabled` | `false` | הגשת מדדי Prometheus ב-`/_metrics`: בקשות HTTP לפי תחום (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), שיטה ומחלקת סטטוס עם היסטוגרמות של זמני תגובה, שליחות webhook ממתינות, זרמי זמן אמת פתוחים, תעבורת אפיק האירועים וזמן פעולה. |
 | `token` | לא מוגדר | איסוף דורש `Authorization: Bearer <token>`. `VERDIN_METRICS_TOKEN` גובר עליו. בלי אסימון, כל מי שמגיע לפורט יכול לקרוא את המדדים. |
+
+## `[telemetry]`
+
+עקבות ודיווחי שגיאות, שניהם כבויים כברירת מחדל ומשמשים רק את `verdin start` ו-`verdin dev`
+(ראו [ניטור](/he/deploy/monitoring/#עקבות-opentelemetry)).
+
+| מפתח | ברירת מחדל | תיאור |
+| --- | --- | --- |
+| `enabled` | `false` | ייצוא עקבות OpenTelemetry של בקשות HTTP ושל שאילתות מסד הנתונים שלהן דרך OTLP/HTTP (protobuf). `OTEL_SDK_DISABLED=true` מכבה אותו. |
+| `endpoint` | לא מוגדר (`http://localhost:4318`) | כתובת הבסיס של ה-collector; `/v1/traces` מתווסף. `OTEL_EXPORTER_OTLP_ENDPOINT` (כתובת בסיס) ו-`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (כתובת מלאה) גוברים. |
+| `service_name` | `"verdin"` | ה-`service.name` של העקבות. `OTEL_SERVICE_NAME` גובר. |
+| `sample_ratio` | `1.0` | חלק העקבות שנשמר, מ-`0.0` עד `1.0`. בקשה שנושאת כותרת `traceparent` עוקבת אחרי ההחלטה של הקורא. |
+| `sentry_dsn` | לא מוגדר | דיווח על panics ותגובות 5xx ל-Sentry. `SENTRY_DSN` גובר. |
+| `sentry_environment` | לא מוגדר | סביבת Sentry. `SENTRY_ENVIRONMENT` גובר; כשאינו מוגדר, `production` ב-`verdin start` ו-`development` ב-`verdin dev`. |
 
 ## `[ai]`
 
@@ -278,8 +293,26 @@ provider = "anthropic"
 | `dir` | `"data/search"` | תיקיית האינדקס, יחסית לפרויקט. מחיקה שלה בונה מחדש את האינדקס בהפעלה הבאה. |
 | `memory_mb` | `50` | תקציב הזיכרון לאינדוקס. |
 
-האינדקס נמצא בדיסק של המופע ועוקב אחרי הכתיבות של אותו מופע: עם כמה מופעים, השאירו את החיפוש
-באחד (או בנו מחדש אחרי פריסה).
+האינדקס נמצא בדיסק של המופע. עם כמה מופעים, הפעילו את [אפיק האירועים](#cluster) כדי שכל
+אינדקס יעקוב אחרי הכתיבות של כולם.
+
+## `[cluster]`
+
+אפיק האירועים המשותף, עבור כמה מופעים של פרויקט אחד (ראו
+[הרצת כמה מופעים](/he/deploy/scaling/#אפיק-אירועים-משותף)).
+
+| מפתח | ברירת מחדל | תיאור |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`: אירועי זמן אמת, נוכחות, ביטול מטמון ועדכוני חיפוש נשארים בכל מופע. `database`: הם מגיעים לכל מופע דרך מסד הנתונים של הפרויקט (`LISTEN/NOTIFY` ב-PostgreSQL, סקירה מחזורית ב-MySQL, MariaDB ו-SQLite). |
+| `poll_interval_ms` | `1000` | באיזו תדירות MySQL, MariaDB ו-SQLite קוראים אירועים של מופעים אחרים. PostgreSQL מוער על ידי `NOTIFY` ומשתמש בקצב הזה רק כשהוא לא יכול להאזין. |
+| `instance_id` | לא מוגדר (אקראי בכל הפעלה) | השם של המופע הזה באפיק וביומנים. |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+הגדירו אותו בכל מופע, או עם `VERDIN_CLUSTER__BUS=database`.
 
 ## משתני סביבה
 
@@ -300,5 +333,9 @@ provider = "anthropic"
 | `VERDIN_CDN_TOKEN` | אסימון ה-API של ספק ה-`[cdn]`. |
 | `VERDIN_IMAGE_SECRET` | חותם על כתובות של המרות תמונות (ראו [`[upload.transforms]`](#uploadtransforms)). |
 | `VERDIN_METRICS_TOKEN` | Bearer token לאיסוף `/_metrics` כש-`[metrics].enabled`; גובר על `[metrics].token`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | ה-collector של עקבות [`[telemetry]`](#telemetry); גוברים על `[telemetry].endpoint`. גם שאר משתני `OTEL_EXPORTER_OTLP_*` הסטנדרטיים חלים (כותרות, זמן קצוב, דחיסה). |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | המשאב של העקבות שמיוצאות; `OTEL_SERVICE_NAME` גובר על `[telemetry].service_name`. |
+| `OTEL_SDK_DISABLED` | `true` מכבה ייצוא עקבות גם כש-`[telemetry].enabled`. |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT` | דיווח שגיאות ל-Sentry; גוברים על `[telemetry].sentry_dsn` ו-`sentry_environment`. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | פרטי הגישה של ספק ההעלאות S3. |
 | `RUST_LOG` | מסנן היומן; גובר על `[log].level`. |

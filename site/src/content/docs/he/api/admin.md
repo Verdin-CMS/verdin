@@ -88,6 +88,39 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   אתר אחר.
 - שינויים מוצלחים נרשמים ב[יומן הביקורת](/he/guides/content/audit-logs/).
 
+## רשימות
+
+רשימות הגדרות מחולקות לעמודים עם `page` (מ-1) ו-`pageSize`. הן עונות עם שורות העמוד
+והספירות:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| רשימה | גודל עמוד ברירת מחדל (מרבי) | סדר | פרמטרים נוספים |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | הישן ראשון | |
+| `GET /webhooks` | 25 (100) | הישן ראשון | `meta.events` מפרט את האירועים שאפשר להירשם אליהם ב-webhook |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | החדש ראשון | |
+| `GET /releases` | 25 (100) | החדש ראשון | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | לפי מקור | `search` מתאים למקור או ליעד |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | לפי שם | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | החדש ראשון | |
+| `GET /deploy/targets` | 25 (100) | הישן ראשון | |
+| `GET /deploy/deployments` | 25 (100) | החדש ראשון | `targetId`; `limit` הוא כינוי מוצא משימוש של `pageSize` |
+| `GET /end-users` | 25 (100) | החדש ראשון | `search` מתאים לשם המשתמש או לדוא"ל |
+| `GET /audit-logs` | 50 (200) | החדש ראשון | ראו [יומני ביקורת](/he/guides/content/audit-logs/) |
+
+`pageSize` גדול יותר מורד למרבי. כדי לקרוא רשימה שלמה, בקשו עמודים עד ש-`page` מגיע
+ל-`pageCount`:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+נתיבי תוכן מחולקים לעמודים כמו ה-REST API, עם `pagination[page]` ו-`pagination[pageSize]`.
+
 ## קבוצות נתיבים
 
 הנתיבים יחסיים ל-`/admin/api`. הנתבים נמצאים ב-

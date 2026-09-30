@@ -296,7 +296,7 @@ GET /api/articles?fields=title,slug
 
 | צורה | ממלא |
 | --- | --- |
-| `populate=*` | כל קשר, שדה מדיה, רכיב ואזור דינמי, ברמה אחת |
+| `populate=*` | כל קשר, שדה מדיה, רכיב ואזור דינמי, ברמה אחת, ו-`localizations` בסוגים מתורגמים |
 | `populate=category,tags` או `populate[0]=category&populate[1]=tags` | השדות שצוינו |
 | `populate[category]=true` | השדה שצוין (`false` משמיט אותו) |
 | `populate[category][fields][0]=name` | השדה, עם אפשרויות |
@@ -343,6 +343,15 @@ GET /api/articles?populate[category][fields][0]=name
 `locale=fr` קורא וכותב את הגרסה הצרפתית של סוגים מתורגמים. בלעדיו, הבקשות משתמשות בשפת
 ברירת המחדל. קוד לא תקין או לא מוכר הוא `400`. סוגים שאינם מתורגמים מתעלמים ממנו. ראו
 [בינאום](/he/concepts/internationalization/).
+
+בסוגים מתורגמים, `populate=localizations` מוסיף את גרסאות השפה האחרות של המסמך, באותו סטטוס,
+כל אחת עם ה-`locale` שלה. הוא מקבל את האפשרויות של קשר ממולא (`fields`, `filters`, `sort`,
+`populate`, `count`), וכלול ב-`populate=*`. לסוגים שאינם מתורגמים אין `localizations`.
+
+`GET /api/i18n/locales` מפרט את השפות כמערך פשוט במבנה של Strapi (`id`, `documentId`,
+`name`, `code`, `isDefault`, `createdAt`, `updatedAt`, `publishedAt`, `locale`). הוא דורש את
+ההענקה `find` על `plugin::i18n.locale`. ראו
+[לוקליזציה של תוכן](/he/guides/content/localizing-content/#רשימת-השפות).
 
 ## חיפוש
 

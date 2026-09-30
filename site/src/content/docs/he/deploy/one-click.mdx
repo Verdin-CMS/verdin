@@ -1,0 +1,103 @@
+---
+title: פריסות בלחיצה אחת
+description: פרסו את ה-starter של Verdin (דוגמת הבלוג) ל-Render, DigitalOcean App Platform, Railway, Fly.io או Coolify מהקבצים במאגר הזה, ואז עשו לו fork עבור הסכמה שלכם.
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+במאגר יש קובצי פריסה לכמה פלטפורמות. כולם בונים את
+[`deploy/one-click/Dockerfile`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/Dockerfile):
+האימג' הרשמי עם הסכמה של [דוגמת הבלוג](https://github.com/verdin-cms/verdin/tree/main/examples/blog)
+ותצורה קטנה. זה נותן לכם Verdin רץ בתוך כמה דקות.
+
+<Aside>
+השרת שנפרס מריץ `start --migrate`, ולכן בונה סוגי התוכן כבוי: הסכמה מגיעה מהאימג'. עבור
+הפרויקט שלכם, **עשו fork למאגר**, החליפו את `examples/blog/schema` בסכמה שלכם (או שנו את
+שורת ה-`COPY` ב-Dockerfile) ופרסו את ה-fork. עמודי הפלטפורמות ([Render](/he/deploy/render/),
+[Railway](/he/deploy/railway/), [Fly.io](/he/deploy/fly/)) מראים את אותה הקמה במאגר משלכם.
+</Aside>
+
+הקבצים נבדקו מול התיעוד של כל פלטפורמה ב-2026-09-30; אף אחד מהם לא נפרס בחשבון אמיתי.
+
+| פלטפורמה | קובץ | מסד נתונים | מדיה |
+| --- | --- | --- | --- |
+| Render | [`render.yaml`](https://github.com/verdin-cms/verdin/blob/main/render.yaml) | Render PostgreSQL | דיסק של 1 GB ב-`/data` |
+| DigitalOcean | [`.do/deploy.template.yaml`](https://github.com/verdin-cms/verdin/blob/main/.do/deploy.template.yaml) | Dev PostgreSQL | Spaces (אין דיסקים ב-App Platform) |
+| Railway | [`deploy/one-click/railway.json`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/railway.json) | Railway PostgreSQL | volume ב-`/data` |
+| Fly.io | [`deploy/one-click/fly.toml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/fly.toml) | SQLite על ה-volume | volume ב-`/data` |
+| Coolify | [`deploy/one-click/compose.coolify.yaml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/compose.coolify.yaml) | שירות PostgreSQL | volume ב-`/data` |
+
+ה-Dockerfile מסתיים ב-`USER root`, כי הפלטפורמות האלה מחברות volumes בבעלות root והמשתמש של
+האימג' (uid `65532`) לא יוכל לכתוב אליהם. הסירו את השורה הזו אם ה-volume שלכם ניתן לכתיבה
+על ידי uid `65532`, או אם אתם לא שומרים מצב במופע.
+
+## Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/verdin-cms/verdin)
+
+ה-Blueprint יוצר את שירות ה-web (תוכנית Starter, שדיסקים דורשים), מסד נתונים PostgreSQL ואת
+שני הסודות (נוצרים פעם אחת, ואז נשמרים). Render מבקש את `VERDIN_SERVER__PUBLIC_URL`: הזינו
+את כתובת השירות, `https://<name>.onrender.com`, או את הדומיין שלכם. מ-fork, השתמשו ב-
+`https://render.com/deploy?repo=<your fork's URL>`.
+
+## DigitalOcean App Platform
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/verdin-cms/verdin/tree/main)
+
+ה-spec יוצר את השירות ומסד נתונים לפיתוח. הדביקו את שני הערכים של `verdin secrets` ב-
+`VERDIN_ADMIN_JWT_SECRET` וב-`VERDIN_TOKEN_PEPPER` כשתתבקשו:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets
+```
+
+ל-App Platform אין דיסקים קבועים, ולכן קבצים שהועלו אובדים בכל פריסה עד שתוסיפו bucket של
+Spaces: הגדירו בשירות את `VERDIN_UPLOAD__PROVIDER__NAME=s3`,
+`VERDIN_UPLOAD__PROVIDER__BUCKET`, `VERDIN_UPLOAD__PROVIDER__REGION`,
+`VERDIN_UPLOAD__PROVIDER__ENDPOINT` (`https://<region>.digitaloceanspaces.com`),
+`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`, `AWS_ACCESS_KEY_ID` ו-`AWS_SECRET_ACCESS_KEY`.
+עבור fork, שנו את `repo_clone_url` ב-spec.
+
+## Railway
+
+1. עשו fork למאגר, ואז ב-Railway צרו פרויקט מה-fork.
+2. בהגדרות השירות, הגדירו את נתיב קובץ התצורה ל-`deploy/one-click/railway.json` (הוא בוחר
+   את ה-Dockerfile ואת בדיקת התקינות).
+3. הוסיפו מסד נתונים PostgreSQL ו-volume שמחובר ל-`/data`, ואז הגדירו את המשתנים של
+   [Railway](/he/deploy/railway/#2-צרו-את-הפרויקט): `VERDIN_DATABASE_URL`, שני הסודות ו-
+   `VERDIN_SERVER__PUBLIC_URL`. צרו דומיין עם פורט יעד `1337`.
+
+## Fly.io
+
+משכפול של המאגר (או ה-fork שלכם), עם `flyctl` מחובר:
+
+```sh frame="terminal"
+fly launch --no-deploy --copy-config --config deploy/one-click/fly.toml --ha=false
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets | fly secrets import --config deploy/one-click/fly.toml
+fly deploy --config deploy/one-click/fly.toml --dockerfile deploy/one-click/Dockerfile .
+```
+
+זה מריץ Machine אחד עם SQLite והעלאות על volume של 1 GB. שנו קודם את `app` ואת
+`primary_region` ב-`fly.toml`. [Fly.io](/he/deploy/fly/) מכסה במקום זאת PostgreSQL ו-Tigris.
+
+## Coolify
+
+ב-Coolify, הוסיפו משאב מה-fork שלכם (או מהמאגר הזה) עם build pack של **Docker Compose**,
+base directory `/` וקובץ compose `/deploy/one-click/compose.coolify.yaml`. Coolify ממלא את
+משתני ה-`SERVICE_*` שבו:
+
+| משתנה | מה Coolify מייצר |
+| --- | --- |
+| `SERVICE_FQDN_VERDIN_1337` | דומיין שה-proxy שלו מנתב לפורט 1337 (משמש גם כ-`VERDIN_SERVER__PUBLIC_URL`). |
+| `SERVICE_BASE64_64_JWT`, `SERVICE_BASE64_64_PEPPER` | שני הסודות, 64 תווים כל אחד, נשמרים בין פריסות. |
+| `SERVICE_USER_POSTGRES`, `SERVICE_PASSWORD_POSTGRES` | פרטי הגישה למסד הנתונים. |
+
+ה-proxy של Coolify מסיים TLS, ולכן אין צורך ב-Caddy. עבור שרת שאתם מנהלים בעצמכם בלי
+Coolify, השתמשו ב-[Docker Compose בייצור](/he/deploy/compose/).
+
+## אחרי הפריסה הראשונה
+
+פתחו את `https://<your address>/admin/` ורשמו את המנהל הראשון. אחר כך קראו את
+[רשימת הבדיקה לייצור](/he/deploy/production-checklist/).

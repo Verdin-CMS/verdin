@@ -157,6 +157,63 @@ const { data } = await verdin.collection('articles').find({ locale: 'fr' });
   קשרים. יעדים שאינם מתורגמים משותפים לכל השפות.
 - payloads של webhooks וגרסאות היסטוריה רושמים את השפה.
 
-בניגוד ל-Strapi, ל-API התוכן אין נתיב `/api/i18n/locales`. השפות מפורטות ב-API הניהול
-ב-`GET /admin/api/i18n/locales`, ומנוהלות עם `POST`, `PUT /admin/api/i18n/locales/{code}`
-ו-`DELETE /admin/api/i18n/locales/{code}` (`locales.manage`).
+### גרסאות שפה אחרות
+
+מלאו (populate) את `localizations` כדי לקבל עם המסמך את גרסאות השפה האחרות שלו, כמו ב-Strapi v5.
+השדה מוחזר רק כשממלאים אותו, עם `populate=localizations` או `populate=*`:
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- הגרסאות באותו סטטוס כמו המסמך: גרסאות מפורסמות כברירת מחדל, טיוטות עם `status=draft`.
+  שפה שיש בה רק טיוטה מושמטת מקריאה של תוכן מפורסם.
+- `localizations` מקבל את האפשרויות של קשר ממולא: `fields`, `filters`, `sort`, `populate`
+  ו-`count`. למשל `populate[localizations][fields][0]=title`. כל גרסה כוללת תמיד `locale`,
+  והקשרים שלה נקראים בשפה שלה.
+- ל-GraphQL יש שדה `localizations` בסוגים מתורגמים, עם `filters` ו-`sort`.
+- לסוגים שאינם מתורגמים אין `localizations`, ומילוי שלו הוא `400`.
+- API הניהול משמיט את `localizations`.
+
+### רשימת השפות
+
+`GET /api/i18n/locales` מפרט את השפות במבנה של Strapi, כמערך פשוט (בלי המעטפת `data`):
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+כמו `listLocales` ב-Strapi, הנתיב סגור לציבור עד שמתירים אותו. העניקו `find` בשורה **שפות**
+(`plugin::i18n.locale`) ב-**הגדרות ← גישה ציבורית**, בתפקיד של משתמשי קצה, או באסימון API
+מותאם אישית. אסימונים עם גישה מלאה ואסימונים לקריאה בלבד כבר יכולים לקרוא אותו.
+`documentId` נגזר מקוד השפה, ולכן נשאר זהה בין הפעלות מחדש וייצוא. ייבוא מ-Strapi מביא
+איתו את ההרשאה `listLocales`. לקוח ה-TypeScript קורא את הרשימה עם `verdin.locales()`.
+
+השפות מנוהלות ב-API הניהול: מפורטות ב-`GET /admin/api/i18n/locales`, ומשתנות עם `POST`,
+`PUT /admin/api/i18n/locales/{code}` ו-`DELETE /admin/api/i18n/locales/{code}`
+(`locales.manage`).

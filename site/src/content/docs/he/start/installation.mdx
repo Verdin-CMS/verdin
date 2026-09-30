@@ -1,0 +1,128 @@
+---
+title: התקנה
+description: התקינו את הקובץ הבינארי verdin עם סקריפט ההתקנה, Homebrew, חבילת .deb, winget, cargo binstall או מהמקור, או הריצו את אימג' ה-Docker.
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin הוא קובץ בינארי אחד עם פאנל הניהול מובנה. כל גרסה מפרסמת אותו ל-Linux (x86-64 ו-ARM64,
+בניות musl סטטיות), macOS (Intel ו-Apple silicon) ו-Windows (x86-64), עם קובץ `SHA256SUMS`,
+ב[דף הגרסאות](https://github.com/verdin-cms/verdin/releases). בחרו את דרך ההתקנה שמתאימה
+למכונה שלכם; כולן מתקינות את אותו קובץ בינארי.
+
+בדקו אותו עם:
+
+```sh frame="terminal"
+verdin --version
+```
+
+אחר כך המשיכו עם [ההתחלה המהירה](/he/start/quickstart/) מהפקודה `verdin new`.
+
+## סקריפט התקנה (Linux ו-macOS)
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh
+```
+
+הסקריפט מזהה את המערכת והארכיטקטורה, מוריד את הארכיון המתאים מהגרסה האחרונה ב-GitHub, בודק
+אותו מול `SHA256SUMS` של הגרסה ומתקין את `verdin` ב-`/usr/local/bin` כשהוא רץ כ-root, ואחרת
+ב-`~/.local/bin`. הוא צריך `curl` או `wget`, `tar`, ו-`sha256sum`, `shasum` או `openssl`.
+
+| אפשרות | משתנה | ברירת מחדל |
+| --- | --- | --- |
+| `--version <X.Y.Z>` | `VERDIN_VERSION` | הגרסה האחרונה |
+| `--dir <directory>` | `VERDIN_INSTALL_DIR` | `/usr/local/bin` (root) או `~/.local/bin` |
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh -s -- --version 0.11.0 --dir /opt/verdin/bin
+```
+
+כדי לקרוא את הסקריפט לפני שמריצים אותו, הורידו אותו קודם:
+`curl -fsSLO https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh`.
+
+## מנהלי חבילות
+
+<Tabs syncKey="package-manager">
+  <TabItem label="Homebrew">
+
+ב-macOS וב-Linux:
+
+```sh frame="terminal"
+brew install verdin-cms/tap/verdin
+```
+
+ה-formula מתקינה את הקובץ הבינארי של הגרסה (בניית musl ב-Linux). `brew upgrade verdin`
+עובר לגרסה הבאה.
+
+  </TabItem>
+  <TabItem label="Debian / Ubuntu">
+
+הורידו מהגרסה את ה-`.deb` לארכיטקטורה שלכם (`amd64` או `arm64`) והתקינו אותו:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/verdin_0.11.0-1_amd64.deb
+sudo apt install ./verdin_0.11.0-1_amd64.deb
+```
+
+החבילה מוסיפה משתמש מערכת `verdin`, שירות systemd (לא מופעל) ואת התצורה ב-`/etc/verdin/`.
+[שרת Linux](/he/deploy/linux-server/) עובר על הרצתו. עדיין אין מאגר apt: שדרגו על ידי התקנת
+ה-`.deb` של הגרסה הבאה.
+
+  </TabItem>
+  <TabItem label="winget">
+
+ב-Windows:
+
+```powershell frame="terminal"
+winget install VerdinCMS.Verdin
+```
+
+winget מוסיף את `verdin` ל-`PATH` של טרמינלים חדשים. בלי winget, הורידו את ה-`.zip` מהגרסה
+ושימו את `verdin.exe` במקום כלשהו ב-`PATH` שלכם.
+
+  </TabItem>
+  <TabItem label="cargo binstall">
+
+עם [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), Cargo מוריד את הקובץ
+הבינארי של הגרסה במקום להדר אותו:
+
+```sh frame="terminal"
+cargo binstall --git https://github.com/verdin-cms/verdin verdin
+```
+
+  </TabItem>
+</Tabs>
+
+## Docker
+
+האימג' `ghcr.io/verdin-cms/verdin` מריץ את אותו קובץ בינארי על `linux/amd64` ו-`linux/arm64`:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 --version
+```
+
+ראו [Docker](/he/deploy/docker/) עבור volumes, תצורה וקובצי Compose.
+
+## מהמקור
+
+עם Rust 1.95 ומעלה ו-Node.js 24 (לבניית פאנל הניהול):
+
+```sh frame="terminal"
+git clone https://github.com/verdin-cms/verdin && cd verdin
+(cd admin && npm ci && npm run build)
+cargo install --locked --path crates/verdin --features embed-admin
+```
+
+בלי `--features embed-admin` אין בקובץ הבינארי פאנל ניהול, אלא אם מכוונים את
+`[admin].assets_dir` לעותק בנוי.
+
+## אימות הורדה ידנית
+
+לכל גרסה יש קובץ `SHA256SUMS` שמפרט כל ארכיון וחבילה:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS     # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
+```

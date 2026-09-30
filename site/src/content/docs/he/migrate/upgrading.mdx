@@ -2,7 +2,7 @@
 title: שדרוג Verdin
 description: שדרגו התקנה של Verdin — הקובץ הבינארי או האימג' של Docker, ההגירות שרצות בהפעלה, והשינויים הבולטים או השוברים של כל גרסה משנית.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -111,6 +111,31 @@ import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
 
 שינויים בולטים ושוברים לפי גרסה, מהחדשה לישנה. [יומן השינויים](/he/project/changelog/) מכיל
 את הרשימה המלאה.
+
+### 0.10 → 0.11
+
+ההגירה שרצה בהפעלה מוסיפה טבלה אחת, `vd_cluster_events`, שמשמשת רק כש-
+`[cluster] bus = "database"`.
+
+- **מספרים עשרוניים**: ערכי `decimal` שלמים מוחזרים כמספרים שלמים ב-JSON (`25`, לא `25.0`),
+  כמו ש-Strapi מחזיר אותם. לקוחות שבודקים את טיפוס ה-JSON בקפדנות עשויים להבחין;
+  `[api] decimal_as_string` לא השתנה. ב-SQLite, `sort` ו-`$gt`/`$lt`/`$between` על
+  עשרוניים משווים עכשיו מספרים במקום טקסט, כך שתוצאות שהסתמכו על הסדר הישן (השגוי) משתנות.
+- **`populate=*` בסוגים מתורגמים** מחזיר גם `localizations`, גרסאות השפה האחרות של המסמך,
+  כמו ב-Strapi v5. מאפיין בסכמה ששמו `localizations` שומר על המשמעות שלו.
+- **תוספים**: hooks מסוג after שהכתיבות של תוסף מפעילות רצים אחרי שהקריאה שלו חוזרת ולא בתוך
+  הכתיבה, ו-hooks שכותבים מקננים לכל היותר 4 רמות. פונקציות מארח נעצרות במגבלת הזמן של
+  הקריאה.
+- **כמה מופעים**: הגדירו `[cluster] bus = "database"` בכל מופע כדי שזרמי זמן אמת, נוכחות,
+  מטמון התגובות ואינדקס החיפוש יעקבו אחרי שינויים שבוצעו באחרים (ראו
+  [הרצת כמה מופעים](/he/deploy/scaling/)).
+- **סקריפטים שקוראים רשימות ניהול**: `GET /admin/api/users`, `/roles`, `/api-tokens`,
+  `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` ו-`/deploy/targets`
+  מחזירים 25 שורות אלא אם מעבירים `pageSize` (לכל היותר 100), עם `meta.pagination`, כמו
+  הרשימות שכבר היו מחולקות לעמודים. עברו על העמודים עם `?page=` עד ש-`page` מגיע ל-
+  `meta.pagination.pageCount`. `/deploy/deployments` מחולק לעמודים באותו אופן במקום להחזיר
+  את 50 האחרונים; `limit` עדיין עובד ככינוי מוצא משימוש של `pageSize`. ראו
+  [רשימות](/he/api/admin/#רשימות).
 
 ### 0.9.1 → 0.10
 

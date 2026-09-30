@@ -7,7 +7,7 @@ sidebar:
 
 העמוד הזה מריץ פרויקט Verdin על Kubernetes. ההתקנה העיקרית היא stateless: PostgreSQL
 (או MySQL/MariaDB) מחוץ ל-pods, מדיה באחסון תואם S3, וכמה רפליקות שתצטרכו. אחריה מופיעה
-התקנה עם רפליקה אחת ו-volume עבור SQLite.
+התקנה עם רפליקה אחת ו-volume עבור SQLite. ה-[chart של Helm](/he/deploy/helm/) אורז את המניפסטים האלה עם ערכים לכל הגדרה.
 
 המניפסטים משתמשים ב-APIs יציבים (`apps/v1`, `v1`) ואומתו מול הסכמות של Kubernetes עם
 `kubeconform -strict` ב-2026-09-29, ולא הורצו על cluster אמיתי. החליפו כל ערך שבסוגריים
@@ -38,7 +38,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -155,8 +158,10 @@ spec:
   (אותן תוויות, כך שהוא גם מגיש תעבורה), או קבלו את זה שהמשימות רצות בכל רפליקה. webhooks,
   מהדורות מתוזמנות והתקציר היומי נלקחים דרך מסד הנתונים ורצים פעם אחת. ראו
   [הרצת כמה מופעים](/he/deploy/scaling/).
-- **זמן אמת.** זרמי אירועים (`/api/_events`) נשארים ב-pod שאליו הם מתחברים. השתמשו ב-session
-  affinity ב-Ingress אם אתם משתמשים ב[זמן אמת](/he/guides/frontend/realtime/).
+- **זמן אמת, נוכחות, מטמונים וחיפוש.** `[cluster].bus = "database"` מביא לכל pod את האירועים
+  של האחרים (ראו [אפיק האירועים המשותף](/he/deploy/scaling/#אפיק-אירועים-משותף)). בלעדיו,
+  זרמי אירועים (`/api/_events`) נשארים ב-pod שאליו הם מתחברים: השתמשו ב-session affinity
+  ב-Ingress אם אתם משתמשים ב[זמן אמת](/he/guides/frontend/realtime/).
 
 ## רפליקה אחת עם SQLite
 

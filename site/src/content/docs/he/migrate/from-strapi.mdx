@@ -116,7 +116,7 @@ Verdin לא יכול לקרוא ייצואים מוצפנים (`.tar.gz.enc`); �
 לא מיובאים בכלל: משתמשי ניהול ותפקידי ניהול, אסימוני API, transfer tokens, webhooks, מהדורות,
 שלבי תהליכי בקרה, היסטוריית תוכן ויומני ביקורת, וההגדרות של תוספי Strapi. לקוד ה-Strapi
 שלכם — controllers, services, נתיבים, policies, middlewares, lifecycle hooks, משימות cron
-והתאמות אישיות של פאנל הניהול — אין מקבילה ב-Verdin להמיר אליה; ראו
+והתאמות אישיות של פאנל הניהול — לא מומר: בנו אותו מחדש כמתואר ב
 [בנייה מחדש של קוד מותאם](#בנייה-מחדש-של-קוד-מותאם).
 
 <Aside type="note">
@@ -191,11 +191,17 @@ API התוכן עוקב אחרי מבני ה-REST וה-GraphQL של Strapi v5, �
 
 ## בנייה מחדש של קוד מותאם
 
+קוד ב-`src/` עובר ל[תוסף WebAssembly](/he/extending/plugins/). [העברת קוד
+מותאם](/he/migrate/porting-custom-code/) עובר על lifecycles, נתיבים, משימת cron ו-`bootstrap`
+של פרויקט אמיתי, עם תוסף לדוגמה.
+
 | Strapi | Verdin |
 | --- | --- |
-| Lifecycle hooks, middlewares של document service | hooks של תוספים (`beforeCreate`, `afterUpdate`…) ב[תוסף WebAssembly](/he/extending/plugins/) |
+| Lifecycle hooks, middlewares של document service | hooks של תוספים (`beforeCreate`, `afterUpdate`…) |
 | נתיבים ו-controllers מותאמים | נתיבי תוספים תחת `/api/plugins/<name>/` |
+| `bootstrap()` ב-`src/index.js` (זריעה, הגדרת הרשאות ציבוריות) | פונקציית ההפעלה של התוסף (`[startup]`), עם היכולת `public_permissions` עבור התפקיד הציבורי |
 | משימות cron | משימות של תוספים (`[[jobs]]`) |
+| endpoint מותאם ששומר שליחות טפסים | [טפסים](/he/guides/frontend/forms/) מובנים |
 | שדות מותאמים | שדות מותאמים של תוספים |
 | ווידג'טים לפאנל הניהול | ווידג'טים של תוספים, או הווידג'טים המובנים של לוח הבקרה |
 | לוגו, צבעים וטקסטים של פאנל הניהול | `[admin.branding]` ב-`verdin.toml` |
