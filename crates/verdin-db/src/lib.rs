@@ -8,6 +8,7 @@ pub mod value;
 mod version;
 
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
@@ -29,6 +30,8 @@ pub enum DbError {
     UnsupportedVersion { flavor: Flavor, found: Version, minimum: Version },
     #[error("could not parse server version `{0}`")]
     UnparsableVersion(String),
+    #[error("timed out waiting for the database write lock")]
+    WriteLockTimeout,
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }
@@ -141,12 +144,25 @@ impl Default for ConnectOptions {
     }
 }
 
+/// How long a SQLite writer waits for the write lock: SQLite's own `busy_timeout` and
+/// the queue in front of it.
+const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// SQLite has one write lock per database. Writers left to SQLite retry on `busy_timeout`
+/// with growing sleeps and in no order, so under contention some wait far longer than the
+/// queue. They wait here instead, first come first served (Tokio's mutex is fair), and
+/// only then take a connection, so queued writers do not hold pool connections.
+pub(crate) type WriteLock = Arc<tokio::sync::Mutex<()>>;
+pub(crate) type WriteGuard = tokio::sync::OwnedMutexGuard<()>;
+
 /// A connected database with its detected flavor and server version.
 #[derive(Debug, Clone)]
 pub struct Database {
     pool: Pool,
     flavor: Flavor,
     version: Version,
+    /// SQLite only: PostgreSQL and MySQL lock rows, not the database.
+    write_lock: Option<WriteLock>,
 }
 
 impl Database {
@@ -186,7 +202,7 @@ impl Database {
                     .create_if_missing(true)
                     .foreign_keys(true)
                     .journal_mode(SqliteJournalMode::Wal)
-                    .busy_timeout(Duration::from_secs(5));
+                    .busy_timeout(SQLITE_BUSY_TIMEOUT);
                 // Every connection to an in-memory database opens a *different* database,
                 // so in-memory pools are limited to a single connection.
                 let in_memory = url.contains(":memory:") || url.contains("mode=memory");
@@ -216,7 +232,8 @@ impl Database {
         }
         tracing::info!(%flavor, %version, "connected to database");
 
-        Ok(Self { pool, flavor, version })
+        let write_lock = (flavor == Flavor::Sqlite).then(WriteLock::default);
+        Ok(Self { pool, flavor, version, write_lock })
     }
 
     pub fn pool(&self) -> &Pool {
@@ -272,6 +289,17 @@ async fn detect(pool: &Pool) -> Result<(Flavor, Version)> {
     };
     let version = Version::parse(&raw).ok_or(DbError::UnparsableVersion(raw))?;
     Ok((flavor, version))
+}
+
+/// Waits for SQLite's write lock (see [`WriteLock`]); `None` on other backends. A writer
+/// that already holds it (an open [`Tx`]) and asks again times out, as SQLite itself
+/// would answer `SQLITE_BUSY`.
+pub(crate) async fn write_guard(lock: Option<&WriteLock>) -> Result<Option<WriteGuard>> {
+    let Some(lock) = lock else { return Ok(None) };
+    tokio::time::timeout(SQLITE_BUSY_TIMEOUT, lock.clone().lock_owned())
+        .await
+        .map(Some)
+        .map_err(|_| DbError::WriteLockTimeout)
 }
 
 fn invalid_url(error: sqlx::Error) -> DbError {

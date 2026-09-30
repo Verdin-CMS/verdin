@@ -10,7 +10,7 @@ use sqlx::pool::PoolConnection;
 use sqlx::{AssertSqlSafe, MySql, Postgres, Sqlite, Transaction};
 
 use crate::value::{ColumnKind, SqlValue, bind_values, decode_rows};
-use crate::{Database, Flavor, Pool, Result};
+use crate::{Database, Flavor, Pool, Result, WriteGuard, WriteLock, write_guard};
 
 pub(crate) enum ConnInner {
     Postgres(PoolConnection<Postgres>),
@@ -35,12 +35,15 @@ pub(crate) enum TxInner {
 pub struct Tx {
     inner: TxInner,
     flavor: Flavor,
+    /// Held until the transaction ends (declared after `inner`, so dropped after it).
+    _write: Option<WriteGuard>,
 }
 
 /// Pool-level queries: each call checks out a connection for one statement.
 pub struct PoolQueries<'a> {
     inner: &'a Pool,
     flavor: Flavor,
+    write_lock: Option<&'a WriteLock>,
 }
 
 macro_rules! run_execute {
@@ -111,6 +114,7 @@ macro_rules! executor {
             /// Runs one statement. Without parameters the simple (unprepared) protocol is
             /// used, which is what DDL and session statements need.
             pub async fn execute(&mut self, sql: &str, params: &[SqlValue]) -> Result<u64> {
+                let _write = self.write_permit().await?;
                 Ok(match &mut self.inner {
                     $enum::Postgres($h) => run_execute!(postgres, Flavor::Postgres, $exec, sql, params),
                     $enum::MySql($h) => run_execute!(mysql, Flavor::MySql, $exec, sql, params),
@@ -144,6 +148,7 @@ macro_rules! executor {
             /// Runs an `INSERT` into a table whose primary key is `id` and returns the new
             /// id. Uses `RETURNING` where available and `LAST_INSERT_ID()` on MySQL/MariaDB.
             pub async fn insert_returning_id(&mut self, sql: &str, params: &[SqlValue]) -> Result<i64> {
+                let _write = self.write_permit().await?;
                 Ok(match &mut self.inner {
                     $enum::Postgres($h) => run_insert_id!(postgres, $exec, sql, params),
                     $enum::MySql($h) => run_insert_id!(mysql, $exec, sql, params),
@@ -157,6 +162,26 @@ macro_rules! executor {
 executor!(Conn, ConnInner, |conn| &mut **conn);
 executor!(Tx, TxInner, |tx| &mut **tx);
 executor!(PoolQueries<'a>, Pool, |pool| pool);
+
+// Writes on a dedicated connection are the caller's business (migrations run alone), and
+// a transaction took the write lock when it began: only single statements on the pool wait.
+impl Conn {
+    async fn write_permit(&self) -> Result<Option<WriteGuard>> {
+        Ok(None)
+    }
+}
+
+impl Tx {
+    async fn write_permit(&self) -> Result<Option<WriteGuard>> {
+        Ok(None)
+    }
+}
+
+impl PoolQueries<'_> {
+    async fn write_permit(&self) -> Result<Option<WriteGuard>> {
+        write_guard(self.write_lock).await
+    }
+}
 
 impl Tx {
     pub async fn commit(self) -> Result<()> {
@@ -189,20 +214,24 @@ impl Database {
         Ok(Conn { inner, flavor: self.flavor })
     }
 
-    /// Begins a transaction. On SQLite it takes the write lock up front
-    /// (`BEGIN IMMEDIATE`) so that concurrent writers wait instead of failing.
+    /// Begins a transaction. On SQLite it queues for the write lock (first come, first served)
+    /// and then takes SQLite's own up front (`BEGIN IMMEDIATE`), so that concurrent writers
+    /// wait in order instead of failing. The transaction holds both until it ends, so a
+    /// caller holding one must write through it, not through [`Database::queries`].
     pub async fn begin(&self) -> Result<Tx> {
+        let write = write_guard(self.write_lock.as_ref()).await?;
         let inner = match &self.pool {
             Pool::Postgres(pool) => TxInner::Postgres(pool.begin().await?),
             Pool::MySql(pool) => TxInner::MySql(pool.begin().await?),
             Pool::Sqlite(pool) => TxInner::Sqlite(pool.begin_with("BEGIN IMMEDIATE").await?),
         };
-        Ok(Tx { inner, flavor: self.flavor })
+        Ok(Tx { inner, flavor: self.flavor, _write: write })
     }
 
-    /// Single-statement queries on the pool.
+    /// Single-statement queries on the pool. On SQLite, `execute` and
+    /// `insert_returning_id` queue for the write lock like [`Database::begin`]; reads do not.
     pub fn queries(&self) -> PoolQueries<'_> {
-        PoolQueries { inner: &self.pool, flavor: self.flavor }
+        PoolQueries { inner: &self.pool, flavor: self.flavor, write_lock: self.write_lock.as_ref() }
     }
 }
 
