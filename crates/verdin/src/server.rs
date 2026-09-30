@@ -1,12 +1,20 @@
+use std::time::Duration;
+
 use axum::extract::{Request, State};
 use axum::http::StatusCode;
+use axum::middleware::Next;
+use axum::response::Response;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::{Value, json};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultOnResponse, OnResponse, TraceLayer};
+use tracing::Span;
+use tracing::field::Empty;
 use verdin_db::Database;
+
+use crate::telemetry;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -23,16 +31,67 @@ pub fn router(state: AppState, nested: &[(String, Router)]) -> Router {
     router
         // Layers run bottom-up on requests: the request id is set before tracing sees it.
         // Body limits and timeouts are applied by the API routers (uploads have their own).
+        .layer(axum::middleware::from_fn(report_server_errors))
         .layer(PropagateRequestIdLayer::x_request_id())
-        .layer(TraceLayer::new_for_http().make_span_with(|request: &Request| {
-            let request_id = request
-                .headers()
-                .get("x-request-id")
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or_default();
-            tracing::info_span!("request", method = %request.method(), uri = %loggable_uri(request.uri()), request_id)
-        }))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &Request| {
+                    let span = tracing::info_span!(
+                        "request",
+                        method = %request.method(),
+                        uri = %loggable_uri(request.uri()),
+                        request_id = request_id(request),
+                        otel.name = Empty,
+                        otel.kind = Empty,
+                        http.response.status_code = Empty,
+                        otel.status_code = Empty,
+                    );
+                    // The OpenTelemetry fields stay out of log lines when traces are off.
+                    if telemetry::traces_enabled() {
+                        let name =
+                            telemetry::span_name(request.method().as_str(), request.uri().path());
+                        span.record("otel.name", name);
+                        span.record("otel.kind", "server");
+                        telemetry::set_remote_parent(&span, request.headers());
+                    }
+                    span
+                })
+                .on_response(|response: &Response, latency: Duration, span: &Span| {
+                    if telemetry::traces_enabled() {
+                        span.record("http.response.status_code", response.status().as_u16());
+                        if response.status().is_server_error() {
+                            span.record("otel.status_code", "ERROR");
+                        }
+                    }
+                    DefaultOnResponse::default().on_response(response, latency, span);
+                }),
+        )
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+}
+
+fn request_id(request: &Request) -> &str {
+    request.headers().get("x-request-id").and_then(|value| value.to_str().ok()).unwrap_or_default()
+}
+
+/// Reports 5xx responses to Sentry when `[telemetry].sentry_dsn` is set (panics are
+/// reported by Sentry's panic hook).
+async fn report_server_errors(request: Request, next: Next) -> Response {
+    if !telemetry::sentry_enabled() {
+        return next.run(request).await;
+    }
+    let method = request.method().clone();
+    let uri = loggable_uri(request.uri());
+    let request_id = request_id(&request).to_owned();
+    let response = next.run(request).await;
+    if response.status().is_server_error() {
+        telemetry::report_server_error(
+            method.as_str(),
+            &uri,
+            response.status().as_u16(),
+            &request_id,
+        );
+    }
+    response
 }
 
 /// CORS for the content API and GraphQL (`[api].cors_origins`); `None` without origins.

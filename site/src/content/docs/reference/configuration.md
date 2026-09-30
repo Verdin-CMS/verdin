@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 Configuration is layered: **built-in defaults ← `verdin.toml` ← environment**. The
@@ -240,6 +241,20 @@ See [Plugins](/extending/plugins/).
 | `enabled` | `false` | Serve Prometheus metrics at `/_metrics`: HTTP requests by area (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), method and status class with latency histograms, pending webhook deliveries, open realtime streams and uptime. |
 | `token` | unset | Scrapes need `Authorization: Bearer <token>`. `VERDIN_METRICS_TOKEN` wins over it. Without a token, anyone who reaches the port can read the metrics. |
 
+## `[telemetry]`
+
+Traces and error reports, both off by default and used only by `verdin start` and
+`verdin dev` (see [Monitoring](/deploy/monitoring/#traces-opentelemetry)).
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `enabled` | `false` | Export OpenTelemetry traces of HTTP requests and their database queries over OTLP/HTTP (protobuf). `OTEL_SDK_DISABLED=true` turns it off. |
+| `endpoint` | unset (`http://localhost:4318`) | Collector base URL; `/v1/traces` is appended. `OTEL_EXPORTER_OTLP_ENDPOINT` (base URL) and `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (full URL) win. |
+| `service_name` | `"verdin"` | `service.name` of the traces. `OTEL_SERVICE_NAME` wins. |
+| `sample_ratio` | `1.0` | Share of traces kept, from `0.0` to `1.0`. A request that carries a `traceparent` header follows the caller's decision. |
+| `sentry_dsn` | unset | Report panics and 5xx responses to Sentry. `SENTRY_DSN` wins. |
+| `sentry_environment` | unset | Sentry environment. `SENTRY_ENVIRONMENT` wins; unset, `production` in `verdin start` and `development` in `verdin dev`. |
+
 ## `[ai]`
 
 AI actions in the admin (with the **AI** feature on in Settings → Features): translate an
@@ -307,5 +322,9 @@ Besides the `VERDIN_<SECTION>__<KEY>` overrides, Verdin reads these variables:
 | `VERDIN_CDN_TOKEN` | API token of the `[cdn]` provider. |
 | `VERDIN_IMAGE_SECRET` | Signs image transformation URLs (see [`[upload.transforms]`](#uploadtransforms)). |
 | `VERDIN_METRICS_TOKEN` | Bearer token for `/_metrics` scrapes when `[metrics].enabled`; wins over `[metrics].token`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Collector for [`[telemetry]`](#telemetry) traces; win over `[telemetry].endpoint`. The other standard `OTEL_EXPORTER_OTLP_*` variables (headers, timeout, compression) apply too. |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | Resource of the exported traces; `OTEL_SERVICE_NAME` wins over `[telemetry].service_name`. |
+| `OTEL_SDK_DISABLED` | `true` turns trace export off even when `[telemetry].enabled`. |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT` | Sentry error reporting; win over `[telemetry].sentry_dsn` and `sentry_environment`. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Credentials of the S3 upload provider. |
 | `RUST_LOG` | Log filter; takes precedence over `[log].level`. |

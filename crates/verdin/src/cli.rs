@@ -269,7 +269,14 @@ pub async fn run(cli: Cli) -> Result<()> {
     }
     load_dotenv(&cli.config)?;
     let project = Project::load(&cli.config)?;
-    init_logging(&project.config.log);
+    // Traces and error reports are for the server, not for one-off commands.
+    let (_telemetry, telemetry_layer) = match cli.command {
+        Command::Start { .. } | Command::Dev => {
+            crate::telemetry::init(&project.config.telemetry, matches!(cli.command, Command::Dev))?
+        }
+        _ => Default::default(),
+    };
+    init_logging(&project.config.log, telemetry_layer);
 
     match cli.command {
         Command::Version | Command::Secrets | Command::New { .. } => unreachable!("handled above"),
@@ -710,15 +717,21 @@ fn plural(count: usize) -> &'static str {
     if count == 1 { "" } else { "s" }
 }
 
-fn init_logging(config: &LogConfig) {
+fn init_logging(config: &LogConfig, telemetry: Option<crate::telemetry::BoxedLayer>) {
+    use tracing_subscriber::Layer as _;
+    use tracing_subscriber::layer::SubscriberExt as _;
+    use tracing_subscriber::util::SubscriberInitExt as _;
+
     let default_level = config.level.as_deref().unwrap_or("info");
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
-    let builder = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr);
-    match config.format {
-        LogFormat::Json => builder.json().init(),
-        LogFormat::Pretty => builder.init(),
-    }
+    let output = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
+    // Each layer filters on its own: the log level does not limit exported traces.
+    let output = match config.format {
+        LogFormat::Json => output.json().with_filter(filter).boxed(),
+        LogFormat::Pretty => output.with_filter(filter).boxed(),
+    };
+    tracing_subscriber::registry().with(telemetry).with(output).init();
 }
 
 async fn shutdown_signal() {

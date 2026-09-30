@@ -27,6 +27,7 @@ pub struct Config {
     pub digest: DigestConfig,
     pub log: LogConfig,
     pub metrics: MetricsConfig,
+    pub telemetry: TelemetryConfig,
     pub search: verdin_search::SearchConfig,
     pub cdn: verdin_api::cdn::CdnConfig,
     pub ai: verdin_api::ai::AiConfig,
@@ -39,6 +40,40 @@ pub struct MetricsConfig {
     pub enabled: bool,
     /// Scrapes need `Authorization: Bearer <token>` (`VERDIN_METRICS_TOKEN` wins).
     pub token: Option<String>,
+}
+
+/// `[telemetry]`: OpenTelemetry traces over OTLP/HTTP and Sentry error reports, both off
+/// by default. The standard `OTEL_*` and `SENTRY_*` variables win over these keys.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TelemetryConfig {
+    /// Export traces of HTTP requests and database queries.
+    pub enabled: bool,
+    /// Collector base URL (`http://localhost:4318` when unset); `/v1/traces` is appended.
+    /// `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` win.
+    pub endpoint: Option<String>,
+    /// `service.name` of the traces; `OTEL_SERVICE_NAME` wins.
+    pub service_name: String,
+    /// Share of traces kept, from 0.0 to 1.0. Requests from a traced caller follow its choice.
+    pub sample_ratio: f64,
+    /// Report panics and 5xx responses to Sentry; `SENTRY_DSN` wins.
+    pub sentry_dsn: Option<String>,
+    /// Sentry environment; `SENTRY_ENVIRONMENT` wins. Unset: `production` in `verdin start`
+    /// and `development` in `verdin dev`.
+    pub sentry_environment: Option<String>,
+}
+
+impl Default for TelemetryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: None,
+            service_name: "verdin".into(),
+            sample_ratio: 1.0,
+            sentry_dsn: None,
+            sentry_environment: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -342,6 +377,8 @@ mod tests {
             assert_eq!(config.server.port, 1337);
             assert_eq!(config.database.url, None);
             assert_eq!(config.log.format, LogFormat::Pretty);
+            assert!(!config.telemetry.enabled);
+            assert_eq!(config.telemetry.sentry_dsn, None);
             Ok(())
         });
     }
@@ -368,6 +405,23 @@ mod tests {
             assert_eq!(config.server.port, 5000);
             assert_eq!(config.server.body_limit, 2 * 1024 * 1024);
             assert_eq!(config.database.url.as_deref(), Some("postgres://from-env"));
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn telemetry_from_file_and_env() {
+        Jail::expect_with(|jail| {
+            jail.create_file(
+                "verdin.toml",
+                "[telemetry]\nendpoint = \"http://collector:4318\"\nsample_ratio = 0.25\n",
+            )?;
+            jail.set_env("VERDIN_TELEMETRY__ENABLED", "true");
+            let config = Config::load(Path::new("verdin.toml")).unwrap();
+            assert!(config.telemetry.enabled);
+            assert_eq!(config.telemetry.endpoint.as_deref(), Some("http://collector:4318"));
+            assert_eq!(config.telemetry.sample_ratio, 0.25);
+            assert_eq!(config.telemetry.service_name, "verdin");
             Ok(())
         });
     }

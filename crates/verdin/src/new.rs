@@ -43,6 +43,12 @@ max_page_size = 100
 path = "/admin"
 # Refresh cookies are `Secure` in `verdin start` and not in `verdin dev` (plain HTTP).
 # secure_cookies = true
+
+# Traces (OTLP over HTTP) and Sentry error reports, both off by default.
+# [telemetry]
+# enabled = true
+# endpoint = "http://localhost:4318"   # OTEL_EXPORTER_OTLP_ENDPOINT wins
+# sentry_dsn = "https://…@….ingest.sentry.io/…"   # or SENTRY_DSN
 "#;
 
 const GITIGNORE: &str = ".env\ndata/\n*.db\n*.db-*\n.cache/\n# Local media library ([upload.provider] dir).\npublic/uploads/\n";

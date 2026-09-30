@@ -15,6 +15,7 @@ use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{MySqlPool, PgPool, SqlitePool};
+use tracing::Instrument;
 
 pub use conn::{Conn, PoolQueries, Tx};
 pub use value::{ColumnKind, SqlValue};
@@ -115,6 +116,14 @@ impl Flavor {
             Flavor::MySql => "mysql",
             Flavor::MariaDb => "mariadb",
             Flavor::Sqlite => "sqlite",
+        }
+    }
+
+    /// OpenTelemetry's `db.system.name`.
+    pub(crate) fn otel_system(self) -> &'static str {
+        match self {
+            Flavor::Postgres => "postgresql",
+            other => other.as_str(),
         }
     }
 }
@@ -296,7 +305,14 @@ async fn detect(pool: &Pool) -> Result<(Flavor, Version)> {
 /// would answer `SQLITE_BUSY`.
 pub(crate) async fn write_guard(lock: Option<&WriteLock>) -> Result<Option<WriteGuard>> {
     let Some(lock) = lock else { return Ok(None) };
+    // Its own span, so that traces show time spent in the queue.
+    let span = if tracing::Span::current().is_none() {
+        tracing::Span::none()
+    } else {
+        tracing::debug_span!("db.write_lock", otel.name = "write lock")
+    };
     tokio::time::timeout(SQLITE_BUSY_TIMEOUT, lock.clone().lock_owned())
+        .instrument(span)
         .await
         .map(Some)
         .map_err(|_| DbError::WriteLockTimeout)

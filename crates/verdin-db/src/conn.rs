@@ -8,6 +8,7 @@
 
 use sqlx::pool::PoolConnection;
 use sqlx::{AssertSqlSafe, MySql, Postgres, Sqlite, Transaction};
+use tracing::Instrument;
 
 use crate::value::{ColumnKind, SqlValue, bind_values, decode_rows};
 use crate::{Database, Flavor, Pool, Result, WriteGuard, WriteLock, write_guard};
@@ -102,6 +103,23 @@ macro_rules! run_insert_id {
     }};
 }
 
+/// A span for one statement: its SQL text, never the bound values. At `debug`, so that
+/// it costs nothing unless traces are exported (`[telemetry]`) or asked for in the log,
+/// and only inside another span (a request): startup and background polls would
+/// otherwise make one trace per statement.
+pub(crate) fn query_span(flavor: Flavor, sql: &str) -> tracing::Span {
+    if tracing::Span::current().is_none() {
+        return tracing::Span::none();
+    }
+    tracing::debug_span!(
+        "db.query",
+        otel.name = sql.split_whitespace().next().unwrap_or("SQL"),
+        otel.kind = "client",
+        db.system.name = flavor.otel_system(),
+        db.query.text = sql,
+    )
+}
+
 /// Implements the query methods for an executor whose `inner` field is a `$enum` with
 /// `Postgres`/`MySql`/`Sqlite` variants. `$exec` turns the matched `$h` into a sqlx executor.
 macro_rules! executor {
@@ -115,11 +133,16 @@ macro_rules! executor {
             /// used, which is what DDL and session statements need.
             pub async fn execute(&mut self, sql: &str, params: &[SqlValue]) -> Result<u64> {
                 let _write = self.write_permit().await?;
-                Ok(match &mut self.inner {
-                    $enum::Postgres($h) => run_execute!(postgres, Flavor::Postgres, $exec, sql, params),
-                    $enum::MySql($h) => run_execute!(mysql, Flavor::MySql, $exec, sql, params),
-                    $enum::Sqlite($h) => run_execute!(sqlite, Flavor::Sqlite, $exec, sql, params),
-                })
+                let span = query_span(self.flavor, sql);
+                async {
+                    Ok(match &mut self.inner {
+                        $enum::Postgres($h) => run_execute!(postgres, Flavor::Postgres, $exec, sql, params),
+                        $enum::MySql($h) => run_execute!(mysql, Flavor::MySql, $exec, sql, params),
+                        $enum::Sqlite($h) => run_execute!(sqlite, Flavor::Sqlite, $exec, sql, params),
+                    })
+                }
+                .instrument(span)
+                .await
             }
 
             /// Runs a query and decodes every row column-by-column with `kinds`.
@@ -129,31 +152,46 @@ macro_rules! executor {
                 params: &[SqlValue],
                 kinds: &[ColumnKind],
             ) -> Result<Vec<Vec<SqlValue>>> {
-                Ok(match &mut self.inner {
-                    $enum::Postgres($h) => run_fetch_all!(postgres, Flavor::Postgres, $exec, sql, params, kinds),
-                    $enum::MySql($h) => run_fetch_all!(mysql, Flavor::MySql, $exec, sql, params, kinds),
-                    $enum::Sqlite($h) => run_fetch_all!(sqlite, Flavor::Sqlite, $exec, sql, params, kinds),
-                })
+                let span = query_span(self.flavor, sql);
+                async {
+                    Ok(match &mut self.inner {
+                        $enum::Postgres($h) => run_fetch_all!(postgres, Flavor::Postgres, $exec, sql, params, kinds),
+                        $enum::MySql($h) => run_fetch_all!(mysql, Flavor::MySql, $exec, sql, params, kinds),
+                        $enum::Sqlite($h) => run_fetch_all!(sqlite, Flavor::Sqlite, $exec, sql, params, kinds),
+                    })
+                }
+                .instrument(span)
+                .await
             }
 
             /// Whether a query returns at least one row (no column is decoded).
             pub async fn has_rows(&mut self, sql: &str, params: &[SqlValue]) -> Result<bool> {
-                Ok(match &mut self.inner {
-                    $enum::Postgres($h) => run_has_rows!(postgres, Flavor::Postgres, $exec, sql, params),
-                    $enum::MySql($h) => run_has_rows!(mysql, Flavor::MySql, $exec, sql, params),
-                    $enum::Sqlite($h) => run_has_rows!(sqlite, Flavor::Sqlite, $exec, sql, params),
-                })
+                let span = query_span(self.flavor, sql);
+                async {
+                    Ok(match &mut self.inner {
+                        $enum::Postgres($h) => run_has_rows!(postgres, Flavor::Postgres, $exec, sql, params),
+                        $enum::MySql($h) => run_has_rows!(mysql, Flavor::MySql, $exec, sql, params),
+                        $enum::Sqlite($h) => run_has_rows!(sqlite, Flavor::Sqlite, $exec, sql, params),
+                    })
+                }
+                .instrument(span)
+                .await
             }
 
             /// Runs an `INSERT` into a table whose primary key is `id` and returns the new
             /// id. Uses `RETURNING` where available and `LAST_INSERT_ID()` on MySQL/MariaDB.
             pub async fn insert_returning_id(&mut self, sql: &str, params: &[SqlValue]) -> Result<i64> {
                 let _write = self.write_permit().await?;
-                Ok(match &mut self.inner {
-                    $enum::Postgres($h) => run_insert_id!(postgres, $exec, sql, params),
-                    $enum::MySql($h) => run_insert_id!(mysql, $exec, sql, params),
-                    $enum::Sqlite($h) => run_insert_id!(sqlite, $exec, sql, params),
-                })
+                let span = query_span(self.flavor, sql);
+                async {
+                    Ok(match &mut self.inner {
+                        $enum::Postgres($h) => run_insert_id!(postgres, $exec, sql, params),
+                        $enum::MySql($h) => run_insert_id!(mysql, $exec, sql, params),
+                        $enum::Sqlite($h) => run_insert_id!(sqlite, $exec, sql, params),
+                    })
+                }
+                .instrument(span)
+                .await
             }
         }
     };
@@ -185,21 +223,31 @@ impl PoolQueries<'_> {
 
 impl Tx {
     pub async fn commit(self) -> Result<()> {
-        match self.inner {
-            TxInner::Postgres(tx) => tx.commit().await?,
-            TxInner::MySql(tx) => tx.commit().await?,
-            TxInner::Sqlite(tx) => tx.commit().await?,
+        let span = query_span(self.flavor, "COMMIT");
+        async {
+            match self.inner {
+                TxInner::Postgres(tx) => tx.commit().await?,
+                TxInner::MySql(tx) => tx.commit().await?,
+                TxInner::Sqlite(tx) => tx.commit().await?,
+            }
+            Ok(())
         }
-        Ok(())
+        .instrument(span)
+        .await
     }
 
     pub async fn rollback(self) -> Result<()> {
-        match self.inner {
-            TxInner::Postgres(tx) => tx.rollback().await?,
-            TxInner::MySql(tx) => tx.rollback().await?,
-            TxInner::Sqlite(tx) => tx.rollback().await?,
+        let span = query_span(self.flavor, "ROLLBACK");
+        async {
+            match self.inner {
+                TxInner::Postgres(tx) => tx.rollback().await?,
+                TxInner::MySql(tx) => tx.rollback().await?,
+                TxInner::Sqlite(tx) => tx.rollback().await?,
+            }
+            Ok(())
         }
-        Ok(())
+        .instrument(span)
+        .await
     }
 }
 

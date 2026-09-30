@@ -1,13 +1,13 @@
 ---
 title: Monitoring
-description: Watch a running Verdin instance — the /_health and /_ready checks, Prometheus metrics at /_metrics and their token, log format, levels and request ids.
+description: Watch a running Verdin instance — the /_health and /_ready checks, Prometheus metrics at /_metrics and a Grafana dashboard, OpenTelemetry traces, Sentry error reports, log format, levels and request ids.
 sidebar:
   order: 10
 ---
 
 A Verdin instance reports on itself through two health endpoints, optional Prometheus
-metrics and structured logs. This page lists what each one returns and how to turn it
-on.
+metrics, optional OpenTelemetry traces and Sentry error reports, and structured logs.
+This page lists what each one returns and how to turn it on.
 
 ## Health checks
 
@@ -81,6 +81,71 @@ Useful alerts: `/_ready` failing, a rising share of `5xx`, a growing
 `verdin_webhook_deliveries_pending` (a webhook target is down), a rising
 `verdin_plugin_call_errors_total` or slow plugin hooks (they delay the writes they run on),
 and `verdin_uptime_seconds` resetting (restarts).
+
+### Grafana dashboard
+
+[`docker/grafana/verdin.json`](https://github.com/Verdin-CMS/verdin/blob/main/docker/grafana/verdin.json)
+is a dashboard for these metrics: request rate, share of `5xx` and latency quantiles by
+area, method and status class, pending webhook deliveries, realtime subscribers, and
+plugin call rate, p95 and errors per plugin function. Import it in Grafana
+(**Dashboards → New → Import**) and pick your Prometheus data source; the `instance` and
+`area` variables at the top filter every panel.
+
+## Traces (OpenTelemetry)
+
+Verdin can export a trace of every request to an OpenTelemetry collector (the
+OpenTelemetry Collector, Grafana Alloy or Tempo, Jaeger, Honeycomb, Datadog…) over
+OTLP/HTTP. It is off by default:
+
+```toml title="verdin.toml"
+[telemetry]
+enabled = true
+endpoint = "http://otel-collector:4318"
+```
+
+The standard variables work as well and win over the file:
+
+```sh
+VERDIN_TELEMETRY__ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=<key>
+OTEL_SERVICE_NAME=cms-production
+```
+
+Each trace holds:
+
+- **A request span** (kind `server`), named after the method and the path with ids
+  replaced by `{id}` (`PUT /api/articles/{id}`), with `http.response.status_code` and an
+  error status on `5xx`. A request with a W3C `traceparent` header joins the caller's
+  trace.
+- **A span per database statement** (kind `client`) under it: `db.system.name`
+  (`postgresql`, `mysql`, `mariadb` or `sqlite`) and `db.query.text`, the SQL with its
+  `?` placeholders. Bound values are never recorded, so content, passwords and tokens stay
+  out of traces. `COMMIT` and `ROLLBACK` have their own spans, and on SQLite a
+  `write lock` span shows how long a write waited for the writers ahead of it.
+- The log events written while serving the request, as span events.
+
+Statements run outside a request (startup, migrations, background jobs) are not traced.
+`[telemetry].sample_ratio` keeps a share of the traces (`0.1` keeps one in ten); the
+spans are sent in batches and flushed when the server stops. The log level does not
+filter traces: `[log].level = "warn"` still exports every request.
+
+## Error reporting (Sentry)
+
+Set a DSN to send panics and `5xx` responses to [Sentry](https://sentry.io) (or a
+Sentry-compatible service such as GlitchTip):
+
+```sh
+SENTRY_DSN=https://<key>@o0.ingest.sentry.io/<project>
+```
+
+`[telemetry].sentry_dsn` works too; the variable wins. A `5xx` arrives as an error event
+`POST /api/articles answered 500`, tagged with `http.method`, `http.status_code` and the
+`request_id`, which matches the `X-Request-Id` header and the log lines of that request.
+Events carry the Verdin version as the release and `production` (`verdin start`) or
+`development` (`verdin dev`) as the environment, unless `SENTRY_ENVIRONMENT` or
+`[telemetry].sentry_environment` names another. URLs are reported with secret-looking
+query values hidden, as in the logs; request bodies and headers are never sent.
 
 ## Logs
 

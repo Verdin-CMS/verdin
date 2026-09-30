@@ -8,6 +8,7 @@ pub mod import;
 pub mod metrics;
 mod new;
 pub mod server;
+pub mod telemetry;
 pub mod transfer;
 mod typescript;
 mod uploads;
