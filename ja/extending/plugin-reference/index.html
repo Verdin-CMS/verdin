@@ -1,0 +1,908 @@
+<!DOCTYPE html><html lang="ja" dir="ltr" data-theme="dark" data-has-toc data-has-sidebar class="astro-g5ptsecz"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>プラグインのリファレンス | Verdin</title><link rel="canonical" href="https://verdin-cms.github.io/verdin/ja/extending/plugin-reference/"/><link rel="alternate" hreflang="en" href="https://verdin-cms.github.io/verdin/extending/plugin-reference/"/><link rel="alternate" hreflang="ar" href="https://verdin-cms.github.io/verdin/ar/extending/plugin-reference/"/><link rel="alternate" hreflang="ca" href="https://verdin-cms.github.io/verdin/ca/extending/plugin-reference/"/><link rel="alternate" hreflang="de" href="https://verdin-cms.github.io/verdin/de/extending/plugin-reference/"/><link rel="alternate" hreflang="es" href="https://verdin-cms.github.io/verdin/es/extending/plugin-reference/"/><link rel="alternate" hreflang="fa" href="https://verdin-cms.github.io/verdin/fa/extending/plugin-reference/"/><link rel="alternate" hreflang="fr" href="https://verdin-cms.github.io/verdin/fr/extending/plugin-reference/"/><link rel="alternate" hreflang="he" href="https://verdin-cms.github.io/verdin/he/extending/plugin-reference/"/><link rel="alternate" hreflang="it" href="https://verdin-cms.github.io/verdin/it/extending/plugin-reference/"/><link rel="alternate" hreflang="ja" href="https://verdin-cms.github.io/verdin/ja/extending/plugin-reference/"/><link rel="alternate" hreflang="ko" href="https://verdin-cms.github.io/verdin/ko/extending/plugin-reference/"/><link rel="alternate" hreflang="nl" href="https://verdin-cms.github.io/verdin/nl/extending/plugin-reference/"/><link rel="alternate" hreflang="pl" href="https://verdin-cms.github.io/verdin/pl/extending/plugin-reference/"/><link rel="alternate" hreflang="pt-BR" href="https://verdin-cms.github.io/verdin/pt-br/extending/plugin-reference/"/><link rel="alternate" hreflang="ru" href="https://verdin-cms.github.io/verdin/ru/extending/plugin-reference/"/><link rel="alternate" hreflang="tr" href="https://verdin-cms.github.io/verdin/tr/extending/plugin-reference/"/><link rel="alternate" hreflang="uk" href="https://verdin-cms.github.io/verdin/uk/extending/plugin-reference/"/><link rel="alternate" hreflang="zh-CN" href="https://verdin-cms.github.io/verdin/zh-cn/extending/plugin-reference/"/><link rel="alternate" hreflang="x-default" href="https://verdin-cms.github.io/verdin/extending/plugin-reference/"/><link rel="sitemap" href="/verdin/sitemap-index.xml"/><link rel="shortcut icon" href="/verdin/favicon.svg" type="image/svg+xml"/><meta name="generator" content="Astro v7.3.5"/><meta name="generator" content="Starlight v0.42.4"/><meta property="og:title" content="プラグインのリファレンス"/><meta property="og:type" content="article"/><meta property="og:url" content="https://verdin-cms.github.io/verdin/ja/extending/plugin-reference/"/><meta property="og:locale" content="ja"/><meta property="og:description" content="plugin.toml マニフェスト、機能、フックとそのペイロード、ホスト関数、ルート、ジョブ、起動関数、GraphQL フィールド、管理画面の拡張ポイント、制限、メトリクスを説明します。"/><meta property="og:site_name" content="Verdin"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="plugin.toml マニフェスト、機能、フックとそのペイロード、ホスト関数、ルート、ジョブ、起動関数、GraphQL フィールド、管理画面の拡張ポイント、制限、メトリクスを説明します。"/><meta property="og:image" content="https://verdin-cms.github.io/verdin/og/ja/extending/plugin-reference.png"/><meta name="twitter:image" content="https://verdin-cms.github.io/verdin/og/ja/extending/plugin-reference.png"/><script>
+	window.StarlightThemeProvider = (() => {
+		const storedTheme =
+			typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		const theme =
+			storedTheme ||
+			(window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+		document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+		return {
+			updatePickers(theme = storedTheme || 'auto') {
+				document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+					const select = picker.querySelector('select');
+					if (select) select.value = theme;
+					/** @type {HTMLTemplateElement | null} */
+					const tmpl = document.querySelector(`#theme-icons`);
+					const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+					if (newIcon) {
+						const oldIcon = picker.querySelector('svg.label-icon');
+						if (oldIcon) {
+							oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+						}
+					}
+				});
+			},
+		};
+	})();
+</script><template id="theme-icons"><svg aria-hidden="true" class="light astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"/></svg><svg aria-hidden="true" class="dark astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"/></svg><svg aria-hidden="true" class="auto astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg></template><link rel="stylesheet" href="/verdin/_astro/print.ehPL0gv-.css" media="print"><link rel="stylesheet" href="/verdin/_astro/Playground.Sp6wezWm.css"><link rel="stylesheet" href="/verdin/_astro/middleware.CnzdItGa.css"><style>@layer starlight.components{.card:where(.astro-oag6qnet){--sl-card-border:var(--sl-color-purple);--sl-card-bg:var(--sl-color-purple-low);border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-black);flex-direction:column;gap:clamp(.5rem,.125rem + 1vw,1rem);padding:clamp(1rem,.125rem + 3vw,2.5rem)}.card:where(.astro-oag6qnet):nth-child(4n+1){--sl-card-border:var(--sl-color-orange);--sl-card-bg:var(--sl-color-orange-low)}.card:where(.astro-oag6qnet):nth-child(4n+3){--sl-card-border:var(--sl-color-green);--sl-card-bg:var(--sl-color-green-low)}.card:where(.astro-oag6qnet):nth-child(4n+4){--sl-card-border:var(--sl-color-red);--sl-card-bg:var(--sl-color-red-low)}.card:where(.astro-oag6qnet):nth-child(4n+5){--sl-card-border:var(--sl-color-blue);--sl-card-bg:var(--sl-color-blue-low)}.title:where(.astro-oag6qnet){font-weight:600;font-size:var(--sl-text-h4);color:var(--sl-color-white);line-height:var(--sl-line-height-headings);align-items:center;gap:1rem}.card:where(.astro-oag6qnet) .icon:where(.astro-oag6qnet){border:1px solid var(--sl-card-border);background-color:var(--sl-card-bg);border-radius:.25rem;flex-shrink:0;padding:.2em}.card:where(.astro-oag6qnet) .body:where(.astro-oag6qnet){font-size:clamp(var(--sl-text-sm), calc(.5rem + 1vw), var(--sl-text-body));margin:0}}
+@layer starlight.components{.card-grid:where(.astro-7qmvx3iy){grid-template-columns:100%;gap:1rem;display:grid}.card-grid:where(.astro-7qmvx3iy)>*{margin-top:0!important}@media (width>=50rem){.card-grid:where(.astro-7qmvx3iy){grid-template-columns:1fr 1fr;gap:1.5rem}.stagger:where(.astro-7qmvx3iy){--stagger-height:5rem;padding-bottom:var(--stagger-height)}.stagger:where(.astro-7qmvx3iy)>:nth-child(2n){transform:translateY(var(--stagger-height))}}.sl-link-card:where(.astro-zaaezwya){border:1px solid var(--sl-color-gray-5);box-shadow:var(--sl-shadow-sm);border-radius:.5rem;grid-template-columns:1fr auto;gap:.5rem;padding:1rem;display:grid;position:relative}a:where(.astro-zaaezwya){line-height:var(--sl-line-height-headings);text-decoration:none}a:where(.astro-zaaezwya):before{content:"";position:absolute;inset:0}.stack:where(.astro-zaaezwya){flex-direction:column;gap:.5rem}.title:where(.astro-zaaezwya){color:var(--sl-color-white);font-weight:600;font-size:var(--sl-text-lg)}.description:where(.astro-zaaezwya){color:var(--sl-color-gray-3);line-height:1.5}.icon:where(.astro-zaaezwya){color:var(--sl-color-gray-3)}.sl-link-card:where(.astro-zaaezwya):hover{background:var(--sl-color-gray-7,var(--sl-color-gray-6));border-color:var(--sl-color-gray-2)}.sl-link-card:where(.astro-zaaezwya):hover .icon:where(.astro-zaaezwya){color:var(--sl-color-white)}}.plate:where(.astro-zbp6lmd6){isolation:isolate;color:#2a1006;background:linear-gradient(112deg,#0000 0 38%,#ffd6b447 44%,#0000 52%),repeating-linear-gradient(90deg,#ffffff09 0 1px,#0000 1px 3px),linear-gradient(160deg,#e3a472 0%,#cf7f49 40%,#c06a34 68%,#d58d58 100%);border-radius:.6rem;margin:clamp(1rem,4vw,2.5rem) 0;padding:clamp(1.75rem,4vw,2.75rem) clamp(1.5rem,5vw,3.5rem);position:relative;overflow:hidden;box-shadow:inset 0 1px #ffe1c880,inset 0 -2px #46190559,0 1px 2px #28140a40,0 18px 40px -24px #3c1e0a8c}.patina:where(.astro-zbp6lmd6){z-index:-1;pointer-events:none;width:100%;height:100%;mask-image:radial-gradient(circle at 0% 100%, #000 0, transparent var(--bloom)), radial-gradient(circle at 100% 0%, #000 0, transparent calc(var(--bloom) * .8)), radial-gradient(circle at 100% 100%, #000 0, transparent calc(var(--bloom) * .45));--bloom:8%;transition:--bloom 1.6s cubic-bezier(.2,.7,.2,1);position:absolute;inset:0}.plate:where(.astro-zbp6lmd6).grown .patina:where(.astro-zbp6lmd6){--bloom:46%}@property --bloom{syntax:"<percentage>";inherits:false;initial-value:8%}@media (prefers-reduced-motion:reduce){.patina:where(.astro-zbp6lmd6){--bloom:46%;transition:none}}.rivet:where(.astro-zbp6lmd6){background:radial-gradient(circle at 35% 30%,#f3c39c,#8a4019 70%);border-radius:50%;width:.55rem;height:.55rem;position:absolute;box-shadow:0 1px 1px #280f0080}.stamp:where(.astro-zbp6lmd6){gap:1.5rem;display:grid}@media (width>=50rem){.stamp:where(.astro-zbp6lmd6){grid-template-columns:minmax(12rem,.8fr) 2fr;align-items:center}}.label:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);letter-spacing:.14em;text-transform:uppercase;color:#2a1006cc;font-size:.66rem;font-weight:600;display:block}.model:where(.astro-zbp6lmd6){margin:0}.name:where(.astro-zbp6lmd6){font-family:var(--vd-font-display);letter-spacing:-.02em;text-shadow:0 1px #ffdcbe73,0 -1px #3c140059;font-size:clamp(3rem,8vw,4.5rem);font-weight:860;font-stretch:58%;line-height:.9;display:block}.version:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);font-size:.85rem;font-weight:600}dl:where(.astro-zbp6lmd6){gap:.85rem 2rem;margin:0;display:grid}@media (width>=38rem){dl:where(.astro-zbp6lmd6){grid-template-columns:repeat(2,minmax(0,1fr))}}dl:where(.astro-zbp6lmd6)>div:where(.astro-zbp6lmd6){border-top:1px solid #2a10064d;padding-top:.5rem;box-shadow:inset 0 1px #ffdcbe33}dd:where(.astro-zbp6lmd6){text-shadow:0 1px #ffdcbe4d;margin:.15rem 0 0;font-size:.98rem;font-weight:600;line-height:1.4}
+@layer starlight.components{svg:where(.astro-hkc32dio){color:var(--sl-icon-color);font-size:var(--sl-icon-size,1em);width:1em;height:1em}}
+@layer starlight.components{starlight-tabs:where(.astro-scn3uvmv){display:block}.tablist-wrapper:where(.astro-scn3uvmv){overflow-x:auto}:where(.astro-scn3uvmv)[role=tablist]{border-bottom:2px solid var(--sl-color-gray-5);padding:0;list-style:none;display:flex}.tab:where(.astro-scn3uvmv){display:flex}.tab:where(.astro-scn3uvmv)>:where(.astro-scn3uvmv)[role=tab]{--sl-tab-color-border:var(--sl-color-gray-5);line-height:var(--sl-line-height-headings);box-shadow:0 2px 0 var(--sl-tab-color-border);color:var(--sl-color-gray-3);outline-offset:var(--sl-outline-offset-inside);overflow-wrap:initial;align-items:center;gap:.5rem;padding:.275rem 1.25rem;text-decoration:none;display:flex}.tab:where(.astro-scn3uvmv) :where(.astro-scn3uvmv)[role=tab][aria-selected=true]{--sl-tab-color-border:var(--sl-color-text-accent);color:var(--sl-color-white);font-weight:600}.tablist-wrapper:where(.astro-scn3uvmv)~[role=tabpanel]{margin-top:1rem}}
+@layer starlight.components{.sl-steps{--bullet-size:calc(var(--sl-line-height) * 1rem);--bullet-margin:.375rem;counter-reset:steps-counter var(--sl-steps-start,0);padding-inline-start:0;list-style:none}.sl-steps>li{counter-increment:steps-counter;padding-inline-start:calc(var(--bullet-size) + 1rem);min-height:calc(var(--bullet-size) + var(--bullet-margin));padding-bottom:1px;position:relative}.sl-steps>li+li{margin-top:0}.sl-steps>li:before{content:counter(steps-counter);top:0;width:var(--bullet-size);height:var(--bullet-size);line-height:var(--bullet-size);font-size:var(--sl-text-xs);text-align:center;color:var(--sl-color-white);background-color:var(--sl-color-gray-6);box-shadow:inset 0 0 0 1px var(--sl-color-gray-5);border-radius:99rem;font-weight:600;position:absolute;inset-inline-start:0}.sl-steps>li:after{--guide-width:1px;content:"";top:calc(var(--bullet-size) + var(--bullet-margin));bottom:var(--bullet-margin);width:var(--guide-width);background-color:var(--sl-color-hairline-light);position:absolute;inset-inline-start:calc((var(--bullet-size) - var(--guide-width)) / 2)}}@layer starlight.content{.sl-steps>li>:first-child{--lh:calc(1em * var(--sl-line-height));--shift-y:calc(.5 * (var(--bullet-size) - var(--lh)));transform:translateY(var(--shift-y));margin-bottom:var(--shift-y)}.sl-steps>li>:first-child:where(h1,h2,h3,h4,h5,h6){--lh:calc(1em * var(--sl-line-height-headings))}@supports (--prop:1lh){.sl-steps>li>:first-child{--lh:1lh}}}
+@layer starlight.components{starlight-file-tree:where(.astro-a2hqddox){--x-space:1.5rem;--y-space:.125rem;--y-pad:0;border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-gray-6);font-size:var(--sl-text-xs);font-family:var(--__sl-font-mono);padding:1rem;display:block;overflow-x:auto}starlight-file-tree:where(.astro-a2hqddox) .directory>details{padding:0;background:0 0;border:0;padding-inline-start:var(--x-space)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary{padding:var(--y-pad) .625rem;color:var(--sl-color-white);border:0;max-width:100%;margin-inline-start:calc(-1 * var(--x-space));font-weight:400}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::marker,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::-webkit-details-marker{color:var(--sl-color-gray-3)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .tree-icon{cursor:pointer;color:var(--sl-color-text-accent);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover~ul{border-color:var(--sl-color-gray-4)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .highlight .tree-icon{color:var(--sl-color-text-invert);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) ul{border-inline-start:1px solid var(--sl-color-gray-5);margin-inline-start:.5rem;padding:0;padding-inline-start:.125rem;list-style:none}starlight-file-tree:where(.astro-a2hqddox)>ul{border:0;margin:0;padding:0}starlight-file-tree:where(.astro-a2hqddox) li{margin:var(--y-space) 0;padding:var(--y-pad) 0}starlight-file-tree:where(.astro-a2hqddox) .file{color:var(--sl-color-white);margin-inline-start:calc(var(--x-space) - .125rem)}starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:wrap;align-items:flex-start;max-width:calc(100% - 1rem);display:inline-flex}@media (width>=30em){starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:nowrap}}starlight-file-tree:where(.astro-a2hqddox) .tree-entry>:first-child{flex-shrink:0}starlight-file-tree:where(.astro-a2hqddox) .empty{color:var(--sl-color-gray-3);padding-inline-start:.375rem}starlight-file-tree:where(.astro-a2hqddox) .comment{color:var(--sl-color-gray-3);min-width:12rem;max-width:24rem;padding-inline-start:1.625rem}starlight-file-tree:where(.astro-a2hqddox) .highlight{color:var(--sl-color-text-invert);background-color:var(--sl-color-text-accent);border-radius:.25rem;padding-inline-end:.5rem;display:inline-block}starlight-file-tree:where(.astro-a2hqddox) svg{fill:var(--sl-color-gray-3);vertical-align:middle;width:.875rem;height:.875rem;margin-inline:.25rem .375rem;display:inline}starlight-file-tree:where(.astro-a2hqddox) .highlight svg.tree-icon{fill:currentColor}}
+</style><script type="module" src="/verdin/_astro/page.Dwipeu-R.js"></script></head><body class="astro-g5ptsecz"><a class="sl-skip-link astro-qb7clj6f" href="#_top">コンテンツにスキップ</a><div class="page sl-flex astro-yntsjkba"><header class="header astro-yntsjkba"><div class="header astro-by6fddyj"><div class="title-wrapper sl-flex astro-by6fddyj"><a href="/verdin/ja" class="site-title sl-flex astro-6rvad3va"><img class="astro-6rvad3va" alt src="/verdin/_astro/verdin-mark.CEc0Dc_U.svg" width="32" height="32"><span class="astro-6rvad3va" translate="no">Verdin</span></a></div><div class="sl-flex print:hidden astro-by6fddyj"><site-search class="astro-by6fddyj astro-b5kgnn7o" data-translations="{&quot;placeholder&quot;:&quot;検索&quot;}"><button data-open-modal disabled aria-label="検索" aria-keyshortcuts="Control+K" class="astro-b5kgnn7o"><svg aria-hidden="true" class="astro-b5kgnn7o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg><span class="sl-hidden md:sl-block astro-b5kgnn7o" aria-hidden="true">検索</span><kbd class="sl-hidden md:sl-flex astro-b5kgnn7o" style="display: none;"><kbd class="astro-b5kgnn7o">Ctrl</kbd><kbd class="astro-b5kgnn7o">K</kbd></kbd></button><dialog style="padding:0" aria-label="検索" class="astro-b5kgnn7o"><div class="dialog-frame sl-flex astro-b5kgnn7o"><button data-close-modal class="sl-flex md:sl-hidden astro-b5kgnn7o">キャンセル</button><div class="search-container astro-b5kgnn7o"><div id="starlight__search" class="astro-b5kgnn7o"></div></div></div></dialog></site-search><script>
+	(() => {
+		const openBtn = document.querySelector('button[data-open-modal]');
+		const shortcut = openBtn?.querySelector('kbd');
+		if (!openBtn || !(shortcut instanceof HTMLElement)) return;
+		const platformKey = shortcut.querySelector('kbd');
+		if (platformKey && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+			platformKey.textContent = '⌘';
+			openBtn.setAttribute('aria-keyshortcuts', 'Meta+K');
+		}
+		shortcut.style.display = '';
+	})();
+</script><script type="module" src="/verdin/_astro/Search.astro_astro_type_script_index_0_lang.BVn7b3Eg.js"></script></div><div class="sl-hidden md:sl-flex print:hidden right-group astro-by6fddyj"><div class="sl-flex social-icons astro-by6fddyj"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">テーマの選択</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">ダーク</option><option value="light" class="astro-2z5xp7gb">ライト</option><option value="auto" selected class="astro-2z5xp7gb">自動</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><script type="module">var e=`starlight-theme`,t=e=>e===`auto`||e===`dark`||e===`light`?e:`auto`,n=()=>t(typeof localStorage<`u`&&localStorage.getItem(e));function r(t){typeof localStorage<`u`&&localStorage.setItem(e,t===`light`||t===`dark`?t:``)}var i=()=>matchMedia(`(prefers-color-scheme: light)`).matches?`light`:`dark`;function a(e){StarlightThemeProvider.updatePickers(e),document.documentElement.dataset.theme=e===`auto`?i():e,r(e)}matchMedia(`(prefers-color-scheme: light)`).addEventListener(`change`,()=>{n()===`auto`&&a(`auto`)});var o=class extends HTMLElement{constructor(){super(),a(n()),this.querySelector(`select`)?.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&a(t(e.currentTarget.value))})}};customElements.define(`starlight-theme-select`,o);</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">言語の選択</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/extending/plugin-reference/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/extending/plugin-reference/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/extending/plugin-reference/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/extending/plugin-reference/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/extending/plugin-reference/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/extending/plugin-reference/" class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/extending/plugin-reference/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/extending/plugin-reference/" class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/extending/plugin-reference/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/extending/plugin-reference/" selected class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/extending/plugin-reference/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/extending/plugin-reference/" class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/extending/plugin-reference/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/extending/plugin-reference/" class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/extending/plugin-reference/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/extending/plugin-reference/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/extending/plugin-reference/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/extending/plugin-reference/" class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select><script type="module">var e=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);e&&(e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=e.currentTarget.value)}),window.addEventListener(`pageshow`,t=>{if(!t.persisted)return;let n=e.querySelector(`option[selected]`)?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}};customElements.define(`starlight-lang-select`,e);</script></div></div></header><nav class="sidebar print:hidden astro-yntsjkba" aria-label="メイン"><button popovertarget="starlight__sidebar" class="sl-menu-button sl-flex md:sl-hidden print:hidden astro-r2osgdlg"><svg aria-hidden="true" class="open-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg><svg aria-hidden="true" class="close-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"/></svg><span class="sr-only astro-r2osgdlg">メニュー</span></button><script type="module">var e=class extends HTMLElement{constructor(){super();let e=matchMedia(`(min-width: 50em)`),t=()=>{this.popover=e.matches?null:`auto`};t(),e.addEventListener(`change`,()=>t()),this.addEventListener(`toggle`,({newState:e})=>this.trapFocus(e===`open`))}trapFocus(e){document.querySelectorAll(`.main-frame, .sl-skip-link`).forEach(t=>{t.toggleAttribute(`inert`,e)})}};customElements.define(`sl-sidebar-pane`,e);</script><sl-sidebar-pane popover id="starlight__sidebar" class="sidebar-pane astro-yntsjkba"><div class="sidebar-content sl-flex astro-yntsjkba"><sl-sidebar-state-persist data-hash="0x2l755" class="astro-ipdry5cl"><script aria-hidden="true">
+		(() => {
+			try {
+				if (!matchMedia('(min-width: 50em)').matches) return;
+				/** @type {HTMLElement | null} */
+				const target = document.querySelector('sl-sidebar-state-persist');
+				const state = JSON.parse(sessionStorage.getItem('sl-sidebar-state') || '0');
+				if (!target || !state || target.dataset.hash !== state.hash) return;
+				window._starlightScrollRestore = state.scroll;
+				customElements.define(
+					'sl-sidebar-restore',
+					class SidebarRestore extends HTMLElement {
+						connectedCallback() {
+							try {
+								const idx = parseInt(this.dataset.index || '');
+								const details = this.closest('details');
+								if (details && typeof state.open[idx] === 'boolean') details.open = state.open[idx];
+							} catch {}
+						}
+					}
+				);
+			} catch {}
+		})();
+	</script><ul class="top-level astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">はじめに</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="0"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/start/introduction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">はじめに</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/start/installation/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">インストール</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/start/quickstart/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">クイックスタート</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/start/tutorial-astro/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Astro でブログ</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/start/tutorial-nextjs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Next.js でブログ</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/start/project-structure/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">プロジェクトの構成</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">概念</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="1"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/concepts/content-model/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">コンテンツモデル</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/concepts/components-and-dynamic-zones/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">コンポーネントとダイナミックゾーン</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/concepts/relations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">リレーション</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/concepts/draft-and-publish/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">下書きと公開</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/concepts/internationalization/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">国際化</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/concepts/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">権限</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/concepts/schema-migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">スキーマのマイグレーション</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/concepts/media/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">メディア</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">ガイド</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="2"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">コンテンツ</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="3"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/content/localizing-content/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">コンテンツの多言語化</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/content/review-workflows/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">レビューワークフロー</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/content/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">リリース</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/content/content-history/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">コンテンツ履歴</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/content/audit-logs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">監査ログ</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/content/preview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">プレビュー</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/content/comments-and-tasks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">コメントとタスク</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/content/search/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">検索</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/content/import-export/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">インポートとエクスポート</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/content/editor-digest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">編集者向けダイジェスト</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">フロントエンド</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="4"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/frontend/typed-client/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">型付きクライアント</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/frontend/images/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">レスポンシブ画像</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/frontend/visual-editing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ビジュアル編集</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/frontend/seo-and-sitemap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">SEO とサイトマップ</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/frontend/redirects/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">リダイレクト</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/frontend/menus/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">メニュー</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/frontend/forms/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">フォーム</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/frontend/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">リアルタイム</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">認証</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="5"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/auth/admin-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">管理者ユーザー</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/auth/two-factor/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">二段階認証</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/auth/sso/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">シングルサインオン</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/auth/api-tokens/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">API トークン</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/auth/end-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">エンドユーザー</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">連携</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="6"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/integrations/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Webhook</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/integrations/mcp/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">MCP サーバー</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/integrations/ai-actions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">AI アクション</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/guides/integrations/deploys-and-cdn/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">デプロイと CDN</span></a></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">拡張</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="7"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/extending/plugins/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">プラグイン</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/extending/plugin-tutorial/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">プラグインのチュートリアル</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/extending/plugin-reference/" aria-current="page" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">プラグインのリファレンス</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">API リファレンス</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="8"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/api/rest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">REST</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/api/graphql/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">GraphQL</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/api/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">API プレイグラウンド</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/api/admin/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Admin</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/api/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">リアルタイム</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/api/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Webhook</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Example content API</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="9"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overview</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Article</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="10"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List articles</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentidactionsaction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Publish, unpublish or discard the draft</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Category</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="11"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List categories</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a category</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Homepage</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="12"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create or update the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete the Homepage</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Tag</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="13"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List tags</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a tag</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Internationalization</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="14"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apii18nlocales/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List the locales</span></a></li></ul></details></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">リファレンス</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="15"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/reference/configuration/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">設定</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/reference/cli/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">コマンドライン</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/reference/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Permissions</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/reference/attribute-types/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">属性の型</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">デプロイと運用</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="16"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/production-checklist/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">本番環境のチェックリスト</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/security/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">セキュリティ</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/compose/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">本番環境での Docker Compose</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/docker/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Docker</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/linux-server/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Linux サーバー</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/fly/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Fly.io</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/one-click/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ワンクリックデプロイ</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/render/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Render</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/railway/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Railway</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/helm/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Helm チャート</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/kubernetes/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Kubernetes</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/scaling/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">複数のインスタンス</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/backups/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">バックアップ</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/monitoring/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">監視</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/deploy/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ホスト型プレイグラウンド</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">移行とアップグレード</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="17"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/migrate/from-strapi/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Strapi からの移行</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/migrate/porting-custom-code/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">独自のコードの移植</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/migrate/compatibility/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Strapi との互換性</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/migrate/upgrading/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Verdin のアップグレード</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">内部構造</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="18"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/internals/overview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">概要</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/internals/storage/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ストレージ</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/internals/database/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">データベース層</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/internals/migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">マイグレーションエンジン</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/internals/document-service/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Document Service</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/internals/admin-panel/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">管理パネル</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/internals/testing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">テスト</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/internals/decisions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">決定事項のログ</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/internals/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">リリースとドキュメントのホスティング</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">プロジェクト</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="19"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/ja/project/roadmap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Verdin roadmap</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/project/translating/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Translating the admin panel</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/ja/project/changelog/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Changelog</span></a></li></ul></details></li></ul><script aria-hidden="true">
+		(() => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!window._starlightScrollRestore || !scroller) return;
+			scroller.scrollTop = window._starlightScrollRestore;
+			delete window._starlightScrollRestore;
+		})();
+	</script></sl-sidebar-state-persist><div class="md:sl-hidden"><div class="mobile-preferences sl-flex astro-p4azlveh"><div class="social-icons astro-p4azlveh"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">テーマの選択</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">ダーク</option><option value="light" class="astro-2z5xp7gb">ライト</option><option value="auto" selected class="astro-2z5xp7gb">自動</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">言語の選択</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/extending/plugin-reference/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/extending/plugin-reference/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/extending/plugin-reference/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/extending/plugin-reference/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/extending/plugin-reference/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/extending/plugin-reference/" class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/extending/plugin-reference/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/extending/plugin-reference/" class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/extending/plugin-reference/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/extending/plugin-reference/" selected class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/extending/plugin-reference/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/extending/plugin-reference/" class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/extending/plugin-reference/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/extending/plugin-reference/" class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/extending/plugin-reference/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/extending/plugin-reference/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/extending/plugin-reference/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/extending/plugin-reference/" class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select></div></div></div></sl-sidebar-pane></nav><div class="main-frame astro-yntsjkba"><script type="module">var e=document.getElementById(`starlight__sidebar`),t=e?.querySelector(`sl-sidebar-state-persist`),n=`sl-sidebar-state`,r=()=>{let r=[],i=t?.dataset.hash||``;try{let e=sessionStorage.getItem(n),t=JSON.parse(e||`{}`);Array.isArray(t.open)&&t.hash===i&&(r=t.open)}catch{}return{hash:i,open:r,scroll:e?.scrollTop||0}},i=e=>{try{sessionStorage.setItem(n,JSON.stringify(e))}catch{}},a=()=>i(r()),o=(e,t)=>{let n=r();n.open[t]=e,i(n)};t?.addEventListener(`click`,e=>{if(!(e.target instanceof Element))return;let t=e.target.closest(`summary`)?.closest(`details`);if(!t)return;let n=t.querySelector(`sl-sidebar-restore`),r=parseInt(n?.dataset.index||``);isNaN(r)||o(!t.open,r)}),addEventListener(`visibilitychange`,()=>{document.visibilityState===`hidden`&&a()});</script><div class="lg:sl-flex astro-lrzkfocr"><aside class="right-sidebar-container print:hidden astro-lrzkfocr"><div class="right-sidebar astro-lrzkfocr"><div class="lg:sl-hidden astro-qok35upx"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-66cqc7ze"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-66cqc7ze"><details id="starlight__mobile-toc" class="astro-66cqc7ze"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-66cqc7ze"><span class="toggle sl-flex astro-66cqc7ze">目次<svg aria-hidden="true" class="caret astro-66cqc7ze astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></span><span class="display-current astro-66cqc7ze"></span></summary><div class="dropdown astro-66cqc7ze"><ul class="isMobile astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">概要</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#プラグインのディレクトリ" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">プラグインのディレクトリ</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#マニフェスト" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">マニフェスト</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#トップレベルのキー" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">トップレベルのキー</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#capabilities" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[capabilities]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#limits" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[limits]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[hooks]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[routes]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[jobs]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#startup" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[startup]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[graphql]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#admin" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[admin]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#settings" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[settings]]</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#エクスポートする関数" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">エクスポートする関数</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#before-フック" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">before フック</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#after-フック" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">after フック</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#ルート" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">ルート</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#ジョブ" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">ジョブ</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#起動関数" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">起動関数</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql-フィールド" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">GraphQL フィールド</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#ホスト関数" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">ホスト関数</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_log" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_log</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_content" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_content</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_kv_get-と-verdin_kv_set" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_kv_get と verdin_kv_set</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_config" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_config</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_public_permissions" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_public_permissions</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#http" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">HTTP</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#管理画面の拡張ポイント" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">管理画面の拡張ポイント</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#ウィジェット" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">ウィジェット</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#カスタムフィールド" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">カスタムフィールド</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#ランタイムと制限" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">ランタイムと制限</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#メトリクス" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">メトリクス</span></a></li></ul></div></details></nav></mobile-starlight-toc><script type="module" src="/verdin/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.C3fM4Kra.js"></script></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-qok35upx"><div class="sl-container astro-qok35upx"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">目次</h2><ul class="astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">概要</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#プラグインのディレクトリ" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">プラグインのディレクトリ</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#マニフェスト" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">マニフェスト</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#トップレベルのキー" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">トップレベルのキー</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#capabilities" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[capabilities]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#limits" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[limits]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[hooks]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[routes]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[jobs]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#startup" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[startup]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[graphql]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#admin" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[admin]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#settings" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[settings]]</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#エクスポートする関数" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">エクスポートする関数</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#before-フック" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">before フック</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#after-フック" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">after フック</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#ルート" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">ルート</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#ジョブ" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">ジョブ</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#起動関数" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">起動関数</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql-フィールド" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">GraphQL フィールド</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#ホスト関数" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">ホスト関数</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_log" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_log</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_content" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_content</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_kv_get-と-verdin_kv_set" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_kv_get と verdin_kv_set</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_config" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_config</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_public_permissions" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_public_permissions</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#http" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">HTTP</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#管理画面の拡張ポイント" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">管理画面の拡張ポイント</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#ウィジェット" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">ウィジェット</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#カスタムフィールド" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">カスタムフィールド</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#ランタイムと制限" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">ランタイムと制限</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#メトリクス" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">メトリクス</span></a></li></ul></nav></starlight-toc><script type="module" src="/verdin/_astro/TableOfContents.astro_astro_type_script_index_0_lang.BpJaGz7G.js"></script></div></div></div></aside><div class="main-pane astro-lrzkfocr"><main data-pagefind-body class="astro-g5ptsecz" lang="ja" dir="ltr"><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><h1 id="_top" class="astro-bebwqqxs">プラグインのリファレンス</h1></div></div><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><div class="sl-markdown-content"><!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
+<p>このページは、Verdin とプラグインの間の完全な取り決めです。マニフェスト、Verdin が各エクスポート関数に送るものと期待する戻り値、そしてモジュールが呼び出せるホスト関数を扱います。入門は<a href="/verdin/ja/extending/plugins/">プラグイン</a>、実例は<a href="/verdin/ja/extending/plugin-tutorial/">プラグインのチュートリアル</a>を参照してください。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="プラグインのディレクトリ">プラグインのディレクトリ</h2><a class="sl-anchor-link" href="#プラグインのディレクトリ"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “プラグインのディレクトリ”</span></a></div>
+<p>各プラグインは、<code dir="auto">[plugins].path</code>（デフォルトは <code dir="auto">verdin.toml</code> の隣の <code dir="auto">plugins/</code>）配下のディレクトリです。</p>
+<table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>必須</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">plugin.toml</code></td>
+<td>はい</td>
+<td>マニフェスト。</td>
+</tr>
+<tr>
+<td><code dir="auto">plugin.wasm</code></td>
+<td>はい</td>
+<td>モジュール（<code dir="auto">wasm</code> で別のパスも指定できます）。</td>
+</tr>
+<tr>
+<td><code dir="auto">admin/</code></td>
+<td>いいえ</td>
+<td>管理パネルが読み込むファイル: <code dir="auto">admin.script</code> モジュールとそのアセット。</td>
+</tr>
+</tbody>
+</table>
+<p>起動時に、Verdin は <code dir="auto">plugin.toml</code> を持つすべてのディレクトリを名前順に読み込みます。マニフェストが無効な場合、モジュールがない場合、別のプラグインがすでにその <code dir="auto">name</code> を使っている場合、そのディレクトリはスキップされ、理由とともに<strong>設定 → プラグイン</strong>に表示されます。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="マニフェスト">マニフェスト</h2><a class="sl-anchor-link" href="#マニフェスト"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “マニフェスト”</span></a></div>
+<div class="expressive-code"><link rel="stylesheet" href="/verdin/_astro/ec.w36nc.css"><script type="module" src="/verdin/_astro/ec.0vx5m.js"></script><figure class="frame has-title not-content"><figcaption class="header"><span class="title">plugins/slugs/plugin.toml</span></figcaption><pre data-language="toml"><code><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">name</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">version</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">1.0.0</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">description</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Slugs from titles, and a color field</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[capabilities]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">read</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">write</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::tag</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">http</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api.example.com</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">kv</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#FF6A83;--1:#A24848">true</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">public_permissions</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#FF6A83;--1:#A24848">true</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[limits]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">timeout_ms</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">5000</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">memory_mb</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">64</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[hooks]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">on</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">beforeCreate</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">uid</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">before_write</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[routes]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">handle</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[jobs]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">schedule</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">*/15 * * * *</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">refresh</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[startup]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">seed</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">timeout_ms</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">30000</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[graphql]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">name</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugStats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[admin]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">script</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">index.js</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[admin.widgets]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">id</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">title</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Slug stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">element</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs-stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[admin.fields]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">id</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">title</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">element</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs-color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">type</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">string</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[settings]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">key</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">separator</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">label</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Separator</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">type</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">select</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">options</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">-</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">_</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">default</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">-</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="クリップボードにコピー" data-copied="コピーしました！" data-code="name = &quot;slugs&quot;version = &quot;1.0.0&quot;description = &quot;Slugs from titles, and a color field&quot;[capabilities]read = [&quot;api::article&quot;]write = [&quot;api::tag&quot;]http = [&quot;api.example.com&quot;]kv = truepublic_permissions = true[limits]timeout_ms = 5000memory_mb = 64[[hooks]]on = &quot;beforeCreate&quot;uid = &quot;api::article&quot;function = &quot;before_write&quot;[routes]function = &quot;handle&quot;[[jobs]]schedule = &quot;*/15 * * * *&quot;function = &quot;refresh&quot;[startup]function = &quot;seed&quot;timeout_ms = 30000[[graphql]]name = &quot;slugStats&quot;function = &quot;stats&quot;[admin]script = &quot;index.js&quot;[[admin.widgets]]id = &quot;stats&quot;title = &quot;Slug stats&quot;element = &quot;slugs-stats&quot;[[admin.fields]]id = &quot;color&quot;title = &quot;Color&quot;element = &quot;slugs-color&quot;type = &quot;string&quot;[[settings]]key = &quot;separator&quot;label = &quot;Separator&quot;type = &quot;select&quot;options = [&quot;-&quot;, &quot;_&quot;]default = &quot;-&quot;"><div></div></button></div></figure></div>
+<p>どのテーブルでも、不明なキーはエラーになります。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="トップレベルのキー">トップレベルのキー</h3><a class="sl-anchor-link" href="#トップレベルのキー"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “トップレベルのキー”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>デフォルト</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">name</code></td>
+<td>必須</td>
+<td>URL、設定、カスタムフィールドで使うプラグインの ID。小文字の英字、数字、<code dir="auto">-</code> からなり、英字で始まり、最大 64 文字。</td>
+</tr>
+<tr>
+<td><code dir="auto">version</code></td>
+<td>必須</td>
+<td>管理画面とログに表示されます。</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>未設定</td>
+<td><strong>設定 → プラグイン</strong>に表示されます。</td>
+</tr>
+<tr>
+<td><code dir="auto">wasm</code></td>
+<td><code dir="auto">"plugin.wasm"</code></td>
+<td>モジュール。プラグインのディレクトリからの相対パス（<code dir="auto">..</code> や絶対パスは不可）。</td>
+</tr>
+<tr>
+<td><code dir="auto">wasi</code></td>
+<td><code dir="auto">false</code></td>
+<td>モジュールに WASI（時計と乱数）を与えます。どちらの場合もファイルやソケットはありません。</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="capabilities"><code dir="auto">[capabilities]</code></h3><a class="sl-anchor-link" href="#capabilities"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[capabilities]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>デフォルト</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">read</code></td>
+<td><code dir="auto">[]</code></td>
+<td><code dir="auto">verdin_content</code> が読み取れる（<code dir="auto">findMany</code>、<code dir="auto">findOne</code>）コンテンツタイプ。<code dir="auto">api::article</code> のような UID、またはすべてを表す <code dir="auto">"*"</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">write</code></td>
+<td><code dir="auto">[]</code></td>
+<td><code dir="auto">create</code>、<code dir="auto">update</code>、<code dir="auto">delete</code>、<code dir="auto">publish</code>、<code dir="auto">unpublish</code> できるコンテンツタイプ。<code dir="auto">read</code> を含みます。</td>
+</tr>
+<tr>
+<td><code dir="auto">http</code></td>
+<td><code dir="auto">[]</code></td>
+<td>モジュールが HTTP リクエストを送れるホスト。<code dir="auto">api.example.com</code> または <code dir="auto">*.example.com</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">kv</code></td>
+<td><code dir="auto">false</code></td>
+<td>プラグイン専用のキーバリューストレージ（<code dir="auto">verdin_kv_get</code>、<code dir="auto">verdin_kv_set</code>）。</td>
+</tr>
+<tr>
+<td><code dir="auto">public_permissions</code></td>
+<td><code dir="auto">false</code></td>
+<td>公開ロールのコンテンツ API の権限の読み取りと置き換え（<code dir="auto">verdin_public_permissions</code>）。</td>
+</tr>
+</tbody>
+</table>
+<p>機能が制限するのはホストの呼び出しだけです。フックは <code dir="auto">read</code> にかかわらず指定した型で実行され、ルートには誰でもアクセスできます。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="limits"><code dir="auto">[limits]</code></h3><a class="sl-anchor-link" href="#limits"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[limits]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>デフォルト</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">timeout_ms</code></td>
+<td><code dir="auto">5000</code></td>
+<td>1 回の呼び出しの制限時間（ミリ秒）。</td>
+</tr>
+<tr>
+<td><code dir="auto">memory_mb</code></td>
+<td><code dir="auto">64</code></td>
+<td>モジュールの最大メモリ（メガバイト）。</td>
+</tr>
+</tbody>
+</table>
+<p>どちらも正の数である必要があります。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="hooks"><code dir="auto">[[hooks]]</code></h3><a class="sl-anchor-link" href="#hooks"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[hooks]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>デフォルト</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">on</code></td>
+<td>必須</td>
+<td>イベント（下記）。</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td><code dir="auto">"*"</code></td>
+<td>コンテンツタイプ（<code dir="auto">api::article</code>）、またはすべてを表す <code dir="auto">"*"</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>必須</td>
+<td>呼び出すエクスポート関数。</td>
+</tr>
+</tbody>
+</table>
+<p>イベント:</p>
+<table>
+<thead>
+<tr>
+<th>書き込みの前</th>
+<th>書き込みの後</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">beforeCreate</code></td>
+<td><code dir="auto">afterCreate</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeUpdate</code></td>
+<td><code dir="auto">afterUpdate</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeDelete</code></td>
+<td><code dir="auto">afterDelete</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforePublish</code></td>
+<td><code dir="auto">afterPublish</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeUnpublish</code></td>
+<td><code dir="auto">afterUnpublish</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeDiscardDraft</code></td>
+<td><code dir="auto">afterDiscardDraft</code></td>
+</tr>
+</tbody>
+</table>
+<p>名前は Strapi のライフサイクルの名前です。フックは、管理パネル、REST と GraphQL の API、リリースからの書き込みで実行されますが、<code dir="auto">verdin import</code> コマンドによる書き込みでは実行されません。プラグインによる書き込みでは after フックは実行されますが、before フックは実行されません（<a href="#%E3%83%97%E3%83%A9%E3%82%B0%E3%82%A4%E3%83%B3%E3%81%AB%E3%82%88%E3%82%8B%E6%9B%B8%E3%81%8D%E8%BE%BC%E3%81%BF">プラグインによる書き込み</a>を参照）。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="routes"><code dir="auto">[routes]</code></h3><a class="sl-anchor-link" href="#routes"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[routes]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">function</code></td>
+<td><code dir="auto">/api/plugins/&lt;name&gt;</code> と <code dir="auto">/api/plugins/&lt;name&gt;/…</code> へのすべてのリクエストを、メソッドを問わず処理するエクスポート関数。</td>
+</tr>
+</tbody>
+</table>
+<p>パスは <code dir="auto">[api].prefix</code> に従います。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="jobs"><code dir="auto">[[jobs]]</code></h3><a class="sl-anchor-link" href="#jobs"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[jobs]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">schedule</code></td>
+<td>UTC の cron 式。秒は任意: <code dir="auto">*/15 * * * *</code>、<code dir="auto">0 0 3 * * *</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>呼び出すエクスポート関数。</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="startup"><code dir="auto">[startup]</code></h3><a class="sl-anchor-link" href="#startup"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[startup]”</span></a></div>
+<p>プラグインの開始時に実行される関数です。Strapi のプロジェクトが <code dir="auto">bootstrap</code> で行うこと（コンテンツのシード投入、公開ロールの設定）に使います。</p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>デフォルト</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>必須</td>
+<td>呼び出すエクスポート関数。</td>
+</tr>
+<tr>
+<td><code dir="auto">timeout_ms</code></td>
+<td><code dir="auto">30000</code></td>
+<td>この関数専用の制限時間（ミリ秒）。シード投入はフックより時間がかかることがあるためです。正の値である必要があります。</td>
+</tr>
+</tbody>
+</table>
+<p>実行されるタイミングは<a href="#%E8%B5%B7%E5%8B%95%E9%96%A2%E6%95%B0">起動関数</a>を参照してください。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="graphql"><code dir="auto">[[graphql]]</code></h3><a class="sl-anchor-link" href="#graphql"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[graphql]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>デフォルト</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">name</code></td>
+<td>必須</td>
+<td>フィールド名。小文字の英字で始まり、その後に英字、数字、<code dir="auto">_</code> が続きます。</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>必須</td>
+<td>フィールドを解決するエクスポート関数。</td>
+</tr>
+<tr>
+<td><code dir="auto">mutation</code></td>
+<td><code dir="auto">false</code></td>
+<td>フィールドを <code dir="auto">Query</code> ではなく <code dir="auto">Mutation</code> に追加します。</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>未設定</td>
+<td>スキーマ内のフィールドの説明。</td>
+</tr>
+</tbody>
+</table>
+<p>各エントリーは <code dir="auto">name(args: JSON): JSON</code> を追加します。コンテンツタイプがすでに使っている名前や、別のプラグインが先に使った名前はスキップされ、ログに警告が出ます。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="admin"><code dir="auto">[admin]</code></h3><a class="sl-anchor-link" href="#admin"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[admin]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">script</code></td>
+<td>カスタム要素を定義する、<code dir="auto">admin/</code> 配下の ES モジュール（<code dir="auto">..</code> や絶対パスは不可）。</td>
+</tr>
+<tr>
+<td><code dir="auto">[[admin.widgets]]</code></td>
+<td>ダッシュボードのウィジェットの種類: <code dir="auto">id</code>、<code dir="auto">title</code>、<code dir="auto">element</code>、任意の <code dir="auto">description</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">[[admin.fields]]</code></td>
+<td>カスタムフィールド: <code dir="auto">id</code>、<code dir="auto">title</code>、<code dir="auto">element</code>、<code dir="auto">type</code>（値を保存する属性の型。<code dir="auto">string</code> や <code dir="auto">json</code> など）、任意の <code dir="auto">description</code>。</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">element</code> はカスタム要素の名前です。小文字の英字、数字、<code dir="auto">-</code> からなり、少なくとも 1 つの <code dir="auto">-</code> を含みます（<code dir="auto">slugs-color</code>）。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="settings"><code dir="auto">[[settings]]</code></h3><a class="sl-anchor-link" href="#settings"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[settings]]”</span></a></div>
+<p><strong>設定 → プラグイン → 設定</strong>のフォームを宣言します。何も宣言しない場合、設定は自由な JSON オブジェクトです。</p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>デフォルト</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">key</code></td>
+<td>必須</td>
+<td>設定オブジェクト内のキー。英字、数字、<code dir="auto">_</code> からなり、数字で始まらず、一意であること。</td>
+</tr>
+<tr>
+<td><code dir="auto">label</code></td>
+<td>必須</td>
+<td>フォームのラベル。</td>
+</tr>
+<tr>
+<td><code dir="auto">type</code></td>
+<td><code dir="auto">"string"</code></td>
+<td><code dir="auto">string</code>、<code dir="auto">text</code>、<code dir="auto">url</code>、<code dir="auto">number</code>、<code dir="auto">integer</code>、<code dir="auto">boolean</code>、<code dir="auto">select</code> のいずれか。</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>未設定</td>
+<td>フィールドの下に表示するヘルプテキスト。</td>
+</tr>
+<tr>
+<td><code dir="auto">required</code></td>
+<td><code dir="auto">false</code></td>
+<td><code dir="auto">default</code> がない限り、値（テキストなら空でない値）が必要です。</td>
+</tr>
+<tr>
+<td><code dir="auto">options</code></td>
+<td><code dir="auto">[]</code></td>
+<td><code dir="auto">select</code> の選択肢（<code dir="auto">select</code> では必須）。</td>
+</tr>
+<tr>
+<td><code dir="auto">default</code></td>
+<td>未設定</td>
+<td>キーがないか <code dir="auto">null</code> のときに使われます。フィールドに合う値である必要があります。</td>
+</tr>
+<tr>
+<td><code dir="auto">min</code>、<code dir="auto">max</code></td>
+<td>未設定</td>
+<td><code dir="auto">number</code> と <code dir="auto">integer</code> の値の範囲、<code dir="auto">string</code> と <code dir="auto">text</code> の長さの範囲。</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">url</code> の値は空か <code dir="auto">http(s)://</code> の URL です。フォームがある場合、サーバーは不明なキー、誤った型、範囲外の値、必須の値の欠落を含む設定を拒否します（400）。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="エクスポートする関数">エクスポートする関数</h2><a class="sl-anchor-link" href="#エクスポートする関数"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “エクスポートする関数”</span></a></div>
+<p>すべてのエクスポート関数は 1 つの JSON ドキュメントを受け取り、1 つを返します（何も返さないこともできます）。空の出力は <code dir="auto">null</code> とみなされ、JSON でない出力は失敗とみなされます。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="before-フック">before フック</h3><a class="sl-anchor-link" href="#before-フック"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “before フック”</span></a></div>
+<p>入力:</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"event"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">beforeUpdate</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"uid"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"documentId"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">01m3p88ry359w82nsx496mep5t</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"locale"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">en</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"data"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"title"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">Hello</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="クリップボードにコピー" data-copied="コピーしました！" data-code="{  &quot;event&quot;: &quot;beforeUpdate&quot;,  &quot;uid&quot;: &quot;api::article&quot;,  &quot;documentId&quot;: &quot;01m3p88ry359w82nsx496mep5t&quot;,  &quot;locale&quot;: &quot;en&quot;,  &quot;data&quot;: { &quot;title&quot;: &quot;Hello&quot; }}"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>フィールド</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">event</code></td>
+<td>フックのイベント。</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td>コンテンツタイプ。</td>
+</tr>
+<tr>
+<td><code dir="auto">documentId</code></td>
+<td>ドキュメント。<code dir="auto">beforeCreate</code> では <code dir="auto">null</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>多言語化された型では、書き込まれるロケール（リクエストで指定がなければデフォルトのロケール）。その他の型では <code dir="auto">null</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">data</code></td>
+<td>書き込まれるデータで、リクエストが送ったままの形です。作成と更新で渡されます。その他のイベントでは <code dir="auto">null</code>。更新では、送られたフィールドだけです。</td>
+</tr>
+</tbody>
+</table>
+<p>出力:</p>
+<table>
+<thead>
+<tr>
+<th>出力</th>
+<th>効果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">{ "data": { … } }</code></td>
+<td>書き込まれるデータを置き換えます。元のデータと同じように検証されます。</td>
+</tr>
+<tr>
+<td><code dir="auto">{ "error": "message" }</code></td>
+<td>書き込みを拒否します。呼び出し元はメッセージ付きの 400 を受け取ります。</td>
+</tr>
+<tr>
+<td><code dir="auto">{}</code> またはその他</td>
+<td>書き込みはそのまま続行されます。</td>
+</tr>
+</tbody>
+</table>
+<p>複数のフックが一致すると、プラグインの順序（ディレクトリ名）、次にマニフェストの順序で実行されます。各フックは、前のフックが返したデータを受け取ります。失敗したフック（トラップ、タイムアウト、無効な出力）はログに記録されてスキップされ、書き込みは続行されます。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="after-フック">after フック</h3><a class="sl-anchor-link" href="#after-フック"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “after フック”</span></a></div>
+<p>入力: <code dir="auto">{ "event", "uid", "documentId", "locale" }</code>。書き込みがコミットされた後に送られます。出力は無視され、失敗はログに記録されます。エントリーのフィールドが必要な場合は、<code dir="auto">verdin_content</code> で読み取ってください（<code dir="auto">read</code> の機能が必要です）。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="ルート">ルート</h3><a class="sl-anchor-link" href="#ルート"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “ルート”</span></a></div>
+<p>入力:</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"method"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">GET</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"path"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">/stats</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"query"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">page=2&amp;sort=title</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"headers"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"accept"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">application/json</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"user-agent"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">curl/8.7.1</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"body"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">""</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"actor"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"kind"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">public</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="クリップボードにコピー" data-copied="コピーしました！" data-code="{  &quot;method&quot;: &quot;GET&quot;,  &quot;path&quot;: &quot;/stats&quot;,  &quot;query&quot;: &quot;page=2&amp;sort=title&quot;,  &quot;headers&quot;: { &quot;accept&quot;: &quot;application/json&quot;, &quot;user-agent&quot;: &quot;curl/8.7.1&quot; },  &quot;body&quot;: &quot;&quot;,  &quot;actor&quot;: { &quot;kind&quot;: &quot;public&quot; }}"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>フィールド</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">method</code></td>
+<td>HTTP メソッド。</td>
+</tr>
+<tr>
+<td><code dir="auto">path</code></td>
+<td><code dir="auto">/api/plugins/&lt;name&gt;</code> の後のパス。<code dir="auto">/</code> で始まります（プラグインのルートでは <code dir="auto">/</code>）。</td>
+</tr>
+<tr>
+<td><code dir="auto">query</code></td>
+<td><code dir="auto">?</code> を除いた生のクエリ文字列（ない場合は空）。</td>
+</tr>
+<tr>
+<td><code dir="auto">headers</code></td>
+<td><code dir="auto">content-type</code>、<code dir="auto">accept</code>、<code dir="auto">user-agent</code>、<code dir="auto">accept-language</code> のうち、存在するものだけ。</td>
+</tr>
+<tr>
+<td><code dir="auto">body</code></td>
+<td>文字列としてのリクエストボディ（無効な UTF-8 は置き換えられます）。</td>
+</tr>
+<tr>
+<td><code dir="auto">actor</code></td>
+<td>呼び出し元: <code dir="auto">{ "kind": "public" }</code>、<code dir="auto">{ "kind": "token", "id": 3 }</code>（API トークン）、<code dir="auto">{ "kind": "user", "id": 12 }</code>（ログイン済みのエンドユーザー）。</td>
+</tr>
+</tbody>
+</table>
+<p>無効なトークンを含む <code dir="auto">Authorization</code> ヘッダーは、プラグインが呼び出される前に 401 で拒否されます。公開アクセスと API トークンの権限は適用されないので、<code dir="auto">actor</code> を自分で確認してください。</p>
+<p>出力:</p>
+<table>
+<thead>
+<tr>
+<th>フィールド</th>
+<th>デフォルト</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">status</code></td>
+<td><code dir="auto">200</code></td>
+<td>HTTP ステータス。</td>
+</tr>
+<tr>
+<td><code dir="auto">headers</code></td>
+<td>なし</td>
+<td>レスポンスヘッダー。<code dir="auto">content-type</code>、<code dir="auto">cache-control</code>、<code dir="auto">location</code>、<code dir="auto">etag</code>、<code dir="auto">last-modified</code>、<code dir="auto">content-disposition</code> だけが保持されます。</td>
+</tr>
+<tr>
+<td><code dir="auto">body</code></td>
+<td>空</td>
+<td>文字列はそのまま送られます（<code dir="auto">content-type</code> を設定しない限り <code dir="auto">text/plain</code>）。その他の JSON 値は <code dir="auto">application/json</code> として送られます。</td>
+</tr>
+</tbody>
+</table>
+<p>無効なプラグイン、不明なプラグイン、<code dir="auto">[routes]</code> のないプラグインは 404 を返します。失敗した呼び出しは <code dir="auto">{ "data": null, "error": { "status": 502, "name": "PluginError", … } }</code> 付きの 502 を返します。ルートはコンテンツ API の <code dir="auto">[server].body_limit</code> と <code dir="auto">[server].request_timeout_secs</code> を共有します。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="ジョブ">ジョブ</h3><a class="sl-anchor-link" href="#ジョブ"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “ジョブ”</span></a></div>
+<p>入力: <code dir="auto">{ "scheduledAt": "2026-09-29T03:00:00+00:00" }</code>。実行が予定されていた時刻です。出力は無視され、失敗はログに記録されます。ジョブはプラグインがオンの間だけ、<code dir="auto">[plugins].run_jobs = true</code> のインスタンスでだけ実行されます。サーバーが停止していた間に逃した実行は、後から行われません。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="起動関数">起動関数</h3><a class="sl-anchor-link" href="#起動関数"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “起動関数”</span></a></div>
+<p>入力: <code dir="auto">{ "reason": "start" | "enabled" | "settings" }</code>:</p>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">reason</code></th>
+<th>タイミング</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">start</code></td>
+<td>プラグインがオンの状態でサーバーが起動した。</td>
+</tr>
+<tr>
+<td><code dir="auto">enabled</code></td>
+<td>プラグインがオンに切り替えられた（ここで、または別のインスタンスで切り替えられ、ここで反映された）。</td>
+</tr>
+<tr>
+<td><code dir="auto">settings</code></td>
+<td>オンの間に設定が変更された（ここで保存された、または別のインスタンスから反映された）。</td>
+</tr>
+</tbody>
+</table>
+<p>出力: <code dir="auto">{ "error": "message" }</code> は失敗として数えられ、それ以外（<code dir="auto">{}</code>、空）は成功として扱われます。失敗（トラップ、タイムアウト、<code dir="auto">{ error }</code>）はプラグインのログとサーバーのログに記録されます。プラグインはオンのままで、関数は次の起動、切り替え、設定の変更のときにもう一度実行されます。</p>
+<p>関数はサーバーが起動した後にバックグラウンドで実行されるので、その間もリクエストは処理されます。専用のモジュールのインスタンスで <code dir="auto">[startup].timeout_ms</code> の制限で実行されるので、遅いシード投入がプラグインのフックやルートを止めることはありません。この関数の書き込みで発火した after フックは、関数が返ってから実行されます（<a href="#%E3%83%97%E3%83%A9%E3%82%B0%E3%82%A4%E3%83%B3%E3%81%AB%E3%82%88%E3%82%8B%E6%9B%B8%E3%81%8D%E8%BE%BC%E3%81%BF">プラグインによる書き込み</a>を参照）。モジュールのメモリはプラグインの通常のインスタンスとは共有されません。状態は <code dir="auto">verdin_kv_set</code> かコンテンツに保存してください。</p>
+<p>インスタンスが複数ある場合、起動関数を実行するのは <code dir="auto">[plugins].run_jobs = true</code> のインスタンスだけです（<a href="/verdin/ja/deploy/scaling/">スケーリングの助言</a>に従っていれば 1 つ）。共有のデータベースに対して動作するので、1 回で十分です。もう一度実行されても害がないように書いてください。シード投入するものは、作成する前に探します。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="graphql-フィールド">GraphQL フィールド</h3><a class="sl-anchor-link" href="#graphql-フィールド"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “GraphQL フィールド”</span></a></div>
+<p>入力: <code dir="auto">{ "args": …, "actor": … }</code>。<code dir="auto">args</code> はフィールドの <code dir="auto">args</code> 引数（任意の JSON、または <code dir="auto">null</code>）、<code dir="auto">actor</code> はルートと同じです。出力がフィールドの値になります。失敗した場合やプラグインが無効な場合は、コード <code dir="auto">PLUGIN_ERROR</code> の GraphQL エラーを返します。ルートと同様に、アクセスの確認はプラグインが行います。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="ホスト関数">ホスト関数</h2><a class="sl-anchor-link" href="#ホスト関数"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “ホスト関数”</span></a></div>
+<p><code dir="auto">extism:host/user</code> 名前空間（Rust では <code dir="auto">extern "ExtismHost"</code>）からインポートします。JSON を文字列として受け取り、返します。<code dir="auto">extism-pdk</code> の <code dir="auto">Json&lt;Value&gt;</code> が変換を行います。</p>
+<table>
+<thead>
+<tr>
+<th>関数</th>
+<th>入力</th>
+<th>出力</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">verdin_log</code></td>
+<td><code dir="auto">{ "level": "info" | "warn" | "error", "message": "…" }</code></td>
+<td>なし</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_content</code></td>
+<td>コンテンツのリクエスト（下記）</td>
+<td>結果、または <code dir="auto">{ "error": "…" }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_kv_get</code></td>
+<td>プレーンな文字列としてのキー</td>
+<td>保存された JSON 値、または <code dir="auto">null</code></td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_kv_set</code></td>
+<td><code dir="auto">{ "key": "…", "value": … }</code></td>
+<td>なし</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_config</code></td>
+<td>なし</td>
+<td>宣言したデフォルトで補完された設定オブジェクト</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_public_permissions</code></td>
+<td><code dir="auto">{ "op": "get" }</code> または <code dir="auto">{ "op": "set", "permissions": [...] }</code></td>
+<td><code dir="auto">{ "permissions": [...] }</code>、または <code dir="auto">{ "error": "…" }</code></td>
+</tr>
+</tbody>
+</table>
+<p>サーバーが持たないホスト関数（古い Verdin）をインポートするモジュールは読み込めません。その関数へのすべての呼び出しは、サーバーのログに <code dir="auto">unknown import</code> で失敗します。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_log"><code dir="auto">verdin_log</code></h3><a class="sl-anchor-link" href="#verdin_log"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_log”</span></a></div>
+<p>サーバーのログ（プラグイン名付き）と、<strong>設定 → プラグイン → ログ</strong>にあるプラグインのログに書き込みます。その他のレベルは <code dir="auto">info</code> とみなされます。プラグインのログは、直近の 200 件のメッセージを、それぞれ 2,000 文字で切り詰めてメモリに保持します。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_content"><code dir="auto">verdin_content</code></h3><a class="sl-anchor-link" href="#verdin_content"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_content”</span></a></div>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"op"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">findMany</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"uid"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"query"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"filters"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"title"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"$eq"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">x</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> } }, </span><span style="--0:#7FDBCA;--1:#096E72">"sort"</span><span style="--0:#D6DEEB;--1:#403F53">: [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">title</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">] } }</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="クリップボードにコピー" data-copied="コピーしました！" data-code="{ &quot;op&quot;: &quot;findMany&quot;, &quot;uid&quot;: &quot;api::article&quot;, &quot;query&quot;: { &quot;filters&quot;: { &quot;title&quot;: { &quot;$eq&quot;: &quot;x&quot; } }, &quot;sort&quot;: [&quot;title&quot;] } }"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>フィールド</th>
+<th>使う操作</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">op</code></td>
+<td>すべて</td>
+<td><code dir="auto">findMany</code>、<code dir="auto">findOne</code>、<code dir="auto">create</code>、<code dir="auto">update</code>、<code dir="auto">delete</code>、<code dir="auto">publish</code>、<code dir="auto">unpublish</code> のいずれか。</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td>すべて</td>
+<td>コンテンツタイプ。機能に含まれている必要があります。</td>
+</tr>
+<tr>
+<td><code dir="auto">documentId</code></td>
+<td><code dir="auto">findOne</code>、<code dir="auto">update</code>、<code dir="auto">delete</code>、<code dir="auto">publish</code>、<code dir="auto">unpublish</code></td>
+<td>ドキュメント。</td>
+</tr>
+<tr>
+<td><code dir="auto">query</code></td>
+<td><code dir="auto">findMany</code>、<code dir="auto">findOne</code></td>
+<td>JSON オブジェクトとしての REST API のパラメーター: <code dir="auto">filters</code>、<code dir="auto">sort</code>、<code dir="auto">fields</code>、<code dir="auto">populate</code>、<code dir="auto">pagination</code>、<code dir="auto">status</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">data</code></td>
+<td><code dir="auto">create</code>、<code dir="auto">update</code></td>
+<td>書き込むフィールド。REST リクエストの <code dir="auto">data</code> と同じです。</td>
+</tr>
+<tr>
+<td><code dir="auto">status</code></td>
+<td><code dir="auto">create</code>、<code dir="auto">update</code></td>
+<td><code dir="auto">"draft"</code> は下書きを保存します。それ以外の場合、<code dir="auto">?status=draft</code> なしの REST の書き込みと同様に公開されます。</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>すべて</td>
+<td>読み書きするロケール。</td>
+</tr>
+</tbody>
+</table>
+<p>結果:</p>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">op</code></th>
+<th>結果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">findMany</code></td>
+<td><code dir="auto">{ "documents": [...], "meta": { "pagination": {…} } }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">findOne</code></td>
+<td><code dir="auto">{ "document": {…} }</code>（見つからない場合は <code dir="auto">null</code>）</td>
+</tr>
+<tr>
+<td><code dir="auto">create</code>、<code dir="auto">update</code></td>
+<td><code dir="auto">{ "documentId": "…" }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">delete</code></td>
+<td><code dir="auto">{ "deleted": true }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">publish</code></td>
+<td><code dir="auto">{ "published": true }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">unpublish</code></td>
+<td><code dir="auto">{ "unpublished": true }</code></td>
+</tr>
+</tbody>
+</table>
+<p>機能の範囲外の呼び出し、不明な操作、バリデーションエラー、存在しないドキュメントの場合は、代わりに <code dir="auto">{ "error": "…" }</code> を返します。読み取りは、クエリで <code dir="auto">"status": "draft"</code> を指定しない限り公開バージョンを返します。</p>
+<div class="sl-heading-wrapper level-h4"><h4 id="プラグインによる書き込み">プラグインによる書き込み</h4><a class="sl-anchor-link" href="#プラグインによる書き込み"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “プラグインによる書き込み”</span></a></div>
+<p><code dir="auto">verdin_content</code> を通じた書き込みは、すべてのプラグインの <strong>before</strong> フックをスキップするので、プラグインがそこで自分の変更によってループすることはなく、before フックに置いたルール（デフォルト値、チェック）はそれらの書き込みには適用されません。それ以外はすべて適用されます。バリデーション、レビューの段階、Webhook、履歴、監査ログ、そして書き込んだプラグイン自身を含むすべてのプラグインの <strong>after</strong> フックです。</p>
+<p>プラグインの書き込みで発火した after フックは、書き込みの内側では実行されません。キューに入れられ、プラグインの呼び出し（ルート、ジョブ、GraphQL リゾルバー、フック、起動関数）が返ってプラグインのインスタンスを解放した後、ルートのレスポンスが送られる前に実行されます。そのため、プラグインは自分が after フックを持つ型に書き込むことができ、複数のプラグインをまたぐ連鎖も動作します。</p>
+<ul>
+<li>書き込みを行うフックはさらにフックを発火させますが、<strong>最大 <code dir="auto">4</code> 階層</strong>までです（REST や GraphQL からの書き込みが 1 階層目）。それより深いフックはスキップされ、プラグインのログに警告が記録されます。これにより、監視している型に書き込むフックが無限にループすることを防ぎます。</li>
+<li>ホスト関数（<code dir="auto">verdin_content</code>、<code dir="auto">verdin_public_permissions</code>、キーバリューストア）は、呼び出しの制限時間で停止してモジュールにエラーを返します。呼び出し元は、ビジー状態のプラグインを最大で制限時間に 10 秒を加えた時間だけ待ちます。止まった呼び出しが、プラグインやグレースフルな停止を永遠に止めることはありません。</li>
+</ul>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_kv_get-と-verdin_kv_set"><code dir="auto">verdin_kv_get</code> と <code dir="auto">verdin_kv_set</code></h3><a class="sl-anchor-link" href="#verdin_kv_get-と-verdin_kv_set"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_kv_get と verdin_kv_set”</span></a></div>
+<p>プラグインごとのキーバリューストアで、Verdin のデータベースにあり、すべてのインスタンスで共有されます。キーは 1〜255 バイト、値は任意の JSON です。<code dir="auto">null</code> を設定するとキーが削除されます。<code dir="auto">kv</code> の機能がない場合、読み取りは <code dir="auto">null</code> を返し、書き込みは無視されます。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_config"><code dir="auto">verdin_config</code></h3><a class="sl-anchor-link" href="#verdin_config"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_config”</span></a></div>
+<p><strong>設定 → プラグイン</strong>で保存された設定を、宣言した各設定の <code dir="auto">default</code> で欠けたキーを補完して返します。何も保存されていない場合は <code dir="auto">{}</code> です。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_public_permissions"><code dir="auto">verdin_public_permissions</code></h3><a class="sl-anchor-link" href="#verdin_public_permissions"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_public_permissions”</span></a></div>
+<p>公開ロールのコンテンツ API の権限を読み取り、または置き換えます。<strong>設定 → 公開アクセス</strong>で編集できるものです。<code dir="auto">public_permissions</code> の機能が必要で、ない場合はすべての呼び出しが <code dir="auto">{ "error": "…" }</code> を返します。</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"op"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">set</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"permissions"</span><span style="--0:#D6DEEB;--1:#403F53">: [</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">find</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">findOne</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::comment</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">create</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">] }</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="クリップボードにコピー" data-copied="コピーしました！" data-code="{ &quot;op&quot;: &quot;set&quot;, &quot;permissions&quot;: [  { &quot;subject&quot;: &quot;api::article&quot;, &quot;action&quot;: &quot;find&quot; },  { &quot;subject&quot;: &quot;api::article&quot;, &quot;action&quot;: &quot;findOne&quot; },  { &quot;subject&quot;: &quot;api::comment&quot;, &quot;action&quot;: &quot;create&quot; }] }"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">op</code></th>
+<th>効果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">get</code></td>
+<td>何もしません。現在の権限を返します。</td>
+</tr>
+<tr>
+<td><code dir="auto">set</code></td>
+<td>公開の権限を<strong>すべて</strong> <code dir="auto">permissions</code> で置き換えます（空のリストならすべて削除します）。</td>
+</tr>
+</tbody>
+</table>
+<p>どちらも、ソートされた <code dir="auto">{ "permissions": [{ "subject", "action" }, …] }</code> を返します。<code dir="auto">subject</code> は、コンテンツタイプの UID、<code dir="auto">plugin::upload</code>（メディアライブラリ）、<code dir="auto">plugin::users-permissions.user</code>（コンテンツ API 越しのエンドユーザー）、<code dir="auto">plugin::i18n.locale</code>（<code dir="auto">find</code> のみ）のいずれかです。<code dir="auto">action</code> は <code dir="auto">find</code>、<code dir="auto">findOne</code>、<code dir="auto">create</code>、<code dir="auto">update</code>、<code dir="auto">delete</code>、<code dir="auto">publish</code>、<code dir="auto">readDrafts</code> のいずれかです（最後の 2 つは、アップロードとエンドユーザーには適用されません）。管理画面の権限グリッドと同じように確認されます。不明な subject や action、または適用されないものは <code dir="auto">{ "error": "…" }</code> を返し、何も変更しません。すべての <code dir="auto">set</code> はサーバーのログに記録されます。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="http">HTTP</h3><a class="sl-anchor-link" href="#http"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “HTTP”</span></a></div>
+<p><code dir="auto">http</code> にホストを登録したら、Extism の HTTP サポート（Rust では <code dir="auto">extism_pdk::http::request</code>）を使ってください。他のホストへのリクエストは失敗します。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="管理画面の拡張ポイント">管理画面の拡張ポイント</h2><a class="sl-anchor-link" href="#管理画面の拡張ポイント"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “管理画面の拡張ポイント”</span></a></div>
+<p>管理パネルは、有効なプラグインの拡張をサーバーに問い合わせ、各 <code dir="auto">admin.script</code> を ES モジュールとして <code dir="auto">/admin/plugins/&lt;name&gt;/&lt;script&gt;</code>（<code dir="auto">[admin].path</code> 配下）から一度だけインポートします。プラグインがオンの間、プラグインの <code dir="auto">admin/</code> ディレクトリ配下のファイルが <code dir="auto">X-Content-Type-Options: nosniff</code> と <code dir="auto">Cache-Control: no-cache</code> 付きでそこから提供されます。モジュールはマニフェストが指定したカスタム要素を定義する必要があり、3 秒以内に定義されない要素は省かれます。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="ウィジェット">ウィジェット</h3><a class="sl-anchor-link" href="#ウィジェット"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “ウィジェット”</span></a></div>
+<p>各 <code dir="auto">[[admin.widgets]]</code> エントリーは、管理者がダッシュボードに追加できるウィジェットの種類です。要素は <code dir="auto">context</code> プロパティを受け取ります。</p>
+<table>
+<thead>
+<tr>
+<th>プロパティ</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">apiBase</code></td>
+<td><code dir="auto">/api</code> のような、コンテンツ API のベース。</td>
+</tr>
+<tr>
+<td><code dir="auto">adminApiBase</code></td>
+<td><code dir="auto">/admin/api</code> のような、Admin API のベース。</td>
+</tr>
+<tr>
+<td><code dir="auto">fetch(path, init)</code></td>
+<td>ログイン中の管理者の認証情報付きの <code dir="auto">fetch</code>。相対パスは <code dir="auto">adminApiBase</code> を基準に解決されます。どちらかのベース配下のパスと絶対 URL はそのまま使われます。</td>
+</tr>
+</tbody>
+</table>
+<div class="expressive-code"><figure class="frame has-title not-content"><figcaption class="header"><span class="title">plugins/slugs/admin/index.js</span></figcaption><pre data-language="js"><code><div class="ec-line"><div class="code"><span style="--0:#C792EA;--1:#8844AE">class</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#FFCB8B;--1:#111111">SlugStats</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">extends</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C5E478;--1:#3B61B0">HTMLElement</span><span style="--0:#D6DEEB;--1:#403F53"> {</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#C792EA;--1:#8844AE">set</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">context</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">context</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> {</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#919F9F;--1:#5D6376">// Admin API, with the admin's session.</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">fetch</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">auth/me</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#D6DEEB;--1:#403F53">)</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">response</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#7FDBCA;--1:#096E72">response</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">json</span><span style="--0:#D6DEEB;--1:#403F53">())</span></div></div><div class="ec-line"><div class="code"><span class="indent">      </span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--1:#403F53"><span style="--0:#D6DEEB">{ </span><span style="--0:#D7DBE0">data</span><span style="--0:#D6DEEB"> }</span></span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> { </span><span style="--0:#7FDBCA;--1:#096E72">this</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">textContent</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#ECC48D;--1:#3B61B0">Hello </span><span style="--0:#E2817F;--1:#B23834">${</span><span style="--0:#7FDBCA;--1:#096E72">data</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">firstname</span><span style="--0:#E2817F;--1:#B23834"> </span><span style="--0:#C792EA;--1:#8844AE">??</span><span style="--0:#E2817F;--1:#B23834"> </span><span style="--0:#7FDBCA;--1:#096E72">data</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">email</span><span style="--0:#E2817F;--1:#B23834">}</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#D6DEEB;--1:#403F53">; });</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#919F9F;--1:#5D6376">// The plugin's own route, on the content API: sent without the admin's session.</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">fetch</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#E2817F;--1:#B23834">${</span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">apiBase</span><span style="--0:#E2817F;--1:#B23834">}</span><span style="--0:#ECC48D;--1:#3B61B0">/plugins/slugs/stats</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#D6DEEB;--1:#403F53">)</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">response</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#7FDBCA;--1:#096E72">response</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">json</span><span style="--0:#D6DEEB;--1:#403F53">())</span></div></div><div class="ec-line"><div class="code"><span class="indent">      </span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">stats</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> { </span><span style="--0:#7FDBCA;--1:#096E72">this</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">title</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">JSON</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">stringify</span><span style="--1:#403F53"><span style="--0:#D6DEEB">(</span><span style="--0:#D7DBE0">stats</span><span style="--0:#D6DEEB">); });</span></span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#7FDBCA;--1:#096E72">customElements</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">define</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">slugs-stats</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--1:#403F53"><span style="--0:#D6DEEB">, </span><span style="--0:#D7DBE0">SlugStats</span><span style="--0:#D6DEEB">);</span></span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="クリップボードにコピー" data-copied="コピーしました！" data-code="class SlugStats extends HTMLElement {  set context(context) {    // Admin API, with the admin&#x27;s session.    context.fetch(&#x27;auth/me&#x27;).then((response) => response.json())      .then(({ data }) => { this.textContent = &#x60;Hello ${data.firstname ?? data.email}&#x60;; });    // The plugin&#x27;s own route, on the content API: sent without the admin&#x27;s session.    context.fetch(&#x60;${context.apiBase}/plugins/slugs/stats&#x60;).then((response) => response.json())      .then((stats) => { this.title = JSON.stringify(stats); });  }}customElements.define(&#x27;slugs-stats&#x27;, SlugStats);"><div></div></button></div></figure></div>
+<p><code dir="auto">context.fetch</code> が管理者のセッションを送るのは、Admin API へのリクエストだけです。<code dir="auto">context.apiBase</code> 配下のパス（プラグインのルートを含むコンテンツ API）には、コンテンツ API が管理者のセッションを受け付けないのでセッションなしで送られ、公開ロールの権限で応答されます。0.10 より前はそこにもセッションを送っていたため、それらのリクエストは失敗していました。0.9 向けに書かれた、素の <code dir="auto">fetch</code> を呼び出すウィジェットは引き続き動作します。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="カスタムフィールド">カスタムフィールド</h3><a class="sl-anchor-link" href="#カスタムフィールド"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “カスタムフィールド”</span></a></div>
+<p>各 <code dir="auto">[[admin.fields]]</code> エントリーは、属性が <code dir="auto">"customField": "plugin::&lt;name&gt;.&lt;id&gt;"</code> で使えるフィールドです。属性の <code dir="auto">type</code> は、フィールドが値を保存する方法と一致している必要があります。<strong>コンテンツタイプビルダー</strong>で選べます。要素は次を受け取ります。</p>
+<table>
+<thead>
+<tr>
+<th>プロパティ</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">value</code></td>
+<td>現在の値。</td>
+</tr>
+<tr>
+<td><code dir="auto">disabled</code></td>
+<td>編集がオフかどうか。</td>
+</tr>
+<tr>
+<td><code dir="auto">attribute</code></td>
+<td>スキーマにある属性の定義。</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>編集中のロケール。</td>
+</tr>
+</tbody>
+</table>
+<p>新しい値は、<code dir="auto">detail</code> にその値を入れた <code dir="auto">change</code> イベントで知らせます（<code dir="auto">detail</code> がない場合は、要素自身の <code dir="auto">value</code> プロパティを通じて）。プラグインがオフの場合や要素がない場合、エディターは保存用の型に対応する通常の入力欄を表示します。<a href="/verdin/ja/reference/attribute-types/">属性の型</a>を参照してください。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="ランタイムと制限">ランタイムと制限</h2><a class="sl-anchor-link" href="#ランタイムと制限"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “ランタイムと制限”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>制限</th>
+<th>値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 回の呼び出しの時間</td>
+<td><code dir="auto">[limits].timeout_ms</code>、デフォルトは 5,000 ms（起動関数は <code dir="auto">[startup].timeout_ms</code>、デフォルトは 30,000 ms）</td>
+</tr>
+<tr>
+<td>メモリ</td>
+<td><code dir="auto">[limits].memory_mb</code>、デフォルトは 64 MB</td>
+</tr>
+<tr>
+<td>並行性</td>
+<td>プラグインごとに一度に 1 つの呼び出し。呼び出しは互いを待ちます（起動関数はそれらと並行して実行されます）</td>
+</tr>
+<tr>
+<td>モジュールのインスタンス</td>
+<td>プラグインごとに 1 つ。初回使用時に作られ、呼び出しが失敗すると作り直されます（メモリは失われます）。起動関数は実行のたびに新しいものを使います</td>
+</tr>
+<tr>
+<td>ログ</td>
+<td>プラグインごとに 200 件、各 2,000 文字、メモリ内</td>
+</tr>
+<tr>
+<td>KV のキー</td>
+<td>1〜255 バイト</td>
+</tr>
+<tr>
+<td>ルートのリクエストヘッダー</td>
+<td><code dir="auto">content-type</code>、<code dir="auto">accept</code>、<code dir="auto">user-agent</code>、<code dir="auto">accept-language</code></td>
+</tr>
+<tr>
+<td>ルートのレスポンスヘッダー</td>
+<td><code dir="auto">content-type</code>、<code dir="auto">cache-control</code>、<code dir="auto">location</code>、<code dir="auto">etag</code>、<code dir="auto">last-modified</code>、<code dir="auto">content-disposition</code></td>
+</tr>
+</tbody>
+</table>
+<p>マニフェストやモジュールの変更は再起動後に反映され、切り替えと設定はすぐに反映されます。プラグインの管理には <code dir="auto">plugins.manage</code> が必要です（<a href="/verdin/ja/reference/permissions/">権限のリファレンス</a>を参照）。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="メトリクス">メトリクス</h2><a class="sl-anchor-link" href="#メトリクス"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “メトリクス”</span></a></div>
+<p><a href="/verdin/ja/deploy/monitoring/"><code dir="auto">[metrics]</code></a> をオンにすると、<code dir="auto">/_metrics</code> はエクスポート関数に到達したすべての呼び出しを報告します。</p>
+<table>
+<thead>
+<tr>
+<th>メトリクス</th>
+<th>型</th>
+<th>ラベル</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">verdin_plugin_call_duration_seconds</code></td>
+<td>histogram</td>
+<td><code dir="auto">plugin</code>、<code dir="auto">kind</code>、<code dir="auto">function</code></td>
+<td>プラグインの関数にかかった時間。バケットは 5 ms から 10 s まで。</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_plugin_call_errors_total</code></td>
+<td>counter</td>
+<td><code dir="auto">plugin</code>、<code dir="auto">kind</code>、<code dir="auto">function</code></td>
+<td>失敗した呼び出し。トラップ、タイムアウト、JSON ではない出力、または起動関数の <code dir="auto">{ error }</code>。</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">kind</code> は <code dir="auto">hook</code>、<code dir="auto">route</code>、<code dir="auto">job</code>、<code dir="auto">startup</code>、<code dir="auto">graphql</code> のいずれかです。<code dir="auto">{ error }</code> で書き込みを拒否する before フックは、答えを返したので失敗には数えられません。モジュールがエクスポートしていない関数の呼び出しは記録されないので、ラベルの種類はインストールされたプラグインの範囲に収まります。シリーズはプラグインの最初の呼び出しの後に現れます。各インスタンスは自分の呼び出しだけを数えます。</p>
+</div><footer class="sl-flex astro-ddtxxk7k"><div class="meta sl-flex astro-ddtxxk7k"><a href="https://github.com/verdin-cms/verdin/edit/main/site/src/content/docs/ja/extending/plugin-reference.md" class="sl-flex print:hidden astro-qlekgd3o"><svg aria-hidden="true" class="astro-qlekgd3o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.2em;"><path d="M22 7.24a1 1 0 0 0-.29-.71l-4.24-4.24a1 1 0 0 0-1.1-.22 1 1 0 0 0-.32.22l-2.83 2.83L2.29 16.05a1 1 0 0 0-.29.71V21a1 1 0 0 0 1 1h4.24a1 1 0 0 0 .76-.29l10.87-10.93L21.71 8c.1-.1.17-.2.22-.33a1 1 0 0 0 0-.24v-.14l.07-.05ZM6.83 20H4v-2.83l9.93-9.93 2.83 2.83L6.83 20ZM18.17 8.66l-2.83-2.83 1.42-1.41 2.82 2.82-1.41 1.42Z"/></svg>ページを編集</a><p>最終更新日: <time datetime="2026-09-30T10:55:31.000Z">2026/09/30</time></p></div><div class="pagination-links print:hidden astro-b5raizh3" dir="ltr"><a href="/verdin/ja/extending/plugin-tutorial/" rel="prev" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17 11H9.41l3.3-3.29a1.004 1.004 0 1 0-1.42-1.42l-5 5a1 1 0 0 0-.21.33 1 1 0 0 0 0 .76 1 1 0 0 0 .21.33l5 5a1.002 1.002 0 0 0 1.639-.325 1 1 0 0 0-.219-1.095L9.41 13H17a1 1 0 0 0 0-2Z"/></svg><span class="astro-b5raizh3">前へ<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">プラグインのチュートリアル</span></span></a><a href="/verdin/ja/api/rest/" rel="next" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17.92 11.62a1.001 1.001 0 0 0-.21-.33l-5-5a1.003 1.003 0 1 0-1.42 1.42l3.3 3.29H7a1 1 0 0 0 0 2h7.59l-3.3 3.29a1.002 1.002 0 0 0 .325 1.639 1 1 0 0 0 1.095-.219l5-5a1 1 0 0 0 .21-.33 1 1 0 0 0 0-.76Z"/></svg><span class="astro-b5raizh3">次へ<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">REST</span></span></a></div></footer></div></div></main></div></div></div></div></body></html>

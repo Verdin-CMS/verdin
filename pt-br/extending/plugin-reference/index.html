@@ -1,0 +1,1006 @@
+<!DOCTYPE html><html lang="pt-BR" dir="ltr" data-theme="dark" data-has-toc data-has-sidebar class="astro-g5ptsecz"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Referência de plugins | Verdin</title><link rel="canonical" href="https://verdin-cms.github.io/verdin/pt-br/extending/plugin-reference/"/><link rel="alternate" hreflang="en" href="https://verdin-cms.github.io/verdin/extending/plugin-reference/"/><link rel="alternate" hreflang="ar" href="https://verdin-cms.github.io/verdin/ar/extending/plugin-reference/"/><link rel="alternate" hreflang="ca" href="https://verdin-cms.github.io/verdin/ca/extending/plugin-reference/"/><link rel="alternate" hreflang="de" href="https://verdin-cms.github.io/verdin/de/extending/plugin-reference/"/><link rel="alternate" hreflang="es" href="https://verdin-cms.github.io/verdin/es/extending/plugin-reference/"/><link rel="alternate" hreflang="fa" href="https://verdin-cms.github.io/verdin/fa/extending/plugin-reference/"/><link rel="alternate" hreflang="fr" href="https://verdin-cms.github.io/verdin/fr/extending/plugin-reference/"/><link rel="alternate" hreflang="he" href="https://verdin-cms.github.io/verdin/he/extending/plugin-reference/"/><link rel="alternate" hreflang="it" href="https://verdin-cms.github.io/verdin/it/extending/plugin-reference/"/><link rel="alternate" hreflang="ja" href="https://verdin-cms.github.io/verdin/ja/extending/plugin-reference/"/><link rel="alternate" hreflang="ko" href="https://verdin-cms.github.io/verdin/ko/extending/plugin-reference/"/><link rel="alternate" hreflang="nl" href="https://verdin-cms.github.io/verdin/nl/extending/plugin-reference/"/><link rel="alternate" hreflang="pl" href="https://verdin-cms.github.io/verdin/pl/extending/plugin-reference/"/><link rel="alternate" hreflang="pt-BR" href="https://verdin-cms.github.io/verdin/pt-br/extending/plugin-reference/"/><link rel="alternate" hreflang="ru" href="https://verdin-cms.github.io/verdin/ru/extending/plugin-reference/"/><link rel="alternate" hreflang="tr" href="https://verdin-cms.github.io/verdin/tr/extending/plugin-reference/"/><link rel="alternate" hreflang="uk" href="https://verdin-cms.github.io/verdin/uk/extending/plugin-reference/"/><link rel="alternate" hreflang="zh-CN" href="https://verdin-cms.github.io/verdin/zh-cn/extending/plugin-reference/"/><link rel="alternate" hreflang="x-default" href="https://verdin-cms.github.io/verdin/extending/plugin-reference/"/><link rel="sitemap" href="/verdin/sitemap-index.xml"/><link rel="shortcut icon" href="/verdin/favicon.svg" type="image/svg+xml"/><meta name="generator" content="Astro v7.3.5"/><meta name="generator" content="Starlight v0.42.4"/><meta property="og:title" content="Referência de plugins"/><meta property="og:type" content="article"/><meta property="og:url" content="https://verdin-cms.github.io/verdin/pt-br/extending/plugin-reference/"/><meta property="og:locale" content="pt-BR"/><meta property="og:description" content="O manifesto plugin.toml, as capacidades, os hooks e os seus payloads, as funções do host, as rotas, os jobs, a função de inicialização, os campos GraphQL, os pontos de extensão da administração, os limites e as métricas."/><meta property="og:site_name" content="Verdin"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="O manifesto plugin.toml, as capacidades, os hooks e os seus payloads, as funções do host, as rotas, os jobs, a função de inicialização, os campos GraphQL, os pontos de extensão da administração, os limites e as métricas."/><meta property="og:image" content="https://verdin-cms.github.io/verdin/og/pt-br/extending/plugin-reference.png"/><meta name="twitter:image" content="https://verdin-cms.github.io/verdin/og/pt-br/extending/plugin-reference.png"/><script>
+	window.StarlightThemeProvider = (() => {
+		const storedTheme =
+			typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		const theme =
+			storedTheme ||
+			(window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+		document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+		return {
+			updatePickers(theme = storedTheme || 'auto') {
+				document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+					const select = picker.querySelector('select');
+					if (select) select.value = theme;
+					/** @type {HTMLTemplateElement | null} */
+					const tmpl = document.querySelector(`#theme-icons`);
+					const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+					if (newIcon) {
+						const oldIcon = picker.querySelector('svg.label-icon');
+						if (oldIcon) {
+							oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+						}
+					}
+				});
+			},
+		};
+	})();
+</script><template id="theme-icons"><svg aria-hidden="true" class="light astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"/></svg><svg aria-hidden="true" class="dark astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"/></svg><svg aria-hidden="true" class="auto astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg></template><link rel="stylesheet" href="/verdin/_astro/print.ehPL0gv-.css" media="print"><link rel="stylesheet" href="/verdin/_astro/Playground.Sp6wezWm.css"><link rel="stylesheet" href="/verdin/_astro/middleware.CnzdItGa.css"><style>@layer starlight.components{.card:where(.astro-oag6qnet){--sl-card-border:var(--sl-color-purple);--sl-card-bg:var(--sl-color-purple-low);border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-black);flex-direction:column;gap:clamp(.5rem,.125rem + 1vw,1rem);padding:clamp(1rem,.125rem + 3vw,2.5rem)}.card:where(.astro-oag6qnet):nth-child(4n+1){--sl-card-border:var(--sl-color-orange);--sl-card-bg:var(--sl-color-orange-low)}.card:where(.astro-oag6qnet):nth-child(4n+3){--sl-card-border:var(--sl-color-green);--sl-card-bg:var(--sl-color-green-low)}.card:where(.astro-oag6qnet):nth-child(4n+4){--sl-card-border:var(--sl-color-red);--sl-card-bg:var(--sl-color-red-low)}.card:where(.astro-oag6qnet):nth-child(4n+5){--sl-card-border:var(--sl-color-blue);--sl-card-bg:var(--sl-color-blue-low)}.title:where(.astro-oag6qnet){font-weight:600;font-size:var(--sl-text-h4);color:var(--sl-color-white);line-height:var(--sl-line-height-headings);align-items:center;gap:1rem}.card:where(.astro-oag6qnet) .icon:where(.astro-oag6qnet){border:1px solid var(--sl-card-border);background-color:var(--sl-card-bg);border-radius:.25rem;flex-shrink:0;padding:.2em}.card:where(.astro-oag6qnet) .body:where(.astro-oag6qnet){font-size:clamp(var(--sl-text-sm), calc(.5rem + 1vw), var(--sl-text-body));margin:0}}
+@layer starlight.components{.card-grid:where(.astro-7qmvx3iy){grid-template-columns:100%;gap:1rem;display:grid}.card-grid:where(.astro-7qmvx3iy)>*{margin-top:0!important}@media (width>=50rem){.card-grid:where(.astro-7qmvx3iy){grid-template-columns:1fr 1fr;gap:1.5rem}.stagger:where(.astro-7qmvx3iy){--stagger-height:5rem;padding-bottom:var(--stagger-height)}.stagger:where(.astro-7qmvx3iy)>:nth-child(2n){transform:translateY(var(--stagger-height))}}.sl-link-card:where(.astro-zaaezwya){border:1px solid var(--sl-color-gray-5);box-shadow:var(--sl-shadow-sm);border-radius:.5rem;grid-template-columns:1fr auto;gap:.5rem;padding:1rem;display:grid;position:relative}a:where(.astro-zaaezwya){line-height:var(--sl-line-height-headings);text-decoration:none}a:where(.astro-zaaezwya):before{content:"";position:absolute;inset:0}.stack:where(.astro-zaaezwya){flex-direction:column;gap:.5rem}.title:where(.astro-zaaezwya){color:var(--sl-color-white);font-weight:600;font-size:var(--sl-text-lg)}.description:where(.astro-zaaezwya){color:var(--sl-color-gray-3);line-height:1.5}.icon:where(.astro-zaaezwya){color:var(--sl-color-gray-3)}.sl-link-card:where(.astro-zaaezwya):hover{background:var(--sl-color-gray-7,var(--sl-color-gray-6));border-color:var(--sl-color-gray-2)}.sl-link-card:where(.astro-zaaezwya):hover .icon:where(.astro-zaaezwya){color:var(--sl-color-white)}}.plate:where(.astro-zbp6lmd6){isolation:isolate;color:#2a1006;background:linear-gradient(112deg,#0000 0 38%,#ffd6b447 44%,#0000 52%),repeating-linear-gradient(90deg,#ffffff09 0 1px,#0000 1px 3px),linear-gradient(160deg,#e3a472 0%,#cf7f49 40%,#c06a34 68%,#d58d58 100%);border-radius:.6rem;margin:clamp(1rem,4vw,2.5rem) 0;padding:clamp(1.75rem,4vw,2.75rem) clamp(1.5rem,5vw,3.5rem);position:relative;overflow:hidden;box-shadow:inset 0 1px #ffe1c880,inset 0 -2px #46190559,0 1px 2px #28140a40,0 18px 40px -24px #3c1e0a8c}.patina:where(.astro-zbp6lmd6){z-index:-1;pointer-events:none;width:100%;height:100%;mask-image:radial-gradient(circle at 0% 100%, #000 0, transparent var(--bloom)), radial-gradient(circle at 100% 0%, #000 0, transparent calc(var(--bloom) * .8)), radial-gradient(circle at 100% 100%, #000 0, transparent calc(var(--bloom) * .45));--bloom:8%;transition:--bloom 1.6s cubic-bezier(.2,.7,.2,1);position:absolute;inset:0}.plate:where(.astro-zbp6lmd6).grown .patina:where(.astro-zbp6lmd6){--bloom:46%}@property --bloom{syntax:"<percentage>";inherits:false;initial-value:8%}@media (prefers-reduced-motion:reduce){.patina:where(.astro-zbp6lmd6){--bloom:46%;transition:none}}.rivet:where(.astro-zbp6lmd6){background:radial-gradient(circle at 35% 30%,#f3c39c,#8a4019 70%);border-radius:50%;width:.55rem;height:.55rem;position:absolute;box-shadow:0 1px 1px #280f0080}.stamp:where(.astro-zbp6lmd6){gap:1.5rem;display:grid}@media (width>=50rem){.stamp:where(.astro-zbp6lmd6){grid-template-columns:minmax(12rem,.8fr) 2fr;align-items:center}}.label:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);letter-spacing:.14em;text-transform:uppercase;color:#2a1006cc;font-size:.66rem;font-weight:600;display:block}.model:where(.astro-zbp6lmd6){margin:0}.name:where(.astro-zbp6lmd6){font-family:var(--vd-font-display);letter-spacing:-.02em;text-shadow:0 1px #ffdcbe73,0 -1px #3c140059;font-size:clamp(3rem,8vw,4.5rem);font-weight:860;font-stretch:58%;line-height:.9;display:block}.version:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);font-size:.85rem;font-weight:600}dl:where(.astro-zbp6lmd6){gap:.85rem 2rem;margin:0;display:grid}@media (width>=38rem){dl:where(.astro-zbp6lmd6){grid-template-columns:repeat(2,minmax(0,1fr))}}dl:where(.astro-zbp6lmd6)>div:where(.astro-zbp6lmd6){border-top:1px solid #2a10064d;padding-top:.5rem;box-shadow:inset 0 1px #ffdcbe33}dd:where(.astro-zbp6lmd6){text-shadow:0 1px #ffdcbe4d;margin:.15rem 0 0;font-size:.98rem;font-weight:600;line-height:1.4}
+@layer starlight.components{svg:where(.astro-hkc32dio){color:var(--sl-icon-color);font-size:var(--sl-icon-size,1em);width:1em;height:1em}}
+@layer starlight.components{starlight-tabs:where(.astro-scn3uvmv){display:block}.tablist-wrapper:where(.astro-scn3uvmv){overflow-x:auto}:where(.astro-scn3uvmv)[role=tablist]{border-bottom:2px solid var(--sl-color-gray-5);padding:0;list-style:none;display:flex}.tab:where(.astro-scn3uvmv){display:flex}.tab:where(.astro-scn3uvmv)>:where(.astro-scn3uvmv)[role=tab]{--sl-tab-color-border:var(--sl-color-gray-5);line-height:var(--sl-line-height-headings);box-shadow:0 2px 0 var(--sl-tab-color-border);color:var(--sl-color-gray-3);outline-offset:var(--sl-outline-offset-inside);overflow-wrap:initial;align-items:center;gap:.5rem;padding:.275rem 1.25rem;text-decoration:none;display:flex}.tab:where(.astro-scn3uvmv) :where(.astro-scn3uvmv)[role=tab][aria-selected=true]{--sl-tab-color-border:var(--sl-color-text-accent);color:var(--sl-color-white);font-weight:600}.tablist-wrapper:where(.astro-scn3uvmv)~[role=tabpanel]{margin-top:1rem}}
+@layer starlight.components{.sl-steps{--bullet-size:calc(var(--sl-line-height) * 1rem);--bullet-margin:.375rem;counter-reset:steps-counter var(--sl-steps-start,0);padding-inline-start:0;list-style:none}.sl-steps>li{counter-increment:steps-counter;padding-inline-start:calc(var(--bullet-size) + 1rem);min-height:calc(var(--bullet-size) + var(--bullet-margin));padding-bottom:1px;position:relative}.sl-steps>li+li{margin-top:0}.sl-steps>li:before{content:counter(steps-counter);top:0;width:var(--bullet-size);height:var(--bullet-size);line-height:var(--bullet-size);font-size:var(--sl-text-xs);text-align:center;color:var(--sl-color-white);background-color:var(--sl-color-gray-6);box-shadow:inset 0 0 0 1px var(--sl-color-gray-5);border-radius:99rem;font-weight:600;position:absolute;inset-inline-start:0}.sl-steps>li:after{--guide-width:1px;content:"";top:calc(var(--bullet-size) + var(--bullet-margin));bottom:var(--bullet-margin);width:var(--guide-width);background-color:var(--sl-color-hairline-light);position:absolute;inset-inline-start:calc((var(--bullet-size) - var(--guide-width)) / 2)}}@layer starlight.content{.sl-steps>li>:first-child{--lh:calc(1em * var(--sl-line-height));--shift-y:calc(.5 * (var(--bullet-size) - var(--lh)));transform:translateY(var(--shift-y));margin-bottom:var(--shift-y)}.sl-steps>li>:first-child:where(h1,h2,h3,h4,h5,h6){--lh:calc(1em * var(--sl-line-height-headings))}@supports (--prop:1lh){.sl-steps>li>:first-child{--lh:1lh}}}
+@layer starlight.components{starlight-file-tree:where(.astro-a2hqddox){--x-space:1.5rem;--y-space:.125rem;--y-pad:0;border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-gray-6);font-size:var(--sl-text-xs);font-family:var(--__sl-font-mono);padding:1rem;display:block;overflow-x:auto}starlight-file-tree:where(.astro-a2hqddox) .directory>details{padding:0;background:0 0;border:0;padding-inline-start:var(--x-space)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary{padding:var(--y-pad) .625rem;color:var(--sl-color-white);border:0;max-width:100%;margin-inline-start:calc(-1 * var(--x-space));font-weight:400}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::marker,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::-webkit-details-marker{color:var(--sl-color-gray-3)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .tree-icon{cursor:pointer;color:var(--sl-color-text-accent);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover~ul{border-color:var(--sl-color-gray-4)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .highlight .tree-icon{color:var(--sl-color-text-invert);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) ul{border-inline-start:1px solid var(--sl-color-gray-5);margin-inline-start:.5rem;padding:0;padding-inline-start:.125rem;list-style:none}starlight-file-tree:where(.astro-a2hqddox)>ul{border:0;margin:0;padding:0}starlight-file-tree:where(.astro-a2hqddox) li{margin:var(--y-space) 0;padding:var(--y-pad) 0}starlight-file-tree:where(.astro-a2hqddox) .file{color:var(--sl-color-white);margin-inline-start:calc(var(--x-space) - .125rem)}starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:wrap;align-items:flex-start;max-width:calc(100% - 1rem);display:inline-flex}@media (width>=30em){starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:nowrap}}starlight-file-tree:where(.astro-a2hqddox) .tree-entry>:first-child{flex-shrink:0}starlight-file-tree:where(.astro-a2hqddox) .empty{color:var(--sl-color-gray-3);padding-inline-start:.375rem}starlight-file-tree:where(.astro-a2hqddox) .comment{color:var(--sl-color-gray-3);min-width:12rem;max-width:24rem;padding-inline-start:1.625rem}starlight-file-tree:where(.astro-a2hqddox) .highlight{color:var(--sl-color-text-invert);background-color:var(--sl-color-text-accent);border-radius:.25rem;padding-inline-end:.5rem;display:inline-block}starlight-file-tree:where(.astro-a2hqddox) svg{fill:var(--sl-color-gray-3);vertical-align:middle;width:.875rem;height:.875rem;margin-inline:.25rem .375rem;display:inline}starlight-file-tree:where(.astro-a2hqddox) .highlight svg.tree-icon{fill:currentColor}}
+</style><script type="module" src="/verdin/_astro/page.Dwipeu-R.js"></script></head><body class="astro-g5ptsecz"><a class="sl-skip-link astro-qb7clj6f" href="#_top">Pular para o conteúdo</a><div class="page sl-flex astro-yntsjkba"><header class="header astro-yntsjkba"><div class="header astro-by6fddyj"><div class="title-wrapper sl-flex astro-by6fddyj"><a href="/verdin/pt-br" class="site-title sl-flex astro-6rvad3va"><img class="astro-6rvad3va" alt src="/verdin/_astro/verdin-mark.CEc0Dc_U.svg" width="32" height="32"><span class="astro-6rvad3va" translate="no">Verdin</span></a></div><div class="sl-flex print:hidden astro-by6fddyj"><site-search class="astro-by6fddyj astro-b5kgnn7o" data-translations="{&quot;placeholder&quot;:&quot;Pesquisar&quot;}"><button data-open-modal disabled aria-label="Pesquisar" aria-keyshortcuts="Control+K" class="astro-b5kgnn7o"><svg aria-hidden="true" class="astro-b5kgnn7o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg><span class="sl-hidden md:sl-block astro-b5kgnn7o" aria-hidden="true">Pesquisar</span><kbd class="sl-hidden md:sl-flex astro-b5kgnn7o" style="display: none;"><kbd class="astro-b5kgnn7o">Ctrl</kbd><kbd class="astro-b5kgnn7o">K</kbd></kbd></button><dialog style="padding:0" aria-label="Pesquisar" class="astro-b5kgnn7o"><div class="dialog-frame sl-flex astro-b5kgnn7o"><button data-close-modal class="sl-flex md:sl-hidden astro-b5kgnn7o">Cancelar</button><div class="search-container astro-b5kgnn7o"><div id="starlight__search" class="astro-b5kgnn7o"></div></div></div></dialog></site-search><script>
+	(() => {
+		const openBtn = document.querySelector('button[data-open-modal]');
+		const shortcut = openBtn?.querySelector('kbd');
+		if (!openBtn || !(shortcut instanceof HTMLElement)) return;
+		const platformKey = shortcut.querySelector('kbd');
+		if (platformKey && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+			platformKey.textContent = '⌘';
+			openBtn.setAttribute('aria-keyshortcuts', 'Meta+K');
+		}
+		shortcut.style.display = '';
+	})();
+</script><script type="module" src="/verdin/_astro/Search.astro_astro_type_script_index_0_lang.BVn7b3Eg.js"></script></div><div class="sl-hidden md:sl-flex print:hidden right-group astro-by6fddyj"><div class="sl-flex social-icons astro-by6fddyj"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Selecionar tema</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">Escuro</option><option value="light" class="astro-2z5xp7gb">Claro</option><option value="auto" selected class="astro-2z5xp7gb">Auto</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><script type="module">var e=`starlight-theme`,t=e=>e===`auto`||e===`dark`||e===`light`?e:`auto`,n=()=>t(typeof localStorage<`u`&&localStorage.getItem(e));function r(t){typeof localStorage<`u`&&localStorage.setItem(e,t===`light`||t===`dark`?t:``)}var i=()=>matchMedia(`(prefers-color-scheme: light)`).matches?`light`:`dark`;function a(e){StarlightThemeProvider.updatePickers(e),document.documentElement.dataset.theme=e===`auto`?i():e,r(e)}matchMedia(`(prefers-color-scheme: light)`).addEventListener(`change`,()=>{n()===`auto`&&a(`auto`)});var o=class extends HTMLElement{constructor(){super(),a(n()),this.querySelector(`select`)?.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&a(t(e.currentTarget.value))})}};customElements.define(`starlight-theme-select`,o);</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Selecionar língua</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/extending/plugin-reference/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/extending/plugin-reference/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/extending/plugin-reference/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/extending/plugin-reference/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/extending/plugin-reference/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/extending/plugin-reference/" class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/extending/plugin-reference/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/extending/plugin-reference/" class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/extending/plugin-reference/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/extending/plugin-reference/" class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/extending/plugin-reference/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/extending/plugin-reference/" class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/extending/plugin-reference/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/extending/plugin-reference/" selected class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/extending/plugin-reference/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/extending/plugin-reference/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/extending/plugin-reference/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/extending/plugin-reference/" class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select><script type="module">var e=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);e&&(e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=e.currentTarget.value)}),window.addEventListener(`pageshow`,t=>{if(!t.persisted)return;let n=e.querySelector(`option[selected]`)?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}};customElements.define(`starlight-lang-select`,e);</script></div></div></header><nav class="sidebar print:hidden astro-yntsjkba" aria-label="Principal"><button popovertarget="starlight__sidebar" class="sl-menu-button sl-flex md:sl-hidden print:hidden astro-r2osgdlg"><svg aria-hidden="true" class="open-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg><svg aria-hidden="true" class="close-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"/></svg><span class="sr-only astro-r2osgdlg">Menu</span></button><script type="module">var e=class extends HTMLElement{constructor(){super();let e=matchMedia(`(min-width: 50em)`),t=()=>{this.popover=e.matches?null:`auto`};t(),e.addEventListener(`change`,()=>t()),this.addEventListener(`toggle`,({newState:e})=>this.trapFocus(e===`open`))}trapFocus(e){document.querySelectorAll(`.main-frame, .sl-skip-link`).forEach(t=>{t.toggleAttribute(`inert`,e)})}};customElements.define(`sl-sidebar-pane`,e);</script><sl-sidebar-pane popover id="starlight__sidebar" class="sidebar-pane astro-yntsjkba"><div class="sidebar-content sl-flex astro-yntsjkba"><sl-sidebar-state-persist data-hash="0j9quyb" class="astro-ipdry5cl"><script aria-hidden="true">
+		(() => {
+			try {
+				if (!matchMedia('(min-width: 50em)').matches) return;
+				/** @type {HTMLElement | null} */
+				const target = document.querySelector('sl-sidebar-state-persist');
+				const state = JSON.parse(sessionStorage.getItem('sl-sidebar-state') || '0');
+				if (!target || !state || target.dataset.hash !== state.hash) return;
+				window._starlightScrollRestore = state.scroll;
+				customElements.define(
+					'sl-sidebar-restore',
+					class SidebarRestore extends HTMLElement {
+						connectedCallback() {
+							try {
+								const idx = parseInt(this.dataset.index || '');
+								const details = this.closest('details');
+								if (details && typeof state.open[idx] === 'boolean') details.open = state.open[idx];
+							} catch {}
+						}
+					}
+				);
+			} catch {}
+		})();
+	</script><ul class="top-level astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Primeiros passos</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="0"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/start/introduction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Introdução</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/start/installation/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Instalação</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/start/quickstart/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Início rápido</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/start/tutorial-astro/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Blog com Astro</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/start/tutorial-nextjs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Blog com Next.js</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/start/project-structure/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Estrutura do projeto</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Conceitos</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="1"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/concepts/content-model/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Modelo de conteúdo</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/concepts/components-and-dynamic-zones/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Componentes e zonas dinâmicas</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/concepts/relations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Relações</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/concepts/draft-and-publish/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Rascunho e publicação</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/concepts/internationalization/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Internacionalização</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/concepts/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Permissões</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/concepts/schema-migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Migrações de schema</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/concepts/media/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Mídia</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Guias</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="2"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Conteúdo</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="3"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/content/localizing-content/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Localização de conteúdo</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/content/review-workflows/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Fluxos de revisão</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/content/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Lançamentos</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/content/content-history/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Histórico de conteúdo</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/content/audit-logs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Logs de auditoria</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/content/preview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Pré-visualização</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/content/comments-and-tasks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Comentários e tarefas</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/content/search/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Busca</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/content/import-export/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Importação e exportação</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/content/editor-digest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Resumo para editores</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Frontend</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="4"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/frontend/typed-client/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Cliente tipado</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/frontend/images/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Imagens responsivas</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/frontend/visual-editing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Edição visual</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/frontend/seo-and-sitemap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">SEO e sitemap</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/frontend/redirects/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Redirecionamentos</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/frontend/menus/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Menus</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/frontend/forms/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Formulários</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/frontend/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Tempo real</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Autenticação</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="5"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/auth/admin-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Usuários administradores</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/auth/two-factor/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Autenticação de dois fatores</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/auth/sso/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Login único</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/auth/api-tokens/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Tokens de API</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/auth/end-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Usuários finais</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Integrações</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="6"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/integrations/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Webhooks</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/integrations/mcp/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Servidor MCP</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/integrations/ai-actions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Ações de IA</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/guides/integrations/deploys-and-cdn/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Deploys e CDN</span></a></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Estender</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="7"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/extending/plugins/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Plugins</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/extending/plugin-tutorial/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Tutorial de plugin</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/extending/plugin-reference/" aria-current="page" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Referência de plugins</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Referência da API</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="8"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/api/rest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">REST</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/api/graphql/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">GraphQL</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/api/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Playground da API</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/api/admin/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Administração</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/api/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Tempo real</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/api/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Webhooks</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Example content API</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="9"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overview</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Article</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="10"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List articles</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentidactionsaction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Publish, unpublish or discard the draft</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Category</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="11"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List categories</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a category</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Homepage</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="12"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create or update the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete the Homepage</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Tag</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="13"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List tags</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a tag</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Internationalization</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="14"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apii18nlocales/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List the locales</span></a></li></ul></details></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Referência</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="15"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/reference/configuration/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Configuração</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/reference/cli/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Linha de comando</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/reference/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Permissions</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/reference/attribute-types/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Tipos de atributos</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Implantar e operar</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="16"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/production-checklist/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Checklist de produção</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/security/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Segurança</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/compose/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Docker Compose em produção</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/docker/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Docker</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/linux-server/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Servidor Linux</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/fly/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Fly.io</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/one-click/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Deploys de um clique</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/render/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Render</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/railway/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Railway</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/helm/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Chart Helm</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/kubernetes/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Kubernetes</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/scaling/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Várias instâncias</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/backups/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Backups</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/monitoring/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Monitoramento</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/deploy/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Playground hospedado</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Migrar e atualizar</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="17"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/migrate/from-strapi/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Migração a partir do Strapi</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/migrate/porting-custom-code/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Portar código personalizado</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/migrate/compatibility/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Compatibilidade com o Strapi</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/migrate/upgrading/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Atualização do Verdin</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Funcionamento interno</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="18"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/internals/overview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Visão geral</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/internals/storage/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Armazenamento</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/internals/database/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Camada de banco de dados</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/internals/migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Motor de migrações</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/internals/document-service/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Document Service</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/internals/admin-panel/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Painel de administração</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/internals/testing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Testes</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/internals/decisions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Registro de decisões</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/internals/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Releases e hospedagem da documentação</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Projeto</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="19"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/project/roadmap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Verdin roadmap</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/project/translating/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Translating the admin panel</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/pt-br/project/changelog/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Changelog</span></a></li></ul></details></li></ul><script aria-hidden="true">
+		(() => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!window._starlightScrollRestore || !scroller) return;
+			scroller.scrollTop = window._starlightScrollRestore;
+			delete window._starlightScrollRestore;
+		})();
+	</script></sl-sidebar-state-persist><div class="md:sl-hidden"><div class="mobile-preferences sl-flex astro-p4azlveh"><div class="social-icons astro-p4azlveh"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Selecionar tema</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">Escuro</option><option value="light" class="astro-2z5xp7gb">Claro</option><option value="auto" selected class="astro-2z5xp7gb">Auto</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Selecionar língua</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/extending/plugin-reference/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/extending/plugin-reference/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/extending/plugin-reference/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/extending/plugin-reference/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/extending/plugin-reference/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/extending/plugin-reference/" class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/extending/plugin-reference/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/extending/plugin-reference/" class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/extending/plugin-reference/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/extending/plugin-reference/" class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/extending/plugin-reference/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/extending/plugin-reference/" class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/extending/plugin-reference/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/extending/plugin-reference/" selected class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/extending/plugin-reference/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/extending/plugin-reference/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/extending/plugin-reference/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/extending/plugin-reference/" class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select></div></div></div></sl-sidebar-pane></nav><div class="main-frame astro-yntsjkba"><script type="module">var e=document.getElementById(`starlight__sidebar`),t=e?.querySelector(`sl-sidebar-state-persist`),n=`sl-sidebar-state`,r=()=>{let r=[],i=t?.dataset.hash||``;try{let e=sessionStorage.getItem(n),t=JSON.parse(e||`{}`);Array.isArray(t.open)&&t.hash===i&&(r=t.open)}catch{}return{hash:i,open:r,scroll:e?.scrollTop||0}},i=e=>{try{sessionStorage.setItem(n,JSON.stringify(e))}catch{}},a=()=>i(r()),o=(e,t)=>{let n=r();n.open[t]=e,i(n)};t?.addEventListener(`click`,e=>{if(!(e.target instanceof Element))return;let t=e.target.closest(`summary`)?.closest(`details`);if(!t)return;let n=t.querySelector(`sl-sidebar-restore`),r=parseInt(n?.dataset.index||``);isNaN(r)||o(!t.open,r)}),addEventListener(`visibilitychange`,()=>{document.visibilityState===`hidden`&&a()});</script><div class="lg:sl-flex astro-lrzkfocr"><aside class="right-sidebar-container print:hidden astro-lrzkfocr"><div class="right-sidebar astro-lrzkfocr"><div class="lg:sl-hidden astro-qok35upx"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-66cqc7ze"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-66cqc7ze"><details id="starlight__mobile-toc" class="astro-66cqc7ze"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-66cqc7ze"><span class="toggle sl-flex astro-66cqc7ze">Nesta página<svg aria-hidden="true" class="caret astro-66cqc7ze astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></span><span class="display-current astro-66cqc7ze"></span></summary><div class="dropdown astro-66cqc7ze"><ul class="isMobile astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Visão geral</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#diretório-do-plugin" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Diretório do plugin</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#manifesto" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Manifesto</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#chaves-de-nível-superior" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Chaves de nível superior</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#capabilities" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[capabilities]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#limits" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[limits]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[hooks]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[routes]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[jobs]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#startup" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[startup]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[graphql]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#admin" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[admin]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#settings" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[settings]]</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#funções-exportadas" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Funções exportadas</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks-before" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Hooks before</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks-after" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Hooks after</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#rotas" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Rotas</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs-1" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Jobs</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#função-de-inicialização" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Função de inicialização</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#campos-graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Campos GraphQL</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#funções-do-host" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Funções do host</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_log" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_log</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_content" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_content</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_kv_get-e-verdin_kv_set" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_kv_get e verdin_kv_set</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_config" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_config</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_public_permissions" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_public_permissions</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#http" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">HTTP</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#pontos-de-extensão-da-administração" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Pontos de extensão da administração</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#widgets" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Widgets</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#campos-personalizados" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Campos personalizados</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#runtime-e-limites" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Runtime e limites</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#métricas" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Métricas</span></a></li></ul></div></details></nav></mobile-starlight-toc><script type="module" src="/verdin/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.C3fM4Kra.js"></script></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-qok35upx"><div class="sl-container astro-qok35upx"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">Nesta página</h2><ul class="astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Visão geral</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#diretório-do-plugin" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Diretório do plugin</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#manifesto" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Manifesto</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#chaves-de-nível-superior" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Chaves de nível superior</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#capabilities" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[capabilities]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#limits" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[limits]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[hooks]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[routes]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[jobs]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#startup" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[startup]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[graphql]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#admin" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[admin]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#settings" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[settings]]</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#funções-exportadas" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Funções exportadas</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks-before" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Hooks before</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks-after" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Hooks after</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#rotas" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Rotas</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs-1" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Jobs</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#função-de-inicialização" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Função de inicialização</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#campos-graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Campos GraphQL</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#funções-do-host" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Funções do host</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_log" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_log</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_content" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_content</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_kv_get-e-verdin_kv_set" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_kv_get e verdin_kv_set</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_config" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_config</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_public_permissions" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_public_permissions</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#http" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">HTTP</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#pontos-de-extensão-da-administração" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Pontos de extensão da administração</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#widgets" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Widgets</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#campos-personalizados" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Campos personalizados</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#runtime-e-limites" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Runtime e limites</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#métricas" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Métricas</span></a></li></ul></nav></starlight-toc><script type="module" src="/verdin/_astro/TableOfContents.astro_astro_type_script_index_0_lang.BpJaGz7G.js"></script></div></div></div></aside><div class="main-pane astro-lrzkfocr"><main data-pagefind-body class="astro-g5ptsecz" lang="pt-BR" dir="ltr"><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><h1 id="_top" class="astro-bebwqqxs">Referência de plugins</h1></div></div><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><div class="sl-markdown-content"><!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
+<p>Esta página é o contrato completo entre o Verdin e um plugin: o manifesto, o que o Verdin envia
+para cada função exportada e o que espera de volta, e as funções do host que um módulo pode
+chamar. Para uma introdução, veja <a href="/verdin/pt-br/extending/plugins/">Plugins</a>; para um exemplo
+completo, o <a href="/verdin/pt-br/extending/plugin-tutorial/">tutorial de plugin</a>.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="diretório-do-plugin">Diretório do plugin</h2><a class="sl-anchor-link" href="#diretório-do-plugin"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Diretório do plugin”</span></a></div>
+<p>Cada plugin é um diretório em <code dir="auto">[plugins].path</code> (padrão <code dir="auto">plugins/</code>, ao lado do <code dir="auto">verdin.toml</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Arquivo</th>
+<th>Obrigatório</th>
+<th>Conteúdo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">plugin.toml</code></td>
+<td>sim</td>
+<td>O manifesto.</td>
+</tr>
+<tr>
+<td><code dir="auto">plugin.wasm</code></td>
+<td>sim</td>
+<td>O módulo (outro caminho com <code dir="auto">wasm</code>).</td>
+</tr>
+<tr>
+<td><code dir="auto">admin/</code></td>
+<td>não</td>
+<td>Os arquivos que o painel de administração carrega: o módulo <code dir="auto">admin.script</code> e os seus assets.</td>
+</tr>
+</tbody>
+</table>
+<p>Na inicialização, o Verdin carrega todos os diretórios que têm um <code dir="auto">plugin.toml</code>, em ordem de
+nome. Um diretório é ignorado, e listado com o motivo em <strong>Configurações → Plugins</strong>, quando o
+seu manifesto é inválido, o seu módulo não existe ou outro plugin já usa o seu <code dir="auto">name</code>.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="manifesto">Manifesto</h2><a class="sl-anchor-link" href="#manifesto"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Manifesto”</span></a></div>
+<div class="expressive-code"><link rel="stylesheet" href="/verdin/_astro/ec.w36nc.css"><script type="module" src="/verdin/_astro/ec.0vx5m.js"></script><figure class="frame has-title not-content"><figcaption class="header"><span class="title">plugins/slugs/plugin.toml</span></figcaption><pre data-language="toml"><code><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">name</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">version</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">1.0.0</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">description</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Slugs from titles, and a color field</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[capabilities]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">read</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">write</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::tag</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">http</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api.example.com</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">kv</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#FF6A83;--1:#A24848">true</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">public_permissions</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#FF6A83;--1:#A24848">true</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[limits]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">timeout_ms</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">5000</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">memory_mb</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">64</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[hooks]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">on</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">beforeCreate</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">uid</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">before_write</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[routes]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">handle</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[jobs]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">schedule</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">*/15 * * * *</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">refresh</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[startup]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">seed</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">timeout_ms</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">30000</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[graphql]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">name</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugStats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[admin]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">script</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">index.js</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[admin.widgets]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">id</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">title</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Slug stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">element</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs-stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[admin.fields]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">id</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">title</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">element</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs-color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">type</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">string</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[settings]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">key</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">separator</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">label</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Separator</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">type</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">select</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">options</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">-</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">_</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">default</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">-</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copiar para área de transferência" data-copied="Copiado!" data-code="name = &quot;slugs&quot;version = &quot;1.0.0&quot;description = &quot;Slugs from titles, and a color field&quot;[capabilities]read = [&quot;api::article&quot;]write = [&quot;api::tag&quot;]http = [&quot;api.example.com&quot;]kv = truepublic_permissions = true[limits]timeout_ms = 5000memory_mb = 64[[hooks]]on = &quot;beforeCreate&quot;uid = &quot;api::article&quot;function = &quot;before_write&quot;[routes]function = &quot;handle&quot;[[jobs]]schedule = &quot;*/15 * * * *&quot;function = &quot;refresh&quot;[startup]function = &quot;seed&quot;timeout_ms = 30000[[graphql]]name = &quot;slugStats&quot;function = &quot;stats&quot;[admin]script = &quot;index.js&quot;[[admin.widgets]]id = &quot;stats&quot;title = &quot;Slug stats&quot;element = &quot;slugs-stats&quot;[[admin.fields]]id = &quot;color&quot;title = &quot;Color&quot;element = &quot;slugs-color&quot;type = &quot;string&quot;[[settings]]key = &quot;separator&quot;label = &quot;Separator&quot;type = &quot;select&quot;options = [&quot;-&quot;, &quot;_&quot;]default = &quot;-&quot;"><div></div></button></div></figure></div>
+<p>Chaves desconhecidas são erros, em todas as tabelas.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="chaves-de-nível-superior">Chaves de nível superior</h3><a class="sl-anchor-link" href="#chaves-de-nível-superior"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Chaves de nível superior”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Padrão</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">name</code></td>
+<td>obrigatória</td>
+<td>O id do plugin nas URLs, nas configurações e nos campos personalizados: letras minúsculas, dígitos e <code dir="auto">-</code>, começando com uma letra, com no máximo 64 caracteres.</td>
+</tr>
+<tr>
+<td><code dir="auto">version</code></td>
+<td>obrigatória</td>
+<td>Exibida na administração e no log.</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>não definida</td>
+<td>Exibida em <strong>Configurações → Plugins</strong>.</td>
+</tr>
+<tr>
+<td><code dir="auto">wasm</code></td>
+<td><code dir="auto">"plugin.wasm"</code></td>
+<td>O módulo, relativo ao diretório do plugin (sem <code dir="auto">..</code>, não absoluto).</td>
+</tr>
+<tr>
+<td><code dir="auto">wasi</code></td>
+<td><code dir="auto">false</code></td>
+<td>Dá WASI ao módulo: um relógio e números aleatórios. Sem arquivos nem sockets em nenhum caso.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="capabilities"><code dir="auto">[capabilities]</code></h3><a class="sl-anchor-link" href="#capabilities"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “[capabilities]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Padrão</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">read</code></td>
+<td><code dir="auto">[]</code></td>
+<td>Os tipos de conteúdo que o <code dir="auto">verdin_content</code> pode ler (<code dir="auto">findMany</code>, <code dir="auto">findOne</code>): uids como <code dir="auto">api::article</code>, ou <code dir="auto">"*"</code> para todos.</td>
+</tr>
+<tr>
+<td><code dir="auto">write</code></td>
+<td><code dir="auto">[]</code></td>
+<td>Os tipos de conteúdo que ele pode <code dir="auto">create</code>, <code dir="auto">update</code>, <code dir="auto">delete</code>, <code dir="auto">publish</code> e <code dir="auto">unpublish</code>. Implica <code dir="auto">read</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">http</code></td>
+<td><code dir="auto">[]</code></td>
+<td>Os hosts para os quais o módulo pode enviar requisições HTTP: <code dir="auto">api.example.com</code> ou <code dir="auto">*.example.com</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">kv</code></td>
+<td><code dir="auto">false</code></td>
+<td>O armazenamento chave-valor próprio do plugin (<code dir="auto">verdin_kv_get</code>, <code dir="auto">verdin_kv_set</code>).</td>
+</tr>
+<tr>
+<td><code dir="auto">public_permissions</code></td>
+<td><code dir="auto">false</code></td>
+<td>Ler e substituir as permissões da API de conteúdo da função pública (<code dir="auto">verdin_public_permissions</code>).</td>
+</tr>
+</tbody>
+</table>
+<p>As capacidades limitam apenas as chamadas ao host. Os hooks rodam nos tipos que nomeiam, diga o
+que disser o <code dir="auto">read</code>, e as rotas podem ser acessadas por qualquer pessoa.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="limits"><code dir="auto">[limits]</code></h3><a class="sl-anchor-link" href="#limits"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “[limits]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Padrão</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">timeout_ms</code></td>
+<td><code dir="auto">5000</code></td>
+<td>Limite de tempo de uma chamada, em milissegundos.</td>
+</tr>
+<tr>
+<td><code dir="auto">memory_mb</code></td>
+<td><code dir="auto">64</code></td>
+<td>Memória máxima do módulo, em megabytes.</td>
+</tr>
+</tbody>
+</table>
+<p>Os dois precisam ser positivos.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="hooks"><code dir="auto">[[hooks]]</code></h3><a class="sl-anchor-link" href="#hooks"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “[[hooks]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Padrão</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">on</code></td>
+<td>obrigatória</td>
+<td>O evento, abaixo.</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td><code dir="auto">"*"</code></td>
+<td>O tipo de conteúdo (<code dir="auto">api::article</code>), ou <code dir="auto">"*"</code> para todos.</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>obrigatória</td>
+<td>A função exportada a chamar.</td>
+</tr>
+</tbody>
+</table>
+<p>Eventos:</p>
+<table>
+<thead>
+<tr>
+<th>Antes da escrita</th>
+<th>Depois da escrita</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">beforeCreate</code></td>
+<td><code dir="auto">afterCreate</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeUpdate</code></td>
+<td><code dir="auto">afterUpdate</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeDelete</code></td>
+<td><code dir="auto">afterDelete</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforePublish</code></td>
+<td><code dir="auto">afterPublish</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeUnpublish</code></td>
+<td><code dir="auto">afterUnpublish</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeDiscardDraft</code></td>
+<td><code dir="auto">afterDiscardDraft</code></td>
+</tr>
+</tbody>
+</table>
+<p>Os nomes são os nomes de lifecycle do Strapi. Os hooks rodam nas escritas feitas pelo painel de
+administração, pelas APIs REST e GraphQL e pelos lançamentos, mas não nas escritas feitas pelos
+comandos <code dir="auto">verdin import</code>. As escritas feitas por plugins rodam os hooks after, mas não os hooks
+before (veja <a href="#escritas-feitas-por-plugins">Escritas feitas por plugins</a>).</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="routes"><code dir="auto">[routes]</code></h3><a class="sl-anchor-link" href="#routes"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “[routes]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>A função exportada que serve todas as requisições para <code dir="auto">/api/plugins/&lt;name&gt;</code> e <code dir="auto">/api/plugins/&lt;name&gt;/…</code>, com qualquer método.</td>
+</tr>
+</tbody>
+</table>
+<p>O caminho segue <code dir="auto">[api].prefix</code>.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="jobs"><code dir="auto">[[jobs]]</code></h3><a class="sl-anchor-link" href="#jobs"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “[[jobs]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">schedule</code></td>
+<td>Expressão cron, em UTC, com segundos opcionais: <code dir="auto">*/15 * * * *</code>, <code dir="auto">0 0 3 * * *</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>A função exportada a chamar.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="startup"><code dir="auto">[startup]</code></h3><a class="sl-anchor-link" href="#startup"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “[startup]”</span></a></div>
+<p>Uma função executada quando o plugin inicia: o que um projeto Strapi faz no <code dir="auto">bootstrap</code>
+(popular conteúdo, configurar a função pública).</p>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Padrão</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>obrigatória</td>
+<td>A função exportada a chamar.</td>
+</tr>
+<tr>
+<td><code dir="auto">timeout_ms</code></td>
+<td><code dir="auto">30000</code></td>
+<td>O seu próprio limite de tempo, em milissegundos (popular conteúdo pode levar mais que um hook). Precisa ser positivo.</td>
+</tr>
+</tbody>
+</table>
+<p>Veja <a href="#fun%C3%A7%C3%A3o-de-inicializa%C3%A7%C3%A3o">Função de inicialização</a> para saber quando ela roda.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="graphql"><code dir="auto">[[graphql]]</code></h3><a class="sl-anchor-link" href="#graphql"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “[[graphql]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Padrão</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">name</code></td>
+<td>obrigatória</td>
+<td>O nome do campo: começa com uma letra minúscula, seguida de letras, dígitos e <code dir="auto">_</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>obrigatória</td>
+<td>A função exportada que o resolve.</td>
+</tr>
+<tr>
+<td><code dir="auto">mutation</code></td>
+<td><code dir="auto">false</code></td>
+<td>Adiciona o campo a <code dir="auto">Mutation</code> em vez de <code dir="auto">Query</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>não definida</td>
+<td>A descrição do campo no schema.</td>
+</tr>
+</tbody>
+</table>
+<p>Cada entrada adiciona <code dir="auto">name(args: JSON): JSON</code>. Um nome que um tipo de conteúdo já usa, ou que
+outro plugin pegou antes, é ignorado com um aviso no log.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="admin"><code dir="auto">[admin]</code></h3><a class="sl-anchor-link" href="#admin"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “[admin]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">script</code></td>
+<td>Módulo ES em <code dir="auto">admin/</code> que define os custom elements (sem <code dir="auto">..</code>, não absoluto).</td>
+</tr>
+<tr>
+<td><code dir="auto">[[admin.widgets]]</code></td>
+<td>Tipos de widget do dashboard: <code dir="auto">id</code>, <code dir="auto">title</code>, <code dir="auto">element</code>, <code dir="auto">description</code> opcional.</td>
+</tr>
+<tr>
+<td><code dir="auto">[[admin.fields]]</code></td>
+<td>Campos personalizados: <code dir="auto">id</code>, <code dir="auto">title</code>, <code dir="auto">element</code>, <code dir="auto">type</code> (o tipo de atributo em que o valor é armazenado, como <code dir="auto">string</code> ou <code dir="auto">json</code>), <code dir="auto">description</code> opcional.</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">element</code> é o nome de um custom element: letras minúsculas, dígitos e <code dir="auto">-</code>, com pelo menos um
+<code dir="auto">-</code> (<code dir="auto">slugs-color</code>).</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="settings"><code dir="auto">[[settings]]</code></h3><a class="sl-anchor-link" href="#settings"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “[[settings]]”</span></a></div>
+<p>Declara o formulário de <strong>Configurações → Plugins → Configurações</strong>. Sem nenhuma entrada, as
+configurações são um objeto JSON livre.</p>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Padrão</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">key</code></td>
+<td>obrigatória</td>
+<td>A chave no objeto de configurações: letras, dígitos e <code dir="auto">_</code>, sem começar com dígito, única.</td>
+</tr>
+<tr>
+<td><code dir="auto">label</code></td>
+<td>obrigatória</td>
+<td>O rótulo no formulário.</td>
+</tr>
+<tr>
+<td><code dir="auto">type</code></td>
+<td><code dir="auto">"string"</code></td>
+<td><code dir="auto">string</code>, <code dir="auto">text</code>, <code dir="auto">url</code>, <code dir="auto">number</code>, <code dir="auto">integer</code>, <code dir="auto">boolean</code> ou <code dir="auto">select</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>não definida</td>
+<td>Texto de ajuda sob o campo.</td>
+</tr>
+<tr>
+<td><code dir="auto">required</code></td>
+<td><code dir="auto">false</code></td>
+<td>É preciso um valor (não vazio, para texto), a menos que haja um <code dir="auto">default</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">options</code></td>
+<td><code dir="auto">[]</code></td>
+<td>As opções de um <code dir="auto">select</code> (obrigatório para ele).</td>
+</tr>
+<tr>
+<td><code dir="auto">default</code></td>
+<td>não definida</td>
+<td>Usado quando a chave falta ou é <code dir="auto">null</code>. Precisa ser válido para o campo.</td>
+</tr>
+<tr>
+<td><code dir="auto">min</code>, <code dir="auto">max</code></td>
+<td>não definida</td>
+<td>Limites dos valores <code dir="auto">number</code> e <code dir="auto">integer</code>; limites de comprimento de <code dir="auto">string</code> e <code dir="auto">text</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Os valores <code dir="auto">url</code> são vazios ou URLs <code dir="auto">http(s)://</code>. Com um formulário, o servidor recusa
+configurações com chaves desconhecidas, tipos errados, valores fora dos limites ou valores
+obrigatórios ausentes (400).</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="funções-exportadas">Funções exportadas</h2><a class="sl-anchor-link" href="#funções-exportadas"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Funções exportadas”</span></a></div>
+<p>Toda função exportada recebe um documento JSON e retorna um (ou nada). Uma saída vazia conta
+como <code dir="auto">null</code>; uma saída que não é JSON conta como falha.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="hooks-before">Hooks before</h3><a class="sl-anchor-link" href="#hooks-before"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Hooks before”</span></a></div>
+<p>Entrada:</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"event"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">beforeUpdate</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"uid"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"documentId"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">01m3p88ry359w82nsx496mep5t</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"locale"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">en</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"data"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"title"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">Hello</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copiar para área de transferência" data-copied="Copiado!" data-code="{  &quot;event&quot;: &quot;beforeUpdate&quot;,  &quot;uid&quot;: &quot;api::article&quot;,  &quot;documentId&quot;: &quot;01m3p88ry359w82nsx496mep5t&quot;,  &quot;locale&quot;: &quot;en&quot;,  &quot;data&quot;: { &quot;title&quot;: &quot;Hello&quot; }}"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">event</code></td>
+<td>O evento do hook.</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td>O tipo de conteúdo.</td>
+</tr>
+<tr>
+<td><code dir="auto">documentId</code></td>
+<td>O documento, ou <code dir="auto">null</code> em <code dir="auto">beforeCreate</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>Nos tipos localizados, o idioma escrito (o idioma padrão quando a requisição não nomeou nenhum); <code dir="auto">null</code> nos outros tipos.</td>
+</tr>
+<tr>
+<td><code dir="auto">data</code></td>
+<td>Os dados sendo escritos, como a requisição os enviou: na criação e na atualização. <code dir="auto">null</code> nos outros eventos. Na atualização, apenas os campos enviados.</td>
+</tr>
+</tbody>
+</table>
+<p>Saída:</p>
+<table>
+<thead>
+<tr>
+<th>Saída</th>
+<th>Efeito</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">{ "data": { … } }</code></td>
+<td>Substitui os dados escritos. Eles são validados como os originais.</td>
+</tr>
+<tr>
+<td><code dir="auto">{ "error": "message" }</code></td>
+<td>Recusa a escrita: o cliente recebe um 400 com a mensagem.</td>
+</tr>
+<tr>
+<td><code dir="auto">{}</code> ou qualquer outra coisa</td>
+<td>A escrita segue sem mudanças.</td>
+</tr>
+</tbody>
+</table>
+<p>Quando vários hooks correspondem, eles rodam na ordem dos plugins (nomes dos diretórios) e
+depois na ordem do manifesto; cada um vê os dados que o anterior retornou. Um hook que falha
+(trap, timeout, saída inválida) é registrado no log e ignorado: a escrita continua.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="hooks-after">Hooks after</h3><a class="sl-anchor-link" href="#hooks-after"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Hooks after”</span></a></div>
+<p>Entrada: <code dir="auto">{ "event", "uid", "documentId", "locale" }</code>, enviada depois que a escrita é
+confirmada. A saída é ignorada; as falhas são registradas no log. Leia a entrada com
+<code dir="auto">verdin_content</code> se precisar dos seus campos (com a capacidade <code dir="auto">read</code>).</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="rotas">Rotas</h3><a class="sl-anchor-link" href="#rotas"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Rotas”</span></a></div>
+<p>Entrada:</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"method"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">GET</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"path"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">/stats</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"query"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">page=2&amp;sort=title</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"headers"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"accept"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">application/json</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"user-agent"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">curl/8.7.1</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"body"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">""</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"actor"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"kind"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">public</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copiar para área de transferência" data-copied="Copiado!" data-code="{  &quot;method&quot;: &quot;GET&quot;,  &quot;path&quot;: &quot;/stats&quot;,  &quot;query&quot;: &quot;page=2&amp;sort=title&quot;,  &quot;headers&quot;: { &quot;accept&quot;: &quot;application/json&quot;, &quot;user-agent&quot;: &quot;curl/8.7.1&quot; },  &quot;body&quot;: &quot;&quot;,  &quot;actor&quot;: { &quot;kind&quot;: &quot;public&quot; }}"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">method</code></td>
+<td>O método HTTP.</td>
+</tr>
+<tr>
+<td><code dir="auto">path</code></td>
+<td>O caminho depois de <code dir="auto">/api/plugins/&lt;name&gt;</code>, começando com <code dir="auto">/</code> (<code dir="auto">/</code> para a raiz do plugin).</td>
+</tr>
+<tr>
+<td><code dir="auto">query</code></td>
+<td>A query string bruta, sem <code dir="auto">?</code> (vazia quando não há nenhuma).</td>
+</tr>
+<tr>
+<td><code dir="auto">headers</code></td>
+<td>Apenas <code dir="auto">content-type</code>, <code dir="auto">accept</code>, <code dir="auto">user-agent</code> e <code dir="auto">accept-language</code>, quando presentes.</td>
+</tr>
+<tr>
+<td><code dir="auto">body</code></td>
+<td>O corpo da requisição como string (UTF-8 inválido é substituído).</td>
+</tr>
+<tr>
+<td><code dir="auto">actor</code></td>
+<td>Quem está chamando: <code dir="auto">{ "kind": "public" }</code>, <code dir="auto">{ "kind": "token", "id": 3 }</code> (um token de API) ou <code dir="auto">{ "kind": "user", "id": 12 }</code> (um usuário final com login).</td>
+</tr>
+</tbody>
+</table>
+<p>Um cabeçalho <code dir="auto">Authorization</code> com um token inválido é recusado com um 401 antes de o plugin ser
+chamado. As permissões do acesso público e dos tokens de API não são aplicadas: verifique o
+<code dir="auto">actor</code> você mesmo.</p>
+<p>Saída:</p>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Padrão</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">status</code></td>
+<td><code dir="auto">200</code></td>
+<td>O status HTTP.</td>
+</tr>
+<tr>
+<td><code dir="auto">headers</code></td>
+<td>nenhum</td>
+<td>Cabeçalhos de resposta. Apenas <code dir="auto">content-type</code>, <code dir="auto">cache-control</code>, <code dir="auto">location</code>, <code dir="auto">etag</code>, <code dir="auto">last-modified</code> e <code dir="auto">content-disposition</code> são mantidos.</td>
+</tr>
+<tr>
+<td><code dir="auto">body</code></td>
+<td>vazio</td>
+<td>Uma string é enviada como está (<code dir="auto">text/plain</code>, a menos que você defina <code dir="auto">content-type</code>); qualquer outro valor JSON é enviado como <code dir="auto">application/json</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Um plugin desativado ou desconhecido, ou um sem <code dir="auto">[routes]</code>, responde 404. Uma chamada que falha
+responde 502 com <code dir="auto">{ "data": null, "error": { "status": 502, "name": "PluginError", … } }</code>. As
+rotas compartilham o <code dir="auto">[server].body_limit</code> e o <code dir="auto">[server].request_timeout_secs</code> da API de
+conteúdo.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="jobs-1">Jobs</h3><a class="sl-anchor-link" href="#jobs-1"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Jobs”</span></a></div>
+<p>Entrada: <code dir="auto">{ "scheduledAt": "2026-09-29T03:00:00+00:00" }</code>, o horário para o qual a execução foi
+agendada. A saída é ignorada; as falhas são registradas no log. Os jobs só rodam enquanto o
+plugin está ativado, e apenas nas instâncias com <code dir="auto">[plugins].run_jobs = true</code>. Uma execução
+perdida enquanto o servidor estava fora do ar não é recuperada.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="função-de-inicialização">Função de inicialização</h3><a class="sl-anchor-link" href="#função-de-inicialização"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Função de inicialização”</span></a></div>
+<p>Entrada: <code dir="auto">{ "reason": "start" | "enabled" | "settings" }</code>:</p>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">reason</code></th>
+<th>Quando</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">start</code></td>
+<td>O servidor iniciou com o plugin ativado.</td>
+</tr>
+<tr>
+<td><code dir="auto">enabled</code></td>
+<td>O plugin foi ativado (aqui, ou em outra instância e percebido aqui).</td>
+</tr>
+<tr>
+<td><code dir="auto">settings</code></td>
+<td>As suas configurações mudaram enquanto estava ativado (salvas aqui, ou percebidas de outra instância).</td>
+</tr>
+</tbody>
+</table>
+<p>Saída: <code dir="auto">{ "error": "message" }</code> conta como falha; qualquer outra coisa (<code dir="auto">{}</code>, vazia) conta como
+sucesso. Uma falha (trap, time-out, <code dir="auto">{ error }</code>) vai para o log do plugin e para o log do
+servidor; o plugin continua ativado e a função roda de novo no próximo início, ativação ou
+mudança de configurações.</p>
+<p>A função roda em segundo plano, depois que o servidor está de pé, então as requisições são
+atendidas enquanto isso. Ela roda em uma instância do módulo só sua, com <code dir="auto">[startup].timeout_ms</code>,
+então uma carga inicial lenta não segura os hooks e as rotas do plugin. Os hooks after
+disparados pelas suas escritas rodam quando ela retorna (veja
+<a href="#escritas-feitas-por-plugins">Escritas feitas por plugins</a>). A memória do módulo não é
+compartilhada com a instância regular do plugin: guarde o estado em <code dir="auto">verdin_kv_set</code> ou no
+conteúdo.</p>
+<p>Com várias instâncias, apenas as que têm <code dir="auto">[plugins].run_jobs = true</code> rodam as funções de
+inicialização (uma instância, se você seguir o <a href="/verdin/pt-br/deploy/scaling/">conselho de escalabilidade</a>):
+elas agem sobre o banco de dados compartilhado, então uma vez basta. Escreva a função de modo
+que rodá-la de novo seja inofensivo: procure o que você popula antes de criá-lo.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="campos-graphql">Campos GraphQL</h3><a class="sl-anchor-link" href="#campos-graphql"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Campos GraphQL”</span></a></div>
+<p>Entrada: <code dir="auto">{ "args": …, "actor": … }</code>, com <code dir="auto">args</code> sendo o argumento <code dir="auto">args</code> do campo (qualquer
+JSON, ou <code dir="auto">null</code>) e <code dir="auto">actor</code> como nas rotas. A saída é o valor do campo. Uma falha, ou um plugin
+desativado, responde um erro GraphQL com o código <code dir="auto">PLUGIN_ERROR</code>. Como nas rotas, é o plugin que
+verifica o acesso.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="funções-do-host">Funções do host</h2><a class="sl-anchor-link" href="#funções-do-host"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Funções do host”</span></a></div>
+<p>Importe-as do namespace <code dir="auto">extism:host/user</code> (<code dir="auto">extern "ExtismHost"</code> em Rust). Elas recebem e
+retornam JSON como strings; o <code dir="auto">Json&lt;Value&gt;</code> do <code dir="auto">extism-pdk</code> cuida da conversão.</p>
+<table>
+<thead>
+<tr>
+<th>Função</th>
+<th>Entrada</th>
+<th>Saída</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">verdin_log</code></td>
+<td><code dir="auto">{ "level": "info" | "warn" | "error", "message": "…" }</code></td>
+<td>nenhuma</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_content</code></td>
+<td>Uma requisição de conteúdo (abaixo)</td>
+<td>O resultado, ou <code dir="auto">{ "error": "…" }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_kv_get</code></td>
+<td>A chave, como string simples</td>
+<td>O valor JSON armazenado, ou <code dir="auto">null</code></td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_kv_set</code></td>
+<td><code dir="auto">{ "key": "…", "value": … }</code></td>
+<td>nenhuma</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_config</code></td>
+<td>nenhuma</td>
+<td>O objeto de configurações, com os padrões declarados preenchidos</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_public_permissions</code></td>
+<td><code dir="auto">{ "op": "get" }</code> ou <code dir="auto">{ "op": "set", "permissions": [...] }</code></td>
+<td><code dir="auto">{ "permissions": [...] }</code>, ou <code dir="auto">{ "error": "…" }</code></td>
+</tr>
+</tbody>
+</table>
+<p>Um módulo que importa uma função do host que o servidor não tem (um Verdin mais antigo) não
+pode ser carregado: toda chamada a ela falha com <code dir="auto">unknown import</code> no log do servidor.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_log"><code dir="auto">verdin_log</code></h3><a class="sl-anchor-link" href="#verdin_log"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “verdin_log”</span></a></div>
+<p>Grava no log do servidor (com o nome do plugin) e no log do plugin em <strong>Configurações →
+Plugins → Logs</strong>. Outros níveis contam como <code dir="auto">info</code>. O log do plugin guarda as últimas 200
+mensagens, cada uma cortada em 2.000 caracteres, em memória.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_content"><code dir="auto">verdin_content</code></h3><a class="sl-anchor-link" href="#verdin_content"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “verdin_content”</span></a></div>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"op"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">findMany</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"uid"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"query"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"filters"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"title"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"$eq"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">x</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> } }, </span><span style="--0:#7FDBCA;--1:#096E72">"sort"</span><span style="--0:#D6DEEB;--1:#403F53">: [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">title</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">] } }</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copiar para área de transferência" data-copied="Copiado!" data-code="{ &quot;op&quot;: &quot;findMany&quot;, &quot;uid&quot;: &quot;api::article&quot;, &quot;query&quot;: { &quot;filters&quot;: { &quot;title&quot;: { &quot;$eq&quot;: &quot;x&quot; } }, &quot;sort&quot;: [&quot;title&quot;] } }"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Usado por</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">op</code></td>
+<td>todos</td>
+<td><code dir="auto">findMany</code>, <code dir="auto">findOne</code>, <code dir="auto">create</code>, <code dir="auto">update</code>, <code dir="auto">delete</code>, <code dir="auto">publish</code> ou <code dir="auto">unpublish</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td>todos</td>
+<td>O tipo de conteúdo. Precisa estar nas capacidades.</td>
+</tr>
+<tr>
+<td><code dir="auto">documentId</code></td>
+<td><code dir="auto">findOne</code>, <code dir="auto">update</code>, <code dir="auto">delete</code>, <code dir="auto">publish</code>, <code dir="auto">unpublish</code></td>
+<td>O documento.</td>
+</tr>
+<tr>
+<td><code dir="auto">query</code></td>
+<td><code dir="auto">findMany</code>, <code dir="auto">findOne</code></td>
+<td>Os parâmetros da API REST como objeto JSON: <code dir="auto">filters</code>, <code dir="auto">sort</code>, <code dir="auto">fields</code>, <code dir="auto">populate</code>, <code dir="auto">pagination</code>, <code dir="auto">status</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">data</code></td>
+<td><code dir="auto">create</code>, <code dir="auto">update</code></td>
+<td>Os campos a escrever, como no <code dir="auto">data</code> de uma requisição REST.</td>
+</tr>
+<tr>
+<td><code dir="auto">status</code></td>
+<td><code dir="auto">create</code>, <code dir="auto">update</code></td>
+<td><code dir="auto">"draft"</code> salva um rascunho. Caso contrário, a escrita é publicada, como uma escrita REST sem <code dir="auto">?status=draft</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>todos</td>
+<td>O idioma a ler ou escrever.</td>
+</tr>
+</tbody>
+</table>
+<p>Resultados:</p>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">op</code></th>
+<th>Resultado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">findMany</code></td>
+<td><code dir="auto">{ "documents": [...], "meta": { "pagination": {…} } }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">findOne</code></td>
+<td><code dir="auto">{ "document": {…} }</code> (<code dir="auto">null</code> quando não encontrado)</td>
+</tr>
+<tr>
+<td><code dir="auto">create</code>, <code dir="auto">update</code></td>
+<td><code dir="auto">{ "documentId": "…" }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">delete</code></td>
+<td><code dir="auto">{ "deleted": true }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">publish</code></td>
+<td><code dir="auto">{ "published": true }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">unpublish</code></td>
+<td><code dir="auto">{ "unpublished": true }</code></td>
+</tr>
+</tbody>
+</table>
+<p>Uma chamada fora das capacidades, uma operação desconhecida, um erro de validação ou um
+documento inexistente respondem <code dir="auto">{ "error": "…" }</code>. As leituras retornam as versões publicadas,
+a menos que a consulta peça <code dir="auto">"status": "draft"</code>.</p>
+<div class="sl-heading-wrapper level-h4"><h4 id="escritas-feitas-por-plugins">Escritas feitas por plugins</h4><a class="sl-anchor-link" href="#escritas-feitas-por-plugins"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Escritas feitas por plugins”</span></a></div>
+<p>As escritas via <code dir="auto">verdin_content</code> pulam os hooks <strong>before</strong> de todos os plugins, então um plugin
+não consegue entrar em loop com as suas próprias alterações ali, e as regras que você coloca em
+hooks before (padrões, verificações) não se aplicam a elas. Todo o resto se aplica: a validação,
+as etapas de revisão, os webhooks, o histórico, o log de auditoria e os hooks <strong>after</strong> de todos
+os plugins, inclusive o que está escrevendo.</p>
+<p>Os hooks after disparados pelas escritas de um plugin não rodam dentro da escrita: ficam em fila
+e rodam quando a chamada do plugin (rota, job, resolvedor GraphQL, hook ou função de
+inicialização) retornou e liberou a instância do plugin, antes de a resposta da rota ser
+enviada. Assim, um plugin pode escrever em um tipo no qual tem hooks after, e cadeias por vários
+plugins funcionam.</p>
+<ul>
+<li>Os hooks que escrevem disparam outros hooks, <strong>no máximo <code dir="auto">4</code> níveis de profundidade</strong> (uma
+escrita vinda de REST ou GraphQL é o nível 1). Os hooks mais profundos são ignorados com um
+aviso no log do plugin, o que impede que um hook que escreve no tipo que ele escuta entre em
+loop para sempre.</li>
+<li>As funções do host (<code dir="auto">verdin_content</code>, <code dir="auto">verdin_public_permissions</code>, o armazenamento
+chave-valor) param no limite de tempo da chamada e retornam um erro ao módulo, e quem chama
+espera no máximo o limite de tempo mais 10 segundos por um plugin ocupado. Uma chamada presa
+não pode segurar o plugin, nem uma parada graciosa, para sempre.</li>
+</ul>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_kv_get-e-verdin_kv_set"><code dir="auto">verdin_kv_get</code> e <code dir="auto">verdin_kv_set</code></h3><a class="sl-anchor-link" href="#verdin_kv_get-e-verdin_kv_set"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “verdin_kv_get e verdin_kv_set”</span></a></div>
+<p>Um armazenamento chave-valor por plugin, no banco de dados do Verdin, compartilhado por todas as
+instâncias. As chaves têm de 1 a 255 bytes; os valores são qualquer JSON. Definir <code dir="auto">null</code> exclui
+a chave. Sem a capacidade <code dir="auto">kv</code>, as leituras retornam <code dir="auto">null</code> e as escritas são ignoradas.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_config"><code dir="auto">verdin_config</code></h3><a class="sl-anchor-link" href="#verdin_config"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “verdin_config”</span></a></div>
+<p>Retorna as configurações salvas em <strong>Configurações → Plugins</strong>, com o <code dir="auto">default</code> de cada
+configuração declarada preenchido para as chaves ausentes. <code dir="auto">{}</code> quando nada foi salvo.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_public_permissions"><code dir="auto">verdin_public_permissions</code></h3><a class="sl-anchor-link" href="#verdin_public_permissions"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “verdin_public_permissions”</span></a></div>
+<p>Lê ou substitui as permissões da API de conteúdo da função pública, o que <strong>Configurações →
+Acesso público</strong> edita. Exige a capacidade <code dir="auto">public_permissions</code>; sem ela, toda chamada responde
+<code dir="auto">{ "error": "…" }</code>.</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"op"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">set</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"permissions"</span><span style="--0:#D6DEEB;--1:#403F53">: [</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">find</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">findOne</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::comment</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">create</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">] }</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copiar para área de transferência" data-copied="Copiado!" data-code="{ &quot;op&quot;: &quot;set&quot;, &quot;permissions&quot;: [  { &quot;subject&quot;: &quot;api::article&quot;, &quot;action&quot;: &quot;find&quot; },  { &quot;subject&quot;: &quot;api::article&quot;, &quot;action&quot;: &quot;findOne&quot; },  { &quot;subject&quot;: &quot;api::comment&quot;, &quot;action&quot;: &quot;create&quot; }] }"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">op</code></th>
+<th>Efeito</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">get</code></td>
+<td>Nada; retorna as permissões atuais.</td>
+</tr>
+<tr>
+<td><code dir="auto">set</code></td>
+<td>Substitui <strong>todas</strong> as permissões públicas por <code dir="auto">permissions</code> (uma lista vazia remove todas).</td>
+</tr>
+</tbody>
+</table>
+<p>Ambas respondem <code dir="auto">{ "permissions": [{ "subject", "action" }, …] }</code>, ordenadas. <code dir="auto">subject</code> é o uid
+de um tipo de conteúdo, <code dir="auto">plugin::upload</code> (a biblioteca de mídia), <code dir="auto">plugin::users-permissions.user</code>
+(usuários finais pela API de conteúdo) ou <code dir="auto">plugin::i18n.locale</code> (apenas <code dir="auto">find</code>). <code dir="auto">action</code> é
+<code dir="auto">find</code>, <code dir="auto">findOne</code>, <code dir="auto">create</code>, <code dir="auto">update</code>, <code dir="auto">delete</code>, <code dir="auto">publish</code> ou <code dir="auto">readDrafts</code> (as duas últimas não
+se aplicam a uploads nem a usuários finais). Elas são verificadas como a grade de permissões da
+administração: um subject ou uma action desconhecidos, ou que não se aplicam, respondem
+<code dir="auto">{ "error": "…" }</code> e não alteram nada. Todo <code dir="auto">set</code> é gravado no log do servidor.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="http">HTTP</h3><a class="sl-anchor-link" href="#http"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “HTTP”</span></a></div>
+<p>Com hosts listados em <code dir="auto">http</code>, use o suporte HTTP do Extism (<code dir="auto">extism_pdk::http::request</code> em
+Rust). As requisições para outros hosts falham.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="pontos-de-extensão-da-administração">Pontos de extensão da administração</h2><a class="sl-anchor-link" href="#pontos-de-extensão-da-administração"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Pontos de extensão da administração”</span></a></div>
+<p>O painel de administração pede ao servidor as extensões dos plugins ativados e importa cada
+<code dir="auto">admin.script</code> uma única vez, como módulo ES, de <code dir="auto">/admin/plugins/&lt;name&gt;/&lt;script&gt;</code> (sob
+<code dir="auto">[admin].path</code>). Os arquivos do diretório <code dir="auto">admin/</code> do plugin são servidos ali enquanto o plugin
+está ativado, com <code dir="auto">X-Content-Type-Options: nosniff</code> e <code dir="auto">Cache-Control: no-cache</code>. O módulo
+precisa definir os custom elements que o manifesto nomeia; um elemento não definido em até 3
+segundos fica de fora.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="widgets">Widgets</h3><a class="sl-anchor-link" href="#widgets"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Widgets”</span></a></div>
+<p>Cada entrada <code dir="auto">[[admin.widgets]]</code> é um tipo de widget que os administradores podem adicionar ao
+dashboard. O elemento recebe uma propriedade <code dir="auto">context</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Propriedade</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">apiBase</code></td>
+<td>A base da API de conteúdo, como <code dir="auto">/api</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">adminApiBase</code></td>
+<td>A base da API de administração, como <code dir="auto">/admin/api</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">fetch(path, init)</code></td>
+<td><code dir="auto">fetch</code> com as credenciais do administrador logado. Os caminhos relativos são resolvidos a partir de <code dir="auto">adminApiBase</code>; os caminhos sob qualquer uma das bases e as URLs absolutas são mantidos.</td>
+</tr>
+</tbody>
+</table>
+<div class="expressive-code"><figure class="frame has-title not-content"><figcaption class="header"><span class="title">plugins/slugs/admin/index.js</span></figcaption><pre data-language="js"><code><div class="ec-line"><div class="code"><span style="--0:#C792EA;--1:#8844AE">class</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#FFCB8B;--1:#111111">SlugStats</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">extends</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C5E478;--1:#3B61B0">HTMLElement</span><span style="--0:#D6DEEB;--1:#403F53"> {</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#C792EA;--1:#8844AE">set</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">context</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">context</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> {</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#919F9F;--1:#5D6376">// Admin API, with the admin's session.</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">fetch</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">auth/me</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#D6DEEB;--1:#403F53">)</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">response</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#7FDBCA;--1:#096E72">response</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">json</span><span style="--0:#D6DEEB;--1:#403F53">())</span></div></div><div class="ec-line"><div class="code"><span class="indent">      </span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--1:#403F53"><span style="--0:#D6DEEB">{ </span><span style="--0:#D7DBE0">data</span><span style="--0:#D6DEEB"> }</span></span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> { </span><span style="--0:#7FDBCA;--1:#096E72">this</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">textContent</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#ECC48D;--1:#3B61B0">Hello </span><span style="--0:#E2817F;--1:#B23834">${</span><span style="--0:#7FDBCA;--1:#096E72">data</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">firstname</span><span style="--0:#E2817F;--1:#B23834"> </span><span style="--0:#C792EA;--1:#8844AE">??</span><span style="--0:#E2817F;--1:#B23834"> </span><span style="--0:#7FDBCA;--1:#096E72">data</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">email</span><span style="--0:#E2817F;--1:#B23834">}</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#D6DEEB;--1:#403F53">; });</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#919F9F;--1:#5D6376">// The plugin's own route, on the content API: sent without the admin's session.</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">fetch</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#E2817F;--1:#B23834">${</span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">apiBase</span><span style="--0:#E2817F;--1:#B23834">}</span><span style="--0:#ECC48D;--1:#3B61B0">/plugins/slugs/stats</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#D6DEEB;--1:#403F53">)</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">response</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#7FDBCA;--1:#096E72">response</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">json</span><span style="--0:#D6DEEB;--1:#403F53">())</span></div></div><div class="ec-line"><div class="code"><span class="indent">      </span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">stats</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> { </span><span style="--0:#7FDBCA;--1:#096E72">this</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">title</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">JSON</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">stringify</span><span style="--1:#403F53"><span style="--0:#D6DEEB">(</span><span style="--0:#D7DBE0">stats</span><span style="--0:#D6DEEB">); });</span></span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#7FDBCA;--1:#096E72">customElements</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">define</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">slugs-stats</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--1:#403F53"><span style="--0:#D6DEEB">, </span><span style="--0:#D7DBE0">SlugStats</span><span style="--0:#D6DEEB">);</span></span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copiar para área de transferência" data-copied="Copiado!" data-code="class SlugStats extends HTMLElement {  set context(context) {    // Admin API, with the admin&#x27;s session.    context.fetch(&#x27;auth/me&#x27;).then((response) => response.json())      .then(({ data }) => { this.textContent = &#x60;Hello ${data.firstname ?? data.email}&#x60;; });    // The plugin&#x27;s own route, on the content API: sent without the admin&#x27;s session.    context.fetch(&#x60;${context.apiBase}/plugins/slugs/stats&#x60;).then((response) => response.json())      .then((stats) => { this.title = JSON.stringify(stats); });  }}customElements.define(&#x27;slugs-stats&#x27;, SlugStats);"><div></div></button></div></figure></div>
+<p>O <code dir="auto">context.fetch</code> envia a sessão do administrador apenas nas requisições à API de
+administração. Os caminhos sob <code dir="auto">context.apiBase</code> (a API de conteúdo, inclusive as rotas do seu
+plugin) vão sem ela, já que a API de conteúdo não aceita sessões de administração; eles são
+respondidos com as permissões da função pública. Antes da 0.10, ele também enviava a sessão ali
+e essas requisições falhavam; os widgets escritos para a 0.9 que chamam o <code dir="auto">fetch</code> simples
+continuam funcionando.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="campos-personalizados">Campos personalizados</h3><a class="sl-anchor-link" href="#campos-personalizados"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Campos personalizados”</span></a></div>
+<p>Cada entrada <code dir="auto">[[admin.fields]]</code> é um campo que os atributos podem usar com
+<code dir="auto">"customField": "plugin::&lt;name&gt;.&lt;id&gt;"</code>; o <code dir="auto">type</code> do atributo precisa corresponder à forma como o
+campo armazena o seu valor. O <strong>Construtor de tipos de conteúdo</strong> o oferece. O elemento recebe:</p>
+<table>
+<thead>
+<tr>
+<th>Propriedade</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">value</code></td>
+<td>O valor atual.</td>
+</tr>
+<tr>
+<td><code dir="auto">disabled</code></td>
+<td>Se a edição está desativada.</td>
+</tr>
+<tr>
+<td><code dir="auto">attribute</code></td>
+<td>A definição do atributo no schema.</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>O idioma sendo editado.</td>
+</tr>
+</tbody>
+</table>
+<p>Ele informa um novo valor com um evento <code dir="auto">change</code> cujo <code dir="auto">detail</code> é o valor (ou, sem <code dir="auto">detail</code>, pela
+sua própria propriedade <code dir="auto">value</code>). Quando o plugin está desativado ou o seu elemento não existe, o
+editor mostra o input normal do tipo de armazenamento. Veja
+<a href="/verdin/pt-br/reference/attribute-types/">Tipos de atributos</a>.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="runtime-e-limites">Runtime e limites</h2><a class="sl-anchor-link" href="#runtime-e-limites"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Runtime e limites”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Limite</th>
+<th>Valor</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tempo por chamada</td>
+<td><code dir="auto">[limits].timeout_ms</code>, padrão 5.000 ms (<code dir="auto">[startup].timeout_ms</code>, padrão 30.000 ms, para a função de inicialização)</td>
+</tr>
+<tr>
+<td>Memória</td>
+<td><code dir="auto">[limits].memory_mb</code>, padrão 64 MB</td>
+</tr>
+<tr>
+<td>Concorrência</td>
+<td>Uma chamada por vez por plugin; as chamadas esperam umas pelas outras (a função de inicialização roda ao lado delas)</td>
+</tr>
+<tr>
+<td>Instância do módulo</td>
+<td>Uma por plugin, criada no primeiro uso; recriada depois que uma chamada falha (a sua memória é perdida). A função de inicialização recebe uma nova a cada execução</td>
+</tr>
+<tr>
+<td>Log</td>
+<td>200 mensagens por plugin, 2.000 caracteres cada, em memória</td>
+</tr>
+<tr>
+<td>Chaves KV</td>
+<td>De 1 a 255 bytes</td>
+</tr>
+<tr>
+<td>Cabeçalhos de requisição das rotas</td>
+<td><code dir="auto">content-type</code>, <code dir="auto">accept</code>, <code dir="auto">user-agent</code>, <code dir="auto">accept-language</code></td>
+</tr>
+<tr>
+<td>Cabeçalhos de resposta das rotas</td>
+<td><code dir="auto">content-type</code>, <code dir="auto">cache-control</code>, <code dir="auto">location</code>, <code dir="auto">etag</code>, <code dir="auto">last-modified</code>, <code dir="auto">content-disposition</code></td>
+</tr>
+</tbody>
+</table>
+<p>As alterações em um manifesto ou em um módulo valem após uma reinicialização; os interruptores e
+as configurações valem na hora. Gerenciar plugins exige <code dir="auto">plugins.manage</code> (veja a
+<a href="/verdin/pt-br/reference/permissions/">referência de permissões</a>).</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="métricas">Métricas</h2><a class="sl-anchor-link" href="#métricas"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Seção intitulada “Métricas”</span></a></div>
+<p>Com <a href="/verdin/pt-br/deploy/monitoring/"><code dir="auto">[metrics]</code></a> ativado, <code dir="auto">/_metrics</code> informa cada chamada que chegou
+a uma função exportada:</p>
+<table>
+<thead>
+<tr>
+<th>Métrica</th>
+<th>Tipo</th>
+<th>Labels</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">verdin_plugin_call_duration_seconds</code></td>
+<td>histogram</td>
+<td><code dir="auto">plugin</code>, <code dir="auto">kind</code>, <code dir="auto">function</code></td>
+<td>Tempo que as funções dos plugins levaram. Buckets de 5 ms a 10 s.</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_plugin_call_errors_total</code></td>
+<td>counter</td>
+<td><code dir="auto">plugin</code>, <code dir="auto">kind</code>, <code dir="auto">function</code></td>
+<td>Chamadas que falharam: um trap, um time-out, uma saída que não é JSON ou o <code dir="auto">{ error }</code> de uma função de inicialização.</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">kind</code> é <code dir="auto">hook</code>, <code dir="auto">route</code>, <code dir="auto">job</code>, <code dir="auto">startup</code> ou <code dir="auto">graphql</code>. Um hook before que recusa uma escrita
+com <code dir="auto">{ error }</code> deu uma resposta, então não conta como falha. As chamadas a uma função que o
+módulo não exporta não são registradas, então os labels ficam limitados pelos plugins
+instalados. As séries aparecem após a primeira chamada de um plugin; cada instância conta as
+suas próprias chamadas.</p>
+</div><footer class="sl-flex astro-ddtxxk7k"><div class="meta sl-flex astro-ddtxxk7k"><a href="https://github.com/verdin-cms/verdin/edit/main/site/src/content/docs/pt-br/extending/plugin-reference.md" class="sl-flex print:hidden astro-qlekgd3o"><svg aria-hidden="true" class="astro-qlekgd3o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.2em;"><path d="M22 7.24a1 1 0 0 0-.29-.71l-4.24-4.24a1 1 0 0 0-1.1-.22 1 1 0 0 0-.32.22l-2.83 2.83L2.29 16.05a1 1 0 0 0-.29.71V21a1 1 0 0 0 1 1h4.24a1 1 0 0 0 .76-.29l10.87-10.93L21.71 8c.1-.1.17-.2.22-.33a1 1 0 0 0 0-.24v-.14l.07-.05ZM6.83 20H4v-2.83l9.93-9.93 2.83 2.83L6.83 20ZM18.17 8.66l-2.83-2.83 1.42-1.41 2.82 2.82-1.41 1.42Z"/></svg>Editar página</a><p>Última atualização: <time datetime="2026-09-30T10:55:31.000Z">30 de set. de 2026</time></p></div><div class="pagination-links print:hidden astro-b5raizh3" dir="ltr"><a href="/verdin/pt-br/extending/plugin-tutorial/" rel="prev" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17 11H9.41l3.3-3.29a1.004 1.004 0 1 0-1.42-1.42l-5 5a1 1 0 0 0-.21.33 1 1 0 0 0 0 .76 1 1 0 0 0 .21.33l5 5a1.002 1.002 0 0 0 1.639-.325 1 1 0 0 0-.219-1.095L9.41 13H17a1 1 0 0 0 0-2Z"/></svg><span class="astro-b5raizh3">Anterior<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">Tutorial de plugin</span></span></a><a href="/verdin/pt-br/api/rest/" rel="next" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17.92 11.62a1.001 1.001 0 0 0-.21-.33l-5-5a1.003 1.003 0 1 0-1.42 1.42l3.3 3.29H7a1 1 0 0 0 0 2h7.59l-3.3 3.29a1.002 1.002 0 0 0 .325 1.639 1 1 0 0 0 1.095-.219l5-5a1 1 0 0 0 .21-.33 1 1 0 0 0 0-.76Z"/></svg><span class="astro-b5raizh3">Próximo<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">REST</span></span></a></div></footer></div></div></main></div></div></div></div></body></html>

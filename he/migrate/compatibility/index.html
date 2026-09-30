@@ -1,0 +1,613 @@
+<!DOCTYPE html><html lang="he" dir="rtl" data-theme="dark" data-has-toc data-has-sidebar class="astro-g5ptsecz"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>תאימות ל-Strapi | Verdin</title><link rel="canonical" href="https://verdin-cms.github.io/verdin/he/migrate/compatibility/"/><link rel="alternate" hreflang="en" href="https://verdin-cms.github.io/verdin/migrate/compatibility/"/><link rel="alternate" hreflang="ar" href="https://verdin-cms.github.io/verdin/ar/migrate/compatibility/"/><link rel="alternate" hreflang="ca" href="https://verdin-cms.github.io/verdin/ca/migrate/compatibility/"/><link rel="alternate" hreflang="de" href="https://verdin-cms.github.io/verdin/de/migrate/compatibility/"/><link rel="alternate" hreflang="es" href="https://verdin-cms.github.io/verdin/es/migrate/compatibility/"/><link rel="alternate" hreflang="fa" href="https://verdin-cms.github.io/verdin/fa/migrate/compatibility/"/><link rel="alternate" hreflang="fr" href="https://verdin-cms.github.io/verdin/fr/migrate/compatibility/"/><link rel="alternate" hreflang="he" href="https://verdin-cms.github.io/verdin/he/migrate/compatibility/"/><link rel="alternate" hreflang="it" href="https://verdin-cms.github.io/verdin/it/migrate/compatibility/"/><link rel="alternate" hreflang="ja" href="https://verdin-cms.github.io/verdin/ja/migrate/compatibility/"/><link rel="alternate" hreflang="ko" href="https://verdin-cms.github.io/verdin/ko/migrate/compatibility/"/><link rel="alternate" hreflang="nl" href="https://verdin-cms.github.io/verdin/nl/migrate/compatibility/"/><link rel="alternate" hreflang="pl" href="https://verdin-cms.github.io/verdin/pl/migrate/compatibility/"/><link rel="alternate" hreflang="pt-BR" href="https://verdin-cms.github.io/verdin/pt-br/migrate/compatibility/"/><link rel="alternate" hreflang="ru" href="https://verdin-cms.github.io/verdin/ru/migrate/compatibility/"/><link rel="alternate" hreflang="tr" href="https://verdin-cms.github.io/verdin/tr/migrate/compatibility/"/><link rel="alternate" hreflang="uk" href="https://verdin-cms.github.io/verdin/uk/migrate/compatibility/"/><link rel="alternate" hreflang="zh-CN" href="https://verdin-cms.github.io/verdin/zh-cn/migrate/compatibility/"/><link rel="alternate" hreflang="x-default" href="https://verdin-cms.github.io/verdin/migrate/compatibility/"/><link rel="sitemap" href="/verdin/sitemap-index.xml"/><link rel="shortcut icon" href="/verdin/favicon.svg" type="image/svg+xml"/><meta name="generator" content="Astro v7.3.5"/><meta name="generator" content="Starlight v0.42.4"/><meta property="og:title" content="תאימות ל-Strapi"/><meta property="og:type" content="article"/><meta property="og:url" content="https://verdin-cms.github.io/verdin/he/migrate/compatibility/"/><meta property="og:locale" content="he"/><meta property="og:description" content="אילו תכונות ו-APIs של Strapi v5 נתמכים ב-Verdin, נתמכים חלקית או אינם נתמכים — REST, GraphQL, משתמשים והרשאות, העלאות, i18n, טיוטה ופרסום, הרחבות קוד, פאנל הניהול ותכונות Enterprise."/><meta property="og:site_name" content="Verdin"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="אילו תכונות ו-APIs של Strapi v5 נתמכים ב-Verdin, נתמכים חלקית או אינם נתמכים — REST, GraphQL, משתמשים והרשאות, העלאות, i18n, טיוטה ופרסום, הרחבות קוד, פאנל הניהול ותכונות Enterprise."/><meta property="og:image" content="https://verdin-cms.github.io/verdin/og/he/migrate/compatibility.png"/><meta name="twitter:image" content="https://verdin-cms.github.io/verdin/og/he/migrate/compatibility.png"/><script>
+	window.StarlightThemeProvider = (() => {
+		const storedTheme =
+			typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		const theme =
+			storedTheme ||
+			(window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+		document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+		return {
+			updatePickers(theme = storedTheme || 'auto') {
+				document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+					const select = picker.querySelector('select');
+					if (select) select.value = theme;
+					/** @type {HTMLTemplateElement | null} */
+					const tmpl = document.querySelector(`#theme-icons`);
+					const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+					if (newIcon) {
+						const oldIcon = picker.querySelector('svg.label-icon');
+						if (oldIcon) {
+							oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+						}
+					}
+				});
+			},
+		};
+	})();
+</script><template id="theme-icons"><svg aria-hidden="true" class="light astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"/></svg><svg aria-hidden="true" class="dark astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"/></svg><svg aria-hidden="true" class="auto astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg></template><link rel="stylesheet" href="/verdin/_astro/print.ehPL0gv-.css" media="print"><link rel="stylesheet" href="/verdin/_astro/Playground.Sp6wezWm.css"><link rel="stylesheet" href="/verdin/_astro/middleware.CnzdItGa.css"><style>@layer starlight.components{.card:where(.astro-oag6qnet){--sl-card-border:var(--sl-color-purple);--sl-card-bg:var(--sl-color-purple-low);border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-black);flex-direction:column;gap:clamp(.5rem,.125rem + 1vw,1rem);padding:clamp(1rem,.125rem + 3vw,2.5rem)}.card:where(.astro-oag6qnet):nth-child(4n+1){--sl-card-border:var(--sl-color-orange);--sl-card-bg:var(--sl-color-orange-low)}.card:where(.astro-oag6qnet):nth-child(4n+3){--sl-card-border:var(--sl-color-green);--sl-card-bg:var(--sl-color-green-low)}.card:where(.astro-oag6qnet):nth-child(4n+4){--sl-card-border:var(--sl-color-red);--sl-card-bg:var(--sl-color-red-low)}.card:where(.astro-oag6qnet):nth-child(4n+5){--sl-card-border:var(--sl-color-blue);--sl-card-bg:var(--sl-color-blue-low)}.title:where(.astro-oag6qnet){font-weight:600;font-size:var(--sl-text-h4);color:var(--sl-color-white);line-height:var(--sl-line-height-headings);align-items:center;gap:1rem}.card:where(.astro-oag6qnet) .icon:where(.astro-oag6qnet){border:1px solid var(--sl-card-border);background-color:var(--sl-card-bg);border-radius:.25rem;flex-shrink:0;padding:.2em}.card:where(.astro-oag6qnet) .body:where(.astro-oag6qnet){font-size:clamp(var(--sl-text-sm), calc(.5rem + 1vw), var(--sl-text-body));margin:0}}
+@layer starlight.components{.card-grid:where(.astro-7qmvx3iy){grid-template-columns:100%;gap:1rem;display:grid}.card-grid:where(.astro-7qmvx3iy)>*{margin-top:0!important}@media (width>=50rem){.card-grid:where(.astro-7qmvx3iy){grid-template-columns:1fr 1fr;gap:1.5rem}.stagger:where(.astro-7qmvx3iy){--stagger-height:5rem;padding-bottom:var(--stagger-height)}.stagger:where(.astro-7qmvx3iy)>:nth-child(2n){transform:translateY(var(--stagger-height))}}.sl-link-card:where(.astro-zaaezwya){border:1px solid var(--sl-color-gray-5);box-shadow:var(--sl-shadow-sm);border-radius:.5rem;grid-template-columns:1fr auto;gap:.5rem;padding:1rem;display:grid;position:relative}a:where(.astro-zaaezwya){line-height:var(--sl-line-height-headings);text-decoration:none}a:where(.astro-zaaezwya):before{content:"";position:absolute;inset:0}.stack:where(.astro-zaaezwya){flex-direction:column;gap:.5rem}.title:where(.astro-zaaezwya){color:var(--sl-color-white);font-weight:600;font-size:var(--sl-text-lg)}.description:where(.astro-zaaezwya){color:var(--sl-color-gray-3);line-height:1.5}.icon:where(.astro-zaaezwya){color:var(--sl-color-gray-3)}.sl-link-card:where(.astro-zaaezwya):hover{background:var(--sl-color-gray-7,var(--sl-color-gray-6));border-color:var(--sl-color-gray-2)}.sl-link-card:where(.astro-zaaezwya):hover .icon:where(.astro-zaaezwya){color:var(--sl-color-white)}}.plate:where(.astro-zbp6lmd6){isolation:isolate;color:#2a1006;background:linear-gradient(112deg,#0000 0 38%,#ffd6b447 44%,#0000 52%),repeating-linear-gradient(90deg,#ffffff09 0 1px,#0000 1px 3px),linear-gradient(160deg,#e3a472 0%,#cf7f49 40%,#c06a34 68%,#d58d58 100%);border-radius:.6rem;margin:clamp(1rem,4vw,2.5rem) 0;padding:clamp(1.75rem,4vw,2.75rem) clamp(1.5rem,5vw,3.5rem);position:relative;overflow:hidden;box-shadow:inset 0 1px #ffe1c880,inset 0 -2px #46190559,0 1px 2px #28140a40,0 18px 40px -24px #3c1e0a8c}.patina:where(.astro-zbp6lmd6){z-index:-1;pointer-events:none;width:100%;height:100%;mask-image:radial-gradient(circle at 0% 100%, #000 0, transparent var(--bloom)), radial-gradient(circle at 100% 0%, #000 0, transparent calc(var(--bloom) * .8)), radial-gradient(circle at 100% 100%, #000 0, transparent calc(var(--bloom) * .45));--bloom:8%;transition:--bloom 1.6s cubic-bezier(.2,.7,.2,1);position:absolute;inset:0}.plate:where(.astro-zbp6lmd6).grown .patina:where(.astro-zbp6lmd6){--bloom:46%}@property --bloom{syntax:"<percentage>";inherits:false;initial-value:8%}@media (prefers-reduced-motion:reduce){.patina:where(.astro-zbp6lmd6){--bloom:46%;transition:none}}.rivet:where(.astro-zbp6lmd6){background:radial-gradient(circle at 35% 30%,#f3c39c,#8a4019 70%);border-radius:50%;width:.55rem;height:.55rem;position:absolute;box-shadow:0 1px 1px #280f0080}.stamp:where(.astro-zbp6lmd6){gap:1.5rem;display:grid}@media (width>=50rem){.stamp:where(.astro-zbp6lmd6){grid-template-columns:minmax(12rem,.8fr) 2fr;align-items:center}}.label:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);letter-spacing:.14em;text-transform:uppercase;color:#2a1006cc;font-size:.66rem;font-weight:600;display:block}.model:where(.astro-zbp6lmd6){margin:0}.name:where(.astro-zbp6lmd6){font-family:var(--vd-font-display);letter-spacing:-.02em;text-shadow:0 1px #ffdcbe73,0 -1px #3c140059;font-size:clamp(3rem,8vw,4.5rem);font-weight:860;font-stretch:58%;line-height:.9;display:block}.version:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);font-size:.85rem;font-weight:600}dl:where(.astro-zbp6lmd6){gap:.85rem 2rem;margin:0;display:grid}@media (width>=38rem){dl:where(.astro-zbp6lmd6){grid-template-columns:repeat(2,minmax(0,1fr))}}dl:where(.astro-zbp6lmd6)>div:where(.astro-zbp6lmd6){border-top:1px solid #2a10064d;padding-top:.5rem;box-shadow:inset 0 1px #ffdcbe33}dd:where(.astro-zbp6lmd6){text-shadow:0 1px #ffdcbe4d;margin:.15rem 0 0;font-size:.98rem;font-weight:600;line-height:1.4}
+@layer starlight.components{svg:where(.astro-hkc32dio){color:var(--sl-icon-color);font-size:var(--sl-icon-size,1em);width:1em;height:1em}}
+@layer starlight.components{starlight-tabs:where(.astro-scn3uvmv){display:block}.tablist-wrapper:where(.astro-scn3uvmv){overflow-x:auto}:where(.astro-scn3uvmv)[role=tablist]{border-bottom:2px solid var(--sl-color-gray-5);padding:0;list-style:none;display:flex}.tab:where(.astro-scn3uvmv){display:flex}.tab:where(.astro-scn3uvmv)>:where(.astro-scn3uvmv)[role=tab]{--sl-tab-color-border:var(--sl-color-gray-5);line-height:var(--sl-line-height-headings);box-shadow:0 2px 0 var(--sl-tab-color-border);color:var(--sl-color-gray-3);outline-offset:var(--sl-outline-offset-inside);overflow-wrap:initial;align-items:center;gap:.5rem;padding:.275rem 1.25rem;text-decoration:none;display:flex}.tab:where(.astro-scn3uvmv) :where(.astro-scn3uvmv)[role=tab][aria-selected=true]{--sl-tab-color-border:var(--sl-color-text-accent);color:var(--sl-color-white);font-weight:600}.tablist-wrapper:where(.astro-scn3uvmv)~[role=tabpanel]{margin-top:1rem}}
+@layer starlight.components{.sl-steps{--bullet-size:calc(var(--sl-line-height) * 1rem);--bullet-margin:.375rem;counter-reset:steps-counter var(--sl-steps-start,0);padding-inline-start:0;list-style:none}.sl-steps>li{counter-increment:steps-counter;padding-inline-start:calc(var(--bullet-size) + 1rem);min-height:calc(var(--bullet-size) + var(--bullet-margin));padding-bottom:1px;position:relative}.sl-steps>li+li{margin-top:0}.sl-steps>li:before{content:counter(steps-counter);top:0;width:var(--bullet-size);height:var(--bullet-size);line-height:var(--bullet-size);font-size:var(--sl-text-xs);text-align:center;color:var(--sl-color-white);background-color:var(--sl-color-gray-6);box-shadow:inset 0 0 0 1px var(--sl-color-gray-5);border-radius:99rem;font-weight:600;position:absolute;inset-inline-start:0}.sl-steps>li:after{--guide-width:1px;content:"";top:calc(var(--bullet-size) + var(--bullet-margin));bottom:var(--bullet-margin);width:var(--guide-width);background-color:var(--sl-color-hairline-light);position:absolute;inset-inline-start:calc((var(--bullet-size) - var(--guide-width)) / 2)}}@layer starlight.content{.sl-steps>li>:first-child{--lh:calc(1em * var(--sl-line-height));--shift-y:calc(.5 * (var(--bullet-size) - var(--lh)));transform:translateY(var(--shift-y));margin-bottom:var(--shift-y)}.sl-steps>li>:first-child:where(h1,h2,h3,h4,h5,h6){--lh:calc(1em * var(--sl-line-height-headings))}@supports (--prop:1lh){.sl-steps>li>:first-child{--lh:1lh}}}
+@layer starlight.components{starlight-file-tree:where(.astro-a2hqddox){--x-space:1.5rem;--y-space:.125rem;--y-pad:0;border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-gray-6);font-size:var(--sl-text-xs);font-family:var(--__sl-font-mono);padding:1rem;display:block;overflow-x:auto}starlight-file-tree:where(.astro-a2hqddox) .directory>details{padding:0;background:0 0;border:0;padding-inline-start:var(--x-space)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary{padding:var(--y-pad) .625rem;color:var(--sl-color-white);border:0;max-width:100%;margin-inline-start:calc(-1 * var(--x-space));font-weight:400}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::marker,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::-webkit-details-marker{color:var(--sl-color-gray-3)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .tree-icon{cursor:pointer;color:var(--sl-color-text-accent);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover~ul{border-color:var(--sl-color-gray-4)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .highlight .tree-icon{color:var(--sl-color-text-invert);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) ul{border-inline-start:1px solid var(--sl-color-gray-5);margin-inline-start:.5rem;padding:0;padding-inline-start:.125rem;list-style:none}starlight-file-tree:where(.astro-a2hqddox)>ul{border:0;margin:0;padding:0}starlight-file-tree:where(.astro-a2hqddox) li{margin:var(--y-space) 0;padding:var(--y-pad) 0}starlight-file-tree:where(.astro-a2hqddox) .file{color:var(--sl-color-white);margin-inline-start:calc(var(--x-space) - .125rem)}starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:wrap;align-items:flex-start;max-width:calc(100% - 1rem);display:inline-flex}@media (width>=30em){starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:nowrap}}starlight-file-tree:where(.astro-a2hqddox) .tree-entry>:first-child{flex-shrink:0}starlight-file-tree:where(.astro-a2hqddox) .empty{color:var(--sl-color-gray-3);padding-inline-start:.375rem}starlight-file-tree:where(.astro-a2hqddox) .comment{color:var(--sl-color-gray-3);min-width:12rem;max-width:24rem;padding-inline-start:1.625rem}starlight-file-tree:where(.astro-a2hqddox) .highlight{color:var(--sl-color-text-invert);background-color:var(--sl-color-text-accent);border-radius:.25rem;padding-inline-end:.5rem;display:inline-block}starlight-file-tree:where(.astro-a2hqddox) svg{fill:var(--sl-color-gray-3);vertical-align:middle;width:.875rem;height:.875rem;margin-inline:.25rem .375rem;display:inline}starlight-file-tree:where(.astro-a2hqddox) .highlight svg.tree-icon{fill:currentColor}}
+</style><script type="module" src="/verdin/_astro/page.Dwipeu-R.js"></script></head><body class="astro-g5ptsecz"><a class="sl-skip-link astro-qb7clj6f" href="#_top">דלגו לתוכן</a><div class="page sl-flex astro-yntsjkba"><header class="header astro-yntsjkba"><div class="header astro-by6fddyj"><div class="title-wrapper sl-flex astro-by6fddyj"><a href="/verdin/he" class="site-title sl-flex astro-6rvad3va"><img class="astro-6rvad3va" alt src="/verdin/_astro/verdin-mark.CEc0Dc_U.svg" width="32" height="32"><span class="astro-6rvad3va" translate="no">Verdin</span></a></div><div class="sl-flex print:hidden astro-by6fddyj"><site-search class="astro-by6fddyj astro-b5kgnn7o" data-translations="{&quot;placeholder&quot;:&quot;חיפוש&quot;}"><button data-open-modal disabled aria-label="חיפוש" aria-keyshortcuts="Control+K" class="astro-b5kgnn7o"><svg aria-hidden="true" class="astro-b5kgnn7o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg><span class="sl-hidden md:sl-block astro-b5kgnn7o" aria-hidden="true">חיפוש</span><kbd class="sl-hidden md:sl-flex astro-b5kgnn7o" style="display: none;"><kbd class="astro-b5kgnn7o">Ctrl</kbd><kbd class="astro-b5kgnn7o">K</kbd></kbd></button><dialog style="padding:0" aria-label="חיפוש" class="astro-b5kgnn7o"><div class="dialog-frame sl-flex astro-b5kgnn7o"><button data-close-modal class="sl-flex md:sl-hidden astro-b5kgnn7o">ביטול</button><div class="search-container astro-b5kgnn7o"><div id="starlight__search" class="astro-b5kgnn7o"></div></div></div></dialog></site-search><script>
+	(() => {
+		const openBtn = document.querySelector('button[data-open-modal]');
+		const shortcut = openBtn?.querySelector('kbd');
+		if (!openBtn || !(shortcut instanceof HTMLElement)) return;
+		const platformKey = shortcut.querySelector('kbd');
+		if (platformKey && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+			platformKey.textContent = '⌘';
+			openBtn.setAttribute('aria-keyshortcuts', 'Meta+K');
+		}
+		shortcut.style.display = '';
+	})();
+</script><script type="module" src="/verdin/_astro/Search.astro_astro_type_script_index_0_lang.BVn7b3Eg.js"></script></div><div class="sl-hidden md:sl-flex print:hidden right-group astro-by6fddyj"><div class="sl-flex social-icons astro-by6fddyj"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">בחרו פרופיל צבע</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">כהה</option><option value="light" class="astro-2z5xp7gb">בהיר</option><option value="auto" selected class="astro-2z5xp7gb">מערכת</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><script type="module">var e=`starlight-theme`,t=e=>e===`auto`||e===`dark`||e===`light`?e:`auto`,n=()=>t(typeof localStorage<`u`&&localStorage.getItem(e));function r(t){typeof localStorage<`u`&&localStorage.setItem(e,t===`light`||t===`dark`?t:``)}var i=()=>matchMedia(`(prefers-color-scheme: light)`).matches?`light`:`dark`;function a(e){StarlightThemeProvider.updatePickers(e),document.documentElement.dataset.theme=e===`auto`?i():e,r(e)}matchMedia(`(prefers-color-scheme: light)`).addEventListener(`change`,()=>{n()===`auto`&&a(`auto`)});var o=class extends HTMLElement{constructor(){super(),a(n()),this.querySelector(`select`)?.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&a(t(e.currentTarget.value))})}};customElements.define(`starlight-theme-select`,o);</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">בחרו שפה</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/migrate/compatibility/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/migrate/compatibility/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/migrate/compatibility/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/migrate/compatibility/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/migrate/compatibility/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/migrate/compatibility/" class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/migrate/compatibility/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/migrate/compatibility/" selected class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/migrate/compatibility/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/migrate/compatibility/" class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/migrate/compatibility/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/migrate/compatibility/" class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/migrate/compatibility/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/migrate/compatibility/" class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/migrate/compatibility/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/migrate/compatibility/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/migrate/compatibility/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/migrate/compatibility/" class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select><script type="module">var e=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);e&&(e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=e.currentTarget.value)}),window.addEventListener(`pageshow`,t=>{if(!t.persisted)return;let n=e.querySelector(`option[selected]`)?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}};customElements.define(`starlight-lang-select`,e);</script></div></div></header><nav class="sidebar print:hidden astro-yntsjkba" aria-label="ראשי"><button popovertarget="starlight__sidebar" class="sl-menu-button sl-flex md:sl-hidden print:hidden astro-r2osgdlg"><svg aria-hidden="true" class="open-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg><svg aria-hidden="true" class="close-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"/></svg><span class="sr-only astro-r2osgdlg">תפריט</span></button><script type="module">var e=class extends HTMLElement{constructor(){super();let e=matchMedia(`(min-width: 50em)`),t=()=>{this.popover=e.matches?null:`auto`};t(),e.addEventListener(`change`,()=>t()),this.addEventListener(`toggle`,({newState:e})=>this.trapFocus(e===`open`))}trapFocus(e){document.querySelectorAll(`.main-frame, .sl-skip-link`).forEach(t=>{t.toggleAttribute(`inert`,e)})}};customElements.define(`sl-sidebar-pane`,e);</script><sl-sidebar-pane popover id="starlight__sidebar" class="sidebar-pane astro-yntsjkba"><div class="sidebar-content sl-flex astro-yntsjkba"><sl-sidebar-state-persist data-hash="1e0e0mm" class="astro-ipdry5cl"><script aria-hidden="true">
+		(() => {
+			try {
+				if (!matchMedia('(min-width: 50em)').matches) return;
+				/** @type {HTMLElement | null} */
+				const target = document.querySelector('sl-sidebar-state-persist');
+				const state = JSON.parse(sessionStorage.getItem('sl-sidebar-state') || '0');
+				if (!target || !state || target.dataset.hash !== state.hash) return;
+				window._starlightScrollRestore = state.scroll;
+				customElements.define(
+					'sl-sidebar-restore',
+					class SidebarRestore extends HTMLElement {
+						connectedCallback() {
+							try {
+								const idx = parseInt(this.dataset.index || '');
+								const details = this.closest('details');
+								if (details && typeof state.open[idx] === 'boolean') details.open = state.open[idx];
+							} catch {}
+						}
+					}
+				);
+			} catch {}
+		})();
+	</script><ul class="top-level astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">תחילת העבודה</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="0"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/start/introduction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">מבוא</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/start/installation/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">התקנה</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/start/quickstart/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">התחלה מהירה</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/start/tutorial-astro/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">בלוג עם Astro</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/start/tutorial-nextjs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">בלוג עם Next.js</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/start/project-structure/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">מבנה הפרויקט</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">מושגים</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="1"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/concepts/content-model/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">מודל התוכן</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/concepts/components-and-dynamic-zones/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">רכיבים ואזורים דינמיים</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/concepts/relations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">קשרים</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/concepts/draft-and-publish/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">טיוטה ופרסום</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/concepts/internationalization/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">בינאום</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/concepts/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">הרשאות</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/concepts/schema-migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">הגירות סכמה</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/concepts/media/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">מדיה</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">מדריכים</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="2"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">תוכן</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="3"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/content/localizing-content/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תרגום תוכן</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/content/review-workflows/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תהליכי בקרה</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/content/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">מהדורות</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/content/content-history/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">היסטוריית תוכן</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/content/audit-logs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">יומני ביקורת</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/content/preview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תצוגה מקדימה</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/content/comments-and-tasks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תגובות ומשימות</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/content/search/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">חיפוש</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/content/import-export/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ייבוא וייצוא</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/content/editor-digest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תקציר לעורכים</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">פרונטאנד</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="4"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/frontend/typed-client/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">לקוח עם טיפוסים</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/frontend/images/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תמונות רספונסיביות</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/frontend/visual-editing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">עריכה חזותית</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/frontend/seo-and-sitemap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">SEO ומפת אתר</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/frontend/redirects/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">הפניות</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/frontend/menus/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תפריטים</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/frontend/forms/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">טפסים</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/frontend/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">זמן אמת</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">אימות</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="5"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/auth/admin-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">משתמשי ניהול</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/auth/two-factor/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">אימות דו-שלבי</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/auth/sso/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">כניסה יחידה (SSO)</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/auth/api-tokens/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">אסימוני API</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/auth/end-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">משתמשי קצה</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">אינטגרציות</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="6"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/integrations/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Webhooks</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/integrations/mcp/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">שרת MCP</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/integrations/ai-actions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">פעולות AI</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/guides/integrations/deploys-and-cdn/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">פריסות ו-CDN</span></a></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">הרחבה</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="7"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/extending/plugins/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תוספים</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/extending/plugin-tutorial/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">מדריך תוספים</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/extending/plugin-reference/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תיעוד התוספים</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">מדריך ה-API</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="8"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/api/rest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">REST</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/api/graphql/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">GraphQL</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/api/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">סביבת ניסוי ל-API</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/api/admin/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ניהול</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/api/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">זמן אמת</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/api/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Webhooks</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Example content API</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="9"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overview</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Article</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="10"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List articles</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentidactionsaction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Publish, unpublish or discard the draft</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Category</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="11"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List categories</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a category</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Homepage</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="12"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create or update the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete the Homepage</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Tag</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="13"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List tags</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a tag</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Internationalization</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="14"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apii18nlocales/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List the locales</span></a></li></ul></details></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">מדריך עיון</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="15"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/reference/configuration/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תצורה</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/reference/cli/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">שורת הפקודה</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/reference/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Permissions</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/reference/attribute-types/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">טיפוסי מאפיינים</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">פריסה ותפעול</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="16"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/production-checklist/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">רשימת בדיקה לייצור</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/security/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">אבטחה</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/compose/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Docker Compose בייצור</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/docker/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Docker</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/linux-server/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">שרת Linux</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/fly/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Fly.io</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/one-click/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">פריסות בלחיצה אחת</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/render/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Render</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/railway/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Railway</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/helm/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Helm chart</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/kubernetes/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Kubernetes</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/scaling/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">כמה מופעים</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/backups/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">גיבויים</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/monitoring/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ניטור</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/deploy/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Playground מאורח</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">הגירה ושדרוג</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="17"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/migrate/from-strapi/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">מעבר מ-Strapi</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/migrate/porting-custom-code/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">העברת קוד מותאם</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/migrate/compatibility/" aria-current="page" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">תאימות ל-Strapi</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/migrate/upgrading/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">שדרוג Verdin</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">מבנה פנימי</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="18"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/internals/overview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">סקירה</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/internals/storage/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">אחסון</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/internals/database/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">שכבת מסד הנתונים</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/internals/migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">מנוע ההגירות</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/internals/document-service/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Document Service</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/internals/admin-panel/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">פאנל הניהול</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/internals/testing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">בדיקות</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/internals/decisions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">יומן החלטות</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/internals/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">גרסאות ואירוח התיעוד</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">הפרויקט</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="19"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/he/project/roadmap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Verdin roadmap</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/project/translating/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Translating the admin panel</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/he/project/changelog/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Changelog</span></a></li></ul></details></li></ul><script aria-hidden="true">
+		(() => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!window._starlightScrollRestore || !scroller) return;
+			scroller.scrollTop = window._starlightScrollRestore;
+			delete window._starlightScrollRestore;
+		})();
+	</script></sl-sidebar-state-persist><div class="md:sl-hidden"><div class="mobile-preferences sl-flex astro-p4azlveh"><div class="social-icons astro-p4azlveh"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">בחרו פרופיל צבע</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">כהה</option><option value="light" class="astro-2z5xp7gb">בהיר</option><option value="auto" selected class="astro-2z5xp7gb">מערכת</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">בחרו שפה</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/migrate/compatibility/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/migrate/compatibility/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/migrate/compatibility/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/migrate/compatibility/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/migrate/compatibility/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/migrate/compatibility/" class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/migrate/compatibility/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/migrate/compatibility/" selected class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/migrate/compatibility/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/migrate/compatibility/" class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/migrate/compatibility/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/migrate/compatibility/" class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/migrate/compatibility/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/migrate/compatibility/" class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/migrate/compatibility/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/migrate/compatibility/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/migrate/compatibility/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/migrate/compatibility/" class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select></div></div></div></sl-sidebar-pane></nav><div class="main-frame astro-yntsjkba"><script type="module">var e=document.getElementById(`starlight__sidebar`),t=e?.querySelector(`sl-sidebar-state-persist`),n=`sl-sidebar-state`,r=()=>{let r=[],i=t?.dataset.hash||``;try{let e=sessionStorage.getItem(n),t=JSON.parse(e||`{}`);Array.isArray(t.open)&&t.hash===i&&(r=t.open)}catch{}return{hash:i,open:r,scroll:e?.scrollTop||0}},i=e=>{try{sessionStorage.setItem(n,JSON.stringify(e))}catch{}},a=()=>i(r()),o=(e,t)=>{let n=r();n.open[t]=e,i(n)};t?.addEventListener(`click`,e=>{if(!(e.target instanceof Element))return;let t=e.target.closest(`summary`)?.closest(`details`);if(!t)return;let n=t.querySelector(`sl-sidebar-restore`),r=parseInt(n?.dataset.index||``);isNaN(r)||o(!t.open,r)}),addEventListener(`visibilitychange`,()=>{document.visibilityState===`hidden`&&a()});</script><div class="lg:sl-flex astro-lrzkfocr"><aside class="right-sidebar-container print:hidden astro-lrzkfocr"><div class="right-sidebar astro-lrzkfocr"><div class="lg:sl-hidden astro-qok35upx"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-66cqc7ze"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-66cqc7ze"><details id="starlight__mobile-toc" class="astro-66cqc7ze"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-66cqc7ze"><span class="toggle sl-flex astro-66cqc7ze">בדף זה<svg aria-hidden="true" class="caret astro-66cqc7ze astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></span><span class="display-current astro-66cqc7ze"></span></summary><div class="dropdown astro-66cqc7ze"><ul class="isMobile astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">סקירה כללית</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#מודל-התוכן" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">מודל התוכן</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#rest-api" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">REST API</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">GraphQL</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#users--permissions-משתמשי-קצה" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Users &amp; Permissions (משתמשי קצה)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#ספריית-המדיה-ו-api-ההעלאות" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">ספריית המדיה ו-API ההעלאות</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#בינאום" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">בינאום</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#טיוטה-ופרסום" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">טיוטה ופרסום</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#התאמה-אישית-של-השרת" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">התאמה אישית של השרת</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#פאנל-הניהול" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">פאנל הניהול</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#תכונות-enterprise" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">תכונות Enterprise</span></a></li></ul></div></details></nav></mobile-starlight-toc><script type="module" src="/verdin/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.C3fM4Kra.js"></script></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-qok35upx"><div class="sl-container astro-qok35upx"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">בדף זה</h2><ul class="astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">סקירה כללית</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#מודל-התוכן" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">מודל התוכן</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#rest-api" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">REST API</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">GraphQL</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#users--permissions-משתמשי-קצה" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Users &amp; Permissions (משתמשי קצה)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#ספריית-המדיה-ו-api-ההעלאות" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">ספריית המדיה ו-API ההעלאות</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#בינאום" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">בינאום</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#טיוטה-ופרסום" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">טיוטה ופרסום</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#התאמה-אישית-של-השרת" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">התאמה אישית של השרת</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#פאנל-הניהול" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">פאנל הניהול</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#תכונות-enterprise" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">תכונות Enterprise</span></a></li></ul></nav></starlight-toc><script type="module" src="/verdin/_astro/TableOfContents.astro_astro_type_script_index_0_lang.BpJaGz7G.js"></script></div></div></div></aside><div class="main-pane astro-lrzkfocr"><main data-pagefind-body class="astro-g5ptsecz" lang="he" dir="rtl"><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><h1 id="_top" class="astro-bebwqqxs">תאימות ל-Strapi</h1></div></div><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><div class="sl-markdown-content"><p>Verdin שומר על מודל התוכן ועל APIs התוכן של Strapi v5 כדי שפרונטאנדים ותוכן יוכלו לעבור
+(ראו <a href="/verdin/he/migrate/from-strapi/">מעבר מ-Strapi</a>). הוא אינו תחליף ישיר ל<em>בסיס קוד</em> של Strapi:
+אין runtime של JavaScript, ולכן קוד מותאם נבנה מחדש כתוספי WebAssembly. העמוד הזה מפרט כל
+תחום עם הסטטוס שלו, נכון ל-Verdin 0.10.0.</p>
+<p><strong>נתמך</strong> עובד כמו ב-Strapi v5 (ההבדלים מצוינים). <strong>חלקי</strong> מכסה את המקרים הנפוצים; ההערה
+אומרת מה חסר. <strong>לא נתמך</strong> אין לו מקבילה.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="מודל-התוכן">מודל התוכן</h2><a class="sl-anchor-link" href="#מודל-התוכן"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “מודל התוכן”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>תכונה</th>
+<th>סטטוס</th>
+<th>הערות</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>סוגי אוסף וסוגים יחידים</td>
+<td>נתמך</td>
+<td>קובצי סכמה ב-JSON קרובים לאלה של Strapi (<code dir="auto">schema/content-types/*.json</code>). ראו <a href="/verdin/he/concepts/content-model/">מודל התוכן</a>.</td>
+</tr>
+<tr>
+<td>טיפוסי מאפיינים סקלריים</td>
+<td>נתמך</td>
+<td><code dir="auto">string</code>, <code dir="auto">text</code>, <code dir="auto">richtext</code> (Markdown), <code dir="auto">blocks</code>, <code dir="auto">email</code>, <code dir="auto">uid</code>, <code dir="auto">integer</code>, <code dir="auto">biginteger</code>, <code dir="auto">float</code>, <code dir="auto">decimal</code>, <code dir="auto">boolean</code>, <code dir="auto">date</code>, <code dir="auto">time</code>, <code dir="auto">datetime</code>, <code dir="auto">enumeration</code>, <code dir="auto">json</code>, <code dir="auto">password</code>. ה-<code dir="auto">timestamp</code> של Strapi מיובא כ-<code dir="auto">datetime</code>.</td>
+</tr>
+<tr>
+<td>רכיבים ואזורים דינמיים</td>
+<td>נתמך</td>
+<td>כולל מדיה וקשרי <code dir="auto">oneWay</code>/<code dir="auto">manyWay</code> בתוך רכיבים.</td>
+</tr>
+<tr>
+<td>קשרים</td>
+<td>נתמך</td>
+<td>One/many-to-one/many, one-way ו-many-way, והקשרים הפולימורפיים <code dir="auto">morphToOne</code>, <code dir="auto">morphToMany</code>, <code dir="auto">morphOne</code>, <code dir="auto">morphMany</code>.</td>
+</tr>
+<tr>
+<td>שדות מדיה</td>
+<td>נתמך</td>
+<td>יחיד או מרובה, <code dir="auto">allowedTypes</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">unique</code></td>
+<td>חלקי</td>
+<td>לא על מאפייני <code dir="auto">text</code>, <code dir="auto">richtext</code>, <code dir="auto">blocks</code> ו-<code dir="auto">json</code>.</td>
+</tr>
+<tr>
+<td>שדות מותנים (<code dir="auto">conditions</code>)</td>
+<td>נתמך</td>
+<td>תנאי ה-JSON Logic של Strapi 5.17; שדות מוסתרים אינם חובה.</td>
+</tr>
+<tr>
+<td>שדות מותאמים</td>
+<td>חלקי</td>
+<td>מאפייני <code dir="auto">customField</code> עובדים; הקלט בפאנל הניהול מגיע מ<a href="/verdin/he/extending/plugins/">תוסף</a> של Verdin, לא מתוספי ה-React של Strapi.</td>
+</tr>
+<tr>
+<td>בונה סוגי התוכן</td>
+<td>נתמך</td>
+<td>רק במצב פיתוח (<code dir="auto">verdin dev</code>), כמו ב-Strapi.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h2"><h2 id="rest-api">REST API</h2><a class="sl-anchor-link" href="#rest-api"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “REST API”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>תכונה</th>
+<th>סטטוס</th>
+<th>הערות</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>נתיבי CRUD</td>
+<td>נתמך</td>
+<td><code dir="auto">GET</code>/<code dir="auto">POST /api/{pluralName}</code>, <code dir="auto">GET</code>/<code dir="auto">PUT</code>/<code dir="auto">DELETE /api/{pluralName}/{documentId}</code>, סוגים יחידים ב-<code dir="auto">/api/{singularName}</code>. התגובות נושאות <code dir="auto">data</code> ו-<code dir="auto">meta</code>, והשגיאות את אובייקט ה-<code dir="auto">error</code> של Strapi.</td>
+</tr>
+<tr>
+<td><code dir="auto">filters</code></td>
+<td>נתמך</td>
+<td>כל אופרטור של Strapi: <code dir="auto">$eq</code>, <code dir="auto">$eqi</code>, <code dir="auto">$ne</code>, <code dir="auto">$nei</code>, <code dir="auto">$lt</code>, <code dir="auto">$lte</code>, <code dir="auto">$gt</code>, <code dir="auto">$gte</code>, <code dir="auto">$in</code>, <code dir="auto">$notIn</code>, <code dir="auto">$contains</code>, <code dir="auto">$notContains</code>, <code dir="auto">$containsi</code>, <code dir="auto">$notContainsi</code>, <code dir="auto">$null</code>, <code dir="auto">$notNull</code>, <code dir="auto">$between</code>, <code dir="auto">$startsWith(i)</code>, <code dir="auto">$endsWith(i)</code>, <code dir="auto">$and</code>, <code dir="auto">$or</code>, <code dir="auto">$not</code>; דרך קשרים, רכיבים, רכיבים חוזרים ואזורים דינמיים (<code dir="auto">__component</code>).</td>
+</tr>
+<tr>
+<td><code dir="auto">sort</code></td>
+<td>נתמך</td>
+<td>כמה שדות, <code dir="auto">:asc</code>/<code dir="auto">:desc</code>, ושדה של קשר to-one (<code dir="auto">author.name:asc</code>).</td>
+</tr>
+<tr>
+<td><code dir="auto">pagination</code></td>
+<td>נתמך</td>
+<td><code dir="auto">page</code>/<code dir="auto">pageSize</code> או <code dir="auto">start</code>/<code dir="auto">limit</code>, <code dir="auto">withCount</code>. <code dir="auto">pageSize</code> מוגבל ל-<code dir="auto">[api].max_page_size</code> (100).</td>
+</tr>
+<tr>
+<td><code dir="auto">fields</code></td>
+<td>נתמך</td>
+<td></td>
+</tr>
+<tr>
+<td><code dir="auto">populate</code></td>
+<td>נתמך</td>
+<td><code dir="auto">*</code>, רשימות, אובייקטים מקוננים, <code dir="auto">on</code> לאזורים דינמיים, <code dir="auto">count</code>. עומק עד 5; לכל היותר 1,000 רשומות שעוברות populate לכל קשר.</td>
+</tr>
+<tr>
+<td><code dir="auto">status</code></td>
+<td>נתמך</td>
+<td><code dir="auto">published</code> (ברירת מחדל) או <code dir="auto">draft</code>; קריאת טיוטות דורשת את ההרשאה <code dir="auto">readDrafts</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>נתמך</td>
+<td>ראו i18n בהמשך.</td>
+</tr>
+<tr>
+<td><code dir="auto">hasPublishedVersion</code></td>
+<td>נתמך</td>
+<td></td>
+</tr>
+<tr>
+<td>חיפוש טקסט מלא <code dir="auto">_q</code></td>
+<td>נתמך</td>
+<td><code dir="auto">$containsi</code> על שדות טקסט, כמו Strapi; חיפוש מדורג עם <code dir="auto">[search]</code>.</td>
+</tr>
+<tr>
+<td>כתיבות של קשרים</td>
+<td>נתמך</td>
+<td>מזהים, <code dir="auto">connect</code> / <code dir="auto">disconnect</code> / <code dir="auto">set</code>, עם <code dir="auto">position</code> (<code dir="auto">before</code>, <code dir="auto">after</code>, <code dir="auto">start</code>, <code dir="auto">end</code>).</td>
+</tr>
+<tr>
+<td>פרסום, ביטול פרסום, מחיקת טיוטה</td>
+<td>נתמך</td>
+<td>כתיבות מפרסמות אלא אם <code dir="auto">?status=draft</code>, כמו ב-Strapi v5. Verdin מוסיף <code dir="auto">POST /api/{pluralName}/{documentId}/actions/{publish,unpublish,discard-draft}</code>.</td>
+</tr>
+<tr>
+<td>פורמט התגובה של Strapi v4 ו-<code dir="auto">publicationState</code></td>
+<td>לא נתמך</td>
+<td>Verdin מדבר רק v5: מאפיינים שטוחים, <code dir="auto">documentId</code>, <code dir="auto">status</code>.</td>
+</tr>
+<tr>
+<td>מסמך OpenAPI</td>
+<td>חלקי</td>
+<td>ב-<code dir="auto">/api/_openapi.json</code> (לאסימונים בלבד כברירת מחדל) ותיעוד אינטראקטיבי ב-<code dir="auto">/api/docs</code>, במקום ה-<code dir="auto">/documentation</code> של תוסף התיעוד.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h2"><h2 id="graphql">GraphQL</h2><a class="sl-anchor-link" href="#graphql"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “GraphQL”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>תכונה</th>
+<th>סטטוס</th>
+<th>הערות</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>שאילתות</td>
+<td>נתמך</td>
+<td><code dir="auto">articles</code>, <code dir="auto">articles_connection</code> עם <code dir="auto">pageInfo</code>, <code dir="auto">article(documentId)</code>, סוגים יחידים; <code dir="auto">filters</code>, <code dir="auto">sort</code>, <code dir="auto">pagination</code>, <code dir="auto">status</code>, <code dir="auto">locale</code>. כבוי עד שתפעילו את <strong>הגדרות ← תכונות ← GraphQL</strong>.</td>
+</tr>
+<tr>
+<td>מוטציות</td>
+<td>נתמך</td>
+<td><code dir="auto">create…</code>, <code dir="auto">update…</code>, <code dir="auto">delete…</code> עם <code dir="auto">status</code> ו-<code dir="auto">locale</code>.</td>
+</tr>
+<tr>
+<td>רכיבים, אזורים דינמיים, מדיה</td>
+<td>נתמך</td>
+<td>אזורים דינמיים כ-unions, מדיה כ-<code dir="auto">UploadFile</code>.</td>
+</tr>
+<tr>
+<td>קשרים פולימורפיים</td>
+<td>חלקי</td>
+<td>מוחזרים כ-JSON, לא כ-unions עם טיפוסים.</td>
+</tr>
+<tr>
+<td>Shadow CRUD (השבתת פעולות לכל סוג)</td>
+<td>נתמך</td>
+<td>ההגדרה <code dir="auto">disabled</code> של התכונה.</td>
+</tr>
+<tr>
+<td>resolvers מותאמים והרחבות סכמה</td>
+<td>חלקי</td>
+<td>שדות שורש שנפתרים על ידי תוספים (<code dir="auto">[[graphql]]</code> ב-<code dir="auto">plugin.toml</code>); אין <code dir="auto">extensionService</code>.</td>
+</tr>
+<tr>
+<td>מוטציות של Users &amp; Permissions (<code dir="auto">login</code>, <code dir="auto">register</code>, <code dir="auto">me</code>…)</td>
+<td>לא נתמך</td>
+<td>השתמשו בנתיבי ה-REST.</td>
+</tr>
+<tr>
+<td>שאילתות/מוטציות של העלאות ו-i18n (<code dir="auto">uploadFiles</code>, <code dir="auto">i18NLocales</code>…)</td>
+<td>לא נתמך</td>
+<td>השתמשו בנתיבי ה-REST (<code dir="auto">GET /api/i18n/locales</code>) ובפאנל הניהול. <code dir="auto">localizations</code> בסוגים מתורגמים נתמך.</td>
+</tr>
+<tr>
+<td>מגבלות, GraphiQL</td>
+<td>נתמך</td>
+<td><code dir="auto">maxDepth</code>, <code dir="auto">maxComplexity</code>, מתגי אינטרוספקציה וסביבת ניסוי.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h2"><h2 id="users--permissions-משתמשי-קצה">Users &amp; Permissions (משתמשי קצה)</h2><a class="sl-anchor-link" href="#users--permissions-משתמשי-קצה"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Users &amp; Permissions (משתמשי קצה)”</span></a></div>
+<p>הפעילו את <strong>הגדרות ← תכונות ← משתמשים והרשאות</strong>. ראו <a href="/verdin/he/guides/auth/end-users/">משתמשי קצה</a>.</p>
+<table>
+<thead>
+<tr>
+<th>תכונה</th>
+<th>סטטוס</th>
+<th>הערות</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">POST /api/auth/local</code>, <code dir="auto">/auth/local/register</code></td>
+<td>נתמך</td>
+<td>אותו מבנה בקשה ותגובה.</td>
+</tr>
+<tr>
+<td>אימות דוא“ל, שכחתי/איפוס/שינוי סיסמה</td>
+<td>נתמך</td>
+<td><code dir="auto">/auth/email-confirmation</code>, <code dir="auto">/auth/send-email-confirmation</code>, <code dir="auto">/auth/forgot-password</code>, <code dir="auto">/auth/reset-password</code>, <code dir="auto">/auth/change-password</code>.</td>
+</tr>
+<tr>
+<td>אסימוני רענון</td>
+<td>נתמך</td>
+<td><code dir="auto">jwtManagement: "refresh"</code>, <code dir="auto">/auth/refresh</code>, <code dir="auto">/auth/logout</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">/api/users</code>, <code dir="auto">/users/me</code>, <code dir="auto">/users/count</code></td>
+<td>נתמך</td>
+<td>JSON פשוט, הרשאות על <code dir="auto">plugin::users-permissions.user</code>.</td>
+</tr>
+<tr>
+<td>ספקי OAuth</td>
+<td>חלקי</td>
+<td>GitHub, Google, Microsoft, Discord, Facebook, GitLab, LinkedIn וכל ספק OAuth 2; לא כל הגדרה מוכנה של Strapi.</td>
+</tr>
+<tr>
+<td>נתיבי תפקידים והרשאות (<code dir="auto">/api/users-permissions/roles</code>, <code dir="auto">/permissions</code>)</td>
+<td>לא נתמך</td>
+<td>נהלו תפקידים ב-<strong>הגדרות ← משתמשי קצה</strong>.</td>
+</tr>
+<tr>
+<td>משתמשים מיובאים</td>
+<td>נתמך</td>
+<td>hashes של bcrypt ממשיכים לעבוד; הם מגובבים מחדש עם Argon2id בהתחברות.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h2"><h2 id="ספריית-המדיה-ו-api-ההעלאות">ספריית המדיה ו-API ההעלאות</h2><a class="sl-anchor-link" href="#ספריית-המדיה-ו-api-ההעלאות"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “ספריית המדיה ו-API ההעלאות”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>תכונה</th>
+<th>סטטוס</th>
+<th>הערות</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">POST /api/upload</code></td>
+<td>נתמך</td>
+<td><code dir="auto">files</code> ו-<code dir="auto">fileInfo</code> ב-multipart; <code dir="auto">?id=</code> מעדכן את המידע של קובץ, או מחליף את הקובץ כשנשלח קובץ.</td>
+</tr>
+<tr>
+<td>קישור בזמן ההעלאה (<code dir="auto">ref</code>, <code dir="auto">refId</code>, <code dir="auto">field</code>)</td>
+<td>לא נתמך</td>
+<td>העלו, ואז הגדירו את שדה המדיה עם מזהה הקובץ.</td>
+</tr>
+<tr>
+<td><code dir="auto">GET /api/upload/files</code>, <code dir="auto">/files/{id}</code>, <code dir="auto">DELETE /files/{id}</code></td>
+<td>חלקי</td>
+<td>הרשימה מקבלת רק <code dir="auto">pagination[page]</code>, <code dir="auto">pagination[pageSize]</code>, <code dir="auto">sort</code> ו-<code dir="auto">filters[name][$containsi]</code>.</td>
+</tr>
+<tr>
+<td>פורמטים רספונסיביים, breakpoints</td>
+<td>נתמך</td>
+<td><code dir="auto">thumbnail</code> ועוד <code dir="auto">[upload].breakpoints</code>.</td>
+</tr>
+<tr>
+<td>תיקיות, נקודות מוקד, טקסט חלופי, כיתובים</td>
+<td>נתמך</td>
+<td></td>
+</tr>
+<tr>
+<td>ספקי העלאות</td>
+<td>חלקי</td>
+<td>דיסק מקומי ואחסון תואם S3 (AWS, R2, B2, MinIO, Tigris…). אין Cloudinary או חבילות ספקים אחרות.</td>
+</tr>
+<tr>
+<td>המרות תמונות</td>
+<td>רק ב-Verdin</td>
+<td><code dir="auto">/uploads/&lt;file&gt;?preset=…</code> וכתובות חתומות (ספק מקומי).</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h2"><h2 id="בינאום">בינאום</h2><a class="sl-anchor-link" href="#בינאום"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “בינאום”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>תכונה</th>
+<th>סטטוס</th>
+<th>הערות</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>סוגים מתורגמים ושדות שאינם מתורגמים</td>
+<td>נתמך</td>
+<td><code dir="auto">pluginOptions.i18n.localized</code>, גם לכל מאפיין.</td>
+</tr>
+<tr>
+<td><code dir="auto">?locale=</code> ב-REST, <code dir="auto">locale</code> ב-GraphQL</td>
+<td>נתמך</td>
+<td>שפה לא מוכרת היא <code dir="auto">400</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">localizations</code> בתגובות</td>
+<td>נתמך</td>
+<td>רק כשממלאים אותו (<code dir="auto">populate=localizations</code>, <code dir="auto">populate=*</code>), עם אותן אפשרויות כמו של קשר. גם שדה GraphQL. API הניהול משמיט אותו.</td>
+</tr>
+<tr>
+<td><code dir="auto">GET /api/i18n/locales</code></td>
+<td>נתמך</td>
+<td>מערך פשוט במבנה של Strapi. דורש <code dir="auto">find</code> על <code dir="auto">plugin::i18n.locale</code> (שורת <strong>שפות</strong> בטבלת ההרשאות), כמו <code dir="auto">listLocales</code> ב-Strapi. <code dir="auto">documentId</code> נגזר מקוד השפה. השפות מנוהלות בפאנל הניהול (<strong>הגדרות ← בינאום</strong>).</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h2"><h2 id="טיוטה-ופרסום">טיוטה ופרסום</h2><a class="sl-anchor-link" href="#טיוטה-ופרסום"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “טיוטה ופרסום”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>תכונה</th>
+<th>סטטוס</th>
+<th>הערות</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>גרסת טיוטה וגרסה מפורסמת לכל מסמך</td>
+<td>נתמך</td>
+<td>לכל שפה. ראו <a href="/verdin/he/concepts/draft-and-publish/">טיוטה ופרסום</a>.</td>
+</tr>
+<tr>
+<td>מחיקת טיוטה</td>
+<td>נתמך</td>
+<td></td>
+</tr>
+<tr>
+<td>פרסום מתוזמן</td>
+<td>נתמך</td>
+<td>דרך <a href="/verdin/he/guides/content/releases/">מהדורות</a>.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h2"><h2 id="התאמה-אישית-של-השרת">התאמה אישית של השרת</h2><a class="sl-anchor-link" href="#התאמה-אישית-של-השרת"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “התאמה אישית של השרת”</span></a></div>
+<p>ראו <a href="/verdin/he/migrate/porting-custom-code/">העברת קוד מותאם</a> לאופן שבו מעבירים כל אחד מאלה.</p>
+<table>
+<thead>
+<tr>
+<th>Strapi</th>
+<th>סטטוס</th>
+<th>Verdin</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lifecycle hooks, middlewares של Document Service</td>
+<td>חלקי</td>
+<td>before/after hooks בתוספי WebAssembly, שיכולים לשנות או לדחות כתיבה. בלי JavaScript.</td>
+</tr>
+<tr>
+<td>Controllers, services ונתיבים מותאמים</td>
+<td>חלקי</td>
+<td>נתיבי תוספים תחת <code dir="auto">/api/plugins/&lt;name&gt;/</code>.</td>
+</tr>
+<tr>
+<td>Policies ו-middlewares</td>
+<td>לא נתמך</td>
+<td>הרשאות והגבלות קצב מובנות.</td>
+</tr>
+<tr>
+<td><code dir="auto">register</code> / <code dir="auto">bootstrap</code></td>
+<td>חלקי</td>
+<td>פונקציית ההפעלה של תוסף, שרצה כשהתוסף עולה, מופעל או כשההגדרות שלו משתנות; היא יכולה לזרוע תוכן ולהחליף את הרשאות התפקיד הציבורי.</td>
+</tr>
+<tr>
+<td>משימות Cron</td>
+<td>חלקי</td>
+<td>משימות של תוספים.</td>
+</tr>
+<tr>
+<td>Document Service / Entity Service ב-JavaScript</td>
+<td>לא נתמך</td>
+<td>אין runtime של JavaScript.</td>
+</tr>
+<tr>
+<td>תוספי npm מה-marketplace של Strapi</td>
+<td>לא נתמך</td>
+<td></td>
+</tr>
+<tr>
+<td>Webhooks</td>
+<td>נתמך</td>
+<td>חתומים, עם ניסיונות חוזרים ויומן; <code dir="auto">entry.draft-discard</code> הוא <code dir="auto">entry.discard-draft</code>. ראו <a href="/verdin/he/guides/integrations/webhooks/">Webhooks</a>.</td>
+</tr>
+<tr>
+<td>אסימוני API (קריאה בלבד, גישה מלאה, מותאם)</td>
+<td>נתמך</td>
+<td>אותם סוגים, תפוגה אופציונלית, חידוש.</td>
+</tr>
+<tr>
+<td>Transfer tokens, <code dir="auto">strapi transfer</code></td>
+<td>לא נתמך</td>
+<td>השתמשו ב-<code dir="auto">verdin export</code> וב-<code dir="auto">verdin import verdin</code>.</td>
+</tr>
+<tr>
+<td>קובצי <code dir="auto">strapi export</code></td>
+<td>נתמך (ייבוא)</td>
+<td><code dir="auto">verdin import strapi</code>; ייצואים מוצפנים לא נקראים.</td>
+</tr>
+<tr>
+<td><code dir="auto">config/*.js</code>, <code dir="auto">.env</code></td>
+<td>חלקי</td>
+<td><code dir="auto">verdin.toml</code> ומשתני סביבה.</td>
+</tr>
+<tr>
+<td>טיפוסי TypeScript</td>
+<td>נתמך</td>
+<td><code dir="auto">verdin types</code>.</td>
+</tr>
+<tr>
+<td>ספקי דוא“ל</td>
+<td>חלקי</td>
+<td>SMTP, Resend ו-Postmark.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h2"><h2 id="פאנל-הניהול">פאנל הניהול</h2><a class="sl-anchor-link" href="#פאנל-הניהול"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “פאנל הניהול”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>תכונה</th>
+<th>סטטוס</th>
+<th>הערות</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Content manager, ספריית המדיה, בונה סוגי התוכן</td>
+<td>נתמך</td>
+<td>פאנל Angular משלו, לא ה-admin ב-React של Strapi.</td>
+</tr>
+<tr>
+<td>משתמשי ניהול, תפקידים, תפקידים מותאמים</td>
+<td>נתמך</td>
+<td>Super Admin, Editor ו-Author מובנים, ועוד תפקידים מותאמים.</td>
+</tr>
+<tr>
+<td>הרשאות ברמת שדה ושפה</td>
+<td>נתמך</td>
+<td></td>
+</tr>
+<tr>
+<td>תנאי RBAC</td>
+<td>חלקי</td>
+<td>רק התנאי המובנה <code dir="auto">is-creator</code>; אין תנאים מותאמים.</td>
+</tr>
+<tr>
+<td>התאמה אישית של פאנל הניהול (<code dir="auto">src/admin/app</code>)</td>
+<td>חלקי</td>
+<td>לוגו, favicon, כותרת, צבע הדגשה וטקסטים ב-<code dir="auto">[admin.branding]</code>; ווידג’טים ושדות מותאמים מתוספים. אין דפים מותאמים, injection zones או הרחבות React.</td>
+</tr>
+<tr>
+<td>API הניהול (<code dir="auto">/admin/…</code>)</td>
+<td>לא נתמך</td>
+<td>ל-Verdin יש API ניהול משלו; אל תבנו על זה של Strapi.</td>
+</tr>
+<tr>
+<td>תצורת תצוגת עריכה ותצוגת רשימה</td>
+<td>נתמך</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h2"><h2 id="תכונות-enterprise">תכונות Enterprise</h2><a class="sl-anchor-link" href="#תכונות-enterprise"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “תכונות Enterprise”</span></a></div>
+<p>כל מה שב-Verdin הוא קוד פתוח; אלה תכונות Enterprise או בתשלום ב-Strapi.</p>
+<table>
+<thead>
+<tr>
+<th>תכונה של Strapi</th>
+<th>סטטוס</th>
+<th>הערות</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SSO</td>
+<td>חלקי</td>
+<td>ספקי OpenID Connect, עם מיפוי של קבוצות לתפקידים. אין SAML או אסטרטגיות passport אחרות. ראו <a href="/verdin/he/guides/auth/sso/">כניסה יחידה (SSO)</a>.</td>
+</tr>
+<tr>
+<td>יומני ביקורת</td>
+<td>נתמך</td>
+<td>ראו <a href="/verdin/he/guides/content/audit-logs/">יומני ביקורת</a>.</td>
+</tr>
+<tr>
+<td>תהליכי בקרה</td>
+<td>נתמך</td>
+<td>תפקידים לכל שלב מגבילים מי מעביר רשומות <em>לתוך</em> שלב, ושלב פרסום נדרש חל על כל API. ראו <a href="/verdin/he/guides/content/review-workflows/">תהליכי בקרה</a>.</td>
+</tr>
+<tr>
+<td>מהדורות</td>
+<td>נתמך</td>
+<td>מתוזמנות או מיידיות.</td>
+</tr>
+<tr>
+<td>היסטוריית תוכן</td>
+<td>נתמך</td>
+<td><code dir="auto">[history].max_versions</code> גרסאות לכל מסמך.</td>
+</tr>
+<tr>
+<td>תצוגה מקדימה ותצוגה מקדימה חיה</td>
+<td>נתמך</td>
+<td>כתובות תצוגה מקדימה עם אסימונים קצרי מועד, תצוגה מקדימה זה לצד זה ו<a href="/verdin/he/guides/frontend/visual-editing/">עריכה חזותית</a>.</td>
+</tr>
+<tr>
+<td>תפקידי ניהול מותאמים</td>
+<td>נתמך</td>
+<td>בלי הגבלה על מספרם.</td>
+</tr>
+</tbody>
+</table>
+</div><footer class="sl-flex astro-ddtxxk7k"><div class="meta sl-flex astro-ddtxxk7k"><a href="https://github.com/verdin-cms/verdin/edit/main/site/src/content/docs/he/migrate/compatibility.md" class="sl-flex print:hidden astro-qlekgd3o"><svg aria-hidden="true" class="astro-qlekgd3o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.2em;"><path d="M22 7.24a1 1 0 0 0-.29-.71l-4.24-4.24a1 1 0 0 0-1.1-.22 1 1 0 0 0-.32.22l-2.83 2.83L2.29 16.05a1 1 0 0 0-.29.71V21a1 1 0 0 0 1 1h4.24a1 1 0 0 0 .76-.29l10.87-10.93L21.71 8c.1-.1.17-.2.22-.33a1 1 0 0 0 0-.24v-.14l.07-.05ZM6.83 20H4v-2.83l9.93-9.93 2.83 2.83L6.83 20ZM18.17 8.66l-2.83-2.83 1.42-1.41 2.82 2.82-1.41 1.42Z"/></svg>ערכו דף</a><p>עדכון אחרון: <time datetime="2026-09-30T10:55:31.000Z">30 בספט׳ 2026</time></p></div><div class="pagination-links print:hidden astro-b5raizh3" dir="rtl"><a href="/verdin/he/migrate/porting-custom-code/" rel="prev" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17.92 11.62a1.001 1.001 0 0 0-.21-.33l-5-5a1.003 1.003 0 1 0-1.42 1.42l3.3 3.29H7a1 1 0 0 0 0 2h7.59l-3.3 3.29a1.002 1.002 0 0 0 .325 1.639 1 1 0 0 0 1.095-.219l5-5a1 1 0 0 0 .21-.33 1 1 0 0 0 0-.76Z"/></svg><span class="astro-b5raizh3">הקודם<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">העברת קוד מותאם</span></span></a><a href="/verdin/he/migrate/upgrading/" rel="next" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17 11H9.41l3.3-3.29a1.004 1.004 0 1 0-1.42-1.42l-5 5a1 1 0 0 0-.21.33 1 1 0 0 0 0 .76 1 1 0 0 0 .21.33l5 5a1.002 1.002 0 0 0 1.639-.325 1 1 0 0 0-.219-1.095L9.41 13H17a1 1 0 0 0 0-2Z"/></svg><span class="astro-b5raizh3">הבא<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">שדרוג Verdin</span></span></a></div></footer></div></div></main></div></div></div></div></body></html>

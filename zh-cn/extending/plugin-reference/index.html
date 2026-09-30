@@ -1,0 +1,908 @@
+<!DOCTYPE html><html lang="zh-CN" dir="ltr" data-theme="dark" data-has-toc data-has-sidebar class="astro-g5ptsecz"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>插件参考 | Verdin</title><link rel="canonical" href="https://verdin-cms.github.io/verdin/zh-cn/extending/plugin-reference/"/><link rel="alternate" hreflang="en" href="https://verdin-cms.github.io/verdin/extending/plugin-reference/"/><link rel="alternate" hreflang="ar" href="https://verdin-cms.github.io/verdin/ar/extending/plugin-reference/"/><link rel="alternate" hreflang="ca" href="https://verdin-cms.github.io/verdin/ca/extending/plugin-reference/"/><link rel="alternate" hreflang="de" href="https://verdin-cms.github.io/verdin/de/extending/plugin-reference/"/><link rel="alternate" hreflang="es" href="https://verdin-cms.github.io/verdin/es/extending/plugin-reference/"/><link rel="alternate" hreflang="fa" href="https://verdin-cms.github.io/verdin/fa/extending/plugin-reference/"/><link rel="alternate" hreflang="fr" href="https://verdin-cms.github.io/verdin/fr/extending/plugin-reference/"/><link rel="alternate" hreflang="he" href="https://verdin-cms.github.io/verdin/he/extending/plugin-reference/"/><link rel="alternate" hreflang="it" href="https://verdin-cms.github.io/verdin/it/extending/plugin-reference/"/><link rel="alternate" hreflang="ja" href="https://verdin-cms.github.io/verdin/ja/extending/plugin-reference/"/><link rel="alternate" hreflang="ko" href="https://verdin-cms.github.io/verdin/ko/extending/plugin-reference/"/><link rel="alternate" hreflang="nl" href="https://verdin-cms.github.io/verdin/nl/extending/plugin-reference/"/><link rel="alternate" hreflang="pl" href="https://verdin-cms.github.io/verdin/pl/extending/plugin-reference/"/><link rel="alternate" hreflang="pt-BR" href="https://verdin-cms.github.io/verdin/pt-br/extending/plugin-reference/"/><link rel="alternate" hreflang="ru" href="https://verdin-cms.github.io/verdin/ru/extending/plugin-reference/"/><link rel="alternate" hreflang="tr" href="https://verdin-cms.github.io/verdin/tr/extending/plugin-reference/"/><link rel="alternate" hreflang="uk" href="https://verdin-cms.github.io/verdin/uk/extending/plugin-reference/"/><link rel="alternate" hreflang="zh-CN" href="https://verdin-cms.github.io/verdin/zh-cn/extending/plugin-reference/"/><link rel="alternate" hreflang="x-default" href="https://verdin-cms.github.io/verdin/extending/plugin-reference/"/><link rel="sitemap" href="/verdin/sitemap-index.xml"/><link rel="shortcut icon" href="/verdin/favicon.svg" type="image/svg+xml"/><meta name="generator" content="Astro v7.3.5"/><meta name="generator" content="Starlight v0.42.4"/><meta property="og:title" content="插件参考"/><meta property="og:type" content="article"/><meta property="og:url" content="https://verdin-cms.github.io/verdin/zh-cn/extending/plugin-reference/"/><meta property="og:locale" content="zh-CN"/><meta property="og:description" content="plugin.toml 清单、能力、钩子及其负载、宿主函数、路由、任务、启动函数、GraphQL 字段、管理后台扩展点、限制和指标。"/><meta property="og:site_name" content="Verdin"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="plugin.toml 清单、能力、钩子及其负载、宿主函数、路由、任务、启动函数、GraphQL 字段、管理后台扩展点、限制和指标。"/><meta property="og:image" content="https://verdin-cms.github.io/verdin/og/zh-cn/extending/plugin-reference.png"/><meta name="twitter:image" content="https://verdin-cms.github.io/verdin/og/zh-cn/extending/plugin-reference.png"/><script>
+	window.StarlightThemeProvider = (() => {
+		const storedTheme =
+			typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		const theme =
+			storedTheme ||
+			(window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+		document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+		return {
+			updatePickers(theme = storedTheme || 'auto') {
+				document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+					const select = picker.querySelector('select');
+					if (select) select.value = theme;
+					/** @type {HTMLTemplateElement | null} */
+					const tmpl = document.querySelector(`#theme-icons`);
+					const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+					if (newIcon) {
+						const oldIcon = picker.querySelector('svg.label-icon');
+						if (oldIcon) {
+							oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+						}
+					}
+				});
+			},
+		};
+	})();
+</script><template id="theme-icons"><svg aria-hidden="true" class="light astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"/></svg><svg aria-hidden="true" class="dark astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"/></svg><svg aria-hidden="true" class="auto astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg></template><link rel="stylesheet" href="/verdin/_astro/print.ehPL0gv-.css" media="print"><link rel="stylesheet" href="/verdin/_astro/Playground.Sp6wezWm.css"><link rel="stylesheet" href="/verdin/_astro/middleware.CnzdItGa.css"><style>@layer starlight.components{.card:where(.astro-oag6qnet){--sl-card-border:var(--sl-color-purple);--sl-card-bg:var(--sl-color-purple-low);border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-black);flex-direction:column;gap:clamp(.5rem,.125rem + 1vw,1rem);padding:clamp(1rem,.125rem + 3vw,2.5rem)}.card:where(.astro-oag6qnet):nth-child(4n+1){--sl-card-border:var(--sl-color-orange);--sl-card-bg:var(--sl-color-orange-low)}.card:where(.astro-oag6qnet):nth-child(4n+3){--sl-card-border:var(--sl-color-green);--sl-card-bg:var(--sl-color-green-low)}.card:where(.astro-oag6qnet):nth-child(4n+4){--sl-card-border:var(--sl-color-red);--sl-card-bg:var(--sl-color-red-low)}.card:where(.astro-oag6qnet):nth-child(4n+5){--sl-card-border:var(--sl-color-blue);--sl-card-bg:var(--sl-color-blue-low)}.title:where(.astro-oag6qnet){font-weight:600;font-size:var(--sl-text-h4);color:var(--sl-color-white);line-height:var(--sl-line-height-headings);align-items:center;gap:1rem}.card:where(.astro-oag6qnet) .icon:where(.astro-oag6qnet){border:1px solid var(--sl-card-border);background-color:var(--sl-card-bg);border-radius:.25rem;flex-shrink:0;padding:.2em}.card:where(.astro-oag6qnet) .body:where(.astro-oag6qnet){font-size:clamp(var(--sl-text-sm), calc(.5rem + 1vw), var(--sl-text-body));margin:0}}
+@layer starlight.components{.card-grid:where(.astro-7qmvx3iy){grid-template-columns:100%;gap:1rem;display:grid}.card-grid:where(.astro-7qmvx3iy)>*{margin-top:0!important}@media (width>=50rem){.card-grid:where(.astro-7qmvx3iy){grid-template-columns:1fr 1fr;gap:1.5rem}.stagger:where(.astro-7qmvx3iy){--stagger-height:5rem;padding-bottom:var(--stagger-height)}.stagger:where(.astro-7qmvx3iy)>:nth-child(2n){transform:translateY(var(--stagger-height))}}.sl-link-card:where(.astro-zaaezwya){border:1px solid var(--sl-color-gray-5);box-shadow:var(--sl-shadow-sm);border-radius:.5rem;grid-template-columns:1fr auto;gap:.5rem;padding:1rem;display:grid;position:relative}a:where(.astro-zaaezwya){line-height:var(--sl-line-height-headings);text-decoration:none}a:where(.astro-zaaezwya):before{content:"";position:absolute;inset:0}.stack:where(.astro-zaaezwya){flex-direction:column;gap:.5rem}.title:where(.astro-zaaezwya){color:var(--sl-color-white);font-weight:600;font-size:var(--sl-text-lg)}.description:where(.astro-zaaezwya){color:var(--sl-color-gray-3);line-height:1.5}.icon:where(.astro-zaaezwya){color:var(--sl-color-gray-3)}.sl-link-card:where(.astro-zaaezwya):hover{background:var(--sl-color-gray-7,var(--sl-color-gray-6));border-color:var(--sl-color-gray-2)}.sl-link-card:where(.astro-zaaezwya):hover .icon:where(.astro-zaaezwya){color:var(--sl-color-white)}}.plate:where(.astro-zbp6lmd6){isolation:isolate;color:#2a1006;background:linear-gradient(112deg,#0000 0 38%,#ffd6b447 44%,#0000 52%),repeating-linear-gradient(90deg,#ffffff09 0 1px,#0000 1px 3px),linear-gradient(160deg,#e3a472 0%,#cf7f49 40%,#c06a34 68%,#d58d58 100%);border-radius:.6rem;margin:clamp(1rem,4vw,2.5rem) 0;padding:clamp(1.75rem,4vw,2.75rem) clamp(1.5rem,5vw,3.5rem);position:relative;overflow:hidden;box-shadow:inset 0 1px #ffe1c880,inset 0 -2px #46190559,0 1px 2px #28140a40,0 18px 40px -24px #3c1e0a8c}.patina:where(.astro-zbp6lmd6){z-index:-1;pointer-events:none;width:100%;height:100%;mask-image:radial-gradient(circle at 0% 100%, #000 0, transparent var(--bloom)), radial-gradient(circle at 100% 0%, #000 0, transparent calc(var(--bloom) * .8)), radial-gradient(circle at 100% 100%, #000 0, transparent calc(var(--bloom) * .45));--bloom:8%;transition:--bloom 1.6s cubic-bezier(.2,.7,.2,1);position:absolute;inset:0}.plate:where(.astro-zbp6lmd6).grown .patina:where(.astro-zbp6lmd6){--bloom:46%}@property --bloom{syntax:"<percentage>";inherits:false;initial-value:8%}@media (prefers-reduced-motion:reduce){.patina:where(.astro-zbp6lmd6){--bloom:46%;transition:none}}.rivet:where(.astro-zbp6lmd6){background:radial-gradient(circle at 35% 30%,#f3c39c,#8a4019 70%);border-radius:50%;width:.55rem;height:.55rem;position:absolute;box-shadow:0 1px 1px #280f0080}.stamp:where(.astro-zbp6lmd6){gap:1.5rem;display:grid}@media (width>=50rem){.stamp:where(.astro-zbp6lmd6){grid-template-columns:minmax(12rem,.8fr) 2fr;align-items:center}}.label:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);letter-spacing:.14em;text-transform:uppercase;color:#2a1006cc;font-size:.66rem;font-weight:600;display:block}.model:where(.astro-zbp6lmd6){margin:0}.name:where(.astro-zbp6lmd6){font-family:var(--vd-font-display);letter-spacing:-.02em;text-shadow:0 1px #ffdcbe73,0 -1px #3c140059;font-size:clamp(3rem,8vw,4.5rem);font-weight:860;font-stretch:58%;line-height:.9;display:block}.version:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);font-size:.85rem;font-weight:600}dl:where(.astro-zbp6lmd6){gap:.85rem 2rem;margin:0;display:grid}@media (width>=38rem){dl:where(.astro-zbp6lmd6){grid-template-columns:repeat(2,minmax(0,1fr))}}dl:where(.astro-zbp6lmd6)>div:where(.astro-zbp6lmd6){border-top:1px solid #2a10064d;padding-top:.5rem;box-shadow:inset 0 1px #ffdcbe33}dd:where(.astro-zbp6lmd6){text-shadow:0 1px #ffdcbe4d;margin:.15rem 0 0;font-size:.98rem;font-weight:600;line-height:1.4}
+@layer starlight.components{svg:where(.astro-hkc32dio){color:var(--sl-icon-color);font-size:var(--sl-icon-size,1em);width:1em;height:1em}}
+@layer starlight.components{starlight-tabs:where(.astro-scn3uvmv){display:block}.tablist-wrapper:where(.astro-scn3uvmv){overflow-x:auto}:where(.astro-scn3uvmv)[role=tablist]{border-bottom:2px solid var(--sl-color-gray-5);padding:0;list-style:none;display:flex}.tab:where(.astro-scn3uvmv){display:flex}.tab:where(.astro-scn3uvmv)>:where(.astro-scn3uvmv)[role=tab]{--sl-tab-color-border:var(--sl-color-gray-5);line-height:var(--sl-line-height-headings);box-shadow:0 2px 0 var(--sl-tab-color-border);color:var(--sl-color-gray-3);outline-offset:var(--sl-outline-offset-inside);overflow-wrap:initial;align-items:center;gap:.5rem;padding:.275rem 1.25rem;text-decoration:none;display:flex}.tab:where(.astro-scn3uvmv) :where(.astro-scn3uvmv)[role=tab][aria-selected=true]{--sl-tab-color-border:var(--sl-color-text-accent);color:var(--sl-color-white);font-weight:600}.tablist-wrapper:where(.astro-scn3uvmv)~[role=tabpanel]{margin-top:1rem}}
+@layer starlight.components{.sl-steps{--bullet-size:calc(var(--sl-line-height) * 1rem);--bullet-margin:.375rem;counter-reset:steps-counter var(--sl-steps-start,0);padding-inline-start:0;list-style:none}.sl-steps>li{counter-increment:steps-counter;padding-inline-start:calc(var(--bullet-size) + 1rem);min-height:calc(var(--bullet-size) + var(--bullet-margin));padding-bottom:1px;position:relative}.sl-steps>li+li{margin-top:0}.sl-steps>li:before{content:counter(steps-counter);top:0;width:var(--bullet-size);height:var(--bullet-size);line-height:var(--bullet-size);font-size:var(--sl-text-xs);text-align:center;color:var(--sl-color-white);background-color:var(--sl-color-gray-6);box-shadow:inset 0 0 0 1px var(--sl-color-gray-5);border-radius:99rem;font-weight:600;position:absolute;inset-inline-start:0}.sl-steps>li:after{--guide-width:1px;content:"";top:calc(var(--bullet-size) + var(--bullet-margin));bottom:var(--bullet-margin);width:var(--guide-width);background-color:var(--sl-color-hairline-light);position:absolute;inset-inline-start:calc((var(--bullet-size) - var(--guide-width)) / 2)}}@layer starlight.content{.sl-steps>li>:first-child{--lh:calc(1em * var(--sl-line-height));--shift-y:calc(.5 * (var(--bullet-size) - var(--lh)));transform:translateY(var(--shift-y));margin-bottom:var(--shift-y)}.sl-steps>li>:first-child:where(h1,h2,h3,h4,h5,h6){--lh:calc(1em * var(--sl-line-height-headings))}@supports (--prop:1lh){.sl-steps>li>:first-child{--lh:1lh}}}
+@layer starlight.components{starlight-file-tree:where(.astro-a2hqddox){--x-space:1.5rem;--y-space:.125rem;--y-pad:0;border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-gray-6);font-size:var(--sl-text-xs);font-family:var(--__sl-font-mono);padding:1rem;display:block;overflow-x:auto}starlight-file-tree:where(.astro-a2hqddox) .directory>details{padding:0;background:0 0;border:0;padding-inline-start:var(--x-space)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary{padding:var(--y-pad) .625rem;color:var(--sl-color-white);border:0;max-width:100%;margin-inline-start:calc(-1 * var(--x-space));font-weight:400}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::marker,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::-webkit-details-marker{color:var(--sl-color-gray-3)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .tree-icon{cursor:pointer;color:var(--sl-color-text-accent);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover~ul{border-color:var(--sl-color-gray-4)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .highlight .tree-icon{color:var(--sl-color-text-invert);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) ul{border-inline-start:1px solid var(--sl-color-gray-5);margin-inline-start:.5rem;padding:0;padding-inline-start:.125rem;list-style:none}starlight-file-tree:where(.astro-a2hqddox)>ul{border:0;margin:0;padding:0}starlight-file-tree:where(.astro-a2hqddox) li{margin:var(--y-space) 0;padding:var(--y-pad) 0}starlight-file-tree:where(.astro-a2hqddox) .file{color:var(--sl-color-white);margin-inline-start:calc(var(--x-space) - .125rem)}starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:wrap;align-items:flex-start;max-width:calc(100% - 1rem);display:inline-flex}@media (width>=30em){starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:nowrap}}starlight-file-tree:where(.astro-a2hqddox) .tree-entry>:first-child{flex-shrink:0}starlight-file-tree:where(.astro-a2hqddox) .empty{color:var(--sl-color-gray-3);padding-inline-start:.375rem}starlight-file-tree:where(.astro-a2hqddox) .comment{color:var(--sl-color-gray-3);min-width:12rem;max-width:24rem;padding-inline-start:1.625rem}starlight-file-tree:where(.astro-a2hqddox) .highlight{color:var(--sl-color-text-invert);background-color:var(--sl-color-text-accent);border-radius:.25rem;padding-inline-end:.5rem;display:inline-block}starlight-file-tree:where(.astro-a2hqddox) svg{fill:var(--sl-color-gray-3);vertical-align:middle;width:.875rem;height:.875rem;margin-inline:.25rem .375rem;display:inline}starlight-file-tree:where(.astro-a2hqddox) .highlight svg.tree-icon{fill:currentColor}}
+</style><script type="module" src="/verdin/_astro/page.Dwipeu-R.js"></script></head><body class="astro-g5ptsecz"><a class="sl-skip-link astro-qb7clj6f" href="#_top">跳转到内容</a><div class="page sl-flex astro-yntsjkba"><header class="header astro-yntsjkba"><div class="header astro-by6fddyj"><div class="title-wrapper sl-flex astro-by6fddyj"><a href="/verdin/zh-cn" class="site-title sl-flex astro-6rvad3va"><img class="astro-6rvad3va" alt src="/verdin/_astro/verdin-mark.CEc0Dc_U.svg" width="32" height="32"><span class="astro-6rvad3va" translate="no">Verdin</span></a></div><div class="sl-flex print:hidden astro-by6fddyj"><site-search class="astro-by6fddyj astro-b5kgnn7o" data-translations="{&quot;placeholder&quot;:&quot;搜索&quot;}"><button data-open-modal disabled aria-label="搜索" aria-keyshortcuts="Control+K" class="astro-b5kgnn7o"><svg aria-hidden="true" class="astro-b5kgnn7o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg><span class="sl-hidden md:sl-block astro-b5kgnn7o" aria-hidden="true">搜索</span><kbd class="sl-hidden md:sl-flex astro-b5kgnn7o" style="display: none;"><kbd class="astro-b5kgnn7o">Ctrl</kbd><kbd class="astro-b5kgnn7o">K</kbd></kbd></button><dialog style="padding:0" aria-label="搜索" class="astro-b5kgnn7o"><div class="dialog-frame sl-flex astro-b5kgnn7o"><button data-close-modal class="sl-flex md:sl-hidden astro-b5kgnn7o">取消</button><div class="search-container astro-b5kgnn7o"><div id="starlight__search" class="astro-b5kgnn7o"></div></div></div></dialog></site-search><script>
+	(() => {
+		const openBtn = document.querySelector('button[data-open-modal]');
+		const shortcut = openBtn?.querySelector('kbd');
+		if (!openBtn || !(shortcut instanceof HTMLElement)) return;
+		const platformKey = shortcut.querySelector('kbd');
+		if (platformKey && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+			platformKey.textContent = '⌘';
+			openBtn.setAttribute('aria-keyshortcuts', 'Meta+K');
+		}
+		shortcut.style.display = '';
+	})();
+</script><script type="module" src="/verdin/_astro/Search.astro_astro_type_script_index_0_lang.BVn7b3Eg.js"></script></div><div class="sl-hidden md:sl-flex print:hidden right-group astro-by6fddyj"><div class="sl-flex social-icons astro-by6fddyj"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">选择主题</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">深色</option><option value="light" class="astro-2z5xp7gb">浅色</option><option value="auto" selected class="astro-2z5xp7gb">自动</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><script type="module">var e=`starlight-theme`,t=e=>e===`auto`||e===`dark`||e===`light`?e:`auto`,n=()=>t(typeof localStorage<`u`&&localStorage.getItem(e));function r(t){typeof localStorage<`u`&&localStorage.setItem(e,t===`light`||t===`dark`?t:``)}var i=()=>matchMedia(`(prefers-color-scheme: light)`).matches?`light`:`dark`;function a(e){StarlightThemeProvider.updatePickers(e),document.documentElement.dataset.theme=e===`auto`?i():e,r(e)}matchMedia(`(prefers-color-scheme: light)`).addEventListener(`change`,()=>{n()===`auto`&&a(`auto`)});var o=class extends HTMLElement{constructor(){super(),a(n()),this.querySelector(`select`)?.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&a(t(e.currentTarget.value))})}};customElements.define(`starlight-theme-select`,o);</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">选择语言</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/extending/plugin-reference/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/extending/plugin-reference/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/extending/plugin-reference/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/extending/plugin-reference/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/extending/plugin-reference/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/extending/plugin-reference/" class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/extending/plugin-reference/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/extending/plugin-reference/" class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/extending/plugin-reference/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/extending/plugin-reference/" class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/extending/plugin-reference/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/extending/plugin-reference/" class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/extending/plugin-reference/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/extending/plugin-reference/" class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/extending/plugin-reference/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/extending/plugin-reference/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/extending/plugin-reference/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/extending/plugin-reference/" selected class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select><script type="module">var e=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);e&&(e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=e.currentTarget.value)}),window.addEventListener(`pageshow`,t=>{if(!t.persisted)return;let n=e.querySelector(`option[selected]`)?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}};customElements.define(`starlight-lang-select`,e);</script></div></div></header><nav class="sidebar print:hidden astro-yntsjkba" aria-label="主要"><button popovertarget="starlight__sidebar" class="sl-menu-button sl-flex md:sl-hidden print:hidden astro-r2osgdlg"><svg aria-hidden="true" class="open-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg><svg aria-hidden="true" class="close-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"/></svg><span class="sr-only astro-r2osgdlg">菜单</span></button><script type="module">var e=class extends HTMLElement{constructor(){super();let e=matchMedia(`(min-width: 50em)`),t=()=>{this.popover=e.matches?null:`auto`};t(),e.addEventListener(`change`,()=>t()),this.addEventListener(`toggle`,({newState:e})=>this.trapFocus(e===`open`))}trapFocus(e){document.querySelectorAll(`.main-frame, .sl-skip-link`).forEach(t=>{t.toggleAttribute(`inert`,e)})}};customElements.define(`sl-sidebar-pane`,e);</script><sl-sidebar-pane popover id="starlight__sidebar" class="sidebar-pane astro-yntsjkba"><div class="sidebar-content sl-flex astro-yntsjkba"><sl-sidebar-state-persist data-hash="1c2yjd5" class="astro-ipdry5cl"><script aria-hidden="true">
+		(() => {
+			try {
+				if (!matchMedia('(min-width: 50em)').matches) return;
+				/** @type {HTMLElement | null} */
+				const target = document.querySelector('sl-sidebar-state-persist');
+				const state = JSON.parse(sessionStorage.getItem('sl-sidebar-state') || '0');
+				if (!target || !state || target.dataset.hash !== state.hash) return;
+				window._starlightScrollRestore = state.scroll;
+				customElements.define(
+					'sl-sidebar-restore',
+					class SidebarRestore extends HTMLElement {
+						connectedCallback() {
+							try {
+								const idx = parseInt(this.dataset.index || '');
+								const details = this.closest('details');
+								if (details && typeof state.open[idx] === 'boolean') details.open = state.open[idx];
+							} catch {}
+						}
+					}
+				);
+			} catch {}
+		})();
+	</script><ul class="top-level astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">快速开始</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="0"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/start/introduction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">简介</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/start/installation/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">安装</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/start/quickstart/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">快速开始</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/start/tutorial-astro/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">用 Astro 搭建博客</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/start/tutorial-nextjs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">用 Next.js 搭建博客</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/start/project-structure/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">项目结构</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">核心概念</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="1"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/concepts/content-model/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">内容模型</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/concepts/components-and-dynamic-zones/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">组件和动态区域</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/concepts/relations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">关联</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/concepts/draft-and-publish/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">草稿与发布</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/concepts/internationalization/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">国际化</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/concepts/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">权限</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/concepts/schema-migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Schema 迁移</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/concepts/media/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">媒体</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">指南</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="2"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">内容</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="3"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/content/localizing-content/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">内容本地化</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/content/review-workflows/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">审核工作流</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/content/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">发布计划</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/content/content-history/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">内容历史</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/content/audit-logs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">审计日志</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/content/preview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">预览</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/content/comments-and-tasks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">评论与任务</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/content/search/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">搜索</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/content/import-export/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">导入和导出</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/content/editor-digest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">编辑摘要</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">前端</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="4"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/frontend/typed-client/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">类型化客户端</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/frontend/images/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">响应式图片</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/frontend/visual-editing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">可视化编辑</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/frontend/seo-and-sitemap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">SEO 与站点地图</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/frontend/redirects/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">重定向</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/frontend/menus/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">菜单</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/frontend/forms/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">表单</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/frontend/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">实时</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">身份验证</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="5"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/auth/admin-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">管理员用户</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/auth/two-factor/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">双因素认证</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/auth/sso/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">单点登录</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/auth/api-tokens/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">API 令牌</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/auth/end-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">终端用户</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">集成</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="6"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/integrations/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Webhook</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/integrations/mcp/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">MCP 服务器</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/integrations/ai-actions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">AI 操作</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/guides/integrations/deploys-and-cdn/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">部署与 CDN</span></a></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">扩展</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="7"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/extending/plugins/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">插件</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/extending/plugin-tutorial/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">插件教程</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/extending/plugin-reference/" aria-current="page" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">插件参考</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">API 参考</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="8"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/api/rest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">REST</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/api/graphql/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">GraphQL</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/api/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">API 调试台</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/api/admin/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">管理</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/api/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">实时</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/api/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Webhook</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Example content API</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="9"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overview</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Article</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="10"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List articles</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentidactionsaction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Publish, unpublish or discard the draft</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Category</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="11"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List categories</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a category</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Homepage</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="12"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create or update the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete the Homepage</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Tag</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="13"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List tags</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a tag</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Internationalization</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="14"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apii18nlocales/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List the locales</span></a></li></ul></details></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">参考</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="15"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/reference/configuration/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">配置</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/reference/cli/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">命令行</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/reference/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Permissions</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/reference/attribute-types/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">属性类型</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">部署与运维</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="16"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/production-checklist/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">生产环境检查清单</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/security/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">安全</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/compose/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">生产环境中的 Docker Compose</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/docker/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Docker</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/linux-server/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Linux 服务器</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/fly/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Fly.io</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/one-click/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">一键部署</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/render/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Render</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/railway/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Railway</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/helm/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Helm chart</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/kubernetes/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Kubernetes</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/scaling/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">多个实例</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/backups/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">备份</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/monitoring/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">监控</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/deploy/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">托管的演示环境</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">迁移与升级</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="17"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/migrate/from-strapi/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">从 Strapi 迁移</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/migrate/porting-custom-code/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">移植自定义代码</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/migrate/compatibility/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">与 Strapi 的兼容性</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/migrate/upgrading/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">升级 Verdin</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">内部原理</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="18"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/internals/overview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">概览</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/internals/storage/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">存储</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/internals/database/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">数据库层</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/internals/migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">迁移引擎</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/internals/document-service/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Document Service</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/internals/admin-panel/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">管理后台</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/internals/testing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">测试</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/internals/decisions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">决策日志</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/internals/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">发布与文档托管</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">项目</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="19"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/project/roadmap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Verdin roadmap</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/project/translating/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Translating the admin panel</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/zh-cn/project/changelog/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Changelog</span></a></li></ul></details></li></ul><script aria-hidden="true">
+		(() => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!window._starlightScrollRestore || !scroller) return;
+			scroller.scrollTop = window._starlightScrollRestore;
+			delete window._starlightScrollRestore;
+		})();
+	</script></sl-sidebar-state-persist><div class="md:sl-hidden"><div class="mobile-preferences sl-flex astro-p4azlveh"><div class="social-icons astro-p4azlveh"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">选择主题</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">深色</option><option value="light" class="astro-2z5xp7gb">浅色</option><option value="auto" selected class="astro-2z5xp7gb">自动</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">选择语言</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/extending/plugin-reference/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/extending/plugin-reference/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/extending/plugin-reference/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/extending/plugin-reference/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/extending/plugin-reference/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/extending/plugin-reference/" class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/extending/plugin-reference/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/extending/plugin-reference/" class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/extending/plugin-reference/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/extending/plugin-reference/" class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/extending/plugin-reference/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/extending/plugin-reference/" class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/extending/plugin-reference/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/extending/plugin-reference/" class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/extending/plugin-reference/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/extending/plugin-reference/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/extending/plugin-reference/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/extending/plugin-reference/" selected class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select></div></div></div></sl-sidebar-pane></nav><div class="main-frame astro-yntsjkba"><script type="module">var e=document.getElementById(`starlight__sidebar`),t=e?.querySelector(`sl-sidebar-state-persist`),n=`sl-sidebar-state`,r=()=>{let r=[],i=t?.dataset.hash||``;try{let e=sessionStorage.getItem(n),t=JSON.parse(e||`{}`);Array.isArray(t.open)&&t.hash===i&&(r=t.open)}catch{}return{hash:i,open:r,scroll:e?.scrollTop||0}},i=e=>{try{sessionStorage.setItem(n,JSON.stringify(e))}catch{}},a=()=>i(r()),o=(e,t)=>{let n=r();n.open[t]=e,i(n)};t?.addEventListener(`click`,e=>{if(!(e.target instanceof Element))return;let t=e.target.closest(`summary`)?.closest(`details`);if(!t)return;let n=t.querySelector(`sl-sidebar-restore`),r=parseInt(n?.dataset.index||``);isNaN(r)||o(!t.open,r)}),addEventListener(`visibilitychange`,()=>{document.visibilityState===`hidden`&&a()});</script><div class="lg:sl-flex astro-lrzkfocr"><aside class="right-sidebar-container print:hidden astro-lrzkfocr"><div class="right-sidebar astro-lrzkfocr"><div class="lg:sl-hidden astro-qok35upx"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-66cqc7ze"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-66cqc7ze"><details id="starlight__mobile-toc" class="astro-66cqc7ze"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-66cqc7ze"><span class="toggle sl-flex astro-66cqc7ze">本页内容<svg aria-hidden="true" class="caret astro-66cqc7ze astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></span><span class="display-current astro-66cqc7ze"></span></summary><div class="dropdown astro-66cqc7ze"><ul class="isMobile astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">概述</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#插件目录" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">插件目录</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#清单" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">清单</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#顶层键" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">顶层键</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#capabilities" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[capabilities]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#limits" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[limits]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[hooks]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[routes]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[jobs]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#startup" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[startup]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[graphql]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#admin" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[admin]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#settings" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[settings]]</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#导出函数" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">导出函数</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#before-钩子" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">before 钩子</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#after-钩子" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">after 钩子</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#路由" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">路由</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#任务" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">任务</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#启动函数" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">启动函数</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql-字段" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">GraphQL 字段</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#宿主函数" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">宿主函数</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_log" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_log</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_content" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_content</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_kv_get-和-verdin_kv_set" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_kv_get 和 verdin_kv_set</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_config" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_config</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_public_permissions" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_public_permissions</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#http" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">HTTP</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#管理后台扩展点" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">管理后台扩展点</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#小组件" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">小组件</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#自定义字段" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">自定义字段</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#运行时和限制" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">运行时和限制</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#指标" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">指标</span></a></li></ul></div></details></nav></mobile-starlight-toc><script type="module" src="/verdin/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.C3fM4Kra.js"></script></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-qok35upx"><div class="sl-container astro-qok35upx"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">本页内容</h2><ul class="astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">概述</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#插件目录" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">插件目录</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#清单" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">清单</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#顶层键" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">顶层键</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#capabilities" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[capabilities]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#limits" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[limits]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[hooks]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[routes]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[jobs]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#startup" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[startup]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[graphql]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#admin" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[admin]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#settings" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[settings]]</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#导出函数" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">导出函数</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#before-钩子" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">before 钩子</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#after-钩子" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">after 钩子</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#路由" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">路由</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#任务" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">任务</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#启动函数" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">启动函数</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql-字段" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">GraphQL 字段</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#宿主函数" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">宿主函数</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_log" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_log</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_content" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_content</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_kv_get-和-verdin_kv_set" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_kv_get 和 verdin_kv_set</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_config" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_config</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_public_permissions" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_public_permissions</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#http" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">HTTP</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#管理后台扩展点" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">管理后台扩展点</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#小组件" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">小组件</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#自定义字段" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">自定义字段</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#运行时和限制" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">运行时和限制</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#指标" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">指标</span></a></li></ul></nav></starlight-toc><script type="module" src="/verdin/_astro/TableOfContents.astro_astro_type_script_index_0_lang.BpJaGz7G.js"></script></div></div></div></aside><div class="main-pane astro-lrzkfocr"><main data-pagefind-body class="astro-g5ptsecz" lang="zh-CN" dir="ltr"><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><h1 id="_top" class="astro-bebwqqxs">插件参考</h1></div></div><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><div class="sl-markdown-content"><!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
+<p>本页是 Verdin 与插件之间的完整约定：清单、Verdin 发送给每个导出函数的内容及其期望的返回值，以及模块可以调用的宿主函数。入门介绍请参见<a href="/verdin/zh-cn/extending/plugins/">插件</a>；完整示例请参见<a href="/verdin/zh-cn/extending/plugin-tutorial/">插件教程</a>。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="插件目录">插件目录</h2><a class="sl-anchor-link" href="#插件目录"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “插件目录”</span></a></div>
+<p>每个插件都是 <code dir="auto">[plugins].path</code>（默认为 <code dir="auto">plugins/</code>，与 <code dir="auto">verdin.toml</code> 同级）下的一个目录：</p>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>必需</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">plugin.toml</code></td>
+<td>是</td>
+<td>清单。</td>
+</tr>
+<tr>
+<td><code dir="auto">plugin.wasm</code></td>
+<td>是</td>
+<td>模块（可用 <code dir="auto">wasm</code> 指定其他路径）。</td>
+</tr>
+<tr>
+<td><code dir="auto">admin/</code></td>
+<td>否</td>
+<td>管理后台加载的文件：<code dir="auto">admin.script</code> 模块及其资源。</td>
+</tr>
+</tbody>
+</table>
+<p>启动时，Verdin 按名称顺序加载每个包含 <code dir="auto">plugin.toml</code> 的目录。如果某个目录的清单无效、模块缺失，或者其 <code dir="auto">name</code> 已被另一个插件占用，该目录会被跳过，并在 <strong>设置 → 插件</strong> 中列出原因。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="清单">清单</h2><a class="sl-anchor-link" href="#清单"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “清单”</span></a></div>
+<div class="expressive-code"><link rel="stylesheet" href="/verdin/_astro/ec.w36nc.css"><script type="module" src="/verdin/_astro/ec.0vx5m.js"></script><figure class="frame has-title not-content"><figcaption class="header"><span class="title">plugins/slugs/plugin.toml</span></figcaption><pre data-language="toml"><code><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">name</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">version</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">1.0.0</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">description</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Slugs from titles, and a color field</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[capabilities]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">read</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">write</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::tag</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">http</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api.example.com</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">kv</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#FF6A83;--1:#A24848">true</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">public_permissions</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#FF6A83;--1:#A24848">true</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[limits]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">timeout_ms</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">5000</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">memory_mb</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">64</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[hooks]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">on</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">beforeCreate</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">uid</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">before_write</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[routes]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">handle</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[jobs]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">schedule</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">*/15 * * * *</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">refresh</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[startup]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">seed</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">timeout_ms</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">30000</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[graphql]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">name</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugStats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[admin]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">script</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">index.js</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[admin.widgets]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">id</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">title</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Slug stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">element</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs-stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[admin.fields]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">id</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">title</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">element</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs-color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">type</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">string</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[settings]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">key</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">separator</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">label</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Separator</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">type</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">select</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">options</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">-</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">_</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">default</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">-</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="复制到剪贴板" data-copied="复制成功！" data-code="name = &quot;slugs&quot;version = &quot;1.0.0&quot;description = &quot;Slugs from titles, and a color field&quot;[capabilities]read = [&quot;api::article&quot;]write = [&quot;api::tag&quot;]http = [&quot;api.example.com&quot;]kv = truepublic_permissions = true[limits]timeout_ms = 5000memory_mb = 64[[hooks]]on = &quot;beforeCreate&quot;uid = &quot;api::article&quot;function = &quot;before_write&quot;[routes]function = &quot;handle&quot;[[jobs]]schedule = &quot;*/15 * * * *&quot;function = &quot;refresh&quot;[startup]function = &quot;seed&quot;timeout_ms = 30000[[graphql]]name = &quot;slugStats&quot;function = &quot;stats&quot;[admin]script = &quot;index.js&quot;[[admin.widgets]]id = &quot;stats&quot;title = &quot;Slug stats&quot;element = &quot;slugs-stats&quot;[[admin.fields]]id = &quot;color&quot;title = &quot;Color&quot;element = &quot;slugs-color&quot;type = &quot;string&quot;[[settings]]key = &quot;separator&quot;label = &quot;Separator&quot;type = &quot;select&quot;options = [&quot;-&quot;, &quot;_&quot;]default = &quot;-&quot;"><div></div></button></div></figure></div>
+<p>在任何表中，未知的键都是错误。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="顶层键">顶层键</h3><a class="sl-anchor-link" href="#顶层键"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “顶层键”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">name</code></td>
+<td>必填</td>
+<td>插件在 URL、设置和自定义字段中的 id：小写字母、数字和 <code dir="auto">-</code>，以字母开头，最多 64 个字符。</td>
+</tr>
+<tr>
+<td><code dir="auto">version</code></td>
+<td>必填</td>
+<td>显示在管理后台和日志中。</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>未设置</td>
+<td>显示在 <strong>设置 → 插件</strong> 中。</td>
+</tr>
+<tr>
+<td><code dir="auto">wasm</code></td>
+<td><code dir="auto">"plugin.wasm"</code></td>
+<td>模块，相对于插件目录（不能包含 <code dir="auto">..</code>，不能是绝对路径）。</td>
+</tr>
+<tr>
+<td><code dir="auto">wasi</code></td>
+<td><code dir="auto">false</code></td>
+<td>为模块提供 WASI：时钟和随机数。无论如何都不提供文件或套接字。</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="capabilities"><code dir="auto">[capabilities]</code></h3><a class="sl-anchor-link" href="#capabilities"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[capabilities]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">read</code></td>
+<td><code dir="auto">[]</code></td>
+<td><code dir="auto">verdin_content</code> 可以读取（<code dir="auto">findMany</code>、<code dir="auto">findOne</code>）的内容类型：诸如 <code dir="auto">api::article</code> 的 uid，或者 <code dir="auto">"*"</code> 表示全部。</td>
+</tr>
+<tr>
+<td><code dir="auto">write</code></td>
+<td><code dir="auto">[]</code></td>
+<td>可以执行 <code dir="auto">create</code>、<code dir="auto">update</code>、<code dir="auto">delete</code>、<code dir="auto">publish</code> 和 <code dir="auto">unpublish</code> 的内容类型。隐含 <code dir="auto">read</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">http</code></td>
+<td><code dir="auto">[]</code></td>
+<td>模块可以发送 HTTP 请求的主机：<code dir="auto">api.example.com</code> 或 <code dir="auto">*.example.com</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">kv</code></td>
+<td><code dir="auto">false</code></td>
+<td>插件自己的键值存储（<code dir="auto">verdin_kv_get</code>、<code dir="auto">verdin_kv_set</code>）。</td>
+</tr>
+<tr>
+<td><code dir="auto">public_permissions</code></td>
+<td><code dir="auto">false</code></td>
+<td>读取和替换公开角色的内容 API 权限（<code dir="auto">verdin_public_permissions</code>）。</td>
+</tr>
+</tbody>
+</table>
+<p>能力只限制宿主调用。钩子会在其指定的类型上运行，与 <code dir="auto">read</code> 无关；路由则任何人都可以访问。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="limits"><code dir="auto">[limits]</code></h3><a class="sl-anchor-link" href="#limits"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[limits]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">timeout_ms</code></td>
+<td><code dir="auto">5000</code></td>
+<td>单次调用的时间限制，单位为毫秒。</td>
+</tr>
+<tr>
+<td><code dir="auto">memory_mb</code></td>
+<td><code dir="auto">64</code></td>
+<td>模块可使用的最大内存，单位为 MB。</td>
+</tr>
+</tbody>
+</table>
+<p>两者都必须为正数。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="hooks"><code dir="auto">[[hooks]]</code></h3><a class="sl-anchor-link" href="#hooks"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[hooks]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">on</code></td>
+<td>必填</td>
+<td>事件，见下文。</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td><code dir="auto">"*"</code></td>
+<td>内容类型（<code dir="auto">api::article</code>），或者 <code dir="auto">"*"</code> 表示全部。</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>必填</td>
+<td>要调用的导出函数。</td>
+</tr>
+</tbody>
+</table>
+<p>事件：</p>
+<table>
+<thead>
+<tr>
+<th>写入之前</th>
+<th>写入之后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">beforeCreate</code></td>
+<td><code dir="auto">afterCreate</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeUpdate</code></td>
+<td><code dir="auto">afterUpdate</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeDelete</code></td>
+<td><code dir="auto">afterDelete</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforePublish</code></td>
+<td><code dir="auto">afterPublish</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeUnpublish</code></td>
+<td><code dir="auto">afterUnpublish</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeDiscardDraft</code></td>
+<td><code dir="auto">afterDiscardDraft</code></td>
+</tr>
+</tbody>
+</table>
+<p>这些名称沿用 Strapi 的生命周期名称。钩子会在来自管理后台、REST 和 GraphQL API 以及发布计划的写入时运行，但不会在 <code dir="auto">verdin import</code> 命令执行的写入时运行。插件执行的写入会运行 after 钩子，但不会运行 before 钩子（参见<a href="#%E6%8F%92%E4%BB%B6%E6%89%A7%E8%A1%8C%E7%9A%84%E5%86%99%E5%85%A5">插件执行的写入</a>）。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="routes"><code dir="auto">[routes]</code></h3><a class="sl-anchor-link" href="#routes"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[routes]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>处理所有发往 <code dir="auto">/api/plugins/&lt;name&gt;</code> 和 <code dir="auto">/api/plugins/&lt;name&gt;/…</code> 的请求的导出函数，任意方法。</td>
+</tr>
+</tbody>
+</table>
+<p>该路径跟随 <code dir="auto">[api].prefix</code>。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="jobs"><code dir="auto">[[jobs]]</code></h3><a class="sl-anchor-link" href="#jobs"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[jobs]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">schedule</code></td>
+<td>Cron 表达式，使用 UTC，秒字段可选：<code dir="auto">*/15 * * * *</code>、<code dir="auto">0 0 3 * * *</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>要调用的导出函数。</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="startup"><code dir="auto">[startup]</code></h3><a class="sl-anchor-link" href="#startup"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[startup]”</span></a></div>
+<p>插件启动时运行的函数：即 Strapi 项目在 <code dir="auto">bootstrap</code> 中所做的事（填充内容、设置公开角色）。</p>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>必填</td>
+<td>要调用的导出函数。</td>
+</tr>
+<tr>
+<td><code dir="auto">timeout_ms</code></td>
+<td><code dir="auto">30000</code></td>
+<td>它自己的时间限制，单位为毫秒（填充数据可能比钩子花更长时间）。必须为正数。</td>
+</tr>
+</tbody>
+</table>
+<p>它何时运行，参见<a href="#%E5%90%AF%E5%8A%A8%E5%87%BD%E6%95%B0">启动函数</a>。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="graphql"><code dir="auto">[[graphql]]</code></h3><a class="sl-anchor-link" href="#graphql"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[graphql]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">name</code></td>
+<td>必填</td>
+<td>字段名：以小写字母开头，之后可以是字母、数字和 <code dir="auto">_</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>必填</td>
+<td>解析该字段的导出函数。</td>
+</tr>
+<tr>
+<td><code dir="auto">mutation</code></td>
+<td><code dir="auto">false</code></td>
+<td>把该字段添加到 <code dir="auto">Mutation</code> 而不是 <code dir="auto">Query</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>未设置</td>
+<td>该字段在 schema 中的描述。</td>
+</tr>
+</tbody>
+</table>
+<p>每个条目都会添加 <code dir="auto">name(args: JSON): JSON</code>。已被内容类型占用的名称，或者已被另一个插件先占用的名称，会被跳过，并在日志中记录一条警告。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="admin"><code dir="auto">[admin]</code></h3><a class="sl-anchor-link" href="#admin"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[admin]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">script</code></td>
+<td><code dir="auto">admin/</code> 下定义自定义元素的 ES 模块（不能包含 <code dir="auto">..</code>，不能是绝对路径）。</td>
+</tr>
+<tr>
+<td><code dir="auto">[[admin.widgets]]</code></td>
+<td>仪表盘小组件类型：<code dir="auto">id</code>、<code dir="auto">title</code>、<code dir="auto">element</code>，可选的 <code dir="auto">description</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">[[admin.fields]]</code></td>
+<td>自定义字段：<code dir="auto">id</code>、<code dir="auto">title</code>、<code dir="auto">element</code>、<code dir="auto">type</code>（值存储时所用的属性类型，例如 <code dir="auto">string</code> 或 <code dir="auto">json</code>），可选的 <code dir="auto">description</code>。</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">element</code> 是一个自定义元素名：小写字母、数字和 <code dir="auto">-</code>，至少包含一个 <code dir="auto">-</code>（<code dir="auto">slugs-color</code>）。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="settings"><code dir="auto">[[settings]]</code></h3><a class="sl-anchor-link" href="#settings"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[settings]]”</span></a></div>
+<p>声明 <strong>设置 → 插件 → 设置</strong> 中的表单。如果没有声明，设置就是一个自由格式的 JSON 对象。</p>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">key</code></td>
+<td>必填</td>
+<td>设置对象中的键：字母、数字和 <code dir="auto">_</code>，不能以数字开头，必须唯一。</td>
+</tr>
+<tr>
+<td><code dir="auto">label</code></td>
+<td>必填</td>
+<td>表单标签。</td>
+</tr>
+<tr>
+<td><code dir="auto">type</code></td>
+<td><code dir="auto">"string"</code></td>
+<td><code dir="auto">string</code>、<code dir="auto">text</code>、<code dir="auto">url</code>、<code dir="auto">number</code>、<code dir="auto">integer</code>、<code dir="auto">boolean</code> 或 <code dir="auto">select</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>未设置</td>
+<td>字段下方的帮助文本。</td>
+</tr>
+<tr>
+<td><code dir="auto">required</code></td>
+<td><code dir="auto">false</code></td>
+<td>必须有值（文本类型不能为空），除非设置了 <code dir="auto">default</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">options</code></td>
+<td><code dir="auto">[]</code></td>
+<td><code dir="auto">select</code> 的选项（<code dir="auto">select</code> 必须提供）。</td>
+</tr>
+<tr>
+<td><code dir="auto">default</code></td>
+<td>未设置</td>
+<td>键缺失或为 <code dir="auto">null</code> 时使用。必须符合该字段。</td>
+</tr>
+<tr>
+<td><code dir="auto">min</code>、<code dir="auto">max</code></td>
+<td>未设置</td>
+<td><code dir="auto">number</code> 和 <code dir="auto">integer</code> 值的范围；<code dir="auto">string</code> 和 <code dir="auto">text</code> 的长度范围。</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">url</code> 值为空或是 <code dir="auto">http(s)://</code> URL。声明了表单时，服务器会拒绝带有未知键、类型错误、值超出范围或缺少必填值的设置（400）。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="导出函数">导出函数</h2><a class="sl-anchor-link" href="#导出函数"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “导出函数”</span></a></div>
+<p>每个导出函数接收一个 JSON 文档并返回一个 JSON 文档（或者什么都不返回）。空输出视为 <code dir="auto">null</code>；不是 JSON 的输出视为失败。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="before-钩子">before 钩子</h3><a class="sl-anchor-link" href="#before-钩子"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “before 钩子”</span></a></div>
+<p>输入：</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"event"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">beforeUpdate</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"uid"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"documentId"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">01m3p88ry359w82nsx496mep5t</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"locale"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">en</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"data"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"title"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">Hello</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="复制到剪贴板" data-copied="复制成功！" data-code="{  &quot;event&quot;: &quot;beforeUpdate&quot;,  &quot;uid&quot;: &quot;api::article&quot;,  &quot;documentId&quot;: &quot;01m3p88ry359w82nsx496mep5t&quot;,  &quot;locale&quot;: &quot;en&quot;,  &quot;data&quot;: { &quot;title&quot;: &quot;Hello&quot; }}"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">event</code></td>
+<td>钩子的事件。</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td>内容类型。</td>
+</tr>
+<tr>
+<td><code dir="auto">documentId</code></td>
+<td>文档；在 <code dir="auto">beforeCreate</code> 中为 <code dir="auto">null</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>在本地化类型上，为写入的语言区域（请求未指定时为默认语言区域）；在其他类型上为 <code dir="auto">null</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">data</code></td>
+<td>正在写入的数据，与请求发送的一致：用于创建和更新。其他事件中为 <code dir="auto">null</code>。更新时只包含发送的字段。</td>
+</tr>
+</tbody>
+</table>
+<p>输出：</p>
+<table>
+<thead>
+<tr>
+<th>输出</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">{ "data": { … } }</code></td>
+<td>替换要写入的数据。它会像原始数据一样经过校验。</td>
+</tr>
+<tr>
+<td><code dir="auto">{ "error": "message" }</code></td>
+<td>拒绝写入：调用方会收到带有该消息的 400。</td>
+</tr>
+<tr>
+<td><code dir="auto">{}</code> 或其他任何内容</td>
+<td>写入照常进行。</td>
+</tr>
+</tbody>
+</table>
+<p>当有多个钩子匹配时，它们先按插件顺序（目录名）、再按清单中的顺序运行；每个钩子看到的是前一个钩子返回的数据。失败的钩子（trap、超时、无效输出）会被记录并跳过：写入照常进行。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="after-钩子">after 钩子</h3><a class="sl-anchor-link" href="#after-钩子"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “after 钩子”</span></a></div>
+<p>输入：<code dir="auto">{ "event", "uid", "documentId", "locale" }</code>，在写入提交之后发送。输出会被忽略；失败会被记录。如果需要条目的字段，请用 <code dir="auto">verdin_content</code> 读取（需要 <code dir="auto">read</code> 能力）。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="路由">路由</h3><a class="sl-anchor-link" href="#路由"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “路由”</span></a></div>
+<p>输入：</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"method"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">GET</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"path"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">/stats</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"query"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">page=2&amp;sort=title</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"headers"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"accept"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">application/json</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"user-agent"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">curl/8.7.1</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"body"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">""</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"actor"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"kind"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">public</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="复制到剪贴板" data-copied="复制成功！" data-code="{  &quot;method&quot;: &quot;GET&quot;,  &quot;path&quot;: &quot;/stats&quot;,  &quot;query&quot;: &quot;page=2&amp;sort=title&quot;,  &quot;headers&quot;: { &quot;accept&quot;: &quot;application/json&quot;, &quot;user-agent&quot;: &quot;curl/8.7.1&quot; },  &quot;body&quot;: &quot;&quot;,  &quot;actor&quot;: { &quot;kind&quot;: &quot;public&quot; }}"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">method</code></td>
+<td>HTTP 方法。</td>
+</tr>
+<tr>
+<td><code dir="auto">path</code></td>
+<td><code dir="auto">/api/plugins/&lt;name&gt;</code> 之后的路径，以 <code dir="auto">/</code> 开头（插件根路径为 <code dir="auto">/</code>）。</td>
+</tr>
+<tr>
+<td><code dir="auto">query</code></td>
+<td>原始查询字符串，不带 <code dir="auto">?</code>（没有时为空）。</td>
+</tr>
+<tr>
+<td><code dir="auto">headers</code></td>
+<td>只包含 <code dir="auto">content-type</code>、<code dir="auto">accept</code>、<code dir="auto">user-agent</code> 和 <code dir="auto">accept-language</code>（如果存在）。</td>
+</tr>
+<tr>
+<td><code dir="auto">body</code></td>
+<td>字符串形式的请求体（无效的 UTF-8 会被替换）。</td>
+</tr>
+<tr>
+<td><code dir="auto">actor</code></td>
+<td>调用者：<code dir="auto">{ "kind": "public" }</code>、<code dir="auto">{ "kind": "token", "id": 3 }</code>（API 令牌）或 <code dir="auto">{ "kind": "user", "id": 12 }</code>（已登录的终端用户）。</td>
+</tr>
+</tbody>
+</table>
+<p>带有无效令牌的 <code dir="auto">Authorization</code> 请求头会在调用插件之前以 401 拒绝。公开访问和 API 令牌的权限不会被应用：请自行检查 <code dir="auto">actor</code>。</p>
+<p>输出：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">status</code></td>
+<td><code dir="auto">200</code></td>
+<td>HTTP 状态码。</td>
+</tr>
+<tr>
+<td><code dir="auto">headers</code></td>
+<td>无</td>
+<td>响应头。只保留 <code dir="auto">content-type</code>、<code dir="auto">cache-control</code>、<code dir="auto">location</code>、<code dir="auto">etag</code>、<code dir="auto">last-modified</code> 和 <code dir="auto">content-disposition</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">body</code></td>
+<td>空</td>
+<td>字符串会原样发送（除非你设置了 <code dir="auto">content-type</code>，否则为 <code dir="auto">text/plain</code>）；其他任何 JSON 值以 <code dir="auto">application/json</code> 发送。</td>
+</tr>
+</tbody>
+</table>
+<p>已停用或未知的插件，或者没有 <code dir="auto">[routes]</code> 的插件，返回 404。调用失败时返回 502 以及 <code dir="auto">{ "data": null, "error": { "status": 502, "name": "PluginError", … } }</code>。路由与内容 API 共用 <code dir="auto">[server].body_limit</code> 和 <code dir="auto">[server].request_timeout_secs</code>。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="任务">任务</h3><a class="sl-anchor-link" href="#任务"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “任务”</span></a></div>
+<p>输入：<code dir="auto">{ "scheduledAt": "2026-09-29T03:00:00+00:00" }</code>，即本次运行计划执行的时间。输出会被忽略；失败会被记录。任务只在插件开启时运行，并且只在 <code dir="auto">[plugins].run_jobs = true</code> 的实例上运行。服务器宕机期间错过的运行不会补跑。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="启动函数">启动函数</h3><a class="sl-anchor-link" href="#启动函数"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “启动函数”</span></a></div>
+<p>输入：<code dir="auto">{ "reason": "start" | "enabled" | "settings" }</code>：</p>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">reason</code></th>
+<th>时机</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">start</code></td>
+<td>服务器在该插件开启的状态下启动。</td>
+</tr>
+<tr>
+<td><code dir="auto">enabled</code></td>
+<td>插件被开启（在本实例上，或在另一个实例上开启后由本实例获知）。</td>
+</tr>
+<tr>
+<td><code dir="auto">settings</code></td>
+<td>插件开启期间它的设置发生了变化（在本实例上保存，或由其他实例同步而来）。</td>
+</tr>
+</tbody>
+</table>
+<p>输出：<code dir="auto">{ "error": "message" }</code> 视为失败；其他任何内容（<code dir="auto">{}</code>、空）视为成功。失败（trap、超时、<code dir="auto">{ error }</code>）会记录到插件的日志和服务器日志；插件保持开启，该函数会在下一次启动、开启或设置变更时再次运行。</p>
+<p>该函数在服务器启动之后于后台运行，因此期间请求照常处理。它在自己独立的模块实例上以 <code dir="auto">[startup].timeout_ms</code> 运行，因此缓慢的数据填充不会阻塞插件的钩子和路由。它的写入所触发的 after 钩子会在它返回之后运行（参见<a href="#%E6%8F%92%E4%BB%B6%E6%89%A7%E8%A1%8C%E7%9A%84%E5%86%99%E5%85%A5">插件执行的写入</a>）。该模块的内存不与插件的常规实例共享：请把状态保存在 <code dir="auto">verdin_kv_set</code> 或内容中。</p>
+<p>有多个实例时，只有 <code dir="auto">[plugins].run_jobs = true</code> 的实例才会运行启动函数（按照<a href="/verdin/zh-cn/deploy/scaling/">扩缩容建议</a>配置时即一个实例）：它们操作的是共享数据库，所以运行一次就够了。请把函数写成再次运行也无害：创建之前先查找你要填充的内容。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="graphql-字段">GraphQL 字段</h3><a class="sl-anchor-link" href="#graphql-字段"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “GraphQL 字段”</span></a></div>
+<p>输入：<code dir="auto">{ "args": …, "actor": … }</code>，其中 <code dir="auto">args</code> 是该字段的 <code dir="auto">args</code> 参数（任意 JSON，或 <code dir="auto">null</code>），<code dir="auto">actor</code> 与路由中的相同。输出即该字段的值。失败或插件已停用时，返回错误码为 <code dir="auto">PLUGIN_ERROR</code> 的 GraphQL 错误。与路由一样，由插件自行检查访问权限。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="宿主函数">宿主函数</h2><a class="sl-anchor-link" href="#宿主函数"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “宿主函数”</span></a></div>
+<p>从 <code dir="auto">extism:host/user</code> 命名空间导入它们（在 Rust 中为 <code dir="auto">extern "ExtismHost"</code>）。它们以字符串形式接收和返回 JSON；<code dir="auto">extism-pdk</code> 中的 <code dir="auto">Json&lt;Value&gt;</code> 会处理转换。</p>
+<table>
+<thead>
+<tr>
+<th>函数</th>
+<th>输入</th>
+<th>输出</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">verdin_log</code></td>
+<td><code dir="auto">{ "level": "info" | "warn" | "error", "message": "…" }</code></td>
+<td>无</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_content</code></td>
+<td>内容请求（见下文）</td>
+<td>结果，或 <code dir="auto">{ "error": "…" }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_kv_get</code></td>
+<td>键，普通字符串</td>
+<td>存储的 JSON 值，或 <code dir="auto">null</code></td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_kv_set</code></td>
+<td><code dir="auto">{ "key": "…", "value": … }</code></td>
+<td>无</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_config</code></td>
+<td>无</td>
+<td>设置对象，已填入声明的默认值</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_public_permissions</code></td>
+<td><code dir="auto">{ "op": "get" }</code> 或 <code dir="auto">{ "op": "set", "permissions": [...] }</code></td>
+<td><code dir="auto">{ "permissions": [...] }</code>，或 <code dir="auto">{ "error": "…" }</code></td>
+</tr>
+</tbody>
+</table>
+<p>如果模块导入了服务器没有的宿主函数（较旧的 Verdin），就无法加载：对它的每次调用都会在服务器日志中以 <code dir="auto">unknown import</code> 失败。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_log"><code dir="auto">verdin_log</code></h3><a class="sl-anchor-link" href="#verdin_log"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_log”</span></a></div>
+<p>写入服务器日志（带有插件名称）以及 <strong>设置 → 插件 → 日志</strong> 中该插件的日志。其他级别视为 <code dir="auto">info</code>。插件日志在内存中保留最近 200 条消息，每条截断为 2,000 个字符。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_content"><code dir="auto">verdin_content</code></h3><a class="sl-anchor-link" href="#verdin_content"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_content”</span></a></div>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"op"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">findMany</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"uid"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"query"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"filters"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"title"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"$eq"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">x</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> } }, </span><span style="--0:#7FDBCA;--1:#096E72">"sort"</span><span style="--0:#D6DEEB;--1:#403F53">: [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">title</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">] } }</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="复制到剪贴板" data-copied="复制成功！" data-code="{ &quot;op&quot;: &quot;findMany&quot;, &quot;uid&quot;: &quot;api::article&quot;, &quot;query&quot;: { &quot;filters&quot;: { &quot;title&quot;: { &quot;$eq&quot;: &quot;x&quot; } }, &quot;sort&quot;: [&quot;title&quot;] } }"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>使用者</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">op</code></td>
+<td>全部</td>
+<td><code dir="auto">findMany</code>、<code dir="auto">findOne</code>、<code dir="auto">create</code>、<code dir="auto">update</code>、<code dir="auto">delete</code>、<code dir="auto">publish</code> 或 <code dir="auto">unpublish</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td>全部</td>
+<td>内容类型。必须在能力范围内。</td>
+</tr>
+<tr>
+<td><code dir="auto">documentId</code></td>
+<td><code dir="auto">findOne</code>、<code dir="auto">update</code>、<code dir="auto">delete</code>、<code dir="auto">publish</code>、<code dir="auto">unpublish</code></td>
+<td>文档。</td>
+</tr>
+<tr>
+<td><code dir="auto">query</code></td>
+<td><code dir="auto">findMany</code>、<code dir="auto">findOne</code></td>
+<td>以 JSON 对象表示的 REST API 参数：<code dir="auto">filters</code>、<code dir="auto">sort</code>、<code dir="auto">fields</code>、<code dir="auto">populate</code>、<code dir="auto">pagination</code>、<code dir="auto">status</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">data</code></td>
+<td><code dir="auto">create</code>、<code dir="auto">update</code></td>
+<td>要写入的字段，与 REST 请求中的 <code dir="auto">data</code> 相同。</td>
+</tr>
+<tr>
+<td><code dir="auto">status</code></td>
+<td><code dir="auto">create</code>、<code dir="auto">update</code></td>
+<td><code dir="auto">"draft"</code> 只保存草稿。否则写入会被发布，与不带 <code dir="auto">?status=draft</code> 的 REST 写入相同。</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>全部</td>
+<td>要读写的语言区域。</td>
+</tr>
+</tbody>
+</table>
+<p>结果：</p>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">op</code></th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">findMany</code></td>
+<td><code dir="auto">{ "documents": [...], "meta": { "pagination": {…} } }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">findOne</code></td>
+<td><code dir="auto">{ "document": {…} }</code>（未找到时为 <code dir="auto">null</code>）</td>
+</tr>
+<tr>
+<td><code dir="auto">create</code>、<code dir="auto">update</code></td>
+<td><code dir="auto">{ "documentId": "…" }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">delete</code></td>
+<td><code dir="auto">{ "deleted": true }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">publish</code></td>
+<td><code dir="auto">{ "published": true }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">unpublish</code></td>
+<td><code dir="auto">{ "unpublished": true }</code></td>
+</tr>
+</tbody>
+</table>
+<p>超出能力范围的调用、未知的操作、校验错误或文档不存在时，会改为返回 <code dir="auto">{ "error": "…" }</code>。除非查询要求 <code dir="auto">"status": "draft"</code>，否则读取返回已发布版本。</p>
+<div class="sl-heading-wrapper level-h4"><h4 id="插件执行的写入">插件执行的写入</h4><a class="sl-anchor-link" href="#插件执行的写入"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “插件执行的写入”</span></a></div>
+<p>通过 <code dir="auto">verdin_content</code> 执行的写入会跳过所有插件的 <strong>before</strong> 钩子，因此插件不会在那里因自己的修改而陷入循环，你放在 before 钩子中的规则（默认值、检查）也不会对它们生效。其他一切照常适用：校验、审核阶段、webhook、历史记录、审计日志，以及所有插件（包括执行写入的插件）的 <strong>after</strong> 钩子。</p>
+<p>插件的写入所触发的 after 钩子不会在写入内部运行：它们会排队，等插件的调用（路由、任务、GraphQL 解析器、钩子或启动函数）返回并释放插件实例之后、路由响应发送之前运行。因此插件可以写入它自己设有 after 钩子的类型，经过多个插件的链式调用也能正常工作。</p>
+<ul>
+<li>执行写入的钩子会触发更多钩子，<strong>最多嵌套 <code dir="auto">4</code> 层</strong>（来自 REST 或 GraphQL 的写入为第 1 层）。更深的钩子会被跳过，并在插件的日志中记录一条警告，这样写入自己所监听类型的钩子就不会无限循环。</li>
+<li>宿主函数（<code dir="auto">verdin_content</code>、<code dir="auto">verdin_public_permissions</code>、键值存储）会在调用的时间限制处停止，并向模块返回错误；调用方等待一个繁忙插件的时间最多为时间限制加 10 秒。卡住的调用不会永远占住插件或阻碍正常停止。</li>
+</ul>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_kv_get-和-verdin_kv_set"><code dir="auto">verdin_kv_get</code> 和 <code dir="auto">verdin_kv_set</code></h3><a class="sl-anchor-link" href="#verdin_kv_get-和-verdin_kv_set"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_kv_get 和 verdin_kv_set”</span></a></div>
+<p>每个插件一个键值存储，位于 Verdin 的数据库中，由所有实例共享。键为 1 到 255 字节；值可以是任意 JSON。设置为 <code dir="auto">null</code> 会删除该键。没有 <code dir="auto">kv</code> 能力时，读取返回 <code dir="auto">null</code>，写入会被忽略。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_config"><code dir="auto">verdin_config</code></h3><a class="sl-anchor-link" href="#verdin_config"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_config”</span></a></div>
+<p>返回在 <strong>设置 → 插件</strong> 中保存的设置，并为缺失的键填入每个已声明设置的 <code dir="auto">default</code>。没有保存任何内容时返回 <code dir="auto">{}</code>。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_public_permissions"><code dir="auto">verdin_public_permissions</code></h3><a class="sl-anchor-link" href="#verdin_public_permissions"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_public_permissions”</span></a></div>
+<p>读取或替换公开角色的内容 API 权限，即 <strong>设置 → 公开访问</strong> 所编辑的内容。需要 <code dir="auto">public_permissions</code> 能力；没有它时，每次调用都返回 <code dir="auto">{ "error": "…" }</code>。</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"op"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">set</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"permissions"</span><span style="--0:#D6DEEB;--1:#403F53">: [</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">find</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">findOne</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::comment</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">create</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">] }</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="复制到剪贴板" data-copied="复制成功！" data-code="{ &quot;op&quot;: &quot;set&quot;, &quot;permissions&quot;: [  { &quot;subject&quot;: &quot;api::article&quot;, &quot;action&quot;: &quot;find&quot; },  { &quot;subject&quot;: &quot;api::article&quot;, &quot;action&quot;: &quot;findOne&quot; },  { &quot;subject&quot;: &quot;api::comment&quot;, &quot;action&quot;: &quot;create&quot; }] }"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">op</code></th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">get</code></td>
+<td>不做任何修改；返回当前权限。</td>
+</tr>
+<tr>
+<td><code dir="auto">set</code></td>
+<td>用 <code dir="auto">permissions</code> 替换<strong>全部</strong>公开权限（空列表会移除所有权限）。</td>
+</tr>
+</tbody>
+</table>
+<p>两者都返回 <code dir="auto">{ "permissions": [{ "subject", "action" }, …] }</code>，已排序。<code dir="auto">subject</code> 是内容类型 uid、<code dir="auto">plugin::upload</code>（媒体库）、<code dir="auto">plugin::users-permissions.user</code>（通过内容 API 访问的最终用户）或 <code dir="auto">plugin::i18n.locale</code>（仅 <code dir="auto">find</code>）。<code dir="auto">action</code> 是 <code dir="auto">find</code>、<code dir="auto">findOne</code>、<code dir="auto">create</code>、<code dir="auto">update</code>、<code dir="auto">delete</code>、<code dir="auto">publish</code> 或 <code dir="auto">readDrafts</code>（后两者不适用于上传和最终用户）。它们会像管理后台的授权网格那样被检查：未知的 subject 或 action，或不适用的组合，会返回 <code dir="auto">{ "error": "…" }</code> 且不做任何修改。每次 <code dir="auto">set</code> 都会写入服务器日志。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="http">HTTP</h3><a class="sl-anchor-link" href="#http"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “HTTP”</span></a></div>
+<p>在 <code dir="auto">http</code> 中列出主机后，使用 Extism 的 HTTP 支持（Rust 中为 <code dir="auto">extism_pdk::http::request</code>）。发往其他主机的请求会失败。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="管理后台扩展点">管理后台扩展点</h2><a class="sl-anchor-link" href="#管理后台扩展点"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “管理后台扩展点”</span></a></div>
+<p>管理后台会向服务器请求已启用插件的扩展，并以 ES 模块的形式从 <code dir="auto">/admin/plugins/&lt;name&gt;/&lt;script&gt;</code>（位于 <code dir="auto">[admin].path</code> 下）导入每个 <code dir="auto">admin.script</code>，每个只导入一次。插件开启期间，插件 <code dir="auto">admin/</code> 目录下的文件会在该位置提供，并带有 <code dir="auto">X-Content-Type-Options: nosniff</code> 和 <code dir="auto">Cache-Control: no-cache</code>。模块必须定义清单中指定的自定义元素；3 秒内未定义的元素会被省略。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="小组件">小组件</h3><a class="sl-anchor-link" href="#小组件"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “小组件”</span></a></div>
+<p>每个 <code dir="auto">[[admin.widgets]]</code> 条目都是管理员可以添加到仪表盘的一种小组件类型。该元素会收到一个 <code dir="auto">context</code> 属性：</p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">apiBase</code></td>
+<td>内容 API 的基础路径，例如 <code dir="auto">/api</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">adminApiBase</code></td>
+<td>管理 API 的基础路径，例如 <code dir="auto">/admin/api</code>。</td>
+</tr>
+<tr>
+<td><code dir="auto">fetch(path, init)</code></td>
+<td>带有已登录管理员凭据的 <code dir="auto">fetch</code>。相对路径相对于 <code dir="auto">adminApiBase</code> 解析；位于任一基础路径下的路径和绝对 URL 保持不变。</td>
+</tr>
+</tbody>
+</table>
+<div class="expressive-code"><figure class="frame has-title not-content"><figcaption class="header"><span class="title">plugins/slugs/admin/index.js</span></figcaption><pre data-language="js"><code><div class="ec-line"><div class="code"><span style="--0:#C792EA;--1:#8844AE">class</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#FFCB8B;--1:#111111">SlugStats</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">extends</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C5E478;--1:#3B61B0">HTMLElement</span><span style="--0:#D6DEEB;--1:#403F53"> {</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#C792EA;--1:#8844AE">set</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">context</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">context</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> {</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#919F9F;--1:#5D6376">// Admin API, with the admin's session.</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">fetch</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">auth/me</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#D6DEEB;--1:#403F53">)</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">response</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#7FDBCA;--1:#096E72">response</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">json</span><span style="--0:#D6DEEB;--1:#403F53">())</span></div></div><div class="ec-line"><div class="code"><span class="indent">      </span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--1:#403F53"><span style="--0:#D6DEEB">{ </span><span style="--0:#D7DBE0">data</span><span style="--0:#D6DEEB"> }</span></span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> { </span><span style="--0:#7FDBCA;--1:#096E72">this</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">textContent</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#ECC48D;--1:#3B61B0">Hello </span><span style="--0:#E2817F;--1:#B23834">${</span><span style="--0:#7FDBCA;--1:#096E72">data</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">firstname</span><span style="--0:#E2817F;--1:#B23834"> </span><span style="--0:#C792EA;--1:#8844AE">??</span><span style="--0:#E2817F;--1:#B23834"> </span><span style="--0:#7FDBCA;--1:#096E72">data</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">email</span><span style="--0:#E2817F;--1:#B23834">}</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#D6DEEB;--1:#403F53">; });</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#919F9F;--1:#5D6376">// The plugin's own route, on the content API: sent without the admin's session.</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">fetch</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#E2817F;--1:#B23834">${</span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">apiBase</span><span style="--0:#E2817F;--1:#B23834">}</span><span style="--0:#ECC48D;--1:#3B61B0">/plugins/slugs/stats</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#D6DEEB;--1:#403F53">)</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">response</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#7FDBCA;--1:#096E72">response</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">json</span><span style="--0:#D6DEEB;--1:#403F53">())</span></div></div><div class="ec-line"><div class="code"><span class="indent">      </span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">stats</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> { </span><span style="--0:#7FDBCA;--1:#096E72">this</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">title</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">JSON</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">stringify</span><span style="--1:#403F53"><span style="--0:#D6DEEB">(</span><span style="--0:#D7DBE0">stats</span><span style="--0:#D6DEEB">); });</span></span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#7FDBCA;--1:#096E72">customElements</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">define</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">slugs-stats</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--1:#403F53"><span style="--0:#D6DEEB">, </span><span style="--0:#D7DBE0">SlugStats</span><span style="--0:#D6DEEB">);</span></span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="复制到剪贴板" data-copied="复制成功！" data-code="class SlugStats extends HTMLElement {  set context(context) {    // Admin API, with the admin&#x27;s session.    context.fetch(&#x27;auth/me&#x27;).then((response) => response.json())      .then(({ data }) => { this.textContent = &#x60;Hello ${data.firstname ?? data.email}&#x60;; });    // The plugin&#x27;s own route, on the content API: sent without the admin&#x27;s session.    context.fetch(&#x60;${context.apiBase}/plugins/slugs/stats&#x60;).then((response) => response.json())      .then((stats) => { this.title = JSON.stringify(stats); });  }}customElements.define(&#x27;slugs-stats&#x27;, SlugStats);"><div></div></button></div></figure></div>
+<p><code dir="auto">context.fetch</code> 只在管理 API 请求中发送管理员的会话。位于 <code dir="auto">context.apiBase</code> 下的路径（内容 API，包括你的插件的路由）不带会话，因为内容 API 不接受管理员会话；这些请求以公开角色的权限进行响应。在 0.10 之前，它在这些请求中也会发送会话，导致请求失败；为 0.9 编写的、调用普通 <code dir="auto">fetch</code> 的小组件仍然可以正常工作。</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="自定义字段">自定义字段</h3><a class="sl-anchor-link" href="#自定义字段"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “自定义字段”</span></a></div>
+<p>每个 <code dir="auto">[[admin.fields]]</code> 条目都是一个字段，属性可以通过 <code dir="auto">"customField": "plugin::&lt;name&gt;.&lt;id&gt;"</code> 使用它；属性的 <code dir="auto">type</code> 必须与该字段存储值的方式一致。<strong>内容类型构建器</strong> 会提供它。该元素会收到：</p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">value</code></td>
+<td>当前值。</td>
+</tr>
+<tr>
+<td><code dir="auto">disabled</code></td>
+<td>是否禁止编辑。</td>
+</tr>
+<tr>
+<td><code dir="auto">attribute</code></td>
+<td>schema 中该属性的定义。</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>正在编辑的语言区域。</td>
+</tr>
+</tbody>
+</table>
+<p>它通过一个 <code dir="auto">change</code> 事件报告新值，事件的 <code dir="auto">detail</code> 就是该值（如果没有 <code dir="auto">detail</code>，则通过其自身的 <code dir="auto">value</code> 属性）。当插件关闭或其元素缺失时，编辑器会显示对应存储类型的常规输入控件。参见<a href="/verdin/zh-cn/reference/attribute-types/">属性类型</a>。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="运行时和限制">运行时和限制</h2><a class="sl-anchor-link" href="#运行时和限制"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “运行时和限制”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>限制项</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>每次调用的时间</td>
+<td><code dir="auto">[limits].timeout_ms</code>，默认 5,000 ms（启动函数使用 <code dir="auto">[startup].timeout_ms</code>，默认 30,000 ms）</td>
+</tr>
+<tr>
+<td>内存</td>
+<td><code dir="auto">[limits].memory_mb</code>，默认 64 MB</td>
+</tr>
+<tr>
+<td>并发</td>
+<td>每个插件同一时间只处理一次调用；调用之间相互等待（启动函数与它们并行运行）</td>
+</tr>
+<tr>
+<td>模块实例</td>
+<td>每个插件一个，首次使用时构建；调用失败后重建（其内存会丢失）。启动函数每次运行都会得到一个全新的实例</td>
+</tr>
+<tr>
+<td>日志</td>
+<td>每个插件 200 条消息，每条 2,000 个字符，保存在内存中</td>
+</tr>
+<tr>
+<td>KV 键</td>
+<td>1 到 255 字节</td>
+</tr>
+<tr>
+<td>路由请求头</td>
+<td><code dir="auto">content-type</code>、<code dir="auto">accept</code>、<code dir="auto">user-agent</code>、<code dir="auto">accept-language</code></td>
+</tr>
+<tr>
+<td>路由响应头</td>
+<td><code dir="auto">content-type</code>、<code dir="auto">cache-control</code>、<code dir="auto">location</code>、<code dir="auto">etag</code>、<code dir="auto">last-modified</code>、<code dir="auto">content-disposition</code></td>
+</tr>
+</tbody>
+</table>
+<p>对清单或模块的修改在重启后生效；开关和设置立即生效。管理插件需要 <code dir="auto">plugins.manage</code>（参见<a href="/verdin/zh-cn/reference/permissions/">权限参考</a>）。</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="指标">指标</h2><a class="sl-anchor-link" href="#指标"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “指标”</span></a></div>
+<p>开启 <a href="/verdin/zh-cn/deploy/monitoring/"><code dir="auto">[metrics]</code></a> 后，<code dir="auto">/_metrics</code> 会报告每一次到达导出函数的调用：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>类型</th>
+<th>标签</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">verdin_plugin_call_duration_seconds</code></td>
+<td>histogram</td>
+<td><code dir="auto">plugin</code>、<code dir="auto">kind</code>、<code dir="auto">function</code></td>
+<td>插件函数的耗时。桶从 5 ms 到 10 s。</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_plugin_call_errors_total</code></td>
+<td>counter</td>
+<td><code dir="auto">plugin</code>、<code dir="auto">kind</code>、<code dir="auto">function</code></td>
+<td>失败的调用：陷阱（trap）、超时、输出不是 JSON，或启动函数返回的 <code dir="auto">{ error }</code>。</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">kind</code> 为 <code dir="auto">hook</code>、<code dir="auto">route</code>、<code dir="auto">job</code>、<code dir="auto">startup</code> 或 <code dir="auto">graphql</code>。用 <code dir="auto">{ error }</code> 拒绝写入的 before 钩子给出了答复，因此不计为失败。对模块未导出的函数的调用不会被记录，所以标签数量受已安装插件的限制。序列在插件第一次调用之后才会出现；每个实例只统计自己的调用。</p>
+</div><footer class="sl-flex astro-ddtxxk7k"><div class="meta sl-flex astro-ddtxxk7k"><a href="https://github.com/verdin-cms/verdin/edit/main/site/src/content/docs/zh-cn/extending/plugin-reference.md" class="sl-flex print:hidden astro-qlekgd3o"><svg aria-hidden="true" class="astro-qlekgd3o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.2em;"><path d="M22 7.24a1 1 0 0 0-.29-.71l-4.24-4.24a1 1 0 0 0-1.1-.22 1 1 0 0 0-.32.22l-2.83 2.83L2.29 16.05a1 1 0 0 0-.29.71V21a1 1 0 0 0 1 1h4.24a1 1 0 0 0 .76-.29l10.87-10.93L21.71 8c.1-.1.17-.2.22-.33a1 1 0 0 0 0-.24v-.14l.07-.05ZM6.83 20H4v-2.83l9.93-9.93 2.83 2.83L6.83 20ZM18.17 8.66l-2.83-2.83 1.42-1.41 2.82 2.82-1.41 1.42Z"/></svg>编辑此页</a><p>最近更新： <time datetime="2026-09-30T10:55:31.000Z">2026年9月30日</time></p></div><div class="pagination-links print:hidden astro-b5raizh3" dir="ltr"><a href="/verdin/zh-cn/extending/plugin-tutorial/" rel="prev" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17 11H9.41l3.3-3.29a1.004 1.004 0 1 0-1.42-1.42l-5 5a1 1 0 0 0-.21.33 1 1 0 0 0 0 .76 1 1 0 0 0 .21.33l5 5a1.002 1.002 0 0 0 1.639-.325 1 1 0 0 0-.219-1.095L9.41 13H17a1 1 0 0 0 0-2Z"/></svg><span class="astro-b5raizh3">上一页<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">插件教程</span></span></a><a href="/verdin/zh-cn/api/rest/" rel="next" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17.92 11.62a1.001 1.001 0 0 0-.21-.33l-5-5a1.003 1.003 0 1 0-1.42 1.42l3.3 3.29H7a1 1 0 0 0 0 2h7.59l-3.3 3.29a1.002 1.002 0 0 0 .325 1.639 1 1 0 0 0 1.095-.219l5-5a1 1 0 0 0 .21-.33 1 1 0 0 0 0-.76Z"/></svg><span class="astro-b5raizh3">下一页<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">REST</span></span></a></div></footer></div></div></main></div></div></div></div></body></html>

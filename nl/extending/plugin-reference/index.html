@@ -1,0 +1,1005 @@
+<!DOCTYPE html><html lang="nl" dir="ltr" data-theme="dark" data-has-toc data-has-sidebar class="astro-g5ptsecz"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Pluginreferentie | Verdin</title><link rel="canonical" href="https://verdin-cms.github.io/verdin/nl/extending/plugin-reference/"/><link rel="alternate" hreflang="en" href="https://verdin-cms.github.io/verdin/extending/plugin-reference/"/><link rel="alternate" hreflang="ar" href="https://verdin-cms.github.io/verdin/ar/extending/plugin-reference/"/><link rel="alternate" hreflang="ca" href="https://verdin-cms.github.io/verdin/ca/extending/plugin-reference/"/><link rel="alternate" hreflang="de" href="https://verdin-cms.github.io/verdin/de/extending/plugin-reference/"/><link rel="alternate" hreflang="es" href="https://verdin-cms.github.io/verdin/es/extending/plugin-reference/"/><link rel="alternate" hreflang="fa" href="https://verdin-cms.github.io/verdin/fa/extending/plugin-reference/"/><link rel="alternate" hreflang="fr" href="https://verdin-cms.github.io/verdin/fr/extending/plugin-reference/"/><link rel="alternate" hreflang="he" href="https://verdin-cms.github.io/verdin/he/extending/plugin-reference/"/><link rel="alternate" hreflang="it" href="https://verdin-cms.github.io/verdin/it/extending/plugin-reference/"/><link rel="alternate" hreflang="ja" href="https://verdin-cms.github.io/verdin/ja/extending/plugin-reference/"/><link rel="alternate" hreflang="ko" href="https://verdin-cms.github.io/verdin/ko/extending/plugin-reference/"/><link rel="alternate" hreflang="nl" href="https://verdin-cms.github.io/verdin/nl/extending/plugin-reference/"/><link rel="alternate" hreflang="pl" href="https://verdin-cms.github.io/verdin/pl/extending/plugin-reference/"/><link rel="alternate" hreflang="pt-BR" href="https://verdin-cms.github.io/verdin/pt-br/extending/plugin-reference/"/><link rel="alternate" hreflang="ru" href="https://verdin-cms.github.io/verdin/ru/extending/plugin-reference/"/><link rel="alternate" hreflang="tr" href="https://verdin-cms.github.io/verdin/tr/extending/plugin-reference/"/><link rel="alternate" hreflang="uk" href="https://verdin-cms.github.io/verdin/uk/extending/plugin-reference/"/><link rel="alternate" hreflang="zh-CN" href="https://verdin-cms.github.io/verdin/zh-cn/extending/plugin-reference/"/><link rel="alternate" hreflang="x-default" href="https://verdin-cms.github.io/verdin/extending/plugin-reference/"/><link rel="sitemap" href="/verdin/sitemap-index.xml"/><link rel="shortcut icon" href="/verdin/favicon.svg" type="image/svg+xml"/><meta name="generator" content="Astro v7.3.5"/><meta name="generator" content="Starlight v0.42.4"/><meta property="og:title" content="Pluginreferentie"/><meta property="og:type" content="article"/><meta property="og:url" content="https://verdin-cms.github.io/verdin/nl/extending/plugin-reference/"/><meta property="og:locale" content="nl"/><meta property="og:description" content="Het manifest plugin.toml, capabilities, hooks en hun payloads, hostfuncties, routes, jobs, de opstartfunctie, GraphQL-velden, uitbreidingspunten van het beheerpaneel, limieten en metrics."/><meta property="og:site_name" content="Verdin"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="Het manifest plugin.toml, capabilities, hooks en hun payloads, hostfuncties, routes, jobs, de opstartfunctie, GraphQL-velden, uitbreidingspunten van het beheerpaneel, limieten en metrics."/><meta property="og:image" content="https://verdin-cms.github.io/verdin/og/nl/extending/plugin-reference.png"/><meta name="twitter:image" content="https://verdin-cms.github.io/verdin/og/nl/extending/plugin-reference.png"/><script>
+	window.StarlightThemeProvider = (() => {
+		const storedTheme =
+			typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		const theme =
+			storedTheme ||
+			(window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+		document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+		return {
+			updatePickers(theme = storedTheme || 'auto') {
+				document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+					const select = picker.querySelector('select');
+					if (select) select.value = theme;
+					/** @type {HTMLTemplateElement | null} */
+					const tmpl = document.querySelector(`#theme-icons`);
+					const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+					if (newIcon) {
+						const oldIcon = picker.querySelector('svg.label-icon');
+						if (oldIcon) {
+							oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+						}
+					}
+				});
+			},
+		};
+	})();
+</script><template id="theme-icons"><svg aria-hidden="true" class="light astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"/></svg><svg aria-hidden="true" class="dark astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"/></svg><svg aria-hidden="true" class="auto astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg></template><link rel="stylesheet" href="/verdin/_astro/print.ehPL0gv-.css" media="print"><link rel="stylesheet" href="/verdin/_astro/Playground.Sp6wezWm.css"><link rel="stylesheet" href="/verdin/_astro/middleware.CnzdItGa.css"><style>@layer starlight.components{.card:where(.astro-oag6qnet){--sl-card-border:var(--sl-color-purple);--sl-card-bg:var(--sl-color-purple-low);border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-black);flex-direction:column;gap:clamp(.5rem,.125rem + 1vw,1rem);padding:clamp(1rem,.125rem + 3vw,2.5rem)}.card:where(.astro-oag6qnet):nth-child(4n+1){--sl-card-border:var(--sl-color-orange);--sl-card-bg:var(--sl-color-orange-low)}.card:where(.astro-oag6qnet):nth-child(4n+3){--sl-card-border:var(--sl-color-green);--sl-card-bg:var(--sl-color-green-low)}.card:where(.astro-oag6qnet):nth-child(4n+4){--sl-card-border:var(--sl-color-red);--sl-card-bg:var(--sl-color-red-low)}.card:where(.astro-oag6qnet):nth-child(4n+5){--sl-card-border:var(--sl-color-blue);--sl-card-bg:var(--sl-color-blue-low)}.title:where(.astro-oag6qnet){font-weight:600;font-size:var(--sl-text-h4);color:var(--sl-color-white);line-height:var(--sl-line-height-headings);align-items:center;gap:1rem}.card:where(.astro-oag6qnet) .icon:where(.astro-oag6qnet){border:1px solid var(--sl-card-border);background-color:var(--sl-card-bg);border-radius:.25rem;flex-shrink:0;padding:.2em}.card:where(.astro-oag6qnet) .body:where(.astro-oag6qnet){font-size:clamp(var(--sl-text-sm), calc(.5rem + 1vw), var(--sl-text-body));margin:0}}
+@layer starlight.components{.card-grid:where(.astro-7qmvx3iy){grid-template-columns:100%;gap:1rem;display:grid}.card-grid:where(.astro-7qmvx3iy)>*{margin-top:0!important}@media (width>=50rem){.card-grid:where(.astro-7qmvx3iy){grid-template-columns:1fr 1fr;gap:1.5rem}.stagger:where(.astro-7qmvx3iy){--stagger-height:5rem;padding-bottom:var(--stagger-height)}.stagger:where(.astro-7qmvx3iy)>:nth-child(2n){transform:translateY(var(--stagger-height))}}.sl-link-card:where(.astro-zaaezwya){border:1px solid var(--sl-color-gray-5);box-shadow:var(--sl-shadow-sm);border-radius:.5rem;grid-template-columns:1fr auto;gap:.5rem;padding:1rem;display:grid;position:relative}a:where(.astro-zaaezwya){line-height:var(--sl-line-height-headings);text-decoration:none}a:where(.astro-zaaezwya):before{content:"";position:absolute;inset:0}.stack:where(.astro-zaaezwya){flex-direction:column;gap:.5rem}.title:where(.astro-zaaezwya){color:var(--sl-color-white);font-weight:600;font-size:var(--sl-text-lg)}.description:where(.astro-zaaezwya){color:var(--sl-color-gray-3);line-height:1.5}.icon:where(.astro-zaaezwya){color:var(--sl-color-gray-3)}.sl-link-card:where(.astro-zaaezwya):hover{background:var(--sl-color-gray-7,var(--sl-color-gray-6));border-color:var(--sl-color-gray-2)}.sl-link-card:where(.astro-zaaezwya):hover .icon:where(.astro-zaaezwya){color:var(--sl-color-white)}}.plate:where(.astro-zbp6lmd6){isolation:isolate;color:#2a1006;background:linear-gradient(112deg,#0000 0 38%,#ffd6b447 44%,#0000 52%),repeating-linear-gradient(90deg,#ffffff09 0 1px,#0000 1px 3px),linear-gradient(160deg,#e3a472 0%,#cf7f49 40%,#c06a34 68%,#d58d58 100%);border-radius:.6rem;margin:clamp(1rem,4vw,2.5rem) 0;padding:clamp(1.75rem,4vw,2.75rem) clamp(1.5rem,5vw,3.5rem);position:relative;overflow:hidden;box-shadow:inset 0 1px #ffe1c880,inset 0 -2px #46190559,0 1px 2px #28140a40,0 18px 40px -24px #3c1e0a8c}.patina:where(.astro-zbp6lmd6){z-index:-1;pointer-events:none;width:100%;height:100%;mask-image:radial-gradient(circle at 0% 100%, #000 0, transparent var(--bloom)), radial-gradient(circle at 100% 0%, #000 0, transparent calc(var(--bloom) * .8)), radial-gradient(circle at 100% 100%, #000 0, transparent calc(var(--bloom) * .45));--bloom:8%;transition:--bloom 1.6s cubic-bezier(.2,.7,.2,1);position:absolute;inset:0}.plate:where(.astro-zbp6lmd6).grown .patina:where(.astro-zbp6lmd6){--bloom:46%}@property --bloom{syntax:"<percentage>";inherits:false;initial-value:8%}@media (prefers-reduced-motion:reduce){.patina:where(.astro-zbp6lmd6){--bloom:46%;transition:none}}.rivet:where(.astro-zbp6lmd6){background:radial-gradient(circle at 35% 30%,#f3c39c,#8a4019 70%);border-radius:50%;width:.55rem;height:.55rem;position:absolute;box-shadow:0 1px 1px #280f0080}.stamp:where(.astro-zbp6lmd6){gap:1.5rem;display:grid}@media (width>=50rem){.stamp:where(.astro-zbp6lmd6){grid-template-columns:minmax(12rem,.8fr) 2fr;align-items:center}}.label:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);letter-spacing:.14em;text-transform:uppercase;color:#2a1006cc;font-size:.66rem;font-weight:600;display:block}.model:where(.astro-zbp6lmd6){margin:0}.name:where(.astro-zbp6lmd6){font-family:var(--vd-font-display);letter-spacing:-.02em;text-shadow:0 1px #ffdcbe73,0 -1px #3c140059;font-size:clamp(3rem,8vw,4.5rem);font-weight:860;font-stretch:58%;line-height:.9;display:block}.version:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);font-size:.85rem;font-weight:600}dl:where(.astro-zbp6lmd6){gap:.85rem 2rem;margin:0;display:grid}@media (width>=38rem){dl:where(.astro-zbp6lmd6){grid-template-columns:repeat(2,minmax(0,1fr))}}dl:where(.astro-zbp6lmd6)>div:where(.astro-zbp6lmd6){border-top:1px solid #2a10064d;padding-top:.5rem;box-shadow:inset 0 1px #ffdcbe33}dd:where(.astro-zbp6lmd6){text-shadow:0 1px #ffdcbe4d;margin:.15rem 0 0;font-size:.98rem;font-weight:600;line-height:1.4}
+@layer starlight.components{svg:where(.astro-hkc32dio){color:var(--sl-icon-color);font-size:var(--sl-icon-size,1em);width:1em;height:1em}}
+@layer starlight.components{starlight-tabs:where(.astro-scn3uvmv){display:block}.tablist-wrapper:where(.astro-scn3uvmv){overflow-x:auto}:where(.astro-scn3uvmv)[role=tablist]{border-bottom:2px solid var(--sl-color-gray-5);padding:0;list-style:none;display:flex}.tab:where(.astro-scn3uvmv){display:flex}.tab:where(.astro-scn3uvmv)>:where(.astro-scn3uvmv)[role=tab]{--sl-tab-color-border:var(--sl-color-gray-5);line-height:var(--sl-line-height-headings);box-shadow:0 2px 0 var(--sl-tab-color-border);color:var(--sl-color-gray-3);outline-offset:var(--sl-outline-offset-inside);overflow-wrap:initial;align-items:center;gap:.5rem;padding:.275rem 1.25rem;text-decoration:none;display:flex}.tab:where(.astro-scn3uvmv) :where(.astro-scn3uvmv)[role=tab][aria-selected=true]{--sl-tab-color-border:var(--sl-color-text-accent);color:var(--sl-color-white);font-weight:600}.tablist-wrapper:where(.astro-scn3uvmv)~[role=tabpanel]{margin-top:1rem}}
+@layer starlight.components{.sl-steps{--bullet-size:calc(var(--sl-line-height) * 1rem);--bullet-margin:.375rem;counter-reset:steps-counter var(--sl-steps-start,0);padding-inline-start:0;list-style:none}.sl-steps>li{counter-increment:steps-counter;padding-inline-start:calc(var(--bullet-size) + 1rem);min-height:calc(var(--bullet-size) + var(--bullet-margin));padding-bottom:1px;position:relative}.sl-steps>li+li{margin-top:0}.sl-steps>li:before{content:counter(steps-counter);top:0;width:var(--bullet-size);height:var(--bullet-size);line-height:var(--bullet-size);font-size:var(--sl-text-xs);text-align:center;color:var(--sl-color-white);background-color:var(--sl-color-gray-6);box-shadow:inset 0 0 0 1px var(--sl-color-gray-5);border-radius:99rem;font-weight:600;position:absolute;inset-inline-start:0}.sl-steps>li:after{--guide-width:1px;content:"";top:calc(var(--bullet-size) + var(--bullet-margin));bottom:var(--bullet-margin);width:var(--guide-width);background-color:var(--sl-color-hairline-light);position:absolute;inset-inline-start:calc((var(--bullet-size) - var(--guide-width)) / 2)}}@layer starlight.content{.sl-steps>li>:first-child{--lh:calc(1em * var(--sl-line-height));--shift-y:calc(.5 * (var(--bullet-size) - var(--lh)));transform:translateY(var(--shift-y));margin-bottom:var(--shift-y)}.sl-steps>li>:first-child:where(h1,h2,h3,h4,h5,h6){--lh:calc(1em * var(--sl-line-height-headings))}@supports (--prop:1lh){.sl-steps>li>:first-child{--lh:1lh}}}
+@layer starlight.components{starlight-file-tree:where(.astro-a2hqddox){--x-space:1.5rem;--y-space:.125rem;--y-pad:0;border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-gray-6);font-size:var(--sl-text-xs);font-family:var(--__sl-font-mono);padding:1rem;display:block;overflow-x:auto}starlight-file-tree:where(.astro-a2hqddox) .directory>details{padding:0;background:0 0;border:0;padding-inline-start:var(--x-space)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary{padding:var(--y-pad) .625rem;color:var(--sl-color-white);border:0;max-width:100%;margin-inline-start:calc(-1 * var(--x-space));font-weight:400}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::marker,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::-webkit-details-marker{color:var(--sl-color-gray-3)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .tree-icon{cursor:pointer;color:var(--sl-color-text-accent);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover~ul{border-color:var(--sl-color-gray-4)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .highlight .tree-icon{color:var(--sl-color-text-invert);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) ul{border-inline-start:1px solid var(--sl-color-gray-5);margin-inline-start:.5rem;padding:0;padding-inline-start:.125rem;list-style:none}starlight-file-tree:where(.astro-a2hqddox)>ul{border:0;margin:0;padding:0}starlight-file-tree:where(.astro-a2hqddox) li{margin:var(--y-space) 0;padding:var(--y-pad) 0}starlight-file-tree:where(.astro-a2hqddox) .file{color:var(--sl-color-white);margin-inline-start:calc(var(--x-space) - .125rem)}starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:wrap;align-items:flex-start;max-width:calc(100% - 1rem);display:inline-flex}@media (width>=30em){starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:nowrap}}starlight-file-tree:where(.astro-a2hqddox) .tree-entry>:first-child{flex-shrink:0}starlight-file-tree:where(.astro-a2hqddox) .empty{color:var(--sl-color-gray-3);padding-inline-start:.375rem}starlight-file-tree:where(.astro-a2hqddox) .comment{color:var(--sl-color-gray-3);min-width:12rem;max-width:24rem;padding-inline-start:1.625rem}starlight-file-tree:where(.astro-a2hqddox) .highlight{color:var(--sl-color-text-invert);background-color:var(--sl-color-text-accent);border-radius:.25rem;padding-inline-end:.5rem;display:inline-block}starlight-file-tree:where(.astro-a2hqddox) svg{fill:var(--sl-color-gray-3);vertical-align:middle;width:.875rem;height:.875rem;margin-inline:.25rem .375rem;display:inline}starlight-file-tree:where(.astro-a2hqddox) .highlight svg.tree-icon{fill:currentColor}}
+</style><script type="module" src="/verdin/_astro/page.Dwipeu-R.js"></script></head><body class="astro-g5ptsecz"><a class="sl-skip-link astro-qb7clj6f" href="#_top">Ga naar inhoud</a><div class="page sl-flex astro-yntsjkba"><header class="header astro-yntsjkba"><div class="header astro-by6fddyj"><div class="title-wrapper sl-flex astro-by6fddyj"><a href="/verdin/nl" class="site-title sl-flex astro-6rvad3va"><img class="astro-6rvad3va" alt src="/verdin/_astro/verdin-mark.CEc0Dc_U.svg" width="32" height="32"><span class="astro-6rvad3va" translate="no">Verdin</span></a></div><div class="sl-flex print:hidden astro-by6fddyj"><site-search class="astro-by6fddyj astro-b5kgnn7o" data-translations="{&quot;placeholder&quot;:&quot;Zoeken&quot;}"><button data-open-modal disabled aria-label="Zoeken" aria-keyshortcuts="Control+K" class="astro-b5kgnn7o"><svg aria-hidden="true" class="astro-b5kgnn7o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg><span class="sl-hidden md:sl-block astro-b5kgnn7o" aria-hidden="true">Zoeken</span><kbd class="sl-hidden md:sl-flex astro-b5kgnn7o" style="display: none;"><kbd class="astro-b5kgnn7o">Ctrl</kbd><kbd class="astro-b5kgnn7o">K</kbd></kbd></button><dialog style="padding:0" aria-label="Zoeken" class="astro-b5kgnn7o"><div class="dialog-frame sl-flex astro-b5kgnn7o"><button data-close-modal class="sl-flex md:sl-hidden astro-b5kgnn7o">Annuleren</button><div class="search-container astro-b5kgnn7o"><div id="starlight__search" class="astro-b5kgnn7o"></div></div></div></dialog></site-search><script>
+	(() => {
+		const openBtn = document.querySelector('button[data-open-modal]');
+		const shortcut = openBtn?.querySelector('kbd');
+		if (!openBtn || !(shortcut instanceof HTMLElement)) return;
+		const platformKey = shortcut.querySelector('kbd');
+		if (platformKey && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+			platformKey.textContent = '⌘';
+			openBtn.setAttribute('aria-keyshortcuts', 'Meta+K');
+		}
+		shortcut.style.display = '';
+	})();
+</script><script type="module" src="/verdin/_astro/Search.astro_astro_type_script_index_0_lang.BVn7b3Eg.js"></script></div><div class="sl-hidden md:sl-flex print:hidden right-group astro-by6fddyj"><div class="sl-flex social-icons astro-by6fddyj"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Selecteer thema</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">Donker</option><option value="light" class="astro-2z5xp7gb">Licht</option><option value="auto" selected class="astro-2z5xp7gb">Auto</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><script type="module">var e=`starlight-theme`,t=e=>e===`auto`||e===`dark`||e===`light`?e:`auto`,n=()=>t(typeof localStorage<`u`&&localStorage.getItem(e));function r(t){typeof localStorage<`u`&&localStorage.setItem(e,t===`light`||t===`dark`?t:``)}var i=()=>matchMedia(`(prefers-color-scheme: light)`).matches?`light`:`dark`;function a(e){StarlightThemeProvider.updatePickers(e),document.documentElement.dataset.theme=e===`auto`?i():e,r(e)}matchMedia(`(prefers-color-scheme: light)`).addEventListener(`change`,()=>{n()===`auto`&&a(`auto`)});var o=class extends HTMLElement{constructor(){super(),a(n()),this.querySelector(`select`)?.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&a(t(e.currentTarget.value))})}};customElements.define(`starlight-theme-select`,o);</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Selecteer taal</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/extending/plugin-reference/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/extending/plugin-reference/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/extending/plugin-reference/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/extending/plugin-reference/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/extending/plugin-reference/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/extending/plugin-reference/" class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/extending/plugin-reference/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/extending/plugin-reference/" class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/extending/plugin-reference/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/extending/plugin-reference/" class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/extending/plugin-reference/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/extending/plugin-reference/" selected class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/extending/plugin-reference/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/extending/plugin-reference/" class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/extending/plugin-reference/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/extending/plugin-reference/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/extending/plugin-reference/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/extending/plugin-reference/" class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select><script type="module">var e=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);e&&(e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=e.currentTarget.value)}),window.addEventListener(`pageshow`,t=>{if(!t.persisted)return;let n=e.querySelector(`option[selected]`)?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}};customElements.define(`starlight-lang-select`,e);</script></div></div></header><nav class="sidebar print:hidden astro-yntsjkba" aria-label="Hoofdnavigatie"><button popovertarget="starlight__sidebar" class="sl-menu-button sl-flex md:sl-hidden print:hidden astro-r2osgdlg"><svg aria-hidden="true" class="open-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg><svg aria-hidden="true" class="close-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"/></svg><span class="sr-only astro-r2osgdlg">Menu</span></button><script type="module">var e=class extends HTMLElement{constructor(){super();let e=matchMedia(`(min-width: 50em)`),t=()=>{this.popover=e.matches?null:`auto`};t(),e.addEventListener(`change`,()=>t()),this.addEventListener(`toggle`,({newState:e})=>this.trapFocus(e===`open`))}trapFocus(e){document.querySelectorAll(`.main-frame, .sl-skip-link`).forEach(t=>{t.toggleAttribute(`inert`,e)})}};customElements.define(`sl-sidebar-pane`,e);</script><sl-sidebar-pane popover id="starlight__sidebar" class="sidebar-pane astro-yntsjkba"><div class="sidebar-content sl-flex astro-yntsjkba"><sl-sidebar-state-persist data-hash="060hus1" class="astro-ipdry5cl"><script aria-hidden="true">
+		(() => {
+			try {
+				if (!matchMedia('(min-width: 50em)').matches) return;
+				/** @type {HTMLElement | null} */
+				const target = document.querySelector('sl-sidebar-state-persist');
+				const state = JSON.parse(sessionStorage.getItem('sl-sidebar-state') || '0');
+				if (!target || !state || target.dataset.hash !== state.hash) return;
+				window._starlightScrollRestore = state.scroll;
+				customElements.define(
+					'sl-sidebar-restore',
+					class SidebarRestore extends HTMLElement {
+						connectedCallback() {
+							try {
+								const idx = parseInt(this.dataset.index || '');
+								const details = this.closest('details');
+								if (details && typeof state.open[idx] === 'boolean') details.open = state.open[idx];
+							} catch {}
+						}
+					}
+				);
+			} catch {}
+		})();
+	</script><ul class="top-level astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Aan de slag</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="0"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/start/introduction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Introductie</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/start/installation/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Installatie</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/start/quickstart/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Quickstart</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/start/tutorial-astro/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Blog met Astro</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/start/tutorial-nextjs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Blog met Next.js</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/start/project-structure/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Projectstructuur</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Concepten</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="1"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/concepts/content-model/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Contentmodel</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/concepts/components-and-dynamic-zones/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Componenten en dynamische zones</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/concepts/relations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Relaties</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/concepts/draft-and-publish/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Concept en publicatie</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/concepts/internationalization/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Internationalisatie</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/concepts/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Rechten</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/concepts/schema-migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Schemamigraties</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/concepts/media/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Media</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Handleidingen</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="2"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Content</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="3"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/content/localizing-content/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Content lokaliseren</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/content/review-workflows/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Reviewworkflows</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/content/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Releases</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/content/content-history/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Contentgeschiedenis</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/content/audit-logs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Auditlogs</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/content/preview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Voorbeeld</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/content/comments-and-tasks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Opmerkingen en taken</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/content/search/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Zoeken</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/content/import-export/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Importeren en exporteren</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/content/editor-digest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Redactiesamenvatting</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Frontend</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="4"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/frontend/typed-client/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Getypeerde client</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/frontend/images/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Responsieve afbeeldingen</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/frontend/visual-editing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Visueel bewerken</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/frontend/seo-and-sitemap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">SEO en sitemap</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/frontend/redirects/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Redirects</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/frontend/menus/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Menu&#39;s</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/frontend/forms/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Formulieren</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/frontend/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Realtime</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Authenticatie</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="5"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/auth/admin-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Beheerders</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/auth/two-factor/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Tweefactorauthenticatie</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/auth/sso/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Single sign-on</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/auth/api-tokens/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">API-tokens</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/auth/end-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Eindgebruikers</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Integraties</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="6"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/integrations/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Webhooks</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/integrations/mcp/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">MCP-server</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/integrations/ai-actions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">AI-acties</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/guides/integrations/deploys-and-cdn/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Deploys en CDN</span></a></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Uitbreiden</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="7"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/extending/plugins/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Plugins</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/extending/plugin-tutorial/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Plugintutorial</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/extending/plugin-reference/" aria-current="page" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Pluginreferentie</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">API-referentie</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="8"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/api/rest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">REST</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/api/graphql/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">GraphQL</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/api/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">API-playground</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/api/admin/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Admin</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/api/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Realtime</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/api/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Webhooks</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Example content API</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="9"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overview</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Article</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="10"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List articles</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentidactionsaction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Publish, unpublish or discard the draft</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Category</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="11"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List categories</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a category</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Homepage</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="12"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create or update the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete the Homepage</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Tag</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="13"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List tags</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a tag</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Internationalization</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="14"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apii18nlocales/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List the locales</span></a></li></ul></details></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Referentie</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="15"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/reference/configuration/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Configuratie</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/reference/cli/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Opdrachtregel</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/reference/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Permissions</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/reference/attribute-types/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Attribuuttypes</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Uitrollen en beheren</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="16"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/production-checklist/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Productiechecklist</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/security/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Beveiliging</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/compose/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Docker Compose in productie</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/docker/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Docker</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/linux-server/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Linux-server</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/fly/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Fly.io</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/one-click/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Deploys met één klik</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/render/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Render</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/railway/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Railway</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/helm/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Helm-chart</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/kubernetes/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Kubernetes</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/scaling/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Meerdere instanties</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/backups/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Back-ups</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/monitoring/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Monitoring</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/deploy/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Gehoste playground</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Migreren en upgraden</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="17"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/migrate/from-strapi/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Migreren vanaf Strapi</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/migrate/porting-custom-code/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Eigen code porten</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/migrate/compatibility/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Compatibiliteit met Strapi</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/migrate/upgrading/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Verdin upgraden</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Interne werking</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="18"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/internals/overview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overzicht</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/internals/storage/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Opslag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/internals/database/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Databaselaag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/internals/migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Migratie-engine</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/internals/document-service/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Document Service</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/internals/admin-panel/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Beheerpaneel</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/internals/testing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Testen</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/internals/decisions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Beslissingslog</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/internals/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Releases en hosting van de docs</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Project</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="19"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/nl/project/roadmap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Verdin roadmap</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/project/translating/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Translating the admin panel</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/nl/project/changelog/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Changelog</span></a></li></ul></details></li></ul><script aria-hidden="true">
+		(() => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!window._starlightScrollRestore || !scroller) return;
+			scroller.scrollTop = window._starlightScrollRestore;
+			delete window._starlightScrollRestore;
+		})();
+	</script></sl-sidebar-state-persist><div class="md:sl-hidden"><div class="mobile-preferences sl-flex astro-p4azlveh"><div class="social-icons astro-p4azlveh"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Selecteer thema</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">Donker</option><option value="light" class="astro-2z5xp7gb">Licht</option><option value="auto" selected class="astro-2z5xp7gb">Auto</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Selecteer taal</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/extending/plugin-reference/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/extending/plugin-reference/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/extending/plugin-reference/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/extending/plugin-reference/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/extending/plugin-reference/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/extending/plugin-reference/" class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/extending/plugin-reference/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/extending/plugin-reference/" class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/extending/plugin-reference/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/extending/plugin-reference/" class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/extending/plugin-reference/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/extending/plugin-reference/" selected class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/extending/plugin-reference/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/extending/plugin-reference/" class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/extending/plugin-reference/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/extending/plugin-reference/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/extending/plugin-reference/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/extending/plugin-reference/" class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select></div></div></div></sl-sidebar-pane></nav><div class="main-frame astro-yntsjkba"><script type="module">var e=document.getElementById(`starlight__sidebar`),t=e?.querySelector(`sl-sidebar-state-persist`),n=`sl-sidebar-state`,r=()=>{let r=[],i=t?.dataset.hash||``;try{let e=sessionStorage.getItem(n),t=JSON.parse(e||`{}`);Array.isArray(t.open)&&t.hash===i&&(r=t.open)}catch{}return{hash:i,open:r,scroll:e?.scrollTop||0}},i=e=>{try{sessionStorage.setItem(n,JSON.stringify(e))}catch{}},a=()=>i(r()),o=(e,t)=>{let n=r();n.open[t]=e,i(n)};t?.addEventListener(`click`,e=>{if(!(e.target instanceof Element))return;let t=e.target.closest(`summary`)?.closest(`details`);if(!t)return;let n=t.querySelector(`sl-sidebar-restore`),r=parseInt(n?.dataset.index||``);isNaN(r)||o(!t.open,r)}),addEventListener(`visibilitychange`,()=>{document.visibilityState===`hidden`&&a()});</script><div class="lg:sl-flex astro-lrzkfocr"><aside class="right-sidebar-container print:hidden astro-lrzkfocr"><div class="right-sidebar astro-lrzkfocr"><div class="lg:sl-hidden astro-qok35upx"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-66cqc7ze"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-66cqc7ze"><details id="starlight__mobile-toc" class="astro-66cqc7ze"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-66cqc7ze"><span class="toggle sl-flex astro-66cqc7ze">Op deze pagina<svg aria-hidden="true" class="caret astro-66cqc7ze astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></span><span class="display-current astro-66cqc7ze"></span></summary><div class="dropdown astro-66cqc7ze"><ul class="isMobile astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Overzicht</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#pluginmap" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Pluginmap</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#manifest" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Manifest</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#sleutels-op-het-hoogste-niveau" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Sleutels op het hoogste niveau</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#capabilities" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[capabilities]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#limits" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[limits]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[hooks]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[routes]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[jobs]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#startup" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[startup]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[graphql]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#admin" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[admin]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#settings" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[settings]]</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#geëxporteerde-functies" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Geëxporteerde functies</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#before-hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Before-hooks</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#after-hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">After-hooks</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes-1" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Routes</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs-1" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Jobs</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#opstartfunctie" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Opstartfunctie</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql-velden" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">GraphQL-velden</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#hostfuncties" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Hostfuncties</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_log" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_log</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_content" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_content</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_kv_get-en-verdin_kv_set" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_kv_get en verdin_kv_set</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_config" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_config</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_public_permissions" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_public_permissions</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#http" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">HTTP</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#uitbreidingspunten-van-het-beheerpaneel" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Uitbreidingspunten van het beheerpaneel</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#widgets" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Widgets</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#aangepaste-velden" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Aangepaste velden</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#runtime-en-limieten" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Runtime en limieten</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#metrics" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Metrics</span></a></li></ul></div></details></nav></mobile-starlight-toc><script type="module" src="/verdin/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.C3fM4Kra.js"></script></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-qok35upx"><div class="sl-container astro-qok35upx"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">Op deze pagina</h2><ul class="astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Overzicht</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#pluginmap" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Pluginmap</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#manifest" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Manifest</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#sleutels-op-het-hoogste-niveau" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Sleutels op het hoogste niveau</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#capabilities" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[capabilities]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#limits" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[limits]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[hooks]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[routes]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[jobs]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#startup" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[startup]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[graphql]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#admin" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[admin]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#settings" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[settings]]</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#geëxporteerde-functies" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Geëxporteerde functies</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#before-hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Before-hooks</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#after-hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">After-hooks</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes-1" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Routes</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs-1" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Jobs</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#opstartfunctie" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Opstartfunctie</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql-velden" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">GraphQL-velden</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#hostfuncties" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Hostfuncties</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_log" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_log</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_content" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_content</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_kv_get-en-verdin_kv_set" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_kv_get en verdin_kv_set</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_config" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_config</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_public_permissions" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_public_permissions</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#http" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">HTTP</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#uitbreidingspunten-van-het-beheerpaneel" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Uitbreidingspunten van het beheerpaneel</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#widgets" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Widgets</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#aangepaste-velden" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Aangepaste velden</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#runtime-en-limieten" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Runtime en limieten</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#metrics" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Metrics</span></a></li></ul></nav></starlight-toc><script type="module" src="/verdin/_astro/TableOfContents.astro_astro_type_script_index_0_lang.BpJaGz7G.js"></script></div></div></div></aside><div class="main-pane astro-lrzkfocr"><main data-pagefind-body class="astro-g5ptsecz" lang="nl" dir="ltr"><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><h1 id="_top" class="astro-bebwqqxs">Pluginreferentie</h1></div></div><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><div class="sl-markdown-content"><!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
+<p>Deze pagina is het volledige contract tussen Verdin en een plugin: het manifest, wat Verdin naar
+elke geëxporteerde functie stuurt en terugverwacht, en de hostfuncties die een module kan
+aanroepen. Voor een introductie, zie <a href="/verdin/nl/extending/plugins/">Plugins</a>; voor een uitgewerkt
+voorbeeld, de <a href="/verdin/nl/extending/plugin-tutorial/">plugintutorial</a>.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="pluginmap">Pluginmap</h2><a class="sl-anchor-link" href="#pluginmap"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Pluginmap”</span></a></div>
+<p>Elke plugin is een map onder <code dir="auto">[plugins].path</code> (standaard <code dir="auto">plugins/</code>, naast <code dir="auto">verdin.toml</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Bestand</th>
+<th>Verplicht</th>
+<th>Inhoud</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">plugin.toml</code></td>
+<td>ja</td>
+<td>Het manifest.</td>
+</tr>
+<tr>
+<td><code dir="auto">plugin.wasm</code></td>
+<td>ja</td>
+<td>De module (een ander pad met <code dir="auto">wasm</code>).</td>
+</tr>
+<tr>
+<td><code dir="auto">admin/</code></td>
+<td>nee</td>
+<td>Bestanden die het beheerpaneel laadt: de module <code dir="auto">admin.script</code> en zijn assets.</td>
+</tr>
+</tbody>
+</table>
+<p>Bij het opstarten laadt Verdin elke map die een <code dir="auto">plugin.toml</code> heeft, op volgorde van naam. Een map
+wordt overgeslagen, en met de reden getoond in <strong>Instellingen → Plugins</strong>, als zijn manifest
+ongeldig is, zijn module ontbreekt, of een andere plugin al zijn <code dir="auto">name</code> heeft.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="manifest">Manifest</h2><a class="sl-anchor-link" href="#manifest"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Manifest”</span></a></div>
+<div class="expressive-code"><link rel="stylesheet" href="/verdin/_astro/ec.w36nc.css"><script type="module" src="/verdin/_astro/ec.0vx5m.js"></script><figure class="frame has-title not-content"><figcaption class="header"><span class="title">plugins/slugs/plugin.toml</span></figcaption><pre data-language="toml"><code><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">name</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">version</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">1.0.0</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">description</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Slugs from titles, and a color field</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[capabilities]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">read</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">write</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::tag</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">http</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api.example.com</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">kv</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#FF6A83;--1:#A24848">true</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">public_permissions</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#FF6A83;--1:#A24848">true</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[limits]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">timeout_ms</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">5000</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">memory_mb</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">64</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[hooks]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">on</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">beforeCreate</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">uid</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">before_write</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[routes]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">handle</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[jobs]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">schedule</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">*/15 * * * *</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">refresh</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[startup]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">seed</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">timeout_ms</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">30000</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[graphql]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">name</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugStats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[admin]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">script</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">index.js</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[admin.widgets]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">id</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">title</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Slug stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">element</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs-stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[admin.fields]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">id</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">title</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">element</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs-color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">type</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">string</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[settings]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">key</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">separator</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">label</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Separator</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">type</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">select</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">options</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">-</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">_</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">default</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">-</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="name = &quot;slugs&quot;version = &quot;1.0.0&quot;description = &quot;Slugs from titles, and a color field&quot;[capabilities]read = [&quot;api::article&quot;]write = [&quot;api::tag&quot;]http = [&quot;api.example.com&quot;]kv = truepublic_permissions = true[limits]timeout_ms = 5000memory_mb = 64[[hooks]]on = &quot;beforeCreate&quot;uid = &quot;api::article&quot;function = &quot;before_write&quot;[routes]function = &quot;handle&quot;[[jobs]]schedule = &quot;*/15 * * * *&quot;function = &quot;refresh&quot;[startup]function = &quot;seed&quot;timeout_ms = 30000[[graphql]]name = &quot;slugStats&quot;function = &quot;stats&quot;[admin]script = &quot;index.js&quot;[[admin.widgets]]id = &quot;stats&quot;title = &quot;Slug stats&quot;element = &quot;slugs-stats&quot;[[admin.fields]]id = &quot;color&quot;title = &quot;Color&quot;element = &quot;slugs-color&quot;type = &quot;string&quot;[[settings]]key = &quot;separator&quot;label = &quot;Separator&quot;type = &quot;select&quot;options = [&quot;-&quot;, &quot;_&quot;]default = &quot;-&quot;"><div></div></button></div></figure></div>
+<p>Onbekende sleutels zijn fouten, in elke tabel.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="sleutels-op-het-hoogste-niveau">Sleutels op het hoogste niveau</h3><a class="sl-anchor-link" href="#sleutels-op-het-hoogste-niveau"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Sleutels op het hoogste niveau”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Sleutel</th>
+<th>Standaard</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">name</code></td>
+<td>verplicht</td>
+<td>Het id van de plugin in URL’s, instellingen en aangepaste velden: kleine letters, cijfers en <code dir="auto">-</code>, beginnend met een letter, hoogstens 64 tekens.</td>
+</tr>
+<tr>
+<td><code dir="auto">version</code></td>
+<td>verplicht</td>
+<td>Getoond in het beheerpaneel en het log.</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>niet ingesteld</td>
+<td>Getoond in <strong>Instellingen → Plugins</strong>.</td>
+</tr>
+<tr>
+<td><code dir="auto">wasm</code></td>
+<td><code dir="auto">"plugin.wasm"</code></td>
+<td>De module, relatief ten opzichte van de pluginmap (geen <code dir="auto">..</code>, niet absoluut).</td>
+</tr>
+<tr>
+<td><code dir="auto">wasi</code></td>
+<td><code dir="auto">false</code></td>
+<td>Geef de module WASI: een klok en willekeurige getallen. Hoe dan ook geen bestanden of sockets.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="capabilities"><code dir="auto">[capabilities]</code></h3><a class="sl-anchor-link" href="#capabilities"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[capabilities]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Sleutel</th>
+<th>Standaard</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">read</code></td>
+<td><code dir="auto">[]</code></td>
+<td>Contenttypes die <code dir="auto">verdin_content</code> mag lezen (<code dir="auto">findMany</code>, <code dir="auto">findOne</code>): uid’s zoals <code dir="auto">api::article</code>, of <code dir="auto">"*"</code> voor allemaal.</td>
+</tr>
+<tr>
+<td><code dir="auto">write</code></td>
+<td><code dir="auto">[]</code></td>
+<td>Contenttypes die hij mag <code dir="auto">create</code>, <code dir="auto">update</code>, <code dir="auto">delete</code>, <code dir="auto">publish</code> en <code dir="auto">unpublish</code>. Impliceert <code dir="auto">read</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">http</code></td>
+<td><code dir="auto">[]</code></td>
+<td>Hosts waarnaar de module HTTP-requests mag sturen: <code dir="auto">api.example.com</code>, of <code dir="auto">*.example.com</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">kv</code></td>
+<td><code dir="auto">false</code></td>
+<td>De eigen key-value-opslag van de plugin (<code dir="auto">verdin_kv_get</code>, <code dir="auto">verdin_kv_set</code>).</td>
+</tr>
+<tr>
+<td><code dir="auto">public_permissions</code></td>
+<td><code dir="auto">false</code></td>
+<td>De contentrechten van de openbare rol voor de content-API lezen en vervangen (<code dir="auto">verdin_public_permissions</code>).</td>
+</tr>
+</tbody>
+</table>
+<p>Capabilities beperken alleen hostaanroepen. Hooks draaien op de types die ze noemen, wat <code dir="auto">read</code>
+ook zegt, en routes zijn voor iedereen bereikbaar.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="limits"><code dir="auto">[limits]</code></h3><a class="sl-anchor-link" href="#limits"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[limits]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Sleutel</th>
+<th>Standaard</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">timeout_ms</code></td>
+<td><code dir="auto">5000</code></td>
+<td>Tijdslimiet van één aanroep, in milliseconden.</td>
+</tr>
+<tr>
+<td><code dir="auto">memory_mb</code></td>
+<td><code dir="auto">64</code></td>
+<td>Grootste geheugen van de module, in megabytes.</td>
+</tr>
+</tbody>
+</table>
+<p>Beide moeten positief zijn.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="hooks"><code dir="auto">[[hooks]]</code></h3><a class="sl-anchor-link" href="#hooks"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[hooks]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Sleutel</th>
+<th>Standaard</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">on</code></td>
+<td>verplicht</td>
+<td>Het event, hieronder.</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td><code dir="auto">"*"</code></td>
+<td>Het contenttype (<code dir="auto">api::article</code>), of <code dir="auto">"*"</code> voor allemaal.</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>verplicht</td>
+<td>De geëxporteerde functie die wordt aangeroepen.</td>
+</tr>
+</tbody>
+</table>
+<p>Events:</p>
+<table>
+<thead>
+<tr>
+<th>Vóór de schrijfactie</th>
+<th>Na de schrijfactie</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">beforeCreate</code></td>
+<td><code dir="auto">afterCreate</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeUpdate</code></td>
+<td><code dir="auto">afterUpdate</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeDelete</code></td>
+<td><code dir="auto">afterDelete</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforePublish</code></td>
+<td><code dir="auto">afterPublish</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeUnpublish</code></td>
+<td><code dir="auto">afterUnpublish</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeDiscardDraft</code></td>
+<td><code dir="auto">afterDiscardDraft</code></td>
+</tr>
+</tbody>
+</table>
+<p>De namen zijn de lifecyclenamen van Strapi. Hooks draaien bij schrijfacties vanuit het
+beheerpaneel, de REST- en GraphQL-API’s en releases, maar niet bij schrijfacties door de commando’s
+<code dir="auto">verdin import</code>. Schrijfacties door plugins draaien de after-hooks maar niet de before-hooks (zie
+<a href="#schrijfacties-door-plugins">Schrijfacties door plugins</a>).</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="routes"><code dir="auto">[routes]</code></h3><a class="sl-anchor-link" href="#routes"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[routes]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Sleutel</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>De geëxporteerde functie die elk request naar <code dir="auto">/api/plugins/&lt;name&gt;</code> en <code dir="auto">/api/plugins/&lt;name&gt;/…</code> bedient, met elke methode.</td>
+</tr>
+</tbody>
+</table>
+<p>Het pad volgt <code dir="auto">[api].prefix</code>.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="jobs"><code dir="auto">[[jobs]]</code></h3><a class="sl-anchor-link" href="#jobs"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[jobs]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Sleutel</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">schedule</code></td>
+<td>Cron-expressie, in UTC, met optionele seconden: <code dir="auto">*/15 * * * *</code>, <code dir="auto">0 0 3 * * *</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>De geëxporteerde functie die wordt aangeroepen.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="startup"><code dir="auto">[startup]</code></h3><a class="sl-anchor-link" href="#startup"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[startup]”</span></a></div>
+<p>Een functie die draait wanneer de plugin start: wat een Strapi-project in <code dir="auto">bootstrap</code> doet
+(content seeden, de openbare rol instellen).</p>
+<table>
+<thead>
+<tr>
+<th>Sleutel</th>
+<th>Standaard</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>verplicht</td>
+<td>De geëxporteerde functie die wordt aangeroepen.</td>
+</tr>
+<tr>
+<td><code dir="auto">timeout_ms</code></td>
+<td><code dir="auto">30000</code></td>
+<td>Haar eigen tijdslimiet, in milliseconden (seeden kan langer duren dan een hook). Moet positief zijn.</td>
+</tr>
+</tbody>
+</table>
+<p>Zie <a href="#opstartfunctie">Opstartfunctie</a> voor wanneer ze draait.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="graphql"><code dir="auto">[[graphql]]</code></h3><a class="sl-anchor-link" href="#graphql"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[graphql]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Sleutel</th>
+<th>Standaard</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">name</code></td>
+<td>verplicht</td>
+<td>De veldnaam: begint met een kleine letter, gevolgd door letters, cijfers en <code dir="auto">_</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>verplicht</td>
+<td>De geëxporteerde functie die het veld oplost.</td>
+</tr>
+<tr>
+<td><code dir="auto">mutation</code></td>
+<td><code dir="auto">false</code></td>
+<td>Voeg het veld toe aan <code dir="auto">Mutation</code> in plaats van <code dir="auto">Query</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>niet ingesteld</td>
+<td>De beschrijving van het veld in het schema.</td>
+</tr>
+</tbody>
+</table>
+<p>Elke regel voegt <code dir="auto">name(args: JSON): JSON</code> toe. Een naam die een contenttype al gebruikt, of die een
+andere plugin eerder nam, wordt overgeslagen met een waarschuwing in het log.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="admin"><code dir="auto">[admin]</code></h3><a class="sl-anchor-link" href="#admin"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[admin]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Sleutel</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">script</code></td>
+<td>ES-module onder <code dir="auto">admin/</code> die de custom elements definieert (geen <code dir="auto">..</code>, niet absoluut).</td>
+</tr>
+<tr>
+<td><code dir="auto">[[admin.widgets]]</code></td>
+<td>Types dashboardwidgets: <code dir="auto">id</code>, <code dir="auto">title</code>, <code dir="auto">element</code>, optioneel <code dir="auto">description</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">[[admin.fields]]</code></td>
+<td>Aangepaste velden: <code dir="auto">id</code>, <code dir="auto">title</code>, <code dir="auto">element</code>, <code dir="auto">type</code> (het attribuuttype waarin de waarde wordt opgeslagen, zoals <code dir="auto">string</code> of <code dir="auto">json</code>), optioneel <code dir="auto">description</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">element</code> is de naam van een custom element: kleine letters, cijfers en <code dir="auto">-</code>, met minstens één <code dir="auto">-</code>
+(<code dir="auto">slugs-color</code>).</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="settings"><code dir="auto">[[settings]]</code></h3><a class="sl-anchor-link" href="#settings"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[settings]]”</span></a></div>
+<p>Declareert het formulier van <strong>Instellingen → Plugins → Instellingen</strong>. Zonder regels zijn de
+instellingen een vrij JSON-object.</p>
+<table>
+<thead>
+<tr>
+<th>Sleutel</th>
+<th>Standaard</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">key</code></td>
+<td>verplicht</td>
+<td>De sleutel in het instellingenobject: letters, cijfers en <code dir="auto">_</code>, niet beginnend met een cijfer, uniek.</td>
+</tr>
+<tr>
+<td><code dir="auto">label</code></td>
+<td>verplicht</td>
+<td>Het label in het formulier.</td>
+</tr>
+<tr>
+<td><code dir="auto">type</code></td>
+<td><code dir="auto">"string"</code></td>
+<td><code dir="auto">string</code>, <code dir="auto">text</code>, <code dir="auto">url</code>, <code dir="auto">number</code>, <code dir="auto">integer</code>, <code dir="auto">boolean</code> of <code dir="auto">select</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>niet ingesteld</td>
+<td>Helptekst onder het veld.</td>
+</tr>
+<tr>
+<td><code dir="auto">required</code></td>
+<td><code dir="auto">false</code></td>
+<td>Er is een waarde nodig (niet leeg bij tekst), tenzij er een <code dir="auto">default</code> is.</td>
+</tr>
+<tr>
+<td><code dir="auto">options</code></td>
+<td><code dir="auto">[]</code></td>
+<td>De keuzes van een <code dir="auto">select</code> (daarvoor verplicht).</td>
+</tr>
+<tr>
+<td><code dir="auto">default</code></td>
+<td>niet ingesteld</td>
+<td>Gebruikt als de sleutel ontbreekt of <code dir="auto">null</code> is. Moet bij het veld passen.</td>
+</tr>
+<tr>
+<td><code dir="auto">min</code>, <code dir="auto">max</code></td>
+<td>niet ingesteld</td>
+<td>Grenzen van waarden van <code dir="auto">number</code> en <code dir="auto">integer</code>; lengtegrenzen van <code dir="auto">string</code> en <code dir="auto">text</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Waarden van <code dir="auto">url</code> zijn leeg of <code dir="auto">http(s)://</code>-URL’s. Met een formulier weigert de server instellingen
+met onbekende sleutels, verkeerde types, waarden buiten de grenzen of ontbrekende verplichte
+waarden (400).</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="geëxporteerde-functies">Geëxporteerde functies</h2><a class="sl-anchor-link" href="#geëxporteerde-functies"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Geëxporteerde functies”</span></a></div>
+<p>Elke geëxporteerde functie neemt één JSON-document en geeft er één terug (of niets). Een lege
+uitvoer telt als <code dir="auto">null</code>; uitvoer die geen JSON is, telt als mislukking.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="before-hooks">Before-hooks</h3><a class="sl-anchor-link" href="#before-hooks"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Before-hooks”</span></a></div>
+<p>Input:</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"event"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">beforeUpdate</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"uid"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"documentId"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">01m3p88ry359w82nsx496mep5t</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"locale"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">en</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"data"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"title"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">Hello</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="{  &quot;event&quot;: &quot;beforeUpdate&quot;,  &quot;uid&quot;: &quot;api::article&quot;,  &quot;documentId&quot;: &quot;01m3p88ry359w82nsx496mep5t&quot;,  &quot;locale&quot;: &quot;en&quot;,  &quot;data&quot;: { &quot;title&quot;: &quot;Hello&quot; }}"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>Veld</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">event</code></td>
+<td>Het event van de hook.</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td>Het contenttype.</td>
+</tr>
+<tr>
+<td><code dir="auto">documentId</code></td>
+<td>Het document, of <code dir="auto">null</code> bij <code dir="auto">beforeCreate</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>Bij gelokaliseerde types de geschreven locale (de standaardlocale als het request er geen noemde); <code dir="auto">null</code> bij andere types.</td>
+</tr>
+<tr>
+<td><code dir="auto">data</code></td>
+<td>De gegevens die worden geschreven, zoals het request ze stuurde: bij create en update. <code dir="auto">null</code> bij de andere events. Bij update alleen de meegestuurde velden.</td>
+</tr>
+</tbody>
+</table>
+<p>Uitvoer:</p>
+<table>
+<thead>
+<tr>
+<th>Uitvoer</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">{ "data": { … } }</code></td>
+<td>Vervangt de geschreven gegevens. Die worden gevalideerd zoals het origineel.</td>
+</tr>
+<tr>
+<td><code dir="auto">{ "error": "message" }</code></td>
+<td>Weigert de schrijfactie: de aanroeper krijgt een 400 met de melding.</td>
+</tr>
+<tr>
+<td><code dir="auto">{}</code> of iets anders</td>
+<td>De schrijfactie gaat ongewijzigd door.</td>
+</tr>
+</tbody>
+</table>
+<p>Als meerdere hooks overeenkomen, draaien ze in pluginvolgorde (mapnamen), daarna in de volgorde
+van het manifest; elke hook ziet de gegevens die de vorige teruggaf. Een hook die faalt (trap,
+time-out, ongeldige uitvoer) wordt gelogd en overgeslagen: de schrijfactie gaat door.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="after-hooks">After-hooks</h3><a class="sl-anchor-link" href="#after-hooks"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “After-hooks”</span></a></div>
+<p>Input: <code dir="auto">{ "event", "uid", "documentId", "locale" }</code>, verzonden nadat de schrijfactie is
+vastgelegd. De uitvoer wordt genegeerd; mislukkingen worden gelogd. Lees het item met
+<code dir="auto">verdin_content</code> als je de velden nodig hebt (met de capability <code dir="auto">read</code>).</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="routes-1">Routes</h3><a class="sl-anchor-link" href="#routes-1"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Routes”</span></a></div>
+<p>Input:</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"method"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">GET</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"path"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">/stats</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"query"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">page=2&amp;sort=title</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"headers"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"accept"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">application/json</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"user-agent"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">curl/8.7.1</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"body"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">""</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"actor"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"kind"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">public</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="{  &quot;method&quot;: &quot;GET&quot;,  &quot;path&quot;: &quot;/stats&quot;,  &quot;query&quot;: &quot;page=2&amp;sort=title&quot;,  &quot;headers&quot;: { &quot;accept&quot;: &quot;application/json&quot;, &quot;user-agent&quot;: &quot;curl/8.7.1&quot; },  &quot;body&quot;: &quot;&quot;,  &quot;actor&quot;: { &quot;kind&quot;: &quot;public&quot; }}"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>Veld</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">method</code></td>
+<td>De HTTP-methode.</td>
+</tr>
+<tr>
+<td><code dir="auto">path</code></td>
+<td>Het pad na <code dir="auto">/api/plugins/&lt;name&gt;</code>, beginnend met <code dir="auto">/</code> (<code dir="auto">/</code> voor de root van de plugin).</td>
+</tr>
+<tr>
+<td><code dir="auto">query</code></td>
+<td>De ruwe querystring, zonder <code dir="auto">?</code> (leeg als er geen is).</td>
+</tr>
+<tr>
+<td><code dir="auto">headers</code></td>
+<td>Alleen <code dir="auto">content-type</code>, <code dir="auto">accept</code>, <code dir="auto">user-agent</code> en <code dir="auto">accept-language</code>, als ze aanwezig zijn.</td>
+</tr>
+<tr>
+<td><code dir="auto">body</code></td>
+<td>De request-body als string (ongeldige UTF-8 wordt vervangen).</td>
+</tr>
+<tr>
+<td><code dir="auto">actor</code></td>
+<td>Wie aanroept: <code dir="auto">{ "kind": "public" }</code>, <code dir="auto">{ "kind": "token", "id": 3 }</code> (een API-token) of <code dir="auto">{ "kind": "user", "id": 12 }</code> (een ingelogde eindgebruiker).</td>
+</tr>
+</tbody>
+</table>
+<p>Een header <code dir="auto">Authorization</code> met een ongeldig token wordt met een 401 geweigerd voordat de plugin
+wordt aangeroepen. Rechten van openbare toegang en API-tokens worden niet toegepast: controleer
+<code dir="auto">actor</code> zelf.</p>
+<p>Uitvoer:</p>
+<table>
+<thead>
+<tr>
+<th>Veld</th>
+<th>Standaard</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">status</code></td>
+<td><code dir="auto">200</code></td>
+<td>De HTTP-status.</td>
+</tr>
+<tr>
+<td><code dir="auto">headers</code></td>
+<td>geen</td>
+<td>Response-headers. Alleen <code dir="auto">content-type</code>, <code dir="auto">cache-control</code>, <code dir="auto">location</code>, <code dir="auto">etag</code>, <code dir="auto">last-modified</code> en <code dir="auto">content-disposition</code> blijven behouden.</td>
+</tr>
+<tr>
+<td><code dir="auto">body</code></td>
+<td>leeg</td>
+<td>Een string wordt verzonden zoals hij is (<code dir="auto">text/plain</code>, tenzij je <code dir="auto">content-type</code> instelt); elke andere JSON-waarde wordt verzonden als <code dir="auto">application/json</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Een uitgeschakelde of onbekende plugin, of een plugin zonder <code dir="auto">[routes]</code>, antwoordt met 404. Een
+mislukte aanroep antwoordt met 502 en
+<code dir="auto">{ "data": null, "error": { "status": 502, "name": "PluginError", … } }</code>. Routes delen
+<code dir="auto">[server].body_limit</code> en <code dir="auto">[server].request_timeout_secs</code> met de content-API.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="jobs-1">Jobs</h3><a class="sl-anchor-link" href="#jobs-1"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Jobs”</span></a></div>
+<p>Input: <code dir="auto">{ "scheduledAt": "2026-09-29T03:00:00+00:00" }</code>, het tijdstip waarvoor de run gepland was.
+De uitvoer wordt genegeerd; mislukkingen worden gelogd. Jobs draaien alleen zolang de plugin aan
+staat, en alleen op instanties met <code dir="auto">[plugins].run_jobs = true</code>. Een run die gemist is terwijl de
+server uit lag, wordt niet ingehaald.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="opstartfunctie">Opstartfunctie</h3><a class="sl-anchor-link" href="#opstartfunctie"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Opstartfunctie”</span></a></div>
+<p>Input: <code dir="auto">{ "reason": "start" | "enabled" | "settings" }</code>:</p>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">reason</code></th>
+<th>Wanneer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">start</code></td>
+<td>De server is gestart met de plugin aan.</td>
+</tr>
+<tr>
+<td><code dir="auto">enabled</code></td>
+<td>De plugin is aangezet (hier, of op een andere instantie en hier opgepikt).</td>
+</tr>
+<tr>
+<td><code dir="auto">settings</code></td>
+<td>Haar instellingen zijn gewijzigd terwijl ze aan stond (hier opgeslagen, of van een andere instantie opgepikt).</td>
+</tr>
+</tbody>
+</table>
+<p>Uitvoer: <code dir="auto">{ "error": "message" }</code> telt als mislukking; al het andere (<code dir="auto">{}</code>, leeg) als succes. Een
+mislukking (trap, time-out, <code dir="auto">{ error }</code>) gaat naar het log van de plugin en het serverlog; de plugin
+blijft aan, en de functie draait opnieuw bij de volgende start, het volgende aanzetten of de
+volgende wijziging van de instellingen.</p>
+<p>De functie draait op de achtergrond, nadat de server draait, dus requests worden intussen bediend.
+Ze draait op een eigen module-instantie met <code dir="auto">[startup].timeout_ms</code>, zodat een trage seed de hooks en
+routes van de plugin niet ophoudt. After-hooks die door haar schrijfacties worden afgevuurd, draaien
+zodra ze terugkeert (zie <a href="#schrijfacties-door-plugins">Schrijfacties door plugins</a>). Het geheugen
+van de module wordt niet gedeeld met de gewone instantie van de plugin: bewaar toestand in
+<code dir="auto">verdin_kv_set</code> of in content.</p>
+<p>Bij meerdere instanties draaien alleen die met <code dir="auto">[plugins].run_jobs = true</code> opstartfuncties (één
+instantie, als je het <a href="/verdin/nl/deploy/scaling/">schaaladvies</a> volgt): ze werken op de gedeelde
+database, dus één keer is genoeg. Schrijf de functie zo dat opnieuw draaien onschadelijk is: zoek
+op wat je seedt voordat je het aanmaakt.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="graphql-velden">GraphQL-velden</h3><a class="sl-anchor-link" href="#graphql-velden"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “GraphQL-velden”</span></a></div>
+<p>Input: <code dir="auto">{ "args": …, "actor": … }</code>, met <code dir="auto">args</code> het argument <code dir="auto">args</code> van het veld (willekeurige JSON,
+of <code dir="auto">null</code>) en <code dir="auto">actor</code> zoals bij routes. De uitvoer is de waarde van het veld. Een mislukking, of een
+uitgeschakelde plugin, geeft een GraphQL-fout met de code <code dir="auto">PLUGIN_ERROR</code>. Net als bij routes
+controleert de plugin de toegang.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="hostfuncties">Hostfuncties</h2><a class="sl-anchor-link" href="#hostfuncties"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Hostfuncties”</span></a></div>
+<p>Importeer ze uit de namespace <code dir="auto">extism:host/user</code> (<code dir="auto">extern "ExtismHost"</code> in Rust). Ze nemen en
+geven JSON als strings; <code dir="auto">Json&lt;Value&gt;</code> in <code dir="auto">extism-pdk</code> regelt de conversie.</p>
+<table>
+<thead>
+<tr>
+<th>Functie</th>
+<th>Input</th>
+<th>Uitvoer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">verdin_log</code></td>
+<td><code dir="auto">{ "level": "info" | "warn" | "error", "message": "…" }</code></td>
+<td>geen</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_content</code></td>
+<td>Een contentrequest (hieronder)</td>
+<td>Het resultaat, of <code dir="auto">{ "error": "…" }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_kv_get</code></td>
+<td>De sleutel, als gewone string</td>
+<td>De opgeslagen JSON-waarde, of <code dir="auto">null</code></td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_kv_set</code></td>
+<td><code dir="auto">{ "key": "…", "value": … }</code></td>
+<td>geen</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_config</code></td>
+<td>geen</td>
+<td>Het instellingenobject, met de gedeclareerde standaardwaarden ingevuld</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_public_permissions</code></td>
+<td><code dir="auto">{ "op": "get" }</code> of <code dir="auto">{ "op": "set", "permissions": [...] }</code></td>
+<td><code dir="auto">{ "permissions": [...] }</code>, of <code dir="auto">{ "error": "…" }</code></td>
+</tr>
+</tbody>
+</table>
+<p>Een module die een hostfunctie importeert die de server niet heeft (een oudere Verdin), kan niet
+worden geladen: elke aanroep ervan mislukt met <code dir="auto">unknown import</code> in het serverlog.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_log"><code dir="auto">verdin_log</code></h3><a class="sl-anchor-link" href="#verdin_log"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_log”</span></a></div>
+<p>Schrijft naar het serverlog (met de naam van de plugin) en naar het log van de plugin in
+<strong>Instellingen → Plugins → Logs</strong>. Andere niveaus tellen als <code dir="auto">info</code>. Het log van de plugin bewaart
+de laatste 200 berichten, elk afgekapt op 2.000 tekens, in het geheugen.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_content"><code dir="auto">verdin_content</code></h3><a class="sl-anchor-link" href="#verdin_content"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_content”</span></a></div>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"op"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">findMany</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"uid"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"query"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"filters"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"title"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"$eq"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">x</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> } }, </span><span style="--0:#7FDBCA;--1:#096E72">"sort"</span><span style="--0:#D6DEEB;--1:#403F53">: [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">title</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">] } }</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="{ &quot;op&quot;: &quot;findMany&quot;, &quot;uid&quot;: &quot;api::article&quot;, &quot;query&quot;: { &quot;filters&quot;: { &quot;title&quot;: { &quot;$eq&quot;: &quot;x&quot; } }, &quot;sort&quot;: [&quot;title&quot;] } }"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>Veld</th>
+<th>Gebruikt door</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">op</code></td>
+<td>alle</td>
+<td><code dir="auto">findMany</code>, <code dir="auto">findOne</code>, <code dir="auto">create</code>, <code dir="auto">update</code>, <code dir="auto">delete</code>, <code dir="auto">publish</code> of <code dir="auto">unpublish</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td>alle</td>
+<td>Het contenttype. Moet in de capabilities staan.</td>
+</tr>
+<tr>
+<td><code dir="auto">documentId</code></td>
+<td><code dir="auto">findOne</code>, <code dir="auto">update</code>, <code dir="auto">delete</code>, <code dir="auto">publish</code>, <code dir="auto">unpublish</code></td>
+<td>Het document.</td>
+</tr>
+<tr>
+<td><code dir="auto">query</code></td>
+<td><code dir="auto">findMany</code>, <code dir="auto">findOne</code></td>
+<td>De parameters van de REST-API als JSON-object: <code dir="auto">filters</code>, <code dir="auto">sort</code>, <code dir="auto">fields</code>, <code dir="auto">populate</code>, <code dir="auto">pagination</code>, <code dir="auto">status</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">data</code></td>
+<td><code dir="auto">create</code>, <code dir="auto">update</code></td>
+<td>De te schrijven velden, zoals in de <code dir="auto">data</code> van een REST-request.</td>
+</tr>
+<tr>
+<td><code dir="auto">status</code></td>
+<td><code dir="auto">create</code>, <code dir="auto">update</code></td>
+<td><code dir="auto">"draft"</code> slaat een concept op. Anders wordt de schrijfactie gepubliceerd, zoals een REST-schrijfactie zonder <code dir="auto">?status=draft</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>alle</td>
+<td>De locale om te lezen of te schrijven.</td>
+</tr>
+</tbody>
+</table>
+<p>Resultaten:</p>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">op</code></th>
+<th>Resultaat</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">findMany</code></td>
+<td><code dir="auto">{ "documents": [...], "meta": { "pagination": {…} } }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">findOne</code></td>
+<td><code dir="auto">{ "document": {…} }</code> (<code dir="auto">null</code> als niet gevonden)</td>
+</tr>
+<tr>
+<td><code dir="auto">create</code>, <code dir="auto">update</code></td>
+<td><code dir="auto">{ "documentId": "…" }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">delete</code></td>
+<td><code dir="auto">{ "deleted": true }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">publish</code></td>
+<td><code dir="auto">{ "published": true }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">unpublish</code></td>
+<td><code dir="auto">{ "unpublished": true }</code></td>
+</tr>
+</tbody>
+</table>
+<p>Een aanroep buiten de capabilities, een onbekende bewerking, een validatiefout of een ontbrekend
+document antwoordt in plaats daarvan met <code dir="auto">{ "error": "…" }</code>. Leesacties geven gepubliceerde
+versies terug, tenzij de query om <code dir="auto">"status": "draft"</code> vraagt.</p>
+<div class="sl-heading-wrapper level-h4"><h4 id="schrijfacties-door-plugins">Schrijfacties door plugins</h4><a class="sl-anchor-link" href="#schrijfacties-door-plugins"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Schrijfacties door plugins”</span></a></div>
+<p>Schrijfacties via <code dir="auto">verdin_content</code> slaan de <strong>before</strong>-hooks van elke plugin over, zodat een plugin
+daar niet in een lus kan raken door zijn eigen wijzigingen, en regels die je in before-hooks zet
+(standaardwaarden, controles) gelden er niet voor. Al het andere geldt wel: validatie, reviewfasen,
+webhooks, geschiedenis, de auditlog, en de <strong>after</strong>-hooks van alle plugins, de schrijvende
+inbegrepen.</p>
+<p>After-hooks die door de schrijfacties van een plugin worden afgevuurd, draaien niet binnen de
+schrijfactie: ze worden in de wachtrij gezet en draaien zodra de aanroep van de plugin (route, job,
+GraphQL-resolver, hook of opstartfunctie) is teruggekeerd en de instantie van de plugin heeft
+vrijgegeven, voordat het antwoord van de route wordt verzonden. Een plugin kan dus een type
+schrijven waarop hij after-hooks heeft, en ketens door meerdere plugins werken.</p>
+<ul>
+<li>Hooks die schrijven, vuren weer hooks af, <strong>hoogstens <code dir="auto">4</code> niveaus diep</strong> (een schrijfactie vanuit
+REST of GraphQL is niveau 1). Diepere hooks worden overgeslagen met een waarschuwing in het log
+van de plugin, wat voorkomt dat een hook die het type schrijft waarnaar hij luistert eindeloos
+in een lus blijft.</li>
+<li>Hostfuncties (<code dir="auto">verdin_content</code>, <code dir="auto">verdin_public_permissions</code>, de key-value-store) stoppen bij de
+tijdslimiet van de aanroep en geven een fout terug aan de module, en een aanroeper wacht hoogstens
+de tijdslimiet plus 10 seconden op een plugin die bezig is. Een vastgelopen aanroep kan de plugin,
+of een nette stop, niet eindeloos vasthouden.</li>
+</ul>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_kv_get-en-verdin_kv_set"><code dir="auto">verdin_kv_get</code> en <code dir="auto">verdin_kv_set</code></h3><a class="sl-anchor-link" href="#verdin_kv_get-en-verdin_kv_set"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_kv_get en verdin_kv_set”</span></a></div>
+<p>Een key-value-store per plugin, in de database van Verdin, gedeeld door alle instanties. Sleutels
+zijn 1 tot 255 bytes; waarden zijn willekeurige JSON. <code dir="auto">null</code> instellen verwijdert de sleutel.
+Zonder de capability <code dir="auto">kv</code> geven leesacties <code dir="auto">null</code> terug en worden schrijfacties genegeerd.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_config"><code dir="auto">verdin_config</code></h3><a class="sl-anchor-link" href="#verdin_config"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_config”</span></a></div>
+<p>Geeft de instellingen terug die zijn opgeslagen in <strong>Instellingen → Plugins</strong>, met de <code dir="auto">default</code>
+van elke gedeclareerde instelling ingevuld voor ontbrekende sleutels. <code dir="auto">{}</code> als er niets is
+opgeslagen.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_public_permissions"><code dir="auto">verdin_public_permissions</code></h3><a class="sl-anchor-link" href="#verdin_public_permissions"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_public_permissions”</span></a></div>
+<p>Leest of vervangt de contentrechten van de openbare rol voor de content-API, wat <strong>Instellingen →
+Openbare toegang</strong> bewerkt. Vereist de capability <code dir="auto">public_permissions</code>; zonder die antwoordt elke
+aanroep met <code dir="auto">{ "error": "…" }</code>.</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"op"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">set</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"permissions"</span><span style="--0:#D6DEEB;--1:#403F53">: [</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">find</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">findOne</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::comment</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">create</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">] }</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="{ &quot;op&quot;: &quot;set&quot;, &quot;permissions&quot;: [  { &quot;subject&quot;: &quot;api::article&quot;, &quot;action&quot;: &quot;find&quot; },  { &quot;subject&quot;: &quot;api::article&quot;, &quot;action&quot;: &quot;findOne&quot; },  { &quot;subject&quot;: &quot;api::comment&quot;, &quot;action&quot;: &quot;create&quot; }] }"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">op</code></th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">get</code></td>
+<td>Niets; geeft de huidige rechten terug.</td>
+</tr>
+<tr>
+<td><code dir="auto">set</code></td>
+<td>Vervangt <strong>alle</strong> openbare rechten door <code dir="auto">permissions</code> (een lege lijst verwijdert ze allemaal).</td>
+</tr>
+</tbody>
+</table>
+<p>Beide antwoorden <code dir="auto">{ "permissions": [{ "subject", "action" }, …] }</code>, gesorteerd. <code dir="auto">subject</code> is de uid
+van een contenttype, <code dir="auto">plugin::upload</code> (de mediabibliotheek), <code dir="auto">plugin::users-permissions.user</code>
+(eindgebruikers via de content-API) of <code dir="auto">plugin::i18n.locale</code> (alleen <code dir="auto">find</code>). <code dir="auto">action</code> is <code dir="auto">find</code>,
+<code dir="auto">findOne</code>, <code dir="auto">create</code>, <code dir="auto">update</code>, <code dir="auto">delete</code>, <code dir="auto">publish</code> of <code dir="auto">readDrafts</code> (de laatste twee gelden niet
+voor uploads en eindgebruikers). Ze worden gecontroleerd zoals het rechtenraster van de beheerder:
+een onbekend subject of een onbekende actie, of een die niet van toepassing is, antwoordt met
+<code dir="auto">{ "error": "…" }</code> en wijzigt niets. Elke <code dir="auto">set</code> wordt in het serverlog geschreven.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="http">HTTP</h3><a class="sl-anchor-link" href="#http"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “HTTP”</span></a></div>
+<p>Met hosts vermeld in <code dir="auto">http</code> gebruik je de HTTP-ondersteuning van Extism
+(<code dir="auto">extism_pdk::http::request</code> in Rust). Requests naar andere hosts mislukken.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="uitbreidingspunten-van-het-beheerpaneel">Uitbreidingspunten van het beheerpaneel</h2><a class="sl-anchor-link" href="#uitbreidingspunten-van-het-beheerpaneel"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Uitbreidingspunten van het beheerpaneel”</span></a></div>
+<p>Het beheerpaneel vraagt de server om de extensies van de ingeschakelde plugins en importeert elk
+<code dir="auto">admin.script</code> één keer, als ES-module, vanaf <code dir="auto">/admin/plugins/&lt;name&gt;/&lt;script&gt;</code> (onder
+<code dir="auto">[admin].path</code>). Bestanden onder de map <code dir="auto">admin/</code> van de plugin worden daar geserveerd zolang de
+plugin aan staat, met <code dir="auto">X-Content-Type-Options: nosniff</code> en <code dir="auto">Cache-Control: no-cache</code>. De module
+moet de custom elements definiëren die het manifest noemt; een element dat niet binnen 3 seconden
+is gedefinieerd, wordt weggelaten.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="widgets">Widgets</h3><a class="sl-anchor-link" href="#widgets"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Widgets”</span></a></div>
+<p>Elke regel <code dir="auto">[[admin.widgets]]</code> is een type widget dat beheerders aan het dashboard kunnen
+toevoegen. Het element krijgt een property <code dir="auto">context</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">apiBase</code></td>
+<td>De basis van de content-API, zoals <code dir="auto">/api</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">adminApiBase</code></td>
+<td>De basis van de admin-API, zoals <code dir="auto">/admin/api</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">fetch(path, init)</code></td>
+<td><code dir="auto">fetch</code> met de inloggegevens van de ingelogde beheerder. Relatieve paden worden opgelost ten opzichte van <code dir="auto">adminApiBase</code>; paden onder een van beide bases en absolute URL’s blijven behouden.</td>
+</tr>
+</tbody>
+</table>
+<div class="expressive-code"><figure class="frame has-title not-content"><figcaption class="header"><span class="title">plugins/slugs/admin/index.js</span></figcaption><pre data-language="js"><code><div class="ec-line"><div class="code"><span style="--0:#C792EA;--1:#8844AE">class</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#FFCB8B;--1:#111111">SlugStats</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">extends</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C5E478;--1:#3B61B0">HTMLElement</span><span style="--0:#D6DEEB;--1:#403F53"> {</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#C792EA;--1:#8844AE">set</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">context</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">context</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> {</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#919F9F;--1:#5D6376">// Admin API, with the admin's session.</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">fetch</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">auth/me</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#D6DEEB;--1:#403F53">)</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">response</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#7FDBCA;--1:#096E72">response</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">json</span><span style="--0:#D6DEEB;--1:#403F53">())</span></div></div><div class="ec-line"><div class="code"><span class="indent">      </span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--1:#403F53"><span style="--0:#D6DEEB">{ </span><span style="--0:#D7DBE0">data</span><span style="--0:#D6DEEB"> }</span></span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> { </span><span style="--0:#7FDBCA;--1:#096E72">this</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">textContent</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#ECC48D;--1:#3B61B0">Hello </span><span style="--0:#E2817F;--1:#B23834">${</span><span style="--0:#7FDBCA;--1:#096E72">data</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">firstname</span><span style="--0:#E2817F;--1:#B23834"> </span><span style="--0:#C792EA;--1:#8844AE">??</span><span style="--0:#E2817F;--1:#B23834"> </span><span style="--0:#7FDBCA;--1:#096E72">data</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">email</span><span style="--0:#E2817F;--1:#B23834">}</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#D6DEEB;--1:#403F53">; });</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#919F9F;--1:#5D6376">// The plugin's own route, on the content API: sent without the admin's session.</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">fetch</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#E2817F;--1:#B23834">${</span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">apiBase</span><span style="--0:#E2817F;--1:#B23834">}</span><span style="--0:#ECC48D;--1:#3B61B0">/plugins/slugs/stats</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#D6DEEB;--1:#403F53">)</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">response</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#7FDBCA;--1:#096E72">response</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">json</span><span style="--0:#D6DEEB;--1:#403F53">())</span></div></div><div class="ec-line"><div class="code"><span class="indent">      </span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">stats</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> { </span><span style="--0:#7FDBCA;--1:#096E72">this</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">title</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">JSON</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">stringify</span><span style="--1:#403F53"><span style="--0:#D6DEEB">(</span><span style="--0:#D7DBE0">stats</span><span style="--0:#D6DEEB">); });</span></span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#7FDBCA;--1:#096E72">customElements</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">define</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">slugs-stats</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--1:#403F53"><span style="--0:#D6DEEB">, </span><span style="--0:#D7DBE0">SlugStats</span><span style="--0:#D6DEEB">);</span></span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="class SlugStats extends HTMLElement {  set context(context) {    // Admin API, with the admin&#x27;s session.    context.fetch(&#x27;auth/me&#x27;).then((response) => response.json())      .then(({ data }) => { this.textContent = &#x60;Hello ${data.firstname ?? data.email}&#x60;; });    // The plugin&#x27;s own route, on the content API: sent without the admin&#x27;s session.    context.fetch(&#x60;${context.apiBase}/plugins/slugs/stats&#x60;).then((response) => response.json())      .then((stats) => { this.title = JSON.stringify(stats); });  }}customElements.define(&#x27;slugs-stats&#x27;, SlugStats);"><div></div></button></div></figure></div>
+<p><code dir="auto">context.fetch</code> stuurt de sessie van de beheerder alleen mee met requests naar de admin-API. Paden
+onder <code dir="auto">context.apiBase</code> (de content-API, de routes van je plugin inbegrepen) gaan zonder, omdat de
+content-API geen beheerderssessies accepteert; ze worden beantwoord met de rechten van de openbare
+rol. Vóór 0.10 stuurde hij de sessie daar ook mee en mislukten die requests; widgets die voor 0.9
+zijn geschreven en gewone <code dir="auto">fetch</code> aanroepen, blijven werken.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="aangepaste-velden">Aangepaste velden</h3><a class="sl-anchor-link" href="#aangepaste-velden"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Aangepaste velden”</span></a></div>
+<p>Elke regel <code dir="auto">[[admin.fields]]</code> is een veld dat attributen kunnen gebruiken met
+<code dir="auto">"customField": "plugin::&lt;name&gt;.&lt;id&gt;"</code>; het <code dir="auto">type</code> van het attribuut moet overeenkomen met hoe het
+veld zijn waarde opslaat. De <strong>Contenttype-bouwer</strong> biedt het aan. Het element krijgt:</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Beschrijving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">value</code></td>
+<td>De huidige waarde.</td>
+</tr>
+<tr>
+<td><code dir="auto">disabled</code></td>
+<td>Of bewerken uit staat.</td>
+</tr>
+<tr>
+<td><code dir="auto">attribute</code></td>
+<td>De definitie van het attribuut uit het schema.</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>De locale die wordt bewerkt.</td>
+</tr>
+</tbody>
+</table>
+<p>Het meldt een nieuwe waarde met een event <code dir="auto">change</code> waarvan <code dir="auto">detail</code> de waarde is (of, zonder
+<code dir="auto">detail</code>, via zijn eigen property <code dir="auto">value</code>). Als de plugin uit staat of zijn element ontbreekt, toont
+de editor het gewone invoerveld voor het opslagtype. Zie
+<a href="/verdin/nl/reference/attribute-types/">Attribuuttypes</a>.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="runtime-en-limieten">Runtime en limieten</h2><a class="sl-anchor-link" href="#runtime-en-limieten"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Runtime en limieten”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Limiet</th>
+<th>Waarde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tijd per aanroep</td>
+<td><code dir="auto">[limits].timeout_ms</code>, standaard 5.000 ms (<code dir="auto">[startup].timeout_ms</code>, standaard 30.000 ms, voor de opstartfunctie)</td>
+</tr>
+<tr>
+<td>Geheugen</td>
+<td><code dir="auto">[limits].memory_mb</code>, standaard 64 MB</td>
+</tr>
+<tr>
+<td>Gelijktijdigheid</td>
+<td>Eén aanroep tegelijk per plugin; aanroepen wachten op elkaar (de opstartfunctie draait ernaast)</td>
+</tr>
+<tr>
+<td>Module-instantie</td>
+<td>Eén per plugin, gebouwd bij het eerste gebruik; opnieuw gebouwd nadat een aanroep faalt (het geheugen gaat verloren). De opstartfunctie krijgt bij elke run een verse</td>
+</tr>
+<tr>
+<td>Log</td>
+<td>200 berichten per plugin, elk 2.000 tekens, in het geheugen</td>
+</tr>
+<tr>
+<td>KV-sleutels</td>
+<td>1 tot 255 bytes</td>
+</tr>
+<tr>
+<td>Request-headers van routes</td>
+<td><code dir="auto">content-type</code>, <code dir="auto">accept</code>, <code dir="auto">user-agent</code>, <code dir="auto">accept-language</code></td>
+</tr>
+<tr>
+<td>Response-headers van routes</td>
+<td><code dir="auto">content-type</code>, <code dir="auto">cache-control</code>, <code dir="auto">location</code>, <code dir="auto">etag</code>, <code dir="auto">last-modified</code>, <code dir="auto">content-disposition</code></td>
+</tr>
+</tbody>
+</table>
+<p>Wijzigingen aan een manifest of module gelden na een herstart; schakelaars en instellingen gelden
+meteen. Plugins beheren vereist <code dir="auto">plugins.manage</code> (zie de
+<a href="/verdin/nl/reference/permissions/">rechtenreferentie</a>).</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="metrics">Metrics</h2><a class="sl-anchor-link" href="#metrics"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Metrics”</span></a></div>
+<p>Met <a href="/verdin/nl/deploy/monitoring/"><code dir="auto">[metrics]</code></a> aan rapporteert <code dir="auto">/_metrics</code> elke aanroep die een
+geëxporteerde functie bereikte:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Type</th>
+<th>Labels</th>
+<th>Betekenis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">verdin_plugin_call_duration_seconds</code></td>
+<td>histogram</td>
+<td><code dir="auto">plugin</code>, <code dir="auto">kind</code>, <code dir="auto">function</code></td>
+<td>Tijd die pluginfuncties namen. Buckets van 5 ms tot 10 s.</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_plugin_call_errors_total</code></td>
+<td>counter</td>
+<td><code dir="auto">plugin</code>, <code dir="auto">kind</code>, <code dir="auto">function</code></td>
+<td>Aanroepen die faalden: een trap, een time-out, uitvoer die geen JSON is, of het <code dir="auto">{ error }</code> van een opstartfunctie.</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">kind</code> is <code dir="auto">hook</code>, <code dir="auto">route</code>, <code dir="auto">job</code>, <code dir="auto">startup</code> of <code dir="auto">graphql</code>. Een before-hook die een schrijfactie
+weigert met <code dir="auto">{ error }</code> gaf een antwoord, dus telt niet als mislukking. Aanroepen van een functie
+die de module niet exporteert, worden niet vastgelegd, zodat de labels begrensd blijven door de
+geïnstalleerde plugins. De reeksen verschijnen na de eerste aanroep van een plugin; elke instantie
+telt haar eigen aanroepen.</p>
+</div><footer class="sl-flex astro-ddtxxk7k"><div class="meta sl-flex astro-ddtxxk7k"><a href="https://github.com/verdin-cms/verdin/edit/main/site/src/content/docs/nl/extending/plugin-reference.md" class="sl-flex print:hidden astro-qlekgd3o"><svg aria-hidden="true" class="astro-qlekgd3o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.2em;"><path d="M22 7.24a1 1 0 0 0-.29-.71l-4.24-4.24a1 1 0 0 0-1.1-.22 1 1 0 0 0-.32.22l-2.83 2.83L2.29 16.05a1 1 0 0 0-.29.71V21a1 1 0 0 0 1 1h4.24a1 1 0 0 0 .76-.29l10.87-10.93L21.71 8c.1-.1.17-.2.22-.33a1 1 0 0 0 0-.24v-.14l.07-.05ZM6.83 20H4v-2.83l9.93-9.93 2.83 2.83L6.83 20ZM18.17 8.66l-2.83-2.83 1.42-1.41 2.82 2.82-1.41 1.42Z"/></svg>Bewerk pagina</a><p>Laatst bewerkt: <time datetime="2026-09-30T10:55:31.000Z">30 sep 2026</time></p></div><div class="pagination-links print:hidden astro-b5raizh3" dir="ltr"><a href="/verdin/nl/extending/plugin-tutorial/" rel="prev" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17 11H9.41l3.3-3.29a1.004 1.004 0 1 0-1.42-1.42l-5 5a1 1 0 0 0-.21.33 1 1 0 0 0 0 .76 1 1 0 0 0 .21.33l5 5a1.002 1.002 0 0 0 1.639-.325 1 1 0 0 0-.219-1.095L9.41 13H17a1 1 0 0 0 0-2Z"/></svg><span class="astro-b5raizh3">Vorige<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">Plugintutorial</span></span></a><a href="/verdin/nl/api/rest/" rel="next" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17.92 11.62a1.001 1.001 0 0 0-.21-.33l-5-5a1.003 1.003 0 1 0-1.42 1.42l3.3 3.29H7a1 1 0 0 0 0 2h7.59l-3.3 3.29a1.002 1.002 0 0 0 .325 1.639 1 1 0 0 0 1.095-.219l5-5a1 1 0 0 0 .21-.33 1 1 0 0 0 0-.76Z"/></svg><span class="astro-b5raizh3">Volgende<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">REST</span></span></a></div></footer></div></div></main></div></div></div></div></body></html>

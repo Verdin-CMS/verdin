@@ -1,0 +1,996 @@
+<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="dark" data-has-toc data-has-sidebar class="astro-g5ptsecz"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>مرجع افزونه‌ها | Verdin</title><link rel="canonical" href="https://verdin-cms.github.io/verdin/fa/extending/plugin-reference/"/><link rel="alternate" hreflang="en" href="https://verdin-cms.github.io/verdin/extending/plugin-reference/"/><link rel="alternate" hreflang="ar" href="https://verdin-cms.github.io/verdin/ar/extending/plugin-reference/"/><link rel="alternate" hreflang="ca" href="https://verdin-cms.github.io/verdin/ca/extending/plugin-reference/"/><link rel="alternate" hreflang="de" href="https://verdin-cms.github.io/verdin/de/extending/plugin-reference/"/><link rel="alternate" hreflang="es" href="https://verdin-cms.github.io/verdin/es/extending/plugin-reference/"/><link rel="alternate" hreflang="fa" href="https://verdin-cms.github.io/verdin/fa/extending/plugin-reference/"/><link rel="alternate" hreflang="fr" href="https://verdin-cms.github.io/verdin/fr/extending/plugin-reference/"/><link rel="alternate" hreflang="he" href="https://verdin-cms.github.io/verdin/he/extending/plugin-reference/"/><link rel="alternate" hreflang="it" href="https://verdin-cms.github.io/verdin/it/extending/plugin-reference/"/><link rel="alternate" hreflang="ja" href="https://verdin-cms.github.io/verdin/ja/extending/plugin-reference/"/><link rel="alternate" hreflang="ko" href="https://verdin-cms.github.io/verdin/ko/extending/plugin-reference/"/><link rel="alternate" hreflang="nl" href="https://verdin-cms.github.io/verdin/nl/extending/plugin-reference/"/><link rel="alternate" hreflang="pl" href="https://verdin-cms.github.io/verdin/pl/extending/plugin-reference/"/><link rel="alternate" hreflang="pt-BR" href="https://verdin-cms.github.io/verdin/pt-br/extending/plugin-reference/"/><link rel="alternate" hreflang="ru" href="https://verdin-cms.github.io/verdin/ru/extending/plugin-reference/"/><link rel="alternate" hreflang="tr" href="https://verdin-cms.github.io/verdin/tr/extending/plugin-reference/"/><link rel="alternate" hreflang="uk" href="https://verdin-cms.github.io/verdin/uk/extending/plugin-reference/"/><link rel="alternate" hreflang="zh-CN" href="https://verdin-cms.github.io/verdin/zh-cn/extending/plugin-reference/"/><link rel="alternate" hreflang="x-default" href="https://verdin-cms.github.io/verdin/extending/plugin-reference/"/><link rel="sitemap" href="/verdin/sitemap-index.xml"/><link rel="shortcut icon" href="/verdin/favicon.svg" type="image/svg+xml"/><meta name="generator" content="Astro v7.3.5"/><meta name="generator" content="Starlight v0.42.4"/><meta property="og:title" content="مرجع افزونه‌ها"/><meta property="og:type" content="article"/><meta property="og:url" content="https://verdin-cms.github.io/verdin/fa/extending/plugin-reference/"/><meta property="og:locale" content="fa"/><meta property="og:description" content="مانیفست plugin.toml، قابلیت‌ها (capabilities)، هوک‌ها و payloadهای آن‌ها، توابع میزبان، مسیرها، کارهای زمان‌بندی‌شده، تابع راه‌اندازی، فیلدهای GraphQL، نقاط گسترش پنل مدیریت، محدودیت‌ها و متریک‌ها."/><meta property="og:site_name" content="Verdin"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="مانیفست plugin.toml، قابلیت‌ها (capabilities)، هوک‌ها و payloadهای آن‌ها، توابع میزبان، مسیرها، کارهای زمان‌بندی‌شده، تابع راه‌اندازی، فیلدهای GraphQL، نقاط گسترش پنل مدیریت، محدودیت‌ها و متریک‌ها."/><meta property="og:image" content="https://verdin-cms.github.io/verdin/og/fa/extending/plugin-reference.png"/><meta name="twitter:image" content="https://verdin-cms.github.io/verdin/og/fa/extending/plugin-reference.png"/><script>
+	window.StarlightThemeProvider = (() => {
+		const storedTheme =
+			typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		const theme =
+			storedTheme ||
+			(window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+		document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+		return {
+			updatePickers(theme = storedTheme || 'auto') {
+				document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+					const select = picker.querySelector('select');
+					if (select) select.value = theme;
+					/** @type {HTMLTemplateElement | null} */
+					const tmpl = document.querySelector(`#theme-icons`);
+					const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+					if (newIcon) {
+						const oldIcon = picker.querySelector('svg.label-icon');
+						if (oldIcon) {
+							oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+						}
+					}
+				});
+			},
+		};
+	})();
+</script><template id="theme-icons"><svg aria-hidden="true" class="light astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"/></svg><svg aria-hidden="true" class="dark astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"/></svg><svg aria-hidden="true" class="auto astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg></template><link rel="stylesheet" href="/verdin/_astro/print.ehPL0gv-.css" media="print"><link rel="stylesheet" href="/verdin/_astro/Playground.Sp6wezWm.css"><link rel="stylesheet" href="/verdin/_astro/middleware.CnzdItGa.css"><style>@layer starlight.components{.card:where(.astro-oag6qnet){--sl-card-border:var(--sl-color-purple);--sl-card-bg:var(--sl-color-purple-low);border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-black);flex-direction:column;gap:clamp(.5rem,.125rem + 1vw,1rem);padding:clamp(1rem,.125rem + 3vw,2.5rem)}.card:where(.astro-oag6qnet):nth-child(4n+1){--sl-card-border:var(--sl-color-orange);--sl-card-bg:var(--sl-color-orange-low)}.card:where(.astro-oag6qnet):nth-child(4n+3){--sl-card-border:var(--sl-color-green);--sl-card-bg:var(--sl-color-green-low)}.card:where(.astro-oag6qnet):nth-child(4n+4){--sl-card-border:var(--sl-color-red);--sl-card-bg:var(--sl-color-red-low)}.card:where(.astro-oag6qnet):nth-child(4n+5){--sl-card-border:var(--sl-color-blue);--sl-card-bg:var(--sl-color-blue-low)}.title:where(.astro-oag6qnet){font-weight:600;font-size:var(--sl-text-h4);color:var(--sl-color-white);line-height:var(--sl-line-height-headings);align-items:center;gap:1rem}.card:where(.astro-oag6qnet) .icon:where(.astro-oag6qnet){border:1px solid var(--sl-card-border);background-color:var(--sl-card-bg);border-radius:.25rem;flex-shrink:0;padding:.2em}.card:where(.astro-oag6qnet) .body:where(.astro-oag6qnet){font-size:clamp(var(--sl-text-sm), calc(.5rem + 1vw), var(--sl-text-body));margin:0}}
+@layer starlight.components{.card-grid:where(.astro-7qmvx3iy){grid-template-columns:100%;gap:1rem;display:grid}.card-grid:where(.astro-7qmvx3iy)>*{margin-top:0!important}@media (width>=50rem){.card-grid:where(.astro-7qmvx3iy){grid-template-columns:1fr 1fr;gap:1.5rem}.stagger:where(.astro-7qmvx3iy){--stagger-height:5rem;padding-bottom:var(--stagger-height)}.stagger:where(.astro-7qmvx3iy)>:nth-child(2n){transform:translateY(var(--stagger-height))}}.sl-link-card:where(.astro-zaaezwya){border:1px solid var(--sl-color-gray-5);box-shadow:var(--sl-shadow-sm);border-radius:.5rem;grid-template-columns:1fr auto;gap:.5rem;padding:1rem;display:grid;position:relative}a:where(.astro-zaaezwya){line-height:var(--sl-line-height-headings);text-decoration:none}a:where(.astro-zaaezwya):before{content:"";position:absolute;inset:0}.stack:where(.astro-zaaezwya){flex-direction:column;gap:.5rem}.title:where(.astro-zaaezwya){color:var(--sl-color-white);font-weight:600;font-size:var(--sl-text-lg)}.description:where(.astro-zaaezwya){color:var(--sl-color-gray-3);line-height:1.5}.icon:where(.astro-zaaezwya){color:var(--sl-color-gray-3)}.sl-link-card:where(.astro-zaaezwya):hover{background:var(--sl-color-gray-7,var(--sl-color-gray-6));border-color:var(--sl-color-gray-2)}.sl-link-card:where(.astro-zaaezwya):hover .icon:where(.astro-zaaezwya){color:var(--sl-color-white)}}.plate:where(.astro-zbp6lmd6){isolation:isolate;color:#2a1006;background:linear-gradient(112deg,#0000 0 38%,#ffd6b447 44%,#0000 52%),repeating-linear-gradient(90deg,#ffffff09 0 1px,#0000 1px 3px),linear-gradient(160deg,#e3a472 0%,#cf7f49 40%,#c06a34 68%,#d58d58 100%);border-radius:.6rem;margin:clamp(1rem,4vw,2.5rem) 0;padding:clamp(1.75rem,4vw,2.75rem) clamp(1.5rem,5vw,3.5rem);position:relative;overflow:hidden;box-shadow:inset 0 1px #ffe1c880,inset 0 -2px #46190559,0 1px 2px #28140a40,0 18px 40px -24px #3c1e0a8c}.patina:where(.astro-zbp6lmd6){z-index:-1;pointer-events:none;width:100%;height:100%;mask-image:radial-gradient(circle at 0% 100%, #000 0, transparent var(--bloom)), radial-gradient(circle at 100% 0%, #000 0, transparent calc(var(--bloom) * .8)), radial-gradient(circle at 100% 100%, #000 0, transparent calc(var(--bloom) * .45));--bloom:8%;transition:--bloom 1.6s cubic-bezier(.2,.7,.2,1);position:absolute;inset:0}.plate:where(.astro-zbp6lmd6).grown .patina:where(.astro-zbp6lmd6){--bloom:46%}@property --bloom{syntax:"<percentage>";inherits:false;initial-value:8%}@media (prefers-reduced-motion:reduce){.patina:where(.astro-zbp6lmd6){--bloom:46%;transition:none}}.rivet:where(.astro-zbp6lmd6){background:radial-gradient(circle at 35% 30%,#f3c39c,#8a4019 70%);border-radius:50%;width:.55rem;height:.55rem;position:absolute;box-shadow:0 1px 1px #280f0080}.stamp:where(.astro-zbp6lmd6){gap:1.5rem;display:grid}@media (width>=50rem){.stamp:where(.astro-zbp6lmd6){grid-template-columns:minmax(12rem,.8fr) 2fr;align-items:center}}.label:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);letter-spacing:.14em;text-transform:uppercase;color:#2a1006cc;font-size:.66rem;font-weight:600;display:block}.model:where(.astro-zbp6lmd6){margin:0}.name:where(.astro-zbp6lmd6){font-family:var(--vd-font-display);letter-spacing:-.02em;text-shadow:0 1px #ffdcbe73,0 -1px #3c140059;font-size:clamp(3rem,8vw,4.5rem);font-weight:860;font-stretch:58%;line-height:.9;display:block}.version:where(.astro-zbp6lmd6){font-family:var(--sl-font-mono);font-size:.85rem;font-weight:600}dl:where(.astro-zbp6lmd6){gap:.85rem 2rem;margin:0;display:grid}@media (width>=38rem){dl:where(.astro-zbp6lmd6){grid-template-columns:repeat(2,minmax(0,1fr))}}dl:where(.astro-zbp6lmd6)>div:where(.astro-zbp6lmd6){border-top:1px solid #2a10064d;padding-top:.5rem;box-shadow:inset 0 1px #ffdcbe33}dd:where(.astro-zbp6lmd6){text-shadow:0 1px #ffdcbe4d;margin:.15rem 0 0;font-size:.98rem;font-weight:600;line-height:1.4}
+@layer starlight.components{svg:where(.astro-hkc32dio){color:var(--sl-icon-color);font-size:var(--sl-icon-size,1em);width:1em;height:1em}}
+@layer starlight.components{starlight-tabs:where(.astro-scn3uvmv){display:block}.tablist-wrapper:where(.astro-scn3uvmv){overflow-x:auto}:where(.astro-scn3uvmv)[role=tablist]{border-bottom:2px solid var(--sl-color-gray-5);padding:0;list-style:none;display:flex}.tab:where(.astro-scn3uvmv){display:flex}.tab:where(.astro-scn3uvmv)>:where(.astro-scn3uvmv)[role=tab]{--sl-tab-color-border:var(--sl-color-gray-5);line-height:var(--sl-line-height-headings);box-shadow:0 2px 0 var(--sl-tab-color-border);color:var(--sl-color-gray-3);outline-offset:var(--sl-outline-offset-inside);overflow-wrap:initial;align-items:center;gap:.5rem;padding:.275rem 1.25rem;text-decoration:none;display:flex}.tab:where(.astro-scn3uvmv) :where(.astro-scn3uvmv)[role=tab][aria-selected=true]{--sl-tab-color-border:var(--sl-color-text-accent);color:var(--sl-color-white);font-weight:600}.tablist-wrapper:where(.astro-scn3uvmv)~[role=tabpanel]{margin-top:1rem}}
+@layer starlight.components{.sl-steps{--bullet-size:calc(var(--sl-line-height) * 1rem);--bullet-margin:.375rem;counter-reset:steps-counter var(--sl-steps-start,0);padding-inline-start:0;list-style:none}.sl-steps>li{counter-increment:steps-counter;padding-inline-start:calc(var(--bullet-size) + 1rem);min-height:calc(var(--bullet-size) + var(--bullet-margin));padding-bottom:1px;position:relative}.sl-steps>li+li{margin-top:0}.sl-steps>li:before{content:counter(steps-counter);top:0;width:var(--bullet-size);height:var(--bullet-size);line-height:var(--bullet-size);font-size:var(--sl-text-xs);text-align:center;color:var(--sl-color-white);background-color:var(--sl-color-gray-6);box-shadow:inset 0 0 0 1px var(--sl-color-gray-5);border-radius:99rem;font-weight:600;position:absolute;inset-inline-start:0}.sl-steps>li:after{--guide-width:1px;content:"";top:calc(var(--bullet-size) + var(--bullet-margin));bottom:var(--bullet-margin);width:var(--guide-width);background-color:var(--sl-color-hairline-light);position:absolute;inset-inline-start:calc((var(--bullet-size) - var(--guide-width)) / 2)}}@layer starlight.content{.sl-steps>li>:first-child{--lh:calc(1em * var(--sl-line-height));--shift-y:calc(.5 * (var(--bullet-size) - var(--lh)));transform:translateY(var(--shift-y));margin-bottom:var(--shift-y)}.sl-steps>li>:first-child:where(h1,h2,h3,h4,h5,h6){--lh:calc(1em * var(--sl-line-height-headings))}@supports (--prop:1lh){.sl-steps>li>:first-child{--lh:1lh}}}
+@layer starlight.components{starlight-file-tree:where(.astro-a2hqddox){--x-space:1.5rem;--y-space:.125rem;--y-pad:0;border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-gray-6);font-size:var(--sl-text-xs);font-family:var(--__sl-font-mono);padding:1rem;display:block;overflow-x:auto}starlight-file-tree:where(.astro-a2hqddox) .directory>details{padding:0;background:0 0;border:0;padding-inline-start:var(--x-space)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary{padding:var(--y-pad) .625rem;color:var(--sl-color-white);border:0;max-width:100%;margin-inline-start:calc(-1 * var(--x-space));font-weight:400}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::marker,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary::-webkit-details-marker{color:var(--sl-color-gray-3)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover,starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .tree-icon{cursor:pointer;color:var(--sl-color-text-accent);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover~ul{border-color:var(--sl-color-gray-4)}starlight-file-tree:where(.astro-a2hqddox) .directory>details>summary:hover .highlight .tree-icon{color:var(--sl-color-text-invert);fill:currentColor}starlight-file-tree:where(.astro-a2hqddox) ul{border-inline-start:1px solid var(--sl-color-gray-5);margin-inline-start:.5rem;padding:0;padding-inline-start:.125rem;list-style:none}starlight-file-tree:where(.astro-a2hqddox)>ul{border:0;margin:0;padding:0}starlight-file-tree:where(.astro-a2hqddox) li{margin:var(--y-space) 0;padding:var(--y-pad) 0}starlight-file-tree:where(.astro-a2hqddox) .file{color:var(--sl-color-white);margin-inline-start:calc(var(--x-space) - .125rem)}starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:wrap;align-items:flex-start;max-width:calc(100% - 1rem);display:inline-flex}@media (width>=30em){starlight-file-tree:where(.astro-a2hqddox) .tree-entry{flex-wrap:nowrap}}starlight-file-tree:where(.astro-a2hqddox) .tree-entry>:first-child{flex-shrink:0}starlight-file-tree:where(.astro-a2hqddox) .empty{color:var(--sl-color-gray-3);padding-inline-start:.375rem}starlight-file-tree:where(.astro-a2hqddox) .comment{color:var(--sl-color-gray-3);min-width:12rem;max-width:24rem;padding-inline-start:1.625rem}starlight-file-tree:where(.astro-a2hqddox) .highlight{color:var(--sl-color-text-invert);background-color:var(--sl-color-text-accent);border-radius:.25rem;padding-inline-end:.5rem;display:inline-block}starlight-file-tree:where(.astro-a2hqddox) svg{fill:var(--sl-color-gray-3);vertical-align:middle;width:.875rem;height:.875rem;margin-inline:.25rem .375rem;display:inline}starlight-file-tree:where(.astro-a2hqddox) .highlight svg.tree-icon{fill:currentColor}}
+</style><script type="module" src="/verdin/_astro/page.Dwipeu-R.js"></script></head><body class="astro-g5ptsecz"><a class="sl-skip-link astro-qb7clj6f" href="#_top">رفتن به محتوا</a><div class="page sl-flex astro-yntsjkba"><header class="header astro-yntsjkba"><div class="header astro-by6fddyj"><div class="title-wrapper sl-flex astro-by6fddyj"><a href="/verdin/fa" class="site-title sl-flex astro-6rvad3va"><img class="astro-6rvad3va" alt src="/verdin/_astro/verdin-mark.CEc0Dc_U.svg" width="32" height="32"><span class="astro-6rvad3va" translate="no">Verdin</span></a></div><div class="sl-flex print:hidden astro-by6fddyj"><site-search class="astro-by6fddyj astro-b5kgnn7o" data-translations="{&quot;placeholder&quot;:&quot;جستجو&quot;}"><button data-open-modal disabled aria-label="جستجو" aria-keyshortcuts="Control+K" class="astro-b5kgnn7o"><svg aria-hidden="true" class="astro-b5kgnn7o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg><span class="sl-hidden md:sl-block astro-b5kgnn7o" aria-hidden="true">جستجو</span><kbd class="sl-hidden md:sl-flex astro-b5kgnn7o" style="display: none;"><kbd class="astro-b5kgnn7o">Ctrl</kbd><kbd class="astro-b5kgnn7o">K</kbd></kbd></button><dialog style="padding:0" aria-label="جستجو" class="astro-b5kgnn7o"><div class="dialog-frame sl-flex astro-b5kgnn7o"><button data-close-modal class="sl-flex md:sl-hidden astro-b5kgnn7o">لغو</button><div class="search-container astro-b5kgnn7o"><div id="starlight__search" class="astro-b5kgnn7o"></div></div></div></dialog></site-search><script>
+	(() => {
+		const openBtn = document.querySelector('button[data-open-modal]');
+		const shortcut = openBtn?.querySelector('kbd');
+		if (!openBtn || !(shortcut instanceof HTMLElement)) return;
+		const platformKey = shortcut.querySelector('kbd');
+		if (platformKey && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+			platformKey.textContent = '⌘';
+			openBtn.setAttribute('aria-keyshortcuts', 'Meta+K');
+		}
+		shortcut.style.display = '';
+	})();
+</script><script type="module" src="/verdin/_astro/Search.astro_astro_type_script_index_0_lang.BVn7b3Eg.js"></script></div><div class="sl-hidden md:sl-flex print:hidden right-group astro-by6fddyj"><div class="sl-flex social-icons astro-by6fddyj"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">انتخاب پوسته</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">تیره</option><option value="light" class="astro-2z5xp7gb">روشن</option><option value="auto" selected class="astro-2z5xp7gb">خودکار</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><script type="module">var e=`starlight-theme`,t=e=>e===`auto`||e===`dark`||e===`light`?e:`auto`,n=()=>t(typeof localStorage<`u`&&localStorage.getItem(e));function r(t){typeof localStorage<`u`&&localStorage.setItem(e,t===`light`||t===`dark`?t:``)}var i=()=>matchMedia(`(prefers-color-scheme: light)`).matches?`light`:`dark`;function a(e){StarlightThemeProvider.updatePickers(e),document.documentElement.dataset.theme=e===`auto`?i():e,r(e)}matchMedia(`(prefers-color-scheme: light)`).addEventListener(`change`,()=>{n()===`auto`&&a(`auto`)});var o=class extends HTMLElement{constructor(){super(),a(n()),this.querySelector(`select`)?.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&a(t(e.currentTarget.value))})}};customElements.define(`starlight-theme-select`,o);</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">انتخاب زبان</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/extending/plugin-reference/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/extending/plugin-reference/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/extending/plugin-reference/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/extending/plugin-reference/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/extending/plugin-reference/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/extending/plugin-reference/" selected class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/extending/plugin-reference/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/extending/plugin-reference/" class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/extending/plugin-reference/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/extending/plugin-reference/" class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/extending/plugin-reference/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/extending/plugin-reference/" class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/extending/plugin-reference/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/extending/plugin-reference/" class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/extending/plugin-reference/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/extending/plugin-reference/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/extending/plugin-reference/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/extending/plugin-reference/" class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select><script type="module">var e=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);e&&(e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=e.currentTarget.value)}),window.addEventListener(`pageshow`,t=>{if(!t.persisted)return;let n=e.querySelector(`option[selected]`)?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}};customElements.define(`starlight-lang-select`,e);</script></div></div></header><nav class="sidebar print:hidden astro-yntsjkba" aria-label="اصلی"><button popovertarget="starlight__sidebar" class="sl-menu-button sl-flex md:sl-hidden print:hidden astro-r2osgdlg"><svg aria-hidden="true" class="open-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg><svg aria-hidden="true" class="close-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"/></svg><span class="sr-only astro-r2osgdlg">منو</span></button><script type="module">var e=class extends HTMLElement{constructor(){super();let e=matchMedia(`(min-width: 50em)`),t=()=>{this.popover=e.matches?null:`auto`};t(),e.addEventListener(`change`,()=>t()),this.addEventListener(`toggle`,({newState:e})=>this.trapFocus(e===`open`))}trapFocus(e){document.querySelectorAll(`.main-frame, .sl-skip-link`).forEach(t=>{t.toggleAttribute(`inert`,e)})}};customElements.define(`sl-sidebar-pane`,e);</script><sl-sidebar-pane popover id="starlight__sidebar" class="sidebar-pane astro-yntsjkba"><div class="sidebar-content sl-flex astro-yntsjkba"><sl-sidebar-state-persist data-hash="1s5j60f" class="astro-ipdry5cl"><script aria-hidden="true">
+		(() => {
+			try {
+				if (!matchMedia('(min-width: 50em)').matches) return;
+				/** @type {HTMLElement | null} */
+				const target = document.querySelector('sl-sidebar-state-persist');
+				const state = JSON.parse(sessionStorage.getItem('sl-sidebar-state') || '0');
+				if (!target || !state || target.dataset.hash !== state.hash) return;
+				window._starlightScrollRestore = state.scroll;
+				customElements.define(
+					'sl-sidebar-restore',
+					class SidebarRestore extends HTMLElement {
+						connectedCallback() {
+							try {
+								const idx = parseInt(this.dataset.index || '');
+								const details = this.closest('details');
+								if (details && typeof state.open[idx] === 'boolean') details.open = state.open[idx];
+							} catch {}
+						}
+					}
+				);
+			} catch {}
+		})();
+	</script><ul class="top-level astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">شروع کار</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="0"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/start/introduction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">معرفی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/start/installation/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">نصب</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/start/quickstart/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">شروع سریع</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/start/tutorial-astro/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">وبلاگ با Astro</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/start/tutorial-nextjs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">وبلاگ با Next.js</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/start/project-structure/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ساختار پروژه</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">مفاهیم</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="1"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/concepts/content-model/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">مدل محتوا</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/concepts/components-and-dynamic-zones/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">کامپوننت‌ها و ناحیه‌های پویا</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/concepts/relations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">روابط</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/concepts/draft-and-publish/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">پیش‌نویس و انتشار</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/concepts/internationalization/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">بین‌المللی‌سازی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/concepts/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">مجوزها</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/concepts/schema-migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">مهاجرت‌های طرح‌واره</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/concepts/media/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">رسانه</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">راهنماها</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="2"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">محتوا</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="3"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/content/localizing-content/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">بومی‌سازی محتوا</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/content/review-workflows/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">گردش‌کارهای بازبینی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/content/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">بسته‌های انتشار</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/content/content-history/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">تاریخچهٔ محتوا</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/content/audit-logs/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">گزارش‌های حسابرسی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/content/preview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">پیش‌نمایش</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/content/comments-and-tasks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">نظرها و وظیفه‌ها</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/content/search/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">جستجو</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/content/import-export/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">درون‌ریزی و خروجی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/content/editor-digest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">خلاصهٔ روزانهٔ ویراستار</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">فرانت‌اند</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="4"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/frontend/typed-client/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">کلاینت تایپ‌شده</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/frontend/images/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">تصاویر واکنش‌گرا</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/frontend/visual-editing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ویرایش دیداری</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/frontend/seo-and-sitemap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">SEO و نقشهٔ سایت</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/frontend/redirects/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">تغییرمسیرها</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/frontend/menus/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">منوها</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/frontend/forms/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">فرم‌ها</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/frontend/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">بلادرنگ</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">احراز هویت</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="5"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/auth/admin-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">کاربران مدیر</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/auth/two-factor/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">تأیید دومرحله‌ای</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/auth/sso/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ورود یکپارچه</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/auth/api-tokens/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">توکن‌های API</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/auth/end-users/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">کاربران نهایی</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">یکپارچه‌سازی‌ها</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="6"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/integrations/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">وب‌هوک‌ها</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/integrations/mcp/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">سرور MCP</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/integrations/ai-actions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">اقدامات هوش مصنوعی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/guides/integrations/deploys-and-cdn/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">استقرارها و CDN</span></a></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">گسترش</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="7"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/extending/plugins/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">افزونه‌ها</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/extending/plugin-tutorial/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">آموزش افزونه</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/extending/plugin-reference/" aria-current="page" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">مرجع افزونه‌ها</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">مرجع API</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="8"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/api/rest/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">REST</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/api/graphql/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">GraphQL</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/api/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">محیط آزمایش API</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/api/admin/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">مدیریت</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/api/realtime/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">بلادرنگ</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/api/webhooks/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">وب‌هوک‌ها</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Example content API</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="9"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overview</span></a></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Article</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="10"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List articles</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticles/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete an article</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apiarticlesdocumentidactionsaction/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Publish, unpublish or discard the draft</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Category</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="11"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List categories</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategories/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a category</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apicategoriesdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a category</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Homepage</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="12"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create or update the Homepage</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apihomepage/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete the Homepage</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Tag</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="13"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List tags</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitags/post/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Create a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/get/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Get a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/put/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Update a tag</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apitagsdocumentid/delete/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Delete a tag</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Internationalization</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="14"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/api/example/operations/apii18nlocales/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">List the locales</span></a></li></ul></details></li></ul></details></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">مرجع</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="15"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/reference/configuration/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">پیکربندی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/reference/cli/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">خط فرمان</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/reference/permissions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Permissions</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/reference/attribute-types/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">نوع‌های ویژگی</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">استقرار و راهبری</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="16"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/production-checklist/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">چک‌لیست محیط تولید</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/security/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">امنیت</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/compose/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Docker Compose در محیط تولید</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/docker/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Docker</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/linux-server/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">سرور Linux</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/fly/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Fly.io</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/one-click/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">استقرارهای یک‌کلیکی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/render/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Render</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/railway/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Railway</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/helm/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">چارت Helm</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/kubernetes/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Kubernetes</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/scaling/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">چند نمونه</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/backups/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">پشتیبان‌گیری</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/monitoring/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">پایش</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/deploy/playground/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Playground میزبانی‌شده</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">مهاجرت و ارتقا</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="17"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/migrate/from-strapi/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">مهاجرت از Strapi</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/migrate/porting-custom-code/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">انتقال کد سفارشی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/migrate/compatibility/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">سازگاری با Strapi</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/migrate/upgrading/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ارتقای Verdin</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">ساختار درونی</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="18"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/internals/overview/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">نمای کلی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/internals/storage/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">ذخیره‌سازی</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/internals/database/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">لایهٔ پایگاه داده</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/internals/migrations/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">موتور مهاجرت</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/internals/document-service/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Document Service</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/internals/admin-panel/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">پنل مدیریت</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/internals/testing/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">تست</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/internals/decisions/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">فهرست تصمیم‌ها</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/internals/releases/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">انتشارها و میزبانی مستندات</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">پروژه</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="19"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/verdin/fa/project/roadmap/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Verdin roadmap</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/project/translating/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Translating the admin panel</span></a></li><li class="astro-rmhv4bp6"><a href="/verdin/fa/project/changelog/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Changelog</span></a></li></ul></details></li></ul><script aria-hidden="true">
+		(() => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!window._starlightScrollRestore || !scroller) return;
+			scroller.scrollTop = window._starlightScrollRestore;
+			delete window._starlightScrollRestore;
+		})();
+	</script></sl-sidebar-state-persist><div class="md:sl-hidden"><div class="mobile-preferences sl-flex astro-p4azlveh"><div class="social-icons astro-p4azlveh"><a href="https://github.com/verdin-cms/verdin" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">انتخاب پوسته</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">تیره</option><option value="light" class="astro-2z5xp7gb">روشن</option><option value="auto" selected class="astro-2z5xp7gb">خودکار</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><starlight-lang-select><label style="--sl-select-width: 7em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">انتخاب زبان</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path fill-rule="evenodd" d="M8.516 3a.94.94 0 0 0-.941.94v1.15H2.94a.94.94 0 1 0 0 1.882h7.362a7.422 7.422 0 0 1-1.787 3.958 7.42 7.42 0 0 1-1.422-2.425.94.94 0 1 0-1.774.627 9.303 9.303 0 0 0 1.785 3.043 7.422 7.422 0 0 1-4.164 1.278.94.94 0 1 0 0 1.881 9.303 9.303 0 0 0 5.575-1.855 9.303 9.303 0 0 0 4.11 1.74l-.763 1.525a.968.968 0 0 0-.016.034l-1.385 2.77a.94.94 0 1 0 1.683.841l1.133-2.267h5.806l1.134 2.267a.94.94 0 0 0 1.683-.841l-1.385-2.769a.95.95 0 0 0-.018-.036l-3.476-6.951a.94.94 0 0 0-1.682 0l-1.82 3.639a7.423 7.423 0 0 1-3.593-1.256 9.303 9.303 0 0 0 2.27-5.203h1.894a.94.94 0 0 0 0-1.881H9.456V3.94A.94.94 0 0 0 8.516 3Zm6.426 11.794a1.068 1.068 0 0 1-.02.039l-.703 1.407h3.924l-1.962-3.924-1.24 2.478Z" clip-rule="evenodd"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="/verdin/extending/plugin-reference/" class="astro-2z5xp7gb">English</option><option value="/verdin/ar/extending/plugin-reference/" class="astro-2z5xp7gb">العربية</option><option value="/verdin/ca/extending/plugin-reference/" class="astro-2z5xp7gb">Català</option><option value="/verdin/de/extending/plugin-reference/" class="astro-2z5xp7gb">Deutsch</option><option value="/verdin/es/extending/plugin-reference/" class="astro-2z5xp7gb">Español</option><option value="/verdin/fa/extending/plugin-reference/" selected class="astro-2z5xp7gb">فارسی</option><option value="/verdin/fr/extending/plugin-reference/" class="astro-2z5xp7gb">Français</option><option value="/verdin/he/extending/plugin-reference/" class="astro-2z5xp7gb">עברית</option><option value="/verdin/it/extending/plugin-reference/" class="astro-2z5xp7gb">Italiano</option><option value="/verdin/ja/extending/plugin-reference/" class="astro-2z5xp7gb">日本語</option><option value="/verdin/ko/extending/plugin-reference/" class="astro-2z5xp7gb">한국어</option><option value="/verdin/nl/extending/plugin-reference/" class="astro-2z5xp7gb">Nederlands</option><option value="/verdin/pl/extending/plugin-reference/" class="astro-2z5xp7gb">Polski</option><option value="/verdin/pt-br/extending/plugin-reference/" class="astro-2z5xp7gb">Português (Brasil)</option><option value="/verdin/ru/extending/plugin-reference/" class="astro-2z5xp7gb">Русский</option><option value="/verdin/tr/extending/plugin-reference/" class="astro-2z5xp7gb">Türkçe</option><option value="/verdin/uk/extending/plugin-reference/" class="astro-2z5xp7gb">Українська</option><option value="/verdin/zh-cn/extending/plugin-reference/" class="astro-2z5xp7gb">简体中文</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-lang-select></div></div></div></sl-sidebar-pane></nav><div class="main-frame astro-yntsjkba"><script type="module">var e=document.getElementById(`starlight__sidebar`),t=e?.querySelector(`sl-sidebar-state-persist`),n=`sl-sidebar-state`,r=()=>{let r=[],i=t?.dataset.hash||``;try{let e=sessionStorage.getItem(n),t=JSON.parse(e||`{}`);Array.isArray(t.open)&&t.hash===i&&(r=t.open)}catch{}return{hash:i,open:r,scroll:e?.scrollTop||0}},i=e=>{try{sessionStorage.setItem(n,JSON.stringify(e))}catch{}},a=()=>i(r()),o=(e,t)=>{let n=r();n.open[t]=e,i(n)};t?.addEventListener(`click`,e=>{if(!(e.target instanceof Element))return;let t=e.target.closest(`summary`)?.closest(`details`);if(!t)return;let n=t.querySelector(`sl-sidebar-restore`),r=parseInt(n?.dataset.index||``);isNaN(r)||o(!t.open,r)}),addEventListener(`visibilitychange`,()=>{document.visibilityState===`hidden`&&a()});</script><div class="lg:sl-flex astro-lrzkfocr"><aside class="right-sidebar-container print:hidden astro-lrzkfocr"><div class="right-sidebar astro-lrzkfocr"><div class="lg:sl-hidden astro-qok35upx"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-66cqc7ze"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-66cqc7ze"><details id="starlight__mobile-toc" class="astro-66cqc7ze"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-66cqc7ze"><span class="toggle sl-flex astro-66cqc7ze">در این صفحه<svg aria-hidden="true" class="caret astro-66cqc7ze astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></span><span class="display-current astro-66cqc7ze"></span></summary><div class="dropdown astro-66cqc7ze"><ul class="isMobile astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">نگاه کلی</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#پوشهٔ-افزونه" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">پوشهٔ افزونه</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#مانیفست" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">مانیفست</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#کلیدهای-سطح-بالا" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">کلیدهای سطح بالا</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#capabilities" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[capabilities]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#limits" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[limits]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[hooks]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[routes]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[jobs]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#startup" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[startup]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[graphql]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#admin" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[admin]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#settings" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[settings]]</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#توابع-صادرشده" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">توابع صادرشده</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#هوکهای-پیش-از-نوشتن" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">هوک‌های پیش از نوشتن</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#هوکهای-پس-از-نوشتن" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">هوک‌های پس از نوشتن</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#مسیرها" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">مسیرها</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#کارهای-زمانبندیشده" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">کارهای زمان‌بندی‌شده</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#تابع-راهاندازی" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">تابع راه‌اندازی</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#فیلدهای-graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">فیلدهای GraphQL</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#توابع-میزبان" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">توابع میزبان</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_log" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_log</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_content" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_content</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_kv_get-و-verdin_kv_set" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_kv_get و verdin_kv_set</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_config" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_config</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_public_permissions" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_public_permissions</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#http" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">HTTP</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#نقاط-گسترش-پنل-مدیریت" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">نقاط گسترش پنل مدیریت</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#ویجتها" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">ویجت‌ها</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#فیلدهای-سفارشی" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">فیلدهای سفارشی</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#زمان-اجرا-و-محدودیتها" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">زمان اجرا و محدودیت‌ها</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#متریکها" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">متریک‌ها</span></a></li></ul></div></details></nav></mobile-starlight-toc><script type="module" src="/verdin/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.C3fM4Kra.js"></script></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-qok35upx"><div class="sl-container astro-qok35upx"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">در این صفحه</h2><ul class="astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">نگاه کلی</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#پوشهٔ-افزونه" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">پوشهٔ افزونه</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#مانیفست" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">مانیفست</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#کلیدهای-سطح-بالا" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">کلیدهای سطح بالا</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#capabilities" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[capabilities]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#limits" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[limits]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#hooks" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[hooks]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#routes" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[routes]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#jobs" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[jobs]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#startup" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[startup]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[graphql]]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#admin" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[admin]</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#settings" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">[[settings]]</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#توابع-صادرشده" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">توابع صادرشده</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#هوکهای-پیش-از-نوشتن" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">هوک‌های پیش از نوشتن</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#هوکهای-پس-از-نوشتن" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">هوک‌های پس از نوشتن</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#مسیرها" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">مسیرها</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#کارهای-زمانبندیشده" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">کارهای زمان‌بندی‌شده</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#تابع-راهاندازی" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">تابع راه‌اندازی</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#فیلدهای-graphql" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">فیلدهای GraphQL</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#توابع-میزبان" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">توابع میزبان</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_log" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_log</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_content" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_content</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_kv_get-و-verdin_kv_set" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_kv_get و verdin_kv_set</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_config" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_config</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#verdin_public_permissions" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">verdin_public_permissions</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#http" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">HTTP</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#نقاط-گسترش-پنل-مدیریت" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">نقاط گسترش پنل مدیریت</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#ویجتها" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">ویجت‌ها</span></a></li><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#فیلدهای-سفارشی" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">فیلدهای سفارشی</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#زمان-اجرا-و-محدودیتها" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">زمان اجرا و محدودیت‌ها</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#متریکها" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">متریک‌ها</span></a></li></ul></nav></starlight-toc><script type="module" src="/verdin/_astro/TableOfContents.astro_astro_type_script_index_0_lang.BpJaGz7G.js"></script></div></div></div></aside><div class="main-pane astro-lrzkfocr"><main data-pagefind-body class="astro-g5ptsecz" lang="fa" dir="rtl"><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><h1 id="_top" class="astro-bebwqqxs">مرجع افزونه‌ها</h1></div></div><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><div class="sl-markdown-content"><!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
+<p>این صفحه قرارداد کامل میان Verdin و یک افزونه است: مانیفست، آنچه Verdin به هر تابع
+صادرشده می‌فرستد و در پاسخ انتظار دارد، و توابع میزبانی که یک ماژول می‌تواند فراخوانی کند.
+برای آشنایی، <a href="/verdin/fa/extending/plugins/">افزونه‌ها</a> را ببینید؛ برای یک نمونهٔ کامل،
+<a href="/verdin/fa/extending/plugin-tutorial/">آموزش افزونه</a> را.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="پوشهٔ-افزونه">پوشهٔ افزونه</h2><a class="sl-anchor-link" href="#پوشهٔ-افزونه"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “پوشهٔ افزونه”</span></a></div>
+<p>هر افزونه یک پوشه در <code dir="auto">[plugins].path</code> است (پیش‌فرض <code dir="auto">plugins/</code>، کنار
+<code dir="auto">verdin.toml</code>):</p>
+<table>
+<thead>
+<tr>
+<th>فایل</th>
+<th>الزامی</th>
+<th>محتوا</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">plugin.toml</code></td>
+<td>بله</td>
+<td>مانیفست.</td>
+</tr>
+<tr>
+<td><code dir="auto">plugin.wasm</code></td>
+<td>بله</td>
+<td>ماژول (با <code dir="auto">wasm</code> می‌توان مسیر دیگری داد).</td>
+</tr>
+<tr>
+<td><code dir="auto">admin/</code></td>
+<td>خیر</td>
+<td>فایل‌هایی که پنل مدیریت بارگذاری می‌کند: ماژول <code dir="auto">admin.script</code> و فایل‌های همراه آن.</td>
+</tr>
+</tbody>
+</table>
+<p>Verdin هنگام راه‌اندازی هر پوشه‌ای را که <code dir="auto">plugin.toml</code> دارد، به ترتیب نام، بارگذاری می‌کند.
+اگر مانیفست یک پوشه نامعتبر باشد، ماژول آن وجود نداشته باشد، یا افزونهٔ دیگری از قبل همان
+<code dir="auto">name</code> را داشته باشد، آن پوشه نادیده گرفته می‌شود و همراه با دلیل در <strong>تنظیمات ← افزونه‌ها</strong>
+فهرست می‌شود.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="مانیفست">مانیفست</h2><a class="sl-anchor-link" href="#مانیفست"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “مانیفست”</span></a></div>
+<div class="expressive-code"><link rel="stylesheet" href="/verdin/_astro/ec.w36nc.css"><script type="module" src="/verdin/_astro/ec.0vx5m.js"></script><figure class="frame has-title not-content"><figcaption class="header"><span class="title">plugins/slugs/plugin.toml</span></figcaption><pre data-language="toml"><code><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">name</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">version</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">1.0.0</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">description</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Slugs from titles, and a color field</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[capabilities]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">read</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">write</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::tag</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">http</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api.example.com</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">kv</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#FF6A83;--1:#A24848">true</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">public_permissions</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#FF6A83;--1:#A24848">true</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[limits]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">timeout_ms</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">5000</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">memory_mb</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">64</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[hooks]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">on</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">beforeCreate</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">uid</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">before_write</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[routes]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">handle</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[jobs]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">schedule</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">*/15 * * * *</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">refresh</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[startup]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">seed</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">timeout_ms</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#F78C6C;--1:#AA0982">30000</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[graphql]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">name</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugStats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">function</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[admin]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">script</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">index.js</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[admin.widgets]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">id</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">title</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Slug stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">element</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs-stats</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[admin.fields]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">id</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">title</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">element</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">slugs-color</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">type</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">string</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">[[settings]]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">key</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">separator</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">label</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">Separator</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">type</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">select</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">options</span><span style="--0:#D6DEEB;--1:#403F53"> = [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">-</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">_</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">]</span></div></div><div class="ec-line"><div class="code"><span style="--0:#C5E478;--1:#3B61B0">default</span><span style="--0:#D6DEEB;--1:#403F53"> = </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#ECC48D;--1:#984E4D">-</span><span style="--0:#D9F5DD;--1:#111111">"</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="name = &quot;slugs&quot;version = &quot;1.0.0&quot;description = &quot;Slugs from titles, and a color field&quot;[capabilities]read = [&quot;api::article&quot;]write = [&quot;api::tag&quot;]http = [&quot;api.example.com&quot;]kv = truepublic_permissions = true[limits]timeout_ms = 5000memory_mb = 64[[hooks]]on = &quot;beforeCreate&quot;uid = &quot;api::article&quot;function = &quot;before_write&quot;[routes]function = &quot;handle&quot;[[jobs]]schedule = &quot;*/15 * * * *&quot;function = &quot;refresh&quot;[startup]function = &quot;seed&quot;timeout_ms = 30000[[graphql]]name = &quot;slugStats&quot;function = &quot;stats&quot;[admin]script = &quot;index.js&quot;[[admin.widgets]]id = &quot;stats&quot;title = &quot;Slug stats&quot;element = &quot;slugs-stats&quot;[[admin.fields]]id = &quot;color&quot;title = &quot;Color&quot;element = &quot;slugs-color&quot;type = &quot;string&quot;[[settings]]key = &quot;separator&quot;label = &quot;Separator&quot;type = &quot;select&quot;options = [&quot;-&quot;, &quot;_&quot;]default = &quot;-&quot;"><div></div></button></div></figure></div>
+<p>کلیدهای ناشناخته در همهٔ جدول‌ها خطا هستند.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="کلیدهای-سطح-بالا">کلیدهای سطح بالا</h3><a class="sl-anchor-link" href="#کلیدهای-سطح-بالا"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “کلیدهای سطح بالا”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>کلید</th>
+<th>پیش‌فرض</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">name</code></td>
+<td>الزامی</td>
+<td>شناسهٔ افزونه در URLها، تنظیمات و فیلدهای سفارشی: حروف کوچک، ارقام و <code dir="auto">-</code>، که با یک حرف شروع شود، حداکثر 64 نویسه.</td>
+</tr>
+<tr>
+<td><code dir="auto">version</code></td>
+<td>الزامی</td>
+<td>در پنل مدیریت و لاگ نمایش داده می‌شود.</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>تنظیم‌نشده</td>
+<td>در <strong>تنظیمات ← افزونه‌ها</strong> نمایش داده می‌شود.</td>
+</tr>
+<tr>
+<td><code dir="auto">wasm</code></td>
+<td><code dir="auto">"plugin.wasm"</code></td>
+<td>ماژول، نسبت به پوشهٔ افزونه (بدون <code dir="auto">..</code> و نه مسیر مطلق).</td>
+</tr>
+<tr>
+<td><code dir="auto">wasi</code></td>
+<td><code dir="auto">false</code></td>
+<td>به ماژول WASI می‌دهد: یک ساعت و اعداد تصادفی. در هر حال نه فایلی در کار است و نه سوکتی.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="capabilities"><code dir="auto">[capabilities]</code></h3><a class="sl-anchor-link" href="#capabilities"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[capabilities]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>کلید</th>
+<th>پیش‌فرض</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">read</code></td>
+<td><code dir="auto">[]</code></td>
+<td>نوع‌های محتوایی که <code dir="auto">verdin_content</code> می‌تواند بخواند (<code dir="auto">findMany</code>، <code dir="auto">findOne</code>): uidهایی مانند <code dir="auto">api::article</code>، یا <code dir="auto">"*"</code> برای همه.</td>
+</tr>
+<tr>
+<td><code dir="auto">write</code></td>
+<td><code dir="auto">[]</code></td>
+<td>نوع‌های محتوایی که می‌تواند روی آن‌ها <code dir="auto">create</code>، <code dir="auto">update</code>، <code dir="auto">delete</code>، <code dir="auto">publish</code> و <code dir="auto">unpublish</code> انجام دهد. <code dir="auto">read</code> را هم در بر دارد.</td>
+</tr>
+<tr>
+<td><code dir="auto">http</code></td>
+<td><code dir="auto">[]</code></td>
+<td>میزبان‌هایی که ماژول می‌تواند به آن‌ها درخواست HTTP بفرستد: <code dir="auto">api.example.com</code> یا <code dir="auto">*.example.com</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">kv</code></td>
+<td><code dir="auto">false</code></td>
+<td>ذخیره‌سازی کلید-مقدار خود افزونه (<code dir="auto">verdin_kv_get</code>، <code dir="auto">verdin_kv_set</code>).</td>
+</tr>
+<tr>
+<td><code dir="auto">public_permissions</code></td>
+<td><code dir="auto">false</code></td>
+<td>خواندن و جایگزین کردن مجوزهای content API نقش عمومی (<code dir="auto">verdin_public_permissions</code>).</td>
+</tr>
+</tbody>
+</table>
+<p>قابلیت‌ها فقط فراخوانی‌های میزبان را محدود می‌کنند. هوک‌ها صرف‌نظر از <code dir="auto">read</code> روی نوع‌هایی که
+نام می‌برند اجرا می‌شوند، و مسیرها برای همه در دسترس‌اند.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="limits"><code dir="auto">[limits]</code></h3><a class="sl-anchor-link" href="#limits"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[limits]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>کلید</th>
+<th>پیش‌فرض</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">timeout_ms</code></td>
+<td><code dir="auto">5000</code></td>
+<td>محدودیت زمانی هر فراخوانی، به میلی‌ثانیه.</td>
+</tr>
+<tr>
+<td><code dir="auto">memory_mb</code></td>
+<td><code dir="auto">64</code></td>
+<td>بیشترین حافظهٔ ماژول، به مگابایت.</td>
+</tr>
+</tbody>
+</table>
+<p>هر دو باید مثبت باشند.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="hooks"><code dir="auto">[[hooks]]</code></h3><a class="sl-anchor-link" href="#hooks"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[hooks]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>کلید</th>
+<th>پیش‌فرض</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">on</code></td>
+<td>الزامی</td>
+<td>رویداد، در ادامه.</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td><code dir="auto">"*"</code></td>
+<td>نوع محتوا (<code dir="auto">api::article</code>)، یا <code dir="auto">"*"</code> برای همه.</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>الزامی</td>
+<td>تابع صادرشده‌ای که فراخوانی می‌شود.</td>
+</tr>
+</tbody>
+</table>
+<p>رویدادها:</p>
+<table>
+<thead>
+<tr>
+<th>پیش از نوشتن</th>
+<th>پس از نوشتن</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">beforeCreate</code></td>
+<td><code dir="auto">afterCreate</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeUpdate</code></td>
+<td><code dir="auto">afterUpdate</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeDelete</code></td>
+<td><code dir="auto">afterDelete</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforePublish</code></td>
+<td><code dir="auto">afterPublish</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeUnpublish</code></td>
+<td><code dir="auto">afterUnpublish</code></td>
+</tr>
+<tr>
+<td><code dir="auto">beforeDiscardDraft</code></td>
+<td><code dir="auto">afterDiscardDraft</code></td>
+</tr>
+</tbody>
+</table>
+<p>این نام‌ها همان نام‌های چرخهٔ حیات (lifecycle) در Strapi هستند. هوک‌ها روی نوشتن‌هایی که از
+پنل مدیریت، APIهای REST و GraphQL و بسته‌های انتشار انجام می‌شوند اجرا می‌شوند، اما نه روی
+نوشتن‌هایی که فرمان‌های <code dir="auto">verdin import</code> انجام می‌دهند. نوشتن‌هایی که افزونه‌ها انجام می‌دهند
+هوک‌های پس از نوشتن را اجرا می‌کنند اما هوک‌های پیش از نوشتن را نه (بخش
+<a href="#%D9%86%D9%88%D8%B4%D8%AA%D9%86-%D8%AA%D9%88%D8%B3%D8%B7-%D8%A7%D9%81%D8%B2%D9%88%D9%86%D9%87%D9%87%D8%A7">نوشتن توسط افزونه‌ها</a> را ببینید).</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="routes"><code dir="auto">[routes]</code></h3><a class="sl-anchor-link" href="#routes"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[routes]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>کلید</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>تابع صادرشده‌ای که به همهٔ درخواست‌ها به <code dir="auto">/api/plugins/&lt;name&gt;</code> و <code dir="auto">/api/plugins/&lt;name&gt;/…</code> با هر متدی پاسخ می‌دهد.</td>
+</tr>
+</tbody>
+</table>
+<p>این مسیر از <code dir="auto">[api].prefix</code> پیروی می‌کند.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="jobs"><code dir="auto">[[jobs]]</code></h3><a class="sl-anchor-link" href="#jobs"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[jobs]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>کلید</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">schedule</code></td>
+<td>عبارت Cron، به وقت UTC، با ثانیهٔ اختیاری: <code dir="auto">*/15 * * * *</code>، <code dir="auto">0 0 3 * * *</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>تابع صادرشده‌ای که فراخوانی می‌شود.</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="startup"><code dir="auto">[startup]</code></h3><a class="sl-anchor-link" href="#startup"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[startup]”</span></a></div>
+<p>تابعی که هنگام شروع افزونه اجرا می‌شود: کاری که یک پروژهٔ Strapi در <code dir="auto">bootstrap</code> انجام می‌دهد
+(seed کردن محتوا، تنظیم نقش عمومی).</p>
+<table>
+<thead>
+<tr>
+<th>کلید</th>
+<th>پیش‌فرض</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>الزامی</td>
+<td>تابع صادرشده‌ای که فراخوانی می‌شود.</td>
+</tr>
+<tr>
+<td><code dir="auto">timeout_ms</code></td>
+<td><code dir="auto">30000</code></td>
+<td>محدودیت زمانی مخصوص خودش، به میلی‌ثانیه (seed کردن می‌تواند از یک هوک بیشتر طول بکشد). باید مثبت باشد.</td>
+</tr>
+</tbody>
+</table>
+<p>برای اینکه چه وقت اجرا می‌شود، <a href="#%D8%AA%D8%A7%D8%A8%D8%B9-%D8%B1%D8%A7%D9%87%D8%A7%D9%86%D8%AF%D8%A7%D8%B2%DB%8C">تابع راه‌اندازی</a> را ببینید.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="graphql"><code dir="auto">[[graphql]]</code></h3><a class="sl-anchor-link" href="#graphql"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[graphql]]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>کلید</th>
+<th>پیش‌فرض</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">name</code></td>
+<td>الزامی</td>
+<td>نام فیلد: با یک حرف کوچک شروع می‌شود و پس از آن حروف، ارقام و <code dir="auto">_</code> می‌آید.</td>
+</tr>
+<tr>
+<td><code dir="auto">function</code></td>
+<td>الزامی</td>
+<td>تابع صادرشده‌ای که آن را resolve می‌کند.</td>
+</tr>
+<tr>
+<td><code dir="auto">mutation</code></td>
+<td><code dir="auto">false</code></td>
+<td>فیلد را به‌جای <code dir="auto">Query</code> به <code dir="auto">Mutation</code> اضافه می‌کند.</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>تنظیم‌نشده</td>
+<td>توضیح فیلد در طرح‌واره (schema).</td>
+</tr>
+</tbody>
+</table>
+<p>هر مدخل <code dir="auto">name(args: JSON): JSON</code> را اضافه می‌کند. نامی که یک نوع محتوا از قبل استفاده می‌کند،
+یا افزونهٔ دیگری زودتر گرفته است، با یک هشدار در لاگ نادیده گرفته می‌شود.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="admin"><code dir="auto">[admin]</code></h3><a class="sl-anchor-link" href="#admin"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[admin]”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>کلید</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">script</code></td>
+<td>ماژول ES در <code dir="auto">admin/</code> که عناصر سفارشی (custom elements) را تعریف می‌کند (بدون <code dir="auto">..</code> و نه مسیر مطلق).</td>
+</tr>
+<tr>
+<td><code dir="auto">[[admin.widgets]]</code></td>
+<td>نوع‌های ویجت داشبورد: <code dir="auto">id</code>، <code dir="auto">title</code>، <code dir="auto">element</code>، و <code dir="auto">description</code> اختیاری.</td>
+</tr>
+<tr>
+<td><code dir="auto">[[admin.fields]]</code></td>
+<td>فیلدهای سفارشی: <code dir="auto">id</code>، <code dir="auto">title</code>، <code dir="auto">element</code>، <code dir="auto">type</code> (نوع ویژگی‌ای که مقدار با آن ذخیره می‌شود، مانند <code dir="auto">string</code> یا <code dir="auto">json</code>)، و <code dir="auto">description</code> اختیاری.</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">element</code> نام یک عنصر سفارشی است: حروف کوچک، ارقام و <code dir="auto">-</code>، با دست‌کم یک
+<code dir="auto">-</code> (<code dir="auto">slugs-color</code>).</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="settings"><code dir="auto">[[settings]]</code></h3><a class="sl-anchor-link" href="#settings"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “[[settings]]”</span></a></div>
+<p>فرم <strong>تنظیمات ← افزونه‌ها ← تنظیمات</strong> را تعریف می‌کند. بدون هیچ مدخلی، تنظیمات یک شیء JSON
+آزاد است.</p>
+<table>
+<thead>
+<tr>
+<th>کلید</th>
+<th>پیش‌فرض</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">key</code></td>
+<td>الزامی</td>
+<td>کلید در شیء تنظیمات: حروف، ارقام و <code dir="auto">_</code>، که با رقم شروع نشود، یکتا.</td>
+</tr>
+<tr>
+<td><code dir="auto">label</code></td>
+<td>الزامی</td>
+<td>برچسب فرم.</td>
+</tr>
+<tr>
+<td><code dir="auto">type</code></td>
+<td><code dir="auto">"string"</code></td>
+<td><code dir="auto">string</code>، <code dir="auto">text</code>، <code dir="auto">url</code>، <code dir="auto">number</code>، <code dir="auto">integer</code>، <code dir="auto">boolean</code> یا <code dir="auto">select</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">description</code></td>
+<td>تنظیم‌نشده</td>
+<td>متن راهنما زیر فیلد.</td>
+</tr>
+<tr>
+<td><code dir="auto">required</code></td>
+<td><code dir="auto">false</code></td>
+<td>یک مقدار (برای متن، غیرخالی) لازم است، مگر اینکه <code dir="auto">default</code> وجود داشته باشد.</td>
+</tr>
+<tr>
+<td><code dir="auto">options</code></td>
+<td><code dir="auto">[]</code></td>
+<td>گزینه‌های یک <code dir="auto">select</code> (برای آن الزامی است).</td>
+</tr>
+<tr>
+<td><code dir="auto">default</code></td>
+<td>تنظیم‌نشده</td>
+<td>وقتی کلید وجود ندارد یا <code dir="auto">null</code> است به کار می‌رود. باید با فیلد جور باشد.</td>
+</tr>
+<tr>
+<td><code dir="auto">min</code>، <code dir="auto">max</code></td>
+<td>تنظیم‌نشده</td>
+<td>کران‌های مقادیر <code dir="auto">number</code> و <code dir="auto">integer</code>؛ کران‌های طول <code dir="auto">string</code> و <code dir="auto">text</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>مقادیر <code dir="auto">url</code> یا خالی‌اند یا URLهای <code dir="auto">http(s)://</code>. وقتی فرم تعریف شده باشد، سرور تنظیماتی را که
+کلید ناشناخته، نوع نادرست، مقدار خارج از محدوده یا مقدار الزامیِ ناموجود دارند رد می‌کند (400).</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="توابع-صادرشده">توابع صادرشده</h2><a class="sl-anchor-link" href="#توابع-صادرشده"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “توابع صادرشده”</span></a></div>
+<p>هر تابع صادرشده یک سند JSON می‌گیرد و یک سند برمی‌گرداند (یا هیچ). خروجی خالی
+<code dir="auto">null</code> حساب می‌شود؛ خروجی‌ای که JSON نباشد شکست حساب می‌شود.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="هوکهای-پیش-از-نوشتن">هوک‌های پیش از نوشتن</h3><a class="sl-anchor-link" href="#هوکهای-پیش-از-نوشتن"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “هوک‌های پیش از نوشتن”</span></a></div>
+<p>ورودی:</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"event"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">beforeUpdate</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"uid"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"documentId"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">01m3p88ry359w82nsx496mep5t</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"locale"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">en</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"data"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"title"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">Hello</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="{  &quot;event&quot;: &quot;beforeUpdate&quot;,  &quot;uid&quot;: &quot;api::article&quot;,  &quot;documentId&quot;: &quot;01m3p88ry359w82nsx496mep5t&quot;,  &quot;locale&quot;: &quot;en&quot;,  &quot;data&quot;: { &quot;title&quot;: &quot;Hello&quot; }}"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>فیلد</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">event</code></td>
+<td>رویداد هوک.</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td>نوع محتوا.</td>
+</tr>
+<tr>
+<td><code dir="auto">documentId</code></td>
+<td>سند، یا <code dir="auto">null</code> در <code dir="auto">beforeCreate</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>در نوع‌های بومی‌سازی‌شده، زبانی که نوشته می‌شود (زبان پیش‌فرض، وقتی درخواست زبانی نام نبرده باشد)؛ در نوع‌های دیگر <code dir="auto">null</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">data</code></td>
+<td>داده‌ای که نوشته می‌شود، همان‌طور که درخواست فرستاده است: در create و update. برای رویدادهای دیگر <code dir="auto">null</code>. در update، فقط فیلدهای ارسال‌شده.</td>
+</tr>
+</tbody>
+</table>
+<p>خروجی:</p>
+<table>
+<thead>
+<tr>
+<th>خروجی</th>
+<th>اثر</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">{ "data": { … } }</code></td>
+<td>دادهٔ نوشته‌شده را جایگزین می‌کند. مانند دادهٔ اصلی اعتبارسنجی می‌شود.</td>
+</tr>
+<tr>
+<td><code dir="auto">{ "error": "message" }</code></td>
+<td>نوشتن را رد می‌کند: فراخواننده یک 400 همراه با پیام دریافت می‌کند.</td>
+</tr>
+<tr>
+<td><code dir="auto">{}</code> یا هر چیز دیگر</td>
+<td>نوشتن بدون تغییر ادامه می‌یابد.</td>
+</tr>
+</tbody>
+</table>
+<p>وقتی چند هوک مطابقت داشته باشند، به ترتیب افزونه‌ها (نام پوشه‌ها) و سپس به ترتیب مانیفست اجرا
+می‌شوند؛ هر کدام داده‌ای را می‌بیند که قبلی برگردانده است. هوکی که شکست بخورد (trap، timeout،
+خروجی نامعتبر) لاگ و نادیده گرفته می‌شود: نوشتن ادامه می‌یابد.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="هوکهای-پس-از-نوشتن">هوک‌های پس از نوشتن</h3><a class="sl-anchor-link" href="#هوکهای-پس-از-نوشتن"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “هوک‌های پس از نوشتن”</span></a></div>
+<p>ورودی: <code dir="auto">{ "event", "uid", "documentId", "locale" }</code>، که پس از commit شدن نوشتن فرستاده می‌شود.
+خروجی نادیده گرفته می‌شود؛ شکست‌ها لاگ می‌شوند. اگر به فیلدهای مدخل نیاز دارید، آن را با
+<code dir="auto">verdin_content</code> بخوانید (با قابلیت <code dir="auto">read</code>).</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="مسیرها">مسیرها</h3><a class="sl-anchor-link" href="#مسیرها"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “مسیرها”</span></a></div>
+<p>ورودی:</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"method"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">GET</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"path"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">/stats</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"query"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">page=2&amp;sort=title</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"headers"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"accept"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">application/json</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"user-agent"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">curl/8.7.1</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"body"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">""</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"actor"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"kind"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">public</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="{  &quot;method&quot;: &quot;GET&quot;,  &quot;path&quot;: &quot;/stats&quot;,  &quot;query&quot;: &quot;page=2&amp;sort=title&quot;,  &quot;headers&quot;: { &quot;accept&quot;: &quot;application/json&quot;, &quot;user-agent&quot;: &quot;curl/8.7.1&quot; },  &quot;body&quot;: &quot;&quot;,  &quot;actor&quot;: { &quot;kind&quot;: &quot;public&quot; }}"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>فیلد</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">method</code></td>
+<td>متد HTTP.</td>
+</tr>
+<tr>
+<td><code dir="auto">path</code></td>
+<td>مسیر پس از <code dir="auto">/api/plugins/&lt;name&gt;</code>، که با <code dir="auto">/</code> شروع می‌شود (<code dir="auto">/</code> برای ریشهٔ افزونه).</td>
+</tr>
+<tr>
+<td><code dir="auto">query</code></td>
+<td>رشتهٔ کوئری خام، بدون <code dir="auto">?</code> (وقتی وجود نداشته باشد خالی است).</td>
+</tr>
+<tr>
+<td><code dir="auto">headers</code></td>
+<td>فقط <code dir="auto">content-type</code>، <code dir="auto">accept</code>، <code dir="auto">user-agent</code> و <code dir="auto">accept-language</code>، در صورت وجود.</td>
+</tr>
+<tr>
+<td><code dir="auto">body</code></td>
+<td>بدنهٔ درخواست به‌صورت رشته (UTF-8 نامعتبر جایگزین می‌شود).</td>
+</tr>
+<tr>
+<td><code dir="auto">actor</code></td>
+<td>چه کسی فراخوانی می‌کند: <code dir="auto">{ "kind": "public" }</code>، <code dir="auto">{ "kind": "token", "id": 3 }</code> (یک توکن API) یا <code dir="auto">{ "kind": "user", "id": 12 }</code> (یک کاربر نهایی واردشده).</td>
+</tr>
+</tbody>
+</table>
+<p>هدر <code dir="auto">Authorization</code> با توکن نامعتبر، پیش از فراخوانی افزونه با 401 رد می‌شود. دسترسی عمومی و
+مجوزهای توکن API اعمال نمی‌شوند: <code dir="auto">actor</code> را خودتان بررسی کنید.</p>
+<p>خروجی:</p>
+<table>
+<thead>
+<tr>
+<th>فیلد</th>
+<th>پیش‌فرض</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">status</code></td>
+<td><code dir="auto">200</code></td>
+<td>وضعیت HTTP.</td>
+</tr>
+<tr>
+<td><code dir="auto">headers</code></td>
+<td>هیچ</td>
+<td>هدرهای پاسخ. فقط <code dir="auto">content-type</code>، <code dir="auto">cache-control</code>، <code dir="auto">location</code>، <code dir="auto">etag</code>، <code dir="auto">last-modified</code> و <code dir="auto">content-disposition</code> نگه داشته می‌شوند.</td>
+</tr>
+<tr>
+<td><code dir="auto">body</code></td>
+<td>خالی</td>
+<td>رشته همان‌طور که هست فرستاده می‌شود (<code dir="auto">text/plain</code>، مگر اینکه <code dir="auto">content-type</code> را تنظیم کنید)؛ هر مقدار JSON دیگری به‌صورت <code dir="auto">application/json</code> فرستاده می‌شود.</td>
+</tr>
+</tbody>
+</table>
+<p>افزونهٔ غیرفعال یا ناشناخته، یا افزونهٔ بدون <code dir="auto">[routes]</code>، با 404 پاسخ می‌دهد. فراخوانی ناموفق
+با 502 و <code dir="auto">{ "data": null, "error": { "status": 502, "name": "PluginError", … } }</code> پاسخ می‌دهد.
+مسیرها از <code dir="auto">[server].body_limit</code> و <code dir="auto">[server].request_timeout_secs</code> مشترک با API محتوا پیروی می‌کنند.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="کارهای-زمانبندیشده">کارهای زمان‌بندی‌شده</h3><a class="sl-anchor-link" href="#کارهای-زمانبندیشده"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “کارهای زمان‌بندی‌شده”</span></a></div>
+<p>ورودی: <code dir="auto">{ "scheduledAt": "2026-09-29T03:00:00+00:00" }</code>، زمانی که اجرا برای آن زمان‌بندی شده بود.
+خروجی نادیده گرفته می‌شود؛ شکست‌ها لاگ می‌شوند. کارها فقط وقتی افزونه روشن است اجرا
+می‌شوند، و فقط روی نمونه‌هایی که <code dir="auto">[plugins].run_jobs = true</code> دارند. اجرایی که هنگام خاموش بودن
+سرور از دست رفته باشد جبران نمی‌شود.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="تابع-راهاندازی">تابع راه‌اندازی</h3><a class="sl-anchor-link" href="#تابع-راهاندازی"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “تابع راه‌اندازی”</span></a></div>
+<p>ورودی: <code dir="auto">{ "reason": "start" | "enabled" | "settings" }</code>:</p>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">reason</code></th>
+<th>چه وقت</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">start</code></td>
+<td>سرور با روشن بودن افزونه شروع شد.</td>
+</tr>
+<tr>
+<td><code dir="auto">enabled</code></td>
+<td>افزونه روشن شد (اینجا، یا روی نمونهٔ دیگری و اینجا دریافت شد).</td>
+</tr>
+<tr>
+<td><code dir="auto">settings</code></td>
+<td>تنظیماتش هنگام روشن بودن تغییر کرد (اینجا ذخیره شد، یا از نمونهٔ دیگری دریافت شد).</td>
+</tr>
+</tbody>
+</table>
+<p>خروجی: <code dir="auto">{ "error": "message" }</code> شکست حساب می‌شود؛ هر چیز دیگر (<code dir="auto">{}</code>، خالی) موفقیت. یک شکست
+(trap، time-out، <code dir="auto">{ error }</code>) به لاگ افزونه و لاگ سرور می‌رود؛ افزونه روشن می‌ماند، و تابع در شروع، روشن
+شدن یا تغییر تنظیمات بعدی دوباره اجرا می‌شود.</p>
+<p>تابع در پس‌زمینه و پس از بالا آمدن سرور اجرا می‌شود، بنابراین در این مدت درخواست‌ها پاسخ داده
+می‌شوند. روی یک نمونهٔ ماژول مخصوص به خودش و با <code dir="auto">[startup].timeout_ms</code> اجرا می‌شود، پس یک seed کند
+هوک‌ها و مسیرهای افزونه را معطل نمی‌کند. هوک‌های پس از نوشتنی که نوشتن‌های آن فعال می‌کند پس از بازگشت آن
+اجرا می‌شوند (بخش <a href="#%D9%86%D9%88%D8%B4%D8%AA%D9%86-%D8%AA%D9%88%D8%B3%D8%B7-%D8%A7%D9%81%D8%B2%D9%88%D9%86%D9%87%D9%87%D8%A7">نوشتن توسط افزونه‌ها</a> را ببینید). حافظهٔ
+ماژول با نمونهٔ عادی افزونه مشترک نیست: وضعیت را در <code dir="auto">verdin_kv_set</code> یا در محتوا نگه دارید.</p>
+<p>با چند نمونه، فقط آن‌هایی که <code dir="auto">[plugins].run_jobs = true</code> دارند توابع راه‌اندازی را اجرا می‌کنند
+(یک نمونه، اگر <a href="/verdin/fa/deploy/scaling/">توصیهٔ مقیاس‌پذیری</a> را دنبال کنید): آن‌ها روی پایگاه دادهٔ
+مشترک کار می‌کنند، پس یک بار کافی است. تابع را طوری بنویسید که اجرای دوباره‌اش بی‌ضرر باشد:
+پیش از ساختن چیزی که seed می‌کنید، آن را جست‌وجو کنید.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="فیلدهای-graphql">فیلدهای GraphQL</h3><a class="sl-anchor-link" href="#فیلدهای-graphql"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “فیلدهای GraphQL”</span></a></div>
+<p>ورودی: <code dir="auto">{ "args": …, "actor": … }</code>، که در آن <code dir="auto">args</code> آرگومان <code dir="auto">args</code> فیلد است (هر JSON، یا
+<code dir="auto">null</code>) و <code dir="auto">actor</code> مانند مسیرهاست. خروجی مقدار فیلد است. شکست، یا افزونهٔ غیرفعال، با یک خطای
+GraphQL با کد <code dir="auto">PLUGIN_ERROR</code> پاسخ داده می‌شود. مانند مسیرها، بررسی دسترسی بر عهدهٔ افزونه است.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="توابع-میزبان">توابع میزبان</h2><a class="sl-anchor-link" href="#توابع-میزبان"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “توابع میزبان”</span></a></div>
+<p>آن‌ها را از فضای نام <code dir="auto">extism:host/user</code> وارد کنید (<code dir="auto">extern "ExtismHost"</code> در Rust). این توابع
+JSON را به‌صورت رشته می‌گیرند و برمی‌گردانند؛ <code dir="auto">Json&lt;Value&gt;</code> در <code dir="auto">extism-pdk</code> تبدیل را انجام می‌دهد.</p>
+<table>
+<thead>
+<tr>
+<th>تابع</th>
+<th>ورودی</th>
+<th>خروجی</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">verdin_log</code></td>
+<td><code dir="auto">{ "level": "info" | "warn" | "error", "message": "…" }</code></td>
+<td>هیچ</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_content</code></td>
+<td>یک درخواست محتوا (در ادامه)</td>
+<td>نتیجه، یا <code dir="auto">{ "error": "…" }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_kv_get</code></td>
+<td>کلید، به‌صورت رشتهٔ ساده</td>
+<td>مقدار JSON ذخیره‌شده، یا <code dir="auto">null</code></td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_kv_set</code></td>
+<td><code dir="auto">{ "key": "…", "value": … }</code></td>
+<td>هیچ</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_config</code></td>
+<td>هیچ</td>
+<td>شیء تنظیمات، با پیش‌فرض‌های تعریف‌شده پرشده</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_public_permissions</code></td>
+<td><code dir="auto">{ "op": "get" }</code> یا <code dir="auto">{ "op": "set", "permissions": [...] }</code></td>
+<td><code dir="auto">{ "permissions": [...] }</code>، یا <code dir="auto">{ "error": "…" }</code></td>
+</tr>
+</tbody>
+</table>
+<p>ماژولی که یک تابع میزبان را import کند که سرور ندارد (یک Verdin قدیمی‌تر) بارگذاری نمی‌شود: هر فراخوانی
+آن در لاگ سرور با <code dir="auto">unknown import</code> شکست می‌خورد.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_log"><code dir="auto">verdin_log</code></h3><a class="sl-anchor-link" href="#verdin_log"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_log”</span></a></div>
+<p>در لاگ سرور (همراه با نام افزونه) و در لاگ افزونه در <strong>تنظیمات ← افزونه‌ها ← گزارش‌ها</strong>
+می‌نویسد. سطح‌های دیگر <code dir="auto">info</code> حساب می‌شوند. لاگ افزونه 200 پیام آخر را، هر کدام بریده‌شده در
+2,000 نویسه، در حافظه نگه می‌دارد.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_content"><code dir="auto">verdin_content</code></h3><a class="sl-anchor-link" href="#verdin_content"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_content”</span></a></div>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"op"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">findMany</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"uid"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"query"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"filters"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"title"</span><span style="--0:#D6DEEB;--1:#403F53">: { </span><span style="--0:#7FDBCA;--1:#096E72">"$eq"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">x</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> } }, </span><span style="--0:#7FDBCA;--1:#096E72">"sort"</span><span style="--0:#D6DEEB;--1:#403F53">: [</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">title</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">] } }</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="{ &quot;op&quot;: &quot;findMany&quot;, &quot;uid&quot;: &quot;api::article&quot;, &quot;query&quot;: { &quot;filters&quot;: { &quot;title&quot;: { &quot;$eq&quot;: &quot;x&quot; } }, &quot;sort&quot;: [&quot;title&quot;] } }"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th>فیلد</th>
+<th>استفاده در</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">op</code></td>
+<td>همه</td>
+<td><code dir="auto">findMany</code>، <code dir="auto">findOne</code>، <code dir="auto">create</code>، <code dir="auto">update</code>، <code dir="auto">delete</code>، <code dir="auto">publish</code> یا <code dir="auto">unpublish</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">uid</code></td>
+<td>همه</td>
+<td>نوع محتوا. باید در قابلیت‌ها باشد.</td>
+</tr>
+<tr>
+<td><code dir="auto">documentId</code></td>
+<td><code dir="auto">findOne</code>، <code dir="auto">update</code>، <code dir="auto">delete</code>، <code dir="auto">publish</code>، <code dir="auto">unpublish</code></td>
+<td>سند.</td>
+</tr>
+<tr>
+<td><code dir="auto">query</code></td>
+<td><code dir="auto">findMany</code>، <code dir="auto">findOne</code></td>
+<td>پارامترهای REST API به‌صورت یک شیء JSON: <code dir="auto">filters</code>، <code dir="auto">sort</code>، <code dir="auto">fields</code>، <code dir="auto">populate</code>، <code dir="auto">pagination</code>، <code dir="auto">status</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">data</code></td>
+<td><code dir="auto">create</code>، <code dir="auto">update</code></td>
+<td>فیلدهایی که نوشته می‌شوند، مانند <code dir="auto">data</code> در یک درخواست REST.</td>
+</tr>
+<tr>
+<td><code dir="auto">status</code></td>
+<td><code dir="auto">create</code>، <code dir="auto">update</code></td>
+<td><code dir="auto">"draft"</code> یک پیش‌نویس ذخیره می‌کند. در غیر این صورت نوشته منتشر می‌شود، مانند نوشتن REST بدون <code dir="auto">?status=draft</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>همه</td>
+<td>زبانی که خوانده یا نوشته می‌شود.</td>
+</tr>
+</tbody>
+</table>
+<p>نتیجه‌ها:</p>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">op</code></th>
+<th>نتیجه</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">findMany</code></td>
+<td><code dir="auto">{ "documents": [...], "meta": { "pagination": {…} } }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">findOne</code></td>
+<td><code dir="auto">{ "document": {…} }</code> (وقتی پیدا نشود <code dir="auto">null</code>)</td>
+</tr>
+<tr>
+<td><code dir="auto">create</code>، <code dir="auto">update</code></td>
+<td><code dir="auto">{ "documentId": "…" }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">delete</code></td>
+<td><code dir="auto">{ "deleted": true }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">publish</code></td>
+<td><code dir="auto">{ "published": true }</code></td>
+</tr>
+<tr>
+<td><code dir="auto">unpublish</code></td>
+<td><code dir="auto">{ "unpublished": true }</code></td>
+</tr>
+</tbody>
+</table>
+<p>فراخوانی خارج از قابلیت‌ها، عملیات ناشناخته، خطای اعتبارسنجی یا سند ناموجود به‌جای آن
+<code dir="auto">{ "error": "…" }</code> پاسخ می‌دهد. خواندن‌ها نسخه‌های منتشرشده را برمی‌گردانند، مگر اینکه کوئری
+<code dir="auto">"status": "draft"</code> بخواهد.</p>
+<div class="sl-heading-wrapper level-h4"><h4 id="نوشتن-توسط-افزونهها">نوشتن توسط افزونه‌ها</h4><a class="sl-anchor-link" href="#نوشتن-توسط-افزونهها"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “نوشتن توسط افزونه‌ها”</span></a></div>
+<p>نوشتن از طریق <code dir="auto">verdin_content</code> از هوک‌های <strong>پیش از نوشتن</strong> همهٔ افزونه‌ها عبور نمی‌کند، بنابراین
+افزونه نمی‌تواند در آنجا روی تغییرات خودش در حلقه بیفتد، و قاعده‌هایی که در هوک‌های پیش از نوشتن
+می‌گذارید (پیش‌فرض‌ها، بررسی‌ها) روی آن‌ها اعمال نمی‌شوند. بقیهٔ موارد اعمال می‌شوند: اعتبارسنجی،
+مرحله‌های بازبینی، وب‌هوک‌ها، تاریخچه، گزارش حسابرسی، و هوک‌های <strong>پس از نوشتن</strong> همهٔ افزونه‌ها، از
+جمله خود افزونهٔ نویسنده.</p>
+<p>هوک‌های پس از نوشتنی که نوشتن‌های یک افزونه فعال می‌کند درون نوشتن اجرا نمی‌شوند: در صف قرار می‌گیرند و
+پس از اینکه فراخوانی افزونه (مسیر، کار، resolver در GraphQL، هوک یا تابع راه‌اندازی) بازگشته و نمونهٔ
+افزونه را آزاد کرده است، پیش از ارسال پاسخ مسیر اجرا می‌شوند. بنابراین یک افزونه می‌تواند نوعی را بنویسد
+که روی آن هوک پس از نوشتن دارد، و زنجیره‌ها از چند افزونه کار می‌کنند.</p>
+<ul>
+<li>هوک‌هایی که می‌نویسند هوک‌های بعدی را فعال می‌کنند، <strong>حداکثر تا <code dir="auto">4</code> سطح</strong> (نوشتن از REST یا
+GraphQL سطح 1 است). هوک‌های عمیق‌تر با یک هشدار در لاگ افزونه رد می‌شوند، که جلوی حلقهٔ بی‌پایان هوکی را
+می‌گیرد که نوعی را می‌نویسد که به آن گوش می‌دهد.</li>
+<li>توابع میزبان (<code dir="auto">verdin_content</code>، <code dir="auto">verdin_public_permissions</code>، ذخیره‌گاه کلید-مقدار) در حد زمانی
+فراخوانی متوقف می‌شوند و یک خطا به ماژول برمی‌گردانند، و یک فراخواننده برای افزونه‌ای که مشغول است
+حداکثر به اندازهٔ حد زمانی به‌علاوهٔ 10 ثانیه منتظر می‌ماند. یک فراخوانی گیرکرده نمی‌تواند افزونه، یا یک توقف
+ملایم، را برای همیشه نگه دارد.</li>
+</ul>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_kv_get-و-verdin_kv_set"><code dir="auto">verdin_kv_get</code> و <code dir="auto">verdin_kv_set</code></h3><a class="sl-anchor-link" href="#verdin_kv_get-و-verdin_kv_set"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_kv_get و verdin_kv_set”</span></a></div>
+<p>یک مخزن کلید-مقدار برای هر افزونه، در پایگاه دادهٔ Verdin، که میان همهٔ نمونه‌ها مشترک است.
+کلیدها 1 تا 255 بایت‌اند؛ مقادیر هر JSONی می‌توانند باشند. تنظیم <code dir="auto">null</code> کلید را حذف می‌کند. بدون
+قابلیت <code dir="auto">kv</code>، خواندن‌ها <code dir="auto">null</code> برمی‌گردانند و نوشتن‌ها نادیده گرفته می‌شوند.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_config"><code dir="auto">verdin_config</code></h3><a class="sl-anchor-link" href="#verdin_config"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_config”</span></a></div>
+<p>تنظیمات ذخیره‌شده در <strong>تنظیمات ← افزونه‌ها</strong> را برمی‌گرداند، در حالی که <code dir="auto">default</code> هر تنظیم
+تعریف‌شده برای کلیدهای ناموجود پر شده است. وقتی چیزی ذخیره نشده باشد <code dir="auto">{}</code>.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="verdin_public_permissions"><code dir="auto">verdin_public_permissions</code></h3><a class="sl-anchor-link" href="#verdin_public_permissions"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “verdin_public_permissions”</span></a></div>
+<p>مجوزهای content API نقش عمومی را می‌خواند یا جایگزین می‌کند، همان چیزی که <strong>تنظیمات ← دسترسی عمومی</strong>
+ویرایش می‌کند. به قابلیت <code dir="auto">public_permissions</code> نیاز دارد؛ بدون آن، هر فراخوانی <code dir="auto">{ "error": "…" }</code> پاسخ می‌دهد.</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"op"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">set</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"permissions"</span><span style="--0:#D6DEEB;--1:#403F53">: [</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">find</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::article</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">findOne</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> },</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">{ </span><span style="--0:#7FDBCA;--1:#096E72">"subject"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">api::comment</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">, </span><span style="--0:#7FDBCA;--1:#096E72">"action"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">create</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53"> }</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">] }</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="{ &quot;op&quot;: &quot;set&quot;, &quot;permissions&quot;: [  { &quot;subject&quot;: &quot;api::article&quot;, &quot;action&quot;: &quot;find&quot; },  { &quot;subject&quot;: &quot;api::article&quot;, &quot;action&quot;: &quot;findOne&quot; },  { &quot;subject&quot;: &quot;api::comment&quot;, &quot;action&quot;: &quot;create&quot; }] }"><div></div></button></div></figure></div>
+<table>
+<thead>
+<tr>
+<th><code dir="auto">op</code></th>
+<th>اثر</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">get</code></td>
+<td>هیچ؛ مجوزهای فعلی را برمی‌گرداند.</td>
+</tr>
+<tr>
+<td><code dir="auto">set</code></td>
+<td><strong>همهٔ</strong> مجوزهای عمومی را با <code dir="auto">permissions</code> جایگزین می‌کند (فهرست خالی همه را حذف می‌کند).</td>
+</tr>
+</tbody>
+</table>
+<p>هر دو <code dir="auto">{ "permissions": [{ "subject", "action" }, …] }</code> را مرتب‌شده پاسخ می‌دهند. <code dir="auto">subject</code> یک uid نوع محتوا،
+<code dir="auto">plugin::upload</code> (کتابخانهٔ رسانه)، <code dir="auto">plugin::users-permissions.user</code> (کاربران نهایی روی content API) یا
+<code dir="auto">plugin::i18n.locale</code> (فقط <code dir="auto">find</code>) است. <code dir="auto">action</code> یکی از <code dir="auto">find</code>، <code dir="auto">findOne</code>، <code dir="auto">create</code>، <code dir="auto">update</code>، <code dir="auto">delete</code>،
+<code dir="auto">publish</code> یا <code dir="auto">readDrafts</code> است (دو مورد آخر برای بارگذاری‌ها و کاربران نهایی اعمال نمی‌شوند). مانند جدول
+مجوزهای مدیر بررسی می‌شوند: یک subject یا action ناشناخته، یا ناسازگار، <code dir="auto">{ "error": "…" }</code> پاسخ می‌دهد و
+چیزی را تغییر نمی‌دهد. هر <code dir="auto">set</code> در لاگ سرور نوشته می‌شود.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="http">HTTP</h3><a class="sl-anchor-link" href="#http"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “HTTP”</span></a></div>
+<p>با میزبان‌هایی که در <code dir="auto">http</code> فهرست شده‌اند، از پشتیبانی HTTP در Extism استفاده کنید
+(<code dir="auto">extism_pdk::http::request</code> در Rust). درخواست به میزبان‌های دیگر شکست می‌خورد.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="نقاط-گسترش-پنل-مدیریت">نقاط گسترش پنل مدیریت</h2><a class="sl-anchor-link" href="#نقاط-گسترش-پنل-مدیریت"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “نقاط گسترش پنل مدیریت”</span></a></div>
+<p>پنل مدیریت افزونه‌های فعال را از سرور می‌پرسد و <code dir="auto">admin.script</code> هر کدام را یک بار، به‌صورت
+ماژول ES، از <code dir="auto">/admin/plugins/&lt;name&gt;/&lt;script&gt;</code> (زیر <code dir="auto">[admin].path</code>) وارد می‌کند. تا وقتی افزونه
+روشن است، فایل‌های پوشهٔ <code dir="auto">admin/</code> آن در همان‌جا با <code dir="auto">X-Content-Type-Options: nosniff</code> و
+<code dir="auto">Cache-Control: no-cache</code> ارائه می‌شوند. ماژول باید عناصر سفارشی‌ای را که مانیفست نام می‌برد
+تعریف کند؛ عنصری که ظرف 3 ثانیه تعریف نشود کنار گذاشته می‌شود.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="ویجتها">ویجت‌ها</h3><a class="sl-anchor-link" href="#ویجتها"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “ویجت‌ها”</span></a></div>
+<p>هر مدخل <code dir="auto">[[admin.widgets]]</code> یک نوع ویجت است که مدیران می‌توانند به داشبورد اضافه کنند. عنصر
+یک ویژگی <code dir="auto">context</code> دریافت می‌کند:</p>
+<table>
+<thead>
+<tr>
+<th>ویژگی</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">apiBase</code></td>
+<td>پایهٔ API محتوا، مانند <code dir="auto">/api</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">adminApiBase</code></td>
+<td>پایهٔ Admin API، مانند <code dir="auto">/admin/api</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">fetch(path, init)</code></td>
+<td><code dir="auto">fetch</code> با اعتبارنامهٔ مدیر واردشده. مسیرهای نسبی نسبت به <code dir="auto">adminApiBase</code> resolve می‌شوند؛ مسیرهای زیر هر یک از دو پایه و URLهای مطلق همان‌طور می‌مانند.</td>
+</tr>
+</tbody>
+</table>
+<div class="expressive-code"><figure class="frame has-title not-content"><figcaption class="header"><span class="title">plugins/slugs/admin/index.js</span></figcaption><pre data-language="js"><code><div class="ec-line"><div class="code"><span style="--0:#C792EA;--1:#8844AE">class</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#FFCB8B;--1:#111111">SlugStats</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">extends</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C5E478;--1:#3B61B0">HTMLElement</span><span style="--0:#D6DEEB;--1:#403F53"> {</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#C792EA;--1:#8844AE">set</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">context</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">context</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> {</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#919F9F;--1:#5D6376">// Admin API, with the admin's session.</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">fetch</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">auth/me</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#D6DEEB;--1:#403F53">)</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">response</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#7FDBCA;--1:#096E72">response</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">json</span><span style="--0:#D6DEEB;--1:#403F53">())</span></div></div><div class="ec-line"><div class="code"><span class="indent">      </span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--1:#403F53"><span style="--0:#D6DEEB">{ </span><span style="--0:#D7DBE0">data</span><span style="--0:#D6DEEB"> }</span></span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> { </span><span style="--0:#7FDBCA;--1:#096E72">this</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">textContent</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#ECC48D;--1:#3B61B0">Hello </span><span style="--0:#E2817F;--1:#B23834">${</span><span style="--0:#7FDBCA;--1:#096E72">data</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">firstname</span><span style="--0:#E2817F;--1:#B23834"> </span><span style="--0:#C792EA;--1:#8844AE">??</span><span style="--0:#E2817F;--1:#B23834"> </span><span style="--0:#7FDBCA;--1:#096E72">data</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">email</span><span style="--0:#E2817F;--1:#B23834">}</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#D6DEEB;--1:#403F53">; });</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#919F9F;--1:#5D6376">// The plugin's own route, on the content API: sent without the admin's session.</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">fetch</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#E2817F;--1:#B23834">${</span><span style="--0:#7FDBCA;--1:#096E72">context</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">apiBase</span><span style="--0:#E2817F;--1:#B23834">}</span><span style="--0:#ECC48D;--1:#3B61B0">/plugins/slugs/stats</span><span style="--0:#D6DEEB;--1:#403F53">`</span><span style="--0:#D6DEEB;--1:#403F53">)</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">response</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#7FDBCA;--1:#096E72">response</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">json</span><span style="--0:#D6DEEB;--1:#403F53">())</span></div></div><div class="ec-line"><div class="code"><span class="indent">      </span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">then</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">(</span><span style="--0:#D7DBE0;--1:#403F53">stats</span><span style="--0:#D9F5DD;--1:#111111">)</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=&gt;</span><span style="--0:#D6DEEB;--1:#403F53"> { </span><span style="--0:#7FDBCA;--1:#096E72">this</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#7FDBCA;--1:#096E72">title</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#C792EA;--1:#8844AE">=</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">JSON</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">stringify</span><span style="--1:#403F53"><span style="--0:#D6DEEB">(</span><span style="--0:#D7DBE0">stats</span><span style="--0:#D6DEEB">); });</span></span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#D6DEEB;--1:#403F53">  </span></span><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#7FDBCA;--1:#096E72">customElements</span><span style="--0:#C792EA;--1:#8844AE">.</span><span style="--0:#82AAFF;--1:#3B61B0">define</span><span style="--0:#D6DEEB;--1:#403F53">(</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--0:#ECC48D;--1:#984E4D">slugs-stats</span><span style="--0:#D9F5DD;--1:#111111">'</span><span style="--1:#403F53"><span style="--0:#D6DEEB">, </span><span style="--0:#D7DBE0">SlugStats</span><span style="--0:#D6DEEB">);</span></span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="class SlugStats extends HTMLElement {  set context(context) {    // Admin API, with the admin&#x27;s session.    context.fetch(&#x27;auth/me&#x27;).then((response) => response.json())      .then(({ data }) => { this.textContent = &#x60;Hello ${data.firstname ?? data.email}&#x60;; });    // The plugin&#x27;s own route, on the content API: sent without the admin&#x27;s session.    context.fetch(&#x60;${context.apiBase}/plugins/slugs/stats&#x60;).then((response) => response.json())      .then((stats) => { this.title = JSON.stringify(stats); });  }}customElements.define(&#x27;slugs-stats&#x27;, SlugStats);"><div></div></button></div></figure></div>
+<p><code dir="auto">context.fetch</code> نشست مدیر را فقط با درخواست‌های Admin API می‌فرستد. مسیرهای زیر
+<code dir="auto">context.apiBase</code> (API محتوا، از جمله مسیرهای افزونهٔ شما) بدون آن فرستاده می‌شوند، چون API
+محتوا نشست‌های مدیر را نمی‌پذیرد؛ به آن‌ها با مجوزهای نقش عمومی پاسخ داده می‌شود. پیش از 0.10
+نشست را به آنجا هم می‌فرستاد و آن درخواست‌ها شکست می‌خوردند؛ ویجت‌هایی که برای 0.9 نوشته شده‌اند
+و <code dir="auto">fetch</code> ساده را فراخوانی می‌کنند همچنان کار می‌کنند.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="فیلدهای-سفارشی">فیلدهای سفارشی</h3><a class="sl-anchor-link" href="#فیلدهای-سفارشی"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “فیلدهای سفارشی”</span></a></div>
+<p>هر مدخل <code dir="auto">[[admin.fields]]</code> فیلدی است که ویژگی‌ها می‌توانند با
+<code dir="auto">"customField": "plugin::&lt;name&gt;.&lt;id&gt;"</code> از آن استفاده کنند؛ <code dir="auto">type</code> ویژگی باید با شیوهٔ ذخیره‌سازی
+مقدار آن فیلد مطابقت داشته باشد. <strong>سازندهٔ نوع محتوا</strong> آن را پیشنهاد می‌دهد. عنصر این‌ها را دریافت
+می‌کند:</p>
+<table>
+<thead>
+<tr>
+<th>ویژگی</th>
+<th>توضیح</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">value</code></td>
+<td>مقدار فعلی.</td>
+</tr>
+<tr>
+<td><code dir="auto">disabled</code></td>
+<td>اینکه ویرایش خاموش است یا نه.</td>
+</tr>
+<tr>
+<td><code dir="auto">attribute</code></td>
+<td>تعریف ویژگی از طرح‌واره.</td>
+</tr>
+<tr>
+<td><code dir="auto">locale</code></td>
+<td>زبانی که ویرایش می‌شود.</td>
+</tr>
+</tbody>
+</table>
+<p>عنصر مقدار جدید را با یک رویداد <code dir="auto">change</code> گزارش می‌دهد که <code dir="auto">detail</code> آن همان مقدار است (یا، بدون
+<code dir="auto">detail</code>، از طریق ویژگی <code dir="auto">value</code> خودش). وقتی افزونه خاموش باشد یا عنصر آن وجود نداشته باشد،
+ویرایشگر ورودی معمولی نوع ذخیره‌سازی را نشان می‌دهد. <a href="/verdin/fa/reference/attribute-types/">نوع‌های ویژگی</a>
+را ببینید.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="زمان-اجرا-و-محدودیتها">زمان اجرا و محدودیت‌ها</h2><a class="sl-anchor-link" href="#زمان-اجرا-و-محدودیتها"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “زمان اجرا و محدودیت‌ها”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>محدودیت</th>
+<th>مقدار</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>زمان هر فراخوانی</td>
+<td><code dir="auto">[limits].timeout_ms</code>، پیش‌فرض 5,000 ms (<code dir="auto">[startup].timeout_ms</code>، پیش‌فرض 30,000 ms، برای تابع راه‌اندازی)</td>
+</tr>
+<tr>
+<td>حافظه</td>
+<td><code dir="auto">[limits].memory_mb</code>، پیش‌فرض 64 MB</td>
+</tr>
+<tr>
+<td>همروندی</td>
+<td>برای هر افزونه در هر لحظه یک فراخوانی؛ فراخوانی‌ها منتظر یکدیگر می‌مانند (تابع راه‌اندازی در کنار آن‌ها اجرا می‌شود)</td>
+</tr>
+<tr>
+<td>نمونهٔ ماژول</td>
+<td>یکی برای هر افزونه، که در اولین استفاده ساخته می‌شود؛ پس از شکست یک فراخوانی دوباره ساخته می‌شود (حافظهٔ آن از دست می‌رود). تابع راه‌اندازی در هر اجرا یکی تازه می‌گیرد</td>
+</tr>
+<tr>
+<td>لاگ</td>
+<td>200 پیام برای هر افزونه، هر کدام 2,000 نویسه، در حافظه</td>
+</tr>
+<tr>
+<td>کلیدهای KV</td>
+<td>1 تا 255 بایت</td>
+</tr>
+<tr>
+<td>هدرهای درخواست مسیر</td>
+<td><code dir="auto">content-type</code>، <code dir="auto">accept</code>، <code dir="auto">user-agent</code>، <code dir="auto">accept-language</code></td>
+</tr>
+<tr>
+<td>هدرهای پاسخ مسیر</td>
+<td><code dir="auto">content-type</code>، <code dir="auto">cache-control</code>، <code dir="auto">location</code>، <code dir="auto">etag</code>، <code dir="auto">last-modified</code>، <code dir="auto">content-disposition</code></td>
+</tr>
+</tbody>
+</table>
+<p>تغییرات مانیفست یا ماژول پس از راه‌اندازی دوباره اعمال می‌شوند؛ کلیدهای روشن/خاموش و تنظیمات
+بی‌درنگ اعمال می‌شوند. مدیریت افزونه‌ها به <code dir="auto">plugins.manage</code> نیاز دارد (بخش
+<a href="/verdin/fa/reference/permissions/">مرجع مجوزها</a> را ببینید).</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="متریکها">متریک‌ها</h2><a class="sl-anchor-link" href="#متریکها"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “متریک‌ها”</span></a></div>
+<p>با روشن بودن <a href="/verdin/fa/deploy/monitoring/"><code dir="auto">[metrics]</code></a>، <code dir="auto">/_metrics</code> هر فراخوانی‌ای را که به یک تابع صادرشده
+رسیده گزارش می‌کند:</p>
+<table>
+<thead>
+<tr>
+<th>متریک</th>
+<th>نوع</th>
+<th>Labelها</th>
+<th>معنا</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">verdin_plugin_call_duration_seconds</code></td>
+<td>histogram</td>
+<td><code dir="auto">plugin</code>، <code dir="auto">kind</code>، <code dir="auto">function</code></td>
+<td>زمانی که تابع‌های افزونه گرفتند. bucketها از 5 ms تا 10 s.</td>
+</tr>
+<tr>
+<td><code dir="auto">verdin_plugin_call_errors_total</code></td>
+<td>counter</td>
+<td><code dir="auto">plugin</code>، <code dir="auto">kind</code>، <code dir="auto">function</code></td>
+<td>فراخوانی‌هایی که شکست خوردند: trap، time-out، خروجی‌ای که JSON نیست، یا <code dir="auto">{ error }</code> یک تابع راه‌اندازی.</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">kind</code> برابر <code dir="auto">hook</code>، <code dir="auto">route</code>، <code dir="auto">job</code>، <code dir="auto">startup</code> یا <code dir="auto">graphql</code> است. هوک پیش از نوشتنی که یک نوشتن را با
+<code dir="auto">{ error }</code> رد می‌کند پاسخی داده است، پس شکست حساب نمی‌شود. فراخوانی تابعی که ماژول صادر نمی‌کند ثبت نمی‌شود، بنابراین
+labelها به افزونه‌های نصب‌شده محدود می‌مانند. سری‌ها پس از نخستین فراخوانی افزونه ظاهر می‌شوند؛ هر نمونه
+فراخوانی‌های خودش را می‌شمارد.</p>
+</div><footer class="sl-flex astro-ddtxxk7k"><div class="meta sl-flex astro-ddtxxk7k"><a href="https://github.com/verdin-cms/verdin/edit/main/site/src/content/docs/fa/extending/plugin-reference.md" class="sl-flex print:hidden astro-qlekgd3o"><svg aria-hidden="true" class="astro-qlekgd3o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.2em;"><path d="M22 7.24a1 1 0 0 0-.29-.71l-4.24-4.24a1 1 0 0 0-1.1-.22 1 1 0 0 0-.32.22l-2.83 2.83L2.29 16.05a1 1 0 0 0-.29.71V21a1 1 0 0 0 1 1h4.24a1 1 0 0 0 .76-.29l10.87-10.93L21.71 8c.1-.1.17-.2.22-.33a1 1 0 0 0 0-.24v-.14l.07-.05ZM6.83 20H4v-2.83l9.93-9.93 2.83 2.83L6.83 20ZM18.17 8.66l-2.83-2.83 1.42-1.41 2.82 2.82-1.41 1.42Z"/></svg>ویرایش صفحه</a><p>آخرین به‌روزرسانی: <time datetime="2026-09-30T10:55:30.000Z">۸ مهر ۱۴۰۵</time></p></div><div class="pagination-links print:hidden astro-b5raizh3" dir="rtl"><a href="/verdin/fa/extending/plugin-tutorial/" rel="prev" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17.92 11.62a1.001 1.001 0 0 0-.21-.33l-5-5a1.003 1.003 0 1 0-1.42 1.42l3.3 3.29H7a1 1 0 0 0 0 2h7.59l-3.3 3.29a1.002 1.002 0 0 0 .325 1.639 1 1 0 0 0 1.095-.219l5-5a1 1 0 0 0 .21-.33 1 1 0 0 0 0-.76Z"/></svg><span class="astro-b5raizh3">قبلی<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">آموزش افزونه</span></span></a><a href="/verdin/fa/api/rest/" rel="next" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17 11H9.41l3.3-3.29a1.004 1.004 0 1 0-1.42-1.42l-5 5a1 1 0 0 0-.21.33 1 1 0 0 0 0 .76 1 1 0 0 0 .21.33l5 5a1.002 1.002 0 0 0 1.639-.325 1 1 0 0 0-.219-1.095L9.41 13H17a1 1 0 0 0 0-2Z"/></svg><span class="astro-b5raizh3">بعدی<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">REST</span></span></a></div></footer></div></div></main></div></div></div></div></body></html>
