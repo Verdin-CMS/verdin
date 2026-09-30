@@ -1,8 +1,10 @@
 name: Release
 
-# Pushing a tag such as v0.1.0 builds the binaries (admin panel embedded), publishes a
-# GitHub release with checksums, pushes the multi-arch image to ghcr.io and publishes
-# @verdin/client to npm (with an NPM_TOKEN secret).
+# Pushing a tag such as v0.1.0 builds the binaries (admin panel embedded) and the .deb
+# packages, publishes a GitHub release with checksums, pushes the multi-arch image to
+# ghcr.io and publishes @verdin/client to npm (with an NPM_TOKEN secret). With their
+# secrets, it also updates the Homebrew tap (HOMEBREW_TAP_TOKEN) and opens a winget pull
+# request (WINGET_TOKEN); without them those jobs skip.
 on:
   push:
     tags: ["v*.*.*"]
@@ -86,8 +88,37 @@ jobs:
           name: dist-${{ matrix.target }}
           path: ${{ env.ASSET }}
 
-  publish:
+  deb:
+    # Debian/Ubuntu packages of the musl binaries (cargo-deb metadata in
+    # crates/verdin/Cargo.toml, maintainer scripts and systemd unit in deploy/deb/).
     needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*-linux-musl
+          path: dist
+          merge-multiple: true
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install --locked cargo-deb
+      - name: Package
+        run: |
+          mkdir debs
+          for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+            mkdir -p "target/$target/release"
+            tar xzf "dist/verdin-${GITHUB_REF_NAME}-${target}.tar.gz" -C "target/$target/release" \
+              --strip-components=1 "verdin-${GITHUB_REF_NAME}-${target}/verdin"
+            cargo deb -p verdin --no-build --no-strip --target "$target" --output debs/
+          done
+          ls -l debs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-deb
+          path: debs/*.deb
+
+  publish:
+    needs: [binaries, deb]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -182,3 +213,84 @@ jobs:
             || { echo "packages/client/package.json does not match $GITHUB_REF_NAME"; exit 1; }
           if [ -z "$NODE_AUTH_TOKEN" ]; then echo "No NPM_TOKEN secret: skipping"; exit 0; fi
           npm publish --access public --provenance
+
+  homebrew:
+    # Updates Formula/verdin.rb in the verdin-cms/homebrew-tap repository (template:
+    # deploy/homebrew/verdin.rb.in). Needs a HOMEBREW_TAP_TOKEN secret: a fine-grained
+    # token with contents: write on that repository. Skipped without it.
+    needs: publish
+    runs-on: ubuntu-latest
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY || 'verdin-cms/homebrew-tap' }}
+    steps:
+      - name: Check the secret
+        id: check
+        run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "No HOMEBREW_TAP_TOKEN secret: skipping the Homebrew tap"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.check.outputs.skip != 'true'
+        uses: actions/checkout@v7
+      - if: steps.check.outputs.skip != 'true'
+        name: Render the formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --pattern SHA256SUMS --dir .
+          deploy/render-template.sh deploy/homebrew/verdin.rb.in "$GITHUB_REF_NAME" SHA256SUMS > verdin.rb
+      - if: steps.check.outputs.skip != 'true'
+        name: Push to the tap
+        run: |
+          git clone --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${TAP_REPOSITORY}.git" tap
+          mkdir -p tap/Formula
+          cp verdin.rb tap/Formula/verdin.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/verdin.rb
+          if git diff --cached --quiet; then echo "The formula is up to date"; exit 0; fi
+          git commit -m "verdin ${GITHUB_REF_NAME#v}"
+          git push
+
+  winget:
+    # Opens a pull request on microsoft/winget-pkgs with the manifests of
+    # deploy/winget/*.yaml.in. Needs a WINGET_TOKEN secret: a classic token with the
+    # public_repo scope of an account that has a fork of winget-pkgs. Skipped without it.
+    needs: publish
+    runs-on: windows-latest
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - name: Check the secret
+        id: check
+        shell: bash
+        run: |
+          if [ -z "$WINGET_TOKEN" ]; then
+            echo "No WINGET_TOKEN secret: skipping winget"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.check.outputs.skip != 'true'
+        uses: actions/checkout@v7
+      - if: steps.check.outputs.skip != 'true'
+        name: Render the manifests
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --pattern SHA256SUMS --dir .
+          version="${GITHUB_REF_NAME#v}"
+          out="manifests/v/VerdinCMS/Verdin/$version"
+          mkdir -p "$out"
+          for template in deploy/winget/*.yaml.in; do
+            name="$(basename "$template" .in)"
+            deploy/render-template.sh "$template" "$version" SHA256SUMS > "$out/$name"
+          done
+          echo "MANIFESTS=$out" >> "$GITHUB_ENV"
+      - if: steps.check.outputs.skip != 'true'
+        name: Submit
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          .\wingetcreate.exe submit --token $env:WINGET_TOKEN --prtitle "New version: VerdinCMS.Verdin $($env:GITHUB_REF_NAME.TrimStart('v'))" $env:MANIFESTS

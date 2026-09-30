@@ -1,0 +1,40 @@
+# Homebrew formula template. .github/workflows/release.yml fills it with
+# deploy/render-template.sh and pushes it to verdin-cms/homebrew-tap as Formula/verdin.rb:
+#   brew install verdin-cms/tap/verdin
+class Verdin < Formula
+  desc "Open source headless CMS written in Rust, compatible with Strapi v5 APIs"
+  homepage "https://verdin-cms.github.io/verdin/"
+  version "{{VERSION}}"
+  license any_of: ["MIT", "Apache-2.0"]
+
+  on_macos do
+    on_arm do
+      url "https://github.com/verdin-cms/verdin/releases/download/v{{VERSION}}/verdin-v{{VERSION}}-aarch64-apple-darwin.tar.gz"
+      sha256 "{{SHA256 aarch64-apple-darwin}}"
+    end
+    on_intel do
+      url "https://github.com/verdin-cms/verdin/releases/download/v{{VERSION}}/verdin-v{{VERSION}}-x86_64-apple-darwin.tar.gz"
+      sha256 "{{SHA256 x86_64-apple-darwin}}"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/verdin-cms/verdin/releases/download/v{{VERSION}}/verdin-v{{VERSION}}-aarch64-unknown-linux-musl.tar.gz"
+      sha256 "{{SHA256 aarch64-unknown-linux-musl}}"
+    end
+    on_intel do
+      url "https://github.com/verdin-cms/verdin/releases/download/v{{VERSION}}/verdin-v{{VERSION}}-x86_64-unknown-linux-musl.tar.gz"
+      sha256 "{{SHA256 x86_64-unknown-linux-musl}}"
+    end
+  end
+
+  def install
+    bin.install "verdin"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/verdin --version")
+    assert_match "VERDIN_TOKEN_PEPPER=", shell_output("#{bin}/verdin secrets")
+  end
+end

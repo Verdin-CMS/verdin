@@ -1,0 +1,29 @@
+# Verdin configuration installed by the Debian package.
+# The service reads it with `verdin -c /etc/verdin/verdin.toml start --migrate`; secrets
+# and the database URL are in /etc/verdin/verdin.env (created on install, mode 0640).
+# Every key: https://verdin-cms.github.io/verdin/reference/configuration/
+
+[server]
+host = "127.0.0.1"     # behind a reverse proxy on this machine; "0.0.0.0" to listen on every interface
+port = 1337
+# public_url = "https://cms.example.com"
+# trusted_proxies = ["127.0.0.1"]
+
+[schema]
+# Put your committed schema here (content-types/, components/).
+path = "/var/lib/verdin/schema"
+
+[plugins]
+path = "/var/lib/verdin/plugins"
+
+[upload]
+provider = { name = "local", dir = "/var/lib/verdin/uploads" }
+
+[upload.transforms]
+cache_dir = "/var/lib/verdin/.cache/transforms"
+
+[search]
+dir = "/var/lib/verdin/search"
+
+[log]
+format = "json"

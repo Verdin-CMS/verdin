@@ -1,0 +1,37 @@
+[Unit]
+Description=Verdin headless CMS
+Documentation=https://verdin-cms.github.io/verdin/
+After=network-online.target postgresql.service mysql.service mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=verdin
+Group=verdin
+# VERDIN_ADMIN_JWT_SECRET, VERDIN_TOKEN_PEPPER and VERDIN_DATABASE_URL.
+EnvironmentFile=/etc/verdin/verdin.env
+WorkingDirectory=/var/lib/verdin
+ExecStart=/usr/bin/verdin -c /etc/verdin/verdin.toml start --migrate
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+# /var/lib/verdin, owned by the verdin user.
+StateDirectory=verdin
+StateDirectoryMode=0750
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

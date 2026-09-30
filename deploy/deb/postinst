@@ -1,0 +1,37 @@
+#!/bin/sh
+# Creates the verdin system user, its state directory and, once, the environment file
+# with fresh secrets and a SQLite database URL. The service is not enabled: put your
+# schema in /var/lib/verdin/schema, review /etc/verdin/verdin.toml and verdin.env, then
+# `systemctl enable --now verdin`.
+set -e
+
+if [ "$1" = "configure" ]; then
+    if ! getent passwd verdin >/dev/null; then
+        adduser --system --group --home /var/lib/verdin --no-create-home \
+            --gecos "Verdin CMS" verdin >/dev/null
+    fi
+
+    for dir in /var/lib/verdin /var/lib/verdin/schema /var/lib/verdin/schema/content-types \
+        /var/lib/verdin/schema/components /var/lib/verdin/uploads; do
+        [ -d "$dir" ] || mkdir -p "$dir"
+    done
+    chown -R verdin:verdin /var/lib/verdin
+    chmod 0750 /var/lib/verdin
+
+    if [ ! -e /etc/verdin/verdin.env ]; then
+        umask 027
+        {
+            echo "# Created by the verdin package on $(date -u +%Y-%m-%d). Keep these secrets:"
+            echo "# a new VERDIN_TOKEN_PEPPER invalidates every API token."
+            /usr/bin/verdin secrets
+            echo "VERDIN_DATABASE_URL=sqlite:///var/lib/verdin/verdin.db"
+            echo "# VERDIN_DATABASE_URL=postgres://verdin:<password>@localhost:5432/verdin"
+        } > /etc/verdin/verdin.env
+        chown root:verdin /etc/verdin/verdin.env
+        chmod 0640 /etc/verdin/verdin.env
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0

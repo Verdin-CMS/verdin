@@ -1,5 +1,6 @@
 [package]
 name = "verdin"
+description = "Open source headless CMS written in Rust, compatible with Strapi v5 content APIs"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -59,4 +60,38 @@ image = { version = "0.25.10", default-features = false, features = ["jpeg", "pn
 serde_json = "1.0.151"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
+
+# `cargo binstall verdin` downloads the archive that .github/workflows/release.yml
+# publishes instead of compiling (Linux hosts get the static musl build).
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/verdin-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "verdin-v{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
+# `cargo deb`: release.yml packages the musl binaries for amd64 and arm64. The package
+# installs /usr/bin/verdin, /etc/verdin/verdin.toml, a `verdin` system user with its state
+# in /var/lib/verdin, and a systemd unit that is not enabled. Files in deploy/deb/.
+[package.metadata.deb]
+maintainer = "Verdin maintainers <https://github.com/verdin-cms/verdin/issues>"
+copyright = "Verdin contributors"
+license-file = ["../../LICENSE-MIT", "0"]
+extended-description = """\
+Open source headless CMS written in Rust, compatible with Strapi v5 content APIs: \
+one binary with the admin panel built in, running on PostgreSQL, MySQL, MariaDB \
+or SQLite."""
+section = "web"
+priority = "optional"
+depends = "adduser"
+recommends = "ca-certificates"
+maintainer-scripts = "../../deploy/deb/"
+conf-files = ["/etc/verdin/verdin.toml"]
+assets = [
+  ["target/release/verdin", "usr/bin/", "755"],
+  ["../../deploy/deb/verdin.toml", "etc/verdin/", "644"],
+  ["../../README.md", "usr/share/doc/verdin/", "644"],
+]
+systemd-units = { unit-name = "verdin", enable = false, start = false }
 

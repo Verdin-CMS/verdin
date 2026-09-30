@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+# Filled by deploy/render-template.sh in .github/workflows/release.yml.
+PackageIdentifier: VerdinCMS.Verdin
+PackageVersion: {{VERSION}}
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: verdin-v{{VERSION}}-x86_64-pc-windows-msvc\verdin.exe
+    PortableCommandAlias: verdin
+Commands:
+  - verdin
+ReleaseDate: {{DATE}}
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/verdin-cms/verdin/releases/download/v{{VERSION}}/verdin-v{{VERSION}}-x86_64-pc-windows-msvc.zip
+    InstallerSha256: {{SHA256 x86_64-pc-windows-msvc}}
+ManifestType: installer
+ManifestVersion: 1.10.0

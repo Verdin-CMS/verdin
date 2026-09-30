@@ -1,0 +1,13 @@
+#!/bin/sh
+# `apt purge verdin` removes the environment file with the secrets. The data in
+# /var/lib/verdin (database, uploads, schema) and the verdin user are kept: delete them
+# yourself once you have a backup.
+set -e
+
+if [ "$1" = "purge" ]; then
+    rm -f /etc/verdin/verdin.env
+fi
+
+#DEBHELPER#
+
+exit 0
