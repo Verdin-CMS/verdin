@@ -163,10 +163,18 @@ editorial features, then freezing the surfaces.
 
 ## 0.11 — Operations at scale
 
-Running several instances and operating them day to day.
+Running several instances and operating them day to day, and the fixes found by moving a
+real Strapi 5.55 project to Verdin 0.10 (same content through `verdin import strapi`, same
+machine, SQLite).
 
 | Item | Size | Notes |
 |---|---|---|
+| **`decimal` on SQLite** | S | Stored as text, so `sort` and `$gt`/`$lt`/`$between` compare strings (`sort=precio:desc` gives `8, 6, 25, 12, 10`; `precio[$gt]=9` gives nothing). Compare and sort as numbers (`CAST(… AS REAL)` for top-level columns, component values, relation sorts, GraphQL and the admin's list filters), with tests on the three cases above |
+| `decimal` output | S | Whole values as `25` instead of `25.0`, as Strapi returns them (strict clients read a different type); `decimal_as_string` unchanged |
+| SQLite write fairness | S | With 20 concurrent writers the p99 is 97 ms against Strapi's 73 ms: writers retry on `busy_timeout` in no order. Queue writes in order on one writer connection (`BEGIN IMMEDIATE`) so the tail follows the queue |
+| Strapi i18n responses | S | `localizations` in entries of localized types and a public `GET /api/i18n/locales`, as in Strapi v5 |
+| Plugin startup hook | S | A function run once when the plugin loads, for what Strapi projects do in `bootstrap` (seeding, locking down the public role); plugins only have scheduled jobs today |
+| Porting Strapi custom code | S | A guide with a worked example plugin: controllers and custom routes to plugin routes, lifecycles to `before*`/`after*` hooks, `bootstrap` to the startup hook, admin widgets to plugin widgets, custom forms to Forms |
 | **Shared event bus** | M | Realtime events, presence, cache invalidation and search updates across instances: Postgres `LISTEN/NOTIFY`, a polling table for MySQL/MariaDB/SQLite, Redis or NATS optional |
 | Observability | S | OpenTelemetry traces with database spans, plugin call times in the metrics, optional Sentry error reporting, Grafana dashboards |
 | Packaging | M | Helm chart, a production Compose recipe, Homebrew / apt / winget / `cargo binstall` / an install script, one-click deploys (Railway, Render, Fly, DigitalOcean, Coolify) |
@@ -183,7 +191,7 @@ Nothing is lost, and every project can move in and out.
 | `verdin transfer` | M | Copy schema, content and media between running instances with transfer tokens |
 | SQLite edge mode | M | Litestream-style WAL replication to S3 and read-only replicas: cheap high availability and point-in-time restore |
 | Upgrade path | M | `verdin upgrade check` (pending migrations, deprecated settings, plugin ABI), a rollback story, upgrade guides per release |
-| **Strapi import completeness** | M | Admins, RBAC and API tokens, webhooks, review workflows and releases, history, `unique`; a porting guide for lifecycles and cron tasks |
+| **Strapi import completeness** | M | Admins, RBAC and API tokens, webhooks, review workflows and releases, history, `unique` (the porting guide for custom code comes in 0.11) |
 | Signed URLs for private buckets | S | Every file URL in responses signed for a short time |
 
 ## 0.13 — Extensibility and developer experience
