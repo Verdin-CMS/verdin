@@ -149,3 +149,26 @@ async fn decimals_sort_and_compare_as_numbers() {
     }
     app.done().await;
 }
+
+/// Whole decimals are JSON integers (`25`, as Strapi returns them), others the shortest
+/// float; `decimal_as_string` is covered by the output unit tests.
+#[tokio::test]
+async fn whole_decimals_are_integers() {
+    let app = App::new(products()).await;
+    for (name, price, expected) in [
+        ("whole", json!(25), json!(25)),
+        ("scaled", json!("8.00"), json!(8)),
+        ("half", json!(12.5), json!(12.5)),
+    ] {
+        let (status, body) =
+            app.post("/api/products", json!({ "name": name, "price": price })).await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["data"]["price"], expected, "{name}: {body}");
+    }
+    let (_, body) = app.get("/api/products?sort=price:desc").await;
+    let prices: Vec<&Value> =
+        body["data"].as_array().unwrap().iter().map(|doc| &doc["price"]).collect();
+    assert_eq!(prices, [&json!(25), &json!(12.5), &json!(8)]);
+    assert!(prices[0].is_i64() && prices[2].is_i64(), "{body}");
+    app.done().await;
+}

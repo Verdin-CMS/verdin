@@ -224,8 +224,10 @@ An exact decimal number.
 Values are rounded to `scale` digits (half away from zero, like the databases do), and
 rejected when they have more than `precision - scale` digits before the point. Writes
 accept numbers and numeric strings. Stored as `numeric(precision,scale)` (`text` on
-SQLite, so nothing is rounded). API: a number, or an exact string with
-[`[api].decimal_as_string`](/reference/configuration/).
+SQLite, so nothing is rounded). API: a number, like Strapi returns it. Whole values are
+integers (`25`, not `25.0`) and others are the shortest float that reads back the same
+(`12.5`). With [`[api].decimal_as_string`](/reference/configuration/) the API returns an
+exact string instead.
 
 ## Dates and booleans
 

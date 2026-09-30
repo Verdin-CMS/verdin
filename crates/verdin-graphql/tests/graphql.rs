@@ -37,7 +37,10 @@ fn schema() -> Schema {
             "name": { "type": "string" },
             "articles": { "type": "relation", "relation": "oneToMany", "target": "article", "mappedBy": "category" }
         })),
-        ct("tag", "tags", false, json!({ "label": { "type": "string" } })),
+        ct("tag", "tags", false, json!({
+            "label": { "type": "string" },
+            "weight": { "type": "decimal", "precision": 10, "scale": 2 }
+        })),
         Source::content_type("page", json!({ "kind": "collectionType", "singularName": "page", "pluralName": "pages",
             "displayName": "Page", "pluginOptions": { "i18n": { "localized": true } },
             "attributes": { "title": { "type": "string" } } }).to_string()),
@@ -372,6 +375,23 @@ async fn plugin_fields() {
     assert_eq!(data["echo"]["actor"]["kind"], "token");
     let data = app.ok("{ articles { title } }", json!({})).await;
     assert!(data["articles"].is_array(), "content type fields win over plugins");
+    app.done().await;
+}
+
+#[tokio::test]
+async fn whole_decimals_are_integers() {
+    let app = App::new(verdin_graphql::Options::default()).await;
+    for (label, weight) in [("whole", "25"), ("half", "12.5")] {
+        let query = format!(
+            r#"mutation {{ createTag(data: {{ label: "{label}", weight: {weight} }}) {{ label }} }}"#
+        );
+        app.ok(&query, json!({})).await;
+    }
+    let data = app.ok(r#"{ tags(sort: ["weight:desc"]) { label weight } }"#, json!({})).await;
+    // `25`, not `25.0`: an integer in the JSON, as Strapi returns it.
+    assert_eq!(data["tags"][0], json!({ "label": "whole", "weight": 25 }));
+    assert!(data["tags"][0]["weight"].is_i64(), "{data}");
+    assert_eq!(data["tags"][1], json!({ "label": "half", "weight": 12.5 }));
     app.done().await;
 }
 
