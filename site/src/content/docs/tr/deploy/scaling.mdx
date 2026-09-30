@@ -1,6 +1,6 @@
 ---
 title: Birden fazla örnek çalıştırma
-description: Bir projenin birden fazla Verdin örneğini bir yük dengeleyicinin arkasında çalıştırın — veritabanı üzerinden neleri paylaştıkları, neyin örnek başına kaldığı ve değiştirilecek ayarlar.
+description: Bir projenin birden fazla Verdin örneğini bir yük dengeleyicinin arkasında çalıştırın — veritabanı üzerinden neleri paylaştıkları, paylaşılan olay veriyolu, neyin örnek başına kaldığı ve değiştirilecek ayarlar.
 sidebar:
   order: 8
   label: Birden fazla örnek
@@ -13,7 +13,7 @@ birden fazla örneğini bir yük dengeleyicinin arkasında çalıştırabilirsin
 neleri paylaştığını, her birinin kendine neleri sakladığını ve önemli ayarları listeler.
 
 <Diagram
-  caption="Örnekler veritabanını ve medya depolamayı paylaşır; önbellekler, hız sınırları ve olay akışları her örnekte kalır."
+  caption="Örnekler veritabanını ve medya depolamayı paylaşır; olay veriyolu açıkken gerçek zamanlı olaylar, presence, önbellek geçersiz kılma ve arama güncellemeleri veritabanı üzerinden her örneğe ulaşır."
   code={`flowchart LR
   LB[Yük dengeleyici] --> A[Örnek 1]
   LB --> B[Örnek 2]
@@ -41,6 +41,9 @@ neleri paylaştığını, her birinin kendine neleri sakladığını ve önemli 
 - **Sağlık denetimleri.** Yük dengeleyiciyi, veritabanına ulaşılamadığında `503` yanıtını veren
   `GET /_ready` adresine yönlendirin. `GET /_health` yalnızca sürecin ayakta olduğunu söyler;
   onu canlılık için kullanın.
+- **Paylaşılan olay veriyolu.** Her örnekte `[cluster].bus = "database"` ayarlayın; böylece
+  gerçek zamanlı olaylar, presence, önbellek geçersiz kılma ve arama güncellemeleri hepsine
+  ulaşır (bkz. [Paylaşılan olay veriyolu](#paylaşılan-olay-veriyolu)).
 - **Eklenti görevleri tek örnekte.** Biri dışındaki her örnekte
   `[plugins].run_jobs = false` ayarlayın; aksi hâlde her örnek zamanlanmış görevleri çalıştırır.
 - **Örnek başına metrikler.** `[metrics].enabled = true` ile her örnek kendi `/_metrics`
@@ -72,23 +75,71 @@ uygulayın. Bkz. [Şema migrasyonları](/tr/concepts/schema-migrations/).
 | Geçiş anahtarı challenge’ları | Harcanan challenge’lar veritabanına kaydedilir; böylece her biri örnekler arasında bir kez yanıtlanır. |
 | Denetim kaydı budama | Her örnekte çalışır; eski satırları iki kez silmek zararsızdır. |
 | Eklenti anahtar-değer deposu | Veritabanında. |
+| Gerçek zamanlı olaylar, presence ve yumuşak kilitler | [Olay veriyolu](#paylaşılan-olay-veriyolu) ile: herhangi bir örneğe bağlı bir istemci hepsinin olaylarını alır ve bir kayıttaki her admin’i görür. |
+| Anonim yanıt önbelleği | Olay veriyolu ile, herhangi bir örnekteki bir yazma her örneğin önbelleğini boşaltır. |
+| Arama dizini | Olay veriyolu ile, her örnek diğerlerinin değiştirdiği kayıtları yeniden okur ve dizinler. |
+| Dönüştürülmüş görseller | Olay veriyolu ile, değiştirilen veya silinen bir dosya her örneğin dönüştürme önbelleğinden çıkar. |
 
 ## Her örnekte kalanlar
 
 - **Hız sınırları** her örnek tarafından ayrı sayılır. `n` örnekle bir istemci dakikada `n` kez
   `[api].public_rate_limit` kadar istek yapabilir. Gerekirse yük dengeleyicide küresel bir sınır
   uygulayın.
-- **Anonim yanıt önbelleği** (`[api].cache_ttl_secs`). Bir yazma, onu yapan örneğin önbelleğini
-  boşaltır; diğerleri kendi girdilerinin süresi dolana kadar önceki yanıtı sunabilir. TTL’i
-  birkaç saniyede veya `0`’da tutun.
-- **Gerçek zamanlı olaylar ve presence**, istemcinin bağlı olduğu örneğe aittir. Olay akışları
-  için sticky session kullanın (bkz. [Gerçek zamanlı](/tr/guides/frontend/realtime/)).
-- **Arama dizini** (`[search]`) örneğin diskinde bulunur ve yalnızca o örneğin yaptığı yazmaları
-  izler. Onu tek bir örnekte etkinleştirin ve `_q` isteklerini oraya yönlendirin ya da
-  diğerlerinin boş bir dizin diziniyle yeniden başlayana kadar geride kalmasını kabul edin.
+- **Olay veriyolu olmadan** (`[cluster].bus = "none"`, varsayılan), gerçek zamanlı olaylar ve
+  presence istemcinin bağlı olduğu örneğe aittir (olay akışları için sticky session kullanın),
+  bir yazma yalnızca kendi örneğinin yanıt önbelleğini boşaltır (`[api].cache_ttl_secs`’i
+  birkaç saniyede veya `0`’da tutun) ve arama dizini yalnızca kendi örneğinin yaptığı yazmaları
+  izler.
+- **Arama dizini** (`[search]`) her örneğin diskinde bulunur. Olay veriyolu ile örnekler
+  birbirlerinin değişikliklerini olurken dizinler; boş bir dizin dizini ile başlayan bir örnek
+  onu veritabanından oluşturur. Bir örnek kapalıyken yapılan değişiklikler dizini yeniden
+  oluşturulduğunda ona ulaşır: başlatmadan önce dizini silin ya da bir dağıtımdan sonra yeniden
+  oluşturun.
 - **Görsel dönüştürmeleri** (`[upload.transforms]`) örnek başına `cache_dir` altında önbelleğe
   alınır. Bunları paylaşmak için `/uploads` önüne bir CDN koyun.
 - **Zamanlanmış eklenti görevleri**: yukarıdaki `run_jobs`’a bakın.
+
+## Paylaşılan olay veriyolu
+
+Bazı şeyler bellekte olur: gerçek zamanlı akışlar, kimin hangi kaydı düzenlediği, anonim yanıt
+önbelleği, arama dizini. Olay veriyolu bunları gerçekleştikleri örnekten diğerlerine taşır.
+
+```toml title="verdin.toml"
+[cluster]
+bus = "database"
+```
+
+Ya da her örnekte `VERDIN_CLUSTER__BUS=database`. Veriyolu projenin veritabanını kullanır; bu
+yüzden başka bir servis gerektirmez:
+
+- **PostgreSQL**: bir örnek her olayı `vd_cluster_events` tablosuna yazar ve diğerlerini
+  `NOTIFY` ile uyandırır. Her örnek havuz bağlantılarından birini `LISTEN` için tutar.
+  Bildirim yalnızca göndereni adlandırır; böylece her boyuttaki olaylar PostgreSQL’in 8000
+  baytlık sınırının altında kalır. Bağlantı koparsa örnek yeniden bağlanır ve yetişmek için
+  tabloyu okur. Bir bildirim kaybolursa diye tabloyu her 30 saniyede bir de okur.
+- **MySQL, MariaDB ve SQLite**: her örnek `vd_cluster_events` tablosunun yeni satırlarını her
+  `poll_interval_ms` aralığında (varsayılan 1000) okur. Sorgu birincil anahtarı kullanır; bu
+  yüzden boş bir tabloyu okumak çok az maliyetlidir. Daha hızlı güncellemeler için aralığı
+  düşürün; bir örneğin değişikliği diğerlerine aralık içinde ulaşır.
+
+Nelerin taşındığı: içerik yazmaları (gerçek zamanlı akışlara, yanıt önbelleğine ve değişen
+kaydı yeniden okuyan arama dizinine), medya değişiklikleri (akışlar, önbellek, dönüştürme
+önbelleği), presence heartbeat’leri ve admin için yorum ve görev bildirimleri. Her örnek kendi
+olaylarını yok sayar. Webhook’lar, CDN temizlemeleri, geçmiş, denetim kayıtları ve eklenti
+hook’ları taşınmaz: değişikliği yapan örnek bunları bir kez çalıştırır.
+
+Satırlar 10 dakika sonra silinir. Yeni bir örnek bir sonraki olayla başlar, öncekilerle değil. Yetişemeyen ya da veritabanı bağlantısını kaybeden bir örnek, bir yazmayı bekletmek
+yerine olayları bırakır. `verdin_cluster_events_total` metriği gönderilen, alınan ve bırakılan
+olayları sayar (bkz. [İzleme](/tr/deploy/monitoring/#prometheus-metrikleri)).
+
+Her örnek veriyolunda her başlangıçta rastgele bir kimlikle ya da ayarladıysanız
+`[cluster].instance_id` ile (örneğin bir pod adı) kendini adlandırır. Kimlik yalnızca örnekleri
+birbirinden ayırır; başka hiçbir şey ona bağlı değildir.
+
+Tek bir örnekle `bus` değerini `none`’da bırakın: olaylar bellekte kalır ve hiçbir şey yazılmaz.
+
+Redis ve NATS arka uçları henüz yok. Veritabanı veriyolu, çalıştırılacak başka bir şey olmadan
+desteklenen her veritabanını kapsar.
 
 ## Ayarlar
 
@@ -102,8 +153,14 @@ sync_interval_secs = 10
 run_jobs = true
 
 [api]
-# Short-lived when each instance keeps its own cache.
-cache_ttl_secs = 5
+# Emptied on every instance by the event bus; keep it short without it.
+cache_ttl_secs = 60
+
+[cluster]
+# Share realtime events, presence, cache invalidation and search updates.
+bus = "database"
+# MySQL, MariaDB and SQLite: how often to read other instances' events.
+poll_interval_ms = 1000
 ```
 
 `run_jobs`’u örnek başına `VERDIN_PLUGINS__RUN_JOBS=false` ile ayarlayın.
@@ -112,4 +169,5 @@ cache_ttl_secs = 5
 
 Her örnek en fazla `[database].pool_max` bağlantı (varsayılan 10) açar. Migrasyonlar, yedekler
 ve bakım için pay bırakarak `örnekler × pool_max` değerini sunucunun sınırının altında tutun.
-PostgreSQL’in varsayılan sınırı 100 bağlantıdır.
+PostgreSQL’in varsayılan sınırı 100 bağlantıdır. PostgreSQL’de olay veriyolu, her örneğin
+bağlantılarından birini `LISTEN` için tutar.

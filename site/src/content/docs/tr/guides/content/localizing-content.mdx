@@ -166,7 +166,66 @@ Beklenecekler:
   hedefler tüm diller tarafından paylaşılır.
 - Webhook payload’ları ve geçmiş sürümleri dili kaydeder.
 
-Strapi’nin aksine içerik API’sinde `/api/i18n/locales` rotası yoktur. Diller admin API’de
-`GET /admin/api/i18n/locales` adresinde listelenir ve `POST`,
-`PUT /admin/api/i18n/locales/{code}` ve `DELETE /admin/api/i18n/locales/{code}` ile yönetilir
-(`locales.manage`).
+### Diğer dil sürümleri
+
+Strapi v5’teki gibi, bir belgenin diğer dil sürümlerini onunla birlikte almak için
+`localizations`’ı populate edin. Yalnızca populate edildiğinde, `populate=localizations` veya
+`populate=*` ile döner:
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- Sürümler belgeyle aynı durumdadır: varsayılan olarak yayımlanmış sürümler, `status=draft` ile
+  taslaklar. Yalnızca taslağı olan bir dil, yayımlanmış bir okumada dışarıda bırakılır.
+- `localizations`, populate edilmiş bir ilişkinin seçeneklerini alır: `fields`, `filters`,
+  `sort`, `populate` ve `count`. Örneğin `populate[localizations][fields][0]=title`. Her sürüm
+  her zaman `locale` içerir ve kendi ilişkileri kendi dilinde okunur.
+- GraphQL’de yerelleştirilmiş tiplerde `filters` ve `sort` alan bir `localizations` alanı vardır.
+- Yerelleştirilmemiş tiplerde `localizations` yoktur ve onu populate etmek `400` hatasıdır.
+- Admin API `localizations`’ı dışarıda bırakır.
+
+### Dilleri listeleme
+
+`GET /api/i18n/locales` dilleri Strapi’nin biçiminde, düz bir dizi olarak (`data` zarfı
+olmadan) listeler:
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+Strapi’nin `listLocales`’i gibi, rota siz izin verene kadar herkese kapalıdır. **Ayarlar →
+Herkese açık erişim** içinde, bir son kullanıcı rolünde ya da özel bir API token’ında
+**Diller** satırı (`plugin::i18n.locale`) için `find` izni verin. Tam erişimli ve salt okunur
+token’lar onu zaten okuyabilir. `documentId` dil kodundan türetilir; böylece yeniden
+başlatmalar ve dışa aktarmalar arasında aynı kalır. Bir Strapi içe aktarması `listLocales`
+iznini de getirir. Tipli istemci listeyi `verdin.locales()` ile okur.
+
+Diller admin API’de yönetilir: `GET /admin/api/i18n/locales` adresinde listelenir ve `POST`,
+`PUT /admin/api/i18n/locales/{code}` ve `DELETE /admin/api/i18n/locales/{code}` ile
+değiştirilir (`locales.manage`).

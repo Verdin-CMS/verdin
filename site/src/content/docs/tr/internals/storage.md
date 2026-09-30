@@ -127,7 +127,7 @@ Platform tabloları türetilen her modelin parçasıdır; bu yüzden migrasyon m
 | Admin’ler | `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (yenileme token’ları), `vd_admin_tokens` (davet ve sıfırlama bağlantıları), `vd_admin_two_factor`, `vd_admin_passkeys`, `vd_spent_challenges` |
 | İçerik API’si erişimi | `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` |
 | Son kullanıcılar | `vd_users`, `vd_user_roles`, `vd_user_role_permissions`, `vd_end_user_sessions` |
-| Kurulum | `vd_settings` (özellik anahtarları, düzenleme görünümü yerleşimleri, tek seferlik yükseltme işaretçileri), `vd_locales` |
+| Kurulum | `vd_settings` (özellik anahtarları, düzenleme görünümü yerleşimleri, tek seferlik yükseltme işaretçileri), `vd_locales`, `vd_cluster_events` (paylaşılan olay veriyolu, bkz. [Birden fazla örnek](/tr/deploy/scaling/)) |
 | Medya | `vd_files`, `vd_folders` |
 | İçerik iş akışı | `vd_history_versions`, `vd_releases`, `vd_release_actions`, `vd_workflows`, `vd_workflow_stages`, `vd_document_stages` |
 | İş birliği | `vd_comments`, `vd_tasks`, `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` |

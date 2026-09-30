@@ -21,6 +21,7 @@ eklentilerin neler yapabildiğini ve birinin nasıl kurulacağını açıklar; b
 | **Yazma hook’ları** | Bir kayıt oluşturulmadan, güncellenmeden, yayınlanmadan, yayından kaldırılmadan, silinmeden veya taslağı atılmadan önce veriyi değiştirin ya da yazmayı bir mesajla reddedin. Yazmadan sonra ona tepki verin (günlüğe yazma, bildirim, senkronizasyon). |
 | **Rotalar** | `/api/plugins/<name>/…` altında HTTP uç noktaları sunun: bir webhook alıcısı, hesaplanmış bir feed, başka bir servise proxy. |
 | **Zamanlanmış görevler** | Bir fonksiyonu cron takvimine göre (UTC) çalıştırın. |
+| **Başlangıç fonksiyonu** | Eklenti başladığında, açıldığında veya ayarları değiştiğinde bir fonksiyon çalıştırın: içerik ekleme, herkese açık rolü ayarlama (Strapi’nin `bootstrap`’i). |
 | **GraphQL alanları** | `Query` veya `Mutation`’a `name(args: JSON): JSON` alanları ekleyin. |
 | **Pano widget’ları** | Admin panosuna Web Components olarak widget tipleri ekleyin. |
 | **Özel alanlar** | Niteliklere admin’de Web Components olarak özel bir düzenleyici verin (renk seçici, harita); değer normal bir nitelik tipi olarak saklanır. |
@@ -49,6 +50,7 @@ manifest’in bildirdiği **yeteneklere** karşı denetler:
 | `write` | Listelenen tiplerin kayıtlarını oluşturma, güncelleme, yayınlama, yayından kaldırma ve silme (okuma da). |
 | `http` | Listelenen host’lara (`api.example.com`, `*.example.com`) HTTP istekleri. |
 | `kv` | Verdin’in veritabanında kendine ait bir anahtar-değer deposu. |
+| `public_permissions` | Herkese açık rolün içerik API’si izinlerini okuma ve değiştirme. |
 
 <Diagram
   caption="Bir eklentiye yapılan çağrılar ve host çağrılarının ulaşabildikleri"

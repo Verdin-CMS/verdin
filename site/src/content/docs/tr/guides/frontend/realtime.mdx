@@ -135,9 +135,11 @@ Akışı başka bir origin’deki bir siteden çağırmak, o origin’in
 
 ## Yük dengeleyicinin arkasında
 
-Olaylar, istemcinin bağlı olduğu örneğe aittir. Birden fazla örnekle `/api/_events` için sticky
-session kullanın ya da gerçek zamanlı istemcileri tek bir örneğe yönlendirin. Bkz.
-[Ölçekleme](/tr/deploy/scaling/).
+Birden fazla örnekle paylaşılan olay veriyolunu açın (`[cluster].bus = "database"`): herhangi bir
+örneğe bağlı bir istemci o zaman hepsinin olaylarını alır. Onsuz olaylar, istemcinin bağlı olduğu
+örneğe aittir; `/api/_events` için sticky session kullanın ya da gerçek zamanlı istemcileri tek
+bir örneğe yönlendirin. Bkz.
+[Ölçekleme](/tr/deploy/scaling/#paylaşılan-olay-veriyolu).
 
 Yönetim paneli, düzenleme sırasında canlı güncellemeler, presence ve yumuşak kilitler için kendi
 akışını (`/admin/api/events`) kullanır; bkz. [gerçek zamanlı API başvurusu](/tr/api/realtime/).

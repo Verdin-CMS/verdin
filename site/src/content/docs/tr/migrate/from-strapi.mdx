@@ -119,8 +119,9 @@ Uyarı olarak bildirilir:
 Hiç içe aktarılmayanlar: admin kullanıcılar ve admin rolleri, API token’ları, transfer token’ları,
 webhook’lar, sürümler, inceleme iş akışı aşamaları, içerik geçmişi ve denetim kayıtları ve Strapi
 eklentilerinin ayarları. Strapi kodunuzun — controller’lar, servisler, rotalar, policy’ler,
-middleware’ler, lifecycle hook’ları, cron görevleri ve admin özelleştirmeleri — dönüştürülecek bir
-Verdin karşılığı yoktur; bkz. [Özel kodu yeniden oluşturma](#özel-kodu-yeniden-oluşturma).
+middleware’ler, lifecycle hook’ları, cron görevleri ve admin özelleştirmeleri — dönüştürülmez:
+[Özel kodu yeniden oluşturma](#özel-kodu-yeniden-oluşturma) bölümünde anlatıldığı gibi yeniden
+oluşturun.
 
 <Aside type="note">
 Özel alanlar `plugin::color-picker.color` gibi `customField` adlarını korur. Düzenleyici onları o
@@ -202,11 +203,17 @@ Tipli erişim için `verdin types` ile TypeScript tipleri üretin ve
 
 ## Özel kodu yeniden oluşturma
 
+`src/` içindeki kod bir [WebAssembly eklentisine](/tr/extending/plugins/) taşınır. [Özel kodu
+taşıma](/tr/migrate/porting-custom-code/) sayfası, gerçek bir projenin lifecycle’larını,
+rotalarını, cron görevini ve `bootstrap`’ini örnek bir eklentiyle adım adım anlatır.
+
 | Strapi | Verdin |
 | --- | --- |
-| Lifecycle hook’ları, document service middleware’leri | Bir [WebAssembly eklentisinde](/tr/extending/plugins/) eklenti hook’ları (`beforeCreate`, `afterUpdate`…) |
+| Lifecycle hook’ları, document service middleware’leri | Eklenti hook’ları (`beforeCreate`, `afterUpdate`…) |
 | Özel rotalar ve controller’lar | `/api/plugins/<name>/` altında eklenti rotaları |
+| `src/index.js` içinde `bootstrap()` (içerik ekleme, herkese açık izinleri ayarlama) | Eklentinin başlangıç fonksiyonu (`[startup]`); herkese açık rol için `public_permissions` yeteneğiyle |
 | Cron görevleri | Eklenti görevleri (`[[jobs]]`) |
+| Form gönderimlerini saklayan özel bir uç nokta | Yerleşik [Formlar](/tr/guides/frontend/forms/) |
 | Özel alanlar | Eklenti özel alanları |
 | Admin widget’ları | Eklenti widget’ları veya yerleşik pano widget’ları |
 | Admin logosu, renkleri ve metinleri | `verdin.toml` içinde `[admin.branding]` |

@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 Yapılandırma katmanlıdır: **yerleşik varsayılanlar ← `verdin.toml` ← ortam**. Dosya isteğe
@@ -235,8 +236,22 @@ Bkz. [Eklentiler](/tr/extending/plugins/).
 
 | Anahtar | Varsayılan | Açıklama |
 | --- | --- | --- |
-| `enabled` | `false` | `/_metrics` adresinde Prometheus metrikleri sunar: alana (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), yönteme ve durum sınıfına göre gecikme histogramlarıyla HTTP istekleri, bekleyen webhook teslimleri, açık gerçek zamanlı akışlar ve çalışma süresi. |
+| `enabled` | `false` | `/_metrics` adresinde Prometheus metrikleri sunar: alana (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), yönteme ve durum sınıfına göre gecikme histogramlarıyla HTTP istekleri, bekleyen webhook teslimleri, açık gerçek zamanlı akışlar, olay veriyolu trafiği ve çalışma süresi. |
 | `token` | ayarlanmamış | Scrape’ler `Authorization: Bearer <token>` gerektirir. `VERDIN_METRICS_TOKEN` ona üstün gelir. Token olmadan porta ulaşan herkes metrikleri okuyabilir. |
+
+## `[telemetry]`
+
+Trace’ler ve hata raporları; ikisi de varsayılan olarak kapalıdır ve yalnızca `verdin start` ve
+`verdin dev` tarafından kullanılır (bkz. [İzleme](/tr/deploy/monitoring/#traceler-opentelemetry)).
+
+| Anahtar | Varsayılan | Açıklama |
+| --- | --- | --- |
+| `enabled` | `false` | HTTP isteklerinin ve veritabanı sorgularının OpenTelemetry trace’lerini OTLP/HTTP (protobuf) üzerinden aktarır. `OTEL_SDK_DISABLED=true` onu kapatır. |
+| `endpoint` | ayarlanmamış (`http://localhost:4318`) | Collector temel URL’si; `/v1/traces` eklenir. `OTEL_EXPORTER_OTLP_ENDPOINT` (temel URL) ve `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (tam URL) üstün gelir. |
+| `service_name` | `"verdin"` | Trace’lerin `service.name` değeri. `OTEL_SERVICE_NAME` üstün gelir. |
+| `sample_ratio` | `1.0` | Tutulan trace payı, `0.0` ile `1.0` arasında. `traceparent` başlığı taşıyan bir istek çağıranın kararını izler. |
+| `sentry_dsn` | ayarlanmamış | Panik’leri ve 5xx yanıtlarını Sentry’ye raporlar. `SENTRY_DSN` üstün gelir. |
+| `sentry_environment` | ayarlanmamış | Sentry ortamı. `SENTRY_ENVIRONMENT` üstün gelir; ayarlanmamışsa `verdin start`’ta `production`, `verdin dev`’de `development`. |
 
 ## `[ai]`
 
@@ -283,8 +298,26 @@ API token’ı `VERDIN_CDN_TOKEN`’dan okunur (webhook’lara bearer token olar
 | `dir` | `"data/search"` | Projeye göre dizin klasörü. Onu silmek bir sonraki başlatmada dizini yeniden oluşturur. |
 | `memory_mb` | `50` | Dizinleme bellek bütçesi. |
 
-Dizin örneğin diskinde bulunur ve o örneğin yazmalarını izler: birden fazla örnekle aramayı tek bir
-örnekte tutun (veya bir dağıtımdan sonra yeniden oluşturun).
+Dizin örneğin diskinde bulunur. Birden fazla örnekle her dizinin hepsinin yazmalarını izlemesi için
+[olay veriyolunu](#cluster) açın.
+
+## `[cluster]`
+
+Bir projenin birden fazla örneği için paylaşılan olay veriyolu (bkz.
+[Birden fazla örnek çalıştırma](/tr/deploy/scaling/#paylaşılan-olay-veriyolu)).
+
+| Anahtar | Varsayılan | Açıklama |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`: gerçek zamanlı olaylar, presence, önbellek geçersiz kılma ve arama güncellemeleri her örnekte kalır. `database`: projenin veritabanı üzerinden her örneğe ulaşır (PostgreSQL’de `LISTEN/NOTIFY`, MySQL, MariaDB ve SQLite’ta yoklama). |
+| `poll_interval_ms` | `1000` | MySQL, MariaDB ve SQLite’ın diğer örneklerin olaylarını ne sıklıkla okuduğu. PostgreSQL `NOTIFY` ile uyandırılır ve bu hızı yalnızca dinleyemediği sürece kullanır. |
+| `instance_id` | ayarlanmamış (her başlangıçta rastgele) | Bu örneğin veriyolundaki ve günlüklerdeki adı. |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+Her örnekte ya da `VERDIN_CLUSTER__BUS=database` ile ayarlayın.
 
 ## Ortam değişkenleri
 
@@ -305,5 +338,9 @@ Dizin örneğin diskinde bulunur ve o örneğin yazmalarını izler: birden fazl
 | `VERDIN_CDN_TOKEN` | `[cdn]` sağlayıcısının API token’ı. |
 | `VERDIN_IMAGE_SECRET` | Görsel dönüştürme URL’lerini imzalar (bkz. [`[upload.transforms]`](#uploadtransforms)). |
 | `VERDIN_METRICS_TOKEN` | `[metrics].enabled` olduğunda `/_metrics` scrape’leri için bearer token; `[metrics].token`’a üstün gelir. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | [`[telemetry]`](#telemetry) trace’leri için collector; `[telemetry].endpoint`’e üstün gelir. Diğer standart `OTEL_EXPORTER_OTLP_*` değişkenleri (başlıklar, zaman aşımı, sıkıştırma) de geçerlidir. |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | Aktarılan trace’lerin kaynağı; `OTEL_SERVICE_NAME`, `[telemetry].service_name`’e üstün gelir. |
+| `OTEL_SDK_DISABLED` | `true`, `[telemetry].enabled` olsa bile trace aktarımını kapatır. |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT` | Sentry hata raporlama; `[telemetry].sentry_dsn` ve `sentry_environment`’a üstün gelir. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | S3 yükleme sağlayıcısının kimlik bilgileri. |
 | `RUST_LOG` | Günlük filtresi; `[log].level`’a göre önceliklidir. |

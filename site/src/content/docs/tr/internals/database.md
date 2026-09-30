@@ -85,7 +85,7 @@ Bir oluşturucu SQL metni ve (flavor için tırnaklanmış) `ident()` adları ek
 | date, time, datetime | `date`, `time(3)`, `timestamptz(3)` | `date`, `time(3)`, `datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite ondalıkları, tarihleri ve saatleri sabit biçimli metin olarak saklar; böylece hiçbir şey yuvarlanmaz ve metin sırası sayısal ve kronolojik sırayla eşleşir. Hangi niteliğin hangi model tipine eşlendiği [nitelik tipleri](/tr/reference/attribute-types/) sayfasındadır.
+SQLite tarihleri ve saatleri sabit biçimli metin olarak saklar; böylece metin sırası kronolojik sırayla eşleşir. Ondalıkları da metin olarak saklar; böylece kaydedilirken hiçbir şey yuvarlanmaz. Ondalıklarda metin sırası sayısal sıra değildir; bu yüzden SQLite’ta bir ondalık üzerindeki filtreler ve sıralamalar sütunu `REAL`’e çevirir. Bu karşılaştırmalar yaklaşık 15 anlamlı basamağa kadar kesindir ve döndürülen değerler hâlâ kesindir. Hangi niteliğin hangi model tipine eşlendiği [nitelik tipleri](/tr/reference/attribute-types/) sayfasındadır.
 
 MySQL ve MariaDB tabloları `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` ve aksana ve büyük/küçük harfe duyarsız bir collation ile oluşturulur: MySQL’de `utf8mb4_0900_ai_ci`, MariaDB’de `utf8mb4_uca1400_ai_ci`.
 

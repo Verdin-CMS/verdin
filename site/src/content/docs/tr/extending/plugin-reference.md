@@ -1,12 +1,13 @@
 ---
 title: Eklenti başvurusu
-description: plugin.toml manifest’i, yetenekler, hook’lar ve payload’ları, host fonksiyonları, rotalar, görevler, GraphQL alanları, admin genişletme noktaları ve sınırlar.
+description: plugin.toml manifest’i, yetenekler, hook’lar ve payload’ları, host fonksiyonları, rotalar, görevler, başlangıç fonksiyonu, GraphQL alanları, admin genişletme noktaları, sınırlar ve metrikler.
 sidebar:
   order: 3
 ---
 
 <!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
-plugins_admin.rs, crates/verdin-graphql/src/lib.rs and admin/src/app/core/plugin-extensions.ts. -->
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
 
 Bu sayfa Verdin ile bir eklenti arasındaki eksiksiz sözleşmedir: manifest, Verdin’in dışa
 aktarılan her fonksiyona gönderdikleri ve geri beklediği ile bir modülün çağırabileceği host
@@ -40,6 +41,7 @@ read = ["api::article"]
 write = ["api::tag"]
 http = ["api.example.com"]
 kv = true
+public_permissions = true
 
 [limits]
 timeout_ms = 5000
@@ -56,6 +58,10 @@ function = "handle"
 [[jobs]]
 schedule = "*/15 * * * *"
 function = "refresh"
+
+[startup]
+function = "seed"
+timeout_ms = 30000
 
 [[graphql]]
 name = "slugStats"
@@ -103,6 +109,7 @@ Bilinmeyen anahtarlar her tabloda hatadır.
 | `write` | `[]` | `create`, `update`, `delete`, `publish` ve `unpublish` yapabileceği içerik tipleri. `read`’i kapsar. |
 | `http` | `[]` | Modülün HTTP isteği gönderebileceği host’lar: `api.example.com` veya `*.example.com`. |
 | `kv` | `false` | Eklentinin kendi anahtar-değer depolaması (`verdin_kv_get`, `verdin_kv_set`). |
+| `public_permissions` | `false` | Herkese açık rolün içerik API’si izinlerini okuma ve değiştirme (`verdin_public_permissions`). |
 
 Yetenekler yalnızca host çağrılarını sınırlar. Hook’lar, `read` ne derse desin adını verdikleri
 tiplerde çalışır ve rotalara herkes ulaşabilir.
@@ -136,9 +143,9 @@ Olaylar:
 | `beforeDiscardDraft` | `afterDiscardDraft` |
 
 Adlar Strapi’nin lifecycle adlarıdır. Hook’lar yönetim panelinden, REST ve GraphQL API’lerinden
-ve sürümlerden gelen yazmalarda çalışır; ancak eklentilerin yaptığı yazmalarda (bkz.
-[Eklentilerin yaptığı yazmalar](#eklentilerin-yaptığı-yazmalar)) veya `verdin import`
-komutlarının yaptıklarında çalışmaz.
+ve sürümlerden gelen yazmalarda çalışır; ancak `verdin import` komutlarının yaptığı yazmalarda
+çalışmaz. Eklentilerin yaptığı yazmalar after hook’larını çalıştırır, before hook’larını
+çalıştırmaz (bkz. [Eklentilerin yaptığı yazmalar](#eklentilerin-yaptığı-yazmalar)).
 
 ### `[routes]`
 
@@ -154,6 +161,18 @@ Yol `[api].prefix`’i izler.
 | --- | --- |
 | `schedule` | UTC’de, isteğe bağlı saniyeli cron ifadesi: `*/15 * * * *`, `0 0 3 * * *`. |
 | `function` | Çağrılacak dışa aktarılmış fonksiyon. |
+
+### `[startup]`
+
+Eklenti başladığında çalışan bir fonksiyon: bir Strapi projesinin `bootstrap` içinde yaptığı
+şey (içerik ekleme, herkese açık rolü ayarlama).
+
+| Anahtar | Varsayılan | Açıklama |
+| --- | --- | --- |
+| `function` | zorunlu | Çağrılacak dışa aktarılmış fonksiyon. |
+| `timeout_ms` | `30000` | Kendi zaman sınırı, milisaniye cinsinden (içerik ekleme bir hook’tan uzun sürebilir). Pozitif olmalıdır. |
+
+Ne zaman çalıştığı için bkz. [Başlangıç fonksiyonu](#başlangıç-fonksiyonu).
 
 ### `[[graphql]]`
 
@@ -289,6 +308,33 @@ yok sayılır; hatalar günlüğe yazılır. Görevler yalnızca eklenti açıkk
 `[plugins].run_jobs = true` olan örneklerde çalışır. Sunucu kapalıyken kaçırılan bir çalıştırma
 telafi edilmez.
 
+### Başlangıç fonksiyonu
+
+Girdi: `{ "reason": "start" | "enabled" | "settings" }`:
+
+| `reason` | Ne zaman |
+| --- | --- |
+| `start` | Sunucu eklenti açıkken başladı. |
+| `enabled` | Eklenti açıldı (burada ya da başka bir örnekte ve burada devralındı). |
+| `settings` | Açıkken ayarları değişti (burada kaydedildi ya da başka bir örnekten devralındı). |
+
+Çıktı: `{ "error": "message" }` bir başarısızlık sayılır; başka her şey (`{}`, boş) başarı.
+Bir başarısızlık (trap, zaman aşımı, `{ error }`) eklentinin günlüğüne ve sunucu günlüğüne
+yazılır; eklenti açık kalır ve fonksiyon bir sonraki başlangıçta, açmada veya ayar
+değişikliğinde yeniden çalışır.
+
+Fonksiyon, sunucu ayağa kalktıktan sonra arka planda çalışır; bu sırada istekler sunulur.
+`[startup].timeout_ms` ile kendi modül örneğinde çalışır; böylece yavaş bir içerik ekleme
+eklentinin hook’larını ve rotalarını geciktirmez. Yazmalarının tetiklediği after hook’ları o
+döndükten sonra çalışır (bkz. [Eklentilerin yaptığı yazmalar](#eklentilerin-yaptığı-yazmalar)).
+Modülün belleği eklentinin normal örneğiyle paylaşılmaz: durumu `verdin_kv_set` içinde ya da
+içerikte tutun.
+
+Birden fazla örnekle başlangıç fonksiyonlarını yalnızca `[plugins].run_jobs = true` olanlar
+çalıştırır ([ölçekleme tavsiyesini](/tr/deploy/scaling/) izlediğinizde bir örnek): paylaşılan
+veritabanı üzerinde işlem yaparlar; bu yüzden bir kez yeterlidir. Fonksiyonu, yeniden
+çalıştırılması zararsız olacak şekilde yazın: eklediğiniz şeyi oluşturmadan önce arayın.
+
 ### GraphQL alanları
 
 Girdi: `{ "args": …, "actor": … }`; `args` alanın `args` argümanıdır (herhangi bir JSON veya
@@ -308,6 +354,10 @@ olarak JSON alır ve döndürürler; `extism-pdk` içindeki `Json<Value>` dönü
 | `verdin_kv_get` | Düz string olarak anahtar | Saklanan JSON değeri veya `null` |
 | `verdin_kv_set` | `{ "key": "…", "value": … }` | yok |
 | `verdin_config` | yok | Bildirilen varsayılanlarla doldurulmuş ayarlar nesnesi |
+| `verdin_public_permissions` | `{ "op": "get" }` veya `{ "op": "set", "permissions": [...] }` | `{ "permissions": [...] }` veya `{ "error": "…" }` |
+
+Sunucunun sahip olmadığı bir host fonksiyonunu içe aktaran bir modül (eski bir Verdin)
+yüklenemez: ona yapılan her çağrı sunucu günlüğünde `unknown import` ile başarısız olur.
 
 ### `verdin_log`
 
@@ -349,9 +399,24 @@ yayınlanmış sürümleri döndürür.
 #### Eklentilerin yaptığı yazmalar
 
 `verdin_content` üzerinden yapılan yazmalar tüm eklentilerin **before** hook’larını atlar;
-böylece bir eklenti orada kendi değişiklikleri üzerinde döngüye giremez. Diğer her şey uygulanır:
+böylece bir eklenti orada kendi değişiklikleri üzerinde döngüye giremez ve before hook’larına
+koyduğunuz kurallar (varsayılanlar, denetimler) bunlara uygulanmaz. Diğer her şey uygulanır:
 doğrulama, inceleme aşamaları, webhook’lar, geçmiş, denetim kaydı ve yazan dâhil tüm eklentilerin
-**after** hook’ları. Dinlediği tipe yazan bir after hook’u koruma altına alın.
+**after** hook’ları.
+
+Bir eklentinin yazmalarının tetiklediği after hook’ları yazmanın içinde çalışmaz: kuyruğa
+alınırlar ve eklentinin çağrısı (rota, görev, GraphQL çözücüsü, hook veya başlangıç fonksiyonu)
+döndükten ve eklentinin örneğini serbest bıraktıktan sonra, rotanın yanıtı gönderilmeden önce
+çalışırlar. Böylece bir eklenti after hook’ları olan bir tipe yazabilir ve birkaç eklenti
+üzerinden zincirler çalışır.
+
+- Yazan hook’lar başka hook’ları tetikler, **en fazla `4` düzey derinliğe** kadar (REST veya
+  GraphQL’den gelen bir yazma 1. düzeydir). Daha derin hook’lar eklentinin günlüğünde bir
+  uyarıyla atlanır; bu, dinlediği tipe yazan bir hook’un sonsuza dek döngüye girmesini önler.
+- Host fonksiyonları (`verdin_content`, `verdin_public_permissions`, anahtar-değer deposu)
+  çağrının zaman sınırında durur ve modüle bir hata döndürür; bir çağıran, meşgul bir eklenti
+  için en fazla zaman sınırı artı 10 saniye bekler. Takılmış bir çağrı eklentiyi ya da düzgün
+  bir durdurmayı sonsuza dek tutamaz.
 
 ### `verdin_kv_get` ve `verdin_kv_set`
 
@@ -363,6 +428,34 @@ siler. `kv` yeteneği olmadan okumalar `null` döndürür ve yazmalar yok sayıl
 
 **Ayarlar → Eklentiler** bölümünde kaydedilen ayarları, eksik anahtarlar için bildirilen her
 ayarın `default` değeriyle doldurarak döndürür. Hiçbir şey kaydedilmediğinde `{}`.
+
+### `verdin_public_permissions`
+
+Herkese açık rolün içerik API’si izinlerini, yani **Ayarlar → Herkese açık erişim**’in
+düzenlediği şeyi okur veya değiştirir. `public_permissions` yeteneğini gerektirir; o olmadan
+her çağrı `{ "error": "…" }` yanıtlar.
+
+```json
+{ "op": "set", "permissions": [
+  { "subject": "api::article", "action": "find" },
+  { "subject": "api::article", "action": "findOne" },
+  { "subject": "api::comment", "action": "create" }
+] }
+```
+
+| `op` | Etki |
+| --- | --- |
+| `get` | Hiçbir şey; geçerli izinleri döndürür. |
+| `set` | Herkese açık **tüm** izinleri `permissions` ile değiştirir (boş bir liste hepsini kaldırır). |
+
+İkisi de sıralanmış olarak `{ "permissions": [{ "subject", "action" }, …] }` yanıtlar.
+`subject` bir içerik tipi uid’si, `plugin::upload` (medya kitaplığı),
+`plugin::users-permissions.user` (içerik API’si üzerinden son kullanıcılar) veya
+`plugin::i18n.locale` (yalnızca `find`) olabilir. `action` `find`, `findOne`, `create`,
+`update`, `delete`, `publish` veya `readDrafts`’tır (son ikisi yüklemelere ve son kullanıcılara
+uygulanmaz). Admin’in izin ızgarası gibi denetlenirler: bilinmeyen ya da uygulanmayan bir
+subject veya action `{ "error": "…" }` yanıtlar ve hiçbir şeyi değiştirmez. Her `set` sunucu
+günlüğüne yazılır.
 
 ### HTTP
 
@@ -430,10 +523,10 @@ depolama tipi için normal girdiyi gösterir. Bkz. [Nitelik tipleri](/tr/referen
 
 | Sınır | Değer |
 | --- | --- |
-| Çağrı başına süre | `[limits].timeout_ms`, varsayılan 5.000 ms |
+| Çağrı başına süre | `[limits].timeout_ms`, varsayılan 5.000 ms (başlangıç fonksiyonu için `[startup].timeout_ms`, varsayılan 30.000 ms) |
 | Bellek | `[limits].memory_mb`, varsayılan 64 MB |
-| Eşzamanlılık | Eklenti başına aynı anda bir çağrı; çağrılar birbirini bekler |
-| Modül örneği | Eklenti başına bir tane, ilk kullanımda oluşturulur; bir çağrı başarısız olduktan sonra yeniden oluşturulur (belleği kaybolur) |
+| Eşzamanlılık | Eklenti başına aynı anda bir çağrı; çağrılar birbirini bekler (başlangıç fonksiyonu onların yanında çalışır) |
+| Modül örneği | Eklenti başına bir tane, ilk kullanımda oluşturulur; bir çağrı başarısız olduktan sonra yeniden oluşturulur (belleği kaybolur). Başlangıç fonksiyonu her çalıştırmada yeni bir tane alır |
 | Günlük | Eklenti başına 200 mesaj, her biri 2.000 karakter, bellekte |
 | KV anahtarları | 1 ile 255 bayt |
 | Rota istek başlıkları | `content-type`, `accept`, `user-agent`, `accept-language` |
@@ -442,3 +535,19 @@ depolama tipi için normal girdiyi gösterir. Bkz. [Nitelik tipleri](/tr/referen
 Bir manifest’te veya modülde yapılan değişiklikler yeniden başlatmadan sonra uygulanır; anahtarlar
 ve ayarlar hemen uygulanır. Eklentileri yönetmek `plugins.manage` gerektirir (bkz.
 [izin başvurusu](/tr/reference/permissions/)).
+
+## Metrikler
+
+[`[metrics]`](/tr/deploy/monitoring/) açıkken `/_metrics`, dışa aktarılmış bir fonksiyona ulaşan
+her çağrıyı raporlar:
+
+| Metrik | Tip | Etiketler | Anlamı |
+| --- | --- | --- | --- |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | Eklenti fonksiyonlarının harcadığı süre. 5 ms’den 10 sn’ye kadar bucket’lar. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Başarısız çağrılar: bir trap, zaman aşımı, JSON olmayan çıktı veya bir başlangıç fonksiyonunun `{ error }` değeri. |
+
+`kind` değeri `hook`, `route`, `job`, `startup` veya `graphql`’dir. Bir yazmayı `{ error }` ile
+reddeden bir before hook’u bir yanıt verdi; bu yüzden başarısızlık sayılmaz. Modülün dışa
+aktarmadığı bir fonksiyona yapılan çağrılar kaydedilmez; böylece etiketler kurulu eklentilerle
+sınırlı kalır. Seriler bir eklentinin ilk çağrısından sonra görünür; her örnek kendi çağrılarını
+sayar.

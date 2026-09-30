@@ -1,0 +1,402 @@
+---
+title: Özel kodu taşıma
+description: Bir Strapi projesinin özel kodunu bir Verdin eklentisine taşıyın — controller’lar ve rotalar, lifecycle’lar, servisler, bootstrap, cron görevleri, admin widget’ları, formlar, policy’ler ve middleware’ler — örnek bir çalışma ve hesaba katılması gereken sınırlarla.
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi`, bir Strapi projesinin şemasını ve içeriğini getirir, ancak `src/` içindeki
+JavaScript’i getirmez: Verdin sunucuda JavaScript çalıştırmaz. Bu kod bir
+[WebAssembly eklentisi](/tr/extending/plugins/) olur: lifecycle’lar için hook’lar, özel
+controller’lar için rotalar, `bootstrap` için bir başlangıç fonksiyonu, cron görevleri için görevler.
+Bu sayfa her Strapi kodu türünü Verdin karşılığıyla eşler, gerçek bir projenin kodunun bir eklentiye
+taşınışını adım adım gösterir ve hesaba katılması gereken sınırları listeler.
+
+Örnek çalışma
+[`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port)
+dizinindedir: Rust ile yazılmış `tienda` eklentisi, ihtiyaç duyduğu şema ve onu derleyip kuran bir
+README ile. Hiç eklenti yazmadıysanız önce [eklenti eğitimini](/tr/extending/plugin-tutorial/)
+okuyun; [eklenti başvurusunda](/tr/extending/plugin-reference/) her payload ve host fonksiyonu vardır.
+
+## Her parça nereye gider
+
+| Strapi | Verdin | Notlar |
+| --- | --- | --- |
+| Özel rotalar ve controller’lar (`src/api/*/routes`, `controllers`) | Eklenti rotaları: `[routes]`, `/api/plugins/<name>/…` için tek bir fonksiyon | URL değişir. Fonksiyon yönteme ve yola göre kendisi yönlendirir. |
+| Lifecycle’lar (`lifecycles.js`), Document Service middleware’leri | `beforeCreate`, `afterUpdate`… üzerinde `[[hooks]]` | Aynı olay adları. Before hook’ları veriyi değiştirebilir veya yazmayı reddedebilir. |
+| Servisler (`src/api/*/services`) | Eklentinin modülündeki fonksiyonlar ve `strapi.documents(…)` için `verdin_content` | Eklentiler arasında paylaşılan servis yok. |
+| `src/index.js` içinde `bootstrap()` | `[startup]` fonksiyonu | Başlangıçta, eklenti açıldığında ve ayarları değiştiğinde çalışır. |
+| `register()` | Taşınacak bir şey yok | Manifest, `register`’ın kurduğu şeyi bildirir. |
+| Cron görevleri (`config/cron-tasks.js`) | `[[jobs]]` | UTC’de cron sözdizimi, saniye isteğe bağlı. |
+| Eklenti yapılandırması (`config/plugins.js`) | `[[settings]]` ve `verdin_config` | **Ayarlar → Eklentiler** içinde düzenlenir. |
+| `strapi.log` | `verdin_log` | Sunucu günlüğü ve **Ayarlar → Eklentiler → Günlükler**. |
+| Admin widget’ları (`app.widgets.register`) | `[[admin.widgets]]`: Web Components | Ya da yerleşik pano widget’ları. |
+| Özel alanlar | `[[admin.fields]]` | Şemadaki `customField` adı korunur. |
+| Injection zone’lar, özel admin sayfaları, React uzantıları | Desteklenmiyor | Marka özelleştirme `[admin.branding]` içindedir. |
+| Form gönderimlerini saklayan özel bir uç nokta | Yerleşik [Formlar](/tr/guides/frontend/forms/) | Doğrulama, spam tuzağı, hız sınırı, e-postalar ve CSV dışa aktarma dahil. |
+| Policy’ler ve middleware’ler | Yerleşik izinler, hız sınırları ve CORS; eklenti rotalarınızdaki denetimler | İstek hattına hook yok. Bkz. [Policy’ler ve middleware’ler](#policyler-ve-middlewareler). |
+| Koddan e-postalar (`strapi.plugin('email')`) | Bir e-posta sağlayıcısının HTTP API’si, `http` yeteneği üzerinden | E-posta host fonksiyonu yok. |
+
+## Örnek proje
+
+Örneğin arkasındaki Strapi projesi, anketli küçük bir mağazadır:
+
+- **`producto`**: ürünler, `a_la_venta` (satışta) ve `reservable` bayraklarıyla.
+- **`reserva`**: ziyaretçilerin gönderdiği rezervasyonlar. Bir `beforeCreate` lifecycle’ı `estado`’yu
+  `pendiente` yapmaya zorlar, ilgili ürünün satışta ve rezerve edilebilir olduğunu denetler ve
+  `unidades`’i 1–10 aralığına sıkıştırır.
+- **`encuesta`** ve **`voto`**: seçenek listeli anketler ve oyları. İki özel rota,
+  `POST /api/polls/:slug/vote` ve `GET /api/polls/:slug/results`, ziyaretçi ve anket başına bir oya,
+  yalnızca açık anketlerde ve yalnızca geçerli bir seçenek için izin verir. Bir cron görevi,
+  `cierra_el` tarihi geçmiş anketleri kapatır.
+- **`bootstrap`** herkese açık rolün izinlerini ayarlar; böylece yeni bir kurulum açık bırakılmaz.
+- Bir **admin widget’ı** açık anketleri gösterir.
+
+Verdin’de hepsi tek bir eklentidir, `tienda`:
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml manifest
+    - src/lib.rs hook’lar, rotalar, görev ve başlangıç fonksiyonu
+    - admin/index.js pano widget’ı
+</FileTree>
+
+```toml title="plugin/plugin.toml (abridged)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+İçerik tipi uid’leri Strapi’ninkinden kısadır: `api::producto.producto` değil, `api::producto`.
+
+## Lifecycle’lardan hook’lara
+
+Strapi lifecycle’ı, sadeleştirilmiş:
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+Verdin hook’u `{ event, uid, documentId, locale, data }` alır ve yazılanı değiştirmek için
+`{ "data": … }`, yazmayı reddetmek için `{ "error": "…" }` (istemci, Strapi’nin
+`ApplicationError`’ında olduğu gibi mesajla bir 400 alır) ya da geçmesine izin vermek için `{}` yanıtlar:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+Lifecycle’ları taşırken bilinmesi gerekenler:
+
+- **`data`, isteğin gönderildiği hâliyle verisidir.** Bir ilişki bir documentId olarak,
+  `{ "documentId": … }` olarak, bir liste olarak ya da `{ connect }` / `{ set }` olarak gelebilir
+  (yönetim paneli ve istemciler farklıdır). Örnekteki `relation_id` hepsini kabul eder.
+  `beforeUpdate`’te `data` yalnızca gönderilen alanları tutar.
+- **Döndürdüğünüz veri doğrulanır**, hook’tan sonra, orijinal gibi: bir hook şemanın reddettiği bir
+  şeyi yazamaz. Şema sınırları (`min`, `max`) bir değeri reddeder; bir hook onu burada olduğu gibi
+  sıkıştırabilir.
+- **Hook’lar kimin yazdığını bilmez.** Girdide kullanıcı veya token yoktur. Çağırana bağlı denetimler
+  izinlere ya da bir eklenti rotasına aittir.
+- **After hook’ları veri almaz**: yazma commit edildikten sonra gönderilen `{ event, uid, documentId,
+  locale }`. Gerekirse kaydı `verdin_content` ile okuyun.
+- **Başarısız bir hook yazmayı engellemez.** Modül trap verirse ya da zaman aşımına uğrarsa hata
+  günlüğe yazılır ve yazma devam eder; yalnızca bir `{ error }` yanıtı onu reddeder.
+- **Eklentilerin yaptığı yazmalar before hook’larını atlar.** Her yazma için geçerli olması gereken bir
+  kural, o tipe yazan her eklenti kodunda da uygulanmalıdır.
+
+## Controller’lardan ve özel rotalardan eklenti rotalarına
+
+Strapi anket rotalarını `/api/polls/:slug/vote` adresinde sunuyordu. Bir Verdin eklentisi her şeyi
+`/api/plugins/<name>/` altında sunar; bu yüzden frontend `/api/plugins/tienda/polls/:slug/vote`
+adresini çağırır (ya da bir ters proxy eski yolu yeniden yazar). Dışa aktarılan tek bir fonksiyon her
+isteği alır ve yönteme ve yola göre yönlendirir:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+İstek `{ method, path, query, headers, body, actor }` biçimindedir; `body` kendiniz ayrıştırdığınız bir
+string, `query` ise ham sorgu string’idir. Yanıt `{ status, headers?, body }` biçimindedir. Hiçbir şey
+yanıtı sizin için şekillendirmez: bir Strapi frontend’inin çalışmaya devam etmesi için `{ "data": … }`
+ve hatalarda `{ "data": null, "error": { "status", "name", "message", "details" } }` yanıtlayın;
+örneğin `ok` ve `fail` yardımcıları da bunu yapar.
+
+Oy rotası sırayla şunları denetler: geçerli bir gövde, o slug’a sahip bir anket, `estado`’nun
+`abierta` olması, seçeneğin `opciones` içinden biri olması ve aynı parmak iziyle daha önce bir oy
+olmaması. Ardından `voto`’yu oluşturur ve sonuçlarla 201 yanıtlar.
+
+<Aside type="caution" title="Eklenti rotalarında istemci adresi yok">
+Eklenti rotaları yalnızca `content-type`, `accept`, `user-agent` ve `accept-language` başlıklarını
+alır: IP adresi, çerez veya `Authorization` değeri yok. "Ziyaretçi başına bir oy" için
+`ctx.request.ip` kullanan bir Strapi controller’ı başka bir anahtara ihtiyaç duyar. Örnek,
+istek gövdesinden bir `fingerprint` alır; bunu site üretir (yerel depolamada tutulan rastgele bir
+kimlik ya da tarayıcı özelliklerinin bir hash’i). Çift tıklamaları ve gelişigüzel tekrarları durdurur;
+kararlı bir oy vereni değil. Daha güçlü sınırlar için oturum açmış bir son kullanıcı (`actor`)
+isteyin ya da denetimi Verdin’in önüne koyun.
+</Aside>
+
+Strapi rotalarından diğer farklar:
+
+- **Rotalar herkese açıktır.** Herkese açık erişim ve API token izinleri uygulanmaz. `actor` kimin
+  çağırdığını söyler: `{ "kind": "public" }`, `{ "kind": "token", "id": … }` veya
+  `{ "kind": "user", "id": … }` (bir son kullanıcı; yalnızca kimlik). Bir Strapi policy’sinin yapacağı
+  gibi, çağıranın yapmaması gerekeni reddedin. Geçersiz bir token, eklenti çalışmadan önce 401 ile
+  reddedilir.
+- **Eklenti başına aynı anda bir çağrı.** Bir eklentiye yapılan çağrılar birbirini bekler; bu yüzden oy
+  rotasındaki denetim ve oluşturma tek bir örnekte iç içe geçemez. Birden fazla örnekle
+  geçebilir; örnek ayrıca `unique: true` ile bir `clave` (`<poll>:<fingerprint>`) saklar; böylece
+  veritabanı, sızan bir kopyayı reddeder.
+- **Hız sınırları geçerlidir**: `[api].public_rate_limit` ve `[api].token_rate_limit`, eklenti
+  rotalarını içerik API’sinin geri kalanı gibi sayar.
+- **Anonim `GET` yanıtları önbelleğe alınabilir**, `[api].cache_ttl_secs` ayarlıysa. İçerik yazmaları
+  önbelleği boşaltır, oylar dahil.
+- **Yalnızca bazı yanıt başlıkları korunur**: `content-type`, `cache-control`, `location`, `etag`,
+  `last-modified` ve `content-disposition`.
+
+## Servislerden fonksiyonlara ve içerik çağrılarına
+
+Bir Strapi servisi paylaşılan koddur; bir eklentide modüldeki sıradan bir fonksiyondur.
+`strapi.documents(uid)` çağrıları `verdin_content` çağrıları olur ve `read` ile `write`
+yetenekleriyle sınırlıdır:
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `"pagination": { "pageSize": 1 }` ile `findMany`, ardından `meta.pagination.total` |
+
+- **Okumalar yayımlanmış sürümleri döndürür**, sorgu `"status": "draft"` istemedikçe. Yalnızca taslağı
+  olan bir ürünü arayan bir hook hiçbir şey bulamaz; örnekteki hata mesajı da bunu söyler.
+- **Yazmalar yayımlanır**, istek `"status": "draft"` içermedikçe, bir REST yazması gibi.
+- **Sorgu REST API’nin kurallarını izler.** `private` nitelikler filtrelerde veya `fields` içinde
+  kullanılamaz; bu yüzden örnekteki `clave` private değildir (herkese açık rolün oylara erişimi yoktur,
+  bu yüzden onu başkası okumaz).
+- **Ham SQL yok, `strapi.db.query` yok.** Her şey Document Service üzerinden geçer; doğrulaması,
+  webhook’ları, geçmişi ve denetim kaydıyla.
+- **WASI olmadan saat yok.** Zaman ve rastgele sayılar için manifest’te `wasi = true` ayarlayın;
+  örnekteki görev, bunun yerine aldığı `scheduledAt`’i kullanır.
+
+## `bootstrap`’ten başlangıç fonksiyonuna
+
+Strapi projeleri sıklıkla herkese açık rolün izinlerini `bootstrap` içinde ayarlar; böylece yeni bir
+veritabanı kullanılabilir olur ve gerekenden fazlası açık olmaz. Verdin’in başlangıç fonksiyonu aynısını
+`public_permissions` yeteneğiyle yapar:
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- `{ "reason": "start" | "enabled" | "settings" }` ile çalışır: sunucu eklenti açıkken başladığında,
+  eklenti açıldığında ve ayarları değiştiğinde. Yeniden çalıştırılması güvenli olsun: eklediğiniz şeyi
+  oluşturmadan önce arayın.
+- `set`, herkese açık **tüm** izinleri değiştirir; bu yüzden **Ayarlar → Herkese açık erişim**
+  içinde yapılan değişiklikler bir sonraki başlangıçta geri alınır. Örnekte bunu kapatan bir ayar vardır.
+- Kendi modül örneğinde, kendi zaman sınırıyla (`[startup].timeout_ms`, varsayılan 30 saniye) arka
+  planda çalışır; böylece yavaş bir içerik ekleme hook’ları ve rotaları geciktirmez. Bir başarısızlık
+  ya da bir `{ "error" }` yanıtı günlüğe yazılır; eklenti açık kalır.
+- Birden fazla örnekle onu yalnızca `[plugins].run_jobs = true` olanlar çalıştırır.
+
+## Cron görevlerinden görevlere
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+Görev `{ "scheduledAt": "…" }` alır ve örnekte, `cierra_el` değeri daha erken olan her açık anketi
+günceller. Görevler UTC’de, yalnızca eklenti açıkken ve yalnızca `[plugins].run_jobs = true` olan
+örneklerde çalışır. Sunucu kapalıyken kaçırılan bir çalıştırma telafi edilmez.
+
+## Admin widget’ları
+
+Bir Strapi admin widget’ı bir React bileşenidir; bir Verdin widget’ı, eklentinin `admin/` betiğindeki,
+manifest’te bildirilen bir custom element’tir:
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+Element, `fetch` içeren bir `context` alır. Örnekteki widget eklentinin kendi
+`GET /api/plugins/tienda/polls` rotasını çağırır. İçerik API’sine (eklenti rotaları dahil) yapılan
+istekler admin’in oturumu olmadan gider; bu yüzden bir widget’ın kullandığı rota herkese açık olmaya
+uygun olmalı ya da bir API token’ı kabul etmelidir. Injection zone’ların, özel admin sayfalarının ve
+React uzantılarının karşılığı yoktur. Bkz.
+[Admin genişletme noktaları](/tr/extending/plugin-reference/#admin-genişletme-noktaları).
+
+## Özel formlardan Formlar’a
+
+Strapi’de bir öneri veya iletişim formu genellikle özel bir uç nokta (ya da herkese açık `create`
+izni olan bir içerik tipi) artı birine e-posta gönderen koddur. Onu taşımayın: yerleşik
+[Formlar](/tr/guides/frontend/forms/) özelliği bunların hepsini kodsuz yapar. Editörler alanları
+admin’de tanımlar, site `POST /api/_forms/{slug}` adresine gönderir ve gönderimler doğrulanır,
+**Bildir** adreslerine e-postalanır ve CSV olarak dışa aktarılır. Formların ayrıca bir spam tuzağı ve
+ziyaretçi başına bir hız sınırı (dakikada 10 gönderim) vardır; bir eklenti rotası istemcinin adresini
+görmediği için bunu yapamaz.
+
+## Policy’ler ve middleware’ler
+
+Verdin’in HTTP istek hattına hook’u yoktur. Bunun yerine sunduğu şeyler:
+
+| Strapi | Verdin |
+| --- | --- |
+| REST rotalarında `is-authenticated` tarzı policy’ler | Herkese açık erişim, API token izinleri ve son kullanıcı rolleri. Bkz. [İzinler](/tr/reference/permissions/). Daha ince kurallar (bir son kullanıcının yalnızca kendi kayıtlarını düzenlemesi) bir eklenti rotası gerektirir. |
+| Özel bir rotada policy | Eklenti rotasında `actor`’ı denetleyin. |
+| Hız sınırı middleware’i | `[api].public_rate_limit`, `[api].token_rate_limit` ve `[admin].auth_rate_limit`. |
+| CORS veya güvenlik başlıkları middleware’i | `[api].cors_origins`; diğer yanıt başlıkları ters proxy’de. |
+| Çekirdek rotaların isteklerini veya yanıtlarını yeniden yazan bir middleware | Desteklenmiyor. Yeni davranış için bir eklenti rotası ya da bir ters proxy kullanın. |
+| Bazı yazmaları reddeden bir policy | Çağıranı bilmeden `{ error }` yanıtlayan bir before hook’u. |
+
+## Hesaba katılması gereken sınırlar
+
+- Eklenti rotalarında **istemci adresi yok ve az başlık** (yukarıya bakın).
+- **Eklentilerin yaptığı yazmalar her eklentinin before hook’larını atlar**; bu yüzden before
+  hook’larındaki kurallar onlara uygulanmaz.
+- **Bir eklentinin kendi yazmalarının tetiklediği after hook’ları çağrısı döndükten sonra çalışır**,
+  yazmanın içinde değil ve yazan hook’lar en fazla 4 düzey iç içe geçer (bkz.
+  [Eklentilerin yaptığı yazmalar](/tr/extending/plugin-reference/#eklentilerin-yaptığı-yazmalar)).
+  Yanıttan önce gerçekleşmesi gereken devam işlerini, yazan kodda, `verdin_content` döndükten sonra
+  yapın.
+- **Eklenti başına aynı anda bir çağrı**: yavaş bir rota o eklentinin hook’larını geciktirir. Çağrıları
+  kısa tutun ve [metriklerde](/tr/deploy/monitoring/) `verdin_plugin_call_duration_seconds`’ı izleyin.
+- **Rotalar herkese açıktır** ve `actor`’ı denetlemelidir.
+- Başlangıç fonksiyonu ve `verdin_public_permissions` için **Verdin 0.11 veya sonrası**: sunucunun sahip
+  olmadığı bir host fonksiyonunu içe aktaran bir modül hiç yüklenmez.
+
+## Kontrol listesi
+
+<Steps>
+
+1. Projeyi `verdin import strapi` ile içe aktarın, ardından `src/` içindeki kodu listeleyin: rotalar,
+   controller’lar, servisler, lifecycle’lar, policy’ler, middleware’ler, `bootstrap`, cron görevleri ve
+   admin uzantıları.
+2. Verdin’in yerleşik yaptığı şeyleri bırakın: formlar, elle ayarlanan herkese açık izinler, hız
+   sınırları, CORS, webhook’lar, zamanlanmış yayımlama ([Sürümler](/tr/guides/content/releases/)).
+3. Geri kalanla örneği izleyerek tek bir eklenti yazın: hook’lar, rotalar, bir görev, bir başlangıç
+   fonksiyonu. Ona yalnızca ihtiyaç duyduğu yetenekleri verin.
+4. İçerik yazan hook’ların 4 düzeyden daha derin iç içe geçmeye dayanmadığını denetleyin.
+5. Derleyin, `plugins/` altına kurun, **Ayarlar → Eklentiler** içinde açın ve günlüğünü orada okuyun.
+6. Frontend’i güncelleyin: eklenti rota URL’leri (`/api/plugins/<name>/…`), kodun istemcinin adresine
+   dayandığı yerlerde parmak izleri veya son kullanıcı oturum açma ve bir migrasyonun
+   [diğer değişiklikleri](/tr/migrate/from-strapi/#frontend-değişiklikleri).
+
+</Steps>

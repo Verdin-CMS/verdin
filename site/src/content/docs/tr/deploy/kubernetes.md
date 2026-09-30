@@ -8,6 +8,7 @@ sidebar:
 Bu sayfa bir Verdin projesini Kubernetes üzerinde çalıştırır. Ana kurulum durumsuzdur:
 pod’ların dışında PostgreSQL (veya MySQL/MariaDB), S3 uyumlu depolamada medya ve ihtiyaç
 duyduğunuz kadar replika. Ardından SQLite için volume içeren tek replikalı bir kurulum gelir.
+[Helm chart’ı](/tr/deploy/helm/) bu manifest’leri her ayar için değerlerle paketler.
 
 Manifest’ler kararlı API’leri (`apps/v1`, `v1`) kullanır ve 2026-09-29 tarihinde
 `kubeconform -strict` ile Kubernetes şemalarına karşı doğrulandı; canlı bir cluster’da
@@ -38,7 +39,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -158,7 +162,9 @@ Manifest hakkında notlar:
   replikada çalışmasını kabul edin. Webhook’lar, zamanlanmış sürümler ve günlük özet
   veritabanında üstlenilir ve bir kez çalışır. Bkz.
   [Birden fazla örnek çalıştırma](/tr/deploy/scaling/).
-- **Gerçek zamanlı.** Olay akışları (`/api/_events`) bağlandıkları pod’da kalır.
+- **Gerçek zamanlı, presence, önbellekler ve arama.** `[cluster].bus = "database"` her pod’a
+  diğerlerinin olaylarını getirir (bkz. [paylaşılan olay veriyolu](/tr/deploy/scaling/#paylaşılan-olay-veriyolu)).
+  Onsuz olay akışları (`/api/_events`) bağlandıkları pod’da kalır:
   [Gerçek zamanlı](/tr/guides/frontend/realtime/) özelliği kullanıyorsanız Ingress’te session
   affinity kullanın.
 

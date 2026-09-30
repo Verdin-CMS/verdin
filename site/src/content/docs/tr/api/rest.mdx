@@ -303,7 +303,7 @@ asla `fields` ile seçilmez: `populate` kullanın.
 
 | Biçim | Populate eder |
 | --- | --- |
-| `populate=*` | Tüm ilişkiler, medya alanları, bileşenler ve dinamik bölgeler, bir düzey derinlikte |
+| `populate=*` | Tüm ilişkiler, medya alanları, bileşenler ve dinamik bölgeler, bir düzey derinlikte ve yerelleştirilmiş tiplerde `localizations` |
 | `populate=category,tags` veya `populate[0]=category&populate[1]=tags` | Adı verilen alanlar |
 | `populate[category]=true` | Adı verilen alan (`false` onu dışarıda bırakır) |
 | `populate[category][fields][0]=name` | Seçeneklerle birlikte alan |
@@ -353,6 +353,16 @@ Yazmalarda `status=draft` taslağı yayınlamadan kaydeder. Bkz.
 istekler varsayılan dili kullanır. Geçersiz veya bilinmeyen bir kod `400` hatasıdır.
 Yerelleştirilmemiş tipler bunu yok sayar. Bkz.
 [Uluslararasılaştırma](/tr/concepts/internationalization/).
+
+Yerelleştirilmiş tiplerde `populate=localizations`, belgenin diğer dil sürümlerini aynı
+durumda ve her biri `locale` değeriyle ekler. Populate edilmiş bir ilişkinin seçeneklerini
+(`fields`, `filters`, `sort`, `populate`, `count`) alır ve `populate=*` tarafından da
+içerilir. Yerelleştirilmemiş tiplerde `localizations` yoktur.
+
+`GET /api/i18n/locales`, dilleri Strapi’nin biçiminde (`id`, `documentId`, `name`, `code`,
+`isDefault`, `createdAt`, `updatedAt`, `publishedAt`, `locale`) düz bir dizi olarak listeler.
+`plugin::i18n.locale` üzerinde `find` izni gerektirir. Bkz.
+[İçeriği yerelleştirme](/tr/guides/content/localizing-content/#dilleri-listeleme).
 
 ## Arama
 

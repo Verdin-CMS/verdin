@@ -1,0 +1,131 @@
+---
+title: Kurulum
+description: verdin ikili dosyasını kurulum betiği, Homebrew, bir .deb paketi, winget, cargo binstall ile veya kaynaktan kurun ya da Docker imajını çalıştırın.
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin, yönetim paneli yerleşik tek bir ikili dosyadır. Her sürüm onu Linux (x86-64 ve ARM64,
+statik musl derlemeleri), macOS (Intel ve Apple silicon) ve Windows (x86-64) için bir `SHA256SUMS`
+dosyasıyla birlikte [sürümler sayfasında](https://github.com/verdin-cms/verdin/releases)
+yayımlar. Makinenize uyan kurulum yolunu seçin; hepsi aynı ikili dosyayı kurar.
+
+Şununla denetleyin:
+
+```sh frame="terminal"
+verdin --version
+```
+
+Ardından `verdin new` adımından [Hızlı başlangıç](/tr/start/quickstart/) sayfasını izleyin.
+
+## Kurulum betiği (Linux ve macOS)
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh
+```
+
+Betik sistemi ve mimariyi algılar, eşleşen arşivi en son GitHub sürümünden indirir, sürümün
+`SHA256SUMS` dosyasıyla denetler ve `verdin`’i root olarak çalıştırıldığında `/usr/local/bin`’e,
+aksi hâlde `~/.local/bin`’e kurar. `curl` veya `wget`, `tar` ve `sha256sum`, `shasum` ya da
+`openssl` gerekir.
+
+| Seçenek | Değişken | Varsayılan |
+| --- | --- | --- |
+| `--version <X.Y.Z>` | `VERDIN_VERSION` | En son sürüm |
+| `--dir <directory>` | `VERDIN_INSTALL_DIR` | `/usr/local/bin` (root) veya `~/.local/bin` |
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh -s -- --version 0.11.0 --dir /opt/verdin/bin
+```
+
+Betiği çalıştırmadan önce okumak için önce indirin:
+`curl -fsSLO https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh`.
+
+## Paket yöneticileri
+
+<Tabs syncKey="package-manager">
+  <TabItem label="Homebrew">
+
+macOS ve Linux’ta:
+
+```sh frame="terminal"
+brew install verdin-cms/tap/verdin
+```
+
+Formül sürüm ikili dosyasını kurar (Linux’ta musl derlemesi). `brew upgrade verdin` bir sonraki
+sürüme geçirir.
+
+  </TabItem>
+  <TabItem label="Debian / Ubuntu">
+
+Sürümden mimariniz (`amd64` veya `arm64`) için `.deb` dosyasını indirin ve kurun:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/verdin_0.11.0-1_amd64.deb
+sudo apt install ./verdin_0.11.0-1_amd64.deb
+```
+
+Paket bir `verdin` sistem kullanıcısı, bir systemd servisi (etkinleştirilmemiş) ve
+`/etc/verdin/` içinde yapılandırmayı ekler. [Linux sunucusu](/tr/deploy/linux-server/) sayfası
+onu çalıştırmayı adım adım anlatır. Henüz bir apt deposu yok: bir sonraki sürümün `.deb`
+dosyasını kurarak yükseltin.
+
+  </TabItem>
+  <TabItem label="winget">
+
+Windows’ta:
+
+```powershell frame="terminal"
+winget install VerdinCMS.Verdin
+```
+
+winget, `verdin`’i yeni terminallerin `PATH`’ine ekler. winget olmadan sürümden `.zip` dosyasını
+indirin ve `verdin.exe`’yi `PATH`’inizde bir yere koyun.
+
+  </TabItem>
+  <TabItem label="cargo binstall">
+
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) ile Cargo, sürüm ikili dosyasını
+derlemek yerine indirir:
+
+```sh frame="terminal"
+cargo binstall --git https://github.com/verdin-cms/verdin verdin
+```
+
+  </TabItem>
+</Tabs>
+
+## Docker
+
+`ghcr.io/verdin-cms/verdin` imajı aynı ikili dosyayı `linux/amd64` ve `linux/arm64` üzerinde
+çalıştırır:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 --version
+```
+
+Volume’ler, yapılandırma ve Compose dosyaları için bkz. [Docker](/tr/deploy/docker/).
+
+## Kaynaktan
+
+Rust 1.95 veya üstü ve Node.js 24 ile (yönetim panelini derlemek için):
+
+```sh frame="terminal"
+git clone https://github.com/verdin-cms/verdin && cd verdin
+(cd admin && npm ci && npm run build)
+cargo install --locked --path crates/verdin --features embed-admin
+```
+
+`--features embed-admin` olmadan, `[admin].assets_dir`’i derlenmiş bir kopyaya yöneltmediğiniz
+sürece ikili dosyada yönetim paneli olmaz.
+
+## Bir indirmeyi elle doğrulama
+
+Her sürümde her arşivi ve paketi listeleyen bir `SHA256SUMS` dosyası vardır:
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS     # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
+```

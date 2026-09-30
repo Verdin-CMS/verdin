@@ -130,7 +130,10 @@ diğerlerine gösterir, ancak onların kaydetmesini engellemez. Presence okumak 
 
 ## Birden fazla örnek
 
-Olaylar ve presence, istemcinin bağlı olduğu örneğe (instance) aittir. Bir yük dengeleyicinin
-arkasında `/api/_events` ve `/admin/api/events` yollarını sticky session ile yönlendirin ya da
-gerçek zamanlı istemcileri tek bir örneğe karşı çalıştırın. Bkz.
-[Ölçekleme](/tr/deploy/scaling/).
+Paylaşılan olay veriyolu (`[cluster].bus = "database"`) ile her örneğin akışları hepsinin
+olaylarını taşır; presence ve yumuşak kilitler de her örnekte aynıdır. Başka bir örnekten gelen
+olaylar `[cluster].poll_interval_ms` içinde (MySQL, MariaDB, SQLite) ya da anında (PostgreSQL,
+`LISTEN/NOTIFY`) ulaşır. Veriyolu olmadan olaylar ve presence, istemcinin bağlı olduğu örneğe
+(instance) aittir: `/api/_events` ve `/admin/api/events` yollarını sticky session ile
+yönlendirin ya da gerçek zamanlı istemcileri tek bir örneğe karşı çalıştırın. Bkz.
+[Ölçekleme](/tr/deploy/scaling/#paylaşılan-olay-veriyolu).

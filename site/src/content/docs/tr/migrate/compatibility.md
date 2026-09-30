@@ -2,7 +2,7 @@
 title: Strapi uyumluluğu
 description: Verdin’in hangi Strapi v5 özelliklerini ve API’lerini desteklediği, kısmen desteklediği veya desteklemediği — REST, GraphQL, kullanıcılar ve izinler, yüklemeler, i18n, taslak ve yayınlama, kod uzantıları, yönetim paneli ve Enterprise özellikleri.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin, frontend’lerin ve içeriğin taşınabilmesi için Strapi v5’in içerik modelini ve içerik
@@ -58,7 +58,7 @@ kapsar; not eksik olanı söyler. **Desteklenmiyor**’un karşılığı yoktur.
 | Shadow CRUD (tip başına işlemleri devre dışı bırakma) | Destekleniyor | Özelliğin `disabled` ayarı. |
 | Özel resolver’lar ve şema uzantıları | Kısmi | Eklentilerin çözümlediği kök alanlar (`plugin.toml` içinde `[[graphql]]`); `extensionService` yok. |
 | Users & Permissions mutation’ları (`login`, `register`, `me`…) | Desteklenmiyor | REST rotalarını kullanın. |
-| Upload ve i18n sorguları/mutation’ları (`uploadFiles`, `i18NLocales`…) | Desteklenmiyor | REST rotalarını ve yönetim panelini kullanın. |
+| Upload ve i18n sorguları/mutation’ları (`uploadFiles`, `i18NLocales`…) | Desteklenmiyor | REST rotalarını (`GET /api/i18n/locales`) ve yönetim panelini kullanın. Yerelleştirilmiş tiplerde `localizations` desteklenir. |
 | Sınırlar, GraphiQL | Destekleniyor | `maxDepth`, `maxComplexity`, introspection ve oyun alanı anahtarları. |
 
 ## Users & Permissions (son kullanıcılar)
@@ -93,8 +93,8 @@ kapsar; not eksik olanı söyler. **Desteklenmiyor**’un karşılığı yoktur.
 | --- | --- | --- |
 | Yerelleştirilmiş tipler ve yerelleştirilmemiş alanlar | Destekleniyor | `pluginOptions.i18n.localized`, nitelik başına da. |
 | REST’te `?locale=`, GraphQL’de `locale` | Destekleniyor | Bilinmeyen bir dil `400`’dür. |
-| Yanıtlarda `localizations` | Desteklenmiyor | Başka bir dili aynı `documentId` ve `?locale=` ile okuyun. |
-| `GET /api/i18n/locales` | Desteklenmiyor | Diller admin’de yönetilir (**Ayarlar → Uluslararasılaştırma**). |
+| Yanıtlarda `localizations` | Destekleniyor | Yalnızca populate edildiğinde (`populate=localizations`, `populate=*`), bir ilişkiyle aynı seçeneklerle. Aynı zamanda bir GraphQL alanı. Admin API onu dışarıda bırakır. |
+| `GET /api/i18n/locales` | Destekleniyor | Strapi’nin biçiminde düz bir dizi. Strapi’nin `listLocales`’i gibi `plugin::i18n.locale` üzerinde `find` gerektirir (izin ızgarasının **Diller** satırı). `documentId` dil kodundan türetilir. Diller admin’de yönetilir (**Ayarlar → Uluslararasılaştırma**). |
 
 ## Taslak ve yayınlama
 
@@ -106,11 +106,14 @@ kapsar; not eksik olanı söyler. **Desteklenmiyor**’un karşılığı yoktur.
 
 ## Sunucu özelleştirmesi
 
+Bunların her birinin nasıl taşınacağı için bkz. [Özel kodu taşıma](/tr/migrate/porting-custom-code/).
+
 | Strapi | Durum | Verdin |
 | --- | --- | --- |
 | Lifecycle hook’ları, Document Service middleware’leri | Kısmi | Bir yazmayı değiştirebilen veya reddedebilen WebAssembly eklentilerinde before/after hook’ları. JavaScript yok. |
 | Özel controller’lar, servisler, rotalar | Kısmi | `/api/plugins/<name>/` altında eklenti rotaları. |
 | Policy’ler ve middleware’ler | Desteklenmiyor | İzinler ve hız sınırları yerleşiktir. |
+| `register` / `bootstrap` | Kısmi | Eklenti başladığında, açıldığında veya ayarları değiştiğinde çalışan bir eklentinin başlangıç fonksiyonu; içerik ekleyebilir ve herkese açık rolün izinlerini değiştirebilir. |
 | Cron görevleri | Kısmi | Eklenti görevleri. |
 | JavaScript’te Document Service / Entity Service | Desteklenmiyor | JavaScript çalışma zamanı yok. |
 | Strapi marketplace’inden npm eklentileri | Desteklenmiyor | |

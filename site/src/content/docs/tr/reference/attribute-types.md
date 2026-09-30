@@ -224,8 +224,10 @@ Kesin bir ondalık sayı.
 Değerler `scale` basamağa yuvarlanır (veritabanlarının yaptığı gibi sıfırdan uzağa yarım) ve
 noktadan önce `precision - scale` basamaktan fazlası olduğunda reddedilir. Yazmalar sayıları ve
 sayısal string’leri kabul eder. `numeric(precision,scale)` olarak saklanır (SQLite’ta `text`,
-böylece hiçbir şey yuvarlanmaz). API: bir sayı veya
-[`[api].decimal_as_string`](/tr/reference/configuration/) ile kesin bir string.
+böylece hiçbir şey yuvarlanmaz). API: Strapi’nin döndürdüğü gibi bir sayı. Tam değerler
+tamsayıdır (`25.0` değil, `25`), diğerleri geri okunduğunda aynı olan en kısa float’tır (`12.5`).
+[`[api].decimal_as_string`](/tr/reference/configuration/) ile API bunun yerine kesin bir string
+döndürür.
 
 ## Tarihler ve boolean’lar
 

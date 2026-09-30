@@ -2,7 +2,7 @@
 title: Verdin’i yükseltme
 description: Bir Verdin kurulumunu yükseltin — ikili dosya veya Docker imajı, başlangıçta çalışan migrasyonlar ve her minor sürümün dikkate değer veya uyumsuz değişiklikleri.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -115,6 +115,33 @@ sürdüğünden daha uzun süre yan yana çalıştırmayın.
 
 Sürüm başına dikkate değer ve uyumsuz değişiklikler, en eskisi en sonda. Tam liste
 [changelog](/tr/project/changelog/) içindedir.
+
+### 0.10 → 0.11
+
+Başlangıçta çalışan migrasyon yalnızca `[cluster] bus = "database"` olduğunda kullanılan bir
+tablo, `vd_cluster_events`, ekler.
+
+- **Ondalıklar**: tam `decimal` değerler, Strapi’nin döndürdüğü gibi JSON tamsayısı olarak
+  döner (`25.0` değil, `25`). JSON tipini sıkı denetleyen istemciler bunu fark edebilir;
+  `[api] decimal_as_string` değişmedi. SQLite’ta ondalıklar üzerindeki `sort` ve
+  `$gt`/`$lt`/`$between` artık metin yerine sayıları karşılaştırır; bu yüzden eski (yanlış)
+  sıraya dayanan sonuçlar değişir.
+- **Yerelleştirilmiş tiplerde `populate=*`** artık Strapi v5’teki gibi `localizations`’ı, yani
+  belgenin diğer dil sürümlerini de döndürür. `localizations` adlı bir şema niteliği anlamını
+  korur.
+- **Eklentiler**: bir eklentinin kendi yazmalarının tetiklediği after hook’ları yazmanın
+  içinde değil, çağrısı döndükten sonra çalışır ve yazan hook’lar en fazla 4 düzey iç içe
+  geçer. Host fonksiyonları çağrının zaman sınırında durur.
+- **Birden fazla örnek**: gerçek zamanlı akışların, presence’ın, yanıt önbelleğinin ve arama
+  dizininin diğerlerinde yapılan değişiklikleri izlemesi için her örnekte
+  `[cluster] bus = "database"` ayarlayın (bkz. [Ölçekleme](/tr/deploy/scaling/)).
+- **Admin listelerini okuyan betikler**: `GET /admin/api/users`, `/roles`, `/api-tokens`,
+  `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` ve
+  `/deploy/targets`, zaten sayfalanan listeler gibi `meta.pagination` ile, siz `pageSize`
+  (en fazla 100) vermedikçe 25 satır döndürür. `page` değeri `meta.pagination.pageCount`’a
+  ulaşana kadar `?page=` ile sayfaları gezin. `/deploy/deployments` son 50’yi döndürmek yerine
+  aynı şekilde sayfalanır; `limit` kullanımdan kaldırılmış bir `pageSize` takma adı olarak
+  hâlâ çalışır. Bkz. [Listeler](/tr/api/admin/#listeler).
 
 ### 0.9.1 → 0.10
 

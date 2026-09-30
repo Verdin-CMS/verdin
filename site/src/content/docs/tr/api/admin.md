@@ -92,6 +92,39 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   değil, bir sunucudan veya betikten çağırın.
 - Başarılı değişiklikler [denetim kaydına](/tr/guides/content/audit-logs/) yazılır.
 
+## Listeler
+
+Ayar listeleri `page` (1’den başlar) ve `pageSize` ile sayfalanır. Sayfanın satırlarını ve
+sayıları yanıtlarlar:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Liste | Varsayılan sayfa boyutu (en fazla) | Sıra | Diğer parametreler |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | En eski önce | |
+| `GET /webhooks` | 25 (100) | En eski önce | `meta.events`, bir webhook’un abone olabileceği olayları listeler |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | En yeni önce | |
+| `GET /releases` | 25 (100) | En yeni önce | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | Kaynağa göre | `search`, kaynağı veya hedefi eşleştirir |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | Ada göre | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | En yeni önce | |
+| `GET /deploy/targets` | 25 (100) | En eski önce | |
+| `GET /deploy/deployments` | 25 (100) | En yeni önce | `targetId`; `limit`, `pageSize`’ın kullanımdan kaldırılmış takma adıdır |
+| `GET /end-users` | 25 (100) | En yeni önce | `search`, kullanıcı adını veya e-postayı eşleştirir |
+| `GET /audit-logs` | 50 (200) | En yeni önce | Bkz. [Denetim kayıtları](/tr/guides/content/audit-logs/) |
+
+Daha büyük bir `pageSize` en yüksek değere indirilir. Bir listenin tamamını okumak için
+`page`, `pageCount` değerine ulaşana kadar sayfaları isteyin:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+İçerik rotaları REST API gibi, `pagination[page]` ve `pagination[pageSize]` ile sayfalanır.
+
 ## Rota grupları
 
 Yollar `/admin/api`’ye görelidir. Router’lar

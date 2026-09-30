@@ -1,13 +1,13 @@
 ---
 title: İzleme
-description: Çalışan bir Verdin örneğini izleyin — /_health ve /_ready denetimleri, /_metrics adresindeki Prometheus metrikleri ve token’ı, günlük biçimi, düzeyler ve istek kimlikleri.
+description: Çalışan bir Verdin örneğini izleyin — /_health ve /_ready denetimleri, /_metrics adresindeki Prometheus metrikleri ve bir Grafana panosu, OpenTelemetry trace’leri, Sentry hata raporları, günlük biçimi, düzeyler ve istek kimlikleri.
 sidebar:
   order: 10
 ---
 
-Bir Verdin örneği kendisi hakkında iki sağlık uç noktası, isteğe bağlı Prometheus metrikleri ve
-yapılandırılmış günlükler aracılığıyla rapor verir. Bu sayfa her birinin ne döndürdüğünü ve
-nasıl açılacağını listeler.
+Bir Verdin örneği kendisi hakkında iki sağlık uç noktası, isteğe bağlı Prometheus metrikleri,
+isteğe bağlı OpenTelemetry trace’leri ve Sentry hata raporları ile yapılandırılmış günlükler
+aracılığıyla rapor verir. Bu sayfa her birinin ne döndürdüğünü ve nasıl açılacağını listeler.
 
 ## Sağlık denetimleri
 
@@ -62,18 +62,91 @@ Birden fazla örnekle her birini scrape edin: her örnek kendi isteklerini sayar
 | --- | --- | --- | --- |
 | `verdin_http_requests_total` | counter | `area`, `method`, `status` | Sunulan HTTP istekleri. |
 | `verdin_http_request_duration_seconds` | histogram | `area`, `method`, `status` | İstekleri sunma süresi. 5 ms’den 10 sn’ye kadar bucket’lar. |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | [Eklenti](/tr/extending/plugins/) fonksiyonlarının harcadığı süre. Aynı bucket’lar. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Başarısız eklenti çağrıları: bir trap, zaman aşımı, JSON olmayan çıktı veya bir başlangıç fonksiyonunun `{ error }` değeri. |
 | `verdin_webhook_deliveries_pending` | gauge | | Gönderilmeyi bekleyen webhook teslimleri. |
 | `verdin_realtime_subscribers` | gauge | | Açık gerçek zamanlı olay akışları. |
+| `verdin_cluster_events_total` | counter | `direction` | `[cluster].bus` ayarlıyken [paylaşılan olay veriyolundaki](/tr/deploy/scaling/#paylaşılan-olay-veriyolu) olaylar: diğer örneklere `sent`, onlardan `received`, `dropped` (dolu bir kuyruk veya başarısız bir yazma). |
 | `verdin_uptime_seconds` | gauge | | Süreç başladığından beri geçen saniye. |
 | `verdin_build_info` | gauge | `version` | Her zaman 1; çalışan sürüm. |
 
 `area`, sunucunun bölümüdür: `api` (içerik API’si), `admin_api`, `admin` (panelin dosyaları),
 `graphql`, `mcp`, `uploads`, `internal` (`/_` ile başlayan yollar) veya `other`. `status`,
 durum sınıfıdır: `2xx`, `3xx`, `4xx` veya `5xx`.
+Eklenti çağrılarında `kind` değeri `hook`, `route`, `job`, `startup` veya `graphql`’dir;
+eklenti serileri ilk çağrıdan sonra görünür (bkz.
+[eklenti başvurusu](/tr/extending/plugin-reference/#metrikler)).
 
 Yararlı uyarılar: `/_ready`’nin başarısız olması, `5xx` payının artması,
-`verdin_webhook_deliveries_pending` değerinin büyümesi (bir webhook hedefi çökmüş) ve
-`verdin_uptime_seconds` değerinin sıfırlanması (yeniden başlatmalar).
+`verdin_webhook_deliveries_pending` değerinin büyümesi (bir webhook hedefi çökmüş),
+`verdin_plugin_call_errors_total` değerinin artması veya yavaş eklenti hook’ları (üzerinde
+çalıştıkları yazmaları geciktirirler) ve `verdin_uptime_seconds` değerinin sıfırlanması
+(yeniden başlatmalar).
+
+### Grafana panosu
+
+[`docker/grafana/verdin.json`](https://github.com/Verdin-CMS/verdin/blob/main/docker/grafana/verdin.json),
+bu metrikler için bir panodur: istek hızı, `5xx` payı ve alana, metoda ve durum sınıfına göre
+gecikme kuantilleri, bekleyen webhook teslimleri, gerçek zamanlı aboneler, olay veriyolu
+trafiği ve eklenti fonksiyonu başına eklenti çağrı hızı, p95 ve hatalar. Grafana’da içe
+aktarın (**Dashboards → New → Import**) ve Prometheus veri kaynağınızı seçin; en üstteki
+`instance` ve `area` değişkenleri her paneli filtreler.
+
+## Trace’ler (OpenTelemetry)
+
+Verdin her isteğin izini, OTLP/HTTP üzerinden bir OpenTelemetry collector’a (OpenTelemetry
+Collector, Grafana Alloy veya Tempo, Jaeger, Honeycomb, Datadog…) aktarabilir. Varsayılan
+olarak kapalıdır:
+
+```toml title="verdin.toml"
+[telemetry]
+enabled = true
+endpoint = "http://otel-collector:4318"
+```
+
+Standart değişkenler de çalışır ve dosyaya üstün gelir:
+
+```sh
+VERDIN_TELEMETRY__ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=<key>
+OTEL_SERVICE_NAME=cms-production
+```
+
+Her iz şunları içerir:
+
+- **Bir istek span’i** (tür `server`), metoddan ve id’lerin `{id}` ile değiştirildiği yoldan
+  adlandırılır (`PUT /api/articles/{id}`); `http.response.status_code` ve `5xx`’te bir hata
+  durumu taşır. W3C `traceparent` başlığı olan bir istek çağıranın izine katılır.
+- **Veritabanı ifadesi başına bir span** (tür `client`), onun altında: `db.system.name`
+  (`postgresql`, `mysql`, `mariadb` veya `sqlite`) ve `db.query.text`, yani `?`
+  yer tutucularıyla SQL. Bağlanan değerler asla kaydedilmez; böylece içerik, parolalar ve
+  token’lar izlerin dışında kalır. `COMMIT` ve `ROLLBACK`’in kendi span’leri vardır ve
+  SQLite’ta bir `write lock` span’i, bir yazmanın önündeki yazarları ne kadar beklediğini
+  gösterir.
+- İstek sunulurken yazılan günlük olayları, span olayları olarak.
+
+Bir istek dışında çalışan ifadeler (başlangıç, migrasyonlar, arka plan görevleri) izlenmez.
+`[telemetry].sample_ratio` izlerin bir payını tutar (`0.1` ondan birini tutar); span’ler
+gruplar hâlinde gönderilir ve sunucu durduğunda boşaltılır. Günlük düzeyi izleri
+filtrelemez: `[log].level = "warn"` yine de her isteği aktarır.
+
+## Hata raporlama (Sentry)
+
+Panik’leri ve `5xx` yanıtlarını [Sentry](https://sentry.io)’ye (veya GlitchTip gibi Sentry
+uyumlu bir servise) göndermek için bir DSN ayarlayın:
+
+```sh
+SENTRY_DSN=https://<key>@o0.ingest.sentry.io/<project>
+```
+
+`[telemetry].sentry_dsn` de çalışır; değişken üstün gelir. Bir `5xx`, `http.method`,
+`http.status_code` ve `request_id` ile etiketlenmiş `POST /api/articles answered 500` hata
+olayı olarak gelir; `request_id`, `X-Request-Id` başlığıyla ve o isteğin günlük satırlarıyla
+eşleşir. Olaylar sürüm olarak Verdin sürümünü, ortam olarak `production` (`verdin start`)
+veya `development` (`verdin dev`) değerini taşır; `SENTRY_ENVIRONMENT` veya
+`[telemetry].sentry_environment` başka bir ad vermedikçe. URL’ler, günlüklerdeki gibi gizli
+görünen sorgu değerleri gizlenerek raporlanır; istek gövdeleri ve başlıkları asla gönderilmez.
 
 ## Günlükler
 
