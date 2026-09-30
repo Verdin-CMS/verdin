@@ -127,7 +127,7 @@ INDEX  (target_document_id)
 | 관리자 | `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions`(리프레시 토큰), `vd_admin_tokens`(초대와 재설정 링크), `vd_admin_two_factor`, `vd_admin_passkeys`, `vd_spent_challenges` |
 | 콘텐츠 API 접근 | `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` |
 | 최종 사용자 | `vd_users`, `vd_user_roles`, `vd_user_role_permissions`, `vd_end_user_sessions` |
-| 인스턴스 | `vd_settings`(기능 스위치, 편집 보기 레이아웃, 일회성 업그레이드 표시), `vd_locales` |
+| 인스턴스 | `vd_settings`(기능 스위치, 편집 보기 레이아웃, 일회성 업그레이드 표시), `vd_locales`, `vd_cluster_events`(공유 이벤트 버스, [여러 인스턴스](/ko/deploy/scaling/) 참고) |
 | 미디어 | `vd_files`, `vd_folders` |
 | 콘텐츠 워크플로 | `vd_history_versions`, `vd_releases`, `vd_release_actions`, `vd_workflows`, `vd_workflow_stages`, `vd_document_stages` |
 | 협업 | `vd_comments`, `vd_tasks`, `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` |

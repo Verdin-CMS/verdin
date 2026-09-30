@@ -111,8 +111,8 @@ Verdin은 암호화된 내보내기(`.tar.gz.enc`)를 읽을 수 없습니다. `
 
 전혀 가져오지 않는 것: 관리자 사용자와 관리자 역할, API 토큰, transfer 토큰, 웹훅, 릴리스, 검토 워크플로 단계, 콘텐츠
 기록과 감사 로그, Strapi 플러그인의 설정. Strapi 코드(컨트롤러, 서비스, 라우트, 정책, 미들웨어, 라이프사이클 훅, cron
-작업, 관리자 사용자 정의)는 변환할 Verdin 대응물이 없습니다. [사용자 정의 코드 다시 만들기](#사용자-정의-코드-다시-만들기)를
-참고하세요.
+작업, 관리자 사용자 정의)는 변환되지 않습니다. [사용자 정의 코드 다시 만들기](#사용자-정의-코드-다시-만들기)에 설명된
+대로 다시 만드세요.
 
 <Aside type="note">
 사용자 정의 필드는 `plugin::color-picker.color` 같은 `customField` 이름을 유지합니다. 편집기는 그 필드를 제공하는
@@ -179,11 +179,17 @@ CMS 밖에 저장된 id를 다시 쓸 때 쓰세요. 프런트엔드 코드의 �
 
 ## 사용자 정의 코드 다시 만들기
 
+`src/`의 코드는 [WebAssembly 플러그인](/ko/extending/plugins/)으로 옮깁니다. [사용자 정의 코드
+이식](/ko/migrate/porting-custom-code/)에서는 실제 프로젝트의 라이프사이클, 라우트, cron 작업, `bootstrap`을 예제
+플러그인과 함께 차근차근 살펴봅니다.
+
 | Strapi | Verdin |
 | --- | --- |
-| 라이프사이클 훅, document service 미들웨어 | [WebAssembly 플러그인](/ko/extending/plugins/)의 플러그인 훅(`beforeCreate`, `afterUpdate`…) |
+| 라이프사이클 훅, document service 미들웨어 | 플러그인 훅(`beforeCreate`, `afterUpdate`…) |
 | 사용자 정의 라우트와 컨트롤러 | `/api/plugins/<name>/` 아래의 플러그인 라우트 |
+| `src/index.js`의 `bootstrap()`(시딩, 공개 권한 설정) | 플러그인의 시작 함수(`[startup]`), 공개 역할에는 `public_permissions` 권한 |
 | Cron 작업 | 플러그인 작업(`[[jobs]]`) |
+| 폼 제출을 저장하는 사용자 정의 엔드포인트 | 기본 제공 [폼](/ko/guides/frontend/forms/) |
 | 사용자 정의 필드 | 플러그인 사용자 정의 필드 |
 | 관리자 위젯 | 플러그인 위젯, 또는 기본 제공 대시보드 위젯 |
 | 관리자 로고, 색상, 텍스트 | `verdin.toml`의 `[admin.branding]` |

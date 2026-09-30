@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 설정은 계층으로 이루어집니다: **기본값 ← `verdin.toml` ← 환경 변수**. 파일은 선택 사항이며 모든 키에 기본값이 있습니다.
@@ -228,8 +229,21 @@ provider = { name = "s3", bucket = "media", region = "auto",
 
 | 키 | 기본값 | 설명 |
 | --- | --- | --- |
-| `enabled` | `false` | `/_metrics`에서 Prometheus 메트릭을 제공합니다: 영역(`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), 메서드, 상태 클래스별 HTTP 요청과 지연 시간 히스토그램, 대기 중인 웹훅 전송, 열린 실시간 스트림, 가동 시간. |
+| `enabled` | `false` | `/_metrics`에서 Prometheus 메트릭을 제공합니다: 영역(`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), 메서드, 상태 클래스별 HTTP 요청과 지연 시간 히스토그램, 대기 중인 웹훅 전송, 열린 실시간 스트림, 이벤트 버스 트래픽, 가동 시간. |
 | `token` | 설정 안 됨 | 스크레이프에 `Authorization: Bearer <token>`이 필요합니다. `VERDIN_METRICS_TOKEN`이 우선합니다. 토큰이 없으면 포트에 접근할 수 있는 누구나 메트릭을 읽을 수 있습니다. |
+
+## `[telemetry]`
+
+트레이스와 오류 보고. 둘 다 기본적으로 꺼져 있으며 `verdin start`와 `verdin dev`에서만 쓰입니다([모니터링](/ko/deploy/monitoring/#트레이스-opentelemetry) 참고).
+
+| 키 | 기본값 | 설명 |
+| --- | --- | --- |
+| `enabled` | `false` | HTTP 요청과 그 데이터베이스 쿼리의 OpenTelemetry 트레이스를 OTLP/HTTP(protobuf)로 내보냅니다. `OTEL_SDK_DISABLED=true`가 끕니다. |
+| `endpoint` | 설정 안 됨(`http://localhost:4318`) | 컬렉터 기본 URL. `/v1/traces`가 덧붙습니다. `OTEL_EXPORTER_OTLP_ENDPOINT`(기본 URL)와 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`(전체 URL)가 우선합니다. |
+| `service_name` | `"verdin"` | 트레이스의 `service.name`. `OTEL_SERVICE_NAME`이 우선합니다. |
+| `sample_ratio` | `1.0` | 유지할 트레이스의 비율, `0.0`부터 `1.0`까지. `traceparent` 헤더가 있는 요청은 호출자의 결정을 따릅니다. |
+| `sentry_dsn` | 설정 안 됨 | 패닉과 5xx 응답을 Sentry에 보고합니다. `SENTRY_DSN`이 우선합니다. |
+| `sentry_environment` | 설정 안 됨 | Sentry 환경. `SENTRY_ENVIRONMENT`가 우선하며, 설정하지 않으면 `verdin start`에서는 `production`, `verdin dev`에서는 `development`. |
 
 ## `[ai]`
 
@@ -275,8 +289,25 @@ API 토큰은 `VERDIN_CDN_TOKEN`에서 읽습니다(웹훅에는 bearer 토큰�
 | `dir` | `"data/search"` | 프로젝트 기준 인덱스 디렉터리. 삭제하면 다음 시작 때 인덱스를 다시 만듭니다. |
 | `memory_mb` | `50` | 인덱싱 메모리 예산. |
 
-인덱스는 인스턴스의 디스크에 있으며 그 인스턴스의 쓰기를 따라갑니다. 인스턴스가 여러 개면 검색을 하나에만 두세요(또는 배포
-후 다시 만드세요).
+인덱스는 인스턴스의 디스크에 있습니다. 인스턴스가 여러 개면 [이벤트 버스](#cluster)를 켜서 각 인덱스가 모든
+인스턴스의 쓰기를 따라가게 하세요.
+
+## `[cluster]`
+
+한 프로젝트의 여러 인스턴스를 위한 공유 이벤트 버스입니다([여러 인스턴스 실행](/ko/deploy/scaling/#공유-이벤트-버스) 참고).
+
+| 키 | 기본값 | 설명 |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`: 실시간 이벤트, 프레즌스, 캐시 무효화, 검색 업데이트가 각 인스턴스에 머뭅니다. `database`: 프로젝트의 데이터베이스를 통해 모든 인스턴스에 도달합니다(PostgreSQL은 `LISTEN/NOTIFY`, MySQL, MariaDB, SQLite는 폴링). |
+| `poll_interval_ms` | `1000` | MySQL, MariaDB, SQLite가 다른 인스턴스의 이벤트를 읽는 주기. PostgreSQL은 `NOTIFY`로 깨어나며, 리스닝할 수 없는 동안에만 이 간격을 씁니다. |
+| `instance_id` | 설정 안 됨(시작할 때마다 무작위) | 버스와 로그에서 이 인스턴스의 이름. |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+모든 인스턴스에 설정하거나, `VERDIN_CLUSTER__BUS=database`로 설정하세요.
 
 ## 환경 변수
 
@@ -297,5 +328,9 @@ API 토큰은 `VERDIN_CDN_TOKEN`에서 읽습니다(웹훅에는 bearer 토큰�
 | `VERDIN_CDN_TOKEN` | `[cdn]` 제공업체의 API 토큰. |
 | `VERDIN_IMAGE_SECRET` | 이미지 변환 URL에 서명합니다([`[upload.transforms]`](#uploadtransforms) 참고). |
 | `VERDIN_METRICS_TOKEN` | `[metrics].enabled`일 때 `/_metrics` 스크레이프용 bearer 토큰. `[metrics].token`보다 우선합니다. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | [`[telemetry]`](#telemetry) 트레이스의 컬렉터. `[telemetry].endpoint`보다 우선합니다. 다른 표준 `OTEL_EXPORTER_OTLP_*` 변수(헤더, 타임아웃, 압축)도 적용됩니다. |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | 내보내는 트레이스의 리소스. `OTEL_SERVICE_NAME`이 `[telemetry].service_name`보다 우선합니다. |
+| `OTEL_SDK_DISABLED` | `true`이면 `[telemetry].enabled`여도 트레이스 내보내기를 끕니다. |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT` | Sentry 오류 보고. `[telemetry].sentry_dsn`과 `sentry_environment`보다 우선합니다. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | S3 업로드 프로바이더의 자격 증명. |
 | `RUST_LOG` | 로그 필터. `[log].level`보다 우선합니다. |

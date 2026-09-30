@@ -87,6 +87,38 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   서버나 스크립트에서 호출하세요.
 - 성공한 변경은 [감사 로그](/ko/guides/content/audit-logs/)에 기록됩니다.
 
+## 목록
+
+설정 목록은 `page`(1부터)와 `pageSize`로 페이지를 나눕니다. 응답에는 해당 페이지의 행과 개수가 들어 있습니다.
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| 목록 | 기본 페이지 크기(최대) | 순서 | 기타 파라미터 |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | 오래된 순 | |
+| `GET /webhooks` | 25 (100) | 오래된 순 | `meta.events`는 웹훅이 구독할 수 있는 이벤트를 나열합니다 |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | 최신순 | |
+| `GET /releases` | 25 (100) | 최신순 | `status`(`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | 소스순 | `search`는 소스나 대상과 일치합니다 |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | 이름순 | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | 최신순 | |
+| `GET /deploy/targets` | 25 (100) | 오래된 순 | |
+| `GET /deploy/deployments` | 25 (100) | 최신순 | `targetId`. `limit`은 `pageSize`의 지원 중단된 별칭입니다 |
+| `GET /end-users` | 25 (100) | 최신순 | `search`는 사용자 이름이나 이메일과 일치합니다 |
+| `GET /audit-logs` | 50 (200) | 최신순 | [감사 로그](/ko/guides/content/audit-logs/) 참고 |
+
+`pageSize`가 최대값보다 크면 최대값으로 낮춰집니다. 목록 전체를 읽으려면 `page`가 `pageCount`에 이를 때까지
+페이지를 요청하세요.
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+콘텐츠 라우트는 REST API처럼 `pagination[page]`와 `pagination[pageSize]`로 페이지를 나눕니다.
+
 ## 라우트 그룹
 
 경로는 `/admin/api` 기준 상대 경로입니다. 라우터는

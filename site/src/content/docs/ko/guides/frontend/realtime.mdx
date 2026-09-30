@@ -127,8 +127,10 @@ async function subscribe(token, onEvent) {
 
 ## 로드 밸런서 뒤에서
 
-이벤트는 클라이언트가 연결된 인스턴스의 것입니다. 인스턴스가 여러 개면 `/api/_events`에 sticky 세션을 쓰거나, 실시간
-클라이언트를 인스턴스 하나로 보내세요. [확장](/ko/deploy/scaling/)을 참고하세요.
+인스턴스가 여러 개면 공유 이벤트 버스(`[cluster].bus = "database"`)를 켜세요. 그러면 어느 인스턴스에 연결된
+클라이언트든 모든 인스턴스의 이벤트를 받습니다. 버스가 없으면 이벤트는 클라이언트가 연결된 인스턴스의 것입니다.
+`/api/_events`에 sticky 세션을 쓰거나, 실시간 클라이언트를 인스턴스 하나로 보내세요.
+[확장](/ko/deploy/scaling/#공유-이벤트-버스)을 참고하세요.
 
 관리자 패널은 편집 중 실시간 업데이트, 프레즌스, 소프트 잠금을 위해 자체 스트림(`/admin/api/events`)을 씁니다.
 [Realtime API 레퍼런스](/ko/api/realtime/)를 참고하세요.

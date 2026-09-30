@@ -2,7 +2,7 @@
 title: Strapi 호환성
 description: Verdin이 지원하거나, 일부 지원하거나, 지원하지 않는 Strapi v5 기능과 API — REST, GraphQL, 사용자와 권한, 업로드, i18n, 초안과 게시, 코드 확장, 관리자 패널, Enterprise 기능.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin은 프런트엔드와 콘텐츠를 옮겨 올 수 있도록 Strapi v5의 콘텐츠 모델과 콘텐츠 API를 유지합니다
@@ -57,7 +57,7 @@ JavaScript 런타임이 없으므로 사용자 정의 코드는 WebAssembly 플�
 | Shadow CRUD(타입별 작업 비활성화) | 지원 | 기능의 `disabled` 설정. |
 | 사용자 정의 resolver와 스키마 확장 | 일부 지원 | 플러그인이 해석하는 루트 필드(`plugin.toml`의 `[[graphql]]`). `extensionService`는 없음. |
 | Users & Permissions 뮤테이션(`login`, `register`, `me`…) | 지원 안 함 | REST 라우트를 쓰세요. |
-| 업로드와 i18n 쿼리·뮤테이션(`uploadFiles`, `i18NLocales`…) | 지원 안 함 | REST 라우트와 관리자 패널을 쓰세요. |
+| 업로드와 i18n 쿼리·뮤테이션(`uploadFiles`, `i18NLocales`…) | 지원 안 함 | REST 라우트(`GET /api/i18n/locales`)와 관리자 패널을 쓰세요. 로컬라이즈된 타입의 `localizations`는 지원됩니다. |
 | 한도, GraphiQL | 지원 | `maxDepth`, `maxComplexity`, 인트로스펙션과 플레이그라운드 스위치. |
 
 ## Users & Permissions (최종 사용자)
@@ -92,8 +92,8 @@ JavaScript 런타임이 없으므로 사용자 정의 코드는 WebAssembly 플�
 | --- | --- | --- |
 | 로컬라이즈된 타입과 로컬라이즈되지 않는 필드 | 지원 | `pluginOptions.i18n.localized`, 속성별로도 가능. |
 | REST의 `?locale=`, GraphQL의 `locale` | 지원 | 알 수 없는 로케일은 `400`. |
-| 응답의 `localizations` | 지원 안 함 | 같은 `documentId`와 `?locale=`로 다른 로케일을 읽으세요. |
-| `GET /api/i18n/locales` | 지원 안 함 | 로케일은 관리자 패널(**설정 → 국제화**)에서 관리합니다. |
+| 응답의 `localizations` | 지원 | populate할 때만(`populate=localizations`, `populate=*`), 관계와 같은 옵션으로. GraphQL 필드이기도 합니다. admin API에는 없습니다. |
+| `GET /api/i18n/locales` | 지원 | Strapi 형태의 일반 배열. Strapi의 `listLocales`처럼 `plugin::i18n.locale`에 대한 `find`(권한 그리드의 **Locales** 행)가 필요합니다. `documentId`는 로케일 코드에서 파생됩니다. 로케일은 관리자 패널(**설정 → 국제화**)에서 관리합니다. |
 
 ## 초안과 게시
 
@@ -105,11 +105,14 @@ JavaScript 런타임이 없으므로 사용자 정의 코드는 WebAssembly 플�
 
 ## 서버 사용자 정의
 
+각 항목을 옮기는 방법은 [사용자 정의 코드 이식](/ko/migrate/porting-custom-code/)을 참고하세요.
+
 | Strapi | 상태 | Verdin |
 | --- | --- | --- |
 | 라이프사이클 훅, Document Service 미들웨어 | 일부 지원 | 쓰기를 바꾸거나 거부할 수 있는 WebAssembly 플러그인의 before/after 훅. JavaScript는 없음. |
 | 사용자 정의 컨트롤러, 서비스, 라우트 | 일부 지원 | `/api/plugins/<name>/` 아래의 플러그인 라우트. |
 | 정책과 미들웨어 | 지원 안 함 | 권한과 요청 한도는 내장되어 있습니다. |
+| `register` / `bootstrap` | 일부 지원 | 플러그인이 시작되거나, 켜지거나, 설정이 바뀔 때 실행되는 플러그인의 시작 함수. 콘텐츠를 시딩하고 공개 역할의 권한을 교체할 수 있습니다. |
 | Cron 작업 | 일부 지원 | 플러그인 작업. |
 | JavaScript의 Document Service / Entity Service | 지원 안 함 | JavaScript 런타임이 없습니다. |
 | Strapi 마켓플레이스의 npm 플러그인 | 지원 안 함 | |

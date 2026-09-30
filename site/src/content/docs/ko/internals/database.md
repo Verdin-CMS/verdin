@@ -85,7 +85,7 @@ Verdin은 ORM이나 `sea-query` 대신 자체의 작은 빌더로 SQL을 만듭�
 | date, time, datetime | `date`, `time(3)`, `timestamptz(3)` | `date`, `time(3)`, `datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite는 decimal, 날짜, 시간을 고정 형식 텍스트로 저장하므로 반올림되는 것이 없고, 텍스트 순서가 숫자 순서와 시간 순서와 일치합니다. 어떤 속성이 어떤 모델 타입에 대응하는지는 [속성 타입](/ko/reference/attribute-types/)에 있습니다.
+SQLite는 날짜와 시간을 고정 형식 텍스트로 저장하므로 텍스트 순서가 시간 순서와 일치합니다. decimal도 텍스트로 저장하므로 저장할 때 반올림되는 것이 없습니다. 하지만 decimal은 텍스트 순서가 숫자 순서가 아니므로, SQLite에서 decimal에 대한 필터와 정렬은 컬럼을 `REAL`로 캐스팅합니다. 이 비교는 유효숫자 약 15자리까지 정확하며, 반환되는 값은 여전히 정확합니다. 어떤 속성이 어떤 모델 타입에 대응하는지는 [속성 타입](/ko/reference/attribute-types/)에 있습니다.
 
 MySQL과 MariaDB 테이블은 `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`와 악센트·대소문자를 구분하지 않는 collation으로 만듭니다: MySQL은 `utf8mb4_0900_ai_ci`, MariaDB는 `utf8mb4_uca1400_ai_ci`.
 

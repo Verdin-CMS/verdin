@@ -216,7 +216,7 @@ slug 같은 URL용 식별자. 관리자 패널이 `targetField`에서 생성합�
 
 값은 `scale` 자리로 반올림하며(데이터베이스처럼 0에서 먼 쪽으로 반올림), 소수점 앞 자릿수가 `precision - scale`보다 많으면
 거부합니다. 쓰기는 숫자와 숫자 문자열을 받습니다. `numeric(precision,scale)`로 저장합니다(SQLite는 반올림되지 않도록
-`text`). API: 숫자, 또는 [`[api].decimal_as_string`](/ko/reference/configuration/)이면 정확한 문자열.
+`text`). API: Strapi처럼 숫자. 정수 값은 정수(`25`, `25.0`이 아님)이고, 그 밖의 값은 다시 읽어도 같은 가장 짧은 부동소수점(`12.5`)입니다. [`[api].decimal_as_string`](/ko/reference/configuration/)이면 API는 대신 정확한 문자열을 반환합니다.
 
 ## 날짜와 불리언
 

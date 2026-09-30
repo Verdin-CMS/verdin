@@ -153,6 +153,62 @@ const { data } = await verdin.collection('articles').find({ locale: 'fr' });
   마찬가지입니다. 로컬라이즈되지 않은 대상은 모든 로케일이 공유합니다.
 - 웹훅 페이로드와 기록 버전은 로케일을 기록합니다.
 
-Strapi와 달리 콘텐츠 API에는 `/api/i18n/locales` 라우트가 없습니다. 로케일은 admin API의
-`GET /admin/api/i18n/locales`에 나열되며, `POST`, `PUT /admin/api/i18n/locales/{code}`,
-`DELETE /admin/api/i18n/locales/{code}`(`locales.manage`)로 관리합니다.
+### 다른 로케일 버전
+
+`localizations`를 populate하면 Strapi v5처럼 문서의 다른 로케일 버전을 함께 가져옵니다. populate할 때만,
+즉 `populate=localizations`나 `populate=*`일 때만 반환됩니다.
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- 버전은 문서와 같은 상태입니다. 기본값은 게시된 버전이고, `status=draft`이면 초안입니다. 초안만 있는 로케일은
+  게시 읽기에서 빠집니다.
+- `localizations`는 populate한 관계의 옵션(`fields`, `filters`, `sort`, `populate`, `count`)을 받습니다. 예:
+  `populate[localizations][fields][0]=title`. 각 버전에는 항상 `locale`이 들어 있고, 그 버전의 관계는 그 버전의
+  로케일로 읽습니다.
+- GraphQL에는 로컬라이즈된 타입에 `filters`와 `sort`를 가진 `localizations` 필드가 있습니다.
+- 로컬라이즈되지 않은 타입에는 `localizations`가 없으며, populate하면 `400`입니다.
+- admin API는 `localizations`를 제외합니다.
+
+### 로케일 목록
+
+`GET /api/i18n/locales`는 로케일을 Strapi 형태로, `data` 봉투 없는 일반 배열로 나열합니다.
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+Strapi의 `listLocales`처럼 이 라우트는 허용하기 전까지 공개적으로는 닫혀 있습니다. **설정 → 공개 액세스**,
+최종 사용자 역할, 또는 사용자 정의 API 토큰에서 **Locales** 행(`plugin::i18n.locale`)에 `find`를 부여하세요.
+전체 액세스 토큰과 읽기 전용 토큰은 이미 읽을 수 있습니다. `documentId`는 로케일 코드에서 파생되므로 재시작과
+내보내기 사이에도 같습니다. Strapi 가져오기는 `listLocales` 권한도 함께 가져옵니다. 타입이 있는 클라이언트는
+`verdin.locales()`로 목록을 읽습니다.
+
+로케일은 admin API에서 관리합니다. `GET /admin/api/i18n/locales`로 나열하고, `POST`,
+`PUT /admin/api/i18n/locales/{code}`, `DELETE /admin/api/i18n/locales/{code}`(`locales.manage`)로 바꿉니다.

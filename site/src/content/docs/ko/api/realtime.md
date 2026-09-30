@@ -123,6 +123,9 @@ POST /admin/api/presence
 
 ## 여러 인스턴스
 
-이벤트와 프레즌스는 클라이언트가 연결된 인스턴스의 것입니다. 로드 밸런서 뒤에서는 `/api/_events`와
+공유 이벤트 버스(`[cluster].bus = "database"`)를 켜면 모든 인스턴스의 스트림이 전체 인스턴스의 이벤트를
+전달하고, 프레즌스와 소프트 잠금도 모든 인스턴스에서 같습니다. 다른 인스턴스의 이벤트는
+`[cluster].poll_interval_ms` 이내에(MySQL, MariaDB, SQLite) 또는 즉시(PostgreSQL, `LISTEN/NOTIFY`) 도착합니다.
+버스가 없으면 이벤트와 프레즌스는 클라이언트가 연결된 인스턴스의 것입니다. `/api/_events`와
 `/admin/api/events`를 sticky 세션으로 라우팅하거나, 실시간 클라이언트를 한 인스턴스에만 연결하세요.
-[확장](/ko/deploy/scaling/)을 참고하세요.
+[확장](/ko/deploy/scaling/#공유-이벤트-버스)을 참고하세요.

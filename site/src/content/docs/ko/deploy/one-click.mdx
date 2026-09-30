@@ -1,0 +1,101 @@
+---
+title: 원클릭 배포
+description: 이 저장소의 파일로 Verdin의 스타터(블로그 예제)를 Render, DigitalOcean App Platform, Railway, Fly.io, Coolify에 배포한 뒤, 자신의 스키마로 포크합니다.
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+저장소에는 여러 플랫폼용 배포 파일이 있습니다. 모두
+[`deploy/one-click/Dockerfile`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/Dockerfile)을
+빌드합니다. 공식 이미지에 [블로그 예제](https://github.com/verdin-cms/verdin/tree/main/examples/blog)의
+스키마와 작은 설정을 더한 것입니다. 그러면 몇 분 만에 Verdin이 실행됩니다.
+
+<Aside>
+배포된 서버는 `start --migrate`를 실행하므로 콘텐츠 타입 빌더는 꺼져 있고, 스키마는 이미지에서 옵니다. 자신의
+프로젝트라면 **저장소를 포크**하고 `examples/blog/schema`를 자신의 스키마로 바꾼 뒤(또는 Dockerfile의 `COPY`
+줄을 바꾸고) 포크를 배포하세요. 플랫폼 페이지([Render](/ko/deploy/render/), [Railway](/ko/deploy/railway/),
+[Fly.io](/ko/deploy/fly/))는 자신의 저장소에서 같은 구성을 보여 줍니다.
+</Aside>
+
+파일은 2026-09-30에 각 플랫폼의 레퍼런스와 대조해 확인했으며, 실제 계정에 배포한 것은 없습니다.
+
+| 플랫폼 | 파일 | 데이터베이스 | 미디어 |
+| --- | --- | --- | --- |
+| Render | [`render.yaml`](https://github.com/verdin-cms/verdin/blob/main/render.yaml) | Render PostgreSQL | `/data`의 1 GB 디스크 |
+| DigitalOcean | [`.do/deploy.template.yaml`](https://github.com/verdin-cms/verdin/blob/main/.do/deploy.template.yaml) | 개발용 PostgreSQL | Spaces(App Platform에는 디스크가 없음) |
+| Railway | [`deploy/one-click/railway.json`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/railway.json) | Railway PostgreSQL | `/data`의 볼륨 |
+| Fly.io | [`deploy/one-click/fly.toml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/fly.toml) | 볼륨의 SQLite | `/data`의 볼륨 |
+| Coolify | [`deploy/one-click/compose.coolify.yaml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/compose.coolify.yaml) | PostgreSQL 서비스 | `/data`의 볼륨 |
+
+Dockerfile은 `USER root`로 끝납니다. 이 플랫폼들은 root가 소유한 볼륨을 마운트하므로 이미지의 사용자(uid
+`65532`)가 쓸 수 없기 때문입니다. 볼륨에 uid `65532`가 쓸 수 있거나 인스턴스에 상태를 두지 않는다면 그 줄을
+지우세요.
+
+## Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/verdin-cms/verdin)
+
+Blueprint는 웹 서비스(디스크가 요구하는 Starter 플랜), PostgreSQL 데이터베이스, 두 시크릿(한 번 생성한 뒤
+유지)을 만듭니다. Render가 `VERDIN_SERVER__PUBLIC_URL`을 물으면 서비스 주소 `https://<name>.onrender.com`
+또는 자신의 도메인을 입력하세요. 포크에서는 `https://render.com/deploy?repo=<your fork's URL>`을 쓰세요.
+
+## DigitalOcean App Platform
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/verdin-cms/verdin/tree/main)
+
+스펙은 서비스와 개발용 데이터베이스를 만듭니다. 요청이 오면 `verdin secrets`의 두 값을
+`VERDIN_ADMIN_JWT_SECRET`과 `VERDIN_TOKEN_PEPPER`에 붙여 넣으세요.
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets
+```
+
+App Platform에는 영구 디스크가 없으므로 Spaces 버킷을 추가하기 전까지는 배포할 때마다 업로드한 파일이
+사라집니다. 서비스에 `VERDIN_UPLOAD__PROVIDER__NAME=s3`, `VERDIN_UPLOAD__PROVIDER__BUCKET`,
+`VERDIN_UPLOAD__PROVIDER__REGION`, `VERDIN_UPLOAD__PROVIDER__ENDPOINT`
+(`https://<region>.digitaloceanspaces.com`), `VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`, `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`를 설정하세요. 포크라면 스펙의 `repo_clone_url`을 바꾸세요.
+
+## Railway
+
+1. 저장소를 포크한 뒤, Railway에서 포크로 프로젝트를 만듭니다.
+2. 서비스 설정에서 설정 파일 경로를 `deploy/one-click/railway.json`으로 지정합니다(Dockerfile과 헬스 체크를
+   선택합니다).
+3. PostgreSQL 데이터베이스와 `/data`에 마운트한 볼륨을 추가한 뒤, [Railway](/ko/deploy/railway/#2-프로젝트-만들기)의
+   변수 `VERDIN_DATABASE_URL`, 두 시크릿, `VERDIN_SERVER__PUBLIC_URL`을 설정합니다. 대상 포트 `1337`로 도메인을
+   생성하세요.
+
+## Fly.io
+
+저장소(또는 포크)의 클론에서, `flyctl`에 로그인한 상태로:
+
+```sh frame="terminal"
+fly launch --no-deploy --copy-config --config deploy/one-click/fly.toml --ha=false
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets | fly secrets import --config deploy/one-click/fly.toml
+fly deploy --config deploy/one-click/fly.toml --dockerfile deploy/one-click/Dockerfile .
+```
+
+1 GB 볼륨에 SQLite와 업로드를 두는 Machine 하나를 실행합니다. 먼저 `fly.toml`의 `app`과 `primary_region`을
+바꾸세요. PostgreSQL과 Tigris는 [Fly.io](/ko/deploy/fly/)에서 다룹니다.
+
+## Coolify
+
+Coolify에서 포크(또는 이 저장소)로 **Docker Compose** 빌드 팩, 기본 디렉터리 `/`, compose 파일
+`/deploy/one-click/compose.coolify.yaml`을 가진 리소스를 추가하세요. Coolify가 그 안의 `SERVICE_*` 변수를
+채웁니다.
+
+| 변수 | Coolify가 생성하는 것 |
+| --- | --- |
+| `SERVICE_FQDN_VERDIN_1337` | 프록시가 1337 포트로 라우팅하는 도메인(`VERDIN_SERVER__PUBLIC_URL`로도 쓰임). |
+| `SERVICE_BASE64_64_JWT`, `SERVICE_BASE64_64_PEPPER` | 두 시크릿. 각각 64자이며 배포 간에 유지됩니다. |
+| `SERVICE_USER_POSTGRES`, `SERVICE_PASSWORD_POSTGRES` | 데이터베이스 자격 증명. |
+
+Coolify의 프록시가 TLS를 종료하므로 Caddy는 필요 없습니다. Coolify 없이 직접 관리하는 서버라면
+[프로덕션의 Docker Compose](/ko/deploy/compose/)를 쓰세요.
+
+## 첫 배포 이후
+
+`https://<your address>/admin/`을 열고 첫 관리자를 등록하세요. 그다음
+[프로덕션 체크리스트](/ko/deploy/production-checklist/)를 읽으세요.

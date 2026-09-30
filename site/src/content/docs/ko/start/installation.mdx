@@ -1,0 +1,128 @@
+---
+title: 설치
+description: 설치 스크립트, Homebrew, .deb 패키지, winget, cargo binstall, 소스로 verdin 바이너리를 설치하거나 Docker 이미지를 실행합니다.
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Verdin은 관리자 패널이 내장된 바이너리 하나입니다. 모든 릴리스는 Linux(x86-64와 ARM64, 정적 musl 빌드),
+macOS(Intel과 Apple silicon), Windows(x86-64)용 바이너리를 `SHA256SUMS` 파일과 함께
+[릴리스 페이지](https://github.com/verdin-cms/verdin/releases)에 게시합니다. 머신에 맞는 설치 방법을 고르세요.
+어느 방법이든 같은 바이너리를 설치합니다.
+
+다음으로 확인하세요.
+
+```sh frame="terminal"
+verdin --version
+```
+
+그다음 `verdin new`부터 [빠른 시작](/ko/start/quickstart/)을 따라 하세요.
+
+## 설치 스크립트(Linux와 macOS)
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh
+```
+
+스크립트는 시스템과 아키텍처를 감지하고, 최신 GitHub 릴리스에서 맞는 아카이브를 내려받아 릴리스의
+`SHA256SUMS`와 대조한 뒤, root로 실행하면 `/usr/local/bin`에, 아니면 `~/.local/bin`에 `verdin`을 설치합니다.
+`curl` 또는 `wget`, `tar`, 그리고 `sha256sum`, `shasum`, `openssl` 중 하나가 필요합니다.
+
+| 옵션 | 변수 | 기본값 |
+| --- | --- | --- |
+| `--version <X.Y.Z>` | `VERDIN_VERSION` | 최신 릴리스 |
+| `--dir <directory>` | `VERDIN_INSTALL_DIR` | `/usr/local/bin`(root) 또는 `~/.local/bin` |
+
+```sh frame="terminal"
+curl -fsSL https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh | sh -s -- --version 0.11.0 --dir /opt/verdin/bin
+```
+
+실행하기 전에 스크립트를 읽어 보려면 먼저 내려받으세요.
+`curl -fsSLO https://raw.githubusercontent.com/verdin-cms/verdin/main/install.sh`.
+
+## 패키지 관리자
+
+<Tabs syncKey="package-manager">
+  <TabItem label="Homebrew">
+
+macOS와 Linux에서:
+
+```sh frame="terminal"
+brew install verdin-cms/tap/verdin
+```
+
+포뮬러는 릴리스 바이너리(Linux에서는 musl 빌드)를 설치합니다. `brew upgrade verdin`으로 다음 릴리스로
+올라갑니다.
+
+  </TabItem>
+  <TabItem label="Debian / Ubuntu">
+
+릴리스에서 아키텍처(`amd64` 또는 `arm64`)에 맞는 `.deb`를 내려받아 설치하세요.
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/verdin_0.11.0-1_amd64.deb
+sudo apt install ./verdin_0.11.0-1_amd64.deb
+```
+
+패키지는 `verdin` 시스템 사용자, systemd 서비스(활성화되지 않음), `/etc/verdin/`의 설정을 추가합니다.
+[Linux 서버](/ko/deploy/linux-server/)에서 실행 방법을 안내합니다. 아직 apt 저장소는 없습니다. 업그레이드하려면
+다음 릴리스의 `.deb`를 설치하세요.
+
+  </TabItem>
+  <TabItem label="winget">
+
+Windows에서:
+
+```powershell frame="terminal"
+winget install VerdinCMS.Verdin
+```
+
+winget은 새 터미널의 `PATH`에 `verdin`을 추가합니다. winget이 없다면 릴리스에서 `.zip`을 내려받아
+`verdin.exe`를 `PATH` 안 어딘가에 두세요.
+
+  </TabItem>
+  <TabItem label="cargo binstall">
+
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall)을 쓰면 Cargo가 컴파일하는 대신 릴리스
+바이너리를 내려받습니다.
+
+```sh frame="terminal"
+cargo binstall --git https://github.com/verdin-cms/verdin verdin
+```
+
+  </TabItem>
+</Tabs>
+
+## Docker
+
+이미지 `ghcr.io/verdin-cms/verdin`은 `linux/amd64`와 `linux/arm64`에서 같은 바이너리를 실행합니다.
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 --version
+```
+
+볼륨, 설정, Compose 파일은 [Docker](/ko/deploy/docker/)를 참고하세요.
+
+## 소스에서
+
+Rust 1.95 이상과 Node.js 24(관리자 패널 빌드용)가 있으면:
+
+```sh frame="terminal"
+git clone https://github.com/verdin-cms/verdin && cd verdin
+(cd admin && npm ci && npm run build)
+cargo install --locked --path crates/verdin --features embed-admin
+```
+
+`--features embed-admin` 없이는 바이너리에 관리자 패널이 없습니다. 빌드된 사본을 `[admin].assets_dir`로
+지정하는 경우는 예외입니다.
+
+## 다운로드를 직접 검증하기
+
+각 릴리스에는 모든 아카이브와 패키지를 나열한 `SHA256SUMS` 파일이 있습니다.
+
+```sh frame="terminal"
+curl -fsSLO https://github.com/verdin-cms/verdin/releases/download/v0.11.0/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS     # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
+```

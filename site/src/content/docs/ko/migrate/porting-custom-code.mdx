@@ -1,0 +1,378 @@
+---
+title: 사용자 정의 코드 이식
+description: Strapi 프로젝트의 사용자 정의 코드를 Verdin 플러그인으로 옮깁니다 — 컨트롤러와 라우트, 라이프사이클, 서비스, bootstrap, cron 작업, 관리자 위젯, 폼, 정책과 미들웨어 — 실제 예제와 계획해야 할 한계와 함께.
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi`는 Strapi 프로젝트의 스키마와 콘텐츠를 가져오지만 `src/`의 JavaScript는 가져오지
+않습니다. Verdin은 서버에서 JavaScript를 실행하지 않습니다. 그 코드는 [WebAssembly 플러그인](/ko/extending/plugins/)이
+됩니다. 라이프사이클은 훅으로, 사용자 정의 컨트롤러는 라우트로, `bootstrap`은 시작 함수로, cron 작업은 작업으로
+옮깁니다. 이 페이지는 Strapi 코드의 종류별로 Verdin 대응물을 정리하고, 실제 프로젝트의 코드를 플러그인으로
+옮기는 과정을 따라가며, 계획해야 할 한계를 나열합니다.
+
+예제는 [`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port)입니다.
+Rust로 작성한 `tienda` 플러그인과 필요한 스키마, 빌드하고 설치하는 README가 들어 있습니다. 플러그인을 한 번도
+써 본 적이 없다면 먼저 [플러그인 튜토리얼](/ko/extending/plugin-tutorial/)을 읽으세요.
+[플러그인 레퍼런스](/ko/extending/plugin-reference/)에 모든 페이로드와 호스트 함수가 있습니다.
+
+## 각 부분이 가는 곳
+
+| Strapi | Verdin | 참고 |
+| --- | --- | --- |
+| 사용자 정의 라우트와 컨트롤러(`src/api/*/routes`, `controllers`) | 플러그인 라우트: `[routes]`, `/api/plugins/<name>/…`를 위한 함수 하나 | URL이 바뀝니다. 함수가 메서드와 경로로 직접 분기합니다. |
+| 라이프사이클(`lifecycles.js`), Document Service 미들웨어 | `beforeCreate`, `afterUpdate`… 의 `[[hooks]]` | 이벤트 이름이 같습니다. before 훅은 데이터를 바꾸거나 쓰기를 거부할 수 있습니다. |
+| 서비스(`src/api/*/services`) | 플러그인 모듈의 함수, 그리고 `strapi.documents(…)` 대신 `verdin_content` | 플러그인 사이에 공유 서비스는 없습니다. |
+| `src/index.js`의 `bootstrap()` | `[startup]` 함수 | 시작할 때, 플러그인이 켜질 때, 설정이 바뀔 때 실행됩니다. |
+| `register()` | 이식할 것 없음 | `register`가 설정하던 것은 매니페스트가 선언합니다. |
+| Cron 작업(`config/cron-tasks.js`) | `[[jobs]]` | UTC 기준 cron 문법, 초는 선택 사항. |
+| 플러그인 설정(`config/plugins.js`) | `[[settings]]`와 `verdin_config` | **설정 → 플러그인**에서 편집합니다. |
+| `strapi.log` | `verdin_log` | 서버 로그와 **설정 → 플러그인 → 로그**. |
+| 관리자 위젯(`app.widgets.register`) | `[[admin.widgets]]`: Web Components | 또는 기본 제공 대시보드 위젯. |
+| 사용자 정의 필드 | `[[admin.fields]]` | 스키마의 `customField` 이름은 유지됩니다. |
+| 인젝션 존, 사용자 정의 관리자 페이지, React 확장 | 지원 안 함 | 브랜딩은 `[admin.branding]`에 있습니다. |
+| 폼 제출을 저장하는 사용자 정의 엔드포인트 | 기본 제공 [폼](/ko/guides/frontend/forms/) | 검증, 스팸 트랩, 요청 한도, 이메일, CSV 내보내기가 포함됩니다. |
+| 정책과 미들웨어 | 내장 권한, 요청 한도, CORS. 플러그인 라우트 안에서 확인 | 요청 파이프라인에 끼어들 훅은 없습니다. [정책과 미들웨어](#정책과-미들웨어)를 참고하세요. |
+| 코드에서 보내는 이메일(`strapi.plugin('email')`) | `http` 기능을 통한 이메일 프로바이더의 HTTP API | 이메일 호스트 함수는 없습니다. |
+
+## 예제 프로젝트
+
+예제의 바탕이 된 Strapi 프로젝트는 설문이 있는 작은 상점입니다.
+
+- **`producto`**: 상품. `a_la_venta`(판매 중)와 `reservable` 플래그가 있습니다.
+- **`reserva`**: 방문자가 보낸 예약. `beforeCreate` 라이프사이클이 `estado`를 `pendiente`로 강제하고, 관련 상품이
+  판매 중이고 예약 가능한지 확인하며, `unidades`를 1~10으로 제한합니다.
+- **`encuesta`**와 **`voto`**: 선택지 목록이 있는 설문과 그 투표. 사용자 정의 라우트 두 개,
+  `POST /api/polls/:slug/vote`와 `GET /api/polls/:slug/results`는 방문자와 설문당 한 표만, 열린 설문에서만, 유효한
+  선택지에만 허용합니다. cron 작업은 `cierra_el` 날짜가 지난 설문을 닫습니다.
+- **`bootstrap`**은 공개 역할의 권한을 설정해, 새로 설치한 상태가 열려 있지 않게 합니다.
+- **관리자 위젯**은 열린 설문을 보여 줍니다.
+
+Verdin에서는 이 모두가 플러그인 하나, `tienda`입니다.
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml 매니페스트
+    - src/lib.rs 훅, 라우트, 작업, 시작 함수
+    - admin/index.js 대시보드 위젯
+</FileTree>
+
+```toml title="plugin/plugin.toml (abridged)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+콘텐츠 타입 uid는 Strapi의 것보다 짧습니다. `api::producto.producto`가 아니라 `api::producto`입니다.
+
+## 라이프사이클에서 훅으로
+
+단순화한 Strapi 라이프사이클:
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+Verdin 훅은 `{ event, uid, documentId, locale, data }`를 받고, 쓰일 내용을 바꾸려면 `{ "data": … }`로,
+쓰기를 거부하려면 `{ "error": "…" }`로(클라이언트는 Strapi의 `ApplicationError`처럼 메시지와 함께 400을
+받습니다), 통과시키려면 `{}`로 응답합니다.
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+라이프사이클을 이식할 때 알아야 할 것:
+
+- **`data`는 요청이 보낸 그대로의 데이터입니다.** 관계는 documentId, `{ "documentId": … }`, 목록,
+  `{ connect }` / `{ set }`으로 올 수 있습니다(관리자 패널과 클라이언트가 다릅니다). 예제의 `relation_id`는
+  모두 받습니다. `beforeUpdate`에서 `data`에는 보낸 필드만 들어 있습니다.
+- **반환한 데이터는 훅 뒤에** 원래와 똑같이 **검증됩니다.** 훅은 스키마가 거부하는 것을 쓸 수 없습니다. 스키마
+  한계(`min`, `max`)는 값을 거부하지만, 훅은 여기서처럼 값을 제한할 수 있습니다.
+- **훅은 누가 쓰는지 모릅니다.** 입력에 사용자나 토큰이 없습니다. 호출자에 따라 달라지는 검사는 권한이나
+  플러그인 라우트에 속합니다.
+- **after 훅은 데이터를 받지 않습니다.** 쓰기가 커밋된 뒤 `{ event, uid, documentId, locale }`이 한 번
+  전송됩니다. 필요하면 `verdin_content`로 항목을 읽으세요.
+- **실패한 훅은 쓰기를 막지 않습니다.** 모듈이 트랩하거나 시간 초과되면 오류가 로그에 남고 쓰기는 계속됩니다.
+  `{ error }` 응답만 쓰기를 거부합니다.
+- **플러그인이 한 쓰기는 before 훅을 건너뜁니다.** 모든 쓰기에 적용되어야 하는 규칙은 그 타입에 쓰는 플러그인
+  코드에서도 적용해야 합니다.
+
+## 컨트롤러와 사용자 정의 라우트에서 플러그인 라우트로
+
+Strapi는 설문 라우트를 `/api/polls/:slug/vote`에서 제공했습니다. Verdin 플러그인은 모든 것을
+`/api/plugins/<name>/` 아래에서 제공하므로, 프런트엔드는 `/api/plugins/tienda/polls/:slug/vote`를 호출합니다
+(또는 리버스 프록시가 옛 경로를 다시 씁니다). 내보낸 함수 하나가 모든 요청을 받아 메서드와 경로로 분기합니다.
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+요청은 `{ method, path, query, headers, body, actor }`이며, `body`는 직접 파싱하는 문자열이고 `query`는 원본
+쿼리 문자열입니다. 응답은 `{ status, headers?, body }`입니다. 아무것도 대신 만들어 주지 않습니다. Strapi
+프런트엔드가 계속 동작하게 하려면 `{ "data": … }`로, 오류에서는
+`{ "data": null, "error": { "status", "name", "message", "details" } }`로 응답하세요. 예제의 `ok`와 `fail`
+헬퍼가 그렇게 합니다.
+
+투표 라우트는 순서대로 확인합니다. 유효한 본문, 그 slug의 설문, `estado`가 `abierta`, 선택지가 `opciones` 중
+하나, 같은 fingerprint의 이전 투표가 없음. 그다음 `voto`를 만들고 결과와 함께 201로 응답합니다.
+
+<Aside type="caution" title="플러그인 라우트에는 클라이언트 주소가 없음">
+플러그인 라우트는 `content-type`, `accept`, `user-agent`, `accept-language` 헤더만 받습니다. IP 주소, 쿠키,
+`Authorization` 값은 없습니다. "방문자당 한 표"를 위해 `ctx.request.ip`를 쓰던 Strapi 컨트롤러는 다른 키가
+필요합니다. 예제는 요청 본문에서 `fingerprint`를 가져오며, 이는 사이트가 만듭니다(로컬 스토리지에 보관한
+무작위 id, 또는 브라우저 특성의 해시). 더블 클릭과 가벼운 반복은 막지만, 작정한 투표자는 막지 못합니다. 더
+강한 제한이 필요하면 로그인한 최종 사용자(`actor`)를 요구하거나 Verdin 앞에 검사를 두세요.
+</Aside>
+
+Strapi 라우트와의 다른 차이점:
+
+- **라우트는 공개입니다.** 공개 액세스와 API 토큰 권한이 적용되지 않습니다. `actor`가 누가 호출하는지
+  알려 줍니다. `{ "kind": "public" }`, `{ "kind": "token", "id": … }`, `{ "kind": "user", "id": … }`(최종 사용자.
+  id만). Strapi 정책처럼 호출자가 해서는 안 되는 것은 거부하세요. 올바르지 않은 토큰은 플러그인이 실행되기 전에
+  401로 거부됩니다.
+- **플러그인마다 한 번에 호출 하나.** 플러그인 호출은 서로 기다리므로, 투표 라우트의 확인과 생성은 한
+  인스턴스에서 끼어들 수 없습니다. 인스턴스가 여러 개면 끼어들 수 있으므로, 예제는 `clave`
+  (`<poll>:<fingerprint>`)도 `unique: true`로 저장해, 빠져나온 중복을 데이터베이스가 거부하게 합니다.
+- **요청 한도가 적용됩니다.** `[api].public_rate_limit`과 `[api].token_rate_limit`은 플러그인 라우트도 나머지
+  콘텐츠 API처럼 셉니다.
+- **익명 `GET` 응답은 캐시될 수 있습니다.** `[api].cache_ttl_secs`를 설정한 경우입니다. 콘텐츠 쓰기는 캐시를
+  비우며, 투표도 포함됩니다.
+- **일부 응답 헤더만 유지됩니다.** `content-type`, `cache-control`, `location`, `etag`, `last-modified`,
+  `content-disposition`.
+
+## 서비스에서 함수와 콘텐츠 호출로
+
+Strapi 서비스는 공유 코드입니다. 플러그인에서는 모듈의 평범한 함수입니다. `strapi.documents(uid)` 호출은
+`verdin_content` 호출이 되며, `read`와 `write` 기능으로 제한됩니다.
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `"pagination": { "pageSize": 1 }`을 가진 `findMany`, 그다음 `meta.pagination.total` |
+
+- **읽기는 게시된 버전을 반환합니다.** 쿼리가 `"status": "draft"`를 요청하지 않는 한 그렇습니다. 초안만 있는
+  상품을 찾는 훅은 아무것도 찾지 못하며, 예제의 오류 메시지가 그렇게 말합니다.
+- **쓰기는 게시됩니다.** 요청에 `"status": "draft"`가 없으면 REST 쓰기처럼 게시됩니다.
+- **쿼리는 REST API의 규칙을 따릅니다.** `private` 속성은 필터나 `fields`에 쓸 수 없으므로, 예제의 `clave`는
+  private이 아닙니다(공개 역할은 투표에 접근할 수 없으므로 다른 누구도 읽지 못합니다).
+- **원시 SQL도, `strapi.db.query`도 없습니다.** 모든 것이 Document Service를 거치며, 검증, 웹훅, 기록, 감사
+  로그가 적용됩니다.
+- **WASI 없이는 시계가 없습니다.** 시간과 난수를 쓰려면 매니페스트에 `wasi = true`를 설정하세요. 예제의
+  작업은 대신 전달받는 `scheduledAt`을 씁니다.
+
+## `bootstrap`에서 시작 함수로
+
+Strapi 프로젝트는 종종 `bootstrap`에서 공개 역할의 권한을 설정해, 새 데이터베이스를 쓸 수 있게 하되 필요 이상으로
+열리지 않게 합니다. Verdin의 시작 함수는 `public_permissions` 기능으로 같은 일을 합니다.
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- `{ "reason": "start" | "enabled" | "settings" }`로 실행됩니다. 플러그인이 켜진 채 서버가 시작될 때, 플러그인이
+  켜질 때, 설정이 바뀔 때입니다. 다시 실행해도 안전하게 만드세요. 시딩하는 것을 만들기 전에 먼저 찾아보세요.
+- `set`은 공개 권한 **전체를 교체**하므로, **설정 → 공개 액세스**에서 한 변경은 다음 시작 때 되돌려집니다.
+  예제에는 이를 끄는 설정이 있습니다.
+- 자체 모듈 인스턴스에서 자체 시간 제한(`[startup].timeout_ms`, 기본 30초)으로 백그라운드에서 실행되므로,
+  느린 시딩이 훅과 라우트를 붙잡지 않습니다. 실패나 `{ "error" }` 응답은 로그에 남으며, 플러그인은 켜진 채
+  유지됩니다.
+- 인스턴스가 여러 개면 `[plugins].run_jobs = true`인 인스턴스만 실행합니다.
+
+## Cron 작업에서 작업으로
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+작업은 `{ "scheduledAt": "…" }`를 받고, 예제에서는 `cierra_el`이 더 이른 모든 열린 설문을 갱신합니다. 작업은
+UTC 기준으로, 플러그인이 켜져 있는 동안, `[plugins].run_jobs = true`인 인스턴스에서만 실행됩니다. 서버가 다운된
+동안 놓친 실행은 나중에 보충하지 않습니다.
+
+## 관리자 위젯
+
+Strapi 관리자 위젯은 React 컴포넌트입니다. Verdin 위젯은 플러그인의 `admin/` 스크립트에 있는 사용자 정의
+요소이며 매니페스트에 선언합니다.
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+요소는 `fetch`가 있는 `context`를 받습니다. 예제의 위젯은 플러그인 자체의 `GET /api/plugins/tienda/polls`
+라우트를 호출합니다. 콘텐츠 API(플러그인 라우트 포함)로 가는 요청은 관리자의 세션 없이 나가므로, 위젯이 쓰는
+라우트는 공개되어도 괜찮거나 API 토큰을 받아야 합니다. 인젝션 존, 사용자 정의 관리자 페이지, React 확장에는
+대응물이 없습니다. [관리자 확장 지점](/ko/extending/plugin-reference/#관리자-확장-지점)을 참고하세요.
+
+## 사용자 정의 폼에서 폼으로
+
+Strapi의 건의나 문의 폼은 보통 사용자 정의 엔드포인트(또는 공개 `create` 권한이 있는 콘텐츠 타입)와 누군가에게
+이메일을 보내는 코드입니다. 이식하지 마세요. 기본 제공 [폼](/ko/guides/frontend/forms/) 기능이 코드 없이 그
+모든 것을 합니다. 편집자가 관리자에서 필드를 정의하고, 사이트가 `POST /api/_forms/{slug}`로 보내면, 제출은
+검증되고 **Notify** 주소로 이메일이 전송되며 CSV로 내보내집니다. 폼에는 스팸 트랩과 방문자별 요청 한도(분당
+제출 10회)도 있는데, 플러그인 라우트는 클라이언트의 주소를 볼 수 없어서 이를 할 수 없습니다.
+
+## 정책과 미들웨어
+
+Verdin에는 HTTP 요청 파이프라인에 끼어들 훅이 없습니다. 대신 제공하는 것은 다음과 같습니다.
+
+| Strapi | Verdin |
+| --- | --- |
+| REST 라우트의 `is-authenticated` 스타일 정책 | 공개 액세스, API 토큰 권한, 최종 사용자 역할. [권한](/ko/reference/permissions/)을 참고하세요. 더 세밀한 규칙(최종 사용자가 자기 항목만 편집)은 플러그인 라우트가 필요합니다. |
+| 사용자 정의 라우트의 정책 | 플러그인 라우트에서 `actor`를 확인합니다. |
+| 요청 한도 미들웨어 | `[api].public_rate_limit`, `[api].token_rate_limit`, `[admin].auth_rate_limit`. |
+| CORS나 보안 헤더 미들웨어 | `[api].cors_origins`. 다른 응답 헤더는 리버스 프록시에서. |
+| 코어 라우트의 요청이나 응답을 다시 쓰는 미들웨어 | 지원 안 함. 새 동작에는 플러그인 라우트나 리버스 프록시를 쓰세요. |
+| 일부 쓰기를 거부하는 정책 | 호출자를 모른 채 `{ error }`로 응답하는 before 훅. |
+
+## 계획해야 할 한계
+
+- 플러그인 라우트에는 **클라이언트 주소가 없고 헤더도 적습니다**(위 참고).
+- **플러그인이 한 쓰기는 모든 플러그인의 before 훅을 건너뛰므로**, before 훅의 규칙이 그 쓰기에는 적용되지
+  않습니다.
+- **플러그인 자신의 쓰기로 발생한 after 훅은 호출이 반환된 뒤 실행되며**, 쓰기 안에서 실행되지 않습니다. 쓰는
+  훅은 최대 4단계까지 중첩됩니다([플러그인이 한 쓰기](/ko/extending/plugin-reference/#플러그인이-한-쓰기) 참고).
+  응답 전에 일어나야 하는 후속 작업은, 쓰는 코드에서 `verdin_content`가 반환된 뒤에 하세요.
+- **플러그인마다 한 번에 호출 하나**: 느린 라우트는 그 플러그인의 훅을 지연시킵니다. 호출을 짧게 유지하고
+  [메트릭](/ko/deploy/monitoring/)의 `verdin_plugin_call_duration_seconds`를 지켜보세요.
+- **라우트는 공개**이며 `actor`를 확인해야 합니다.
+- 시작 함수와 `verdin_public_permissions`에는 **Verdin 0.11 이상**이 필요합니다. 서버에 없는 호스트 함수를
+  가져오는 모듈은 아예 로드되지 않습니다.
+
+## 체크리스트
+
+<Steps>
+
+1. `verdin import strapi`로 프로젝트를 가져온 뒤, `src/`의 코드를 나열합니다. 라우트, 컨트롤러, 서비스,
+   라이프사이클, 정책, 미들웨어, `bootstrap`, cron 작업, 관리자 확장입니다.
+2. Verdin이 기본 제공하는 것은 버립니다. 폼, 직접 설정한 공개 권한, 요청 한도, CORS, 웹훅, 예약 게시
+   ([릴리스](/ko/guides/content/releases/)).
+3. 나머지로 플러그인 하나를 예제대로 작성합니다. 훅, 라우트, 작업, 시작 함수. 필요한 기능만 부여하세요.
+4. 콘텐츠를 쓰는 훅이 4단계보다 깊은 중첩에 의존하지 않는지 확인합니다.
+5. 빌드하고, `plugins/` 아래에 설치하고, **설정 → 플러그인**에서 켠 뒤 그곳에서 로그를 읽습니다.
+6. 프런트엔드를 갱신합니다. 플러그인 라우트 URL(`/api/plugins/<name>/…`), 코드가 클라이언트의 주소에 의존하던
+   곳의 fingerprint나 최종 사용자 로그인, 그리고 마이그레이션의
+   [다른 변경](/ko/migrate/from-strapi/#프런트엔드-변경).
+
+</Steps>

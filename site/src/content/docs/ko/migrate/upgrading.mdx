@@ -2,7 +2,7 @@
 title: Verdin 업그레이드
 description: Verdin 설치 업그레이드하기 — 바이너리나 Docker 이미지, 시작할 때 실행되는 마이그레이션, 마이너 버전별 주요 변경과 호환성을 깨는 변경.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -106,6 +106,28 @@ import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
 
 버전별 주요 변경과 호환성을 깨는 변경이며, 오래된 것이 마지막입니다. 전체 목록은 [changelog](/ko/project/changelog/)에
 있습니다.
+
+### 0.10 → 0.11
+
+시작할 때 실행되는 마이그레이션은 테이블 하나, `vd_cluster_events`를 추가하며, `[cluster] bus = "database"`일
+때만 쓰입니다.
+
+- **Decimal**: 정수인 `decimal` 값은 Strapi처럼 JSON 정수(`25`, `25.0`이 아님)로 반환됩니다. JSON 타입을 엄격하게
+  검사하는 클라이언트는 차이를 느낄 수 있습니다. `[api] decimal_as_string`은 그대로입니다. SQLite에서 decimal의
+  `sort`와 `$gt`/`$lt`/`$between`은 이제 텍스트가 아니라 숫자를 비교하므로, 예전의(잘못된) 순서에 의존하던
+  결과는 바뀝니다.
+- **로컬라이즈된 타입의 `populate=*`**는 Strapi v5처럼 문서의 다른 로케일 버전인 `localizations`도 반환합니다.
+  스키마에 `localizations`라는 속성이 있다면 그 의미가 유지됩니다.
+- **플러그인**: 플러그인 자신의 쓰기로 발생한 after 훅은 쓰기 안이 아니라 플러그인의 호출이 반환된 뒤 실행되며,
+  쓰는 훅은 최대 4단계까지 중첩됩니다. 호스트 함수는 호출의 시간 제한에서 멈춥니다.
+- **여러 인스턴스**: 모든 인스턴스에 `[cluster] bus = "database"`를 설정해 실시간 스트림, 프레즌스, 응답 캐시,
+  검색 인덱스가 다른 인스턴스에서 생긴 변경을 따라가게 하세요([확장](/ko/deploy/scaling/) 참고).
+- **관리자 목록을 읽는 스크립트**: `GET /admin/api/users`, `/roles`, `/api-tokens`, `/webhooks`, `/releases`,
+  `/site/redirects`, `/site/menus`, `/site/forms`, `/deploy/targets`는 `pageSize`(최대 100)를 넘기지 않으면 25개
+  행을 반환하며, 이미 페이지로 나뉘던 목록처럼 `meta.pagination`이 붙습니다. `page`가
+  `meta.pagination.pageCount`에 이를 때까지 `?page=`로 페이지를 넘기세요. `/deploy/deployments`는 최신 50개를
+  반환하는 대신 같은 방식으로 페이지를 나누며, `limit`은 `pageSize`의 지원 중단된 별칭으로 계속 동작합니다.
+  [목록](/ko/api/admin/#목록)을 참고하세요.
 
 ### 0.9.1 → 0.10
 

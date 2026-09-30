@@ -1,12 +1,13 @@
 ---
 title: 플러그인 레퍼런스
-description: plugin.toml 매니페스트, 기능 선언, 훅과 페이로드, 호스트 함수, 라우트, 작업, GraphQL 필드, 관리자 확장 지점과 한도.
+description: plugin.toml 매니페스트, 기능 선언, 훅과 페이로드, 호스트 함수, 라우트, 작업, 시작 함수, GraphQL 필드, 관리자 확장 지점, 한도, 메트릭.
 sidebar:
   order: 3
 ---
 
 <!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
-plugins_admin.rs, crates/verdin-graphql/src/lib.rs and admin/src/app/core/plugin-extensions.ts. -->
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
 
 이 페이지는 Verdin과 플러그인 사이의 완전한 계약입니다. 매니페스트, Verdin이 각 내보낸 함수에 보내는 것과
 돌려받기를 기대하는 것, 모듈이 호출할 수 있는 호스트 함수를 다룹니다. 소개는 [플러그인](/ko/extending/plugins/)을,
@@ -38,6 +39,7 @@ read = ["api::article"]
 write = ["api::tag"]
 http = ["api.example.com"]
 kv = true
+public_permissions = true
 
 [limits]
 timeout_ms = 5000
@@ -54,6 +56,10 @@ function = "handle"
 [[jobs]]
 schedule = "*/15 * * * *"
 function = "refresh"
+
+[startup]
+function = "seed"
+timeout_ms = 30000
 
 [[graphql]]
 name = "slugStats"
@@ -101,6 +107,7 @@ default = "-"
 | `write` | `[]` | `create`, `update`, `delete`, `publish`, `unpublish`할 수 있는 콘텐츠 타입. `read`를 포함합니다. |
 | `http` | `[]` | 모듈이 HTTP 요청을 보낼 수 있는 호스트: `api.example.com` 또는 `*.example.com`. |
 | `kv` | `false` | 플러그인 자체의 키-값 저장소(`verdin_kv_get`, `verdin_kv_set`). |
+| `public_permissions` | `false` | 공개 역할의 콘텐츠 API 권한을 읽고 교체(`verdin_public_permissions`). |
 
 기능 선언은 호스트 호출만 제한합니다. 훅은 `read`와 상관없이 지정한 타입에서 실행되며, 라우트는 누구나 접근할
 수 있습니다.
@@ -134,8 +141,8 @@ default = "-"
 | `beforeDiscardDraft` | `afterDiscardDraft` |
 
 이름은 Strapi의 라이프사이클 이름입니다. 훅은 관리자 패널, REST와 GraphQL API, 릴리스에서 온 쓰기에서
-실행되지만, 플러그인이 한 쓰기([플러그인이 한 쓰기](#플러그인이-한-쓰기) 참고)나 `verdin import` 명령이 한
-쓰기에서는 실행되지 않습니다.
+실행되지만, `verdin import` 명령이 한 쓰기에서는 실행되지 않습니다. 플러그인이 한 쓰기는 after 훅은
+실행하지만 before 훅은 실행하지 않습니다([플러그인이 한 쓰기](#플러그인이-한-쓰기) 참고).
 
 ### `[routes]`
 
@@ -151,6 +158,17 @@ default = "-"
 | --- | --- |
 | `schedule` | UTC 기준 cron 표현식이며 초는 선택 사항: `*/15 * * * *`, `0 0 3 * * *`. |
 | `function` | 호출할 내보낸 함수. |
+
+### `[startup]`
+
+플러그인이 시작될 때 실행되는 함수. Strapi 프로젝트가 `bootstrap`에서 하는 일(콘텐츠 시딩, 공개 역할 설정)입니다.
+
+| 키 | 기본값 | 설명 |
+| --- | --- | --- |
+| `function` | 필수 | 호출할 내보낸 함수. |
+| `timeout_ms` | `30000` | 자체 시간 제한(밀리초). 시딩은 훅보다 오래 걸릴 수 있습니다. 양수여야 합니다. |
+
+실행 시점은 [시작 함수](#시작-함수)를 참고하세요.
 
 ### `[[graphql]]`
 
@@ -281,6 +299,29 @@ default = "-"
 남습니다. 작업은 플러그인이 켜져 있는 동안, `[plugins].run_jobs = true`인 인스턴스에서만 실행됩니다. 서버가
 다운된 동안 놓친 실행은 나중에 보충하지 않습니다.
 
+### 시작 함수
+
+입력: `{ "reason": "start" | "enabled" | "settings" }`:
+
+| `reason` | 시점 |
+| --- | --- |
+| `start` | 플러그인이 켜진 상태로 서버가 시작되었습니다. |
+| `enabled` | 플러그인이 켜졌습니다(여기서, 또는 다른 인스턴스에서 켜져 여기서 반영됨). |
+| `settings` | 켜져 있는 동안 설정이 바뀌었습니다(여기서 저장했거나 다른 인스턴스에서 반영됨). |
+
+출력: `{ "error": "message" }`는 실패로 칩니다. 그 밖의 것(`{}`, 빈 출력)은 성공입니다. 실패(트랩, 시간 초과,
+`{ error }`)는 플러그인 로그와 서버 로그에 남으며, 플러그인은 켜진 채로 유지되고 함수는 다음 시작, 스위치,
+설정 변경 때 다시 실행됩니다.
+
+함수는 서버가 올라온 뒤 백그라운드에서 실행되므로 그동안에도 요청을 처리합니다. `[startup].timeout_ms`를 가진
+자체 모듈 인스턴스에서 실행되므로, 느린 시딩이 플러그인의 훅과 라우트를 붙잡지 않습니다. 함수의 쓰기로 발생한
+after 훅은 함수가 반환된 뒤 실행됩니다([플러그인이 한 쓰기](#플러그인이-한-쓰기) 참고). 모듈의 메모리는 플러그인의
+일반 인스턴스와 공유되지 않으므로, 상태는 `verdin_kv_set`이나 콘텐츠에 두세요.
+
+인스턴스가 여러 개면 `[plugins].run_jobs = true`인 인스턴스만 시작 함수를 실행합니다([확장 조언](/ko/deploy/scaling/)을
+따르면 인스턴스 하나). 공유 데이터베이스에 작용하므로 한 번이면 충분합니다. 다시 실행해도 문제가 없도록
+함수를 작성하세요. 시딩하는 것을 만들기 전에 먼저 찾아보세요.
+
 ### GraphQL 필드
 
 입력: `{ "args": …, "actor": … }`. `args`는 필드의 `args` 인자(아무 JSON이나 `null`)이고, `actor`는 라우트와
@@ -299,6 +340,10 @@ default = "-"
 | `verdin_kv_get` | 일반 문자열로 된 키 | 저장된 JSON 값, 또는 `null` |
 | `verdin_kv_set` | `{ "key": "…", "value": … }` | 없음 |
 | `verdin_config` | 없음 | 선언한 기본값을 채운 설정 객체 |
+| `verdin_public_permissions` | `{ "op": "get" }` 또는 `{ "op": "set", "permissions": [...] }` | `{ "permissions": [...] }`, 또는 `{ "error": "…" }` |
+
+서버에 없는 호스트 함수(더 오래된 Verdin)를 가져오는 모듈은 로드할 수 없습니다. 그 호출은 모두 서버 로그에
+`unknown import`로 실패합니다.
 
 ### `verdin_log`
 
@@ -338,8 +383,20 @@ default = "-"
 #### 플러그인이 한 쓰기
 
 `verdin_content`를 통한 쓰기는 모든 플러그인의 **before** 훅을 건너뛰므로, 플러그인이 거기서 자기 변경으로
-무한 반복할 수 없습니다. 그 밖의 모든 것은 적용됩니다. 검증, 검토 단계, 웹훅, 기록, 감사 로그, 그리고 쓰기를 한
-플러그인을 포함한 모든 플러그인의 **after** 훅입니다. 자신이 듣는 타입에 쓰는 after 훅에는 보호 조건을 두세요.
+무한 반복할 수 없고, before 훅에 둔 규칙(기본값, 검사)도 그 쓰기에는 적용되지 않습니다. 그 밖의 모든 것은
+적용됩니다. 검증, 검토 단계, 웹훅, 기록, 감사 로그, 그리고 쓰기를 한 플러그인을 포함한 모든 플러그인의
+**after** 훅입니다.
+
+플러그인의 쓰기로 발생한 after 훅은 쓰기 안에서 실행되지 않습니다. 대기열에 들어갔다가, 플러그인의 호출(라우트,
+작업, GraphQL 리졸버, 훅, 시작 함수)이 반환되고 플러그인 인스턴스를 놓은 뒤, 라우트의 응답이 전송되기 전에
+실행됩니다. 그래서 플러그인은 자신이 after 훅을 가진 타입에 쓸 수 있고, 여러 플러그인을 거치는 연쇄도
+동작합니다.
+
+- 쓰는 훅은 다른 훅을 발생시키며, **최대 `4`단계 깊이**까지입니다(REST나 GraphQL의 쓰기가 1단계). 그보다 깊은
+  훅은 플러그인 로그에 경고를 남기고 건너뛰므로, 자신이 듣는 타입에 쓰는 훅이 영원히 반복되는 일이 없습니다.
+- 호스트 함수(`verdin_content`, `verdin_public_permissions`, 키-값 저장소)는 호출의 시간 제한에서 멈추고 모듈에
+  오류를 반환하며, 호출자는 바쁜 플러그인을 최대 시간 제한에 10초를 더한 만큼만 기다립니다. 멈춘 호출이
+  플러그인이나 정상 종료를 영원히 붙잡을 수 없습니다.
 
 ### `verdin_kv_get`과 `verdin_kv_set`
 
@@ -351,6 +408,31 @@ default = "-"
 
 **설정 → 플러그인**에 저장된 설정을 반환하며, 선언한 각 설정의 `default`로 빠진 키를 채웁니다. 저장된 것이
 없으면 `{}`입니다.
+
+### `verdin_public_permissions`
+
+공개 역할의 콘텐츠 API 권한, 즉 **설정 → 공개 액세스**에서 편집하는 것을 읽거나 교체합니다.
+`public_permissions` 기능이 필요하며, 없으면 모든 호출이 `{ "error": "…" }`로 응답합니다.
+
+```json
+{ "op": "set", "permissions": [
+  { "subject": "api::article", "action": "find" },
+  { "subject": "api::article", "action": "findOne" },
+  { "subject": "api::comment", "action": "create" }
+] }
+```
+
+| `op` | 효과 |
+| --- | --- |
+| `get` | 아무것도 하지 않고 현재 권한을 반환합니다. |
+| `set` | 공개 권한 **전체**를 `permissions`로 교체합니다(빈 목록은 모두 제거). |
+
+둘 다 정렬된 `{ "permissions": [{ "subject", "action" }, …] }`로 응답합니다. `subject`는 콘텐츠 타입 uid,
+`plugin::upload`(미디어 라이브러리), `plugin::users-permissions.user`(콘텐츠 API의 최종 사용자),
+`plugin::i18n.locale`(`find`만) 중 하나입니다. `action`은 `find`, `findOne`, `create`, `update`, `delete`,
+`publish`, `readDrafts`입니다(마지막 둘은 업로드와 최종 사용자에는 적용되지 않음). 관리자의 권한 그리드와
+같은 방식으로 검사합니다. 알 수 없거나 적용되지 않는 subject나 action은 `{ "error": "…" }`로 응답하고 아무것도
+바꾸지 않습니다. 모든 `set`은 서버 로그에 기록됩니다.
 
 ### HTTP
 
@@ -415,10 +497,10 @@ customElements.define('slugs-stats', SlugStats);
 
 | 한도 | 값 |
 | --- | --- |
-| 호출당 시간 | `[limits].timeout_ms`, 기본 5,000 ms |
+| 호출당 시간 | `[limits].timeout_ms`, 기본 5,000 ms (시작 함수는 `[startup].timeout_ms`, 기본 30,000 ms) |
 | 메모리 | `[limits].memory_mb`, 기본 64 MB |
-| 동시성 | 플러그인마다 한 번에 호출 하나. 호출은 서로 기다립니다 |
-| 모듈 인스턴스 | 플러그인마다 하나, 처음 사용할 때 생성. 호출이 실패하면 다시 생성(메모리는 사라짐) |
+| 동시성 | 플러그인마다 한 번에 호출 하나. 호출은 서로 기다립니다(시작 함수는 그 옆에서 실행) |
+| 모듈 인스턴스 | 플러그인마다 하나, 처음 사용할 때 생성. 호출이 실패하면 다시 생성(메모리는 사라짐). 시작 함수는 실행마다 새 인스턴스를 받음 |
 | 로그 | 플러그인마다 메시지 200개, 각 2,000자, 메모리에 보관 |
 | KV 키 | 1~255바이트 |
 | 라우트 요청 헤더 | `content-type`, `accept`, `user-agent`, `accept-language` |
@@ -426,3 +508,16 @@ customElements.define('slugs-stats', SlugStats);
 
 매니페스트나 모듈의 변경은 재시작 후에 적용되고, 스위치와 설정은 즉시 적용됩니다. 플러그인을 관리하려면
 `plugins.manage`가 필요합니다([권한 레퍼런스](/ko/reference/permissions/) 참고).
+
+## 메트릭
+
+[`[metrics]`](/ko/deploy/monitoring/)를 켜면 `/_metrics`가 내보낸 함수에 도달한 모든 호출을 보고합니다.
+
+| 메트릭 | 타입 | 라벨 | 의미 |
+| --- | --- | --- | --- |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | 플러그인 함수가 걸린 시간. 버킷은 5 ms부터 10 s까지. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | 실패한 호출: 트랩, 시간 초과, JSON이 아닌 출력, 또는 시작 함수의 `{ error }`. |
+
+`kind`는 `hook`, `route`, `job`, `startup`, `graphql`입니다. `{ error }`로 쓰기를 거부하는 before 훅은 답을
+준 것이므로 실패로 세지 않습니다. 모듈이 내보내지 않은 함수에 대한 호출은 기록되지 않으므로, 라벨은 설치된
+플러그인으로 한정됩니다. 시리즈는 플러그인의 첫 호출 후에 나타나며, 인스턴스마다 자기 호출만 셉니다.

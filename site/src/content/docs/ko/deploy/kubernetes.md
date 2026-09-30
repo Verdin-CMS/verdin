@@ -7,7 +7,8 @@ sidebar:
 
 이 페이지에서는 Kubernetes에서 Verdin 프로젝트를 실행합니다. 주 구성은 상태가 없습니다. PostgreSQL(또는
 MySQL/MariaDB)은 파드 밖에, 미디어는 S3 호환 스토리지에 두며, 레플리카는 필요한 만큼 둡니다. SQLite용
-볼륨을 쓰는 단일 레플리카 구성은 뒤에 나옵니다.
+볼륨을 쓰는 단일 레플리카 구성은 뒤에 나옵니다. [Helm 차트](/ko/deploy/helm/)는 이 매니페스트를 묶고 각 설정을
+값으로 제공합니다.
 
 매니페스트는 안정 API(`apps/v1`, `v1`)를 쓰며, 2026-09-29에 `kubeconform -strict`로 Kubernetes 스키마와
 대조해 검증했지만 실제 클러스터에서 실행해 보지는 않았습니다. 꺾쇠괄호 안의 값은 모두 바꾸세요.
@@ -37,7 +38,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -153,8 +157,9 @@ spec:
   `replicas: 1`과 `VERDIN_PLUGINS__RUN_JOBS=true`를 가진 Deployment를 하나 더 실행하거나(같은 라벨이므로
   트래픽도 처리함), 작업이 레플리카마다 실행되는 것을 받아들이세요. 웹훅, 예약된 릴리스, 일일 다이제스트는
   데이터베이스에서 가져가므로 한 번만 실행됩니다. [여러 인스턴스 실행](/ko/deploy/scaling/)을 참고하세요.
-- **실시간.** 이벤트 스트림(`/api/_events`)은 연결된 파드에 머뭅니다.
-  [실시간](/ko/guides/frontend/realtime/)을 쓴다면 Ingress에서 세션 어피니티를 쓰세요.
+- **실시간, 프레즌스, 캐시, 검색.** `[cluster].bus = "database"`는 모든 파드에 다른 파드의 이벤트를 전달합니다
+  ([공유 이벤트 버스](/ko/deploy/scaling/#공유-이벤트-버스) 참고). 이것이 없으면 이벤트 스트림(`/api/_events`)은
+  연결된 파드에 머뭅니다. [실시간](/ko/guides/frontend/realtime/)을 쓴다면 Ingress에서 세션 어피니티를 쓰세요.
 
 ## SQLite를 쓰는 단일 레플리카
 
