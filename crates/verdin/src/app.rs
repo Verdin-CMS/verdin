@@ -502,6 +502,10 @@ pub async fn ensure_migrated(db: &Database, schema: &Schema, migrate: bool) -> R
     }
 }
 
+/// How long requests in flight (and then database connections) get to finish once a
+/// shutdown signal arrived.
+const SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Serves until Ctrl+C / SIGTERM. The app is rebuilt in place when features are switched
 /// and, in development mode, when the content-type builder changes the schema.
 pub async fn serve(
@@ -567,10 +571,24 @@ pub async fn serve(
     let listener =
         TcpListener::bind(&address).await.with_context(|| format!("binding {address}"))?;
     tracing::info!(%address, mode = context.mode.as_str(), version = env!("CARGO_PKG_VERSION"), "verdin listening");
-    // Client addresses feed the admin auth rate limiter.
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
-        .with_graceful_shutdown(shutdown)
-        .await?;
+    // Client addresses feed the admin auth rate limiter. After the signal, requests in
+    // flight get `SHUTDOWN_GRACE` to finish: one that hangs must not keep the server up.
+    let (stopping, mut stopped) = tokio::sync::watch::channel(false);
+    let signal = async move {
+        shutdown.await;
+        let _ = stopping.send(true);
+    };
+    let server =
+        axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+            .with_graceful_shutdown(signal)
+            .into_future();
+    tokio::select! {
+        result = server => result?,
+        () = async {
+            let _ = stopped.wait_for(|stopping| *stopping).await;
+            tokio::time::sleep(SHUTDOWN_GRACE).await;
+        } => tracing::warn!(grace = ?SHUTDOWN_GRACE, "requests still running at shutdown were dropped"),
+    }
     deliveries.abort();
     if let Some(startup) = startup {
         startup.abort();
@@ -585,7 +603,9 @@ pub async fn serve(
     if let Some(digest) = digest {
         digest.abort();
     }
-    context.db.close().await;
+    if tokio::time::timeout(SHUTDOWN_GRACE, context.db.close()).await.is_err() {
+        tracing::warn!("database connections still in use at shutdown");
+    }
     tracing::info!("verdin stopped");
     Ok(())
 }

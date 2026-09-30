@@ -114,10 +114,8 @@ input or option), 403 (poll closed), 404 (no such poll) or 409 (already voted).
 
 ## Rules this plugin follows
 
-- **No after hooks on the types it writes.** Its routes write `voto` and its job writes
-  `encuesta`; an after hook of the same plugin on those types would deadlock (the write
-  waits for the hook, the hook waits for the plugin's instance). Its only after hook is on
-  `reserva`, which it never writes.
+- **Its only after hook is on `reserva`**, a log line. After hooks on the types it writes
+  (`voto`, `encuesta`) would also work: they run once the route or job returns.
 - **Its writes skip before hooks.** Votes created by the route do not go through any
   plugin's before hooks, so the route checks everything itself.
 - **No client address.** Plugin routes get only the `content-type`, `accept`,

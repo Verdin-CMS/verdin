@@ -259,3 +259,45 @@ async fn failed_startup_leaves_the_plugin_on() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     app.done().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn plugin_writes_run_its_own_after_hooks() {
+    let dir = tempfile::tempdir().unwrap();
+    install(dir.path());
+    let manifest = dir.path().join("sample/plugin.toml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    std::fs::write(
+        &manifest,
+        text.replace("kv = true\n", "kv = true\nwrite = [\"api::article\"]\n"),
+    )
+    .unwrap();
+    let app = App::with_plugins(schema(), dir.path()).await;
+    let admin = admin(&app).await;
+    let settings = json!({ "enabled": true, "settings": { "greeting": "Verdin" } });
+    let (status, _) = app
+        .call_as(Method::PUT, "/admin/api/plugins/sample", Some(settings), As::Bearer(&admin))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The route writes an article; the same plugin's afterCreate hook ran once it returned.
+    let (status, created) = app.call(Method::GET, "/api/plugins/sample/article", None).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let (_, hello) = app.call(Method::GET, "/api/plugins/sample/hello", None).await;
+    assert_eq!(hello["last"], created["documentId"]);
+
+    // A hook writing the type it listens to stops after a few levels.
+    let (status, _) = app.call(Method::GET, "/api/plugins/sample/article?echo", None).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, echoes) = app.get("/api/articles?filters%5Btitle%5D%5B%24eq%5D=echo").await;
+    assert_eq!(echoes["meta"]["pagination"]["total"], 1 + verdin_plugins::MAX_HOOK_DEPTH);
+    let (_, logs) =
+        app.call_as(Method::GET, "/admin/api/plugins/sample/logs", None, As::Bearer(&admin)).await;
+    assert!(
+        logs["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|line| line["message"].as_str().unwrap().contains("nest at most"))
+    );
+    app.done().await;
+}

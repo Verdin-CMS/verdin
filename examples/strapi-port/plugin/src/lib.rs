@@ -132,9 +132,7 @@ pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> 
     Ok(Json(json!({ "data": data })))
 }
 
-/// `afterCreate` on `api::reserva`: a line in the plugin's log. Safe because this plugin
-/// never writes reservations (a write by the plugin to a type it has after hooks on would
-/// wait for the plugin's own instance, which that write is holding).
+/// `afterCreate` on `api::reserva`: a line in the plugin's log.
 #[plugin_fn]
 pub fn after_create_reserva(Json(input): Json<Value>) -> FnResult<()> {
     log("info", format!("new reservation {}", input["documentId"].as_str().unwrap_or("?")));

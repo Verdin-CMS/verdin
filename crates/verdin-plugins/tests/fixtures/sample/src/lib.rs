@@ -47,6 +47,18 @@ pub fn after_write(Json(input): Json<Value>) -> FnResult<()> {
         verdin_log(Json(json!({ "level": "info", "message": format!("{} {}", input["event"].as_str().unwrap_or_default(), input["documentId"].as_str().unwrap_or_default()) })))?;
         verdin_kv_set(Json(json!({ "key": "last", "value": input["documentId"] })))?;
     }
+    // An article titled `echo` makes another one: a hook writing the type it listens to.
+    if input["event"] == "afterCreate" && input["uid"] == "api::article" {
+        let found = unsafe {
+            verdin_content(Json(json!({ "op": "findOne", "uid": "api::article", "documentId": input["documentId"] })))?
+        }
+        .0;
+        if found["document"]["title"] == "echo" {
+            unsafe {
+                verdin_content(Json(json!({ "op": "create", "uid": "api::article", "data": { "title": "echo" } })))?
+            };
+        }
+    }
     Ok(())
 }
 
@@ -81,6 +93,15 @@ pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
         "/write" => {
             let created = unsafe {
                 verdin_content(Json(json!({ "op": "create", "uid": "api::tag", "data": { "label": "from plugin" } })))?
+            }
+            .0;
+            json!({ "status": if created.get("error").is_some() { 403 } else { 201 }, "body": created })
+        }
+        "/article" => {
+            // Writes a type this plugin has an `afterCreate` hook on.
+            let title = if request["query"] == "echo" { "echo" } else { "From a route" };
+            let created = unsafe {
+                verdin_content(Json(json!({ "op": "create", "uid": "api::article", "data": { "title": title } })))?
             }
             .0;
             json!({ "status": if created.get("error").is_some() { 403 } else { 201 }, "body": created })

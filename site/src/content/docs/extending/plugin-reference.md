@@ -324,8 +324,8 @@ settings change.
 
 The function runs in the background, after the server is up, so requests are served
 meanwhile. It runs on a module instance of its own with `[startup].timeout_ms`, so a slow
-seed does not hold up the plugin's hooks and routes, and it can write content the same
-plugin has after hooks on (see [Writes made by plugins](#writes-made-by-plugins)). The
+seed does not hold up the plugin's hooks and routes. After hooks fired by its writes run
+once it returns (see [Writes made by plugins](#writes-made-by-plugins)). The
 module's memory is not shared with the plugin's regular instance: keep state in
 `verdin_kv_set` or in content.
 
@@ -402,20 +402,18 @@ loop on its own changes there, and rules you put in before hooks (defaults, chec
 apply to them. Everything else applies: validation, review stages, webhooks, history, the
 audit log, and the **after** hooks of all plugins, the writing one included.
 
-The after hooks run inside the write, before `verdin_content` returns, and a plugin runs
-one call at a time. So when a route, a job or an after hook of a plugin writes a type that
-**the same plugin** has an after hook on, the hook waits for the plugin's instance, which
-the writing call holds: both wait forever. The plugin stops answering until the server
-restarts, and every write that runs its hooks hangs too. The time limit does not break
-this wait, and a graceful stop waits for the hung request, so the process may have to be
-killed. A chain through other plugins does the same (plugin A writes a type that plugin
-B hooks, and B's hook writes a type A hooks).
+After hooks fired by a plugin's writes do not run inside the write: they are queued and run
+once the plugin's call (route, job, GraphQL resolver, hook or startup function) has
+returned and released the plugin's instance, before the route's response is sent. So a
+plugin can write a type it has after hooks on, and chains through several plugins work.
 
-- Do not give a plugin after hooks on the types its routes, jobs or hooks write. Do the
-  follow-up work in the code that writes, after `verdin_content` returns.
-- The [startup function](#startup-function) runs on an instance of its own, so it may
-  write those types.
-- Listening from another plugin is fine, as long as that plugin does not write back.
+- Hooks that write fire further hooks, **at most `4` levels deep** (a write from REST or
+  GraphQL is level 1). Deeper hooks are skipped with a warning in the plugin's log, which
+  stops a hook that writes the type it listens to from looping forever.
+- Host functions (`verdin_content`, `verdin_public_permissions`, the key-value store) stop
+  at the call's time limit and return an error to the module, and a caller waits at most
+  the time limit plus 10 seconds for a plugin that is busy. A stuck call cannot hold the
+  plugin, or a graceful stop, forever.
 
 ### `verdin_kv_get` and `verdin_kv_set`
 

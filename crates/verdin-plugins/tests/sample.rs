@@ -264,7 +264,8 @@ public_permissions = true"#,
 #[tokio::test(flavor = "multi_thread")]
 async fn calls_are_observed() {
     let (test, plugins, _dir, _) = setup(r#"kv = true"#).await;
-    let seen: Arc<Mutex<Vec<(String, CallKind, String, bool)>>> = Arc::default();
+    type Call = (String, CallKind, String, bool);
+    let seen: Arc<Mutex<Vec<Call>>> = Arc::default();
     let sink = seen.clone();
     plugins.set_observer(Arc::new(move |plugin, kind, function, _, failed| {
         sink.lock().unwrap().push((plugin.to_owned(), kind, function.to_owned(), failed));

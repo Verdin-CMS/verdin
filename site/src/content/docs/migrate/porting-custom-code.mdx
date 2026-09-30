@@ -376,14 +376,11 @@ Verdin has no hook into the HTTP request pipeline. What it offers instead:
 - **No client address and few headers** in plugin routes (see above).
 - **Writes made by plugins skip every plugin's before hooks**, so rules in before hooks do
   not apply to them.
-- **Do not add after hooks on types the same plugin writes.** After hooks run inside the
-  write, and a plugin runs one call at a time. A route or job of plugin A that writes a type
-  A has an `after*` hook on waits for its own hook, and the hook waits for A: the plugin
-  hangs until the server restarts, and so does every write that runs its hooks. The time
-  limit does not break this wait. The example's routes write `voto` and its job writes
-  `encuesta`, so its only after hook is on `reserva`, which it never writes. Do follow-up
-  work in the code that writes, after `verdin_content` returns. The startup function is
-  the exception: it runs on its own instance.
+- **After hooks fired by a plugin's own writes run after its call returns**, not inside
+  the write, and hooks that write nest at most 4 levels deep (see
+  [Writes made by plugins](/extending/plugin-reference/#writes-made-by-plugins)). Do
+  follow-up work that must happen before the response in the code that writes, after
+  `verdin_content` returns.
 - **One call at a time per plugin**: a slow route delays that plugin's hooks. Keep calls
   short, and watch `verdin_plugin_call_duration_seconds` in the
   [metrics](/deploy/monitoring/).
@@ -402,7 +399,7 @@ Verdin has no hook into the HTTP request pipeline. What it offers instead:
    CORS, webhooks, scheduled publishing ([Releases](/guides/content/releases/)).
 3. Write one plugin with the rest, following the example: hooks, routes, a job, a startup
    function. Give it only the capabilities it needs.
-4. Check each type the plugin writes against its after hooks.
+4. Check that hooks writing content do not rely on nesting deeper than 4 levels.
 5. Build it, install it under `plugins/`, switch it on in **Settings → Plugins**, and read
    its log there.
 6. Update the frontend: plugin route URLs (`/api/plugins/<name>/…`), fingerprints or

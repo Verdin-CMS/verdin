@@ -150,9 +150,11 @@ pub struct Job {
     pub function: String,
 }
 
-/// `[startup]`: run when the plugin starts on an instance (the server starts with it on,
-/// it is switched on, or its settings are saved), on every instance, so it must be safe to
-/// run again. Gets `{ reason: start | enabled | settings }`.
+/// `[startup]`: run when the server starts with the plugin on, when it is switched on, or
+/// when its settings are saved while on. With several instances only the one running the
+/// scheduled jobs (`[plugins].run_jobs`) runs it, since it acts on the shared database; it
+/// still runs again on every restart, switch and settings change, so it must be safe to
+/// repeat. Gets `{ reason: start | enabled | settings }`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Startup {

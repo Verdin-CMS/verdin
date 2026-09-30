@@ -9,10 +9,18 @@
 //! `verdin_log({ level, message })`, `verdin_content({ op, uid, … })`,
 //! `verdin_kv_get(key)`, `verdin_kv_set({ key, value })`, `verdin_config()`,
 //! `verdin_public_permissions({ op: get | set, permissions? })`.
+//!
+//! Calls on a plugin take turns on its instance. `after*` hooks fired by a write a plugin
+//! makes through `verdin_content` are queued and run once that plugin call has returned
+//! (and released its instance), so a route, job, GraphQL resolver, startup function or
+//! hook can write types its own plugin (or another one) listens to. Hooks fired that way
+//! nest at most [`MAX_HOOK_DEPTH`] deep, so a hook writing the type it listens to stops.
 
 pub mod manifest;
 
+use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -31,6 +39,72 @@ use verdin_migrate::system::PLUGIN_KV;
 pub use manifest::Manifest;
 
 const MAX_LOG_LINES: usize = 200;
+
+/// How many levels of `after*` hooks writes made by plugins may fire: a hook's writes fire
+/// hooks one level deeper, and those past this depth are skipped (with a warning in the
+/// plugin's log), so a hook writing the type it listens to does not loop forever.
+pub const MAX_HOOK_DEPTH: u32 = 4;
+
+/// How long past a call's time limit its caller still waits (building the instance, a
+/// host function winding down) before giving up on it.
+const CALL_GRACE: Duration = Duration::from_secs(10);
+
+/// An `after*` hook fired by a write made from inside a plugin call, run once that call
+/// has returned.
+struct PendingHook {
+    plugin: Arc<Plugin>,
+    function: String,
+    input: Value,
+}
+
+/// The hooks a plugin call's writes fired, and how deep that call is in a chain of hooks
+/// (0 for routes, jobs, resolvers and startup functions).
+#[derive(Clone)]
+struct Deferred {
+    hooks: Arc<Mutex<Vec<PendingHook>>>,
+    depth: u32,
+}
+
+impl Deferred {
+    fn new(depth: u32) -> Self {
+        Self { hooks: Arc::default(), depth }
+    }
+
+    fn push(&self, hook: PendingHook) {
+        self.hooks.lock().expect("deferred hooks").push(hook);
+    }
+
+    fn take(&self) -> Vec<PendingHook> {
+        std::mem::take(&mut *self.hooks.lock().expect("deferred hooks"))
+    }
+}
+
+tokio::task_local! {
+    /// Set while a host function of a plugin call runs a write: the document listener
+    /// queues plugin hooks here instead of calling them (the caller holds an instance).
+    static DEFERRED: Deferred;
+}
+
+thread_local! {
+    /// The plugin call running on this thread (host functions run on the caller's thread):
+    /// where its writes' hooks go and when its time is up.
+    static CURRENT: RefCell<Option<(Deferred, Instant)>> = const { RefCell::new(None) };
+}
+
+/// Marks this thread as running a plugin call until dropped.
+struct CurrentCall(Option<(Deferred, Instant)>);
+
+impl CurrentCall {
+    fn enter(deferred: &Deferred, deadline: Instant) -> Self {
+        Self(CURRENT.with(|current| current.replace(Some((deferred.clone(), deadline)))))
+    }
+}
+
+impl Drop for CurrentCall {
+    fn drop(&mut self) {
+        CURRENT.with(|current| *current.borrow_mut() = self.0.take());
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
@@ -148,6 +222,24 @@ impl Shared {
         });
     }
 
+    /// Runs a host function's async work to completion on this (blocking) thread, within
+    /// the time left to the plugin call and with its writes' hooks queued for later.
+    fn block_on<T, E: std::fmt::Display>(
+        &self,
+        future: impl Future<Output = Result<T, E>>,
+    ) -> Result<T, String> {
+        let Some((deferred, deadline)) = CURRENT.with(|current| current.borrow().clone()) else {
+            return self.runtime.block_on(future).map_err(|error| error.to_string());
+        };
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        self.runtime.block_on(DEFERRED.scope(deferred, async move {
+            match tokio::time::timeout(remaining, future).await {
+                Ok(result) => result.map_err(|error| error.to_string()),
+                Err(_) => Err("the plugin's time limit was reached".to_owned()),
+            }
+        }))
+    }
+
     fn content(&self, request: Value) -> Value {
         let op = request["op"].as_str().unwrap_or_default();
         let uid = request["uid"].as_str().unwrap_or_default();
@@ -164,7 +256,7 @@ impl Shared {
         let Some(host) = self.host.read().expect("plugin host").clone() else {
             return json!({ "error": "content is not available yet" });
         };
-        match self.runtime.block_on(host.content(&request)) {
+        match self.block_on(host.content(&request)) {
             Ok(value) => value,
             Err(error) => json!({ "error": error }),
         }
@@ -177,7 +269,7 @@ impl Shared {
         let Some(host) = self.host.read().expect("plugin host").clone() else {
             return json!({ "error": "public permissions are not available yet" });
         };
-        match self.runtime.block_on(host.public_permissions(&request)) {
+        match self.block_on(host.public_permissions(&request)) {
             Ok(value) => value,
             Err(error) => json!({ "error": error }),
         }
@@ -187,7 +279,7 @@ impl Shared {
         if !self.capabilities.kv {
             return Value::Null;
         }
-        let rows = self.runtime.block_on(self.db.queries().fetch_all(
+        let rows = self.block_on(self.db.queries().fetch_all(
             &format!(
                 "SELECT value FROM {PLUGIN_KV} WHERE plugin = ? AND {} = ?",
                 key_column(&self.db)
@@ -212,7 +304,7 @@ impl Shared {
             return;
         }
         let db = &self.db;
-        let result = self.runtime.block_on(async {
+        let result = self.block_on(async {
             let mut tx = db.begin().await?;
             tx.execute(
                 &format!("DELETE FROM {PLUGIN_KV} WHERE plugin = ? AND {} = ?", key_column(db)),
@@ -294,8 +386,9 @@ pub struct Plugin {
     pub manifest: Manifest,
     pub dir: PathBuf,
     shared: Arc<Shared>,
-    /// Built on first use; dropped after a failed call (a trap leaves it unusable).
-    instance: Mutex<Option<extism::Plugin>>,
+    /// Built on first use; dropped after a failed call (a trap leaves it unusable). Calls
+    /// take turns on it; waiting for it is async and bounded (see [`call`]).
+    instance: Arc<tokio::sync::Mutex<Option<extism::Plugin>>>,
     enabled: AtomicBool,
 }
 
@@ -337,9 +430,15 @@ impl Plugin {
             .map_err(|error| PluginError::Load(error.to_string()))
     }
 
-    /// Calls an exported function with JSON in and out (blocking; run off the async threads).
-    fn call_blocking(&self, function: &str, input: &str) -> Result<String, PluginError> {
-        let mut guard = self.instance.lock().expect("plugin instance");
+    /// Calls an exported function with JSON in and out on the instance `guard` holds
+    /// (blocking; run off the async threads). Released when this returns.
+    fn call_blocking(
+        &self,
+        mut guard: tokio::sync::OwnedMutexGuard<Option<extism::Plugin>>,
+        function: &str,
+        input: &str,
+        deferred: &Deferred,
+    ) -> Result<String, PluginError> {
         if guard.is_none() {
             *guard = Some(self.build(self.manifest.limits.timeout_ms)?);
         }
@@ -347,6 +446,8 @@ impl Plugin {
         if !instance.function_exists(function) {
             return Err(PluginError::NotFound);
         }
+        let deadline = Instant::now() + Duration::from_millis(self.manifest.limits.timeout_ms);
+        let _current = CurrentCall::enter(deferred, deadline);
         match instance.call::<&str, String>(function, input) {
             Ok(output) => Ok(output),
             Err(error) => {
@@ -358,16 +459,17 @@ impl Plugin {
         }
     }
 
-    /// Runs the `[startup]` function on an instance of its own, with its own time limit.
-    /// Other calls go on meanwhile: holding the plugin's lock would deadlock a startup that
-    /// writes content the same plugin has `after*` hooks on.
-    fn startup_blocking(&self, input: &str) -> Result<String, PluginError> {
+    /// Runs the `[startup]` function on an instance of its own, with its own (longer) time
+    /// limit, so the plugin's hooks and routes go on meanwhile.
+    fn startup_blocking(&self, input: &str, deferred: &Deferred) -> Result<String, PluginError> {
         let startup = self.manifest.startup.as_ref().ok_or(PluginError::NotFound)?;
         let mut instance = self.build(startup.timeout_ms)?;
         if !instance.function_exists(&startup.function) {
             self.shared.log("error", &format!("startup: `{}` is not exported", startup.function));
             return Err(PluginError::NotFound);
         }
+        let deadline = Instant::now() + Duration::from_millis(startup.timeout_ms);
+        let _current = CurrentCall::enter(deferred, deadline);
         instance.call::<&str, String>(&startup.function, input).map_err(|error| {
             let message = error.to_string();
             self.shared.log("error", &format!("{}: {message}", startup.function));
@@ -444,7 +546,7 @@ impl Plugins {
                         manifest,
                         dir: path,
                         shared,
-                        instance: Mutex::new(None),
+                        instance: Arc::default(),
                         enabled: AtomicBool::new(false),
                     }));
                 }
@@ -534,10 +636,13 @@ impl Plugins {
         let input = json!({ "reason": reason }).to_string();
         let worker = plugin.clone();
         let started = Instant::now();
-        let result = tokio::task::spawn_blocking(move || worker.startup_blocking(&input))
+        let deferred = Deferred::new(0);
+        let queue = deferred.clone();
+        let limit =
+            Duration::from_millis(plugin.manifest.startup.as_ref().map_or(0, |s| s.timeout_ms));
+        let task = tokio::task::spawn_blocking(move || worker.startup_blocking(&input, &queue));
+        let result = bounded(&plugin, "startup", task, limit)
             .await
-            .map_err(|error| PluginError::Call(error.to_string()))
-            .and_then(|output| output)
             .and_then(|output| parse_output(&output))
             .and_then(|output| match output.get("error").and_then(Value::as_str) {
                 Some(error) => {
@@ -550,6 +655,7 @@ impl Plugins {
             let function = plugin.manifest.startup.as_ref().map_or("", |s| s.function.as_str());
             plugin.shared.observe(CallKind::Startup, function, started, result.is_err());
         }
+        run_deferred(deferred).await;
         result?;
         tracing::info!(plugin = %name, ?reason, "plugin started");
         Ok(())
@@ -585,7 +691,7 @@ impl Plugins {
         if !plugin.enabled() {
             return Err(PluginError::Disabled);
         }
-        call(plugin, kind, function.to_owned(), input).await
+        call(plugin, kind, function.to_owned(), input.clone(), 0).await
     }
 
     /// Serves a route of a plugin: `{ method, path, query, headers, body, actor }` →
@@ -630,7 +736,7 @@ impl Plugins {
                         tokio::time::sleep(wait).await;
                         if plugin.enabled() {
                             let input = json!({ "scheduledAt": next.to_rfc3339() });
-                            if let Err(error) = call(plugin.clone(), CallKind::Job, function.clone(), &input).await {
+                            if let Err(error) = call(plugin.clone(), CallKind::Job, function.clone(), input, 0).await {
                                 tracing::warn!(plugin = %plugin.manifest.name, %function, %error, "job failed");
                             }
                         }
@@ -642,26 +748,88 @@ impl Plugins {
     }
 }
 
-async fn call(
+/// Calls `function` on the plugin's instance, then runs the `after*` hooks its writes
+/// fired (one level deeper than `depth`, the call's own place in a chain of hooks).
+fn call(
     plugin: Arc<Plugin>,
     kind: CallKind,
     function: String,
-    input: &Value,
-) -> Result<Value, PluginError> {
-    let input = input.to_string();
-    let started = Instant::now();
-    let worker = plugin.clone();
-    let name = function.clone();
-    let result = tokio::task::spawn_blocking(move || worker.call_blocking(&name, &input))
-        .await
-        .map_err(|error| PluginError::Call(error.to_string()))
-        .and_then(|output| output)
-        .and_then(|output| parse_output(&output));
-    // Unknown functions are not recorded: they would make labels out of any name.
-    if !matches!(result, Err(PluginError::NotFound)) {
-        plugin.shared.observe(kind, &function, started, result.is_err());
+    input: Value,
+    depth: u32,
+) -> BoxFuture<'static, Result<Value, PluginError>> {
+    Box::pin(async move {
+        let started = Instant::now();
+        let limit = Duration::from_millis(plugin.manifest.limits.timeout_ms);
+        let deferred = Deferred::new(depth);
+        let result = async {
+            // Waiting for the instance is bounded too: at most as long as one other call may
+            // keep it.
+            let guard =
+                tokio::time::timeout(limit + CALL_GRACE, plugin.instance.clone().lock_owned())
+                    .await
+                    .map_err(|_| {
+                        let message = "busy: another call kept the plugin past its time limit";
+                        plugin.shared.log("error", &format!("{function}: {message}"));
+                        PluginError::Call(message.to_owned())
+                    })?;
+            let (worker, name, queue, input) =
+                (plugin.clone(), function.clone(), deferred.clone(), input.to_string());
+            let task = tokio::task::spawn_blocking(move || {
+                worker.call_blocking(guard, &name, &input, &queue)
+            });
+            bounded(&plugin, &function, task, limit).await.and_then(|output| parse_output(&output))
+        }
+        .await;
+        // Unknown functions are not recorded: they would make labels out of any name.
+        if !matches!(result, Err(PluginError::NotFound)) {
+            plugin.shared.observe(kind, &function, started, result.is_err());
+        }
+        run_deferred(deferred).await;
+        result
+    })
+}
+
+/// Waits for a blocking plugin call, at most `limit` plus a grace period: the Wasm time
+/// limit stops the module, and host functions stop at the limit, so this only gives up on
+/// a call stuck elsewhere (it keeps the instance until it ends, callers are freed).
+async fn bounded(
+    plugin: &Plugin,
+    function: &str,
+    task: tokio::task::JoinHandle<Result<String, PluginError>>,
+    limit: Duration,
+) -> Result<String, PluginError> {
+    match tokio::time::timeout(limit + CALL_GRACE, task).await {
+        Ok(joined) => joined.map_err(|error| PluginError::Call(error.to_string()))?,
+        Err(_) => {
+            let message = "the call did not end after its time limit";
+            plugin.shared.log("error", &format!("{function}: {message}"));
+            Err(PluginError::Call(message.to_owned()))
+        }
     }
-    result
+}
+
+/// Runs the hooks a call's writes fired, in order, each one level deeper.
+async fn run_deferred(deferred: Deferred) {
+    for PendingHook { plugin, function, input } in deferred.take() {
+        if deferred.depth >= MAX_HOOK_DEPTH {
+            plugin.shared.log(
+                "warn",
+                &format!(
+                    "{function} skipped for {} {} {}: hooks fired by plugin writes nest at most \
+                     {MAX_HOOK_DEPTH} deep (does a hook write the type it listens to?)",
+                    input["event"].as_str().unwrap_or_default(),
+                    input["uid"].as_str().unwrap_or_default(),
+                    input["documentId"].as_str().unwrap_or_default(),
+                ),
+            );
+            continue;
+        }
+        let name = plugin.manifest.name.clone();
+        if let Err(error) = call(plugin, CallKind::Hook, function, input, deferred.depth + 1).await
+        {
+            tracing::warn!(plugin = %name, %error, "after hook failed");
+        }
+    }
 }
 
 fn parse_output(output: &str) -> Result<Value, PluginError> {
@@ -697,7 +865,7 @@ impl DocumentHook for Plugins {
                     "locale": context.locale,
                     "data": data,
                 });
-                match call(plugin.clone(), CallKind::Hook, function, &input).await {
+                match call(plugin.clone(), CallKind::Hook, function, input, 1).await {
                     Ok(output) => {
                         if let Some(error) = output.get("error").and_then(Value::as_str) {
                             return Err(error.to_owned());
@@ -733,6 +901,9 @@ impl DocumentListener for Plugins {
                 .hooked(name, &event.uid)
                 .map(|(plugin, function)| (plugin.clone(), function.to_owned()))
                 .collect();
+            // A write made from inside a plugin call: its hooks run once that call returns
+            // (the caller may hold the very instance they need).
+            let deferred = DEFERRED.try_with(Deferred::clone).ok();
             for (plugin, function) in hooks {
                 let input = json!({
                     "event": name,
@@ -740,7 +911,11 @@ impl DocumentListener for Plugins {
                     "documentId": event.document_id,
                     "locale": event.locale,
                 });
-                if let Err(error) = call(plugin.clone(), CallKind::Hook, function, &input).await {
+                if let Some(deferred) = &deferred {
+                    deferred.push(PendingHook { plugin, function, input });
+                } else if let Err(error) =
+                    call(plugin.clone(), CallKind::Hook, function, input, 1).await
+                {
                     tracing::warn!(plugin = %plugin.manifest.name, %error, "after hook failed");
                 }
             }
