@@ -2,7 +2,7 @@
 title: Zgodność ze Strapi
 description: Które funkcje i API Strapi v5 Verdin obsługuje, obsługuje częściowo lub nie obsługuje — REST, GraphQL, użytkownicy i uprawnienia, przesyłanie plików, i18n, szkice i publikacja, rozszerzenia kodu, panel administracyjny i funkcje Enterprise.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin zachowuje model treści i API treści ze Strapi v5, aby frontendy i treść mogły
@@ -58,7 +58,7 @@ przypadki; uwaga mówi, czego brakuje. **Nieobsługiwane** nie ma odpowiednika.
 | Shadow CRUD (wyłączanie operacji per typ) | Obsługiwane | Ustawienie `disabled` funkcji. |
 | Własne resolvery i rozszerzenia schematu | Częściowo | Pola główne rozwiązywane przez wtyczki (`[[graphql]]` w `plugin.toml`); brak `extensionService`. |
 | Mutacje Users & Permissions (`login`, `register`, `me`…) | Nieobsługiwane | Użyj tras REST. |
-| Zapytania/mutacje przesyłania i i18n (`uploadFiles`, `i18NLocales`…) | Nieobsługiwane | Użyj tras REST i panelu administracyjnego. |
+| Zapytania/mutacje przesyłania i i18n (`uploadFiles`, `i18NLocales`…) | Nieobsługiwane | Użyj tras REST (`GET /api/i18n/locales`) i panelu administracyjnego. `localizations` w typach lokalizowanych jest obsługiwane. |
 | Limity, GraphiQL | Obsługiwane | `maxDepth`, `maxComplexity`, przełączniki introspekcji i playgroundu. |
 
 ## Users & Permissions (użytkownicy końcowi)
@@ -93,8 +93,8 @@ Włącz **Ustawienia → Funkcje → Użytkownicy i uprawnienia**. Zobacz [Użyt
 | --- | --- | --- |
 | Typy lokalizowane i pola nielokalizowane | Obsługiwane | `pluginOptions.i18n.localized`, także per atrybut. |
 | `?locale=` w REST, `locale` w GraphQL | Obsługiwane | Nieznany język to `400`. |
-| `localizations` w odpowiedziach | Nieobsługiwane | Odczytaj inny język z tym samym `documentId` i `?locale=`. |
-| `GET /api/i18n/locales` | Nieobsługiwane | Językami zarządza się w panelu (**Ustawienia → Internacjonalizacja**). |
+| `localizations` w odpowiedziach | Obsługiwane | Tylko po populowaniu (`populate=localizations`, `populate=*`), z tymi samymi opcjami co relacja. Także pole GraphQL. API administracyjne je pomija. |
+| `GET /api/i18n/locales` | Obsługiwane | Zwykła tablica w formacie Strapi. Wymaga `find` na `plugin::i18n.locale` (wiersz **Języki** siatki uprawnień), jak `listLocales` w Strapi. `documentId` jest wyprowadzony z kodu języka. Językami zarządza się w panelu (**Ustawienia → Internacjonalizacja**). |
 
 ## Szkice i publikacja
 
@@ -106,11 +106,14 @@ Włącz **Ustawienia → Funkcje → Użytkownicy i uprawnienia**. Zobacz [Użyt
 
 ## Dostosowywanie serwera
 
+Jak przenieść każdy z tych elementów, opisuje [Przenoszenie własnego kodu](/pl/migrate/porting-custom-code/).
+
 | Strapi | Status | Verdin |
 | --- | --- | --- |
 | Hooki cyklu życia, middleware Document Service | Częściowo | Hooki before/after we wtyczkach WebAssembly, które mogą zmienić lub odrzucić zapis. Bez JavaScriptu. |
 | Własne kontrolery, serwisy, trasy | Częściowo | Trasy wtyczek pod `/api/plugins/<name>/`. |
 | Polityki i middleware | Nieobsługiwane | Uprawnienia i limity żądań są wbudowane. |
+| `register` / `bootstrap` | Częściowo | Funkcja startowa wtyczki, uruchamiana, gdy wtyczka startuje, zostaje włączona lub zmieniają się jej ustawienia; może zasilać treści i zastępować uprawnienia roli publicznej. |
 | Zadania cron | Częściowo | Zadania wtyczek. |
 | Document Service / Entity Service w JavaScript | Nieobsługiwane | Brak runtime'u JavaScript. |
 | Wtyczki npm z marketplace Strapi | Nieobsługiwane | |

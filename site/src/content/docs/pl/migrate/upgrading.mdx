@@ -2,7 +2,7 @@
 title: Aktualizacja Verdin
 description: Zaktualizuj instalację Verdin — binarkę lub obraz Docker, migracje uruchamiane przy starcie oraz istotne i łamiące zmiany każdej wersji minor.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -116,6 +116,33 @@ siebie dłużej, niż trwa wdrożenie kroczące.
 
 Istotne i łamiące zmiany w poszczególnych wersjach, od najnowszych. Pełną listę zawiera
 [changelog](/pl/project/changelog/).
+
+### 0.10 → 0.11
+
+Migracja uruchamiana przy starcie dodaje jedną tabelę, `vd_cluster_events`, używaną tylko
+przy `[cluster] bus = "database"`.
+
+- **Liczby dziesiętne**: całkowite wartości `decimal` są zwracane jako liczby całkowite JSON
+  (`25`, nie `25.0`), tak jak zwraca je Strapi. Klienci, którzy ściśle sprawdzają typ JSON,
+  mogą to zauważyć; `[api] decimal_as_string` bez zmian. W SQLite `sort` oraz
+  `$gt`/`$lt`/`$between` na liczbach dziesiętnych porównują teraz liczby zamiast tekstu,
+  więc wyniki, które polegały na dawnej (błędnej) kolejności, się zmieniają.
+- **`populate=*` w typach lokalizowanych** zwraca też `localizations`, czyli pozostałe
+  wersje językowe dokumentu, jak Strapi v5. Atrybut schematu o nazwie `localizations`
+  zachowuje swoje znaczenie.
+- **Wtyczki**: hooki after wywołane zapisami samej wtyczki uruchamiają się po zwróceniu jej
+  wywołania, a nie wewnątrz zapisu, a hooki, które zapisują, zagnieżdżają się najwyżej na
+  4 poziomy. Funkcje hosta zatrzymują się na limicie czasu wywołania.
+- **Kilka instancji**: ustaw `[cluster] bus = "database"` na każdej instancji, aby strumienie
+  czasu rzeczywistego, obecność, pamięć podręczna odpowiedzi i indeks wyszukiwania śledziły
+  zmiany wykonane na pozostałych (zobacz [Skalowanie](/pl/deploy/scaling/)).
+- **Skrypty czytające listy administracyjne**: `GET /admin/api/users`, `/roles`,
+  `/api-tokens`, `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms`
+  i `/deploy/targets` zwracają 25 wierszy, chyba że podasz `pageSize` (najwyżej 100), z
+  `meta.pagination`, jak listy, które były już stronicowane. Przechodź strony przez `?page=`,
+  aż `page` osiągnie `meta.pagination.pageCount`. `/deploy/deployments` stronicuje tak samo
+  zamiast zwracać 50 ostatnich; `limit` nadal działa jako przestarzały alias `pageSize`.
+  Zobacz [Listy](/pl/api/admin/#listy).
 
 ### 0.9.1 → 0.10
 

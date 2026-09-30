@@ -127,7 +127,7 @@ Tabele platformy są częścią każdego wyprowadzonego modelu, więc silnik mig
 | Administratorzy | `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (tokeny odświeżania), `vd_admin_tokens` (linki zaproszeń i resetu), `vd_admin_two_factor`, `vd_admin_passkeys`, `vd_spent_challenges` |
 | Dostęp do API treści | `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` |
 | Użytkownicy końcowi | `vd_users`, `vd_user_roles`, `vd_user_role_permissions`, `vd_end_user_sessions` |
-| Instancja | `vd_settings` (przełączniki funkcji, układy widoków edycji, jednorazowe znaczniki aktualizacji), `vd_locales` |
+| Instancja | `vd_settings` (przełączniki funkcji, układy widoków edycji, jednorazowe znaczniki aktualizacji), `vd_locales`, `vd_cluster_events` (wspólna szyna zdarzeń, zobacz [Kilka instancji](/pl/deploy/scaling/)) |
 | Multimedia | `vd_files`, `vd_folders` |
 | Przepływ treści | `vd_history_versions`, `vd_releases`, `vd_release_actions`, `vd_workflows`, `vd_workflow_stages`, `vd_document_stages` |
 | Współpraca | `vd_comments`, `vd_tasks`, `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` |

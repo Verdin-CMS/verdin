@@ -91,6 +91,39 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   skryptu, a nie ze stron innej witryny.
 - Udane zmiany trafiają do [dziennika audytu](/pl/guides/content/audit-logs/).
 
+## Listy
+
+Listy ustawień są stronicowane parametrami `page` (od 1) i `pageSize`. Odpowiadają wierszami
+strony i licznikami:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Lista | Domyślny rozmiar strony (maksimum) | Kolejność | Inne parametry |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Od najstarszych | |
+| `GET /webhooks` | 25 (100) | Od najstarszych | `meta.events` wymienia zdarzenia, które może subskrybować webhook |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Od najnowszych | |
+| `GET /releases` | 25 (100) | Od najnowszych | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | Według źródła | `search` dopasowuje źródło lub cel |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | Według nazwy | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Od najnowszych | |
+| `GET /deploy/targets` | 25 (100) | Od najstarszych | |
+| `GET /deploy/deployments` | 25 (100) | Od najnowszych | `targetId`; `limit` to przestarzały alias `pageSize` |
+| `GET /end-users` | 25 (100) | Od najnowszych | `search` dopasowuje nazwę użytkownika lub e-mail |
+| `GET /audit-logs` | 50 (200) | Od najnowszych | Zobacz [Dzienniki audytu](/pl/guides/content/audit-logs/) |
+
+Większy `pageSize` jest obniżany do maksimum. Aby odczytać całą listę, żądaj kolejnych stron,
+aż `page` osiągnie `pageCount`:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Trasy treści stronicują jak API REST, przez `pagination[page]` i `pagination[pageSize]`.
+
 ## Grupy tras
 
 Ścieżki są względne wobec `/admin/api`. Routery znajdują się w

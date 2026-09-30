@@ -137,9 +137,11 @@ Wywoływanie strumienia z witryny na innym originie wymaga tego originu w
 
 ## Za load balancerem
 
-Zdarzenia dotyczą instancji, z którą klient jest połączony. Przy kilku instancjach używaj
-sesji sticky dla `/api/_events` albo kieruj klientów czasu rzeczywistego na jedną instancję.
-Zobacz [Skalowanie](/pl/deploy/scaling/).
+Przy kilku instancjach włącz wspólną szynę zdarzeń (`[cluster].bus = "database"`): klient
+połączony z dowolną instancją otrzymuje wtedy zdarzenia wszystkich. Bez niej zdarzenia
+dotyczą instancji, z którą klient jest połączony; używaj sesji sticky dla `/api/_events`
+albo kieruj klientów czasu rzeczywistego na jedną instancję.
+Zobacz [Skalowanie](/pl/deploy/scaling/#wspólna-szyna-zdarzeń).
 
 Panel administracyjny używa własnego strumienia (`/admin/api/events`) do aktualizacji na
 żywo, obecności i miękkich blokad podczas edycji; zobacz

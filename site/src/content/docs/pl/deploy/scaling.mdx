@@ -10,10 +10,10 @@ import Diagram from '../../../../components/Diagram.astro';
 
 Verdin trzyma swój stan w bazie danych, więc możesz uruchomić kilka instancji tego samego
 projektu za load balancerem, dla dostępności lub wydajności. Ta strona wymienia, co
-instancje współdzielą, co każda zatrzymuje dla siebie i które ustawienia mają znaczenie.
+instancje współdzielą, wspólną szynę zdarzeń, co każda zatrzymuje dla siebie i które ustawienia mają znaczenie.
 
 <Diagram
-  caption="Instancje współdzielą bazę danych i magazyn multimediów; cache, limity żądań i strumienie zdarzeń zostają w każdej instancji."
+  caption="Instancje współdzielą bazę danych i magazyn multimediów; przy włączonej szynie zdarzeń zdarzenia czasu rzeczywistego, obecność, unieważnianie cache i aktualizacje wyszukiwania docierają do każdej instancji przez bazę danych."
   code={`flowchart LR
   LB[Load balancer] --> A[Instancja 1]
   LB --> B[Instancja 2]
@@ -41,6 +41,9 @@ instancje współdzielą, co każda zatrzymuje dla siebie i które ustawienia ma
 - **Kontrole stanu.** Skieruj load balancer na `GET /_ready`, który odpowiada `503`, gdy baza
   danych jest nieosiągalna. `GET /_health` mówi tylko, że proces działa; używaj go do
   sprawdzania żywotności.
+- **Wspólna szyna zdarzeń.** Ustaw `[cluster].bus = "database"` na każdej instancji, aby
+  zdarzenia czasu rzeczywistego, obecność, unieważnianie cache i aktualizacje wyszukiwania
+  docierały do wszystkich (zobacz [Wspólna szyna zdarzeń](#wspólna-szyna-zdarzeń)).
 - **Zadania wtyczek na jednej instancji.** Ustaw `[plugins].run_jobs = false` na każdej
   instancji poza jedną; w przeciwnym razie każda instancja uruchamia zaplanowane zadania.
 - **Metryki per instancja.** Z `[metrics].enabled = true` każda instancja serwuje własne
@@ -73,24 +76,76 @@ instancja starego schematu nie potrzebuje już tych danych. Zobacz
 | Wyzwania kluczy dostępu | Zużyte wyzwania są zapisywane w bazie danych, więc na każde odpowiada się raz we wszystkich instancjach. |
 | Czyszczenie dziennika audytu | Działa na każdej instancji; dwukrotne usunięcie starych wierszy jest nieszkodliwe. |
 | Magazyn klucz-wartość wtyczek | W bazie danych. |
+| Zdarzenia czasu rzeczywistego, obecność i miękkie blokady | Przy [szynie zdarzeń](#wspólna-szyna-zdarzeń): klient połączony z dowolną instancją otrzymuje zdarzenia wszystkich i widzi każdego administratora we wpisie. |
+| Cache anonimowych odpowiedzi | Przy szynie zdarzeń zapis na dowolnej instancji czyści cache każdej instancji. |
+| Indeks wyszukiwania | Przy szynie zdarzeń każda instancja ponownie czyta i indeksuje wpisy zmienione przez pozostałe. |
+| Przekształcone obrazy | Przy szynie zdarzeń zmieniony lub usunięty plik opuszcza cache transformacji każdej instancji. |
 
 ## Co zostaje w każdej instancji
 
 - **Limity żądań** liczy każda instancja osobno. Przy `n` instancjach klient może wykonać do
   `n` razy `[api].public_rate_limit` żądań na minutę. Jeśli potrzebujesz globalnego limitu,
   egzekwuj go na load balancerze.
-- **Cache anonimowych odpowiedzi** (`[api].cache_ttl_secs`). Zapis czyści cache instancji,
-  która go wykonała; pozostałe mogą serwować poprzednią odpowiedź, dopóki ich wpis nie
-  wygaśnie. Utrzymuj TTL na kilku sekundach albo `0`.
-- **Zdarzenia czasu rzeczywistego i obecność** dotyczą instancji, z którą klient jest
-  połączony. Używaj sesji sticky dla strumieni zdarzeń (zobacz
-  [Czas rzeczywisty](/pl/guides/frontend/realtime/)).
-- **Indeks wyszukiwania** (`[search]`) znajduje się na dysku instancji i śledzi tylko zapisy
-  tej instancji. Włącz go na jednej instancji i kieruj tam żądania `_q` albo zaakceptuj, że
-  pozostałe będą w tyle, dopóki nie zrestartują się z pustym katalogiem indeksu.
+- **Bez szyny zdarzeń** (`[cluster].bus = "none"`, domyślnie) zdarzenia czasu rzeczywistego
+  i obecność dotyczą instancji, z którą klient jest połączony (używaj sesji sticky dla
+  strumieni zdarzeń), zapis czyści tylko cache odpowiedzi własnej instancji (utrzymuj
+  `[api].cache_ttl_secs` na kilku sekundach albo `0`), a indeks wyszukiwania śledzi tylko
+  zapisy własnej instancji.
+- **Indeks wyszukiwania** (`[search]`) znajduje się na dysku każdej instancji. Przy szynie
+  zdarzeń instancje indeksują nawzajem swoje zmiany na bieżąco; instancja, która startuje
+  z pustym katalogiem indeksu, buduje go z bazy danych. Zmiany wykonane, gdy instancja nie
+  działała, trafiają do jej indeksu przy jego przebudowie: usuń katalog przed jej startem
+  albo przebuduj indeks po wdrożeniu.
 - **Transformacje obrazów** (`[upload.transforms]`) są cache'owane per instancja
   w `cache_dir`. Aby je współdzielić, postaw CDN przed `/uploads`.
 - **Zaplanowane zadania wtyczek**: zobacz `run_jobs` powyżej.
+
+## Wspólna szyna zdarzeń
+
+Niektóre rzeczy dzieją się w pamięci: strumienie czasu rzeczywistego, to, kto edytuje który
+wpis, cache anonimowych odpowiedzi, indeks wyszukiwania. Szyna zdarzeń przenosi je z instancji,
+w której się dzieją, do pozostałych.
+
+```toml title="verdin.toml"
+[cluster]
+bus = "database"
+```
+
+Albo `VERDIN_CLUSTER__BUS=database`, na każdej instancji. Szyna używa bazy danych projektu,
+więc nie potrzebuje żadnej innej usługi:
+
+- **PostgreSQL**: instancja zapisuje każde zdarzenie do tabeli `vd_cluster_events` i budzi
+  pozostałe przez `NOTIFY`. Każda instancja zatrzymuje jedno połączenie ze swojej puli dla
+  `LISTEN`. Powiadomienie podaje tylko nadawcę, więc zdarzenia dowolnego rozmiaru mieszczą się
+  w limicie PostgreSQL 8000 bajtów. Jeśli połączenie zostanie zerwane, instancja łączy się
+  ponownie i czyta tabelę, by nadrobić zaległości. Czyta tabelę także co 30 sekund na
+  wypadek zgubienia powiadomienia.
+- **MySQL, MariaDB i SQLite**: każda instancja czyta nowe wiersze `vd_cluster_events` co
+  `poll_interval_ms` (domyślnie 1000). Zapytanie używa klucza głównego, więc odczyt pustej
+  tabeli kosztuje niewiele. Zmniejsz interwał, by aktualizacje były szybsze; zmiana jednej
+  instancji dociera do pozostałych w ciągu interwału.
+
+Co jest przenoszone: zapisy treści (do strumieni czasu rzeczywistego, cache odpowiedzi
+i indeksu wyszukiwania, który ponownie czyta zmieniony wpis), zmiany multimediów (strumienie,
+cache, cache transformacji), sygnały obecności oraz powiadomienia o komentarzach i zadaniach
+w panelu. Każda instancja ignoruje własne zdarzenia. Webhooki, czyszczenie CDN, historia,
+dzienniki audytu i hooki wtyczek nie są przenoszone: instancja, która wykonała zmianę,
+uruchamia je raz.
+
+Wiersze są usuwane po 10 minutach. Nowa instancja startuje od następnego zdarzenia, nie od
+wcześniejszych. Instancja, która nie nadąża albo traci połączenie z bazą danych, porzuca
+zdarzenia zamiast wstrzymywać zapis. Metryka `verdin_cluster_events_total` liczy zdarzenia
+wysłane, odebrane i porzucone (zobacz [Monitorowanie](/pl/deploy/monitoring/#metryki-prometheus)).
+
+Każda instancja nazywa się na szynie losowym identyfikatorem przy każdym starcie albo
+wartością `[cluster].instance_id`, jeśli ją ustawisz (na przykład nazwą poda). Identyfikator
+tylko odróżnia instancje; nic innego od niego nie zależy.
+
+Przy jednej instancji zostaw `bus` na `none`: zdarzenia zostają w pamięci i nic nie jest
+zapisywane.
+
+Backendy Redis i NATS nie są jeszcze dostępne. Szyna w bazie danych obejmuje każdą
+obsługiwaną bazę danych bez uruchamiania czegokolwiek innego.
 
 ## Ustawienia
 
@@ -104,8 +159,14 @@ sync_interval_secs = 10
 run_jobs = true
 
 [api]
-# Short-lived when each instance keeps its own cache.
-cache_ttl_secs = 5
+# Emptied on every instance by the event bus; keep it short without it.
+cache_ttl_secs = 60
+
+[cluster]
+# Share realtime events, presence, cache invalidation and search updates.
+bus = "database"
+# MySQL, MariaDB and SQLite: how often to read other instances' events.
+poll_interval_ms = 1000
 ```
 
 Ustaw `run_jobs` per instancja przez `VERDIN_PLUGINS__RUN_JOBS=false`.
@@ -114,4 +175,4 @@ Ustaw `run_jobs` per instancja przez `VERDIN_PLUGINS__RUN_JOBS=false`.
 
 Każda instancja otwiera do `[database].pool_max` połączeń (domyślnie 10). Utrzymuj
 `instances × pool_max` poniżej limitu serwera, z zapasem na migracje, kopie zapasowe
-i konserwację. Domyślny limit PostgreSQL to 100 połączeń.
+i konserwację. Domyślny limit PostgreSQL to 100 połączeń. W PostgreSQL szyna zdarzeń zatrzymuje jedno z połączeń każdej instancji dla `LISTEN`.

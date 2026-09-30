@@ -21,6 +21,7 @@ wyjaśnia, co potrafią wtyczki i jak je instalować; aby napisać własną, prz
 | **Hooki przy zapisach** | Zanim wpis zostanie utworzony, zaktualizowany, opublikowany, wycofany z publikacji, usunięty albo jego szkic odrzucony, zmień dane lub odrzuć zapis z komunikatem. Po zapisie zareaguj na niego (log, powiadomienie, synchronizacja). |
 | **Trasy** | Serwuj endpointy HTTP pod `/api/plugins/<name>/…`: odbiornik webhooków, wyliczany feed, proxy do innej usługi. |
 | **Zaplanowane zadania** | Uruchamiaj funkcję według harmonogramu cron (UTC). |
+| **Funkcja startowa** | Uruchom funkcję, gdy wtyczka startuje, zostaje włączona albo zmieniają się jej ustawienia: zasilanie danymi, konfiguracja roli publicznej (`bootstrap` ze Strapi). |
 | **Pola GraphQL** | Dodawaj pola `name(args: JSON): JSON` do `Query` lub `Mutation`. |
 | **Widżety pulpitu** | Dodawaj typy widżetów do pulpitu panelu, jako Web Components. |
 | **Pola niestandardowe** | Dawaj atrybutom własny edytor w panelu (wybór koloru, mapa), jako Web Components; wartość jest przechowywana jako zwykły typ atrybutu. |
@@ -49,6 +50,7 @@ pamięcią, przechodzi przez kilka funkcji hosta, a serwer sprawdza każde wywo�
 | `write` | Tworzenie, aktualizację, publikację, cofanie publikacji i usuwanie wpisów wymienionych typów (a także ich odczyt). |
 | `http` | Żądania HTTP do wymienionych hostów (`api.example.com`, `*.example.com`). |
 | `kv` | Własny magazyn klucz-wartość w bazie danych Verdin. |
+| `public_permissions` | Odczyt i zastępowanie uprawnień roli publicznej w API treści. |
 
 <Diagram
   caption="Wywołania wtyczki i to, do czego sięgają jej wywołania hosta"

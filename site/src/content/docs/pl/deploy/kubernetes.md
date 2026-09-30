@@ -8,7 +8,8 @@ sidebar:
 Ta strona uruchamia projekt Verdin na Kubernetes. Główna konfiguracja jest bezstanowa:
 PostgreSQL (lub MySQL/MariaDB) poza podami, multimedia w magazynie zgodnym z S3 i tyle
 replik, ile potrzebujesz. Dalej opisana jest konfiguracja z jedną repliką i wolumenem dla
-SQLite.
+SQLite. [Chart Helm](/pl/deploy/helm/) pakuje te manifesty z wartościami dla każdego
+ustawienia.
 
 Manifesty używają stabilnych API (`apps/v1`, `v1`) i zostały zwalidowane względem schematów
 Kubernetes przez `kubeconform -strict` 2026-09-29, bez uruchamiania na prawdziwym klastrze.
@@ -39,7 +40,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # emptied on every replica by the event bus
+
+[cluster]
+bus = "database"           # realtime, presence, caches and search across replicas
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -159,9 +163,11 @@ Uwagi do manifestu:
   zaakceptuj, że zadania działają na każdej replice. Webhooki, zaplanowane wydania
   i codzienne podsumowanie są przejmowane w bazie danych i wykonują się raz. Zobacz
   [Uruchamianie kilku instancji](/pl/deploy/scaling/).
-- **Czas rzeczywisty.** Strumienie zdarzeń (`/api/_events`) zostają na podzie, z którym się
-  połączyły. Jeśli używasz [czasu rzeczywistego](/pl/guides/frontend/realtime/), włącz
-  session affinity na Ingressie.
+- **Czas rzeczywisty, obecność, cache i wyszukiwanie.** `[cluster].bus = "database"` dostarcza
+  każdemu podowi zdarzenia pozostałych (zobacz
+  [wspólną szynę zdarzeń](/pl/deploy/scaling/#wspólna-szyna-zdarzeń)). Bez niej strumienie
+  zdarzeń (`/api/_events`) zostają na podzie, z którym się połączyły: jeśli używasz
+  [czasu rzeczywistego](/pl/guides/frontend/realtime/), włącz session affinity na Ingressie.
 
 ## Jedna replika z SQLite
 

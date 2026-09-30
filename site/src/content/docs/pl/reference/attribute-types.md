@@ -229,8 +229,11 @@ Dokładna liczba dziesiętna.
 Wartości są zaokrąglane do `scale` cyfr (połówki od zera, jak w bazach danych) i odrzucane,
 gdy mają więcej niż `precision - scale` cyfr przed przecinkiem. Zapisy przyjmują liczby
 i stringi liczbowe. Przechowywany jako `numeric(precision,scale)` (`text` w SQLite, więc nic
-nie jest zaokrąglane). API: liczba albo dokładny string z
-[`[api].decimal_as_string`](/pl/reference/configuration/).
+nie jest zaokrąglane). API: liczba, tak jak zwraca ją Strapi. Wartości całkowite są liczbami
+całkowitymi (`25`, nie `25.0`), a pozostałe to najkrótsza liczba zmiennoprzecinkowa, która
+odczytuje się z powrotem tak samo (`12.5`). Przy
+[`[api].decimal_as_string`](/pl/reference/configuration/) API zwraca zamiast tego dokładny
+string.
 
 ## Daty i wartości logiczne
 

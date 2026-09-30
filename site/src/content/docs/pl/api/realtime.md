@@ -130,6 +130,10 @@ danym typie.
 
 ## Kilka instancji
 
-Zdarzenia i obecność dotyczą instancji, z którą klient jest połączony. Za load balancerem
-kieruj `/api/_events` i `/admin/api/events` z sesjami sticky albo łącz klientów czasu
-rzeczywistego z jedną instancją. Zobacz [Skalowanie](/pl/deploy/scaling/).
+Przy wspólnej szynie zdarzeń (`[cluster].bus = "database"`) strumienie każdej instancji
+niosą zdarzenia wszystkich, a obecność i miękkie blokady są takie same na każdej instancji.
+Zdarzenia z innej instancji docierają w ciągu `[cluster].poll_interval_ms` (MySQL, MariaDB,
+SQLite) albo od razu (PostgreSQL, `LISTEN/NOTIFY`). Bez szyny zdarzenia i obecność dotyczą
+instancji, z którą klient jest połączony: kieruj `/api/_events` i `/admin/api/events` z
+sesjami sticky albo łącz klientów czasu rzeczywistego z jedną instancją.
+Zobacz [Skalowanie](/pl/deploy/scaling/#wspólna-szyna-zdarzeń).

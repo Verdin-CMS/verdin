@@ -1,12 +1,13 @@
 ---
 title: Dokumentacja wtyczek
-description: Manifest plugin.toml, uprawnienia (capabilities), hooki i ich payloady, funkcje hosta, trasy, zadania, pola GraphQL, punkty rozszerzeń panelu i limity.
+description: Manifest plugin.toml, uprawnienia (capabilities), hooki i ich payloady, funkcje hosta, trasy, zadania, funkcja startowa, pola GraphQL, punkty rozszerzeń panelu, limity i metryki.
 sidebar:
   order: 3
 ---
 
 <!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
-plugins_admin.rs, crates/verdin-graphql/src/lib.rs and admin/src/app/core/plugin-extensions.ts. -->
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
 
 Ta strona to pełny kontrakt między Verdin a wtyczką: manifest, co Verdin wysyła do każdej
 eksportowanej funkcji i czego oczekuje w odpowiedzi, oraz funkcje hosta, które moduł może
@@ -39,6 +40,7 @@ read = ["api::article"]
 write = ["api::tag"]
 http = ["api.example.com"]
 kv = true
+public_permissions = true
 
 [limits]
 timeout_ms = 5000
@@ -55,6 +57,10 @@ function = "handle"
 [[jobs]]
 schedule = "*/15 * * * *"
 function = "refresh"
+
+[startup]
+function = "seed"
+timeout_ms = 30000
 
 [[graphql]]
 name = "slugStats"
@@ -102,6 +108,7 @@ Nieznane klucze są błędami, w każdej tabeli.
 | `write` | `[]` | Typy zawartości, na których może wykonywać `create`, `update`, `delete`, `publish` i `unpublish`. Obejmuje `read`. |
 | `http` | `[]` | Hosty, do których moduł może wysyłać żądania HTTP: `api.example.com` lub `*.example.com`. |
 | `kv` | `false` | Własny magazyn klucz-wartość wtyczki (`verdin_kv_get`, `verdin_kv_set`). |
+| `public_permissions` | `false` | Odczyt i zastępowanie uprawnień roli publicznej w API treści (`verdin_public_permissions`). |
 
 Capabilities ograniczają tylko wywołania hosta. Hooki działają na wskazanych typach
 niezależnie od `read`, a trasy są dostępne dla każdego.
@@ -136,8 +143,8 @@ Zdarzenia:
 
 Nazwy to nazwy cyklu życia ze Strapi. Hooki działają przy zapisach z panelu
 administracyjnego, API REST i GraphQL oraz wydań, ale nie przy zapisach wykonanych przez
-wtyczki (zobacz [Zapisy wykonywane przez wtyczki](#zapisy-wykonywane-przez-wtyczki)) ani przez
-polecenia `verdin import`.
+polecenia `verdin import`. Zapisy wykonane przez wtyczki uruchamiają hooki after, ale nie
+hooki before (zobacz [Zapisy wykonywane przez wtyczki](#zapisy-wykonywane-przez-wtyczki)).
 
 ### `[routes]`
 
@@ -153,6 +160,18 @@ polecenia `verdin import`.
 | --- | --- |
 | `schedule` | Wyrażenie cron, w UTC, z opcjonalnymi sekundami: `*/15 * * * *`, `0 0 3 * * *`. |
 | `function` | Eksportowana funkcja do wywołania. |
+
+### `[startup]`
+
+Funkcja uruchamiana, gdy wtyczka startuje: to, co projekt Strapi robi w `bootstrap`
+(zasilanie treści, konfiguracja roli publicznej).
+
+| Klucz | Domyślnie | Opis |
+| --- | --- | --- |
+| `function` | wymagany | Eksportowana funkcja do wywołania. |
+| `timeout_ms` | `30000` | Jej własny limit czasu w milisekundach (zasilanie danymi może trwać dłużej niż hook). Musi być dodatni. |
+
+Kiedy działa, opisuje [Funkcja startowa](#funkcja-startowa).
 
 ### `[[graphql]]`
 
@@ -289,6 +308,33 @@ uruchomienie. Wyjście jest ignorowane; błędy są logowane. Zadania działają
 jest włączona, i tylko na instancjach z `[plugins].run_jobs = true`. Uruchomienie pominięte
 podczas niedziałania serwera nie jest nadrabiane.
 
+### Funkcja startowa
+
+Wejście: `{ "reason": "start" | "enabled" | "settings" }`:
+
+| `reason` | Kiedy |
+| --- | --- |
+| `start` | Serwer wystartował z włączoną wtyczką. |
+| `enabled` | Wtyczka została włączona (tutaj albo na innej instancji i przejęta tutaj). |
+| `settings` | Jej ustawienia zmieniły się, gdy była włączona (zapisane tutaj albo przejęte z innej instancji). |
+
+Wyjście: `{ "error": "message" }` liczy się jako porażka; cokolwiek innego (`{}`, puste) jako
+sukces. Porażka (trap, przekroczenie czasu, `{ error }`) trafia do logu wtyczki i logu
+serwera; wtyczka pozostaje włączona, a funkcja uruchamia się ponownie przy następnym starcie,
+włączeniu lub zmianie ustawień.
+
+Funkcja działa w tle, po uruchomieniu serwera, więc żądania są obsługiwane w międzyczasie.
+Działa na własnej instancji modułu z `[startup].timeout_ms`, więc wolne zasilanie danymi nie
+wstrzymuje hooków i tras wtyczki. Hooki after wywołane jej zapisami uruchamiają się, gdy
+funkcja zwróci wynik (zobacz [Zapisy wykonywane przez wtyczki](#zapisy-wykonywane-przez-wtyczki)).
+Pamięć modułu nie jest współdzielona ze zwykłą instancją wtyczki: trzymaj stan w
+`verdin_kv_set` lub w treściach.
+
+Przy kilku instancjach funkcje startowe uruchamiają tylko te z `[plugins].run_jobs = true`
+(jedna instancja, jeśli stosujesz [radę ze skalowania](/pl/deploy/scaling/)): działają na
+wspólnej bazie danych, więc wystarczy raz. Napisz funkcję tak, by ponowne uruchomienie było
+nieszkodliwe: sprawdzaj, co zasilasz, zanim to utworzysz.
+
 ### Pola GraphQL
 
 Wejście: `{ "args": …, "actor": … }`, gdzie `args` to argument `args` pola (dowolny JSON lub
@@ -307,6 +353,10 @@ i zwracają JSON jako stringi; konwersję obsługuje `Json<Value>` w `extism-pdk
 | `verdin_kv_get` | Klucz, jako zwykły string | Zapisana wartość JSON lub `null` |
 | `verdin_kv_set` | `{ "key": "…", "value": … }` | brak |
 | `verdin_config` | brak | Obiekt ustawień z uzupełnionymi zadeklarowanymi wartościami domyślnymi |
+| `verdin_public_permissions` | `{ "op": "get" }` lub `{ "op": "set", "permissions": [...] }` | `{ "permissions": [...] }` lub `{ "error": "…" }` |
+
+Moduł, który importuje funkcję hosta, której serwer nie ma (starszy Verdin), nie może zostać
+załadowany: każde wywołanie kończy się `unknown import` w logu serwera.
 
 ### `verdin_log`
 
@@ -348,9 +398,24 @@ prosi o `"status": "draft"`.
 #### Zapisy wykonywane przez wtyczki
 
 Zapisy przez `verdin_content` pomijają hooki **before** wszystkich wtyczek, więc wtyczka nie
-może tam zapętlić się na własnych zmianach. Wszystko inne obowiązuje: walidacja, etapy
-recenzji, webhooki, historia, dziennik audytu i hooki **after** wszystkich wtyczek, łącznie
-z tą, która zapisuje. Zabezpiecz hook after, który zapisuje typ, którego nasłuchuje.
+może tam zapętlić się na własnych zmianach, a reguły umieszczone w hookach before (wartości
+domyślne, kontrole) ich nie obejmują. Wszystko inne obowiązuje: walidacja, etapy recenzji,
+webhooki, historia, dziennik audytu i hooki **after** wszystkich wtyczek, łącznie z tą, która
+zapisuje.
+
+Hooki after wywołane zapisami wtyczki nie działają wewnątrz zapisu: są kolejkowane i
+uruchamiane, gdy wywołanie wtyczki (trasa, zadanie, resolver GraphQL, hook lub funkcja
+startowa) zwróci wynik i zwolni instancję wtyczki, przed wysłaniem odpowiedzi trasy. Dzięki
+temu wtyczka może zapisywać typ, na którym ma hooki after, a łańcuchy przez kilka wtyczek
+działają.
+
+- Hooki, które zapisują, wywołują kolejne hooki, **najwyżej na `4` poziomy w głąb** (zapis
+  z REST lub GraphQL to poziom 1). Głębsze hooki są pomijane z ostrzeżeniem w logu wtyczki,
+  co powstrzymuje hook zapisujący typ, którego nasłuchuje, przed zapętleniem w nieskończoność.
+- Funkcje hosta (`verdin_content`, `verdin_public_permissions`, magazyn klucz-wartość)
+  zatrzymują się na limicie czasu wywołania i zwracają błąd do modułu, a wywołujący czeka na
+  zajętą wtyczkę najwyżej limit czasu plus 10 sekund. Zablokowane wywołanie nie może
+  wstrzymać wtyczki ani łagodnego zatrzymania na zawsze.
 
 ### `verdin_kv_get` i `verdin_kv_set`
 
@@ -362,6 +427,34 @@ capability `kv` odczyty zwracają `null`, a zapisy są ignorowane.
 
 Zwraca ustawienia zapisane w **Ustawienia → Wtyczki**, z `default` każdego zadeklarowanego
 ustawienia uzupełnionym dla brakujących kluczy. `{}`, gdy nic nie jest zapisane.
+
+### `verdin_public_permissions`
+
+Odczytuje lub zastępuje uprawnienia roli publicznej w API treści, to, co edytuje **Ustawienia
+→ Dostęp publiczny**. Wymaga capability `public_permissions`; bez niego każde wywołanie
+odpowiada `{ "error": "…" }`.
+
+```json
+{ "op": "set", "permissions": [
+  { "subject": "api::article", "action": "find" },
+  { "subject": "api::article", "action": "findOne" },
+  { "subject": "api::comment", "action": "create" }
+] }
+```
+
+| `op` | Skutek |
+| --- | --- |
+| `get` | Nic; zwraca bieżące uprawnienia. |
+| `set` | Zastępuje **wszystkie** uprawnienia publiczne wartością `permissions` (pusta lista usuwa je wszystkie). |
+
+Oba odpowiadają `{ "permissions": [{ "subject", "action" }, …] }`, posortowane. `subject` to
+uid typu zawartości, `plugin::upload` (biblioteka multimediów),
+`plugin::users-permissions.user` (użytkownicy końcowi przez API treści) lub
+`plugin::i18n.locale` (tylko `find`). `action` to `find`, `findOne`, `create`, `update`,
+`delete`, `publish` lub `readDrafts` (dwa ostatnie nie dotyczą przesyłania i użytkowników
+końcowych). Są sprawdzane jak siatka uprawnień administratora: nieznany podmiot lub akcja
+albo taka, która nie ma zastosowania, odpowiada `{ "error": "…" }` i nic nie zmienia. Każde
+`set` jest zapisywane w logu serwera.
 
 ### HTTP
 
@@ -430,10 +523,10 @@ edytor pokazuje zwykłe pole wejściowe dla typu przechowywania. Zobacz
 
 | Limit | Wartość |
 | --- | --- |
-| Czas na wywołanie | `[limits].timeout_ms`, domyślnie 5000 ms |
+| Czas na wywołanie | `[limits].timeout_ms`, domyślnie 5000 ms (`[startup].timeout_ms`, domyślnie 30 000 ms, dla funkcji startowej) |
 | Pamięć | `[limits].memory_mb`, domyślnie 64 MB |
-| Współbieżność | Jedno wywołanie naraz na wtyczkę; wywołania czekają na siebie |
-| Instancja modułu | Jedna na wtyczkę, tworzona przy pierwszym użyciu; odtwarzana po nieudanym wywołaniu (jej pamięć jest tracona) |
+| Współbieżność | Jedno wywołanie naraz na wtyczkę; wywołania czekają na siebie (funkcja startowa działa obok nich) |
+| Instancja modułu | Jedna na wtyczkę, tworzona przy pierwszym użyciu; odtwarzana po nieudanym wywołaniu (jej pamięć jest tracona). Funkcja startowa dostaje świeżą przy każdym uruchomieniu |
 | Log | 200 komunikatów na wtyczkę, po 2000 znaków, w pamięci |
 | Klucze KV | Od 1 do 255 bajtów |
 | Nagłówki żądania trasy | `content-type`, `accept`, `user-agent`, `accept-language` |
@@ -442,3 +535,19 @@ edytor pokazuje zwykłe pole wejściowe dla typu przechowywania. Zobacz
 Zmiany manifestu lub modułu działają po restarcie; przełączniki i ustawienia działają od
 razu. Zarządzanie wtyczkami wymaga `plugins.manage` (zobacz
 [dokumentację uprawnień](/pl/reference/permissions/)).
+
+## Metryki
+
+Przy włączonym [`[metrics]`](/pl/deploy/monitoring/) `/_metrics` raportuje każde wywołanie,
+które dotarło do eksportowanej funkcji:
+
+| Metryka | Typ | Etykiety | Znaczenie |
+| --- | --- | --- | --- |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | Czas działania funkcji wtyczek. Przedziały od 5 ms do 10 s. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Wywołania, które się nie powiodły: trap, przekroczenie czasu, wyjście niebędące JSON lub `{ error }` funkcji startowej. |
+
+`kind` to `hook`, `route`, `job`, `startup` lub `graphql`. Hook before, który odrzuca zapis
+przez `{ error }`, dał odpowiedź, więc nie jest liczony jako porażka. Wywołania funkcji,
+której moduł nie eksportuje, nie są rejestrowane, więc etykiety są ograniczone przez
+zainstalowane wtyczki. Serie pojawiają się po pierwszym wywołaniu wtyczki; każda instancja
+liczy własne wywołania.

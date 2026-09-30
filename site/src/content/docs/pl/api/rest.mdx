@@ -306,7 +306,7 @@ wypełnione przez `populate`:
 
 | Forma | Wypełnia |
 | --- | --- |
-| `populate=*` | Każdą relację, pole multimediów, komponent i strefę dynamiczną, jeden poziom w głąb |
+| `populate=*` | Każdą relację, pole multimediów, komponent i strefę dynamiczną, jeden poziom w głąb, oraz `localizations` w typach zlokalizowanych |
 | `populate=category,tags` lub `populate[0]=category&populate[1]=tags` | Wymienione pola |
 | `populate[category]=true` | Wymienione pole (`false` je pomija) |
 | `populate[category][fields][0]=name` | Pole, z opcjami |
@@ -356,6 +356,16 @@ Przy zapisach `status=draft` zapisuje szkic bez publikowania. Zobacz
 `locale=fr` odczytuje i zapisuje francuską wersję typów lokalizowanych. Bez niego żądania
 używają domyślnego języka. Niepoprawny lub nieznany kod to `400`. Typy nielokalizowane go
 ignorują. Zobacz [Internacjonalizacja](/pl/concepts/internationalization/).
+
+W typach lokalizowanych `populate=localizations` dodaje pozostałe wersje językowe dokumentu,
+w tym samym statusie, każdą z jej `locale`. Przyjmuje opcje populowanej relacji (`fields`,
+`filters`, `sort`, `populate`, `count`) i jest zawarte w `populate=*`. Typy nielokalizowane
+nie mają `localizations`.
+
+`GET /api/i18n/locales` wymienia języki jako zwykłą tablicę w formacie Strapi (`id`,
+`documentId`, `name`, `code`, `isDefault`, `createdAt`, `updatedAt`, `publishedAt`,
+`locale`). Wymaga uprawnienia `find` na `plugin::i18n.locale`. Zobacz
+[Lokalizowanie treści](/pl/guides/content/localizing-content/#lista-języków).
 
 ## Wyszukiwanie
 

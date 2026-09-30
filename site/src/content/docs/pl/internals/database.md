@@ -85,7 +85,7 @@ Builder dokłada tekst SQL i nazwy `ident()` (cytowane dla danego flavor) oraz z
 | date, time, datetime | `date`, `time(3)`, `timestamptz(3)` | `date`, `time(3)`, `datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite przechowuje liczby dziesiętne, daty i godziny jako tekst o stałym formacie, więc nic nie jest zaokrąglane, a kolejność tekstowa odpowiada kolejności liczbowej i chronologicznej. Który atrybut odpowiada któremu typowi modelu, opisują [typy atrybutów](/pl/reference/attribute-types/).
+SQLite przechowuje daty i godziny jako tekst o stałym formacie, więc kolejność tekstowa odpowiada chronologicznej. Liczby dziesiętne też zapisuje jako tekst, więc przy zapisie nic nie jest zaokrąglane. Kolejność tekstowa nie jest kolejnością liczbową dla liczb dziesiętnych, dlatego filtry i sortowania po liczbie dziesiętnej rzutują kolumnę na `REAL` w SQLite. Te porównania są dokładne do około 15 cyfr znaczących, a zwracane wartości nadal są dokładne. Który atrybut odpowiada któremu typowi modelu, opisują [typy atrybutów](/pl/reference/attribute-types/).
 
 Tabele MySQL i MariaDB są tworzone z `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` i kolacją niewrażliwą na akcenty i wielkość liter: `utf8mb4_0900_ai_ci` w MySQL, `utf8mb4_uca1400_ai_ci` w MariaDB.
 

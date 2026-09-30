@@ -1,12 +1,13 @@
 ---
 title: Monitoring
-description: Obserwuj działającą instancję Verdin — kontrole /_health i /_ready, metryki Prometheus pod /_metrics i ich token, format logów, poziomy i identyfikatory żądań.
+description: Obserwuj działającą instancję Verdin — kontrole /_health i /_ready, metryki Prometheus pod /_metrics i pulpit Grafana, ślady OpenTelemetry, raporty błędów Sentry, format logów, poziomy i identyfikatory żądań.
 sidebar:
   order: 10
 ---
 
-Instancja Verdin raportuje o sobie przez dwa endpointy stanu, opcjonalne metryki Prometheus
-i strukturalne logi. Ta strona wymienia, co zwraca każdy z nich i jak go włączyć.
+Instancja Verdin raportuje o sobie przez dwa endpointy stanu, opcjonalne metryki Prometheus,
+opcjonalne ślady OpenTelemetry i raporty błędów Sentry oraz strukturalne logi. Ta strona
+wymienia, co zwraca każdy z nich i jak go włączyć.
 
 ## Kontrole stanu
 
@@ -62,18 +63,91 @@ Przy kilku instancjach scrapuj każdą z nich: każda instancja liczy własne ż
 | --- | --- | --- | --- |
 | `verdin_http_requests_total` | counter | `area`, `method`, `status` | Obsłużone żądania HTTP. |
 | `verdin_http_request_duration_seconds` | histogram | `area`, `method`, `status` | Czas obsługi żądań. Przedziały od 5 ms do 10 s. |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | Czas działania funkcji [wtyczek](/pl/extending/plugins/). Te same przedziały. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Wywołania wtyczek, które się nie powiodły: trap, przekroczenie czasu, wyjście niebędące JSON lub `{ error }` funkcji startowej. |
 | `verdin_webhook_deliveries_pending` | gauge | | Dostarczenia webhooków czekające na wysłanie. |
 | `verdin_realtime_subscribers` | gauge | | Otwarte strumienie zdarzeń czasu rzeczywistego. |
+| `verdin_cluster_events_total` | counter | `direction` | Zdarzenia na [wspólnej szynie zdarzeń](/pl/deploy/scaling/#wspólna-szyna-zdarzeń), przy ustawionym `[cluster].bus`: `sent` do innych instancji, `received` od nich, `dropped` (pełna kolejka lub nieudany zapis). |
 | `verdin_uptime_seconds` | gauge | | Sekundy od startu procesu. |
 | `verdin_build_info` | gauge | `version` | Zawsze 1; działająca wersja. |
 
 `area` to część serwera: `api` (API treści), `admin_api`, `admin` (pliki panelu), `graphql`,
 `mcp`, `uploads`, `internal` (ścieżki zaczynające się od `/_`) lub `other`. `status` to klasa
 statusu: `2xx`, `3xx`, `4xx` lub `5xx`.
+Dla wywołań wtyczek `kind` to `hook`, `route`, `job`, `startup` lub `graphql`; serie wtyczek
+pojawiają się po pierwszym wywołaniu (zobacz
+[dokumentację wtyczek](/pl/extending/plugin-reference/#metryki)).
 
 Przydatne alerty: nieudane `/_ready`, rosnący udział `5xx`, rosnące
-`verdin_webhook_deliveries_pending` (cel webhooka nie działa) i resetujące się
-`verdin_uptime_seconds` (restarty).
+`verdin_webhook_deliveries_pending` (cel webhooka nie działa), rosnące
+`verdin_plugin_call_errors_total` lub wolne hooki wtyczek (opóźniają zapisy, na których
+działają) i resetujące się `verdin_uptime_seconds` (restarty).
+
+### Pulpit Grafana
+
+[`docker/grafana/verdin.json`](https://github.com/Verdin-CMS/verdin/blob/main/docker/grafana/verdin.json)
+to pulpit dla tych metryk: tempo żądań, udział `5xx` i kwantyle opóźnień według obszaru,
+metody i klasy statusu, oczekujące dostarczenia webhooków, subskrybenci czasu rzeczywistego,
+ruch szyny zdarzeń oraz tempo wywołań wtyczek, p95 i błędy na funkcję wtyczki. Zaimportuj go
+w Grafanie (**Dashboards → New → Import**) i wybierz źródło danych Prometheus; zmienne
+`instance` i `area` u góry filtrują każdy panel.
+
+## Ślady (OpenTelemetry)
+
+Verdin może eksportować ślad każdego żądania do kolektora OpenTelemetry (OpenTelemetry
+Collector, Grafana Alloy lub Tempo, Jaeger, Honeycomb, Datadog…) przez OTLP/HTTP. Domyślnie
+jest wyłączony:
+
+```toml title="verdin.toml"
+[telemetry]
+enabled = true
+endpoint = "http://otel-collector:4318"
+```
+
+Działają też zmienne standardowe i mają pierwszeństwo przed plikiem:
+
+```sh
+VERDIN_TELEMETRY__ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=<key>
+OTEL_SERVICE_NAME=cms-production
+```
+
+Każdy ślad zawiera:
+
+- **Span żądania** (rodzaj `server`), nazwany od metody i ścieżki z identyfikatorami
+  zastąpionymi przez `{id}` (`PUT /api/articles/{id}`), z `http.response.status_code`
+  i statusem błędu przy `5xx`. Żądanie z nagłówkiem W3C `traceparent` dołącza do śladu
+  wywołującego.
+- **Span na każde polecenie bazy danych** (rodzaj `client`) pod nim: `db.system.name`
+  (`postgresql`, `mysql`, `mariadb` lub `sqlite`) i `db.query.text`, czyli SQL z jego
+  placeholderami `?`. Przekazane wartości nigdy nie są zapisywane, więc treści, hasła i tokeny
+  nie trafiają do śladów. `COMMIT` i `ROLLBACK` mają własne spany, a w SQLite span `write lock`
+  pokazuje, jak długo zapis czekał na poprzedzające go zapisy.
+- Zdarzenia logów zapisane podczas obsługi żądania, jako zdarzenia spanu.
+
+Polecenia wykonywane poza żądaniem (start, migracje, zadania w tle) nie są śledzone.
+`[telemetry].sample_ratio` zachowuje część śladów (`0.1` zachowuje jeden na dziesięć); spany
+są wysyłane partiami i opróżniane przy zatrzymaniu serwera. Poziom logów nie filtruje śladów:
+`[log].level = "warn"` nadal eksportuje każde żądanie.
+
+## Raportowanie błędów (Sentry)
+
+Ustaw DSN, aby wysyłać paniki i odpowiedzi `5xx` do [Sentry](https://sentry.io) (lub usługi
+zgodnej z Sentry, jak GlitchTip):
+
+```sh
+SENTRY_DSN=https://<key>@o0.ingest.sentry.io/<project>
+```
+
+Działa też `[telemetry].sentry_dsn`; zmienna ma pierwszeństwo. `5xx` trafia jako zdarzenie
+błędu `POST /api/articles answered 500`, z tagami `http.method`, `http.status_code`
+i `request_id`, który odpowiada nagłówkowi `X-Request-Id` i liniom logów tego żądania.
+Zdarzenia niosą wersję Verdin jako release oraz `production` (`verdin start`) lub
+`development` (`verdin dev`) jako środowisko, chyba że `SENTRY_ENVIRONMENT` albo
+`[telemetry].sentry_environment` podaje inne. URL-e są raportowane z ukrytymi wartościami
+zapytania wyglądającymi na sekrety, jak w logach; treści żądań i nagłówki nigdy nie są
+wysyłane.
 
 ## Logi
 

@@ -1,0 +1,411 @@
+---
+title: Przenoszenie własnego kodu
+description: Przenieś własny kod projektu Strapi do wtyczki Verdin — kontrolery i trasy, cykle życia, serwisy, bootstrap, zadania cron, widżety panelu, formularze, polityki i middleware — z przykładem krok po kroku i ograniczeniami, które trzeba uwzględnić.
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi` przenosi schemat i treści projektu Strapi, ale nie JavaScript z `src/`:
+Verdin nie uruchamia na serwerze żadnego JavaScriptu. Ten kod staje się
+[wtyczką WebAssembly](/pl/extending/plugins/): hooki dla cykli życia, trasy dla własnych
+kontrolerów, funkcja startowa dla `bootstrap`, zadania dla zadań cron. Ta strona przypisuje
+każdy rodzaj kodu Strapi jego odpowiednikowi w Verdin, pokazuje krok po kroku kod prawdziwego
+projektu przeniesiony do wtyczki i wymienia ograniczenia, które trzeba uwzględnić.
+
+Przykład to
+[`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port):
+wtyczka `tienda`, napisana w Rust, z potrzebnym schematem i README, które ją buduje
+i instaluje. Jeśli nigdy nie pisałeś wtyczki, najpierw przeczytaj
+[samouczek wtyczek](/pl/extending/plugin-tutorial/); [dokumentacja wtyczek](/pl/extending/plugin-reference/)
+zawiera każdy payload i funkcję hosta.
+
+## Dokąd trafia każdy element
+
+| Strapi | Verdin | Uwagi |
+| --- | --- | --- |
+| Własne trasy i kontrolery (`src/api/*/routes`, `controllers`) | Trasy wtyczki: `[routes]`, jedna funkcja dla `/api/plugins/<name>/…` | URL się zmienia. Funkcja sama rozdziela żądania według metody i ścieżki. |
+| Cykle życia (`lifecycles.js`), middleware Document Service | `[[hooks]]` na `beforeCreate`, `afterUpdate`… | Te same nazwy zdarzeń. Hooki before mogą podmienić dane lub odrzucić zapis. |
+| Serwisy (`src/api/*/services`) | Funkcje w module wtyczki i `verdin_content` dla `strapi.documents(…)` | Brak wspólnych serwisów między wtyczkami. |
+| `bootstrap()` w `src/index.js` | Funkcja `[startup]` | Działa przy starcie, przy włączeniu wtyczki i przy zmianie jej ustawień. |
+| `register()` | Nie ma czego przenosić | Manifest deklaruje to, co ustawiał `register`. |
+| Zadania cron (`config/cron-tasks.js`) | `[[jobs]]` | Składnia cron w UTC, sekundy opcjonalne. |
+| Konfiguracja wtyczki (`config/plugins.js`) | `[[settings]]` i `verdin_config` | Edytowana w **Ustawienia → Wtyczki**. |
+| `strapi.log` | `verdin_log` | Log serwera i **Ustawienia → Wtyczki → Logi**. |
+| Widżety panelu (`app.widgets.register`) | `[[admin.widgets]]`: Web Components | Albo wbudowane widżety pulpitu. |
+| Pola niestandardowe | `[[admin.fields]]` | Nazwa `customField` w schemacie zostaje. |
+| Strefy wstrzykiwania, własne strony panelu, rozszerzenia React | Nieobsługiwane | Branding jest w `[admin.branding]`. |
+| Własny endpoint zapisujący zgłoszenia formularzy | Wbudowane [Formularze](/pl/guides/frontend/forms/) | Walidacja, pułapka na spam, limit żądań, e-maile i eksport CSV w zestawie. |
+| Polityki i middleware | Wbudowane uprawnienia, limity żądań i CORS; kontrole w trasach wtyczki | Brak punktu zaczepienia w potoku żądań. Zobacz [Polityki i middleware](#polityki-i-middleware). |
+| E-maile z kodu (`strapi.plugin('email')`) | API HTTP dostawcy e-mail, przez capability `http` | Brak funkcji hosta do e-maili. |
+
+## Projekt przykładowy
+
+Projekt Strapi stojący za przykładem to mały sklep z ankietami:
+
+- **`producto`**: produkty, z flagami `a_la_venta` (w sprzedaży) i `reservable`.
+- **`reserva`**: rezerwacje wysyłane przez odwiedzających. Cykl życia `beforeCreate` wymusza
+  `estado` równe `pendiente`, sprawdza, że powiązany produkt jest w sprzedaży i można go
+  rezerwować, oraz ogranicza `unidades` do 1–10.
+- **`encuesta`** i **`voto`**: ankiety z listą opcji i ich głosy. Dwie własne trasy,
+  `POST /api/polls/:slug/vote` i `GET /api/polls/:slug/results`, pozwalają na jeden głos na
+  odwiedzającego i ankietę, tylko w otwartych ankietach i tylko na poprawną opcję. Zadanie
+  cron zamyka ankiety, których data `cierra_el` minęła.
+- **`bootstrap`** ustawia uprawnienia roli publicznej, więc świeża instalacja nie zostaje
+  otwarta.
+- **Widżet panelu** pokazuje otwarte ankiety.
+
+W Verdin to wszystko jest jedną wtyczką, `tienda`:
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml manifest
+    - src/lib.rs hooki, trasy, zadanie i funkcja startowa
+    - admin/index.js widżet pulpitu
+</FileTree>
+
+```toml title="plugin/plugin.toml (abridged)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+Uid-y typów zawartości są krótsze niż w Strapi: `api::producto`, nie
+`api::producto.producto`.
+
+## Cykle życia na hooki
+
+Cykl życia Strapi, w uproszczeniu:
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+Hook Verdin otrzymuje `{ event, uid, documentId, locale, data }` i odpowiada
+`{ "data": … }`, aby podmienić to, co jest zapisywane, `{ "error": "…" }`, aby odrzucić zapis
+(klient dostaje 400 z komunikatem, jak przy `ApplicationError` ze Strapi), albo `{}`, aby go
+przepuścić:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+Co wiedzieć przy przenoszeniu cykli życia:
+
+- **`data` to dane żądania w takiej postaci, w jakiej zostały wysłane.** Relacja może
+  przyjść jako documentId, jako `{ "documentId": … }`, jako lista albo jako `{ connect }` /
+  `{ set }` (panel administracyjny i klienci się różnią). `relation_id` z przykładu przyjmuje
+  wszystkie te formy. W `beforeUpdate` `data` zawiera tylko wysłane pola.
+- **Zwrócone dane są walidowane** jak oryginał, po hooku: hook nie może zapisać czegoś, co
+  schemat odrzuca. Ograniczenia schematu (`min`, `max`) odrzucają wartość; hook może ją
+  zamiast tego przyciąć, jak tutaj.
+- **Hooki nie wiedzą, kto zapisuje.** W wejściu nie ma użytkownika ani tokenu. Kontrole
+  zależne od wywołującego należą do uprawnień albo do trasy wtyczki.
+- **Hooki after nie dostają danych**: `{ event, uid, documentId, locale }`, wysyłane po
+  zatwierdzeniu zapisu. Jeśli ich potrzebujesz, odczytaj wpis przez `verdin_content`.
+- **Hook, który zawodzi, nie blokuje zapisu.** Jeśli moduł zrobi trap lub przekroczy czas,
+  błąd jest logowany, a zapis trwa dalej; odrzuca go tylko odpowiedź `{ error }`.
+- **Zapisy wykonane przez wtyczki pomijają hooki before.** Reguła, która musi obowiązywać przy
+  każdym zapisie, musi być też stosowana w każdym kodzie wtyczki, który zapisuje ten typ.
+
+## Kontrolery i własne trasy na trasy wtyczki
+
+Strapi serwował trasy ankiet pod `/api/polls/:slug/vote`. Wtyczka Verdin serwuje wszystko pod
+`/api/plugins/<name>/`, więc frontend wywołuje `/api/plugins/tienda/polls/:slug/vote` (albo
+reverse proxy przepisuje starą ścieżkę). Jedna eksportowana funkcja odbiera każde żądanie
+i rozdziela je według metody i ścieżki:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+Żądanie to `{ method, path, query, headers, body, actor }`, gdzie `body` jest stringiem, który
+parsujesz sam, a `query` to surowy query string. Odpowiedź to `{ status, headers?, body }`.
+Nic jej nie kształtuje za Ciebie: aby frontend Strapi nadal działał, odpowiadaj
+`{ "data": … }`, a przy błędach
+`{ "data": null, "error": { "status", "name", "message", "details" } }`, jak robią to pomocniki
+`ok` i `fail` z przykładu.
+
+Trasa głosowania sprawdza po kolei: poprawne body, ankietę o tym slugu, `estado` równe
+`abierta`, opcję będącą jedną z `opciones` oraz brak wcześniejszego głosu z tym samym
+odciskiem. Potem tworzy `voto` i odpowiada 201 z wynikami.
+
+<Aside type="caution" title="Brak adresu klienta w trasach wtyczek">
+Trasy wtyczek otrzymują tylko nagłówki `content-type`, `accept`, `user-agent`
+i `accept-language`: bez adresu IP, ciasteczek i wartości `Authorization`. Kontroler Strapi,
+który używał `ctx.request.ip` dla „jednego głosu na odwiedzającego”, potrzebuje innego klucza.
+Przykład bierze `fingerprint` z body żądania, który tworzy witryna (losowy identyfikator
+trzymany w local storage albo hash cech przeglądarki). Zatrzymuje to podwójne kliknięcia
+i przypadkowe powtórzenia, ale nie zdeterminowanego głosującego. Dla mocniejszych limitów
+wymagaj zalogowanego użytkownika końcowego (`actor`) albo umieść kontrolę przed Verdin.
+</Aside>
+
+Inne różnice względem tras Strapi:
+
+- **Trasy są publiczne.** Dostęp publiczny i uprawnienia tokenów API nie są stosowane. `actor`
+  mówi, kto wywołuje: `{ "kind": "public" }`, `{ "kind": "token", "id": … }` lub
+  `{ "kind": "user", "id": … }` (użytkownik końcowy; tylko id). Odrzucaj to, czego wywołujący
+  nie może robić, jak zrobiłaby polityka Strapi. Nieprawidłowy token jest odrzucany z 401
+  przed uruchomieniem wtyczki.
+- **Jedno wywołanie naraz na wtyczkę.** Wywołania wtyczki czekają na siebie, więc sprawdzenie
+  i utworzenie w trasie głosowania nie mogą się przeplatać na jednej instancji. Przy kilku
+  instancjach mogą; przykład zapisuje też `clave` (`<poll>:<fingerprint>`) z `unique: true`,
+  więc baza danych odrzuca duplikat, który się prześlizgnie.
+- **Limity żądań obowiązują**: `[api].public_rate_limit` i `[api].token_rate_limit` liczą
+  trasy wtyczek jak resztę API treści.
+- **Anonimowe odpowiedzi `GET` mogą być cache'owane**, gdy ustawiono `[api].cache_ttl_secs`.
+  Zapisy treści czyszczą cache, w tym głosy.
+- **Zachowywane są tylko niektóre nagłówki odpowiedzi**: `content-type`, `cache-control`,
+  `location`, `etag`, `last-modified` i `content-disposition`.
+
+## Serwisy na funkcje i wywołania treści
+
+Serwis Strapi to współdzielony kod; we wtyczce jest zwykłą funkcją w module. Wywołania
+`strapi.documents(uid)` stają się wywołaniami `verdin_content`, ograniczonymi przez
+capabilities `read` i `write`:
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `findMany` z `"pagination": { "pageSize": 1 }`, potem `meta.pagination.total` |
+
+- **Odczyty zwracają opublikowane wersje**, chyba że zapytanie prosi o `"status": "draft"`.
+  Hook, który szuka produktu mającego tylko szkic, nic nie znajdzie, jak mówi komunikat błędu
+  w przykładzie.
+- **Zapisy są publikowane**, chyba że żądanie ma `"status": "draft"`, jak zapis REST.
+- **Zapytanie podlega regułom API REST.** Atrybutów `private` nie można używać w filtrach ani
+  `fields`, więc `clave` z przykładu nie jest private (rola publiczna nie ma dostępu do
+  głosów, więc nikt inny go nie czyta).
+- **Żadnego surowego SQL, żadnego `strapi.db.query`.** Wszystko przechodzi przez Document
+  Service, z jego walidacją, webhookami, historią i dziennikiem audytu.
+- **Brak zegara bez WASI.** Ustaw `wasi = true` w manifeście, aby mieć czas i liczby losowe;
+  zadanie z przykładu używa zamiast tego otrzymanego `scheduledAt`.
+
+## `bootstrap` na funkcję startową
+
+Projekty Strapi często ustawiają uprawnienia roli publicznej w `bootstrap`, aby świeża baza
+danych nadawała się do użycia, a nic ponad potrzebę nie było otwarte. Funkcja startowa Verdin
+robi to samo z capability `public_permissions`:
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- Działa z `{ "reason": "start" | "enabled" | "settings" }`: gdy serwer startuje z włączoną
+  wtyczką, gdy wtyczka zostaje włączona i gdy zmieniają się jej ustawienia. Zadbaj, by
+  ponowne uruchomienie było bezpieczne: sprawdzaj, co zasilasz, zanim to utworzysz.
+- `set` **zastępuje wszystkie** uprawnienia publiczne, więc zmiany wykonane w **Ustawienia →
+  Dostęp publiczny** są cofane przy następnym starcie. Przykład ma ustawienie, które to
+  wyłącza.
+- Działa w tle na własnej instancji modułu, z własnym limitem czasu (`[startup].timeout_ms`,
+  domyślnie 30 sekund), więc wolne zasilanie danymi nie wstrzymuje hooków i tras. Porażka lub
+  odpowiedź `{ "error" }` jest logowana; wtyczka pozostaje włączona.
+- Przy kilku instancjach uruchamiają ją tylko te z `[plugins].run_jobs = true`.
+
+## Zadania cron na zadania
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+Zadanie otrzymuje `{ "scheduledAt": "…" }` i w przykładzie aktualizuje każdą otwartą ankietę,
+której `cierra_el` jest wcześniejsze. Zadania działają w UTC, tylko gdy wtyczka jest włączona,
+i tylko na instancjach z `[plugins].run_jobs = true`. Uruchomienie pominięte podczas
+niedziałania serwera nie jest nadrabiane.
+
+## Widżety panelu
+
+Widżet panelu Strapi to komponent React; widżet Verdin to custom element w skrypcie `admin/`
+wtyczki, zadeklarowany w manifeście:
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+Element dostaje `context` z `fetch`. Widżet z przykładu wywołuje własną trasę wtyczki
+`GET /api/plugins/tienda/polls`. Żądania do API treści (w tym trasy wtyczek) idą bez sesji
+administratora, więc trasa używana przez widżet musi być w porządku dla publiczności albo
+przyjmować token API. Strefy wstrzykiwania, własne strony panelu i rozszerzenia React nie mają
+odpowiednika. Zobacz [Punkty rozszerzeń panelu](/pl/extending/plugin-reference/#punkty-rozszerzeń-panelu).
+
+## Własne formularze na Formularze
+
+Formularz sugestii lub kontaktowy w Strapi to zwykle własny endpoint (albo typ zawartości
+z publicznym uprawnieniem `create`) plus kod, który wysyła komuś e-mail. Nie przenoś go:
+wbudowana funkcja [Formularze](/pl/guides/frontend/forms/) robi to wszystko bez kodu.
+Redaktorzy definiują pola w panelu, witryna wysyła na `POST /api/_forms/{slug}`, a zgłoszenia
+są walidowane, wysyłane e-mailem na adresy **Notify** i eksportowane jako CSV. Formularze mają
+też pułapkę na spam i limit żądań na odwiedzającego (10 zgłoszeń na minutę), czego trasa
+wtyczki nie może zrobić, bo nie widzi adresu klienta.
+
+## Polityki i middleware
+
+Verdin nie ma punktu zaczepienia w potoku żądań HTTP. To, co oferuje zamiast tego:
+
+| Strapi | Verdin |
+| --- | --- |
+| Polityki w stylu `is-authenticated` na trasach REST | Dostęp publiczny, uprawnienia tokenów API i role użytkowników końcowych. Zobacz [Uprawnienia](/pl/reference/permissions/). Dokładniejsze reguły (użytkownik końcowy edytujący tylko własne wpisy) wymagają trasy wtyczki. |
+| Polityka na własnej trasie | Sprawdź `actor` w trasie wtyczki. |
+| Middleware limitu żądań | `[api].public_rate_limit`, `[api].token_rate_limit` i `[admin].auth_rate_limit`. |
+| Middleware CORS lub nagłówków bezpieczeństwa | `[api].cors_origins`; inne nagłówki odpowiedzi na reverse proxy. |
+| Middleware, które przepisuje żądania lub odpowiedzi tras rdzenia | Nieobsługiwane. Użyj trasy wtyczki dla nowego zachowania albo reverse proxy. |
+| Polityka, która odrzuca niektóre zapisy | Hook before, który odpowiada `{ error }`, nie znając wywołującego. |
+
+## Ograniczenia, które trzeba uwzględnić
+
+- **Brak adresu klienta i niewiele nagłówków** w trasach wtyczek (zobacz wyżej).
+- **Zapisy wykonane przez wtyczki pomijają hooki before każdej wtyczki**, więc reguły w hookach
+  before ich nie obejmują.
+- **Hooki after wywołane zapisami samej wtyczki działają po zwróceniu jej wywołania**, a nie
+  wewnątrz zapisu, a hooki, które zapisują, zagnieżdżają się najwyżej na 4 poziomy (zobacz
+  [Zapisy wykonywane przez wtyczki](/pl/extending/plugin-reference/#zapisy-wykonywane-przez-wtyczki)).
+  Dalszą pracę, która musi nastąpić przed odpowiedzią, wykonaj w kodzie, który zapisuje, po
+  zwróceniu `verdin_content`.
+- **Jedno wywołanie naraz na wtyczkę**: wolna trasa opóźnia hooki tej wtyczki. Utrzymuj
+  wywołania krótkie i obserwuj `verdin_plugin_call_duration_seconds` w
+  [metrykach](/pl/deploy/monitoring/).
+- **Trasy są publiczne** i muszą sprawdzać `actor`.
+- **Verdin 0.11 lub nowszy** dla funkcji startowej i `verdin_public_permissions`: moduł, który
+  importuje funkcję hosta, której serwer nie ma, w ogóle się nie ładuje.
+
+## Lista kontrolna
+
+<Steps>
+
+1. Zaimportuj projekt przez `verdin import strapi`, a potem wypisz kod w `src/`: trasy,
+   kontrolery, serwisy, cykle życia, polityki, middleware, `bootstrap`, zadania cron
+   i rozszerzenia panelu.
+2. Odrzuć to, co Verdin ma wbudowane: formularze, ręcznie ustawiane uprawnienia publiczne,
+   limity żądań, CORS, webhooki, zaplanowaną publikację ([Wydania](/pl/guides/content/releases/)).
+3. Napisz jedną wtyczkę z resztą, według przykładu: hooki, trasy, zadanie, funkcja startowa.
+   Nadaj jej tylko potrzebne capabilities.
+4. Sprawdź, czy hooki zapisujące treści nie polegają na zagnieżdżeniu głębszym niż 4 poziomy.
+5. Zbuduj ją, zainstaluj w `plugins/`, włącz w **Ustawienia → Wtyczki** i przeczytaj tam jej
+   log.
+6. Zaktualizuj frontend: URL-e tras wtyczek (`/api/plugins/<name>/…`), odciski lub logowanie
+   użytkowników końcowych tam, gdzie kod polegał na adresie klienta, oraz
+   [inne zmiany](/pl/migrate/from-strapi/#zmiany-we-frontendzie) związane z migracją.
+
+</Steps>

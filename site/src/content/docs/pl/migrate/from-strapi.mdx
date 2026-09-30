@@ -121,9 +121,8 @@ Zgłaszane jako ostrzeżenia:
 W ogóle nie są importowane: administratorzy i role administratorów, tokeny API, tokeny
 transferu, webhooki, wydania, etapy przepływów recenzji, historia treści i dzienniki audytu
 oraz ustawienia wtyczek Strapi. Twój kod Strapi — kontrolery, serwisy, trasy, polityki,
-middleware, hooki cyklu życia, zadania cron i dostosowania panelu — nie ma w Verdin
-odpowiednika, na który można by go przekonwertować; zobacz
-[Odtwórz własny kod](#odtwórz-własny-kod).
+middleware, hooki cyklu życia, zadania cron i dostosowania panelu — nie jest
+konwertowany: odtwórz go tak, jak opisano w [Odtwórz własny kod](#odtwórz-własny-kod).
 
 <Aside type="note">
 Pola niestandardowe zachowują nazwę `customField`, np. `plugin::color-picker.color`. Edytor
@@ -204,11 +203,17 @@ Dla typowanego dostępu wygeneruj typy TypeScript przez `verdin types` i użyj
 
 ## Odtwórz własny kod
 
+Kod z `src/` trafia do [wtyczki WebAssembly](/pl/extending/plugins/). [Przenoszenie własnego
+kodu](/pl/migrate/porting-custom-code/) przeprowadza przez hooki cyklu życia, trasy, zadanie
+cron i `bootstrap` prawdziwego projektu, z przykładową wtyczką.
+
 | Strapi | Verdin |
 | --- | --- |
-| Hooki cyklu życia, middleware Document Service | Hooki wtyczek (`beforeCreate`, `afterUpdate`…) we [wtyczce WebAssembly](/pl/extending/plugins/) |
+| Hooki cyklu życia, middleware Document Service | Hooki wtyczek (`beforeCreate`, `afterUpdate`…) |
 | Własne trasy i kontrolery | Trasy wtyczek pod `/api/plugins/<name>/` |
+| `bootstrap()` w `src/index.js` (zasilanie danymi, ustawianie uprawnień publicznych) | Funkcja startowa wtyczki (`[startup]`), z capability `public_permissions` dla roli publicznej |
 | Zadania cron | Zadania wtyczek (`[[jobs]]`) |
+| Własny endpoint zapisujący zgłoszenia formularzy | Wbudowane [Formularze](/pl/guides/frontend/forms/) |
 | Pola niestandardowe | Pola niestandardowe wtyczek |
 | Widżety panelu | Widżety wtyczek albo wbudowane widżety pulpitu |
 | Logo, kolory i teksty panelu | `[admin.branding]` w `verdin.toml` |
