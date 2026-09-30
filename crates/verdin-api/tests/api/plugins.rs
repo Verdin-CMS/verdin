@@ -1,5 +1,5 @@
 //! Plugins through the APIs: switching, hooks on REST writes, routes with the real content
-//! host, capabilities and admin extensions.
+//! host, capabilities, the startup function and admin extensions.
 
 use crate::common::{App, As};
 use axum::http::{Method, StatusCode};
@@ -49,6 +49,9 @@ description = "Slugs and greetings"
 [capabilities]
 read = ["api::article"]
 kv = true
+public_permissions = true
+[startup]
+function = "startup"
 [[hooks]]
 on = "beforeCreate"
 uid = "api::article"
@@ -133,6 +136,25 @@ async fn plugins_hook_route_and_extend() {
         .await;
     assert_eq!(status, StatusCode::OK, "{switched}");
     assert_eq!(switched["data"]["settings"], json!({ "greeting": "Verdin", "shout": false }));
+    assert_eq!(switched["data"]["startup"], json!({ "function": "startup", "timeout_ms": 30000 }));
+
+    // Switching it on ran its startup function, which opened reading articles to the
+    // public role (and only that).
+    let mut public = Value::Null;
+    for _ in 0..100 {
+        (_, public) = app
+            .call_as(Method::GET, "/admin/api/public-permissions", None, As::Bearer(&admin))
+            .await;
+        if public["data"].as_array().is_some_and(|list| !list.is_empty()) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(public["data"], json!([{ "subject": "api::article", "action": "find" }]));
+    let (status, _) = app.call_as(Method::GET, "/api/articles", None, As::Anonymous).await;
+    assert_eq!(status, StatusCode::OK, "the public role reads articles now");
+    let (_, public) = app.call(Method::GET, "/api/plugins/sample/public", None).await;
+    assert_eq!(public["permissions"][0]["action"], "find");
 
     // Before hooks change or refuse REST writes; after hooks run.
     let (status, created) = app.post("/api/articles", json!({ "title": "Hello Plugins" })).await;
@@ -188,5 +210,52 @@ async fn plugins_hook_route_and_extend() {
 
     // Public grants do not matter to plugin routes; they answer for themselves.
     app.auth.set_public_grants(&[("api::article".into(), ContentAction::Find)]).await.unwrap();
+    app.done().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn failed_startup_leaves_the_plugin_on() {
+    let dir = tempfile::tempdir().unwrap();
+    install(dir.path());
+    // Without the capability, the startup function cannot touch the public role.
+    let manifest = dir.path().join("sample/plugin.toml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    std::fs::write(&manifest, text.replace("public_permissions = true\n", "")).unwrap();
+    let app = App::with_plugins(schema(), dir.path()).await;
+    let admin = admin(&app).await;
+    let (status, switched) = app
+        .call_as(
+            Method::PUT,
+            "/admin/api/plugins/sample",
+            Some(json!({ "enabled": true, "settings": { "greeting": "Verdin" } })),
+            As::Bearer(&admin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{switched}");
+
+    // The failure lands in the plugin's log; the plugin stays on and keeps serving.
+    let mut failure = None;
+    for _ in 0..100 {
+        let (_, logs) = app
+            .call_as(Method::GET, "/admin/api/plugins/sample/logs", None, As::Bearer(&admin))
+            .await;
+        failure = logs["data"].as_array().unwrap().iter().find_map(|line| {
+            let message = line["message"].as_str().unwrap();
+            message.starts_with("startup:").then(|| message.to_owned())
+        });
+        if failure.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(failure.as_deref().is_some_and(|m| m.contains("capabilities")), "{failure:?}");
+    let (_, public) =
+        app.call_as(Method::GET, "/admin/api/public-permissions", None, As::Bearer(&admin)).await;
+    assert_eq!(public["data"], json!([]), "the public role was not changed");
+    let (_, list) = app.call_as(Method::GET, "/admin/api/plugins", None, As::Bearer(&admin)).await;
+    assert_eq!(list["data"]["plugins"][0]["enabled"], true);
+    assert_eq!(app.call(Method::GET, "/api/plugins/sample/hello", None).await.0, StatusCode::OK);
+    let (status, _) = app.call(Method::GET, "/api/plugins/sample/public", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
     app.done().await;
 }

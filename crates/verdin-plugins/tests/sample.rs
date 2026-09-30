@@ -1,17 +1,33 @@
 //! The sample plugin (`tests/fixtures/sample`) through the runtime: hooks, routes,
-//! capabilities, storage, jobs, failures and limits.
+//! capabilities, storage, jobs, startup, failures and limits.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
 use verdin_content::events::{BoxFuture, DocumentHook, HookAction, HookContext};
 use verdin_migrate::{ApplyOptions, Renames, Risk};
-use verdin_plugins::{PluginError, PluginHost, Plugins};
+use verdin_plugins::{PluginError, PluginHost, Plugins, StartupReason};
 use verdin_testkit::TestDb;
 
-struct FakeHost;
+#[derive(Default)]
+struct FakeHost {
+    public: Mutex<Value>,
+}
 
 impl PluginHost for FakeHost {
+    fn public_permissions<'a>(
+        &'a self,
+        request: &'a Value,
+    ) -> BoxFuture<'a, Result<Value, String>> {
+        Box::pin(async move {
+            let mut public = self.public.lock().unwrap();
+            if request["op"] == "set" {
+                *public = request["permissions"].clone();
+            }
+            Ok(json!({ "permissions": public.clone() }))
+        })
+    }
+
     fn content<'a>(&'a self, request: &'a Value) -> BoxFuture<'a, Result<Value, String>> {
         Box::pin(async move {
             match request["op"].as_str() {
@@ -54,13 +70,16 @@ function = "handle"
 [[jobs]]
 schedule = "0 0 1 1 *"
 function = "tick"
+[startup]
+function = "startup"
+timeout_ms = 2000
 "#
         ),
     )
     .unwrap();
 }
 
-async fn setup(capabilities: &str) -> (TestDb, Plugins, tempfile::TempDir) {
+async fn setup(capabilities: &str) -> (TestDb, Plugins, tempfile::TempDir, Arc<FakeHost>) {
     let test = TestDb::new().await;
     let model = verdin_migrate::derive_model(&verdin_schema::Schema::default());
     verdin_migrate::apply(
@@ -75,8 +94,9 @@ async fn setup(capabilities: &str) -> (TestDb, Plugins, tempfile::TempDir) {
     install(dir.path(), capabilities);
     let plugins = Plugins::load(dir.path(), test.db.clone());
     assert!(plugins.errors().is_empty(), "{:?}", plugins.errors());
-    plugins.set_host(Arc::new(FakeHost));
-    (test, plugins, dir)
+    let host = Arc::new(FakeHost::default());
+    plugins.set_host(host.clone());
+    (test, plugins, dir, host)
 }
 
 fn context<'a>(data: &'a Value) -> HookContext<'a> {
@@ -91,7 +111,7 @@ fn context<'a>(data: &'a Value) -> HookContext<'a> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn hooks_routes_and_storage() {
-    let (test, plugins, _dir) = setup(
+    let (test, plugins, _dir, _) = setup(
         r#"read = ["api::article"]
 kv = true"#,
     )
@@ -115,7 +135,12 @@ kv = true"#,
 
     // After hooks and storage.
     plugins
-        .call("sample", "after_write", &json!({ "event": "afterCreate", "documentId": "doc-1" }))
+        .call(
+            CallKind::Hook,
+            "sample",
+            "after_write",
+            &json!({ "event": "afterCreate", "documentId": "doc-1" }),
+        )
         .await
         .unwrap();
     plugins.call("sample", "tick", &json!({})).await.unwrap();
@@ -161,7 +186,7 @@ kv = true"#,
 
 #[tokio::test(flavor = "multi_thread")]
 async fn storage_needs_its_capability() {
-    let (test, plugins, _dir) = setup(r#"read = []"#).await;
+    let (test, plugins, _dir, _) = setup(r#"read = []"#).await;
     plugins.apply(&json!({ "sample": { "enabled": true } }));
     plugins.call("sample", "tick", &json!({})).await.unwrap();
     let hello = plugins.handle("sample", &json!({ "path": "/hello" })).await.unwrap();
@@ -169,6 +194,82 @@ async fn storage_needs_its_capability() {
     assert_eq!(hello["body"]["message"], "hello world");
     let titles = plugins.handle("sample", &json!({ "path": "/titles" })).await.unwrap();
     assert_eq!(titles["status"], 403);
+    test.drop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn startup_runs_when_switched_on_and_on_new_settings() {
+    let (test, plugins, _dir, host) = setup(
+        r#"kv = true
+public_permissions = true"#,
+    )
+    .await;
+    let on = |settings: Value| json!({ "sample": { "enabled": true, "settings": settings } });
+
+    // Only the plugins switched on, or with changed settings while on, need to start.
+    assert!(plugins.apply(&json!({})).is_empty());
+    assert!(matches!(
+        plugins.startup("sample", StartupReason::Start).await,
+        Err(PluginError::Disabled)
+    ));
+    assert_eq!(
+        plugins.apply(&on(json!({ "greeting": "a" }))),
+        vec![("sample".to_owned(), StartupReason::Enabled)]
+    );
+    assert!(plugins.apply(&on(json!({ "greeting": "a" }))).is_empty(), "nothing changed");
+    assert_eq!(
+        plugins.apply(&on(json!({ "greeting": "b" }))),
+        vec![("sample".to_owned(), StartupReason::Settings)]
+    );
+
+    // The function gets its reason, and can lock the public role down.
+    plugins.startup("sample", StartupReason::Start).await.unwrap();
+    assert_eq!(
+        *host.public.lock().unwrap(),
+        json!([{ "subject": "api::article", "action": "find" }])
+    );
+    assert_eq!(plugins.get("sample").unwrap().logs().last().unwrap().message, "startup start");
+    let public = plugins.handle("sample", &json!({ "path": "/public" })).await.unwrap();
+    assert_eq!(public["body"]["permissions"][0]["subject"], "api::article");
+
+    // An `{ error }` answer is a failure, in the plugin's log; the plugin keeps working.
+    plugins.apply(&on(json!({ "failStartup": true })));
+    assert!(matches!(
+        plugins.startup("sample", StartupReason::Settings).await,
+        Err(PluginError::Call(message)) if message == "startup refused"
+    ));
+    assert_eq!(
+        plugins.get("sample").unwrap().logs().last().unwrap().message,
+        "startup: startup refused"
+    );
+    assert_eq!(
+        plugins.handle("sample", &json!({ "path": "/hello" })).await.unwrap()["status"],
+        200
+    );
+
+    // spawn_startup runs them in the background.
+    plugins.apply(&json!({ "sample": { "enabled": false } }));
+    let started = plugins.apply(&on(json!({})));
+    plugins.spawn_startup(started).unwrap().await.unwrap();
+    assert_eq!(plugins.get("sample").unwrap().logs().last().unwrap().message, "startup enabled");
+    assert!(plugins.spawn_startup(Vec::new()).is_none());
+
+    // With several instances only the one running the jobs runs startup functions.
+    plugins.set_run_startup(false);
+    plugins.apply(&json!({ "sample": { "enabled": false } }));
+    assert!(plugins.spawn_startup(plugins.apply(&on(json!({})))).is_none());
+    test.drop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn public_permissions_need_their_capability() {
+    let (test, plugins, _dir, host) = setup(r#"kv = true"#).await;
+    plugins.apply(&json!({ "sample": { "enabled": true } }));
+    let error = plugins.startup("sample", StartupReason::Start).await.unwrap_err();
+    assert!(error.to_string().contains("capabilities"), "{error}");
+    assert_eq!(*host.public.lock().unwrap(), Value::Null, "nothing was changed");
+    let public = plugins.handle("sample", &json!({ "path": "/public" })).await.unwrap();
+    assert_eq!(public["status"], 403);
     test.drop().await;
 }
 

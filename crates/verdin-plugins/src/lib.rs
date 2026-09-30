@@ -1,12 +1,14 @@
 //! WASM plugins (Extism). A plugin is a directory with `plugin.toml` and a module; it can
 //! hook into document writes (before: change or refuse the data; after: react), serve
-//! routes under `/api/plugins/{name}/…`, run scheduled jobs and add widgets and custom
-//! fields to the admin. Modules are sandboxed: they reach content, their key-value storage
-//! and HTTP hosts only through host functions allowed by their manifest's capabilities.
+//! routes under `/api/plugins/{name}/…`, run scheduled jobs and a startup function, and add
+//! widgets and custom fields to the admin. Modules are sandboxed: they reach content, their
+//! key-value storage and HTTP hosts only through host functions allowed by their manifest's
+//! capabilities.
 //!
 //! Host functions (Extism namespace `extism:host/user`, JSON in and out):
 //! `verdin_log({ level, message })`, `verdin_content({ op, uid, … })`,
-//! `verdin_kv_get(key)`, `verdin_kv_set({ key, value })`, `verdin_config()`.
+//! `verdin_kv_get(key)`, `verdin_kv_set({ key, value })`, `verdin_config()`,
+//! `verdin_public_permissions({ op: get | set, permissions? })`.
 
 pub mod manifest;
 
@@ -50,6 +52,27 @@ pub trait PluginHost: Send + Sync {
     /// `{ op: findMany | findOne | create | update | delete | publish | unpublish, uid,
     /// documentId?, query?, data?, status?, locale? }`.
     fn content<'a>(&'a self, request: &'a Value) -> BoxFuture<'a, Result<Value, String>>;
+
+    /// The public role's content API permissions: `{ op: get }` or `{ op: set, permissions:
+    /// [{ subject, action }] }`, both answered with `{ permissions: [...] }`.
+    fn public_permissions<'a>(
+        &'a self,
+        _request: &'a Value,
+    ) -> BoxFuture<'a, Result<Value, String>> {
+        Box::pin(async { Err("public permissions are not available".to_owned()) })
+    }
+}
+
+/// Why a plugin's `[startup]` function runs; sent as `{ reason }`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StartupReason {
+    /// The server started with the plugin on.
+    Start,
+    /// The plugin was switched on (here or on another instance).
+    Enabled,
+    /// Its settings were saved while it was on.
+    Settings,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -108,6 +131,19 @@ impl Shared {
             return json!({ "error": "content is not available yet" });
         };
         match self.runtime.block_on(host.content(&request)) {
+            Ok(value) => value,
+            Err(error) => json!({ "error": error }),
+        }
+    }
+
+    fn public_permissions(&self, request: Value) -> Value {
+        if !self.capabilities.public_permissions {
+            return json!({ "error": "public permissions are not in the plugin's capabilities" });
+        }
+        let Some(host) = self.host.read().expect("plugin host").clone() else {
+            return json!({ "error": "public permissions are not available yet" });
+        };
+        match self.runtime.block_on(host.public_permissions(&request)) {
             Ok(value) => value,
             Err(error) => json!({ "error": error }),
         }
@@ -209,6 +245,12 @@ extism::host_fn!(verdin_kv_set(data: Arc<Shared>; input: String) {
     Ok(())
 });
 
+extism::host_fn!(verdin_public_permissions(data: Arc<Shared>; input: String) -> String {
+    let shared = shared(&data)?;
+    let request: Value = serde_json::from_str(&input).unwrap_or(Value::Null);
+    Ok(shared.public_permissions(request).to_string())
+});
+
 extism::host_fn!(verdin_config(data: Arc<Shared>;) -> String {
     Ok(shared(&data)?.settings.read().expect("plugin settings").to_string())
 });
@@ -236,10 +278,10 @@ impl Plugin {
         self.shared.logs.lock().expect("plugin logs").iter().cloned().collect()
     }
 
-    fn build(&self) -> Result<extism::Plugin, PluginError> {
+    fn build(&self, timeout_ms: u64) -> Result<extism::Plugin, PluginError> {
         let manifest = &self.manifest;
         let wasm = extism::Manifest::new([extism::Wasm::file(self.dir.join(&manifest.wasm))])
-            .with_timeout(Duration::from_millis(manifest.limits.timeout_ms))
+            .with_timeout(Duration::from_millis(timeout_ms))
             .with_memory_max(manifest.limits.memory_mb.saturating_mul(16))
             .with_allowed_hosts(manifest.capabilities.http.clone().into_iter());
         let data = UserData::new(self.shared.clone());
@@ -249,6 +291,13 @@ impl Plugin {
             .with_function("verdin_content", [PTR], [PTR], data.clone(), verdin_content)
             .with_function("verdin_kv_get", [PTR], [PTR], data.clone(), verdin_kv_get)
             .with_function("verdin_kv_set", [PTR], [], data.clone(), verdin_kv_set)
+            .with_function(
+                "verdin_public_permissions",
+                [PTR],
+                [PTR],
+                data.clone(),
+                verdin_public_permissions,
+            )
             .with_function("verdin_config", [], [PTR], data, verdin_config)
             .build()
             .map_err(|error| PluginError::Load(error.to_string()))
@@ -258,7 +307,7 @@ impl Plugin {
     fn call_blocking(&self, function: &str, input: &str) -> Result<String, PluginError> {
         let mut guard = self.instance.lock().expect("plugin instance");
         if guard.is_none() {
-            *guard = Some(self.build()?);
+            *guard = Some(self.build(self.manifest.limits.timeout_ms)?);
         }
         let instance = guard.as_mut().expect("just built");
         if !instance.function_exists(function) {
@@ -274,6 +323,23 @@ impl Plugin {
             }
         }
     }
+
+    /// Runs the `[startup]` function on an instance of its own, with its own time limit.
+    /// Other calls go on meanwhile: holding the plugin's lock would deadlock a startup that
+    /// writes content the same plugin has `after*` hooks on.
+    fn startup_blocking(&self, input: &str) -> Result<String, PluginError> {
+        let startup = self.manifest.startup.as_ref().ok_or(PluginError::NotFound)?;
+        let mut instance = self.build(startup.timeout_ms)?;
+        if !instance.function_exists(&startup.function) {
+            self.shared.log("error", &format!("startup: `{}` is not exported", startup.function));
+            return Err(PluginError::NotFound);
+        }
+        instance.call::<&str, String>(&startup.function, input).map_err(|error| {
+            let message = error.to_string();
+            self.shared.log("error", &format!("{}: {message}", startup.function));
+            PluginError::Call(message)
+        })
+    }
 }
 
 struct Inner {
@@ -281,6 +347,8 @@ struct Inner {
     /// Directories that could not be loaded.
     errors: Vec<(PathBuf, String)>,
     host: Arc<RwLock<Option<Arc<dyn PluginHost>>>>,
+    /// Whether this instance runs startup functions (the one that runs the jobs).
+    run_startup: AtomicBool,
 }
 
 #[derive(Clone)]
@@ -295,6 +363,7 @@ impl Default for Plugins {
                 plugins: Vec::new(),
                 errors: Vec::new(),
                 host: Arc::default(),
+                run_startup: AtomicBool::new(true),
             }),
         }
     }
@@ -347,12 +416,20 @@ impl Plugins {
         for (path, error) in &errors {
             tracing::warn!(plugin = %path.display(), %error, "plugin not loaded");
         }
-        Self { inner: Arc::new(Inner { plugins, errors, host }) }
+        Self {
+            inner: Arc::new(Inner { plugins, errors, host, run_startup: AtomicBool::new(true) }),
+        }
     }
 
     /// Gives plugins access to content (again after each rebuild of the app).
     pub fn set_host(&self, host: Arc<dyn PluginHost>) {
         *self.inner.host.write().expect("plugin host") = Some(host);
+    }
+
+    /// With several instances, only the one that runs the scheduled jobs runs startup
+    /// functions: they act on the shared database, so once is enough (on by default).
+    pub fn set_run_startup(&self, run: bool) {
+        self.inner.run_startup.store(run, Ordering::Relaxed);
     }
 
     pub fn list(&self) -> &[Arc<Plugin>] {
@@ -368,18 +445,78 @@ impl Plugins {
     }
 
     /// Switches and settings, `{ name: { enabled, settings } }` (unknown names ignored).
-    pub fn apply(&self, states: &Value) {
+    /// Returns the plugins with a `[startup]` function that were switched on or whose
+    /// settings changed while on, for [`Plugins::spawn_startup`].
+    pub fn apply(&self, states: &Value) -> Vec<(String, StartupReason)> {
+        let mut started = Vec::new();
         for plugin in &self.inner.plugins {
             let state = &states[&plugin.manifest.name];
-            plugin.enabled.store(state["enabled"].as_bool().unwrap_or(false), Ordering::Relaxed);
+            let enabled = state["enabled"].as_bool().unwrap_or(false);
+            let was_enabled = plugin.enabled.swap(enabled, Ordering::Relaxed);
             let stored = state
                 .get("settings")
                 .filter(|value| value.is_object())
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            *plugin.shared.settings.write().expect("plugin settings") =
-                plugin.manifest.effective_settings(&stored);
+            let settings = plugin.manifest.effective_settings(&stored);
+            let previous = std::mem::replace(
+                &mut *plugin.shared.settings.write().expect("plugin settings"),
+                settings.clone(),
+            );
+            if !enabled || plugin.manifest.startup.is_none() {
+                continue;
+            }
+            if !was_enabled {
+                started.push((plugin.manifest.name.clone(), StartupReason::Enabled));
+            } else if previous != settings {
+                started.push((plugin.manifest.name.clone(), StartupReason::Settings));
+            }
         }
+        started
+    }
+
+    /// Runs the `[startup]` function of an enabled plugin with `{ reason }`. A function
+    /// that fails, or answers `{ error }`, is logged in the plugin's log.
+    pub async fn startup(&self, name: &str, reason: StartupReason) -> Result<(), PluginError> {
+        let plugin = self.get(name).ok_or(PluginError::NotFound)?.clone();
+        if !plugin.enabled() {
+            return Err(PluginError::Disabled);
+        }
+        let input = json!({ "reason": reason }).to_string();
+        let worker = plugin.clone();
+        let result = tokio::task::spawn_blocking(move || worker.startup_blocking(&input))
+            .await
+            .map_err(|error| PluginError::Call(error.to_string()))
+            .and_then(|output| output)
+            .and_then(|output| parse_output(&output))
+            .and_then(|output| match output.get("error").and_then(Value::as_str) {
+                Some(error) => {
+                    plugin.shared.log("error", &format!("startup: {error}"));
+                    Err(PluginError::Call(error.to_owned()))
+                }
+                None => Ok(()),
+            });
+        result?;
+        tracing::info!(plugin = %name, ?reason, "plugin started");
+        Ok(())
+    }
+
+    /// Runs startup functions one after the other in the background (failures are logged).
+    pub fn spawn_startup(
+        &self,
+        started: Vec<(String, StartupReason)>,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        if started.is_empty() || !self.inner.run_startup.load(Ordering::Relaxed) {
+            return None;
+        }
+        let plugins = self.clone();
+        Some(tokio::spawn(async move {
+            for (name, reason) in started {
+                if let Err(error) = plugins.startup(&name, reason).await {
+                    tracing::warn!(plugin = %name, ?reason, %error, "startup failed");
+                }
+            }
+        }))
     }
 
     /// Calls `function` of an enabled plugin.
@@ -452,13 +589,18 @@ impl Plugins {
 
 async fn call(plugin: Arc<Plugin>, function: String, input: &Value) -> Result<Value, PluginError> {
     let input = input.to_string();
-    let output = tokio::task::spawn_blocking(move || plugin.call_blocking(&function, &input))
+    tokio::task::spawn_blocking(move || plugin.call_blocking(&function, &input))
         .await
-        .map_err(|error| PluginError::Call(error.to_string()))??;
+        .map_err(|error| PluginError::Call(error.to_string()))
+        .and_then(|output| output)
+        .and_then(|output| parse_output(&output))
+}
+
+fn parse_output(output: &str) -> Result<Value, PluginError> {
     if output.trim().is_empty() {
         return Ok(Value::Null);
     }
-    serde_json::from_str(&output)
+    serde_json::from_str(output)
         .map_err(|error| PluginError::Call(format!("invalid JSON output: {error}")))
 }
 

@@ -514,13 +514,19 @@ pub async fn serve(
     context
         .locales
         .set(verdin_api::i18n::load_locales(&context.db).await.context("reading content locales")?);
-    context.plugins.apply(
+    // Startup functions run where the jobs run (once for all instances).
+    context.plugins.set_run_startup(context.config.plugins.run_jobs);
+    let started = context.plugins.apply(
         &verdin_api::plugins::load_states(&context.db).await.context("reading plugin switches")?,
     );
     context.review.reload().await.context("reading review workflows")?;
     context.releases.set_webhooks(context.webhooks.clone());
     context.review.set_enabled(states.enabled(REVIEW));
     let host = AppHost::new(context.clone(), schema, states);
+    // After the app is built: startup functions reach content through its host.
+    let startup = context.plugins.spawn_startup(
+        started.into_iter().map(|(name, _)| (name, verdin_plugins::StartupReason::Start)).collect(),
+    );
     let deliveries = context.webhooks.spawn();
     let jobs =
         if context.config.plugins.run_jobs { context.plugins.spawn_jobs() } else { Vec::new() };
@@ -566,6 +572,9 @@ pub async fn serve(
         .with_graceful_shutdown(shutdown)
         .await?;
     deliveries.abort();
+    if let Some(startup) = startup {
+        startup.abort();
+    }
     jobs.iter().for_each(tokio::task::JoinHandle::abort);
     pruning.abort();
     session_pruning.abort();
@@ -758,7 +767,8 @@ impl AppHost {
         let _guard = self.lock.lock().await;
         let context = &self.context;
         let states = load_features(&context.db).await?;
-        context.plugins.apply(&verdin_api::plugins::load_states(&context.db).await?);
+        let started = context.plugins.apply(&verdin_api::plugins::load_states(&context.db).await?);
+        context.plugins.spawn_startup(started);
         context.locales.set(verdin_api::i18n::load_locales(&context.db).await?);
         context.review.reload().await?;
         if states != **self.features.load() {

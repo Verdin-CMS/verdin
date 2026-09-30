@@ -45,6 +45,7 @@ fn plugin_json(state: &AdminState, plugin: &Plugin) -> Value {
         "hooks": manifest.hooks,
         "routes": manifest.routes.as_ref().map(|_| format!("/plugins/{}", manifest.name)),
         "jobs": manifest.jobs,
+        "startup": manifest.startup,
         "admin": {
             "script": manifest.admin.script.as_deref().map(|file| asset_url(state, plugin, file)),
             "widgets": manifest.admin.widgets,
@@ -116,7 +117,8 @@ async fn update(
         "settings": change.settings.unwrap_or_else(|| plugin.settings()),
     });
     crate::plugins::save_states(db, &states).await.map_err(internal)?;
-    plugins.apply(&states);
+    // Switched on or new settings: its startup function runs in the background.
+    plugins.spawn_startup(plugins.apply(&states));
     tracing::info!(plugin = %name, enabled = change.enabled, "plugin switched");
     Ok(data(plugin_json(&state, &plugin)))
 }

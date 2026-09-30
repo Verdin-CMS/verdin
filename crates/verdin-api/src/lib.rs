@@ -249,7 +249,7 @@ pub fn router(
         upload,
     };
     if let Some(plugins) = &plugins {
-        plugins.set_host(plugins::content_host(&state.service, config.limits));
+        plugins.set_host(plugins::content_host(&state.service, &state.auth, config.limits));
     }
 
     let uploads = upload::content_routes(state.upload.as_ref());

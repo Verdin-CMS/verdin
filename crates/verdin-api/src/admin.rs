@@ -796,19 +796,31 @@ fn grants(
     state: &AdminState,
     grants: Vec<GrantBody>,
 ) -> Result<Vec<(String, ContentAction)>, ApiError> {
+    parse_grants(
+        state.service.registry(),
+        grants.into_iter().map(|grant| (grant.subject, grant.action)),
+    )
+}
+
+/// `(subject, action)` pairs as content API grants: a content type of the registry (or
+/// uploads, or end users) and a known action that applies to it.
+pub(crate) fn parse_grants(
+    registry: &Registry,
+    grants: impl IntoIterator<Item = (String, String)>,
+) -> Result<Vec<(String, ContentAction)>, ApiError> {
     grants
         .into_iter()
-        .map(|grant| {
-            let upload = grant.subject == verdin_auth::UPLOAD_SUBJECT;
-            let users = grant.subject == verdin_auth::USERS_SUBJECT;
-            let locales = grant.subject == verdin_auth::LOCALES_SUBJECT;
+        .map(|(subject, action_name)| {
+            let upload = subject == verdin_auth::UPLOAD_SUBJECT;
+            let users = subject == verdin_auth::USERS_SUBJECT;
+            let locales = subject == verdin_auth::LOCALES_SUBJECT;
             if !upload && !users && !locales {
-                state.service.registry().get(&grant.subject).map_err(|_| {
-                    ApiError::BadRequest(format!("unknown content type `{}`", grant.subject))
+                registry.get(&subject).map_err(|_| {
+                    ApiError::BadRequest(format!("unknown content type `{subject}`"))
                 })?;
             }
-            let action = ContentAction::parse(&grant.action).ok_or_else(|| {
-                ApiError::BadRequest(format!("unknown content API action `{}`", grant.action))
+            let action = ContentAction::parse(&action_name).ok_or_else(|| {
+                ApiError::BadRequest(format!("unknown content API action `{action_name}`"))
             })?;
             let inapplicable = if locales {
                 action != ContentAction::Find
@@ -818,11 +830,10 @@ fn grants(
             };
             if inapplicable {
                 return Err(ApiError::BadRequest(format!(
-                    "`{}` does not apply to `{}`",
-                    grant.action, grant.subject
+                    "`{action_name}` does not apply to `{subject}`"
                 )));
             }
-            Ok((grant.subject, action))
+            Ok((subject, action))
         })
         .collect()
 }

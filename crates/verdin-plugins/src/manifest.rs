@@ -30,6 +30,8 @@ pub struct Manifest {
     pub routes: Option<Routes>,
     #[serde(default)]
     pub jobs: Vec<Job>,
+    /// A function run when the plugin starts (`bootstrap` in Strapi).
+    pub startup: Option<Startup>,
     /// Root fields of the GraphQL API resolved by the plugin.
     #[serde(default)]
     pub graphql: Vec<GraphqlField>,
@@ -60,6 +62,9 @@ pub struct Capabilities {
     /// Its own key-value storage.
     #[serde(default)]
     pub kv: bool,
+    /// Reading and replacing the public role's content API permissions.
+    #[serde(default)]
+    pub public_permissions: bool,
 }
 
 impl Capabilities {
@@ -143,6 +148,22 @@ pub struct Job {
     /// Cron syntax (`*/5 * * * *`; seconds optional), in UTC.
     pub schedule: String,
     pub function: String,
+}
+
+/// `[startup]`: run when the plugin starts on an instance (the server starts with it on,
+/// it is switched on, or its settings are saved), on every instance, so it must be safe to
+/// run again. Gets `{ reason: start | enabled | settings }`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Startup {
+    pub function: String,
+    /// Its own time limit (seeding can take longer than a hook).
+    #[serde(default = "default_startup_timeout")]
+    pub timeout_ms: u64,
+}
+
+fn default_startup_timeout() -> u64 {
+    30_000
 }
 
 /// `[[graphql]]`: `name(args: JSON): JSON` on `Query` (or `Mutation`); the function gets
@@ -320,6 +341,14 @@ impl Manifest {
                     format!("job `{}`: invalid schedule `{}`: {error}", job.function, job.schedule)
                 })?;
         }
+        if let Some(startup) = &self.startup {
+            if startup.function.is_empty() {
+                return Err("startup: function is required".into());
+            }
+            if startup.timeout_ms == 0 {
+                return Err("startup: timeout_ms must be positive".into());
+            }
+        }
         for field in &self.graphql {
             let valid = field.name.chars().next().is_some_and(|c| c.is_ascii_lowercase())
                 && field.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
@@ -444,6 +473,8 @@ mod tests {
             [[jobs]]
             schedule = "*/5 * * * *"
             function = "tick"
+            [startup]
+            function = "seed"
             [admin]
             script = "index.js"
             [[admin.fields]]
@@ -462,6 +493,10 @@ mod tests {
         assert!(bad.check().unwrap_err().contains("unknown hook"));
         let mut bad = manifest.clone();
         bad.jobs[0].schedule = "every minute".into();
+        assert!(bad.check().is_err());
+        assert_eq!(manifest.startup.as_ref().unwrap().timeout_ms, 30_000);
+        let mut bad = manifest.clone();
+        bad.startup.as_mut().unwrap().timeout_ms = 0;
         assert!(bad.check().is_err());
         let mut bad = manifest;
         bad.name = "Bad Name".into();

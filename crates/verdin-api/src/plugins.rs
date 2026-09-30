@@ -25,15 +25,60 @@ const ALLOWED_HEADERS: &[&str] =
 
 /// Content operations for plugins: writes go through the Document Service without the
 /// plugins' before-write hooks (a plugin must not trigger itself) but with the listeners
-/// and the platform's hooks (review stages).
+/// and the platform's hooks (review stages). Also the public role's permissions.
 pub struct ContentHost {
     service: DocumentService,
+    auth: AuthService,
     limits: Limits,
 }
 
 impl ContentHost {
-    pub fn new(service: &DocumentService, limits: Limits) -> Self {
-        Self { service: service.without_plugin_hooks(), limits }
+    pub fn new(service: &DocumentService, auth: &AuthService, limits: Limits) -> Self {
+        Self { service: service.without_plugin_hooks(), auth: auth.clone(), limits }
+    }
+
+    /// `{ op: get }` or `{ op: set, permissions: [{ subject, action }] }` (replaces them
+    /// all) → `{ permissions: [...] }`, sorted.
+    async fn public_permissions(&self, request: &Value) -> Result<Value, ApiError> {
+        match request["op"].as_str().unwrap_or_default() {
+            "get" => {}
+            "set" => {
+                let list = request["permissions"]
+                    .as_array()
+                    .ok_or_else(|| ApiError::BadRequest("permissions must be an array".into()))?;
+                let pairs = list
+                    .iter()
+                    .map(|grant| match (grant["subject"].as_str(), grant["action"].as_str()) {
+                        (Some(subject), Some(action)) => {
+                            Ok((subject.to_owned(), action.to_owned()))
+                        }
+                        _ => Err(ApiError::BadRequest(
+                            "each permission needs a subject and an action".into(),
+                        )),
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let grants = crate::admin::parse_grants(self.service.registry(), pairs)?;
+                self.auth.set_public_grants(&grants).await?;
+            }
+            op => return Err(ApiError::BadRequest(format!("unknown operation `{op}`"))),
+        }
+        let mut list: Vec<Value> = self
+            .auth
+            .public_grants()
+            .await?
+            .into_iter()
+            .map(|(subject, action)| json!({ "subject": subject, "action": action.as_str() }))
+            .collect();
+        list.sort_by_key(|grant| grant.to_string());
+        Ok(json!({ "permissions": list }))
+    }
+}
+
+fn host_error(error: ApiError) -> String {
+    match error {
+        ApiError::Content(error) => error.to_string(),
+        ApiError::BadRequest(message) | ApiError::Conflict(message) => message,
+        other => format!("{other:?}"),
     }
 }
 
@@ -124,12 +169,19 @@ impl ContentHost {
 
 impl PluginHost for ContentHost {
     fn content<'a>(&'a self, request: &'a Value) -> BoxFuture<'a, Result<Value, String>> {
+        Box::pin(async move { self.run(request).await.map_err(host_error) })
+    }
+
+    fn public_permissions<'a>(
+        &'a self,
+        request: &'a Value,
+    ) -> BoxFuture<'a, Result<Value, String>> {
         Box::pin(async move {
-            self.run(request).await.map_err(|error| match error {
-                ApiError::Content(error) => error.to_string(),
-                ApiError::BadRequest(message) | ApiError::Conflict(message) => message,
-                other => format!("{other:?}"),
-            })
+            let result = self.public_permissions(request).await.map_err(host_error);
+            if result.is_ok() && request["op"] == "set" {
+                tracing::info!("public permissions replaced by a plugin");
+            }
+            result
         })
     }
 }
@@ -256,6 +308,10 @@ async fn handle(
 }
 
 /// Content types of the host, for the plugin host (kept alive with the app).
-pub fn content_host(service: &DocumentService, limits: Limits) -> Arc<dyn PluginHost> {
-    Arc::new(ContentHost::new(service, limits))
+pub fn content_host(
+    service: &DocumentService,
+    auth: &AuthService,
+    limits: Limits,
+) -> Arc<dyn PluginHost> {
+    Arc::new(ContentHost::new(service, auth, limits))
 }

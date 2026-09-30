@@ -1,4 +1,5 @@
-//! A sample Verdin plugin: a `beforeCreate` hook, an `afterCreate` hook, routes, a job.
+//! A sample Verdin plugin: a `beforeCreate` hook, an `afterCreate` hook, routes, a job and
+//! a startup function.
 
 use extism_pdk::*;
 use serde_json::{Value, json};
@@ -10,6 +11,7 @@ extern "ExtismHost" {
     fn verdin_kv_get(key: String) -> Json<Value>;
     fn verdin_kv_set(input: Json<Value>);
     fn verdin_config() -> Json<Value>;
+    fn verdin_public_permissions(input: Json<Value>) -> Json<Value>;
 }
 
 fn slug(text: &str) -> String {
@@ -83,6 +85,10 @@ pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
             .0;
             json!({ "status": if created.get("error").is_some() { 403 } else { 201 }, "body": created })
         }
+        "/public" => {
+            let found = unsafe { verdin_public_permissions(Json(json!({ "op": "get" })))? }.0;
+            json!({ "status": if found.get("error").is_some() { 403 } else { 200 }, "body": found })
+        }
         "/panic" => panic!("boom"),
         "/loop" => loop {
             std::hint::spin_loop();
@@ -90,6 +96,35 @@ pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
         _ => json!({ "status": 404, "body": { "error": "not found" } }),
     };
     Ok(Json(response))
+}
+
+/// `{ reason }`: counts its runs, and leaves the public role with only reading articles
+/// (what a Strapi `bootstrap` locking the public role down does). The `failStartup` setting
+/// makes it answer an error.
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let reason = input["reason"].as_str().unwrap_or_default().to_owned();
+    let runs = unsafe { verdin_kv_get("startups".into())? }.0.as_i64().unwrap_or(0);
+    unsafe {
+        verdin_kv_set(Json(json!({ "key": "startups", "value": runs + 1 })))?;
+        verdin_kv_set(Json(json!({ "key": "reason", "value": reason })))?;
+    }
+    let config = unsafe { verdin_config()? }.0;
+    if config["failStartup"] == true {
+        return Ok(Json(json!({ "error": "startup refused" })));
+    }
+    let permissions = json!([{ "subject": "api::article", "action": "find" }]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result.get("error") {
+        return Ok(Json(json!({ "error": error })));
+    }
+    unsafe {
+        verdin_log(Json(json!({ "level": "info", "message": format!("startup {reason}") })))?;
+    }
+    Ok(Json(json!({})))
 }
 
 #[plugin_fn]
