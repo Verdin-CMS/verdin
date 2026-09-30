@@ -1,6 +1,6 @@
 ---
 title: Executar diverses instàncies
-description: Executa diverses instàncies de Verdin d'un mateix projecte darrere d'un balancejador de càrrega — què comparteixen a través de la base de dades, què es queda a cada instància i les opcions que cal canviar.
+description: Executa diverses instàncies de Verdin d'un mateix projecte darrere d'un balancejador de càrrega — què comparteixen a través de la base de dades, el bus d'esdeveniments compartit, què es queda a cada instància i les opcions que cal canviar.
 sidebar:
   order: 8
   label: Diverses instàncies
@@ -14,7 +14,7 @@ Aquesta pàgina llista què comparteixen les instàncies, què es guarda cadascu
 les opcions que importen.
 
 <Diagram
-  caption="Les instàncies comparteixen la base de dades i l'emmagatzematge de multimèdia; les memòries cau, els límits de freqüència i els fluxos d'esdeveniments es queden a cada instància."
+  caption="Les instàncies comparteixen la base de dades i l'emmagatzematge de multimèdia; amb el bus d'esdeveniments activat, els esdeveniments en temps real, la presència, la invalidació de la memòria cau i les actualitzacions de cerca arriben a totes les instàncies a través de la base de dades."
   code={`flowchart LR
   LB[Balancejador de càrrega] --> A[Instància 1]
   LB --> B[Instància 2]
@@ -43,6 +43,10 @@ les opcions que importen.
 - **Comprovacions de salut.** Apunta el balancejador de càrrega a `GET /_ready`, que respon
   `503` quan no es pot arribar a la base de dades. `GET /_health` només diu que el procés està en
   marxa; fes-lo servir per a la disponibilitat.
+- **El bus d'esdeveniments compartit.** Defineix `[cluster].bus = "database"` a totes les
+  instàncies, perquè els esdeveniments en temps real, la presència, la invalidació de la memòria
+  cau i les actualitzacions de cerca arribin a totes (consulta
+  [Bus d'esdeveniments compartit](#bus-desdeveniments-compartit)).
 - **Tasques de connectors en una sola instància.** Defineix `[plugins].run_jobs = false` a totes
   les instàncies excepte una; si no, cada instància executa les tasques programades.
 - **Mètriques per instància.** Amb `[metrics].enabled = true`, cada instància serveix el seu
@@ -75,24 +79,77 @@ de l'esquema antic ja no necessiti les dades. Consulta
 | Reptes de claus d'accés | Els reptes consumits es registren a la base de dades, de manera que cadascun es respon un sol cop entre instàncies. |
 | Neteja del registre d'auditoria | S'executa a totes les instàncies; eliminar dues vegades les files antigues és inofensiu. |
 | Magatzem clau-valor dels connectors | A la base de dades. |
+| Esdeveniments en temps real, presència i bloquejos suaus | Amb el [bus d'esdeveniments](#bus-desdeveniments-compartit): un client connectat a qualsevol instància rep els esdeveniments de totes i veu cada administrador d'una entrada. |
+| La memòria cau de respostes anònimes | Amb el bus d'esdeveniments, una escriptura a qualsevol instància buida la memòria cau de totes. |
+| L'índex de cerca | Amb el bus d'esdeveniments, cada instància torna a llegir i indexa les entrades que canvien les altres. |
+| Imatges transformades | Amb el bus d'esdeveniments, un fitxer canviat o eliminat surt de la memòria cau de transformacions de cada instància. |
 
 ## Què es queda a cada instància
 
 - **Els límits de freqüència** els compta cada instància. Amb `n` instàncies, un client pot fer
   fins a `n` vegades `[api].public_rate_limit` peticions per minut. Aplica un límit global al
   balancejador de càrrega si en necessites un.
-- **La memòria cau de respostes anònimes** (`[api].cache_ttl_secs`). Una escriptura buida la
-  memòria cau de la instància que l'ha feta; les altres poden servir la resposta anterior fins
-  que caduqui la seva entrada. Mantén el TTL en uns quants segons, o a `0`.
-- **Els esdeveniments en temps real i la presència** són els de la instància a què està connectat
-  un client. Fes servir sessions persistents per als fluxos d'esdeveniments (consulta
-  [Temps real](/ca/guides/frontend/realtime/)).
-- **L'índex de cerca** (`[search]`) viu al disc de la instància i només segueix les escriptures
-  que fa aquesta instància. Activa'l en una sola instància i encamina-hi les peticions `_q`, o
-  accepta que les altres es quedin enrere fins que es reiniciïn amb un directori d'índex buit.
+- **Sense el bus d'esdeveniments** (`[cluster].bus = "none"`, el valor per defecte), els
+  esdeveniments en temps real i la presència són els de la instància a què està connectat un
+  client (fes servir sessions persistents per als fluxos d'esdeveniments), una escriptura només
+  buida la memòria cau de respostes de la seva instància (mantén `[api].cache_ttl_secs` en uns
+  quants segons, o a `0`) i l'índex de cerca només segueix les escriptures de la seva instància.
+- **L'índex de cerca** (`[search]`) viu al disc de cada instància. Amb el bus d'esdeveniments, les
+  instàncies indexen els canvis de les altres a mesura que passen; una instància que s'inicia amb
+  un directori d'índex buit el construeix des de la base de dades. Els canvis fets mentre una
+  instància estava aturada arriben al seu índex quan es reconstrueix: elimina el directori abans
+  d'iniciar-la, o reconstrueix després d'un desplegament.
 - **Les transformacions d'imatges** (`[upload.transforms]`) es desen a la memòria cau de cada
   instància a `cache_dir`. Posa una CDN davant de `/uploads` per compartir-les.
 - **Tasques programades dels connectors**: consulta `run_jobs` a dalt.
+
+## Bus d'esdeveniments compartit
+
+Algunes coses passen en memòria: els fluxos en temps real, qui edita quina entrada, la memòria
+cau de respostes anònimes i l'índex de cerca. El bus d'esdeveniments les porta de la instància on
+passen a les altres.
+
+```toml title="verdin.toml"
+[cluster]
+bus = "database"
+```
+
+O `VERDIN_CLUSTER__BUS=database`, a totes les instàncies. El bus fa servir la base de dades del
+projecte, de manera que no necessita cap altre servei:
+
+- **PostgreSQL**: una instància escriu cada esdeveniment a la taula `vd_cluster_events` i desperta
+  les altres amb `NOTIFY`. Cada instància reserva una de les connexions del seu pool per a
+  `LISTEN`. La notificació només nomena el remitent, de manera que els esdeveniments de
+  qualsevol mida queden per sota del límit de 8000 bytes de PostgreSQL. Si la connexió es talla,
+  la instància es reconnecta i llegeix la taula per posar-se al dia. També llegeix la taula cada
+  30 segons per si es perd alguna notificació.
+- **MySQL, MariaDB i SQLite**: cada instància llegeix les files noves de `vd_cluster_events`
+  cada `poll_interval_ms` (1000 per defecte). La consulta fa servir la clau primària, de manera
+  que llegir una taula buida costa poc. Redueix l'interval per a actualitzacions més ràpides; el
+  canvi d'una instància arriba a les altres dins de l'interval.
+
+El que viatja: les escriptures de contingut (als fluxos en temps real, a la memòria cau de
+respostes i a l'índex de cerca, que torna a llegir l'entrada canviada), els canvis de multimèdia
+(fluxos, memòria cau, memòria cau de transformacions), els senyals de presència i els avisos de
+comentaris i tasques per a l'administrador. Cada instància ignora els seus propis esdeveniments.
+Els webhooks, les purgues de CDN, l'historial, els registres d'auditoria i els hooks dels
+connectors no viatgen: la instància que ha fet el canvi els executa un sol cop.
+
+Les files s'eliminen als 10 minuts. Una instància nova comença amb l'esdeveniment següent, no amb
+els anteriors. Una instància que no pot seguir el ritme, o que perd la connexió amb la base de
+dades, descarta esdeveniments en lloc de retenir una escriptura. La mètrica
+`verdin_cluster_events_total` compta els esdeveniments enviats, rebuts i descartats (consulta
+[Monitoratge](/ca/deploy/monitoring/#mètriques-de-prometheus)).
+
+Cada instància s'identifica al bus amb un id aleatori a cada inici, o amb `[cluster].instance_id`
+si el defineixes (un nom de pod, per exemple). L'id només serveix per distingir instàncies; res
+més en depèn.
+
+Amb una sola instància, deixa `bus` a `none`: els esdeveniments es queden en memòria i no
+s'escriu res.
+
+Els backends de Redis i NATS encara no estan disponibles. El bus de la base de dades cobreix
+totes les bases de dades compatibles sense res més a executar.
 
 ## Opcions
 
@@ -106,8 +163,14 @@ sync_interval_secs = 10
 run_jobs = true
 
 [api]
-# Short-lived when each instance keeps its own cache.
-cache_ttl_secs = 5
+# Emptied on every instance by the event bus; keep it short without it.
+cache_ttl_secs = 60
+
+[cluster]
+# Share realtime events, presence, cache invalidation and search updates.
+bus = "database"
+# MySQL, MariaDB and SQLite: how often to read other instances' events.
+poll_interval_ms = 1000
 ```
 
 Defineix `run_jobs` per instància amb `VERDIN_PLUGINS__RUN_JOBS=false`.
@@ -116,4 +179,4 @@ Defineix `run_jobs` per instància amb `VERDIN_PLUGINS__RUN_JOBS=false`.
 
 Cada instància obre fins a `[database].pool_max` connexions (10 per defecte). Mantén
 `instances × pool_max` per sota del límit del servidor, amb marge per a migracions, còpies de
-seguretat i manteniment. El límit per defecte de PostgreSQL és de 100 connexions.
+seguretat i manteniment. El límit per defecte de PostgreSQL és de 100 connexions. A PostgreSQL, el bus d'esdeveniments reserva una de les connexions de cada instància per a `LISTEN`.

@@ -130,7 +130,11 @@ el tipus.
 
 ## Diverses instàncies
 
-Els esdeveniments i la presència són els de la instància a què està connectat un client. Darrere
-d'un balancejador de càrrega, encamina `/api/_events` i `/admin/api/events` amb sessions
-persistents (sticky sessions), o connecta els clients de temps real a una sola instància.
-Consulta [Escalat](/ca/deploy/scaling/).
+Amb el bus d'esdeveniments compartit (`[cluster].bus = "database"`), els fluxos de cada
+instància porten els esdeveniments de totes, i la presència i els bloquejos suaus són els
+mateixos a cada instància. Els esdeveniments d'una altra instància arriben en
+`[cluster].poll_interval_ms` (MySQL, MariaDB, SQLite) o a l'instant (PostgreSQL,
+`LISTEN/NOTIFY`). Sense el bus, els esdeveniments i la presència són els de la instància a què
+està connectat un client: encamina `/api/_events` i `/admin/api/events` amb sessions persistents
+(sticky sessions), o connecta els clients de temps real a una sola instància.
+Consulta [Escalat](/ca/deploy/scaling/#bus-desdeveniments-compartit).

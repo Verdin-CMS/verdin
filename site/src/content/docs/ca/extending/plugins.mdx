@@ -21,6 +21,7 @@ detalls a la [referència de connectors](/ca/extending/plugin-reference/).
 | **Hooks en les escriptures** | Abans que una entrada es creï, s'actualitzi, es publiqui, es despubliqui, s'elimini o se'n descarti l'esborrany, canviar les dades o rebutjar l'escriptura amb un missatge. Després de l'escriptura, reaccionar-hi (registrar, notificar, sincronitzar). |
 | **Rutes** | Servir endpoints HTTP sota `/api/plugins/<name>/…`: un receptor de webhooks, un feed calculat, un proxy a un altre servei. |
 | **Tasques programades** | Executar una funció segons una programació cron (UTC). |
+| **Funció d'inici** | Executar una funció quan el connector s'inicia, s'activa o canvia la seva configuració: sembrar, configurar el rol públic (el `bootstrap` de Strapi). |
 | **Camps GraphQL** | Afegir camps `name(args: JSON): JSON` a `Query` o `Mutation`. |
 | **Widgets del tauler d'inici** | Afegir tipus de widgets al tauler d'inici de l'administració, com a Web Components. |
 | **Camps personalitzats** | Donar als atributs un editor personalitzat a l'administració (un selector de color, un mapa), com a Web Components; el valor es desa com un tipus d'atribut normal. |
@@ -50,6 +51,7 @@ comprova cada crida amb les **capacitats** que declara el manifest:
 | `write` | Crear, actualitzar, publicar, despublicar i eliminar entrades dels tipus llistats (i també llegir-les). |
 | `http` | Peticions HTTP als hosts llistats (`api.example.com`, `*.example.com`). |
 | `kv` | Un magatzem clau-valor propi, a la base de dades de Verdin. |
+| `public_permissions` | Llegir i substituir els permisos de l'API de contingut del rol públic. |
 
 <Diagram
   caption="Crides a un connector, i què poden abastar les seves crides a l'amfitrió"

@@ -115,8 +115,12 @@ paràmetres amb `param()`, de manera que construir l'SQL i enllaçar els valors 
 | date, time, datetime | `date`, `time(3)`, `timestamptz(3)` | `date`, `time(3)`, `datetime(3)` | `text` |
 | json | `jsonb` | `json` | `text` |
 
-SQLite desa els decimals, les dates i les hores com a text de format fix, de manera que no
-s'arrodoneix res i l'ordre del text coincideix amb l'ordre numèric i cronològic. Quin atribut
+SQLite desa les dates i les hores com a text de format fix, de manera que l'ordre del text
+coincideix amb l'ordre cronològic. També desa els decimals com a text, de manera que no
+s'arrodoneix res en desar-los. L'ordre del text no és l'ordre numèric dels decimals, així que els
+filtres i les ordenacions sobre un decimal converteixen la columna a `REAL` a SQLite. Aquestes
+comparacions són exactes fins a unes 15 xifres significatives, i els valors retornats continuen
+sent exactes. Quin atribut
 correspon a quin tipus del model és a [tipus d'atribut](/ca/reference/attribute-types/).
 
 Les taules de MySQL i MariaDB es creen amb `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` i una col·lació

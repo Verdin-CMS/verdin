@@ -1,12 +1,13 @@
 ---
 title: Referència de connectors
-description: El manifest plugin.toml, les capacitats, els hooks i les seves càrregues, les funcions de l'amfitrió, les rutes, les tasques, els camps GraphQL, els punts d'extensió de l'administració i els límits.
+description: El manifest plugin.toml, les capacitats, els hooks i les seves càrregues, les funcions de l'amfitrió, les rutes, les tasques, la funció d'inici, els camps GraphQL, els punts d'extensió de l'administració, els límits i les mètriques.
 sidebar:
   order: 3
 ---
 
 <!-- Written from crates/verdin-plugins (lib.rs, manifest.rs), crates/verdin-api/src/plugins.rs,
-plugins_admin.rs, crates/verdin-graphql/src/lib.rs and admin/src/app/core/plugin-extensions.ts. -->
+plugins_admin.rs, crates/verdin-graphql/src/lib.rs, crates/verdin/src/metrics.rs and
+admin/src/app/core/plugin-extensions.ts. -->
 
 Aquesta pàgina és el contracte complet entre Verdin i un connector (plugin): el manifest, què
 envia Verdin a cada funció exportada i què n'espera rebre, i les funcions de l'amfitrió que pot
@@ -40,6 +41,7 @@ read = ["api::article"]
 write = ["api::tag"]
 http = ["api.example.com"]
 kv = true
+public_permissions = true
 
 [limits]
 timeout_ms = 5000
@@ -56,6 +58,10 @@ function = "handle"
 [[jobs]]
 schedule = "*/15 * * * *"
 function = "refresh"
+
+[startup]
+function = "seed"
+timeout_ms = 30000
 
 [[graphql]]
 name = "slugStats"
@@ -103,6 +109,7 @@ Les claus desconegudes són errors, a totes les taules.
 | `write` | `[]` | Tipus de contingut que pot `create`, `update`, `delete`, `publish` i `unpublish`. Implica `read`. |
 | `http` | `[]` | Hosts als quals el mòdul pot enviar peticions HTTP: `api.example.com`, o `*.example.com`. |
 | `kv` | `false` | L'emmagatzematge clau-valor propi del connector (`verdin_kv_get`, `verdin_kv_set`). |
+| `public_permissions` | `false` | Llegir i substituir els permisos de l'API de contingut del rol públic (`verdin_public_permissions`). |
 
 Les capacitats només limiten les crides a l'amfitrió. Els hooks s'executen sobre els tipus que
 indiquen digui el que digui `read`, i qualsevol pot accedir a les rutes.
@@ -137,8 +144,9 @@ Esdeveniments:
 
 Els noms són els noms de cicle de vida de Strapi. Els hooks s'executen en les escriptures del
 tauler d'administració, de les API REST i GraphQL i dels llançaments, però no en les escriptures
-fetes per connectors (consulta [Escriptures fetes per connectors](#escriptures-fetes-per-connectors))
-ni per les ordres `verdin import`.
+fetes per les ordres `verdin import`. Les escriptures fetes per connectors executen els hooks
+posteriors però no els previs (consulta
+[Escriptures fetes per connectors](#escriptures-fetes-per-connectors)).
 
 ### `[routes]`
 
@@ -154,6 +162,18 @@ El camí segueix `[api].prefix`.
 | --- | --- |
 | `schedule` | Expressió cron, en UTC, amb segons opcionals: `*/15 * * * *`, `0 0 3 * * *`. |
 | `function` | La funció exportada que cal cridar. |
+
+### `[startup]`
+
+Una funció que s'executa quan el connector s'inicia: el que un projecte Strapi fa a `bootstrap`
+(sembrar contingut, configurar el rol públic).
+
+| Clau | Per defecte | Descripció |
+| --- | --- | --- |
+| `function` | obligatòria | La funció exportada que cal cridar. |
+| `timeout_ms` | `30000` | El seu propi límit de temps, en mil·lisegons (sembrar pot trigar més que un hook). Ha de ser positiu. |
+
+Consulta [Funció d'inici](#funció-dinici) per saber quan s'executa.
 
 ### `[[graphql]]`
 
@@ -291,6 +311,34 @@ s'executen mentre el connector està activat, i només a les instàncies amb
 `[plugins].run_jobs = true`. Una execució perduda mentre el servidor estava aturat no es
 recupera.
 
+### Funció d'inici
+
+Entrada: `{ "reason": "start" | "enabled" | "settings" }`:
+
+| `reason` | Quan |
+| --- | --- |
+| `start` | El servidor s'ha iniciat amb el connector activat. |
+| `enabled` | El connector s'ha activat (aquí, o en una altra instància i recollit aquí). |
+| `settings` | La seva configuració ha canviat mentre estava activat (desada aquí, o recollida d'una altra instància). |
+
+Sortida: `{ "error": "message" }` compta com un error; qualsevol altra cosa (`{}`, buida) com a
+èxit. Un error (trap, temps d'espera esgotat, `{ error }`) va al registre del connector i al
+registre del servidor; el connector continua activat, i la funció torna a executar-se a l'inici,
+l'activació o el canvi de configuració següent.
+
+La funció s'executa en segon pla, un cop el servidor està en marxa, de manera que mentrestant
+se serveixen peticions. S'executa en una instància del mòdul pròpia amb `[startup].timeout_ms`, de
+manera que una sembra lenta no bloqueja els hooks ni les rutes del connector. Els hooks
+posteriors que disparen les seves escriptures s'executen quan retorna (consulta
+[Escriptures fetes per connectors](#escriptures-fetes-per-connectors)). La memòria del mòdul no es
+comparteix amb la instància habitual del connector: guarda l'estat a `verdin_kv_set` o al
+contingut.
+
+Amb diverses instàncies, només n'executen les funcions d'inici les que tenen
+`[plugins].run_jobs = true` (una instància, si segueixes el [consell d'escalat](/ca/deploy/scaling/)):
+actuen sobre la base de dades compartida, de manera que n'hi ha prou amb una vegada. Escriu la
+funció de manera que tornar-la a executar sigui inofensiu: comprova què sembres abans de crear-ho.
+
 ### Camps GraphQL
 
 Entrada: `{ "args": …, "actor": … }`, amb `args` l'argument `args` del camp (qualsevol JSON, o
@@ -310,6 +358,10 @@ retornen JSON com a cadenes; `Json<Value>` d'`extism-pdk` s'encarrega de la conv
 | `verdin_kv_get` | La clau, com a cadena simple | El valor JSON desat, o `null` |
 | `verdin_kv_set` | `{ "key": "…", "value": … }` | cap |
 | `verdin_config` | cap | L'objecte de configuració, amb els valors per defecte declarats omplerts |
+| `verdin_public_permissions` | `{ "op": "get" }` o `{ "op": "set", "permissions": [...] }` | `{ "permissions": [...] }`, o `{ "error": "…" }` |
+
+Un mòdul que importa una funció de l'amfitrió que el servidor no té (un Verdin més antic) no es
+pot carregar: cada crida falla amb `unknown import` al registre del servidor.
 
 ### `verdin_log`
 
@@ -351,10 +403,25 @@ que la consulta demani `"status": "draft"`.
 #### Escriptures fetes per connectors
 
 Les escriptures a través de `verdin_content` s'ometen els hooks **previs** de tots els
-connectors, de manera que un connector no pot entrar en bucle amb els seus propis canvis. Tota la
+connectors, de manera que un connector no pot entrar en bucle amb els seus propis canvis, i les
+regles que posis als hooks previs (valors per defecte, comprovacions) no s'hi apliquen. Tota la
 resta s'aplica: validació, etapes de revisió, webhooks, historial, registre d'auditoria i els
-hooks **posteriors** de tots els connectors, inclòs el que escriu. Protegeix un hook posterior
-que escrigui el tipus que escolta.
+hooks **posteriors** de tots els connectors, inclòs el que escriu.
+
+Els hooks posteriors que disparen les escriptures d'un connector no s'executen dins de
+l'escriptura: es posen en cua i s'executen quan la crida del connector (ruta, tasca, resolutor
+GraphQL, hook o funció d'inici) ha retornat i ha alliberat la instància del connector, abans
+d'enviar la resposta de la ruta. Així un connector pot escriure un tipus sobre el qual té hooks
+posteriors, i les cadenes a través de diversos connectors funcionen.
+
+- Els hooks que escriuen disparen més hooks, **com a màxim `4` nivells de profunditat** (una
+  escriptura des de REST o GraphQL és el nivell 1). Els hooks més profunds s'ometen amb un avís al
+  registre del connector, cosa que evita que un hook que escriu el tipus que escolta entri en bucle
+  per sempre.
+- Les funcions de l'amfitrió (`verdin_content`, `verdin_public_permissions`, el magatzem
+  clau-valor) s'aturen al límit de temps de la crida i retornen un error al mòdul, i qui crida
+  espera com a màxim el límit de temps més 10 segons un connector ocupat. Una crida encallada no
+  pot bloquejar el connector, ni una aturada ordenada, per sempre.
 
 ### `verdin_kv_get` i `verdin_kv_set`
 
@@ -367,6 +434,34 @@ s'ignoren.
 
 Retorna la configuració desada a **Configuració → Connectors**, amb el `default` de cada opció
 declarada omplert per a les claus que falten. `{}` quan no hi ha res desat.
+
+### `verdin_public_permissions`
+
+Llegeix o substitueix els permisos de l'API de contingut del rol públic, el que edita
+**Configuració → Accés públic**. Necessita la capacitat `public_permissions`; sense ella, cada
+crida respon `{ "error": "…" }`.
+
+```json
+{ "op": "set", "permissions": [
+  { "subject": "api::article", "action": "find" },
+  { "subject": "api::article", "action": "findOne" },
+  { "subject": "api::comment", "action": "create" }
+] }
+```
+
+| `op` | Efecte |
+| --- | --- |
+| `get` | Res; retorna els permisos actuals. |
+| `set` | Substitueix **tots** els permisos públics per `permissions` (una llista buida els elimina tots). |
+
+Tots dos responen `{ "permissions": [{ "subject", "action" }, …] }`, ordenats. `subject` és l'uid
+d'un tipus de contingut, `plugin::upload` (la biblioteca de multimèdia),
+`plugin::users-permissions.user` (els usuaris finals a través de l'API de contingut) o
+`plugin::i18n.locale` (només `find`). `action` és `find`, `findOne`, `create`, `update`, `delete`,
+`publish` o `readDrafts` (les dues últimes no s'apliquen a les pujades ni als usuaris finals). Es
+comproven com la quadrícula de permisos de l'administració: un subjecte o una acció desconeguts, o
+que no s'apliquen, responen `{ "error": "…" }` i no canvien res. Cada `set` s'escriu al registre
+del servidor.
 
 ### HTTP
 
@@ -436,10 +531,10 @@ falta l'element, l'editor mostra el camp d'entrada normal per al tipus d'emmagat
 
 | Límit | Valor |
 | --- | --- |
-| Temps per crida | `[limits].timeout_ms`, per defecte 5.000 ms |
+| Temps per crida | `[limits].timeout_ms`, per defecte 5.000 ms (`[startup].timeout_ms`, per defecte 30.000 ms, per a la funció d'inici) |
 | Memòria | `[limits].memory_mb`, per defecte 64 MB |
-| Concurrència | Una crida alhora per connector; les crides s'esperen entre elles |
-| Instància del mòdul | Una per connector, construïda en el primer ús; es reconstrueix després que una crida falli (se'n perd la memòria) |
+| Concurrència | Una crida alhora per connector; les crides s'esperen entre elles (la funció d'inici s'executa al seu costat) |
+| Instància del mòdul | Una per connector, construïda en el primer ús; es reconstrueix després que una crida falli (se'n perd la memòria). La funció d'inici en rep una de nova a cada execució |
 | Registre | 200 missatges per connector, 2.000 caràcters cadascun, a la memòria |
 | Claus KV | D'1 a 255 bytes |
 | Capçaleres de petició de les rutes | `content-type`, `accept`, `user-agent`, `accept-language` |
@@ -448,3 +543,19 @@ falta l'element, l'editor mostra el camp d'entrada normal per al tipus d'emmagat
 Els canvis en un manifest o un mòdul s'apliquen després d'un reinici; els interruptors i la
 configuració s'apliquen a l'instant. Gestionar connectors necessita `plugins.manage` (consulta la
 [referència de permisos](/ca/reference/permissions/)).
+
+## Mètriques
+
+Amb [`[metrics]`](/ca/deploy/monitoring/) activat, `/_metrics` informa de cada crida que ha arribat
+a una funció exportada:
+
+| Mètrica | Tipus | Etiquetes | Significat |
+| --- | --- | --- | --- |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | Temps que han trigat les funcions dels connectors. Intervals de 5 ms a 10 s. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Crides que han fallat: una trampa (trap), un temps d'espera esgotat, una sortida que no és JSON o un `{ error }` d'una funció d'inici. |
+
+`kind` és `hook`, `route`, `job`, `startup` o `graphql`. Un hook previ que rebutja una escriptura
+amb `{ error }` ha donat una resposta, de manera que no compta com un error. Les crides a una
+funció que el mòdul no exporta no es registren, de manera que les etiquetes queden limitades pels
+connectors instal·lats. Les sèries apareixen després de la primera crida d'un connector; cada
+instància compta les seves pròpies crides.

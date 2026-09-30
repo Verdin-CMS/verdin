@@ -1,0 +1,414 @@
+---
+title: Portar el codi personalitzat
+description: Mou el codi personalitzat d'un projecte Strapi a un connector de Verdin — controladors i rutes, lifecycles, serveis, bootstrap, tasques cron, widgets d'administració, formularis, policies i middlewares — amb un exemple treballat i els límits que cal tenir en compte.
+sidebar:
+  order: 2
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components';
+
+`verdin import strapi` porta l'esquema i el contingut d'un projecte Strapi, però no el
+JavaScript de `src/`: Verdin no executa JavaScript al servidor. Aquest codi passa a ser un
+[connector WebAssembly](/ca/extending/plugins/): hooks per als lifecycles, rutes per als
+controladors personalitzats, una funció d'inici per al `bootstrap`, tasques per a les tasques
+cron. Aquesta pàgina assigna cada tipus de codi de Strapi al seu equivalent a Verdin, recorre el
+codi d'un projecte real portat a un connector, i llista els límits que cal tenir en compte.
+
+L'exemple treballat és
+[`examples/strapi-port`](https://github.com/Verdin-CMS/verdin/tree/main/examples/strapi-port):
+el connector `tienda`, escrit en Rust, amb l'esquema que necessita i un README que el compila i
+l'instal·la. Llegeix primer el [tutorial de connectors](/ca/extending/plugin-tutorial/) si no has
+escrit mai un connector; la [referència de connectors](/ca/extending/plugin-reference/) té totes
+les càrregues i funcions de l'amfitrió.
+
+## On va cada peça
+
+| Strapi | Verdin | Notes |
+| --- | --- | --- |
+| Rutes i controladors personalitzats (`src/api/*/routes`, `controllers`) | Rutes de connector: `[routes]`, una funció per a `/api/plugins/<name>/…` | La URL canvia. La funció distribueix per mètode i camí ella mateixa. |
+| Lifecycles (`lifecycles.js`), middlewares del Document Service | `[[hooks]]` a `beforeCreate`, `afterUpdate`… | Mateixos noms d'esdeveniment. Els hooks previs poden substituir les dades o rebutjar l'escriptura. |
+| Serveis (`src/api/*/services`) | Funcions del mòdul del connector, i `verdin_content` per a `strapi.documents(…)` | Sense serveis compartits entre connectors. |
+| `bootstrap()` a `src/index.js` | Funció `[startup]` | S'executa a l'inici, quan s'activa el connector i quan canvia la seva configuració. |
+| `register()` | Res a portar | El manifest declara el que configurava `register`. |
+| Tasques cron (`config/cron-tasks.js`) | `[[jobs]]` | Sintaxi cron en UTC, segons opcionals. |
+| Configuració de connectors (`config/plugins.js`) | `[[settings]]` i `verdin_config` | S'edita a **Configuració → Connectors**. |
+| `strapi.log` | `verdin_log` | Registre del servidor i **Configuració → Connectors → Registres**. |
+| Widgets d'administració (`app.widgets.register`) | `[[admin.widgets]]`: Web Components | O els widgets integrats del tauler d'inici. |
+| Camps personalitzats | `[[admin.fields]]` | El nom `customField` de l'esquema es conserva. |
+| Zones d'injecció, pàgines d'administració personalitzades, extensions React | No admès | La marca és a `[admin.branding]`. |
+| Un endpoint personalitzat que desa enviaments de formularis | [Formularis](/ca/guides/frontend/forms/) integrats | Validació, parany per a spam, límit de freqüència, correus i exportació CSV inclosos. |
+| Policies i middlewares | Permisos, límits de freqüència i CORS integrats; comprovacions a les rutes del teu connector | Cap punt d'entrada a la canonada de peticions. Consulta [Policies i middlewares](#policies-i-middlewares). |
+| Correus des del codi (`strapi.plugin('email')`) | L'API HTTP d'un proveïdor de correu, a través de la capacitat `http` | Cap funció de l'amfitrió per al correu. |
+
+## El projecte d'exemple
+
+El projecte Strapi que hi ha darrere de l'exemple és una petita botiga amb enquestes:
+
+- **`producto`**: productes, amb els indicadors `a_la_venta` (a la venda) i `reservable`.
+- **`reserva`**: reserves enviades pels visitants. Un lifecycle `beforeCreate` força `estado`
+  a `pendiente`, comprova que el producte relacionat està a la venda i és reservable, i limita
+  `unidades` a 1–10.
+- **`encuesta`** i **`voto`**: enquestes amb una llista d'opcions, i els seus vots. Dues rutes
+  personalitzades, `POST /api/polls/:slug/vote` i `GET /api/polls/:slug/results`, permeten un vot
+  per visitant i enquesta, només en enquestes obertes i només per a una opció vàlida. Una tasca
+  cron tanca les enquestes la data `cierra_el` de les quals ha passat.
+- **`bootstrap`** defineix els permisos del rol públic, de manera que una instal·lació nova no
+  queda oberta.
+- Un **widget d'administració** mostra les enquestes obertes.
+
+A Verdin tot això és un sol connector, `tienda`:
+
+<FileTree>
+- examples/strapi-port/
+  - verdin.toml
+  - schema/
+    - content-types/ producto, reserva, encuesta, voto
+  - plugin/
+    - Cargo.toml
+    - plugin.toml el manifest
+    - src/lib.rs hooks, rutes, la tasca i la funció d'inici
+    - admin/index.js el widget del tauler d'inici
+</FileTree>
+
+```toml title="plugin/plugin.toml (abridged)"
+name = "tienda"
+version = "0.1.0"
+
+[capabilities]
+read = ["api::producto"]
+write = ["api::voto", "api::encuesta"]
+public_permissions = true
+
+[[hooks]]
+on = "beforeCreate"
+uid = "api::reserva"
+function = "before_create_reserva"
+
+[routes]
+function = "handle"
+
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+
+[startup]
+function = "startup"
+```
+
+Els uids dels tipus de contingut són més curts que els de Strapi: `api::producto`, no
+`api::producto.producto`.
+
+## Dels lifecycles als hooks
+
+El lifecycle de Strapi, simplificat:
+
+```js title="src/api/reserva/content-types/reserva/lifecycles.js"
+const { errors } = require('@strapi/utils');
+
+module.exports = {
+  async beforeCreate(event) {
+    const { data } = event.params;
+    data.estado = 'pendiente';
+    const documentId = data.producto?.connect?.[0]?.documentId ?? data.producto;
+    const producto = await strapi.documents('api::producto.producto').findOne({ documentId });
+    if (!producto?.a_la_venta || !producto.reservable) {
+      throw new errors.ApplicationError('This product cannot be reserved');
+    }
+    data.unidades = Math.min(Math.max(parseInt(data.unidades, 10) || 1, 1), 10);
+  },
+};
+```
+
+El hook de Verdin rep `{ event, uid, documentId, locale, data }` i respon
+`{ "data": … }` per substituir el que s'escriu, `{ "error": "…" }` per rebutjar l'escriptura (el
+client rep un 400 amb el missatge, com amb l'`ApplicationError` de Strapi), o `{}` per deixar-la
+passar:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn before_create_reserva(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let mut data = input["data"].clone();
+    data["estado"] = json!("pendiente");
+
+    let Some(producto_id) = relation_id(&data["producto"]) else {
+        return Ok(Json(json!({ "error": "Choose a product to reserve" })));
+    };
+    let found = content(json!({ "op": "findOne", "uid": "api::producto", "documentId": producto_id }))?;
+    let producto = &found["document"];
+    if producto.is_null() {
+        return Ok(Json(json!({ "error": "The product does not exist or is not published" })));
+    }
+    if producto["a_la_venta"] != true {
+        return Ok(Json(json!({ "error": "The product is not on sale" })));
+    }
+    if producto["reservable"] != true {
+        return Ok(Json(json!({ "error": "The product cannot be reserved" })));
+    }
+
+    let max = settings()["maxUnidades"].as_i64().unwrap_or(10).max(1);
+    let unidades = as_number(&data["unidades"]).map_or(1, |n| n.round() as i64);
+    data["unidades"] = json!(unidades.clamp(1, max));
+    Ok(Json(json!({ "data": data })))
+}
+```
+
+Coses a saber en portar lifecycles:
+
+- **`data` són les dades de la petició tal com s'han enviat.** Una relació pot arribar com a
+  documentId, com a `{ "documentId": … }`, com a llista, o com a `{ connect }` / `{ set }` (el
+  tauler d'administració i els clients difereixen). El `relation_id` de l'exemple les accepta
+  totes. A `beforeUpdate`, `data` només conté els camps enviats.
+- **Les dades que retornes es validen** com l'original, després del hook: un hook no pot escriure
+  res que l'esquema rebutgi. Els límits de l'esquema (`min`, `max`) rebutgen un valor; un hook
+  el pot limitar en lloc d'això, com aquí.
+- **Els hooks no saben qui escriu.** No hi ha cap usuari ni token a l'entrada. Les comprovacions
+  que depenen de qui crida pertanyen als permisos, o a una ruta de connector.
+- **Els hooks posteriors no reben dades**: `{ event, uid, documentId, locale }`, enviat un cop
+  l'escriptura s'ha confirmat. Llegeix l'entrada amb `verdin_content` si la necessites.
+- **Un hook que falla no bloqueja l'escriptura.** Si el mòdul té una trampa (trap) o esgota el
+  temps, l'error es registra i l'escriptura continua; només una resposta `{ error }` la rebutja.
+- **Les escriptures fetes per connectors s'ometen els hooks previs.** Una regla que s'ha de
+  complir en cada escriptura també l'ha d'aplicar qualsevol codi de connector que escrigui aquest
+  tipus.
+
+## De controladors i rutes personalitzades a rutes de connector
+
+Strapi servia les rutes de les enquestes a `/api/polls/:slug/vote`. Un connector de Verdin serveix
+tot sota `/api/plugins/<name>/`, de manera que el frontend crida
+`/api/plugins/tienda/polls/:slug/vote` (o un proxy invers reescriu el camí antic). Una funció
+exportada rep cada petició i distribueix per mètode i camí:
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn handle(Json(request): Json<Value>) -> FnResult<Json<Value>> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let path = request["path"].as_str().unwrap_or_default();
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let response = match (method, segments.as_slice()) {
+        ("GET", ["polls"]) => open_polls()?,
+        ("POST", ["polls", slug, "vote"]) => vote(slug, &request)?,
+        ("GET", ["polls", slug, "results"]) => results(slug)?,
+        (_, ["polls"] | ["polls", _, "vote" | "results"]) => fail(405, "Method not allowed"),
+        _ => fail(404, "Not Found"),
+    };
+    Ok(Json(response))
+}
+```
+
+La petició és `{ method, path, query, headers, body, actor }`, amb `body` com a cadena que
+analitzes tu mateix i `query` com la cadena de consulta sense processar. La resposta és
+`{ status, headers?, body }`. Res no li dona forma: per mantenir en marxa un frontend de Strapi,
+respon `{ "data": … }` i, en errors,
+`{ "data": null, "error": { "status", "name", "message", "details" } }`, com fan els ajudants
+`ok` i `fail` de l'exemple.
+
+La ruta de vot comprova, per ordre: un cos vàlid, una enquesta amb aquest slug, que `estado` sigui
+`abierta`, que l'opció sigui una de `opciones`, i que no hi hagi cap vot anterior amb la mateixa
+empremta. Després crea el `voto` i respon 201 amb els resultats.
+
+<Aside type="caution" title="Sense adreça del client a les rutes de connector">
+Les rutes de connector només reben les capçaleres `content-type`, `accept`, `user-agent` i
+`accept-language`: cap adreça IP, cookies ni valor d'`Authorization`. Un controlador de Strapi que
+feia servir `ctx.request.ip` per a "un vot per visitant" necessita una altra clau. L'exemple
+pren una `fingerprint` del cos de la petició, que crea el lloc (un id aleatori guardat a
+l'emmagatzematge local, o un hash de trets del navegador). Atura els dobles clics i les repeticions
+casuals, no un votant decidit. Per a límits més forts, exigeix un usuari final amb la sessió iniciada
+(l'`actor`) o posa la comprovació davant de Verdin.
+</Aside>
+
+Altres diferències respecte a les rutes de Strapi:
+
+- **Les rutes són públiques.** No s'apliquen l'accés públic ni els permisos dels tokens d'API.
+  `actor` diu qui crida: `{ "kind": "public" }`, `{ "kind": "token", "id": … }` o
+  `{ "kind": "user", "id": … }` (un usuari final; només l'id). Rebutja el que qui crida no pugui
+  fer, com ho faria una policy de Strapi. Un token no vàlid es rebutja amb un 401 abans que el
+  connector s'executi.
+- **Una crida alhora per connector.** Les crides a un connector s'esperen entre elles, de manera
+  que la comprovació i la creació de la ruta de vot no es poden intercalar en una instància. Amb
+  diverses instàncies sí; l'exemple també desa una `clave` (`<poll>:<fingerprint>`) amb
+  `unique: true`, de manera que la base de dades rebutja un duplicat que es col·li.
+- **S'apliquen els límits de freqüència**: `[api].public_rate_limit` i `[api].token_rate_limit`
+  compten les rutes de connector com la resta de l'API de contingut.
+- **Les respostes `GET` anònimes es poden guardar a la memòria cau** quan `[api].cache_ttl_secs`
+  està definit. Les escriptures de contingut buiden la memòria cau, vots inclosos.
+- **Només es conserven algunes capçaleres de resposta**: `content-type`, `cache-control`,
+  `location`, `etag`, `last-modified` i `content-disposition`.
+
+## De serveis a funcions i crides de contingut
+
+Un servei de Strapi és codi compartit; en un connector és una funció ordinària del mòdul. Les
+crides a `strapi.documents(uid)` es converteixen en crides a `verdin_content`, limitades per les
+capacitats `read` i `write`:
+
+| Strapi | `verdin_content` |
+| --- | --- |
+| `findMany({ filters, sort, populate, … })` | `{ "op": "findMany", "uid", "query": { "filters", "sort", "populate", "pagination", … } }` |
+| `findOne({ documentId })` | `{ "op": "findOne", "uid", "documentId" }` |
+| `create({ data })` | `{ "op": "create", "uid", "data" }` |
+| `update({ documentId, data })` | `{ "op": "update", "uid", "documentId", "data" }` |
+| `delete({ documentId })` | `{ "op": "delete", "uid", "documentId" }` |
+| `publish` / `unpublish` | `{ "op": "publish" }` / `{ "op": "unpublish" }` |
+| `count({ filters })` | `findMany` amb `"pagination": { "pageSize": 1 }`, i després `meta.pagination.total` |
+
+- **Les lectures retornen versions publicades**, tret que la consulta demani `"status": "draft"`.
+  Un hook que busca un producte que només és esborrany no troba res, com diu el missatge d'error
+  de l'exemple.
+- **Les escriptures es publiquen** tret que la petició tingui `"status": "draft"`, com una
+  escriptura REST.
+- **La consulta segueix les regles de l'API REST.** Els atributs `private` no es poden fer servir
+  als filtres ni a `fields`, de manera que la `clave` de l'exemple no és privada (el rol públic no
+  té accés als vots, així que ningú més la llegeix).
+- **Sense SQL en brut, sense `strapi.db.query`.** Tot passa pel Document Service, amb la seva
+  validació, webhooks, historial i registre d'auditoria.
+- **Sense rellotge sense WASI.** Defineix `wasi = true` al manifest per a l'hora i els nombres
+  aleatoris; la tasca de l'exemple fa servir el `scheduledAt` que rep.
+
+## Del `bootstrap` a la funció d'inici
+
+Els projectes Strapi sovint defineixen els permisos del rol públic al `bootstrap`, perquè una base
+de dades nova sigui utilitzable i no hi hagi res més obert del necessari. La funció d'inici de
+Verdin fa el mateix amb la capacitat `public_permissions`:
+
+```toml title="plugin/plugin.toml"
+[capabilities]
+public_permissions = true
+
+[startup]
+function = "startup"
+```
+
+```rust title="plugin/src/lib.rs (abridged)"
+#[plugin_fn]
+pub fn startup(Json(input): Json<Value>) -> FnResult<Json<Value>> {
+    let permissions = json!([
+        { "subject": "api::producto", "action": "find" },
+        { "subject": "api::producto", "action": "findOne" },
+        { "subject": "api::encuesta", "action": "find" },
+        { "subject": "api::encuesta", "action": "findOne" },
+        { "subject": "api::reserva", "action": "create" },
+    ]);
+    let result = unsafe {
+        verdin_public_permissions(Json(json!({ "op": "set", "permissions": permissions })))?
+    }
+    .0;
+    if let Some(error) = result["error"].as_str() {
+        return Ok(Json(json!({ "error": format!("public permissions: {error}") })));
+    }
+    Ok(Json(json!({})))
+}
+```
+
+- S'executa amb `{ "reason": "start" | "enabled" | "settings" }`: quan el servidor s'inicia amb el
+  connector activat, quan el connector s'activa, i quan canvia la seva configuració. Fes que sigui
+  segura d'executar de nou: comprova què sembres abans de crear-ho.
+- `set` **substitueix tots** els permisos públics, de manera que els canvis fets a **Configuració →
+  Accés públic** es desfan a l'inici següent. L'exemple té una opció per desactivar-ho.
+- S'executa en segon pla en una instància del mòdul pròpia, amb el seu propi límit de temps
+  (`[startup].timeout_ms`, 30 segons per defecte), de manera que una sembra lenta no bloqueja els
+  hooks ni les rutes. Un error, o una resposta `{ "error" }`, es registra; el connector continua
+  activat.
+- Amb diverses instàncies, només l'executen les que tenen `[plugins].run_jobs = true`.
+
+## De tasques cron a tasques de connector
+
+```js title="config/cron-tasks.js"
+module.exports = {
+  closePolls: {
+    task: async ({ strapi }) => { /* close polls past cierra_el */ },
+    options: { rule: '*/15 * * * *' },
+  },
+};
+```
+
+```toml title="plugin/plugin.toml"
+[[jobs]]
+schedule = "*/15 * * * *"
+function = "close_polls"
+```
+
+La tasca rep `{ "scheduledAt": "…" }` i, a l'exemple, actualitza cada enquesta oberta la
+`cierra_el` de la qual és anterior. Les tasques s'executen en UTC, només mentre el connector està
+activat, i només a les instàncies amb `[plugins].run_jobs = true`. Una execució perduda mentre el
+servidor estava aturat no es recupera.
+
+## Widgets d'administració
+
+Un widget d'administració de Strapi és un component React; un widget de Verdin és un element
+personalitzat a l'script `admin/` del connector, declarat al manifest:
+
+```toml title="plugin/plugin.toml"
+[admin]
+script = "index.js"
+
+[[admin.widgets]]
+id = "polls"
+title = "Open polls"
+element = "tienda-polls"
+```
+
+L'element rep un `context` amb `fetch`. El widget de l'exemple crida la ruta
+`GET /api/plugins/tienda/polls` del mateix connector. Les peticions a l'API de contingut (rutes de
+connector incloses) van sense la sessió de l'administrador, de manera que una ruta que fa servir un
+widget ha de ser correcta per al públic, o acceptar un token d'API. Les zones d'injecció, les
+pàgines d'administració personalitzades i les extensions React no tenen equivalent. Consulta
+[Punts d'extensió de l'administració](/ca/extending/plugin-reference/#punts-dextensió-de-ladministració).
+
+## De formularis personalitzats a Formularis
+
+Un formulari de suggeriments o de contacte a Strapi sol ser un endpoint personalitzat (o un tipus
+de contingut amb un permís `create` públic) més codi que envia un correu a algú. No el portis: la
+funcionalitat integrada de [Formularis](/ca/guides/frontend/forms/) ho fa tot sense codi. Els
+editors defineixen els camps a l'administració, el lloc envia a `POST /api/_forms/{slug}`, i els
+enviaments es validen, s'envien per correu a les adreces de **Notifica** i s'exporten com a CSV.
+Els formularis també tenen un parany per a spam i un límit de freqüència per visitant (10 enviaments
+per minut), cosa que una ruta de connector no pot fer perquè no veu l'adreça del client.
+
+## Policies i middlewares
+
+Verdin no té cap punt d'entrada a la canonada de peticions HTTP. El que ofereix en canvi:
+
+| Strapi | Verdin |
+| --- | --- |
+| Policies de tipus `is-authenticated` a les rutes REST | Accés públic, permisos de tokens d'API i rols d'usuari final. Consulta [Permisos](/ca/reference/permissions/). Les regles més fines (un usuari final que només edita les seves pròpies entrades) necessiten una ruta de connector. |
+| Una policy en una ruta personalitzada | Comprova `actor` a la ruta del connector. |
+| Un middleware de límit de freqüència | `[api].public_rate_limit`, `[api].token_rate_limit` i `[admin].auth_rate_limit`. |
+| Un middleware de CORS o de capçaleres de seguretat | `[api].cors_origins`; les altres capçaleres de resposta al proxy invers. |
+| Un middleware que reescriu peticions o respostes de rutes del nucli | No admès. Fes servir una ruta de connector per al comportament nou, o un proxy invers. |
+| Una policy que rebutja algunes escriptures | Un hook previ que respon `{ error }`, sense saber qui crida. |
+
+## Límits que cal tenir en compte
+
+- **Sense adreça del client i poques capçaleres** a les rutes de connector (consulta més amunt).
+- **Les escriptures fetes per connectors s'ometen els hooks previs de tots els connectors**, de
+  manera que les regles dels hooks previs no s'hi apliquen.
+- **Els hooks posteriors que disparen les escriptures d'un connector s'executen després que la seva
+  crida retorni**, no dins de l'escriptura, i els hooks que escriuen s'aniuen com a màxim 4 nivells
+  (consulta [Escriptures fetes per connectors](/ca/extending/plugin-reference/#escriptures-fetes-per-connectors)).
+  Fes el treball de seguiment que ha de passar abans de la resposta al codi que escriu, després que
+  `verdin_content` retorni.
+- **Una crida alhora per connector**: una ruta lenta retarda els hooks d'aquell connector. Mantén
+  les crides curtes, i vigila `verdin_plugin_call_duration_seconds` a les
+  [mètriques](/ca/deploy/monitoring/).
+- **Les rutes són públiques** i han de comprovar `actor`.
+- **Verdin 0.11 o posterior** per a la funció d'inici i `verdin_public_permissions`: un mòdul que
+  importa una funció de l'amfitrió que el servidor no té no es carrega en absolut.
+
+## Llista de comprovació
+
+<Steps>
+
+1. Importa el projecte amb `verdin import strapi`, i llista el codi de `src/`: rutes,
+   controladors, serveis, lifecycles, policies, middlewares, `bootstrap`, tasques cron i
+   extensions d'administració.
+2. Descarta el que Verdin ja fa integrat: formularis, permisos públics definits a mà, límits de
+   freqüència, CORS, webhooks, publicació programada ([Llançaments](/ca/guides/content/releases/)).
+3. Escriu un sol connector amb la resta, seguint l'exemple: hooks, rutes, una tasca, una funció
+   d'inici. Dona-li només les capacitats que necessita.
+4. Comprova que els hooks que escriuen contingut no depenguin d'un aniuament de més de 4 nivells.
+5. Compila'l, instal·la'l a `plugins/`, activa'l a **Configuració → Connectors**, i llegeix-hi el
+   registre.
+6. Actualitza el frontend: les URL de les rutes de connector (`/api/plugins/<name>/…`), les
+   empremtes o l'inici de sessió d'usuari final allà on el codi depenia de l'adreça del client, i els
+   [altres canvis](/ca/migrate/from-strapi/#canvis-al-frontend) d'una migració.
+
+</Steps>

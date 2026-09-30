@@ -168,7 +168,66 @@ Què pots esperar:
   destinacions no localitzades són compartides per tots els idiomes.
 - Les càrregues dels webhooks i les versions de l'historial registren l'idioma.
 
-A diferència de Strapi, l'API de contingut no té la ruta `/api/i18n/locales`. Els idiomes es
-llisten a l'API d'administració a `GET /admin/api/i18n/locales`, i es gestionen amb `POST`,
-`PUT /admin/api/i18n/locales/{code}` i `DELETE /admin/api/i18n/locales/{code}`
-(`locales.manage`).
+### Altres versions d'idioma
+
+Fes `populate` de `localizations` per obtenir amb un document les seves altres versions d'idioma,
+com a Strapi v5. Només es retorna quan es fa `populate`, amb `populate=localizations` o
+`populate=*`:
+
+```sh title="Terminal"
+curl 'http://localhost:1337/api/articles/<documentId>?populate=localizations'
+```
+
+```json
+{
+  "data": {
+    "documentId": "a1b2c3",
+    "title": "Hello",
+    "locale": "en",
+    "localizations": [
+      { "id": 7, "documentId": "a1b2c3", "title": "Bonjour", "locale": "fr" }
+    ]
+  }
+}
+```
+
+- Les versions tenen el mateix estat que el document: versions publicades per defecte, esborranys
+  amb `status=draft`. Un idioma que només té un esborrany queda fora d'una lectura publicada.
+- `localizations` accepta les opcions d'una relació poblada: `fields`, `filters`, `sort`,
+  `populate` i `count`. Per exemple, `populate[localizations][fields][0]=title`. Cada versió
+  inclou sempre `locale`, i les seves pròpies relacions es llegeixen en el seu idioma.
+- GraphQL té un camp `localizations` als tipus localitzats, amb `filters` i `sort`.
+- Els tipus no localitzats no tenen `localizations`, i fer-ne `populate` és un `400`.
+- L'API d'administració omet `localizations`.
+
+### Llista els idiomes
+
+`GET /api/i18n/locales` llista els idiomes amb la forma de Strapi, com una matriu simple (sense
+l'embolcall `data`):
+
+```json
+[
+  {
+    "id": 1,
+    "documentId": "k3v9…",
+    "name": "English",
+    "code": "en",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "updatedAt": "2026-09-30T08:00:00.000Z",
+    "publishedAt": "2026-09-30T08:00:00.000Z",
+    "isDefault": true,
+    "locale": null
+  }
+]
+```
+
+Com el `listLocales` de Strapi, la ruta està tancada al públic fins que la permetis. Concedeix
+`find` a la fila **Idiomes** (`plugin::i18n.locale`) a **Configuració → Accés públic**, en un rol
+d'usuari final o en un token d'API personalitzat. Els tokens d'accés complet i de només lectura ja
+la poden llegir. El `documentId` es deriva del codi de l'idioma, de manera que es manté igual entre
+reinicis i exportacions. Una importació de Strapi porta amb ella el permís `listLocales`. El client
+tipat llegeix la llista amb `verdin.locales()`.
+
+Els idiomes es gestionen a l'API d'administració: es llisten a `GET /admin/api/i18n/locales`, i
+es canvien amb `POST`, `PUT /admin/api/i18n/locales/{code}` i
+`DELETE /admin/api/i18n/locales/{code}` (`locales.manage`).

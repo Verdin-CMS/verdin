@@ -225,8 +225,10 @@ Un nombre decimal exacte.
 Els valors s'arrodoneixen a `scale` dígits (la meitat s'allunya de zero, com fan les bases de
 dades), i es rebutgen quan tenen més de `precision - scale` dígits abans de la coma. Les
 escriptures accepten nombres i cadenes numèriques. Es desa com a `numeric(precision,scale)`
-(`text` a SQLite, de manera que no s'arrodoneix res). API: un nombre, o una cadena exacta amb
-[`[api].decimal_as_string`](/ca/reference/configuration/).
+(`text` a SQLite, de manera que no s'arrodoneix res). API: un nombre, com el retorna Strapi. Els
+valors enters són enters (`25`, no `25.0`) i els altres són el flotant més curt que es torna a llegir
+igual (`12.5`). Amb [`[api].decimal_as_string`](/ca/reference/configuration/) l'API retorna una
+cadena exacta.
 
 ## Dates i booleans
 

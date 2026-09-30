@@ -1,0 +1,107 @@
+---
+title: Desplegaments amb un clic
+description: Desplega l'starter de Verdin (l'exemple del blog) a Render, DigitalOcean App Platform, Railway, Fly.io o Coolify des dels fitxers d'aquest repositori, i després fes-ne un fork per al teu propi esquema.
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+El repositori té fitxers de desplegament per a diverses plataformes. Totes construeixen
+[`deploy/one-click/Dockerfile`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/Dockerfile):
+la imatge oficial amb l'esquema de l'[exemple del blog](https://github.com/verdin-cms/verdin/tree/main/examples/blog)
+i una petita configuració. Això et dona un Verdin en marxa en pocs minuts.
+
+<Aside>
+El servidor desplegat executa `start --migrate`, de manera que el constructor de tipus de contingut
+està desactivat: l'esquema ve de la imatge. Per al teu propi projecte, **fes un fork del
+repositori**, substitueix `examples/blog/schema` pel teu esquema (o canvia la línia `COPY` del
+Dockerfile) i desplega el fork. Les pàgines de les plataformes ([Render](/ca/deploy/render/),
+[Railway](/ca/deploy/railway/), [Fly.io](/ca/deploy/fly/)) mostren la mateixa configuració en un
+repositori teu.
+</Aside>
+
+Els fitxers es van comprovar amb la referència de cada plataforma el 2026-09-30; cap es va
+desplegar en un compte real.
+
+| Plataforma | Fitxer | Base de dades | Multimèdia |
+| --- | --- | --- | --- |
+| Render | [`render.yaml`](https://github.com/verdin-cms/verdin/blob/main/render.yaml) | PostgreSQL de Render | Disc d'1 GB a `/data` |
+| DigitalOcean | [`.do/deploy.template.yaml`](https://github.com/verdin-cms/verdin/blob/main/.do/deploy.template.yaml) | PostgreSQL de desenvolupament | Spaces (App Platform no té discs) |
+| Railway | [`deploy/one-click/railway.json`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/railway.json) | PostgreSQL de Railway | Un volum a `/data` |
+| Fly.io | [`deploy/one-click/fly.toml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/fly.toml) | SQLite al volum | Un volum a `/data` |
+| Coolify | [`deploy/one-click/compose.coolify.yaml`](https://github.com/verdin-cms/verdin/blob/main/deploy/one-click/compose.coolify.yaml) | Servei PostgreSQL | Un volum a `/data` |
+
+El Dockerfile acaba amb `USER root`, perquè aquestes plataformes munten volums propietat de
+root i l'usuari de la imatge (uid `65532`) no hi podria escriure. Elimina aquesta línia si el teu
+volum és escrivible per l'uid `65532`, o si no guardes cap estat a la instància.
+
+## Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/verdin-cms/verdin)
+
+El Blueprint crea el servei web (pla Starter, que és el que requereixen els discs), una base de
+dades PostgreSQL i els dos secrets (generats un sol cop, després conservats). Render demana
+`VERDIN_SERVER__PUBLIC_URL`: introdueix l'adreça del servei, `https://<name>.onrender.com`,
+o el teu domini. Des d'un fork, fes servir `https://render.com/deploy?repo=<your fork's URL>`.
+
+## DigitalOcean App Platform
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/verdin-cms/verdin/tree/main)
+
+L'especificació crea el servei i una base de dades de desenvolupament. Enganxa els dos valors de
+`verdin secrets` a `VERDIN_ADMIN_JWT_SECRET` i `VERDIN_TOKEN_PEPPER` quan te'ls demanin:
+
+```sh frame="terminal"
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets
+```
+
+App Platform no té discs persistents, de manera que els fitxers pujats es perden a cada
+desplegament fins que afegeixis un bucket de Spaces: defineix `VERDIN_UPLOAD__PROVIDER__NAME=s3`,
+`VERDIN_UPLOAD__PROVIDER__BUCKET`, `VERDIN_UPLOAD__PROVIDER__REGION`,
+`VERDIN_UPLOAD__PROVIDER__ENDPOINT` (`https://<region>.digitaloceanspaces.com`),
+`VERDIN_UPLOAD__PROVIDER__PUBLIC_URL`, `AWS_ACCESS_KEY_ID` i `AWS_SECRET_ACCESS_KEY`
+al servei. Per a un fork, canvia `repo_clone_url` a l'especificació.
+
+## Railway
+
+1. Fes un fork del repositori i, a Railway, crea un projecte des del fork.
+2. A la configuració del servei, defineix el camí del fitxer de configuració com
+   `deploy/one-click/railway.json` (selecciona el Dockerfile i la comprovació de salut).
+3. Afegeix una base de dades PostgreSQL i un volum muntat a `/data`, i després defineix les
+   variables de [Railway](/ca/deploy/railway/#2-crea-el-projecte): `VERDIN_DATABASE_URL`, els dos
+   secrets i `VERDIN_SERVER__PUBLIC_URL`. Genera un domini amb el port de destinació `1337`.
+
+## Fly.io
+
+Des d'un clon del repositori (o del teu fork), amb `flyctl` amb la sessió iniciada:
+
+```sh frame="terminal"
+fly launch --no-deploy --copy-config --config deploy/one-click/fly.toml --ha=false
+docker run --rm ghcr.io/verdin-cms/verdin:0.11 secrets | fly secrets import --config deploy/one-click/fly.toml
+fly deploy --config deploy/one-click/fly.toml --dockerfile deploy/one-click/Dockerfile .
+```
+
+Això executa una Machine amb SQLite i les pujades en un volum d'1 GB. Canvia primer `app` i
+`primary_region` a `fly.toml`. [Fly.io](/ca/deploy/fly/) cobreix PostgreSQL i Tigris en comptes
+d'això.
+
+## Coolify
+
+A Coolify, afegeix un recurs des del teu fork (o d'aquest repositori) amb el build pack de
+**Docker Compose**, directori base `/` i fitxer de compose
+`/deploy/one-click/compose.coolify.yaml`. Coolify omple les variables `SERVICE_*` que conté:
+
+| Variable | Coolify genera |
+| --- | --- |
+| `SERVICE_FQDN_VERDIN_1337` | Un domini encaminat pel seu proxy al port 1337 (també es fa servir com a `VERDIN_SERVER__PUBLIC_URL`). |
+| `SERVICE_BASE64_64_JWT`, `SERVICE_BASE64_64_PEPPER` | Els dos secrets, de 64 caràcters cadascun, conservats entre desplegaments. |
+| `SERVICE_USER_POSTGRES`, `SERVICE_PASSWORD_POSTGRES` | Les credencials de la base de dades. |
+
+El proxy de Coolify acaba el TLS, de manera que no cal Caddy. Per a un servidor que gestiones tu
+mateix sense Coolify, fes servir [Docker Compose en producció](/ca/deploy/compose/).
+
+## Després del primer desplegament
+
+Obre `https://<your address>/admin/` i registra el primer administrador. Després llegeix la
+[llista de comprovació per a producció](/ca/deploy/production-checklist/).

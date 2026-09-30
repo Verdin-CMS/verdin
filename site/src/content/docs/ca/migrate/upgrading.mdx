@@ -2,7 +2,7 @@
 title: Actualitzar Verdin
 description: Actualitza una instal·lació de Verdin — el binari o la imatge Docker, les migracions que s'executen en iniciar i els canvis destacats o incompatibles de cada versió menor.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, TabItem, Tabs } from '@astrojs/starlight/components';
@@ -117,6 +117,33 @@ execució alhora més temps del que dura un desplegament progressiu.
 
 Canvis destacats i incompatibles per versió, amb els més antics al final. El
 [registre de canvis](/ca/project/changelog/) té la llista completa.
+
+### 0.10 → 0.11
+
+La migració que s'executa en iniciar afegeix una taula, `vd_cluster_events`, que només es fa servir
+amb `[cluster] bus = "database"`.
+
+- **Decimals**: els valors `decimal` enters es retornen com a enters JSON (`25`, no `25.0`), com
+  fa Strapi. Els clients que comproven el tipus JSON de manera estricta ho poden notar;
+  `[api] decimal_as_string` no canvia. A SQLite, `sort` i `$gt`/`$lt`/`$between` sobre decimals
+  ara comparen nombres en lloc de text, de manera que els resultats que depenien de l'antic
+  ordre (incorrecte) canvien.
+- **`populate=*` als tipus localitzats** també retorna `localizations`, les altres versions
+  d'idioma del document, com fa Strapi v5. Un atribut de l'esquema anomenat `localizations`
+  conserva el seu significat.
+- **Connectors**: els hooks posteriors que disparen les escriptures d'un mateix connector
+  s'executen quan la seva crida retorna en lloc de dins de l'escriptura, i els hooks que escriuen
+  s'aniuen com a màxim 4 nivells. Les funcions de l'amfitrió s'aturen al límit de temps de la crida.
+- **Diverses instàncies**: defineix `[cluster] bus = "database"` a cada instància perquè els
+  fluxos en temps real, la presència, la memòria cau de respostes i l'índex de cerca segueixin els
+  canvis fets a les altres (consulta [Escalat](/ca/deploy/scaling/)).
+- **Scripts que llegeixen llistes d'administració**: `GET /admin/api/users`, `/roles`,
+  `/api-tokens`, `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` i
+  `/deploy/targets` retornen 25 files tret que passis `pageSize` (com a màxim 100), amb
+  `meta.pagination`, com les llistes que ja estaven paginades. Recorre les pàgines amb
+  `?page=` fins que `page` arribi a `meta.pagination.pageCount`. `/deploy/deployments` pagina de
+  la mateixa manera en lloc de retornar les últimes 50; `limit` continua funcionant com a àlies
+  obsolet de `pageSize`. Consulta [Llistes](/ca/api/admin/#llistes).
 
 ### 0.9.1 → 0.10
 

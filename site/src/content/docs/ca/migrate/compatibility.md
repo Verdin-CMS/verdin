@@ -2,7 +2,7 @@
 title: Compatibilitat amb Strapi
 description: Quines funcionalitats i API de Strapi v5 admet Verdin, admet en part o no admet — REST, GraphQL, usuaris i permisos, pujades, i18n, esborrany i publicació, extensions de codi, el tauler d'administració i les funcionalitats Enterprise.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Verdin conserva el model de contingut i les API de contingut de Strapi v5 perquè els frontends i el
@@ -58,7 +58,7 @@ habituals; la nota diu què hi falta. **No admès** no té cap equivalent.
 | Shadow CRUD (desactivar operacions per tipus) | Admès | L'opció `disabled` de la funcionalitat. |
 | Resolvers personalitzats i extensions de l'esquema | Parcial | Camps arrel resolts per connectors (`[[graphql]]` a `plugin.toml`); sense `extensionService`. |
 | Mutacions de Users & Permissions (`login`, `register`, `me`…) | No admès | Fes servir les rutes REST. |
-| Consultes i mutacions d'upload i i18n (`uploadFiles`, `i18NLocales`…) | No admès | Fes servir les rutes REST i el tauler d'administració. |
+| Consultes i mutacions d'upload i i18n (`uploadFiles`, `i18NLocales`…) | No admès | Fes servir les rutes REST (`GET /api/i18n/locales`) i el tauler d'administració. `localizations` als tipus localitzats és admès. |
 | Límits, GraphiQL | Admès | Interruptors de `maxDepth`, `maxComplexity`, introspecció i entorn de proves. |
 
 ## Users & Permissions (usuaris finals)
@@ -94,8 +94,8 @@ Activa **Configuració → Funcionalitats → Usuaris i permisos**. Consulta
 | --- | --- | --- |
 | Tipus localitzats i camps no localitzats | Admès | `pluginOptions.i18n.localized`, també per atribut. |
 | `?locale=` a REST, `locale` a GraphQL | Admès | Un idioma desconegut és un `400`. |
-| `localizations` a les respostes | No admès | Llegeix un altre idioma amb el mateix `documentId` i `?locale=`. |
-| `GET /api/i18n/locales` | No admès | Els idiomes es gestionen a l'administració (**Configuració → Internacionalització**). |
+| `localizations` a les respostes | Admès | Només quan se'n fa `populate` (`populate=localizations`, `populate=*`), amb les mateixes opcions que una relació. També és un camp de GraphQL. L'API d'administració l'omet. |
+| `GET /api/i18n/locales` | Admès | Una matriu simple amb la forma de Strapi. Necessita `find` sobre `plugin::i18n.locale` (fila **Idiomes** de la quadrícula de permisos), com el `listLocales` de Strapi. El `documentId` es deriva del codi de l'idioma. Els idiomes es gestionen a l'administració (**Configuració → Internacionalització**). |
 
 ## Esborrany i publicació
 
@@ -107,11 +107,14 @@ Activa **Configuració → Funcionalitats → Usuaris i permisos**. Consulta
 
 ## Personalització del servidor
 
+Consulta [Portar el codi personalitzat](/ca/migrate/porting-custom-code/) per saber com moure cadascun d'aquests elements.
+
 | Strapi | Estat | Verdin |
 | --- | --- | --- |
 | Lifecycle hooks, middlewares del Document Service | Parcial | Hooks previs i posteriors en connectors WebAssembly, que poden canviar o rebutjar una escriptura. Sense JavaScript. |
 | Controladors, serveis i rutes personalitzats | Parcial | Rutes de connectors sota `/api/plugins/<name>/`. |
 | Policies i middlewares | No admès | Els permisos i els límits de freqüència són integrats. |
+| `register` / `bootstrap` | Parcial | La funció d'inici d'un connector, que s'executa quan el connector s'inicia, s'activa o canvia la seva configuració; pot sembrar contingut i substituir els permisos del rol públic. |
 | Tasques cron | Parcial | Tasques de connectors. |
 | Document Service / Entity Service en JavaScript | No admès | No hi ha entorn d'execució JavaScript. |
 | Connectors npm del marketplace de Strapi | No admès | |

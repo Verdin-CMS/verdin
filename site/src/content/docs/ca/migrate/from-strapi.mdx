@@ -122,7 +122,7 @@ No s'importa gens: els usuaris i els rols d'administració, els tokens d'API, el
 els webhooks, els llançaments, les etapes dels fluxos de revisió, l'historial de contingut i els
 registres d'auditoria, ni la configuració dels connectors de Strapi. El teu codi de Strapi —
 controladors, serveis, rutes, policies, middlewares, lifecycle hooks, tasques cron i
-personalitzacions de l'administració — no té cap equivalent a Verdin al qual convertir-lo; consulta
+personalitzacions de l'administració — no es converteix: refés-lo tal com es descriu a
 [Refés el codi personalitzat](#refés-el-codi-personalitzat).
 
 <Aside type="note">
@@ -203,11 +203,17 @@ Per a un accés tipat, genera els tipus TypeScript amb `verdin types` i fes serv
 
 ## Refés el codi personalitzat
 
+El codi de `src/` passa a un [connector WebAssembly](/ca/extending/plugins/). [Portar el codi
+personalitzat](/ca/migrate/porting-custom-code/) recorre els lifecycles, les rutes, la tasca cron i
+el `bootstrap` d'un projecte real, amb un connector d'exemple treballat.
+
 | Strapi | Verdin |
 | --- | --- |
-| Lifecycle hooks, middlewares del document service | Hooks de connector (`beforeCreate`, `afterUpdate`…) en un [connector WebAssembly](/ca/extending/plugins/) |
+| Lifecycle hooks, middlewares del document service | Hooks de connector (`beforeCreate`, `afterUpdate`…) |
 | Rutes i controladors personalitzats | Rutes de connector sota `/api/plugins/<name>/` |
+| `bootstrap()` a `src/index.js` (sembrar, definir permisos públics) | La funció d'inici del connector (`[startup]`), amb la capacitat `public_permissions` per al rol públic |
 | Tasques cron | Tasques de connector (`[[jobs]]`) |
+| Un endpoint personalitzat que desa enviaments de formularis | [Formularis](/ca/guides/frontend/forms/) integrats |
 | Camps personalitzats | Camps personalitzats de connector |
 | Widgets de l'administració | Widgets de connector, o els widgets integrats del tauler d'inici |
 | Logotip, colors i textos de l'administració | `[admin.branding]` a `verdin.toml` |

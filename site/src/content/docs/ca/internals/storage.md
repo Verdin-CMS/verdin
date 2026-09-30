@@ -195,7 +195,7 @@ a passos segurs a `verdin migrate plan`. Estan definides a `crates/verdin-migrat
 | Administradors | `vd_admin_users`, `vd_admin_roles`, `vd_admin_user_roles`, `vd_admin_permissions`, `vd_sessions` (tokens de refresc), `vd_admin_tokens` (enllaços d'invitació i de restabliment), `vd_admin_two_factor`, `vd_admin_passkeys`, `vd_spent_challenges` |
 | Accés a l'API de contingut | `vd_api_tokens`, `vd_api_token_permissions`, `vd_public_permissions` |
 | Usuaris finals | `vd_users`, `vd_user_roles`, `vd_user_role_permissions`, `vd_end_user_sessions` |
-| Instància | `vd_settings` (interruptors de funcionalitats, disposicions de les vistes d'edició, marcadors d'actualitzacions puntuals), `vd_locales` |
+| Instància | `vd_settings` (interruptors de funcionalitats, disposicions de les vistes d'edició, marcadors d'actualitzacions puntuals), `vd_locales`, `vd_cluster_events` (el bus d'esdeveniments compartit, consulta [Diverses instàncies](/ca/deploy/scaling/)) |
 | Multimèdia | `vd_files`, `vd_folders` |
 | Flux de treball del contingut | `vd_history_versions`, `vd_releases`, `vd_release_actions`, `vd_workflows`, `vd_workflow_stages`, `vd_document_stages` |
 | Col·laboració | `vd_comments`, `vd_tasks`, `vd_document_views`, `vd_document_votes`, `vd_polls`, `vd_poll_votes` |

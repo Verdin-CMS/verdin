@@ -307,7 +307,7 @@ poblen:
 
 | Forma | Pobla |
 | --- | --- |
-| `populate=*` | Totes les relacions, camps de multimèdia, components i zones dinàmiques, un nivell |
+| `populate=*` | Totes les relacions, camps de multimèdia, components i zones dinàmiques, un nivell, i `localizations` als tipus localitzats |
 | `populate=category,tags` o `populate[0]=category&populate[1]=tags` | Els camps indicats |
 | `populate[category]=true` | El camp indicat (`false` el deixa fora) |
 | `populate[category][fields][0]=name` | El camp, amb opcions |
@@ -356,6 +356,16 @@ En les escriptures, `status=draft` desa l'esborrany sense publicar-lo. Consulta
 `locale=fr` llegeix i escriu la versió francesa dels tipus localitzats. Sense aquest paràmetre,
 les peticions fan servir l'idioma per defecte. Un codi no vàlid o desconegut és un `400`. Els
 tipus no localitzats l'ignoren. Consulta [Internacionalització](/ca/concepts/internationalization/).
+
+Als tipus localitzats, `populate=localizations` afegeix les altres versions d'idioma del document,
+en el mateix estat, cadascuna amb el seu `locale`. Accepta les opcions d'una relació poblada
+(`fields`, `filters`, `sort`, `populate`, `count`), i l'inclou `populate=*`. Els tipus no
+localitzats no tenen `localizations`.
+
+`GET /api/i18n/locales` llista els idiomes com una matriu simple amb la forma de Strapi (`id`,
+`documentId`, `name`, `code`, `isDefault`, `createdAt`, `updatedAt`, `publishedAt`, `locale`).
+Necessita el permís `find` sobre `plugin::i18n.locale`. Consulta
+[Localitzar contingut](/ca/guides/content/localizing-content/#llista-els-idiomes).
 
 ## Cerca
 

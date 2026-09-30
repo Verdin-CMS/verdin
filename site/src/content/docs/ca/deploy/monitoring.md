@@ -1,13 +1,13 @@
 ---
 title: Monitoratge
-description: Supervisa una instància de Verdin en execució — les comprovacions /_health i /_ready, les mètriques de Prometheus a /_metrics i el seu token, el format dels registres, els nivells i els ids de petició.
+description: Supervisa una instància de Verdin en execució — les comprovacions /_health i /_ready, les mètriques de Prometheus a /_metrics i un tauler de Grafana, les traces d'OpenTelemetry, els informes d'errors de Sentry, el format dels registres, els nivells i els ids de petició.
 sidebar:
   order: 10
 ---
 
 Una instància de Verdin informa sobre si mateixa mitjançant dos endpoints de salut, mètriques de
-Prometheus opcionals i registres estructurats. Aquesta pàgina llista què retorna cadascun i com
-activar-lo.
+Prometheus opcionals, traces d'OpenTelemetry opcionals, informes d'errors de Sentry i registres
+estructurats. Aquesta pàgina llista què retorna cadascun i com activar-lo.
 
 ## Comprovacions de salut
 
@@ -63,18 +63,92 @@ Amb diverses instàncies, llegeix-les totes: cada instància compta les seves pr
 | --- | --- | --- | --- |
 | `verdin_http_requests_total` | counter | `area`, `method`, `status` | Peticions HTTP servides. |
 | `verdin_http_request_duration_seconds` | histogram | `area`, `method`, `status` | Temps per servir les peticions. Intervals de 5 ms a 10 s. |
+| `verdin_plugin_call_duration_seconds` | histogram | `plugin`, `kind`, `function` | Temps que han trigat les funcions dels [connectors](/ca/extending/plugins/). Mateixos intervals. |
+| `verdin_plugin_call_errors_total` | counter | `plugin`, `kind`, `function` | Crides a connectors que han fallat: una trampa (trap), un temps d'espera esgotat, una sortida que no és JSON o un `{ error }` d'una funció d'inici. |
 | `verdin_webhook_deliveries_pending` | gauge | | Enviaments de webhooks esperant a ser enviats. |
 | `verdin_realtime_subscribers` | gauge | | Fluxos d'esdeveniments en temps real oberts. |
+| `verdin_cluster_events_total` | counter | `direction` | Esdeveniments al [bus d'esdeveniments compartit](/ca/deploy/scaling/#bus-desdeveniments-compartit), amb `[cluster].bus` definit: `sent` cap a altres instàncies, `received` d'elles, `dropped` (una cua plena o una escriptura fallida). |
 | `verdin_uptime_seconds` | gauge | | Segons des que es va iniciar el procés. |
 | `verdin_build_info` | gauge | `version` | Sempre 1; la versió en execució. |
 
 `area` és la part del servidor: `api` (API de contingut), `admin_api`, `admin` (els fitxers del
 tauler), `graphql`, `mcp`, `uploads`, `internal` (camins que comencen per `/_`) o `other`.
 `status` és la classe d'estat: `2xx`, `3xx`, `4xx` o `5xx`.
+Per a les crides a connectors, `kind` és `hook`, `route`, `job`, `startup` o `graphql`; les sèries
+dels connectors apareixen després de la primera crida (consulta la
+[referència de connectors](/ca/extending/plugin-reference/#mètriques)).
 
 Alertes útils: `/_ready` que falla, una proporció creixent de `5xx`, un
-`verdin_webhook_deliveries_pending` que creix (una destinació de webhook ha caigut) i un
-`verdin_uptime_seconds` que es reinicia (reinicis).
+`verdin_webhook_deliveries_pending` que creix (una destinació de webhook ha caigut), un
+`verdin_plugin_call_errors_total` que creix o hooks de connectors lents (retarden les escriptures
+en què s'executen) i un `verdin_uptime_seconds` que es reinicia (reinicis).
+
+### Tauler de Grafana
+
+[`docker/grafana/verdin.json`](https://github.com/Verdin-CMS/verdin/blob/main/docker/grafana/verdin.json)
+és un tauler per a aquestes mètriques: taxa de peticions, proporció de `5xx` i quantils de latència
+per àrea, mètode i classe d'estat, enviaments de webhooks pendents, subscriptors de temps real,
+trànsit del bus d'esdeveniments, i taxa de crides, p95 i errors per funció de connector. Importa'l a
+Grafana (**Dashboards → New → Import**) i tria la teva font de dades de Prometheus; les variables
+`instance` i `area` de la part superior filtren tots els panells.
+
+## Traces (OpenTelemetry)
+
+Verdin pot exportar una traça de cada petició a un col·lector d'OpenTelemetry (l'OpenTelemetry
+Collector, Grafana Alloy o Tempo, Jaeger, Honeycomb, Datadog…) per OTLP/HTTP. Està desactivat per
+defecte:
+
+```toml title="verdin.toml"
+[telemetry]
+enabled = true
+endpoint = "http://otel-collector:4318"
+```
+
+Les variables estàndard també funcionen i tenen prioritat sobre el fitxer:
+
+```sh
+VERDIN_TELEMETRY__ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=<key>
+OTEL_SERVICE_NAME=cms-production
+```
+
+Cada traça conté:
+
+- **Un span de petició** (tipus `server`), amb el nom del mètode i el camí amb els ids
+  substituïts per `{id}` (`PUT /api/articles/{id}`), amb `http.response.status_code` i un estat
+  d'error en `5xx`. Una petició amb una capçalera W3C `traceparent` s'uneix a la traça del qui
+  crida.
+- **Un span per sentència de base de dades** (tipus `client`) sota seu: `db.system.name`
+  (`postgresql`, `mysql`, `mariadb` o `sqlite`) i `db.query.text`, l'SQL amb els seus
+  marcadors `?`. Els valors enllaçats no es registren mai, de manera que el contingut, les
+  contrasenyes i els tokens queden fora de les traces. `COMMIT` i `ROLLBACK` tenen els seus propis
+  spans, i a SQLite un span `write lock` mostra quant ha esperat una escriptura els escriptors
+  que tenia al davant.
+- Els esdeveniments de registre escrits mentre se servia la petició, com a esdeveniments del span.
+
+Les sentències executades fora d'una petició (inici, migracions, tasques en segon pla) no es
+tracen. `[telemetry].sample_ratio` conserva una part de les traces (`0.1` en conserva una de cada
+deu); els spans s'envien per lots i es buiden quan el servidor s'atura. El nivell de registre no
+filtra les traces: `[log].level = "warn"` continua exportant totes les peticions.
+
+## Informes d'errors (Sentry)
+
+Defineix un DSN per enviar els panics i les respostes `5xx` a [Sentry](https://sentry.io) (o a un
+servei compatible amb Sentry com GlitchTip):
+
+```sh
+SENTRY_DSN=https://<key>@o0.ingest.sentry.io/<project>
+```
+
+`[telemetry].sentry_dsn` també funciona; la variable té prioritat. Un `5xx` arriba com un
+esdeveniment d'error `POST /api/articles answered 500`, etiquetat amb `http.method`,
+`http.status_code` i el `request_id`, que coincideix amb la capçalera `X-Request-Id` i les línies de
+registre d'aquesta petició. Els esdeveniments porten la versió de Verdin com a release i
+`production` (`verdin start`) o `development` (`verdin dev`) com a entorn, tret que
+`SENTRY_ENVIRONMENT` o `[telemetry].sentry_environment` en nomeni un altre. Les URL s'informen amb
+els valors de consulta d'aspecte secret ocults, com als registres; els cossos i les capçaleres de les
+peticions no s'envien mai.
 
 ## Registres
 

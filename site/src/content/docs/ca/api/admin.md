@@ -92,6 +92,40 @@ curl -s -b cookies.txt -c cookies.txt -X POST 'https://cms.example.com/admin/api
   un script, no des de les pàgines d'un altre lloc.
 - Els canvis correctes queden enregistrats al [registre d'auditoria](/ca/guides/content/audit-logs/).
 
+## Llistes
+
+Les llistes de la configuració es pagina amb `page` (des d'1) i `pageSize`. Responen amb les
+files de la pàgina i els comptadors:
+
+```json
+{ "data": [ … ], "meta": { "pagination": { "page": 2, "pageSize": 25, "total": 60, "pageCount": 3 } } }
+```
+
+| Llista | Mida de pàgina per defecte (màxim) | Ordre | Altres paràmetres |
+| --- | --- | --- | --- |
+| `GET /users`, `GET /roles`, `GET /api-tokens` | 25 (100) | Més antic primer | |
+| `GET /webhooks` | 25 (100) | Més antic primer | `meta.events` llista els esdeveniments als quals es pot subscriure un webhook |
+| `GET /webhooks/{id}/deliveries` | 25 (100) | Més nou primer | |
+| `GET /releases` | 25 (100) | Més nou primer | `status` (`pending`, `running`, `done`, `failed`) |
+| `GET /site/redirects` | 25 (100) | Per origen | `search` coincideix amb l'origen o la destinació |
+| `GET /site/menus`, `GET /site/forms` | 25 (100) | Per nom | |
+| `GET /site/forms/{id}/submissions` | 25 (100) | Més nou primer | |
+| `GET /deploy/targets` | 25 (100) | Més antic primer | |
+| `GET /deploy/deployments` | 25 (100) | Més nou primer | `targetId`; `limit` és un àlies obsolet de `pageSize` |
+| `GET /end-users` | 25 (100) | Més nou primer | `search` coincideix amb el nom d'usuari o el correu |
+| `GET /audit-logs` | 50 (200) | Més nou primer | Consulta els [registres d'auditoria](/ca/guides/content/audit-logs/) |
+
+Una `pageSize` més gran es redueix al màxim. Per llegir una llista sencera, demana pàgines fins
+que `page` arribi a `pageCount`:
+
+```sh title="Terminal"
+curl 'https://cms.example.com/admin/api/site/redirects?page=1&pageSize=100' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Les rutes de contingut paginen com l'API REST, amb `pagination[page]` i
+`pagination[pageSize]`.
+
 ## Grups de rutes
 
 Els camins són relatius a `/admin/api`. Els routers són a

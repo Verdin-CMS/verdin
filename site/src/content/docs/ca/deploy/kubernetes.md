@@ -8,7 +8,8 @@ sidebar:
 Aquesta pàgina executa un projecte Verdin a Kubernetes. La configuració principal no té estat:
 PostgreSQL (o MySQL/MariaDB) fora dels pods, multimèdia en un emmagatzematge compatible amb S3 i
 tantes rèpliques com necessitis. Després hi ha una configuració d'una sola rèplica amb un volum
-per a SQLite.
+per a SQLite. El [gràfic de Helm](/ca/deploy/helm/) empaqueta aquests manifests amb valors
+per a cada opció.
 
 Els manifests fan servir API estables (`apps/v1`, `v1`) i s'han validat contra els esquemes de
 Kubernetes amb `kubeconform -strict` el 29-09-2026, sense executar-los en un clúster real.
@@ -39,7 +40,10 @@ path = "schema"
 format = "json"
 
 [api]
-cache_ttl_secs = 5         # short: each replica keeps its own cache
+cache_ttl_secs = 60        # buidada a cada rèplica pel bus d'esdeveniments
+
+[cluster]
+bus = "database"           # temps real, presència, cachés i cerca entre rèpliques
 
 [metrics]
 enabled = true             # token from VERDIN_METRICS_TOKEN
@@ -159,8 +163,9 @@ Notes sobre el manifest:
   accepta que les tasques s'executin a cada rèplica. Els webhooks, els llançaments programats i el
   resum diari es reclamen a la base de dades i s'executen un sol cop. Consulta
   [Executar diverses instàncies](/ca/deploy/scaling/).
-- **Temps real.** Els fluxos d'esdeveniments (`/api/_events`) es queden al pod on es connecten.
-  Fes servir afinitat de sessió a l'Ingress si fas servir el [temps real](/ca/guides/frontend/realtime/).
+- **Temps real, presència, cachés i cerca.** `[cluster].bus = "database"` porta a cada pod els
+  esdeveniments dels altres (consulta [el bus d'esdeveniments compartit](/ca/deploy/scaling/#bus-desdeveniments-compartit)).
+  Sense ell, els fluxos d'esdeveniments (`/api/_events`) es queden al pod on es connecten: fes servir afinitat de sessió a l'Ingress si fas servir el [temps real](/ca/guides/frontend/realtime/).
 
 ## Una sola rèplica amb SQLite
 

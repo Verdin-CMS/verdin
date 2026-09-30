@@ -8,7 +8,8 @@ sidebar:
 
 <!-- Written from crates/verdin/src/config.rs, crates/verdin-upload/src/config.rs and
 crates/verdin-email/src/lib.rs, crates/verdin-upload/src/transform.rs,
-crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs and crates/verdin-api/src/ai.rs.
+crates/verdin-search/src/lib.rs, crates/verdin-api/src/cdn.rs, crates/verdin-api/src/ai.rs
+and crates/verdin/src/telemetry.rs.
 Keep it in step when keys change. -->
 
 La configuració es fa per capes: **valors per defecte integrats ← `verdin.toml` ← entorn**. El
@@ -237,8 +238,22 @@ Consulta [Connectors](/ca/extending/plugins/).
 
 | Clau | Per defecte | Descripció |
 | --- | --- | --- |
-| `enabled` | `false` | Serveix mètriques de Prometheus a `/_metrics`: peticions HTTP per àrea (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), mètode i classe d'estat amb histogrames de latència, enviaments de webhooks pendents, fluxos en temps real oberts i temps en funcionament. |
+| `enabled` | `false` | Serveix mètriques de Prometheus a `/_metrics`: peticions HTTP per àrea (`api`, `admin_api`, `graphql`, `mcp`, `uploads`…), mètode i classe d'estat amb histogrames de latència, enviaments de webhooks pendents, fluxos en temps real oberts, trànsit del bus d'esdeveniments i temps en funcionament. |
 | `token` | sense definir | Les lectures necessiten `Authorization: Bearer <token>`. `VERDIN_METRICS_TOKEN` hi té prioritat. Sense token, qualsevol que arribi al port pot llegir les mètriques. |
+
+## `[telemetry]`
+
+Traces i informes d'errors, tots dos desactivats per defecte i només utilitzats per `verdin start`
+i `verdin dev` (consulta [Monitoratge](/ca/deploy/monitoring/#traces-opentelemetry)).
+
+| Clau | Per defecte | Descripció |
+| --- | --- | --- |
+| `enabled` | `false` | Exporta traces d'OpenTelemetry de les peticions HTTP i les seves consultes a la base de dades per OTLP/HTTP (protobuf). `OTEL_SDK_DISABLED=true` ho desactiva. |
+| `endpoint` | sense definir (`http://localhost:4318`) | URL base del col·lector; s'hi afegeix `/v1/traces`. `OTEL_EXPORTER_OTLP_ENDPOINT` (URL base) i `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (URL completa) hi tenen prioritat. |
+| `service_name` | `"verdin"` | El `service.name` de les traces. `OTEL_SERVICE_NAME` hi té prioritat. |
+| `sample_ratio` | `1.0` | Part de les traces que es conserva, de `0.0` a `1.0`. Una petició que porta una capçalera `traceparent` segueix la decisió del qui crida. |
+| `sentry_dsn` | sense definir | Informa a Sentry dels panics i les respostes 5xx. `SENTRY_DSN` hi té prioritat. |
+| `sentry_environment` | sense definir | L'entorn de Sentry. `SENTRY_ENVIRONMENT` hi té prioritat; sense definir, `production` a `verdin start` i `development` a `verdin dev`. |
 
 ## `[ai]`
 
@@ -285,8 +300,26 @@ El token d'API es llegeix de `VERDIN_CDN_TOKEN` (s'envia com a token bearer als 
 | `dir` | `"data/search"` | Directori de l'índex, relatiu al projecte. Eliminar-lo reconstrueix l'índex al següent inici. |
 | `memory_mb` | `50` | Memòria disponible per indexar. |
 
-L'índex viu al disc de la instància i segueix les escriptures d'aquesta instància: amb diverses
-instàncies, mantén la cerca en una (o reconstrueix-lo després d'un desplegament).
+L'índex viu al disc de la instància. Amb diverses instàncies, activa el [bus d'esdeveniments](#cluster)
+perquè cada índex segueixi les escriptures de totes.
+
+## `[cluster]`
+
+El bus d'esdeveniments compartit, per a diverses instàncies d'un mateix projecte (consulta
+[Executar diverses instàncies](/ca/deploy/scaling/#bus-desdeveniments-compartit)).
+
+| Clau | Per defecte | Descripció |
+| --- | --- | --- |
+| `bus` | `"none"` | `none`: els esdeveniments en temps real, la presència, la invalidació de la memòria cau i les actualitzacions de cerca es queden a cada instància. `database`: arriben a totes les instàncies a través de la base de dades del projecte (`LISTEN/NOTIFY` a PostgreSQL, sondeig a MySQL, MariaDB i SQLite). |
+| `poll_interval_ms` | `1000` | Cada quant MySQL, MariaDB i SQLite llegeixen els esdeveniments de les altres instàncies. PostgreSQL es desperta amb `NOTIFY` i només fa servir aquest ritme mentre no pot escoltar. |
+| `instance_id` | sense definir (aleatori a cada inici) | El nom d'aquesta instància al bus i als registres. |
+
+```toml
+[cluster]
+bus = "database"
+```
+
+Defineix-ho a totes les instàncies, o amb `VERDIN_CLUSTER__BUS=database`.
 
 ## Variables d'entorn
 
@@ -307,5 +340,9 @@ A més dels valors `VERDIN_<SECTION>__<KEY>`, Verdin llegeix aquestes variables:
 | `VERDIN_CDN_TOKEN` | Token d'API del proveïdor de `[cdn]`. |
 | `VERDIN_IMAGE_SECRET` | Signa els URL de transformació d'imatges (consulta [`[upload.transforms]`](#uploadtransforms)). |
 | `VERDIN_METRICS_TOKEN` | Token bearer per a les lectures de `/_metrics` quan `[metrics].enabled`; té prioritat sobre `[metrics].token`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Col·lector de les traces de [`[telemetry]`](#telemetry); tenen prioritat sobre `[telemetry].endpoint`. Les altres variables estàndard `OTEL_EXPORTER_OTLP_*` (capçaleres, temps d'espera, compressió) també s'apliquen. |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | Recurs de les traces exportades; `OTEL_SERVICE_NAME` té prioritat sobre `[telemetry].service_name`. |
+| `OTEL_SDK_DISABLED` | `true` desactiva l'exportació de traces fins i tot amb `[telemetry].enabled`. |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT` | Informes d'errors a Sentry; tenen prioritat sobre `[telemetry].sentry_dsn` i `sentry_environment`. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Credencials del proveïdor de pujades S3. |
 | `RUST_LOG` | Filtre de registre; té prioritat sobre `[log].level`. |

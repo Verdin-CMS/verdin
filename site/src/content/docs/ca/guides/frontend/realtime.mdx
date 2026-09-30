@@ -138,9 +138,11 @@ Cridar el flux des d'un lloc d'un altre origen necessita aquest origen a
 
 ## Darrere d'un balancejador de càrrega
 
-Els esdeveniments són els de la instància a què està connectat un client. Amb diverses
-instàncies, fes servir sessions persistents per a `/api/_events`, o connecta els clients de temps
-real a una sola instància. Consulta [Escalat](/ca/deploy/scaling/).
+Amb diverses instàncies, activa el bus d'esdeveniments compartit (`[cluster].bus = "database"`):
+un client connectat a qualsevol instància rep aleshores els esdeveniments de totes. Sense ell, els
+esdeveniments són els de la instància a què està connectat un client; fes servir sessions
+persistents per a `/api/_events`, o connecta els clients de temps real a una sola instància.
+Consulta [Escalat](/ca/deploy/scaling/#bus-desdeveniments-compartit).
 
 El tauler d'administració fa servir el seu propi flux (`/admin/api/events`) per a les
 actualitzacions en directe, la presència i els bloquejos suaus durant l'edició; consulta la
