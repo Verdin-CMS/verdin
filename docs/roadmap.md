@@ -161,7 +161,9 @@ to roughly one to two months per release. The order follows the risk for people 
 Verdin today: operating it first, then keeping data safe, then extending it, then the
 editorial features, then freezing the surfaces.
 
-## 0.11 — Operations at scale
+## 0.11 — Operations at scale ✅
+
+In `v0.11`, not released yet.
 
 Running several instances and operating them day to day, and the fixes found by moving a
 real Strapi 5.55 project to Verdin 0.10 (same content through `verdin import strapi`, same
@@ -169,17 +171,17 @@ machine, SQLite).
 
 | Item | Size | Notes |
 |---|---|---|
-| **`decimal` on SQLite** | S | Stored as text, so `sort` and `$gt`/`$lt`/`$between` compare strings (`sort=precio:desc` gives `8, 6, 25, 12, 10`; `precio[$gt]=9` gives nothing). Compare and sort as numbers (`CAST(… AS REAL)` for top-level columns, component values, relation sorts, GraphQL and the admin's list filters), with tests on the three cases above |
-| `decimal` output | S | Whole values as `25` instead of `25.0`, as Strapi returns them (strict clients read a different type); `decimal_as_string` unchanged |
-| SQLite write fairness | S | With 20 concurrent writers the p99 is 97 ms against Strapi's 73 ms: writers retry on `busy_timeout` in no order. Queue writes in order on one writer connection (`BEGIN IMMEDIATE`) so the tail follows the queue |
-| Strapi i18n responses | S | `localizations` in entries of localized types and a public `GET /api/i18n/locales`, as in Strapi v5 |
-| Plugin startup hook | S | A function run once when the plugin loads, for what Strapi projects do in `bootstrap` (seeding, locking down the public role); plugins only have scheduled jobs today |
-| Porting Strapi custom code | S | A guide with a worked example plugin: controllers and custom routes to plugin routes, lifecycles to `before*`/`after*` hooks, `bootstrap` to the startup hook, admin widgets to plugin widgets, custom forms to Forms |
-| **Shared event bus** | M | Realtime events, presence, cache invalidation and search updates across instances: Postgres `LISTEN/NOTIFY`, a polling table for MySQL/MariaDB/SQLite, Redis or NATS optional |
-| Observability | S | OpenTelemetry traces with database spans, plugin call times in the metrics, optional Sentry error reporting, Grafana dashboards |
-| Packaging | M | Helm chart, a production Compose recipe, Homebrew / apt / winget / `cargo binstall` / an install script, one-click deploys (Railway, Render, Fly, DigitalOcean, Coolify) |
-| Pagination everywhere | S | Admin endpoints that still return every row (users, API tokens, roles, webhooks, releases, redirects, forms, menus, deploy targets) and deployments past the latest 50 |
-| Docs hosting | S | A real domain, preview deployments for pull requests, and a hosted playground (an ephemeral SQLite instance reset hourly) |
+| **`decimal` on SQLite** ✅ | S | Stored as text, so `sort` and `$gt`/`$lt`/`$between` compared strings (`sort=precio:desc` gave `8, 6, 25, 12, 10`). Columns, component values and relation sorts are cast to `REAL` on SQLite, for every API that filters through the query builder |
+| `decimal` output ✅ | S | Whole values as `25` instead of `25.0`, as Strapi returns them; `decimal_as_string` unchanged |
+| SQLite write fairness ✅ | S | Writers retried on `busy_timeout` in no order (p99 97 ms at 20 writers against Strapi's 73 ms). They now queue in arrival order before taking a connection: p99 about 11 ms, throughput 2 300 → 3 100 rps |
+| Strapi i18n responses ✅ | S | Populatable `localizations` on localized types (REST and GraphQL) and `GET /api/i18n/locales` behind a `find` permission, as in Strapi v5 |
+| Plugin startup hook ✅ | S | `[startup]` function for what Strapi projects do in `bootstrap`, with the `public_permissions` capability to lock down the public role. Also fixed: a plugin writing a type it has after hooks on hung the server |
+| Porting Strapi custom code ✅ | S | A guide and a worked example plugin (`examples/strapi-port`): controllers to plugin routes, lifecycles to hooks, `bootstrap` to the startup function, cron to jobs, admin widgets to plugin widgets, custom forms to Forms |
+| **Shared event bus** ✅ | M | Realtime events, presence, cache invalidation and search updates across instances: Postgres `LISTEN/NOTIFY`, a polling table for MySQL/MariaDB/SQLite (Redis and NATS backends left for when someone needs them) |
+| Observability ✅ | S | OpenTelemetry traces with database spans, plugin call times in the metrics, optional Sentry error reporting, Grafana dashboards |
+| Packaging ✅ | M | Helm chart, a production Compose recipe, Homebrew / apt / winget / `cargo binstall` / an install script, one-click deploys (Railway, Render, Fly, DigitalOcean, Coolify) (publishing to the tap, winget and a Helm repository waits on secrets and repositories) |
+| Pagination everywhere ✅ | S | Admin endpoints that still return every row (users, API tokens, roles, webhooks, releases, redirects, forms, menus, deploy targets) and deployments past the latest 50 |
+| Docs hosting ✅ | S | One `SITE_URL` variable for the domain, pull request previews on GitHub Pages, a playground container reset hourly (the domain and the hosting itself wait on the maintainers) |
 
 ## 0.12 — Data safety
 

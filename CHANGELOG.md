@@ -6,6 +6,67 @@ All notable changes to Verdin are documented here. The format follows
 
 ## [Unreleased]
 
+Operations at scale, and the fixes found by moving a real Strapi 5.55 project to Verdin.
+The migration that runs on start adds one table (`vd_cluster_events`). See the
+[upgrade notes](https://verdin-cms.github.io/verdin/migrate/upgrading/#010--011).
+
+### Added
+
+- **Shared event bus**: `[cluster] bus = "database"` carries realtime events, presence,
+  response cache invalidation, search index updates and transform cache purges between
+  instances, through `vd_cluster_events`, with `LISTEN/NOTIFY` on PostgreSQL and polling
+  (`poll_interval_ms`) on MySQL, MariaDB and SQLite. A single instance keeps the
+  in-process path and writes nothing. New metric `verdin_cluster_events_total`.
+- **Observability**: `[telemetry]` exports OpenTelemetry traces over OTLP/HTTP (request
+  spans that join a caller's `traceparent`, and a span per SQL statement without bound
+  values) and reports panics and 5xx responses to Sentry; both off by default, with the
+  standard `OTEL_*` and `SENTRY_*` variables. A Grafana dashboard in
+  `docker/grafana/verdin.json`.
+- **Plugins**: a `[startup]` function run when the plugin starts, is switched on or its
+  settings change (Strapi's `bootstrap`), on the instances that run jobs; the
+  `public_permissions` capability and `verdin_public_permissions` host function; call
+  durations and failures in `verdin_plugin_call_duration_seconds` and
+  `verdin_plugin_call_errors_total`.
+- **Strapi i18n responses**: `localizations` can be populated on localized types (REST
+  and GraphQL), and `GET /api/i18n/locales` lists the locales with Strapi's shape, behind
+  a `find` permission on `plugin::i18n.locale`. `verdin import strapi` maps that
+  permission; `@verdin/client` has `locales()`.
+- **Porting Strapi custom code**: a guide and an example plugin
+  (`examples/strapi-port`) with a before hook, routes, a scheduled job, a startup
+  function and a dashboard widget.
+- **Packaging**: `.deb` packages for amd64 and arm64 with a systemd unit, an install
+  script (`install.sh`, checksum-verified), `cargo binstall` metadata, Homebrew and winget
+  release jobs (skipped without their secrets), a Helm chart, a production Compose recipe
+  with PostgreSQL and Caddy, one-click deploy files for Render, DigitalOcean, Railway, Fly
+  and Coolify, and a playground container that resets every hour.
+- **Docs hosting**: the site's address is one `SITE_URL` variable, and pull requests get a
+  preview under `pr-preview/pr-N/`.
+- Admin API: `?page=&pageSize=` on users, roles, API tokens, webhooks, releases,
+  redirects (with `search`), menus, forms, deploy targets and deployments; the admin
+  panel pages those lists.
+
+### Changed
+
+- Whole `decimal` values are returned as JSON integers (`25`, not `25.0`), as in Strapi.
+- The admin lists above return 25 rows by default instead of every row, and deployments
+  25 instead of 50 (`limit` is a deprecated alias of `pageSize`).
+- After hooks fired by a plugin's own writes run once its call returns, nesting at most 4
+  levels deep.
+- The site is published from the `gh-pages` branch.
+
+### Fixed
+
+- **SQLite**: `decimal` sorts and `$gt`/`$lt`/`$between` filters compared text, so
+  `sort=price:desc` gave `8, 6, 25, 12, 10`; they compare numbers now.
+- **SQLite**: writers queue in arrival order instead of retrying on `busy_timeout`. With
+  20 concurrent writers the p99 went from about 88 ms to 11 ms and throughput from about
+  2 300 to 3 100 requests per second.
+- A plugin route or job writing a type the same plugin has after hooks on hung the plugin
+  and every write to that type, and the server could not be stopped: host functions now
+  stop at the call's time limit, and shutdown gives requests, the database and background
+  tasks a bounded grace period.
+- Releases older than the latest 500 could not be found by id or from their entries.
+
 ## [0.10.0] - 2026-09-29
 
 Modern documentation and admin polish. The documentation moved from `docs/` to a site of

@@ -120,6 +120,23 @@ has the complete list.
 
 ### 0.10 → 0.11
 
+The migration that runs on start adds one table, `vd_cluster_events`, used only when
+`[cluster] bus = "database"`.
+
+- **Decimals**: whole `decimal` values are returned as JSON integers (`25`, not `25.0`),
+  as Strapi returns them. Clients that check the JSON type strictly may notice;
+  `[api] decimal_as_string` is unchanged. On SQLite, `sort` and `$gt`/`$lt`/`$between`
+  on decimals now compare numbers instead of text, so results that relied on the old
+  (wrong) order change.
+- **`populate=*` on localized types** also returns `localizations`, the document's other
+  locale versions, as Strapi v5 does. A schema attribute named `localizations` keeps its
+  meaning.
+- **Plugins**: after hooks fired by a plugin's own writes run once its call returns
+  instead of inside the write, and hooks that write nest at most 4 levels deep. Host
+  functions stop at the call's time limit.
+- **Several instances**: set `[cluster] bus = "database"` on every instance so realtime
+  streams, presence, the response cache and the search index follow changes made on the
+  others (see [Scaling](/deploy/scaling/)).
 - **Scripts that read admin lists**: `GET /admin/api/users`, `/roles`, `/api-tokens`,
   `/webhooks`, `/releases`, `/site/redirects`, `/site/menus`, `/site/forms` and
   `/deploy/targets` return 25 rows unless you pass `pageSize` (at most 100), with
